@@ -1,0 +1,43 @@
+[package]
+name = "lunchbox-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Core library for Lunchbox emulator frontend"
+
+[dependencies]
+# Async runtime
+tokio.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Utilities
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Checksums
+crc32fast.workspace = true
+md-5.workspace = true
+sha1.workspace = true
+
+# Parallel processing
+rayon.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Additional
+directories = "5"
+walkdir = "2"
+urlencoding = "2"

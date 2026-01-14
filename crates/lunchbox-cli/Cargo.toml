@@ -1,0 +1,37 @@
+[package]
+name = "lunchbox-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Command line interface for Lunchbox emulator frontend"
+
+[[bin]]
+name = "lunchbox-cli"
+path = "src/main.rs"
+
+[dependencies]
+lunchbox-core = { path = "../lunchbox-core" }
+
+# Async runtime
+tokio.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Utilities
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+indicatif = "0.17"
+
+# Database building
+sqlx.workspace = true
+uuid.workspace = true
+walkdir = "2"

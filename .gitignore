@@ -1,0 +1,29 @@
+# Rust
+/target/
+Cargo.lock
+
+# Nix
+/result
+/.direnv/
+
+# Build output
+/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+.env.local
