@@ -330,44 +330,109 @@ body {
 .game-list {
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 .game-list-item {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 100px;
     gap: 16px;
     padding: 10px 12px;
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
+    align-items: center;
 }
 
 .game-list-item:hover {
     background-color: var(--bg-hover);
 }
 
-.game-list-item .game-title {
-    font-weight: 500;
-    color: var(--text-highlight);
-}
-
-.game-list-item .game-developer,
-.game-list-item .game-publisher,
-.game-list-item .game-year {
+.game-list-item .game-col {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-secondary);
     font-size: 13px;
+}
+
+.game-list-item .game-col-title {
+    font-weight: 500;
+    color: var(--text-highlight);
 }
 
 /* Game List Header */
 .game-list-header {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 100px;
     gap: 16px;
     padding: 10px 12px;
     border-bottom: 2px solid var(--border-color);
+    background-color: var(--bg-secondary);
+}
+
+.game-list-header .column-header {
     font-weight: 600;
     color: var(--text-secondary);
     font-size: 12px;
     text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+    transition: color 0.15s ease;
+}
+
+.game-list-header .column-header:hover {
+    color: var(--text-primary);
+}
+
+.game-list-header .column-header.sorted {
+    color: var(--accent-color);
+}
+
+.game-list-header .column-header.dragging {
+    opacity: 0.5;
+}
+
+.game-list-header .column-header.drag-over {
+    border-left: 2px solid var(--accent-color);
+    padding-left: 8px;
+    margin-left: -10px;
+}
+
+/* Column Context Menu */
+.column-context-menu {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 0;
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.context-menu-title {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 4px;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.context-menu-item:hover {
+    background-color: var(--bg-hover);
+}
+
+.context-menu-item input[type="checkbox"] {
+    accent-color: var(--accent-color);
 }
 
 /* Platform count badge */
