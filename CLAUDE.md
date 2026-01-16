@@ -9,6 +9,11 @@
 - Keep main.rs thin - modularize command implementations into separate files
 - CLI commands should call into module functions, not contain all the logic inline
 
+## Workflow
+
+- After implementing a change, always git status/diff/commit/push as a WIP commit
+- Don't wait for the user to ask for a commit
+
 ## Tools
 
 - Never use sed - always use the Edit tool for file modifications

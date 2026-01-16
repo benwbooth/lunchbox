@@ -24,6 +24,15 @@ pub fn Toolbar(
                             set_search_query.set(event_target_value(&ev));
                         }
                     />
+                    <Show when=move || !search_query.get().is_empty()>
+                        <button
+                            class="search-clear"
+                            on:click=move |_| set_search_query.set(String::new())
+                            title="Clear search"
+                        >
+                            "×"
+                        </button>
+                    </Show>
                 </div>
             </div>
             <div class="toolbar-right">
