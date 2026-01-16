@@ -12,6 +12,81 @@ use tokio::sync::RwLock;
 
 type AppStateHandle = Arc<RwLock<AppState>>;
 
+/// Generate search aliases for a platform name (used if not in database)
+fn get_platform_search_aliases(name: &str) -> Option<String> {
+    let aliases = match name {
+        // Nintendo
+        "Nintendo Entertainment System" => "NES, Famicom, FC, nes, famicom",
+        "Super Nintendo Entertainment System" => "SNES, Super Famicom, SFC, snes, snesna",
+        "Nintendo 64" => "N64, n64",
+        "Nintendo GameCube" => "GC, NGC, GameCube, gc, gamecube",
+        "Nintendo Game Boy" => "GB, Game Boy, gb",
+        "Nintendo Game Boy Color" => "GBC, Game Boy Color, gbc",
+        "Nintendo Game Boy Advance" => "GBA, Game Boy Advance, gba",
+        "Nintendo DS" => "NDS, DS, nds",
+        "Nintendo 3DS" => "3DS, n3ds, 3ds",
+        "Nintendo Wii" => "Wii, wii",
+        "Nintendo Wii U" => "Wii U, WiiU, wiiu",
+        "Nintendo Switch" => "Switch, NS, switch",
+        "Nintendo Virtual Boy" => "VB, Virtual Boy, virtualboy",
+        // Sega
+        "Sega Master System" => "SMS, Master System, mastersystem",
+        "Sega Genesis" => "MD, Mega Drive, Genesis, genesis, megadrive",
+        "Sega CD" => "SCD, Mega CD, Sega CD, segacd, megacd",
+        "Sega 32X" => "32X, sega32x",
+        "Sega Saturn" => "SS, Saturn, saturn",
+        "Sega Dreamcast" => "DC, Dreamcast, dreamcast",
+        "Sega Game Gear" => "GG, Game Gear, gamegear",
+        // Sony
+        "Sony Playstation" => "PS1, PSX, PS, PlayStation, psx",
+        "Sony Playstation 2" => "PS2, PlayStation 2, ps2",
+        "Sony Playstation 3" => "PS3, PlayStation 3, ps3",
+        "Sony PSP" => "PSP, PlayStation Portable, psp",
+        "Sony Playstation Vita" => "PSV, Vita, PS Vita, psvita",
+        // NEC
+        "NEC TurboGrafx-16" => "PCE, PC Engine, TG16, TurboGrafx-16, tg16, pcengine",
+        "NEC TurboGrafx-CD" => "PCECD, PC Engine CD, TG-CD, TurboGrafx-CD, tg-cd, pcenginecd",
+        "NEC PC-98" => "PC98, PC-98, pc98",
+        // SNK
+        "SNK Neo Geo Pocket" => "NGP, Neo Geo Pocket, ngp",
+        "SNK Neo Geo Pocket Color" => "NGPC, Neo Geo Pocket Color, ngpc",
+        "SNK Neo Geo AES" => "AES, MVS, Neo Geo, neogeo",
+        "SNK Neo Geo CD" => "Neo Geo CD, neogeocd, neogeocdjp",
+        // Atari
+        "Atari 2600" => "2600, VCS, atari2600",
+        "Atari 5200" => "5200, atari5200",
+        "Atari 7800" => "7800, atari7800",
+        "Atari Lynx" => "Lynx, lynx",
+        "Atari Jaguar" => "Jaguar, Jag, atarijaguar",
+        "Atari Jaguar CD" => "Jaguar CD, atarijaguarcd",
+        // Commodore
+        "Commodore 64" => "C64, c64",
+        "Commodore Amiga" => "Amiga, amiga",
+        "Commodore VIC-20" => "VIC-20, VIC20, vic20",
+        "Commodore 16" => "C16, c16",
+        // Other
+        "MS-DOS" => "DOS, dos",
+        "Microsoft MSX" => "MSX, msx",
+        "Microsoft MSX2" => "MSX2, msx2",
+        "Microsoft Xbox" => "Xbox, xbox",
+        "Microsoft Xbox 360" => "X360, 360, Xbox 360, xbox360",
+        "Sinclair ZX Spectrum" => "ZX, ZX Spectrum, zxspectrum",
+        "Amstrad CPC" => "CPC, amstradcpc",
+        "Arcade" => "MAME, arcade, fbneo",
+        "Panasonic 3DO" => "3DO, 3do",
+        "Philips CD-i" => "CD-i, CDi, cdimono1",
+        "Bandai WonderSwan" => "WS, WonderSwan, wonderswan",
+        "Bandai WonderSwan Color" => "WSC, WonderSwan Color, wonderswancolor",
+        "Coleco ColecoVision" => "Coleco, ColecoVision, colecovision",
+        "Mattel Intellivision" => "Intellivision, intellivision",
+        "GCE Vectrex" => "Vectrex, vectrex",
+        "Sharp X68000" => "X68000, x68000",
+        "ScummVM" => "ScummVM, scummvm",
+        _ => return None,
+    };
+    Some(aliases.to_string())
+}
+
 /// Platform for display
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,8 +94,7 @@ pub struct Platform {
     pub id: i64,
     pub name: String,
     pub game_count: i64,
-    pub launchbox_name: Option<String>,
-    pub libretro_name: Option<String>,
+    pub aliases: Option<String>,
 }
 
 /// Game for display
@@ -146,8 +220,8 @@ pub async fn get_platforms(
     // Try shipped games database first (browse-first mode)
     if let Some(ref games_pool) = state_guard.games_db_pool {
         // Get all platforms with aliases
-        let platforms: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT id, name, launchbox_name, libretro_name FROM platforms ORDER BY name"
+        let platforms: Vec<(i64, String, Option<String>)> = sqlx::query_as(
+            "SELECT id, name, aliases FROM platforms ORDER BY name"
         )
         .fetch_all(games_pool)
         .await
@@ -155,7 +229,7 @@ pub async fn get_platforms(
 
         // For each platform, count deduplicated games (by normalized title)
         let mut result = Vec::new();
-        for (id, name, launchbox_name, libretro_name) in platforms {
+        for (id, name, aliases) in platforms {
             let all_titles: Vec<(String,)> = sqlx::query_as(
                 "SELECT title FROM games WHERE platform_id = ?"
             )
@@ -170,7 +244,9 @@ pub async fn get_platforms(
                 let normalized = normalize_title(&title).to_lowercase();
                 seen.insert(normalized);
             }
-            result.push(Platform { id, name, game_count: seen.len() as i64, launchbox_name, libretro_name });
+            // Use database aliases or generate them if not present
+            let aliases = aliases.or_else(|| get_platform_search_aliases(&name));
+            result.push(Platform { id, name, game_count: seen.len() as i64, aliases });
         }
         return Ok(result);
     }
@@ -188,8 +264,7 @@ pub async fn get_platforms(
                 id: p.platform_key,
                 name: p.name,
                 game_count: 0,
-                launchbox_name: None,
-                libretro_name: None,
+                aliases: None,
             })
             .collect());
     }

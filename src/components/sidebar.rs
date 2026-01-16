@@ -28,7 +28,7 @@ pub fn Sidebar(
         set_platforms_loading.set(false);
     });
 
-    // Filter platforms based on search query (matches name, launchbox_name, libretro_name)
+    // Filter platforms based on search query (matches name and aliases)
     let filtered_platforms = move || {
         let query = platform_search.get().to_lowercase();
         if query.is_empty() {
@@ -36,8 +36,7 @@ pub fn Sidebar(
         } else {
             platforms.get().into_iter().filter(|p| {
                 p.name.to_lowercase().contains(&query) ||
-                p.launchbox_name.as_ref().map(|n| n.to_lowercase().contains(&query)).unwrap_or(false) ||
-                p.libretro_name.as_ref().map(|n| n.to_lowercase().contains(&query)).unwrap_or(false)
+                p.aliases.as_ref().map(|a| a.to_lowercase().contains(&query)).unwrap_or(false)
             }).collect()
         }
     };

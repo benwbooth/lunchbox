@@ -142,8 +142,7 @@ pub struct Platform {
     pub id: i64,
     pub name: String,
     pub game_count: i64,
-    pub launchbox_name: Option<String>,
-    pub libretro_name: Option<String>,
+    pub aliases: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
