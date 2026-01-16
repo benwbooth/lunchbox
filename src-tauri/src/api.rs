@@ -189,7 +189,8 @@ async fn get_games(
                     r#"
                     SELECT g.id, g.title, g.platform_id, p.name as platform,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                     FROM games g
                     JOIN platforms p ON g.platform_id = p.id
                     WHERE p.name = ? AND g.title LIKE ?
@@ -206,7 +207,8 @@ async fn get_games(
                     r#"
                     SELECT g.id, g.title, g.platform_id, p.name as platform,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                     FROM games g
                     JOIN platforms p ON g.platform_id = p.id
                     WHERE g.title LIKE ?
@@ -223,7 +225,8 @@ async fn get_games(
                 r#"
                 SELECT g.id, g.title, g.platform_id, p.name as platform,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                 FROM games g
                 JOIN platforms p ON g.platform_id = p.id
                 WHERE p.name = ?
@@ -239,7 +242,8 @@ async fn get_games(
                 r#"
                 SELECT g.id, g.title, g.platform_id, p.name as platform,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                 FROM games g
                 JOIN platforms p ON g.platform_id = p.id
                 ORDER BY g.title
@@ -287,6 +291,15 @@ async fn get_games(
                     cooperative: row.get::<Option<i32>, _>("cooperative").map(|v| v != 0),
                     video_url: row.get("video_url"),
                     wikipedia_url: row.get("wikipedia_url"),
+                    release_type: row.get("release_type"),
+                    notes: row.get("notes"),
+                    sort_title: row.get("sort_title"),
+                    series: row.get("series"),
+                    region: row.get("region"),
+                    play_mode: row.get("play_mode"),
+                    version: row.get("version"),
+                    status: row.get("status"),
+                    steam_app_id: row.get("steam_app_id"),
                     box_front_path: None,
                     screenshot_path: None,
                     variant_count: 1,
@@ -384,7 +397,8 @@ async fn get_game_by_uuid(
             r#"
             SELECT g.id, g.title, g.platform_id, p.name as platform,
                    g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                   g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                   g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
             FROM games g
             JOIN platforms p ON g.platform_id = p.id
             WHERE g.id = ?
@@ -431,6 +445,15 @@ async fn get_game_by_uuid(
                 cooperative: row.get::<Option<i32>, _>("cooperative").map(|v| v != 0),
                 video_url: row.get("video_url"),
                 wikipedia_url: row.get("wikipedia_url"),
+                release_type: row.get("release_type"),
+                notes: row.get("notes"),
+                sort_title: row.get("sort_title"),
+                series: row.get("series"),
+                region: row.get("region"),
+                play_mode: row.get("play_mode"),
+                version: row.get("version"),
+                status: row.get("status"),
+                steam_app_id: row.get("steam_app_id"),
                 box_front_path: None,
                 screenshot_path: None,
                 variant_count: variant_count.0 as i32,
@@ -529,7 +552,8 @@ async fn get_favorites(
                 r#"
                 SELECT g.id, g.title, g.platform_id, p.name as platform,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                 FROM games g
                 JOIN platforms p ON g.platform_id = p.id
                 WHERE g.id = ?
@@ -563,6 +587,15 @@ async fn get_favorites(
                     cooperative: row.get::<Option<i32>, _>("cooperative").map(|v| v != 0),
                     video_url: row.get("video_url"),
                     wikipedia_url: row.get("wikipedia_url"),
+                    release_type: row.get("release_type"),
+                    notes: row.get("notes"),
+                    sort_title: row.get("sort_title"),
+                    series: row.get("series"),
+                    region: row.get("region"),
+                    play_mode: row.get("play_mode"),
+                    version: row.get("version"),
+                    status: row.get("status"),
+                    steam_app_id: row.get("steam_app_id"),
                     box_front_path: None,
                     screenshot_path: None,
                     variant_count: 1,

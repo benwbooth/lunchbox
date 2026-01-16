@@ -1,41 +1,113 @@
-//! Database schema types
+//! Database schema types - Single Source of Truth for game metadata
+//!
+//! All game metadata fields are defined here. Other modules should use these types
+//! rather than defining their own Game structs.
 
-use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+/// Platform from database
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Platform {
+#[serde(rename_all = "camelCase")]
+pub struct DbPlatform {
     pub id: i64,
     pub name: String,
+    pub launchbox_name: Option<String>,
+    pub libretro_name: Option<String>,
     pub screenscraper_id: Option<i64>,
+    pub openvgdb_system_id: Option<i64>,
+    pub manufacturer: Option<String>,
+    pub release_date: Option<String>,
+    pub category: Option<String>,
     pub retroarch_core: Option<String>,
-    pub file_extensions: Option<String>, // JSON array
-    pub created_at: DateTime<Utc>,
+    pub file_extensions: Option<String>,
+    pub aliases: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Game {
-    pub id: String, // UUID
+/// Database row for games table - single source of truth for all game metadata
+///
+/// This struct matches the database schema exactly. Use sqlx's FromRow derive
+/// to automatically map database rows to this struct.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DbGame {
+    pub id: String,
     pub title: String,
     pub platform_id: i64,
+
+    // External IDs for cross-referencing
     pub launchbox_db_id: Option<i64>,
+    pub libretro_crc32: Option<String>,
+    pub libretro_md5: Option<String>,
+    pub libretro_sha1: Option<String>,
+    pub libretro_serial: Option<String>,
     pub screenscraper_id: Option<i64>,
     pub igdb_id: Option<i64>,
+    pub steamgriddb_id: Option<i64>,
+    pub openvgdb_release_id: Option<i64>,
+    pub steam_app_id: Option<i64>,
+
+    // Core metadata (from Metadata.xml)
     pub description: Option<String>,
-    pub release_date: Option<NaiveDate>,
+    pub release_date: Option<String>,
+    pub release_year: Option<i32>,
     pub developer: Option<String>,
     pub publisher: Option<String>,
-    pub genres: Option<String>, // JSON array
+    pub genre: Option<String>,
     pub players: Option<String>,
     pub rating: Option<f64>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub rating_count: Option<i64>,
+    pub esrb: Option<String>,
+    pub cooperative: Option<i32>,
+    pub video_url: Option<String>,
+    pub wikipedia_url: Option<String>,
+    pub release_type: Option<String>,
+    pub notes: Option<String>,
+
+    // Extended metadata (from Platform XMLs)
+    pub sort_title: Option<String>,
+    pub series: Option<String>,
+    pub region: Option<String>,
+    pub play_mode: Option<String>,
+    pub version: Option<String>,
+    pub status: Option<String>,
+
+    // Import tracking
+    pub metadata_source: Option<String>,
 }
+
+/// SQL SELECT clause for all game columns
+/// Use this constant to ensure consistent column selection across all queries
+pub const GAME_COLUMNS: &str = r#"
+    g.id, g.title, g.platform_id,
+    g.launchbox_db_id, g.libretro_crc32, g.libretro_md5, g.libretro_sha1, g.libretro_serial,
+    g.screenscraper_id, g.igdb_id, g.steamgriddb_id, g.openvgdb_release_id, g.steam_app_id,
+    g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+    g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+    g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status,
+    g.metadata_source
+"#;
+
+/// SQL SELECT with platform join - most common query pattern
+pub const GAME_SELECT_WITH_PLATFORM: &str = r#"
+    SELECT g.id, g.title, g.platform_id, p.name as platform_name,
+           g.launchbox_db_id, g.libretro_crc32, g.libretro_md5, g.libretro_sha1, g.libretro_serial,
+           g.screenscraper_id, g.igdb_id, g.steamgriddb_id, g.openvgdb_release_id, g.steam_app_id,
+           g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status,
+           g.metadata_source
+    FROM games g
+    JOIN platforms p ON g.platform_id = p.id
+"#;
+
+// ============================================================================
+// Other database types (unchanged)
+// ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Rom {
-    pub id: String, // UUID
+    pub id: String,
     pub game_id: Option<String>,
     pub file_path: String,
     pub file_name: String,
@@ -46,22 +118,20 @@ pub struct Rom {
     pub region: Option<String>,
     pub version: Option<String>,
     pub verified: bool,
-    pub last_played: Option<DateTime<Utc>>,
+    pub last_played: Option<String>,
     pub play_count: i64,
     pub play_time_seconds: i64,
-    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Media {
-    pub id: String, // UUID
+    pub id: String,
     pub game_id: String,
     pub media_type: String,
     pub file_path: String,
     pub source: Option<String>,
     pub width: Option<i64>,
     pub height: Option<i64>,
-    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -69,7 +139,7 @@ pub struct Emulator {
     pub id: String,
     pub name: String,
     pub executable_path: Option<String>,
-    pub emulator_type: String, // 'retroarch', 'standalone'
+    pub emulator_type: String,
     pub version: Option<String>,
     pub installed: bool,
 }
@@ -85,10 +155,31 @@ pub struct PlatformEmulator {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Collection {
-    pub id: String, // UUID
+    pub id: String,
     pub name: String,
     pub description: Option<String>,
     pub is_smart: bool,
-    pub filter_rules: Option<String>, // JSON
-    pub created_at: DateTime<Utc>,
+    pub filter_rules: Option<String>,
+}
+
+/// Alternate name for a game (regional titles, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct GameAlternateName {
+    pub id: i64,
+    pub launchbox_db_id: i64,
+    pub alternate_name: String,
+    pub region: Option<String>,
+}
+
+/// Image reference for on-demand download from LaunchBox CDN
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct GameImage {
+    pub id: i64,
+    pub launchbox_db_id: i64,
+    pub filename: String,
+    pub image_type: String,
+    pub region: Option<String>,
+    pub crc32: Option<String>,
+    pub downloaded: bool,
+    pub local_path: Option<String>,
 }

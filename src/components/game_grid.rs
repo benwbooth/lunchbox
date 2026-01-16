@@ -5,9 +5,11 @@ use leptos::html;
 use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
 use web_sys::console;
+use chrono::{Datelike, NaiveDate};
 use crate::app::ViewMode;
 use crate::tauri::{self, file_to_asset_url, Game};
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
 // Virtual scroll configuration
 const ITEM_HEIGHT: i32 = 280; // Height of each game card in grid
@@ -15,6 +17,72 @@ const ITEM_WIDTH: i32 = 180;  // Width of each game card
 const LIST_ITEM_HEIGHT: i32 = 40; // Height in list view
 const BUFFER_ITEMS: i32 = 10; // Extra items to render above/below viewport
 const FETCH_CHUNK_SIZE: i64 = 500; // How many games to fetch at once
+
+/// Parse a date string into a NaiveDate, handling various formats
+fn parse_date(date_str: &str) -> Option<NaiveDate> {
+    let trimmed = date_str.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("canceled") {
+        return None;
+    }
+
+    // Try ISO format first: "2024-01-15T00:00:00+00:00" or "2024-01-15"
+    let date_part = trimmed.split('T').next().unwrap_or(trimmed);
+    if let Ok(d) = NaiveDate::parse_from_str(date_part, "%Y-%m-%d") {
+        return Some(d);
+    }
+
+    // Try just year: "1983"
+    if let Ok(year) = trimmed.parse::<i32>() {
+        if (1900..=2100).contains(&year) {
+            return NaiveDate::from_ymd_opt(year, 1, 1);
+        }
+    }
+
+    // Try "Month Year" format: "July 1990"
+    let months = [
+        ("january", 1), ("february", 2), ("march", 3), ("april", 4),
+        ("may", 5), ("june", 6), ("july", 7), ("august", 8),
+        ("september", 9), ("october", 10), ("november", 11), ("december", 12),
+    ];
+    let lower = trimmed.to_lowercase();
+    for (month_name, month_num) in months {
+        if lower.starts_with(month_name) {
+            if let Some(year_str) = lower.strip_prefix(month_name).map(|s| s.trim()) {
+                if let Ok(year) = year_str.parse::<i32>() {
+                    return NaiveDate::from_ymd_opt(year, month_num, 1);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Format a date string to a human-readable format
+fn format_date(date_str: &str) -> String {
+    if let Some(date) = parse_date(date_str) {
+        // If it's Jan 1, likely just a year - show year only
+        if date.day() == 1 && date.month() == 1 {
+            return date.format("%Y").to_string();
+        }
+        // If it's the 1st of any month, might be "Month Year" - show month and year
+        if date.day() == 1 {
+            return date.format("%b %Y").to_string();
+        }
+        date.format("%b %-d, %Y").to_string()
+    } else {
+        date_str.to_string()
+    }
+}
+
+/// Get a sortable date string (YYYY-MM-DD) for comparison
+fn sortable_date(date_str: &Option<String>) -> String {
+    date_str
+        .as_ref()
+        .and_then(|s| parse_date(s))
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
 
 // ============================================================================
 // Column Configuration
@@ -35,6 +103,10 @@ pub enum Column {
     Esrb,
     Coop,
     Variants,
+    ReleaseType,
+    Series,
+    Region,
+    Notes,
 }
 
 impl Column {
@@ -53,6 +125,10 @@ impl Column {
             Column::Esrb => "ESRB",
             Column::Coop => "Co-op",
             Column::Variants => "Variants",
+            Column::ReleaseType => "Type",
+            Column::Series => "Series",
+            Column::Region => "Region",
+            Column::Notes => "Notes",
         }
     }
 
@@ -64,13 +140,17 @@ impl Column {
             Column::Developer => game.developer.clone().unwrap_or_else(|| "-".to_string()),
             Column::Publisher => game.publisher.clone().unwrap_or_else(|| "-".to_string()),
             Column::Year => game.release_year.map(|y| y.to_string()).unwrap_or_else(|| "-".to_string()),
-            Column::ReleaseDate => game.release_date.clone().unwrap_or_else(|| "-".to_string()),
+            Column::ReleaseDate => game.release_date.as_ref().map(|d| format_date(d)).unwrap_or_else(|| "-".to_string()),
             Column::Genre => game.genres.clone().unwrap_or_else(|| "-".to_string()),
             Column::Players => game.players.clone().unwrap_or_else(|| "-".to_string()),
             Column::Rating => game.rating.map(|r| format!("{:.1}", r)).unwrap_or_else(|| "-".to_string()),
             Column::Esrb => game.esrb.clone().unwrap_or_else(|| "-".to_string()),
             Column::Coop => game.cooperative.map(|c| if c { "Yes" } else { "No" }.to_string()).unwrap_or_else(|| "-".to_string()),
             Column::Variants => if game.variant_count > 1 { game.variant_count.to_string() } else { "-".to_string() },
+            Column::ReleaseType => game.release_type.clone().unwrap_or_else(|| "-".to_string()),
+            Column::Series => game.series.clone().unwrap_or_else(|| "-".to_string()),
+            Column::Region => game.region.clone().unwrap_or_else(|| "-".to_string()),
+            Column::Notes => game.notes.clone().map(|n| if n.len() > 50 { format!("{}...", &n[..47]) } else { n }).unwrap_or_else(|| "-".to_string()),
         }
     }
 
@@ -82,13 +162,17 @@ impl Column {
             Column::Developer => cmp_opt_str(&a.developer, &b.developer),
             Column::Publisher => cmp_opt_str(&a.publisher, &b.publisher),
             Column::Year => cmp_opt(&a.release_year, &b.release_year),
-            Column::ReleaseDate => cmp_opt_str(&a.release_date, &b.release_date),
+            Column::ReleaseDate => sortable_date(&a.release_date).cmp(&sortable_date(&b.release_date)),
             Column::Genre => cmp_opt_str(&a.genres, &b.genres),
             Column::Players => cmp_opt_str(&a.players, &b.players),
             Column::Rating => cmp_opt_f64(&a.rating, &b.rating),
             Column::Esrb => cmp_opt_str(&a.esrb, &b.esrb),
             Column::Coop => cmp_opt(&a.cooperative, &b.cooperative),
             Column::Variants => a.variant_count.cmp(&b.variant_count),
+            Column::ReleaseType => cmp_opt_str(&a.release_type, &b.release_type),
+            Column::Series => cmp_opt_str(&a.series, &b.series),
+            Column::Region => cmp_opt_str(&a.region, &b.region),
+            Column::Notes => cmp_opt_str(&a.notes, &b.notes),
         }
     }
 
@@ -107,6 +191,10 @@ impl Column {
             Column::Esrb,
             Column::Coop,
             Column::Variants,
+            Column::ReleaseType,
+            Column::Series,
+            Column::Region,
+            Column::Notes,
         ]
     }
 
@@ -164,6 +252,34 @@ pub struct SortState {
     pub direction: SortDirection,
 }
 
+/// Column filters - maps column to set of allowed values (empty = no filter)
+pub type ColumnFilters = HashMap<Column, HashSet<String>>;
+
+impl Column {
+    /// Get unique values for this column from a list of games (for filter dropdown)
+    pub fn unique_values(&self, games: &[Game]) -> Vec<String> {
+        let mut values: HashSet<String> = HashSet::new();
+        for game in games {
+            let val = self.value(game);
+            if val != "-" {
+                values.insert(val);
+            }
+        }
+        let mut sorted: Vec<String> = values.into_iter().collect();
+        sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        sorted
+    }
+
+    /// Check if a game passes the filter for this column
+    pub fn passes_filter(&self, game: &Game, allowed: &HashSet<String>) -> bool {
+        if allowed.is_empty() {
+            return true; // No filter = all pass
+        }
+        let val = self.value(game);
+        allowed.contains(&val) || (val == "-" && allowed.contains("-"))
+    }
+}
+
 #[component]
 pub fn GameGrid(
     platform: ReadSignal<Option<String>>,
@@ -194,6 +310,10 @@ pub fn GameGrid(
     let (context_menu, set_context_menu) = signal::<Option<(i32, i32)>>(None); // (x, y) position
     let (dragging_column, set_dragging_column) = signal::<Option<usize>>(None);
     let (drag_over_column, set_drag_over_column) = signal::<Option<usize>>(None);
+
+    // Column filters
+    let (column_filters, set_column_filters) = signal::<ColumnFilters>(HashMap::new());
+    let (filter_menu, set_filter_menu) = signal::<Option<(Column, i32, i32)>>(None); // (column, x, y) position
 
     // Container ref for scroll handling
     let container_ref = NodeRef::<html::Main>::new();
@@ -421,27 +541,38 @@ pub fn GameGrid(
                                 ViewMode::List => {
                                     let columns = visible_columns.get();
                                     let current_sort = sort_state.get();
+                                    let filters = column_filters.get();
                                     let col_count = columns.len();
 
-                                    // Sort games if sort state is set
-                                    let mut sorted_games: Vec<(usize, Game)> = visible_games;
+                                    // Filter and sort games
+                                    let mut filtered_games: Vec<Game> = games_list.clone();
+
+                                    // Apply column filters
+                                    if !filters.is_empty() {
+                                        filtered_games.retain(|game| {
+                                            filters.iter().all(|(col, allowed)| {
+                                                col.passes_filter(game, allowed)
+                                            })
+                                        });
+                                    }
+
+                                    // Sort if needed
                                     if let Some(sort) = current_sort {
-                                        // Get all games and sort them
-                                        let mut all_sorted: Vec<Game> = games_list.clone();
-                                        all_sorted.sort_by(|a, b| {
+                                        filtered_games.sort_by(|a, b| {
                                             let cmp = sort.column.compare(a, b);
                                             match sort.direction {
                                                 SortDirection::Ascending => cmp,
                                                 SortDirection::Descending => cmp.reverse(),
                                             }
                                         });
-                                        sorted_games = all_sorted
-                                            .into_iter()
-                                            .enumerate()
-                                            .skip(start)
-                                            .take(end - start)
-                                            .collect();
                                     }
+
+                                    let sorted_games: Vec<(usize, Game)> = filtered_games
+                                        .into_iter()
+                                        .enumerate()
+                                        .skip(start)
+                                        .take(end - start)
+                                        .collect();
 
                                     view! {
                                         <div
@@ -450,7 +581,10 @@ pub fn GameGrid(
                                                 ev.prevent_default();
                                                 set_context_menu.set(Some((ev.client_x(), ev.client_y())));
                                             }
-                                            on:click=move |_| set_context_menu.set(None)
+                                            on:click=move |_| {
+                                                set_context_menu.set(None);
+                                                set_filter_menu.set(None);
+                                            }
                                         >
                                             // Dynamic column header
                                             <div
@@ -466,6 +600,7 @@ pub fn GameGrid(
                                                     let sort_dir = current_sort.filter(|s| s.column == col).map(|s| s.direction);
                                                     let is_dragging = dragging_column.get() == Some(idx);
                                                     let is_drag_over = drag_over_column.get() == Some(idx);
+                                                    let has_filter = filters.contains_key(&col);
 
                                                     view! {
                                                         <span
@@ -473,6 +608,7 @@ pub fn GameGrid(
                                                             class:sorted=is_sorted
                                                             class:dragging=is_dragging
                                                             class:drag-over=is_drag_over
+                                                            class:filtered=has_filter
                                                             draggable="true"
                                                             on:click=move |_| {
                                                                 let new_sort = match current_sort {
@@ -523,12 +659,33 @@ pub fn GameGrid(
                                                                 set_drag_over_column.set(None);
                                                             }
                                                         >
-                                                            {col.label()}
-                                                            {match sort_dir {
-                                                                Some(SortDirection::Ascending) => " ▲",
-                                                                Some(SortDirection::Descending) => " ▼",
-                                                                None => "",
-                                                            }}
+                                                            <span class="column-label">
+                                                                {col.label()}
+                                                                {match sort_dir {
+                                                                    Some(SortDirection::Ascending) => " ▲",
+                                                                    Some(SortDirection::Descending) => " ▼",
+                                                                    None => "",
+                                                                }}
+                                                            </span>
+                                                            <button
+                                                                class="filter-btn"
+                                                                class:active=has_filter
+                                                                title="Filter"
+                                                                on:click=move |ev: web_sys::MouseEvent| {
+                                                                    ev.stop_propagation();
+                                                                    let current = filter_menu.get();
+                                                                    if current.map(|(c, _, _)| c) == Some(col) {
+                                                                        set_filter_menu.set(None);
+                                                                    } else {
+                                                                        // Get button position using mouse event coordinates
+                                                                        let x = ev.client_x() - 100; // Offset to center dropdown
+                                                                        let y = ev.client_y() + 10;
+                                                                        set_filter_menu.set(Some((col, x, y)));
+                                                                    }
+                                                                }
+                                                                inner_html="<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><path d='M22 3H2l8 9.46V19l4 2v-8.54L22 3z'/></svg>"
+                                                            >
+                                                            </button>
                                                         </span>
                                                     }
                                                 }).collect::<Vec<_>>()}
@@ -598,6 +755,103 @@ pub fn GameGrid(
                                                     </div>
                                                 }
                                             })}
+                                            // Filter dropdown menu
+                                            {move || filter_menu.get().map(|(col, menu_x, menu_y)| {
+                                                let all_games = games.get();
+                                                let unique_vals = col.unique_values(&all_games);
+                                                let current_filters = column_filters.get();
+                                                let current_selection = current_filters.get(&col).cloned().unwrap_or_default();
+
+                                                view! {
+                                                    <div
+                                                        class="filter-dropdown"
+                                                        style:left=format!("{}px", menu_x)
+                                                        style:top=format!("{}px", menu_y)
+                                                        on:click=move |ev| ev.stop_propagation()
+                                                    >
+                                                        <div class="filter-header">
+                                                            <span class="filter-title">"Filter: " {col.label()}</span>
+                                                            <button
+                                                                class="filter-clear"
+                                                                on:click=move |_| {
+                                                                    set_column_filters.update(|f| {
+                                                                        f.remove(&col);
+                                                                    });
+                                                                    set_filter_menu.set(None);
+                                                                }
+                                                            >
+                                                                "Clear"
+                                                            </button>
+                                                        </div>
+                                                        <div class="filter-actions">
+                                                            <button
+                                                                class="filter-action-btn"
+                                                                on:click=move |_| {
+                                                                    let all_games = games.get();
+                                                                    let all_vals: HashSet<String> = col.unique_values(&all_games).into_iter().collect();
+                                                                    set_column_filters.update(|f| {
+                                                                        f.insert(col, all_vals);
+                                                                    });
+                                                                }
+                                                            >
+                                                                "Select All"
+                                                            </button>
+                                                            <button
+                                                                class="filter-action-btn"
+                                                                on:click=move |_| {
+                                                                    set_column_filters.update(|f| {
+                                                                        f.insert(col, HashSet::new());
+                                                                    });
+                                                                }
+                                                            >
+                                                                "Select None"
+                                                            </button>
+                                                        </div>
+                                                        <div class="filter-list">
+                                                            {unique_vals.into_iter().map(|val| {
+                                                                let val_clone = val.clone();
+                                                                let val_for_check = val.clone();
+                                                                let is_selected = current_selection.is_empty() || current_selection.contains(&val_for_check);
+
+                                                                view! {
+                                                                    <label class="filter-item">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            prop:checked=is_selected
+                                                                            on:change=move |_| {
+                                                                                let val_to_toggle = val_clone.clone();
+                                                                                set_column_filters.update(|f| {
+                                                                                    let entry = f.entry(col).or_insert_with(|| {
+                                                                                        // Initialize with all values if first time
+                                                                                        let all_games = games.get();
+                                                                                        col.unique_values(&all_games).into_iter().collect()
+                                                                                    });
+                                                                                    if entry.contains(&val_to_toggle) {
+                                                                                        entry.remove(&val_to_toggle);
+                                                                                    } else {
+                                                                                        entry.insert(val_to_toggle);
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        />
+                                                                        {val}
+                                                                    </label>
+                                                                }
+                                                            }).collect::<Vec<_>>()}
+                                                        </div>
+                                                        <div class="filter-footer">
+                                                            <button
+                                                                class="filter-apply-btn"
+                                                                on:click=move |_| {
+                                                                    set_filter_menu.set(None);
+                                                                }
+                                                            >
+                                                                "Apply"
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            })}
                                         </div>
                                     }
                                 }.into_any(),
@@ -606,9 +860,24 @@ pub fn GameGrid(
                             {move || loading.get().then(|| view! {
                                 <div class="loading-more">"Loading more..."</div>
                             })}
-                            // Game count
+                            // Game count (with filter info if filtered)
                             <div class="game-count">
-                                {move || format!("{} games", total_count.get())}
+                                {move || {
+                                    let total = total_count.get();
+                                    let filters = column_filters.get();
+                                    if filters.is_empty() {
+                                        format!("{} games", total)
+                                    } else {
+                                        // Count how many pass the filters
+                                        let all_games = games.get();
+                                        let filtered = all_games.iter().filter(|game| {
+                                            filters.iter().all(|(col, allowed)| {
+                                                col.passes_filter(game, allowed)
+                                            })
+                                        }).count();
+                                        format!("{} of {} games", filtered, total)
+                                    }
+                                }}
                             </div>
                         </div>
                     }.into_any()

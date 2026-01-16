@@ -120,6 +120,15 @@ pub struct Game {
     pub cooperative: Option<bool>,
     pub video_url: Option<String>,
     pub wikipedia_url: Option<String>,
+    pub release_type: Option<String>,
+    pub notes: Option<String>,
+    pub sort_title: Option<String>,
+    pub series: Option<String>,
+    pub region: Option<String>,
+    pub play_mode: Option<String>,
+    pub version: Option<String>,
+    pub status: Option<String>,
+    pub steam_app_id: Option<i64>,
     pub box_front_path: Option<String>,
     pub screenshot_path: Option<String>,
     pub variant_count: i32, // Number of variants (regions/versions)
@@ -355,7 +364,8 @@ pub async fn get_games(
                     r#"
                     SELECT g.id, g.title, g.platform_id, p.name as platform,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                     FROM games g
                     JOIN platforms p ON g.platform_id = p.id
                     WHERE p.name = ? AND g.title LIKE ?
@@ -373,7 +383,8 @@ pub async fn get_games(
                     r#"
                     SELECT g.id, g.title, g.platform_id, p.name as platform,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                     FROM games g
                     JOIN platforms p ON g.platform_id = p.id
                     WHERE g.title LIKE ?
@@ -390,7 +401,8 @@ pub async fn get_games(
                 r#"
                 SELECT g.id, g.title, g.platform_id, p.name as platform,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                 FROM games g
                 JOIN platforms p ON g.platform_id = p.id
                 WHERE p.name = ?
@@ -428,6 +440,15 @@ pub async fn get_games(
             let cooperative: Option<i32> = row.get("cooperative");
             let video_url: Option<String> = row.get("video_url");
             let wikipedia_url: Option<String> = row.get("wikipedia_url");
+            let release_type: Option<String> = row.get("release_type");
+            let notes: Option<String> = row.get("notes");
+            let sort_title: Option<String> = row.get("sort_title");
+            let series: Option<String> = row.get("series");
+            let region: Option<String> = row.get("region");
+            let play_mode: Option<String> = row.get("play_mode");
+            let version: Option<String> = row.get("version");
+            let status: Option<String> = row.get("status");
+            let steam_app_id: Option<i64> = row.get("steam_app_id");
             let display_title = normalize_title(&title);
             let key = display_title.to_lowercase();
 
@@ -474,6 +495,33 @@ pub async fn get_games(
                     if existing.wikipedia_url.is_none() && wikipedia_url.is_some() {
                         existing.wikipedia_url = wikipedia_url.clone();
                     }
+                    if existing.release_type.is_none() && release_type.is_some() {
+                        existing.release_type = release_type.clone();
+                    }
+                    if existing.notes.is_none() && notes.is_some() {
+                        existing.notes = notes.clone();
+                    }
+                    if existing.sort_title.is_none() && sort_title.is_some() {
+                        existing.sort_title = sort_title.clone();
+                    }
+                    if existing.series.is_none() && series.is_some() {
+                        existing.series = series.clone();
+                    }
+                    if existing.region.is_none() && region.is_some() {
+                        existing.region = region.clone();
+                    }
+                    if existing.play_mode.is_none() && play_mode.is_some() {
+                        existing.play_mode = play_mode.clone();
+                    }
+                    if existing.version.is_none() && version.is_some() {
+                        existing.version = version.clone();
+                    }
+                    if existing.status.is_none() && status.is_some() {
+                        existing.status = status.clone();
+                    }
+                    if existing.steam_app_id.is_none() && steam_app_id.is_some() {
+                        existing.steam_app_id = steam_app_id;
+                    }
                 })
                 .or_insert_with(|| {
                     let mut variant_titles = std::collections::HashSet::new();
@@ -498,6 +546,15 @@ pub async fn get_games(
                         cooperative: cooperative.map(|c| c != 0),
                         video_url,
                         wikipedia_url,
+                        release_type,
+                        notes,
+                        sort_title,
+                        series,
+                        region,
+                        play_mode,
+                        version,
+                        status,
+                        steam_app_id,
                         box_front_path: None,
                         screenshot_path: None,
                         variant_count: 1,
@@ -572,6 +629,15 @@ pub async fn get_games(
                     cooperative: None,
                     video_url: None,
                     wikipedia_url: None,
+                    release_type: None,
+                    notes: None,
+                    sort_title: None,
+                    series: None,
+                    region: None,
+                    play_mode: None,
+                    version: None,
+                    status: None,
+                    steam_app_id: None,
                     box_front_path: box_front,
                     screenshot_path: None,
                     variant_count: 1,
@@ -625,6 +691,15 @@ pub async fn get_game_by_id(
                 cooperative: None,
                 video_url: None,
                 wikipedia_url: None,
+                release_type: None,
+                notes: None,
+                sort_title: None,
+                series: None,
+                region: None,
+                play_mode: None,
+                version: None,
+                status: None,
+                steam_app_id: None,
                 box_front_path: box_front,
                 screenshot_path: screenshot,
                 variant_count: 1,
@@ -650,7 +725,8 @@ pub async fn get_game_by_uuid(
             r#"
             SELECT g.id, g.title, g.platform_id, p.name as platform,
                    g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                   g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                   g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
             FROM games g
             JOIN platforms p ON g.platform_id = p.id
             WHERE g.id = ?
@@ -677,9 +753,18 @@ pub async fn get_game_by_uuid(
             let rating: Option<f64> = row.get("rating");
             let rating_count: Option<i64> = row.get("rating_count");
             let esrb: Option<String> = row.get("esrb");
-            let cooperative: Option<bool> = row.get("cooperative");
+            let cooperative: Option<i32> = row.get("cooperative");
             let video_url: Option<String> = row.get("video_url");
             let wikipedia_url: Option<String> = row.get("wikipedia_url");
+            let release_type: Option<String> = row.get("release_type");
+            let notes: Option<String> = row.get("notes");
+            let sort_title: Option<String> = row.get("sort_title");
+            let series: Option<String> = row.get("series");
+            let region: Option<String> = row.get("region");
+            let play_mode: Option<String> = row.get("play_mode");
+            let version: Option<String> = row.get("version");
+            let status: Option<String> = row.get("status");
+            let steam_app_id: Option<i64> = row.get("steam_app_id");
 
             let display_title = normalize_title(&title);
 
@@ -715,9 +800,18 @@ pub async fn get_game_by_uuid(
                 rating,
                 rating_count,
                 esrb,
-                cooperative,
+                cooperative: cooperative.map(|c| c != 0),
                 video_url,
                 wikipedia_url,
+                release_type,
+                notes,
+                sort_title,
+                series,
+                region,
+                play_mode,
+                version,
+                status,
+                steam_app_id,
                 box_front_path: None,
                 screenshot_path: None,
                 variant_count: actual_variant_count,
@@ -1013,6 +1107,15 @@ pub async fn scrape_rom(
                 cooperative: None,
                 video_url: None,
                 wikipedia_url: None,
+                release_type: None,
+                notes: None,
+                sort_title: None,
+                series: None,
+                region: None,
+                play_mode: None,
+                version: None,
+                status: None,
+                steam_app_id: None,
                 box_front_path: scraped.media.box_front,
                 screenshot_path: scraped.media.screenshot,
                 variant_count: 1,
@@ -1210,6 +1313,15 @@ pub async fn get_collection_games(
                         cooperative: None,
                         video_url: None,
                         wikipedia_url: None,
+                        release_type: None,
+                        notes: None,
+                        sort_title: None,
+                        series: None,
+                        region: None,
+                        play_mode: None,
+                        version: None,
+                        status: None,
+                        steam_app_id: None,
                         box_front_path: box_front,
                         screenshot_path: None,
                         variant_count: 1,
@@ -1686,6 +1798,15 @@ pub async fn get_favorites(
                     cooperative: None,
                     video_url: None,
                     wikipedia_url: None,
+                    release_type: None,
+                    notes: None,
+                    sort_title: None,
+                    series: None,
+                    region: None,
+                    play_mode: None,
+                    version: None,
+                    status: None,
+                    steam_app_id: None,
                     box_front_path: box_front,
                     screenshot_path: None,
                     variant_count: 1,

@@ -1,5 +1,6 @@
 //! Lunchbox CLI - Command line interface for importing and scraping
 
+mod download;
 mod enrich;
 mod launchbox;
 mod unified_import;
@@ -180,9 +181,9 @@ enum Commands {
     /// Build unified game database from multiple sources (LaunchBox + LibRetro + OpenVGDB)
     /// Import order: LaunchBox first (best metadata), then LibRetro (checksums), then OpenVGDB
     UnifiedBuild {
-        /// Output SQLite database path
-        #[arg(short, long, default_value = "lunchbox-games.db")]
-        output: PathBuf,
+        /// Output SQLite database path (defaults to ~/.local/share/lunchbox/games.db)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
 
         /// Path to LaunchBox Metadata.xml file (primary source, imported first)
         #[arg(long)]
@@ -199,6 +200,33 @@ enum Commands {
         /// Similarity threshold for fuzzy matching (0.0-1.0)
         #[arg(long, default_value = "0.85")]
         threshold: f64,
+
+        /// Download sources automatically if not provided
+        #[arg(long)]
+        download: bool,
+
+        /// Directory for downloaded sources (used with --download)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+    },
+
+    /// Download metadata sources (LaunchBox, LibRetro, OpenVGDB)
+    Download {
+        /// Directory to download sources to
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Only download LaunchBox
+        #[arg(long)]
+        launchbox_only: bool,
+
+        /// Only download LibRetro
+        #[arg(long)]
+        libretro_only: bool,
+
+        /// Only download OpenVGDB
+        #[arg(long)]
+        openvgdb_only: bool,
     },
 }
 
@@ -278,8 +306,18 @@ async fn main() -> Result<()> {
             libretro_path,
             openvgdb,
             threshold,
+            download,
+            data_dir,
         } => {
-            cmd_unified_build(&output, launchbox_xml, libretro_path, openvgdb, threshold).await?;
+            cmd_unified_build(output, launchbox_xml, libretro_path, openvgdb, threshold, download, data_dir).await?;
+        }
+        Commands::Download {
+            output,
+            launchbox_only,
+            libretro_only,
+            openvgdb_only,
+        } => {
+            cmd_download(output, launchbox_only, libretro_only, openvgdb_only).await?;
         }
     }
 
@@ -1337,17 +1375,92 @@ async fn cmd_enrich_db(
 }
 
 async fn cmd_unified_build(
-    output: &PathBuf,
+    output: Option<PathBuf>,
     launchbox_xml: Option<PathBuf>,
     libretro_path: Option<PathBuf>,
     openvgdb: Option<PathBuf>,
     threshold: f64,
+    download: bool,
+    data_dir: Option<PathBuf>,
 ) -> Result<()> {
+    // Determine output path - default to data directory
+    let data_dir = data_dir.unwrap_or_else(download::default_data_dir);
+    let output = output.unwrap_or_else(|| data_dir.join("games.db"));
+
+    // Create data directory if needed
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // If download flag is set, download sources first
+    let (launchbox_xml, libretro_path, openvgdb) = if download {
+        println!("Downloading metadata sources...");
+        println!();
+
+        let sources = download::download_all(&data_dir).await?;
+        println!();
+
+        (
+            Some(sources.launchbox_xml),
+            Some(sources.libretro_path),
+            Some(sources.openvgdb_path),
+        )
+    } else {
+        (launchbox_xml, libretro_path, openvgdb)
+    };
+
     unified_import::build_unified_database(
-        output,
+        &output,
         launchbox_xml.as_deref(),
         libretro_path.as_deref(),
         openvgdb.as_deref(),
         threshold,
     ).await
+}
+
+async fn cmd_download(
+    output: Option<PathBuf>,
+    launchbox_only: bool,
+    libretro_only: bool,
+    openvgdb_only: bool,
+) -> Result<()> {
+    let data_dir = output.unwrap_or_else(download::default_data_dir);
+
+    println!("Download directory: {}", data_dir.display());
+    println!();
+
+    std::fs::create_dir_all(&data_dir)?;
+
+    let download_all = !launchbox_only && !libretro_only && !openvgdb_only;
+
+    if download_all || launchbox_only {
+        println!("LaunchBox:");
+        download::download_launchbox(&data_dir).await?;
+        println!();
+    }
+
+    if download_all || libretro_only {
+        println!("LibRetro:");
+        download::download_libretro(&data_dir).await?;
+        println!();
+    }
+
+    if download_all || openvgdb_only {
+        println!("OpenVGDB:");
+        download::download_openvgdb(&data_dir).await?;
+        println!();
+    }
+
+    println!("Downloads complete!");
+    println!();
+    println!("To build the database, run:");
+    println!("  lunchbox-cli unified-build \\");
+    println!("    --launchbox-xml {}/launchbox-metadata/Metadata.xml \\", data_dir.display());
+    println!("    --libretro-path {}/libretro-database \\", data_dir.display());
+    println!("    --openvgdb {}/openvgdb.sqlite", data_dir.display());
+    println!();
+    println!("Or simply:");
+    println!("  lunchbox-cli unified-build --download");
+
+    Ok(())
 }

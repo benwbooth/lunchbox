@@ -850,6 +850,7 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
             igdb_id INTEGER,
             steamgriddb_id INTEGER,
             openvgdb_release_id INTEGER,
+            steam_app_id INTEGER,
 
             -- Core metadata
             description TEXT,
@@ -867,6 +868,16 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
             cooperative INTEGER,
             video_url TEXT,
             wikipedia_url TEXT,
+            release_type TEXT,  -- Released, Homebrew, Unlicensed, Unreleased, DLC, ROM Hack, Early Access
+            notes TEXT,
+
+            -- Platform XML extended metadata
+            sort_title TEXT,
+            series TEXT,
+            region TEXT,
+            play_mode TEXT,
+            version TEXT,
+            status TEXT,
 
             -- Import tracking
             metadata_source TEXT,
@@ -883,6 +894,23 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_launchbox_id ON games(launchbox_db_id)").execute(pool).await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_crc32 ON games(libretro_crc32)").execute(pool).await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_openvgdb_id ON games(openvgdb_release_id)").execute(pool).await?;
+
+    // Game alternate names table (for regional/alternate titles)
+    // Note: No foreign key since launchbox_db_id in games is not unique
+    // (multiple game variants can share the same launchbox_db_id)
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS game_alternate_names (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            launchbox_db_id INTEGER NOT NULL,
+            alternate_name TEXT NOT NULL,
+            region TEXT
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_db_id ON game_alternate_names(launchbox_db_id)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_name ON game_alternate_names(alternate_name)").execute(pool).await?;
 
     Ok(())
 }
@@ -902,8 +930,9 @@ pub struct GameRecord {
     pub screenscraper_id: Option<i64>,
     pub igdb_id: Option<i64>,
     pub openvgdb_release_id: Option<i64>,
+    pub steam_app_id: Option<i64>,
 
-    // Metadata
+    // Core metadata
     pub description: Option<String>,
     pub release_date: Option<String>,
     pub release_year: Option<i32>,
@@ -917,6 +946,16 @@ pub struct GameRecord {
     pub cooperative: Option<bool>,
     pub video_url: Option<String>,
     pub wikipedia_url: Option<String>,
+    pub release_type: Option<String>,
+    pub notes: Option<String>,
+
+    // Platform XML extended metadata
+    pub sort_title: Option<String>,
+    pub series: Option<String>,
+    pub region: Option<String>,
+    pub play_mode: Option<String>,
+    pub version: Option<String>,
+    pub status: Option<String>,
 }
 
 /// Platform record for import
@@ -1202,6 +1241,7 @@ impl UnifiedImporter {
                     screenscraper_id = COALESCE(screenscraper_id, ?),
                     igdb_id = COALESCE(igdb_id, ?),
                     openvgdb_release_id = COALESCE(openvgdb_release_id, ?),
+                    steam_app_id = COALESCE(steam_app_id, ?),
                     description = COALESCE(description, ?),
                     release_date = COALESCE(release_date, ?),
                     release_year = COALESCE(release_year, ?),
@@ -1215,6 +1255,14 @@ impl UnifiedImporter {
                     cooperative = COALESCE(cooperative, ?),
                     video_url = COALESCE(video_url, ?),
                     wikipedia_url = COALESCE(wikipedia_url, ?),
+                    release_type = COALESCE(release_type, ?),
+                    notes = COALESCE(notes, ?),
+                    sort_title = COALESCE(sort_title, ?),
+                    series = COALESCE(series, ?),
+                    region = COALESCE(region, ?),
+                    play_mode = COALESCE(play_mode, ?),
+                    version = COALESCE(version, ?),
+                    status = COALESCE(status, ?),
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             "#)
@@ -1226,6 +1274,7 @@ impl UnifiedImporter {
             .bind(record.screenscraper_id)
             .bind(record.igdb_id)
             .bind(record.openvgdb_release_id)
+            .bind(record.steam_app_id)
             .bind(&record.description)
             .bind(&record.release_date)
             .bind(record.release_year)
@@ -1239,6 +1288,14 @@ impl UnifiedImporter {
             .bind(record.cooperative.map(|b| if b { 1 } else { 0 }))
             .bind(&record.video_url)
             .bind(&record.wikipedia_url)
+            .bind(&record.release_type)
+            .bind(&record.notes)
+            .bind(&record.sort_title)
+            .bind(&record.series)
+            .bind(&record.region)
+            .bind(&record.play_mode)
+            .bind(&record.version)
+            .bind(&record.status)
             .bind(&existing_id)
             .execute(&self.pool)
             .await?;
@@ -1252,11 +1309,12 @@ impl UnifiedImporter {
                 INSERT INTO games (
                     id, title, platform_id,
                     launchbox_db_id, libretro_crc32, libretro_md5, libretro_sha1, libretro_serial,
-                    screenscraper_id, igdb_id, openvgdb_release_id,
+                    screenscraper_id, igdb_id, openvgdb_release_id, steam_app_id,
                     description, release_date, release_year, developer, publisher, genre,
                     players, rating, rating_count, esrb, cooperative, video_url, wikipedia_url,
+                    release_type, notes, sort_title, series, region, play_mode, version, status,
                     metadata_source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#)
             .bind(&game_id)
             .bind(&record.title)
@@ -1269,6 +1327,7 @@ impl UnifiedImporter {
             .bind(record.screenscraper_id)
             .bind(record.igdb_id)
             .bind(record.openvgdb_release_id)
+            .bind(record.steam_app_id)
             .bind(&record.description)
             .bind(&record.release_date)
             .bind(record.release_year)
@@ -1282,6 +1341,14 @@ impl UnifiedImporter {
             .bind(record.cooperative.map(|b| if b { 1 } else { 0 }))
             .bind(&record.video_url)
             .bind(&record.wikipedia_url)
+            .bind(&record.release_type)
+            .bind(&record.notes)
+            .bind(&record.sort_title)
+            .bind(&record.series)
+            .bind(&record.region)
+            .bind(&record.play_mode)
+            .bind(&record.version)
+            .bind(&record.status)
             .bind(source)
             .execute(&self.pool)
             .await?;
@@ -1290,15 +1357,229 @@ impl UnifiedImporter {
         }
     }
 
+    /// Batch import LaunchBox games (fast path for initial import)
+    /// Uses transactions for much better performance
+    pub async fn import_launchbox_games_batch(
+        &mut self,
+        games: &[crate::launchbox::LaunchBoxGame],
+        pb: &ProgressBar,
+    ) -> Result<usize> {
+        let mut imported = 0;
+        let batch_size = 1000;
+
+        for chunk in games.chunks(batch_size) {
+            let mut tx = self.pool.begin().await?;
+
+            for game in chunk {
+                // Get or create platform
+                let platform_canonical = normalize_platform_name(&game.platform);
+                let platform_id = if let Some(&id) = self.platform_cache.get(&platform_canonical) {
+                    id
+                } else {
+                    let id: i64 = sqlx::query_scalar(
+                        "INSERT INTO platforms (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=name RETURNING id"
+                    )
+                    .bind(&platform_canonical)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    self.platform_cache.insert(platform_canonical, id);
+                    id
+                };
+
+                let game_id = uuid::Uuid::new_v4().to_string();
+
+                sqlx::query(r#"
+                    INSERT INTO games (
+                        id, title, platform_id, launchbox_db_id,
+                        description, release_date, release_year, developer, publisher, genre,
+                        players, rating, rating_count, esrb, cooperative, video_url, wikipedia_url,
+                        release_type, steam_app_id, notes, metadata_source
+                    ) VALUES (
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?
+                    )
+                "#)
+                .bind(&game_id)
+                .bind(&game.name)
+                .bind(platform_id)
+                .bind(game.database_id)
+                .bind(&game.overview)
+                .bind(&game.release_date)
+                .bind(game.release_year)
+                .bind(&game.developer)
+                .bind(&game.publisher)
+                .bind(&game.genres)
+                .bind(&game.max_players)
+                .bind(game.rating)
+                .bind(game.rating_count)
+                .bind(&game.esrb)
+                .bind(game.cooperative.map(|b| if b { 1 } else { 0 }))
+                .bind(&game.video_url)
+                .bind(&game.wikipedia_url)
+                .bind(&game.release_type)
+                .bind(game.steam_app_id)
+                .bind(&game.notes)
+                .bind("launchbox")
+                .execute(&mut *tx)
+                .await?;
+
+                imported += 1;
+            }
+
+            tx.commit().await?;
+            pb.inc(chunk.len() as u64);
+        }
+
+        Ok(imported)
+    }
+
+    /// Batch import alternate names (fast path)
+    pub async fn import_alternate_names_batch(
+        &self,
+        alt_names: &[crate::launchbox::GameAlternateName],
+        pb: &ProgressBar,
+    ) -> Result<usize> {
+        let mut imported = 0;
+        let batch_size = 5000;
+
+        for chunk in alt_names.chunks(batch_size) {
+            let mut tx = self.pool.begin().await?;
+
+            for alt in chunk {
+                sqlx::query(r#"
+                    INSERT INTO game_alternate_names (launchbox_db_id, alternate_name, region)
+                    VALUES (?, ?, ?)
+                "#)
+                .bind(alt.database_id)
+                .bind(&alt.alternate_name)
+                .bind(&alt.region)
+                .execute(&mut *tx)
+                .await?;
+
+                imported += 1;
+            }
+
+            tx.commit().await?;
+            pb.inc(chunk.len() as u64);
+        }
+
+        Ok(imported)
+    }
+
+    /// Batch import LibRetro games for a single platform
+    /// Uses transaction for speed, matches by CRC or inserts new
+    pub async fn import_libretro_games_batch(
+        &mut self,
+        platform_name: &str,
+        games: &[lunchbox_core::import::DatGame],
+    ) -> Result<usize> {
+        let platform_canonical = normalize_platform_name(platform_name);
+
+        // Get or create platform in transaction
+        let mut tx = self.pool.begin().await?;
+
+        let platform_id = if let Some(&id) = self.platform_cache.get(&platform_canonical) {
+            id
+        } else {
+            let id: i64 = sqlx::query_scalar(
+                "INSERT INTO platforms (name, libretro_name) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET libretro_name=COALESCE(libretro_name, ?) RETURNING id"
+            )
+            .bind(&platform_canonical)
+            .bind(platform_name)
+            .bind(platform_name)
+            .fetch_one(&mut *tx)
+            .await?;
+            self.platform_cache.insert(platform_canonical.clone(), id);
+            id
+        };
+
+        let mut imported = 0;
+
+        for game in games {
+            let primary_rom = game.roms.first();
+            let crc = primary_rom.and_then(|r| r.crc.as_ref()).map(|c| c.to_uppercase());
+
+            // Try to find existing game by CRC
+            let existing_id: Option<(String,)> = if let Some(ref crc_val) = crc {
+                sqlx::query_as("SELECT id FROM games WHERE libretro_crc32 = ? AND platform_id = ?")
+                    .bind(crc_val)
+                    .bind(platform_id)
+                    .fetch_optional(&mut *tx)
+                    .await?
+            } else {
+                None
+            };
+
+            if let Some((id,)) = existing_id {
+                // Update existing with any new data
+                sqlx::query(r#"
+                    UPDATE games SET
+                        libretro_md5 = COALESCE(libretro_md5, ?),
+                        libretro_sha1 = COALESCE(libretro_sha1, ?),
+                        libretro_serial = COALESCE(libretro_serial, ?),
+                        release_year = COALESCE(release_year, ?),
+                        developer = COALESCE(developer, ?),
+                        publisher = COALESCE(publisher, ?),
+                        genre = COALESCE(genre, ?),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                "#)
+                .bind(primary_rom.and_then(|r| r.md5.as_ref()))
+                .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
+                .bind(&game.serial)
+                .bind(game.release_year.map(|y| y as i32))
+                .bind(&game.developer)
+                .bind(&game.publisher)
+                .bind(&game.genre)
+                .bind(&id)
+                .execute(&mut *tx)
+                .await?;
+            } else {
+                // Insert new game
+                let game_id = uuid::Uuid::new_v4().to_string();
+                sqlx::query(r#"
+                    INSERT INTO games (
+                        id, title, platform_id,
+                        libretro_crc32, libretro_md5, libretro_sha1, libretro_serial,
+                        release_year, developer, publisher, genre, metadata_source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#)
+                .bind(&game_id)
+                .bind(&game.name)
+                .bind(platform_id)
+                .bind(&crc)
+                .bind(primary_rom.and_then(|r| r.md5.as_ref()))
+                .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
+                .bind(&game.serial)
+                .bind(game.release_year.map(|y| y as i32))
+                .bind(&game.developer)
+                .bind(&game.publisher)
+                .bind(&game.genre)
+                .bind("libretro")
+                .execute(&mut *tx)
+                .await?;
+            }
+            imported += 1;
+        }
+
+        tx.commit().await?;
+        Ok(imported)
+    }
+
     /// Get statistics about the database
-    pub async fn get_stats(&self) -> Result<(i64, i64)> {
+    pub async fn get_stats(&self) -> Result<(i64, i64, i64)> {
         let (platforms,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM platforms")
             .fetch_one(&self.pool)
             .await?;
         let (games,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM games")
             .fetch_one(&self.pool)
             .await?;
-        Ok((platforms, games))
+        let (alt_names,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM game_alternate_names")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok((platforms, games, alt_names))
     }
 
     /// Close the database connection
@@ -1354,37 +1635,20 @@ pub async fn build_unified_database(
             let games = launchbox::parse_launchbox_metadata(xml_path)?;
             println!("  Parsed {} games", games.len());
 
-            let pb = create_progress_bar(games.len() as u64, "Importing");
-            let mut imported = 0;
-
-            for game in &games {
-                let record = GameRecord {
-                    title: game.name.clone(),
-                    platform: game.platform.clone(),
-                    launchbox_db_id: game.database_id,
-                    description: game.overview.clone(),
-                    release_date: game.release_date.clone(),
-                    release_year: game.release_year,
-                    developer: game.developer.clone(),
-                    publisher: game.publisher.clone(),
-                    genre: game.genres.clone(),
-                    players: game.max_players.clone(),
-                    rating: game.rating,
-                    rating_count: game.rating_count,
-                    esrb: game.esrb.clone(),
-                    cooperative: game.cooperative,
-                    video_url: game.video_url.clone(),
-                    wikipedia_url: game.wikipedia_url.clone(),
-                    ..Default::default()
-                };
-
-                importer.import_game(record, "launchbox").await?;
-                imported += 1;
-                pb.inc(1);
-            }
-
+            let pb = create_progress_bar(games.len() as u64, "Importing games");
+            let imported = importer.import_launchbox_games_batch(&games, &pb).await?;
             pb.finish_with_message("Done");
             println!("  Imported {} games from LaunchBox", imported);
+
+            // Import alternate names
+            println!("  Parsing alternate names...");
+            let alt_names = launchbox::parse_alternate_names(xml_path)?;
+            println!("  Parsed {} alternate names", alt_names.len());
+
+            let pb = create_progress_bar(alt_names.len() as u64, "Importing alternate names");
+            let alt_imported = importer.import_alternate_names_batch(&alt_names, &pb).await?;
+            pb.finish_with_message("Done");
+            println!("  Imported {} alternate names", alt_imported);
             println!();
         }
     }
@@ -1425,7 +1689,7 @@ pub async fn build_unified_database(
                 let genre_path = metadat_path.join("genre");
                 let releaseyear_path = metadat_path.join("releaseyear");
 
-                let pb = create_progress_bar(dat_files.len() as u64, "Processing");
+                let pb = create_progress_bar(dat_files.len() as u64, "Processing DAT files");
                 let mut total_imported = 0;
 
                 for dat_path in &dat_files {
@@ -1453,31 +1717,9 @@ pub async fn build_unified_database(
 
                     let merged = if supplements.is_empty() { base_dat } else { merge_dat_files(base_dat, supplements) };
 
-                    let platform_record = PlatformRecord {
-                        name: platform_name.to_string(),
-                        libretro_name: Some(platform_name.to_string()),
-                        ..Default::default()
-                    };
-                    importer.get_or_create_platform(&platform_record).await?;
-
-                    for game in &merged.games {
-                        let primary_rom = game.roms.first();
-                        let record = GameRecord {
-                            title: game.name.clone(),
-                            platform: platform_name.to_string(),
-                            libretro_crc32: primary_rom.and_then(|r| r.crc.clone()),
-                            libretro_md5: primary_rom.and_then(|r| r.md5.clone()),
-                            libretro_sha1: primary_rom.and_then(|r| r.sha1.clone()),
-                            libretro_serial: game.serial.clone(),
-                            release_year: game.release_year.map(|y| y as i32),
-                            developer: game.developer.clone(),
-                            publisher: game.publisher.clone(),
-                            genre: game.genre.clone(),
-                            ..Default::default()
-                        };
-                        importer.import_game(record, "libretro").await?;
-                        total_imported += 1;
-                    }
+                    // Batch import all games for this platform
+                    let imported = importer.import_libretro_games_batch(platform_name, &merged.games).await?;
+                    total_imported += imported;
                     pb.inc(1);
                 }
 
@@ -1504,11 +1746,13 @@ pub async fn build_unified_database(
             let pool = SqlitePool::connect(&db_url).await?;
             let (platforms,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM platforms").fetch_one(&pool).await?;
             let (games,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM games").fetch_one(&pool).await?;
+            let (alt_names,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM game_alternate_names").fetch_one(&pool).await?;
             pool.close().await;
 
             println!("Build complete!");
-            println!("  Platforms: {}", platforms);
-            println!("  Games:     {}", games);
+            println!("  Platforms:       {}", platforms);
+            println!("  Games:           {}", games);
+            println!("  Alternate names: {}", alt_names);
 
             // Compress the database
             compress_database(output)?;
@@ -1517,13 +1761,14 @@ pub async fn build_unified_database(
         }
     }
 
-    let (platforms, games) = importer.get_stats().await?;
+    let (platforms, games, alt_names) = importer.get_stats().await?;
     importer.close().await;
 
     println!("Build complete!");
-    println!("  Platforms: {}", platforms);
-    println!("  Games:     {}", games);
-    println!("  Output:    {}", output.display());
+    println!("  Platforms:       {}", platforms);
+    println!("  Games:           {}", games);
+    println!("  Alternate names: {}", alt_names);
+    println!("  Output:          {}", output.display());
 
     // Compress the database
     compress_database(output)?;

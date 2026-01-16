@@ -41,3 +41,11 @@ quick-xml = "0.37"
 
 # Compression
 zstd = "0.13"
+zip = "2"
+
+# HTTP downloads
+reqwest = { workspace = true, features = ["stream"] }
+futures-util = "0.3"
+
+# Directories
+directories = "5"

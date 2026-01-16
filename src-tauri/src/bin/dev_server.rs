@@ -27,8 +27,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Starting Lunchbox dev server...");
 
     // Get the app data directory
-    let data_dir = directories::ProjectDirs::from("com", "lunchbox", "app")
-        .map(|dirs| dirs.data_dir().to_path_buf())
+    let data_dir = directories::BaseDirs::new()
+        .map(|dirs| dirs.data_dir().join("lunchbox"))
         .unwrap_or_else(|| PathBuf::from("."));
 
     std::fs::create_dir_all(&data_dir)?;

@@ -345,12 +345,26 @@ fn find_best_match(
     })
 }
 
-/// Update the games database with matched metadata
+/// OpenVGDB release metadata for batch processing
+struct ReleaseData {
+    release_id: i64,
+    description: Option<String>,
+    developer: Option<String>,
+    publisher: Option<String>,
+    genre: Option<String>,
+    release_date: Option<String>,
+}
+
+/// Update the games database with matched metadata using batch operations
 async fn apply_matches(
     db_path: &Path,
     openvgdb_path: &Path,
     matches: &[MatchResult],
 ) -> Result<usize> {
+    if matches.is_empty() {
+        return Ok(0);
+    }
+
     // Connect to both databases
     let db_url = format!("sqlite:{}", db_path.display());
     let pool = SqlitePool::connect(&db_url).await?;
@@ -358,8 +372,47 @@ async fn apply_matches(
     let openvgdb_url = format!("sqlite:{}?mode=ro", openvgdb_path.display());
     let openvgdb_pool = SqlitePool::connect(&openvgdb_url).await?;
 
-    let mut updated = 0;
+    // Step 1: Batch fetch all release data from OpenVGDB
+    println!("  Fetching OpenVGDB release data...");
+    let release_ids: Vec<i64> = matches.iter().map(|m| m.openvgdb_release_id).collect();
 
+    // Fetch in batches to avoid query size limits
+    let mut release_data: HashMap<i64, ReleaseData> = HashMap::new();
+    let batch_size = 500;
+
+    for chunk in release_ids.chunks(batch_size) {
+        // Build query with placeholders
+        let placeholders: String = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT releaseID, releaseDescription, releaseDeveloper, releasePublisher, releaseGenre, releaseDate FROM RELEASES WHERE releaseID IN ({})",
+            placeholders
+        );
+
+        let mut q = sqlx::query(&query);
+        for id in chunk {
+            q = q.bind(id);
+        }
+
+        let rows = q.fetch_all(&openvgdb_pool).await?;
+
+        for row in rows {
+            use sqlx::Row;
+            let release_id: i64 = row.get("releaseID");
+            release_data.insert(release_id, ReleaseData {
+                release_id,
+                description: row.get("releaseDescription"),
+                developer: row.get("releaseDeveloper"),
+                publisher: row.get("releasePublisher"),
+                genre: row.get("releaseGenre"),
+                release_date: row.get("releaseDate"),
+            });
+        }
+    }
+
+    openvgdb_pool.close().await;
+    println!("  Fetched {} release records", release_data.len());
+
+    // Step 2: Batch update our database using transactions
     let pb = ProgressBar::new(matches.len() as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -369,58 +422,54 @@ async fn apply_matches(
     );
     pb.set_message("Updating database");
 
-    for m in matches {
-        // Get the OpenVGDB release data
-        let release: Option<(Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> =
-            sqlx::query_as(
-                r#"
-                SELECT releaseDescription, releaseDeveloper, releasePublisher, releaseGenre, releaseDate
-                FROM RELEASES WHERE releaseID = ?
-                "#
-            )
-            .bind(m.openvgdb_release_id)
-            .fetch_optional(&openvgdb_pool)
-            .await?;
+    let mut updated = 0;
+    let update_batch_size = 1000;
 
-        if let Some((description, developer, publisher, genre, release_date)) = release {
-            // Only update if we have something to add
-            let has_data = description.is_some() || developer.is_some() ||
-                           publisher.is_some() || genre.is_some() || release_date.is_some();
+    for chunk in matches.chunks(update_batch_size) {
+        let mut tx = pool.begin().await?;
 
-            if has_data {
-                sqlx::query(
-                    r#"
-                    UPDATE games SET
-                        description = COALESCE(?, description),
-                        developer = COALESCE(?, developer),
-                        publisher = COALESCE(?, publisher),
-                        genre = COALESCE(?, genre),
-                        release_date = COALESCE(?, release_date),
-                        metadata_source = COALESCE(metadata_source, 'openvgdb'),
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    "#
-                )
-                .bind(&description)
-                .bind(&developer)
-                .bind(&publisher)
-                .bind(&genre)
-                .bind(&release_date)
-                .bind(&m.game_id)
-                .execute(&pool)
-                .await?;
+        for m in chunk {
+            if let Some(data) = release_data.get(&m.openvgdb_release_id) {
+                // Only update if we have something to add
+                let has_data = data.description.is_some() || data.developer.is_some() ||
+                               data.publisher.is_some() || data.genre.is_some() || data.release_date.is_some();
 
-                updated += 1;
+                if has_data {
+                    sqlx::query(
+                        r#"
+                        UPDATE games SET
+                            description = COALESCE(?, description),
+                            developer = COALESCE(?, developer),
+                            publisher = COALESCE(?, publisher),
+                            genre = COALESCE(?, genre),
+                            release_date = COALESCE(?, release_date),
+                            openvgdb_release_id = ?,
+                            metadata_source = COALESCE(metadata_source, 'openvgdb'),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        "#
+                    )
+                    .bind(&data.description)
+                    .bind(&data.developer)
+                    .bind(&data.publisher)
+                    .bind(&data.genre)
+                    .bind(&data.release_date)
+                    .bind(data.release_id)
+                    .bind(&m.game_id)
+                    .execute(&mut *tx)
+                    .await?;
+
+                    updated += 1;
+                }
             }
         }
 
-        pb.inc(1);
+        tx.commit().await?;
+        pb.inc(chunk.len() as u64);
     }
 
     pb.finish_with_message("Done");
-
     pool.close().await;
-    openvgdb_pool.close().await;
 
     Ok(updated)
 }

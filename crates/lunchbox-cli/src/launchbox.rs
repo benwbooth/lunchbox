@@ -43,6 +43,17 @@ pub struct LaunchBoxGame {
     pub video_url: Option<String>,
     pub wikipedia_url: Option<String>,
     pub database_id: Option<i64>,
+    pub release_type: Option<String>,
+    pub steam_app_id: Option<i64>,
+    pub notes: Option<String>,
+}
+
+/// Alternate name for a game (regional titles, etc.)
+#[derive(Debug, Clone, Default)]
+pub struct GameAlternateName {
+    pub database_id: i64,
+    pub alternate_name: String,
+    pub region: Option<String>,
 }
 
 /// Parse LaunchBox Metadata.xml and return games indexed by normalized title
@@ -112,6 +123,9 @@ pub fn parse_launchbox_metadata(path: &Path) -> Result<Vec<LaunchBoxGame>> {
                             "VideoURL" => game.video_url = Some(text),
                             "WikipediaURL" => game.wikipedia_url = Some(text),
                             "DatabaseID" => game.database_id = text.parse().ok(),
+                            "ReleaseType" => game.release_type = Some(text),
+                            "SteamAppId" => game.steam_app_id = text.parse().ok(),
+                            "Notes" => game.notes = Some(text),
                             _ => {}
                         }
                     }
@@ -136,6 +150,86 @@ pub fn parse_launchbox_metadata(path: &Path) -> Result<Vec<LaunchBoxGame>> {
     pb.finish_with_message(format!("Parsed {} games", games.len()));
 
     Ok(games)
+}
+
+/// Parse GameAlternateName entries from LaunchBox Metadata.xml
+pub fn parse_alternate_names(path: &Path) -> Result<Vec<GameAlternateName>> {
+    let file = File::open(path).context("Failed to open Metadata.xml")?;
+    let file_size = file.metadata()?.len();
+    let reader = BufReader::new(file);
+
+    let mut xml_reader = Reader::from_reader(reader);
+    xml_reader.config_mut().trim_text(true);
+
+    let mut alt_names = Vec::new();
+    let mut current_alt: Option<GameAlternateName> = None;
+    let mut current_field: Option<String> = None;
+    let mut buf = Vec::new();
+
+    let pb = ProgressBar::new(file_size);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}) {msg}")
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    pb.set_message("Parsing alternate names");
+
+    loop {
+        match xml_reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+
+                if tag_name == "GameAlternateName" {
+                    current_alt = Some(GameAlternateName::default());
+                } else if current_alt.is_some() {
+                    current_field = Some(tag_name);
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+
+                if tag_name == "GameAlternateName" {
+                    if let Some(alt) = current_alt.take() {
+                        // Only keep entries with valid data
+                        if alt.database_id > 0 && !alt.alternate_name.is_empty() {
+                            alt_names.push(alt);
+                        }
+                    }
+                }
+                current_field = None;
+            }
+            Ok(Event::Text(ref e)) => {
+                if let (Some(ref mut alt), Some(ref field)) = (&mut current_alt, &current_field) {
+                    let text = e.unescape().unwrap_or_default().to_string();
+                    if !text.is_empty() {
+                        match field.as_str() {
+                            "DatabaseID" => alt.database_id = text.parse().unwrap_or(0),
+                            "AlternateName" => alt.alternate_name = text,
+                            "Region" => alt.region = Some(text),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => {
+                tracing::warn!("XML parse error at position {}: {}", xml_reader.buffer_position(), e);
+            }
+            _ => {}
+        }
+
+        // Update progress periodically
+        if alt_names.len() % 10000 == 0 {
+            pb.set_position(xml_reader.buffer_position() as u64);
+        }
+
+        buf.clear();
+    }
+
+    pb.finish_with_message(format!("Parsed {} alternate names", alt_names.len()));
+
+    Ok(alt_names)
 }
 
 /// Build lookup indexes for LaunchBox games
