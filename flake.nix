@@ -54,6 +54,7 @@
             sqlx-cli
             just
             nodePackages.tailwindcss
+            cargo-watch
 
             # Compression
             zstd

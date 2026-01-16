@@ -12,8 +12,7 @@ MODE="${1:-browser}"
 cleanup() {
     echo ""
     echo "Shutting down..."
-    kill $TRUNK_PID 2>/dev/null || true
-    kill $SERVER_PID 2>/dev/null || true
+    jobs -p | xargs -r kill 2>/dev/null || true
     exit 0
 }
 
@@ -27,21 +26,20 @@ elif [ "$MODE" = "browser" ]; then
     echo "Starting browser development mode..."
     echo ""
 
-    # Start trunk in background
+    # Start trunk (frontend) with hot reload
     echo "Starting frontend (trunk) on http://127.0.0.1:1420..."
     trunk serve --port 1420 &
-    TRUNK_PID=$!
 
     # Give trunk a moment to start
     sleep 2
 
-    # Start the dev server in background
+    # Start backend with cargo-watch for auto-restart on changes
     echo "Starting backend API server on http://127.0.0.1:3001..."
-    cargo run -p lunchbox --bin dev_server &
-    SERVER_PID=$!
+    echo "(Backend will auto-restart on changes to src-tauri/)"
+    cargo watch -w src-tauri -x "run -p lunchbox --bin dev_server" &
 
-    # Wait for backend to be ready
-    sleep 3
+    # Wait for backend to compile and start
+    sleep 5
 
     # Open browser
     echo ""
@@ -50,14 +48,14 @@ elif [ "$MODE" = "browser" ]; then
 
     echo ""
     echo "═══════════════════════════════════════════════════════"
-    echo "  Frontend:  http://127.0.0.1:1420"
-    echo "  API:       http://127.0.0.1:3001"
+    echo "  Frontend:  http://127.0.0.1:1420 (auto-reloads)"
+    echo "  API:       http://127.0.0.1:3001 (auto-restarts)"
     echo ""
     echo "  Press Ctrl+C to stop"
     echo "═══════════════════════════════════════════════════════"
 
-    # Wait for either process to exit
-    wait $TRUNK_PID $SERVER_PID
+    # Wait for background jobs
+    wait
 
 else
     echo "Unknown mode: $MODE"
