@@ -14,10 +14,13 @@ type AppStateHandle = Arc<RwLock<AppState>>;
 
 /// Platform for display
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Platform {
     pub id: i64,
     pub name: String,
     pub game_count: i64,
+    pub launchbox_name: Option<String>,
+    pub libretro_name: Option<String>,
 }
 
 /// Game for display
@@ -142,9 +145,9 @@ pub async fn get_platforms(
 
     // Try shipped games database first (browse-first mode)
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        // Get all platforms
-        let platforms: Vec<(i64, String)> = sqlx::query_as(
-            "SELECT id, name FROM platforms ORDER BY name"
+        // Get all platforms with aliases
+        let platforms: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT id, name, launchbox_name, libretro_name FROM platforms ORDER BY name"
         )
         .fetch_all(games_pool)
         .await
@@ -152,7 +155,7 @@ pub async fn get_platforms(
 
         // For each platform, count deduplicated games (by normalized title)
         let mut result = Vec::new();
-        for (id, name) in platforms {
+        for (id, name, launchbox_name, libretro_name) in platforms {
             let all_titles: Vec<(String,)> = sqlx::query_as(
                 "SELECT title FROM games WHERE platform_id = ?"
             )
@@ -167,7 +170,7 @@ pub async fn get_platforms(
                 let normalized = normalize_title(&title).to_lowercase();
                 seen.insert(normalized);
             }
-            result.push(Platform { id, name, game_count: seen.len() as i64 });
+            result.push(Platform { id, name, game_count: seen.len() as i64, launchbox_name, libretro_name });
         }
         return Ok(result);
     }
@@ -185,6 +188,8 @@ pub async fn get_platforms(
                 id: p.platform_key,
                 name: p.name,
                 game_count: 0,
+                launchbox_name: None,
+                libretro_name: None,
             })
             .collect());
     }

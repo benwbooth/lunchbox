@@ -54,15 +54,15 @@ async fn get_platforms(
     let state_guard = state.read().await;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let platforms: Vec<(i64, String)> = sqlx::query_as(
-            "SELECT id, name FROM platforms ORDER BY name"
+        let platforms: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT id, name, launchbox_name, libretro_name FROM platforms ORDER BY name"
         )
         .fetch_all(games_pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let mut result = Vec::new();
-        for (id, name) in platforms {
+        for (id, name, launchbox_name, libretro_name) in platforms {
             let all_titles: Vec<(String,)> = sqlx::query_as(
                 "SELECT title FROM games WHERE platform_id = ?"
             )
@@ -76,7 +76,7 @@ async fn get_platforms(
                 let normalized = normalize_title(&title).to_lowercase();
                 seen.insert(normalized);
             }
-            result.push(Platform { id, name, game_count: seen.len() as i64 });
+            result.push(Platform { id, name, game_count: seen.len() as i64, launchbox_name, libretro_name });
         }
         return Ok(Json(result));
     }

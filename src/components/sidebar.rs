@@ -17,6 +17,7 @@ pub fn Sidebar(
     // Fetch platforms from Tauri backend
     let (platforms, set_platforms) = signal::<Vec<Platform>>(Vec::new());
     let (platforms_loading, set_platforms_loading) = signal(true);
+    let (platform_search, set_platform_search) = signal(String::new());
 
     // Load platforms on component mount
     spawn_local(async move {
@@ -26,6 +27,20 @@ pub fn Sidebar(
         }
         set_platforms_loading.set(false);
     });
+
+    // Filter platforms based on search query (matches name, launchbox_name, libretro_name)
+    let filtered_platforms = move || {
+        let query = platform_search.get().to_lowercase();
+        if query.is_empty() {
+            platforms.get()
+        } else {
+            platforms.get().into_iter().filter(|p| {
+                p.name.to_lowercase().contains(&query) ||
+                p.launchbox_name.as_ref().map(|n| n.to_lowercase().contains(&query)).unwrap_or(false) ||
+                p.libretro_name.as_ref().map(|n| n.to_lowercase().contains(&query)).unwrap_or(false)
+            }).collect()
+        }
+    };
 
     // Collections state
     let (collections, set_collections) = signal::<Vec<Collection>>(Vec::new());
@@ -85,8 +100,26 @@ pub fn Sidebar(
 
     view! {
         <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>"Platforms"</h2>
+            <div class="sidebar-header platform-search-header">
+                <div class="platform-search-box">
+                    <input
+                        type="text"
+                        placeholder="Search platforms..."
+                        prop:value=move || platform_search.get()
+                        on:input=move |ev| {
+                            set_platform_search.set(event_target_value(&ev));
+                        }
+                    />
+                    <Show when=move || !platform_search.get().is_empty()>
+                        <button
+                            class="search-clear"
+                            on:click=move |_| set_platform_search.set(String::new())
+                            title="Clear search"
+                        >
+                            "×"
+                        </button>
+                    </Show>
+                </div>
             </div>
             <nav class="platform-list">
                 <button
@@ -98,12 +131,12 @@ pub fn Sidebar(
                 </button>
                 {move || if platforms_loading.get() {
                     view! { <div class="loading">"Loading platforms..."</div> }.into_any()
-                } else if platforms.get().is_empty() {
+                } else if filtered_platforms().is_empty() {
                     view! { <div class="empty-platforms">"No platforms found"</div> }.into_any()
                 } else {
                     view! {
                         <For
-                            each=move || platforms.get()
+                            each=move || filtered_platforms()
                             key=|p| p.id
                             let:platform
                         >
@@ -111,6 +144,7 @@ pub fn Sidebar(
                                 platform=platform.clone()
                                 selected_platform=selected_platform
                                 on_click=on_platform_click
+                                search_query=platform_search
                             />
                         </For>
                     }.into_any()
@@ -179,15 +213,50 @@ pub fn Sidebar(
     }
 }
 
+/// Highlight matching text in a string with yellow background
+fn highlight_matches(text: &str, query: &str) -> AnyView {
+    if query.is_empty() {
+        return view! { <>{text.to_string()}</> }.into_any();
+    }
+
+    let text_lower = text.to_lowercase();
+    let query_lower = query.to_lowercase();
+
+    // Find all match positions
+    let mut parts: Vec<AnyView> = Vec::new();
+    let mut last_end = 0;
+
+    for (start, _) in text_lower.match_indices(&query_lower) {
+        // Add non-matching text before this match
+        if start > last_end {
+            let before = &text[last_end..start];
+            parts.push(view! { <>{before.to_string()}</> }.into_any());
+        }
+        // Add the matching text with highlight
+        let matched = &text[start..start + query.len()];
+        parts.push(view! { <span class="search-highlight">{matched.to_string()}</span> }.into_any());
+        last_end = start + query.len();
+    }
+
+    // Add remaining text after last match
+    if last_end < text.len() {
+        let after = &text[last_end..];
+        parts.push(view! { <>{after.to_string()}</> }.into_any());
+    }
+
+    view! { <>{parts}</> }.into_any()
+}
+
 #[component]
 fn PlatformItem(
     platform: Platform,
     selected_platform: ReadSignal<Option<String>>,
     on_click: impl Fn(Option<String>) + Copy + 'static,
+    search_query: ReadSignal<String>,
 ) -> impl IntoView {
     let name = platform.name.clone();
     let name_for_click = name.clone();
-    let name_display = name.clone();
+    let name_for_display = name.clone();
     let game_count = platform.game_count;
 
     view! {
@@ -196,7 +265,9 @@ fn PlatformItem(
             class:selected=move || selected_platform.get().as_ref() == Some(&name)
             on:click=move |_| on_click(Some(name_for_click.clone()))
         >
-            <span class="platform-name">{name_display}</span>
+            <span class="platform-name">
+                {move || highlight_matches(&name_for_display, &search_query.get())}
+            </span>
             {(game_count > 0).then(|| view! {
                 <span class="platform-count">{game_count}</span>
             })}
