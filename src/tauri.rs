@@ -281,7 +281,7 @@ pub async fn get_platforms() -> Result<Vec<Platform>, String> {
     if is_tauri() {
         invoke_no_args("get_platforms").await
     } else {
-        http_get("/platforms").await
+        http_get("/api/platforms").await
     }
 }
 
@@ -303,9 +303,9 @@ pub async fn get_game_count(platform: Option<String>, search: Option<String>) ->
             query.push(format!("search={}", urlencoding::encode(s)));
         }
         let path = if query.is_empty() {
-            "/games/count".to_string()
+            "/api/games/count".to_string()
         } else {
-            format!("/games/count?{}", query.join("&"))
+            format!("/api/games/count?{}", query.join("&"))
         };
         http_get(&path).await
     }
@@ -342,9 +342,9 @@ pub async fn get_games(
             query.push(format!("offset={}", o));
         }
         let path = if query.is_empty() {
-            "/games".to_string()
+            "/api/games".to_string()
         } else {
-            format!("/games?{}", query.join("&"))
+            format!("/api/games?{}", query.join("&"))
         };
         http_get(&path).await
     }
@@ -369,12 +369,12 @@ pub async fn get_game_by_uuid(game_id: String) -> Result<Option<Game>, String> {
         }
         invoke("get_game_by_uuid", Args { game_id }).await
     } else {
-        http_get(&format!("/games/{}", urlencoding::encode(&game_id))).await
+        http_get(&format!("/api/games/{}", urlencoding::encode(&game_id))).await
     }
 }
 
 /// Get all variants (regions/versions) for a game
-pub async fn get_game_variants(display_title: String, platform_id: i64) -> Result<Vec<GameVariant>, String> {
+pub async fn get_game_variants(game_id: String, display_title: String, platform_id: i64) -> Result<Vec<GameVariant>, String> {
     if is_tauri() {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
@@ -384,12 +384,7 @@ pub async fn get_game_variants(display_title: String, platform_id: i64) -> Resul
         }
         invoke("get_game_variants", Args { display_title, platform_id }).await
     } else {
-        let path = format!(
-            "/games/{}/variants?displayTitle={}&platformId={}",
-            urlencoding::encode(&display_title),
-            urlencoding::encode(&display_title),
-            platform_id
-        );
+        let path = format!("/api/games/{}/variants", urlencoding::encode(&game_id));
         http_get(&path).await
     }
 }
@@ -423,7 +418,7 @@ pub async fn get_settings() -> Result<AppSettings, String> {
     if is_tauri() {
         invoke_no_args("get_settings").await
     } else {
-        http_get("/settings").await
+        http_get("/api/settings").await
     }
 }
 
@@ -610,7 +605,7 @@ pub async fn get_favorites() -> Result<Vec<Game>, String> {
     if is_tauri() {
         invoke_no_args("get_favorites").await
     } else {
-        http_get("/favorites").await
+        http_get("/api/favorites").await
     }
 }
 

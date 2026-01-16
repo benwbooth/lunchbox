@@ -57,7 +57,7 @@ pub fn GameDetails(
 
                 // Only load variants if this is a new game, not a variant switch
                 if !is_variant_switch && variant_count > 1 {
-                    match tauri::get_game_variants(display_title.clone(), platform_id).await {
+                    match tauri::get_game_variants(game_id.clone(), display_title.clone(), platform_id).await {
                         Ok(vars) => {
                             // Always select the first (preferred) variant - list is sorted by region preference
                             let preferred_variant_id = vars.first().map(|v| v.id.clone());
