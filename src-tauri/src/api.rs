@@ -227,11 +227,11 @@ async fn get_games(
         let mut games: Vec<Game> = seen.into_values().collect();
         games.sort_by(|a, b| a.display_title.to_lowercase().cmp(&b.display_title.to_lowercase()));
 
-        let games: Vec<Game> = games
-            .into_iter()
-            .skip(offset)
-            .take(limit.unwrap_or(100))
-            .collect();
+        let games: Vec<Game> = if let Some(lim) = limit {
+            games.into_iter().skip(offset).take(lim).collect()
+        } else {
+            games.into_iter().skip(offset).collect()
+        };
 
         return Ok(Json(games));
     }
