@@ -1,12 +1,14 @@
+pub mod api;
 mod commands;
 pub mod db;
 pub mod import;
 pub mod scanner;
 pub mod scraper;
-mod state;
+pub mod state;
 
 use state::AppState;
 use std::sync::Arc;
+use tauri::Manager;
 use tokio::sync::RwLock;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -30,6 +32,8 @@ pub fn run() {
             commands::get_game_count,
             commands::get_games,
             commands::get_game_by_id,
+            commands::get_game_by_uuid,
+            commands::get_game_variants,
             commands::import_launchbox,
             commands::launch_game,
             commands::get_settings,
@@ -61,6 +65,23 @@ pub fn run() {
                     tracing::error!("Failed to initialize app state: {}", e);
                 }
             });
+
+            // Start HTTP API server in dev mode for browser-based development
+            #[cfg(debug_assertions)]
+            {
+                let state = app.state::<Arc<RwLock<AppState>>>().inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    let router = api::create_router(state);
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
+                        .await
+                        .expect("Failed to bind HTTP API server");
+                    tracing::info!("HTTP API server running on http://127.0.0.1:3001");
+                    axum::serve(listener, router)
+                        .await
+                        .expect("HTTP API server error");
+                });
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())

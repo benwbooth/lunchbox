@@ -42,6 +42,7 @@ pub fn GameGrid(
     // Container ref for scroll handling
     let container_ref = NodeRef::<html::Main>::new();
 
+
     // Load more games if needed
     let ensure_loaded = move |needed_index: i64| {
         let current_loaded = loaded_up_to.get();
@@ -111,30 +112,15 @@ pub fn GameGrid(
                     return;
                 }
 
-                // Get total count first
+                // Load all games (backend returns deduplicated results)
                 let search_param = if search.is_empty() { None } else { Some(search.clone()) };
 
-                // For platforms, we need to know total count
-                // Load first chunk
-                match tauri::get_games(plat.clone(), search_param.clone(), Some(FETCH_CHUNK_SIZE), Some(0)).await {
-                    Ok(initial_games) => {
-                        let initial_count = initial_games.len() as i64;
-                        set_games.set(initial_games);
-                        set_loaded_up_to.set(initial_count);
-
-                        // Estimate total - if we got a full chunk, there's probably more
-                        // We'll get actual count from a separate query
-                        if initial_count >= FETCH_CHUNK_SIZE {
-                            // Get actual count
-                            spawn_local(async move {
-                                match tauri::get_game_count(plat, search_param).await {
-                                    Ok(count) => set_total_count.set(count),
-                                    Err(_) => set_total_count.set(initial_count),
-                                }
-                            });
-                        } else {
-                            set_total_count.set(initial_count);
-                        }
+                match tauri::get_games(plat.clone(), search_param.clone(), None, None).await {
+                    Ok(all_games) => {
+                        let count = all_games.len() as i64;
+                        set_games.set(all_games);
+                        set_total_count.set(count);
+                        set_loaded_up_to.set(count);
                     }
                     Err(e) => {
                         console::error_1(&format!("Failed to load games: {}", e).into());
@@ -219,6 +205,18 @@ pub fn GameGrid(
                         </div>
                     }.into_any()
                 } else {
+                    // Measure container dimensions if not yet initialized
+                    if let Some(container) = container_ref.get() {
+                        let w = container.client_width();
+                        let h = container.client_height();
+                        if w > 0 && container_width.get() != w {
+                            set_container_width.set(w);
+                        }
+                        if h > 0 && container_height.get() != h {
+                            set_container_height.set(h);
+                        }
+                    }
+
                     let mode = view_mode.get();
                     let height = total_height();
                     let (start, end, cols) = visible_range();
@@ -314,10 +312,16 @@ pub fn GameGrid(
 
 #[component]
 fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
-    let title = game.title.clone();
-    let first_char = game.title.chars().next().unwrap_or('?').to_string();
+    let display_title = game.display_title.clone();
+    let first_char = game.display_title.chars().next().unwrap_or('?').to_string();
     let developer = game.developer.clone();
+    let variant_count = game.variant_count;
     let box_front = game.box_front_path.clone();
+
+    // Debug: log variant_count for first few games
+    if game.display_title.starts_with("A") || game.display_title.starts_with("B") {
+        console::log_1(&format!("GameCard '{}': variant_count={}", display_title, variant_count).into());
+    }
     let game_for_click = game.clone();
 
     view! {
@@ -332,7 +336,7 @@ fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
                         view! {
                             <img
                                 src=url
-                                alt=title.clone()
+                                alt=display_title.clone()
                                 class="cover-image"
                                 loading="lazy"
                             />
@@ -342,9 +346,12 @@ fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
                         <div class="cover-placeholder">{first_char.clone()}</div>
                     }.into_any()
                 }}
+                {(variant_count > 1).then(|| view! {
+                    <span class="variant-badge">{variant_count}</span>
+                })}
             </div>
             <div class="game-info">
-                <h3 class="game-title">{title}</h3>
+                <h3 class="game-title">{display_title}</h3>
                 {developer.map(|d| view! { <p class="game-developer">{d}</p> })}
             </div>
         </div>
@@ -353,10 +360,11 @@ fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
 
 #[component]
 fn GameListItem(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
-    let title = game.title.clone();
+    let display_title = game.display_title.clone();
     let platform = game.platform.clone();
     let developer = game.developer.clone().unwrap_or_else(|| "-".to_string());
     let year = game.release_year.map(|y| y.to_string()).unwrap_or_else(|| "-".to_string());
+    let variant_count = game.variant_count;
     let game_for_click = game.clone();
 
     view! {
@@ -364,7 +372,12 @@ fn GameListItem(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoVi
             class="game-list-item"
             on:click=move |_| on_select.set(Some(game_for_click.clone()))
         >
-            <span class="game-title">{title}</span>
+            <span class="game-title">
+                {display_title}
+                {(variant_count > 1).then(|| view! {
+                    <span class="variant-count">{format!(" ({})", variant_count)}</span>
+                })}
+            </span>
             <span class="game-platform">{platform}</span>
             <span class="game-developer">{developer}</span>
             <span class="game-year">{year}</span>

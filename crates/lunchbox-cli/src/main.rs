@@ -1,5 +1,9 @@
 //! Lunchbox CLI - Command line interface for importing and scraping
 
+mod enrich;
+mod launchbox;
+mod unified_import;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -134,6 +138,68 @@ enum Commands {
         #[arg(long)]
         platforms: Option<String>,
     },
+
+    /// Enrich game database with metadata from OpenVGDB
+    EnrichDb {
+        /// Path to games database to enrich
+        #[arg(short, long)]
+        database: PathBuf,
+
+        /// Path to OpenVGDB database
+        #[arg(short, long)]
+        openvgdb: PathBuf,
+
+        /// Similarity threshold for fuzzy matching (0.0-1.0)
+        #[arg(long, default_value = "0.85")]
+        threshold: f64,
+
+        /// Only analyze, don't update
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Enrich game database with metadata from LaunchBox
+    EnrichLaunchbox {
+        /// Path to games database to enrich
+        #[arg(short, long)]
+        database: PathBuf,
+
+        /// Path to LaunchBox Metadata.xml file
+        #[arg(short, long)]
+        metadata_xml: PathBuf,
+
+        /// Similarity threshold for fuzzy matching (0.0-1.0)
+        #[arg(long, default_value = "0.85")]
+        threshold: f64,
+
+        /// Only analyze, don't update
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Build unified game database from multiple sources (LaunchBox + LibRetro + OpenVGDB)
+    /// Import order: LaunchBox first (best metadata), then LibRetro (checksums), then OpenVGDB
+    UnifiedBuild {
+        /// Output SQLite database path
+        #[arg(short, long, default_value = "lunchbox-games.db")]
+        output: PathBuf,
+
+        /// Path to LaunchBox Metadata.xml file (primary source, imported first)
+        #[arg(long)]
+        launchbox_xml: Option<PathBuf>,
+
+        /// Path to libretro-database clone (secondary source)
+        #[arg(long)]
+        libretro_path: Option<PathBuf>,
+
+        /// Path to OpenVGDB database (tertiary source)
+        #[arg(long)]
+        openvgdb: Option<PathBuf>,
+
+        /// Similarity threshold for fuzzy matching (0.0-1.0)
+        #[arg(long, default_value = "0.85")]
+        threshold: f64,
+    },
 }
 
 #[tokio::main]
@@ -189,6 +255,31 @@ async fn main() -> Result<()> {
             platforms,
         } => {
             cmd_build_db(&libretro_path, &output, platforms).await?;
+        }
+        Commands::EnrichDb {
+            database,
+            openvgdb,
+            threshold,
+            dry_run,
+        } => {
+            cmd_enrich_db(&database, &openvgdb, threshold, dry_run).await?;
+        }
+        Commands::EnrichLaunchbox {
+            database,
+            metadata_xml,
+            threshold,
+            dry_run,
+        } => {
+            launchbox::enrich_from_launchbox(&database, &metadata_xml, threshold, dry_run).await?;
+        }
+        Commands::UnifiedBuild {
+            output,
+            launchbox_xml,
+            libretro_path,
+            openvgdb,
+            threshold,
+        } => {
+            cmd_unified_build(&output, launchbox_xml, libretro_path, openvgdb, threshold).await?;
         }
     }
 
@@ -1093,14 +1184,20 @@ async fn cmd_build_db(
             igdb_id INTEGER,
             steamgriddb_id INTEGER,
             description TEXT,
+            release_date TEXT,
             release_year INTEGER,
             developer TEXT,
             publisher TEXT,
             genre TEXT,
             players TEXT,
             rating REAL,
-            summary TEXT,
+            rating_count INTEGER,
+            esrb TEXT,
+            cooperative INTEGER,
+            video_url TEXT,
+            wikipedia_url TEXT,
             metadata_fetched INTEGER DEFAULT 0,
+            metadata_source TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -1228,4 +1325,29 @@ async fn cmd_build_db(
     }
 
     Ok(())
+}
+
+async fn cmd_enrich_db(
+    database: &PathBuf,
+    openvgdb: &PathBuf,
+    threshold: f64,
+    dry_run: bool,
+) -> Result<()> {
+    enrich::enrich_database(database, openvgdb, threshold, dry_run).await
+}
+
+async fn cmd_unified_build(
+    output: &PathBuf,
+    launchbox_xml: Option<PathBuf>,
+    libretro_path: Option<PathBuf>,
+    openvgdb: Option<PathBuf>,
+    threshold: f64,
+) -> Result<()> {
+    unified_import::build_unified_database(
+        output,
+        launchbox_xml.as_deref(),
+        libretro_path.as_deref(),
+        openvgdb.as_deref(),
+        threshold,
+    ).await
 }

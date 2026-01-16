@@ -5,6 +5,7 @@ use crate::scanner::{RomFile, RomScanner};
 use crate::scraper::{get_screenscraper_platform_id, ScreenScraperClient, ScreenScraperConfig};
 use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -21,10 +22,12 @@ pub struct Platform {
 
 /// Game for display
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Game {
     pub id: String,
     pub database_id: i64,
     pub title: String,
+    pub display_title: String, // Clean title without region/version suffixes
     pub platform: String,
     pub platform_id: i64,
     pub description: Option<String>,
@@ -33,9 +36,60 @@ pub struct Game {
     pub developer: Option<String>,
     pub publisher: Option<String>,
     pub genres: Option<String>,
+    pub players: Option<String>,
     pub rating: Option<f64>,
+    pub rating_count: Option<i64>,
+    pub esrb: Option<String>,
+    pub cooperative: Option<bool>,
+    pub video_url: Option<String>,
+    pub wikipedia_url: Option<String>,
     pub box_front_path: Option<String>,
     pub screenshot_path: Option<String>,
+    pub variant_count: i32, // Number of variants (regions/versions)
+}
+
+/// Game variant (region/version)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameVariant {
+    pub id: String,
+    pub title: String,
+    pub region: Option<String>,
+}
+
+/// Normalize a game title by removing region/version suffixes
+fn normalize_title(title: &str) -> String {
+    // Remove all parenthetical content like (USA), (World), (v1.0), (Rev A), etc.
+    let mut result = String::new();
+    let mut depth = 0;
+
+    for c in title.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = (depth as i32 - 1).max(0) as usize,
+            _ if depth == 0 => result.push(c),
+            _ => {}
+        }
+    }
+
+    result.trim().to_string()
+}
+
+/// Extract region from title
+fn extract_region(title: &str) -> Option<String> {
+    // Common region patterns
+    let regions = [
+        "(USA)", "(World)", "(Europe)", "(Japan)", "(En)", "(Ja)", "(De)", "(Fr)",
+        "(USA, Europe)", "(Japan, USA)", "(Japan, Europe)", "(Europe, Australia)",
+        "(Korea)", "(Asia)", "(Taiwan)", "(Germany)", "(France)", "(Spain)", "(Italy)",
+        "(Brazil)", "(Australia)", "(Netherlands)", "(Sweden)", "(China)",
+    ];
+
+    for region in regions {
+        if title.contains(region) {
+            return Some(region.trim_matches(|c| c == '(' || c == ')').to_string());
+        }
+    }
+    None
 }
 
 /// Scan result
@@ -88,23 +142,34 @@ pub async fn get_platforms(
 
     // Try shipped games database first (browse-first mode)
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let platforms: Vec<(i64, String, i64)> = sqlx::query_as(
-            r#"
-            SELECT p.id, p.name, COUNT(g.id) as game_count
-            FROM platforms p
-            LEFT JOIN games g ON g.platform_id = p.id
-            GROUP BY p.id
-            ORDER BY p.name
-            "#
+        // Get all platforms
+        let platforms: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT id, name FROM platforms ORDER BY name"
         )
         .fetch_all(games_pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        return Ok(platforms
-            .into_iter()
-            .map(|(id, name, game_count)| Platform { id, name, game_count })
-            .collect());
+        // For each platform, count deduplicated games (by normalized title)
+        let mut result = Vec::new();
+        for (id, name) in platforms {
+            let all_titles: Vec<(String,)> = sqlx::query_as(
+                "SELECT title FROM games WHERE platform_id = ?"
+            )
+            .bind(id)
+            .fetch_all(games_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            // Count unique normalized titles
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for (title,) in all_titles {
+                let normalized = normalize_title(&title).to_lowercase();
+                seen.insert(normalized);
+            }
+            result.push(Platform { id, name, game_count: seen.len() as i64 });
+        }
+        return Ok(result);
     }
 
     // Fall back to LaunchBox if available
@@ -128,7 +193,7 @@ pub async fn get_platforms(
     Ok(Vec::new())
 }
 
-/// Get total count of games for a platform/search
+/// Get total count of games for a platform/search (deduplicated by normalized title)
 #[tauri::command]
 pub async fn get_game_count(
     platform: Option<String>,
@@ -138,40 +203,47 @@ pub async fn get_game_count(
     let state_guard = state.read().await;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let count: (i64,) = if let Some(ref query) = search {
+        // Fetch all matching titles
+        let titles: Vec<(String,)> = if let Some(ref query) = search {
             let pattern = format!("%{}%", query);
             if let Some(ref platform_name) = platform {
                 sqlx::query_as(
-                    "SELECT COUNT(*) FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ? AND g.title LIKE ?"
+                    "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ? AND g.title LIKE ?"
                 )
                 .bind(platform_name)
                 .bind(&pattern)
-                .fetch_one(games_pool)
+                .fetch_all(games_pool)
                 .await
                 .map_err(|e| e.to_string())?
             } else {
-                sqlx::query_as("SELECT COUNT(*) FROM games WHERE title LIKE ?")
+                sqlx::query_as("SELECT title FROM games WHERE title LIKE ?")
                     .bind(&pattern)
-                    .fetch_one(games_pool)
+                    .fetch_all(games_pool)
                     .await
                     .map_err(|e| e.to_string())?
             }
         } else if let Some(ref platform_name) = platform {
             sqlx::query_as(
-                "SELECT COUNT(*) FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ?"
+                "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ?"
             )
             .bind(platform_name)
-            .fetch_one(games_pool)
+            .fetch_all(games_pool)
             .await
             .map_err(|e| e.to_string())?
         } else {
-            sqlx::query_as("SELECT COUNT(*) FROM games")
-                .fetch_one(games_pool)
+            sqlx::query_as("SELECT title FROM games")
+                .fetch_all(games_pool)
                 .await
                 .map_err(|e| e.to_string())?
         };
 
-        return Ok(count.0);
+        // Count unique normalized titles
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (title,) in titles {
+            let normalized = normalize_title(&title).to_lowercase();
+            seen.insert(normalized);
+        }
+        return Ok(seen.len() as i64);
     }
 
     Ok(0)
@@ -185,82 +257,199 @@ pub async fn get_games(
     offset: Option<i64>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Vec<Game>, String> {
+    use std::collections::HashMap;
+
     let state_guard = state.read().await;
-    let limit = limit.unwrap_or(100);
-    let offset = offset.unwrap_or(0);
+    let limit = limit.map(|l| l as usize);
+    let offset = offset.unwrap_or(0) as usize;
 
     // Try shipped games database first (browse-first mode)
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let games: Vec<(String, String, i64, String, Option<String>, Option<i32>, Option<String>, Option<String>, Option<String>)> = if let Some(ref query) = search {
-            // Search by title
+        // Fetch all games for the platform/search, then deduplicate and paginate
+        // We need all games to properly deduplicate variants
+        let raw_rows = if let Some(ref query) = search {
             let pattern = format!("%{}%", query);
-            sqlx::query_as(
-                r#"
-                SELECT g.id, g.title, g.platform_id, p.name as platform,
-                       g.description, g.release_year, g.developer, g.publisher, g.genre
-                FROM games g
-                JOIN platforms p ON g.platform_id = p.id
-                WHERE g.title LIKE ?
-                ORDER BY g.title
-                LIMIT ? OFFSET ?
-                "#
-            )
-            .bind(&pattern)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(games_pool)
-            .await
-            .map_err(|e| e.to_string())?
+            if let Some(ref platform_name) = platform {
+                // Search within a specific platform
+                sqlx::query(
+                    r#"
+                    SELECT g.id, g.title, g.platform_id, p.name as platform,
+                           g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                    FROM games g
+                    JOIN platforms p ON g.platform_id = p.id
+                    WHERE p.name = ? AND g.title LIKE ?
+                    ORDER BY g.title
+                    "#
+                )
+                .bind(platform_name)
+                .bind(&pattern)
+                .fetch_all(games_pool)
+                .await
+                .map_err(|e| e.to_string())?
+            } else {
+                // Search across all platforms
+                sqlx::query(
+                    r#"
+                    SELECT g.id, g.title, g.platform_id, p.name as platform,
+                           g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+                    FROM games g
+                    JOIN platforms p ON g.platform_id = p.id
+                    WHERE g.title LIKE ?
+                    ORDER BY g.title
+                    "#
+                )
+                .bind(&pattern)
+                .fetch_all(games_pool)
+                .await
+                .map_err(|e| e.to_string())?
+            }
         } else if let Some(ref platform_name) = platform {
-            // Filter by platform
-            sqlx::query_as(
+            sqlx::query(
                 r#"
                 SELECT g.id, g.title, g.platform_id, p.name as platform,
-                       g.description, g.release_year, g.developer, g.publisher, g.genre
+                       g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
                 FROM games g
                 JOIN platforms p ON g.platform_id = p.id
                 WHERE p.name = ?
                 ORDER BY g.title
-                LIMIT ? OFFSET ?
                 "#
             )
             .bind(platform_name)
-            .bind(limit)
-            .bind(offset)
             .fetch_all(games_pool)
             .await
             .map_err(|e| e.to_string())?
         } else {
-            // No filter - return empty (user should select platform first with 147K+ games)
             Vec::new()
         };
 
-        return Ok(games
-            .into_iter()
-            .map(|(id, title, platform_id, platform, description, release_year, developer, publisher, genre)| Game {
-                id: id.clone(),
-                database_id: 0, // Not from LaunchBox
-                title,
-                platform,
-                platform_id,
-                description,
-                release_date: None,
-                release_year,
-                developer,
-                publisher,
-                genres: genre,
-                rating: None,
-                box_front_path: None, // Fetched on-demand via media API
-                screenshot_path: None,
+        // Deduplicate by normalized title - keep best metadata and track unique variant titles
+        // variant_titles tracks unique full titles per normalized title (e.g., "Baseball (USA)", "Baseball (Japan)")
+        let mut grouped: HashMap<String, (Game, std::collections::HashSet<String>)> = HashMap::new();
+
+        for row in raw_rows {
+            use sqlx::Row;
+            let id: String = row.get("id");
+            let title: String = row.get("title");
+            let platform_id: i64 = row.get("platform_id");
+            let platform: String = row.get("platform");
+            let description: Option<String> = row.get("description");
+            let release_date: Option<String> = row.get("release_date");
+            let release_year: Option<i32> = row.get("release_year");
+            let developer: Option<String> = row.get("developer");
+            let publisher: Option<String> = row.get("publisher");
+            let genre: Option<String> = row.get("genre");
+            let players: Option<String> = row.get("players");
+            let rating: Option<f64> = row.get("rating");
+            let rating_count: Option<i64> = row.get("rating_count");
+            let esrb: Option<String> = row.get("esrb");
+            let cooperative: Option<i32> = row.get("cooperative");
+            let video_url: Option<String> = row.get("video_url");
+            let wikipedia_url: Option<String> = row.get("wikipedia_url");
+            let display_title = normalize_title(&title);
+            let key = display_title.to_lowercase();
+
+            grouped.entry(key)
+                .and_modify(|(existing, variant_titles)| {
+                    variant_titles.insert(title.clone());
+                    // Prefer entries with more metadata
+                    if existing.description.is_none() && description.is_some() {
+                        existing.description = description.clone();
+                    }
+                    if existing.developer.is_none() && developer.is_some() {
+                        existing.developer = developer.clone();
+                    }
+                    if existing.publisher.is_none() && publisher.is_some() {
+                        existing.publisher = publisher.clone();
+                    }
+                    if existing.genres.is_none() && genre.is_some() {
+                        existing.genres = genre.clone();
+                    }
+                    if existing.release_date.is_none() && release_date.is_some() {
+                        existing.release_date = release_date.clone();
+                    }
+                    if existing.release_year.is_none() && release_year.is_some() {
+                        existing.release_year = release_year;
+                    }
+                    if existing.players.is_none() && players.is_some() {
+                        existing.players = players.clone();
+                    }
+                    if existing.rating.is_none() && rating.is_some() {
+                        existing.rating = rating;
+                    }
+                    if existing.rating_count.is_none() && rating_count.is_some() {
+                        existing.rating_count = rating_count;
+                    }
+                    if existing.esrb.is_none() && esrb.is_some() {
+                        existing.esrb = esrb.clone();
+                    }
+                    if existing.cooperative.is_none() && cooperative.is_some() {
+                        existing.cooperative = cooperative.map(|c| c != 0);
+                    }
+                    if existing.video_url.is_none() && video_url.is_some() {
+                        existing.video_url = video_url.clone();
+                    }
+                    if existing.wikipedia_url.is_none() && wikipedia_url.is_some() {
+                        existing.wikipedia_url = wikipedia_url.clone();
+                    }
+                })
+                .or_insert_with(|| {
+                    let mut variant_titles = std::collections::HashSet::new();
+                    variant_titles.insert(title.clone());
+                    (Game {
+                        id,
+                        database_id: 0,
+                        title: title.clone(),
+                        display_title: display_title.clone(),
+                        platform,
+                        platform_id,
+                        description,
+                        release_date,
+                        release_year,
+                        developer,
+                        publisher,
+                        genres: genre,
+                        players,
+                        rating,
+                        rating_count,
+                        esrb,
+                        cooperative: cooperative.map(|c| c != 0),
+                        video_url,
+                        wikipedia_url,
+                        box_front_path: None,
+                        screenshot_path: None,
+                        variant_count: 1,
+                    }, variant_titles)
+                });
+        }
+
+        // Convert to vec, update variant counts (unique titles, not raw rows), sort, and paginate
+        let mut games: Vec<Game> = grouped.into_iter()
+            .map(|(_, (mut game, variant_titles))| {
+                game.variant_count = variant_titles.len() as i32;
+                game
             })
-            .collect());
+            .collect();
+
+        games.sort_by(|a, b| a.display_title.to_lowercase().cmp(&b.display_title.to_lowercase()));
+
+        // Apply pagination after deduplication (if limit specified)
+        let games: Vec<Game> = if let Some(lim) = limit {
+            games.into_iter().skip(offset).take(lim).collect()
+        } else {
+            games.into_iter().skip(offset).collect()
+        };
+        return Ok(games);
     }
 
     // Fall back to LaunchBox if available
     if let Some(ref importer) = state_guard.launchbox_importer {
+        let lb_limit = limit.unwrap_or(10000) as i64;
         let games = if let Some(ref query) = search {
             importer
-                .search_games(query, limit)
+                .search_games(query, lb_limit)
                 .await
                 .map_err(|e: anyhow::Error| e.to_string())?
         } else if let Some(ref platform_name) = platform {
@@ -282,10 +471,12 @@ pub async fn get_games(
                     find_game_images(path, &g.platform, &g.name).box_front
                 });
 
+                let display_title = normalize_title(&g.name);
                 Game {
                     id: uuid::Uuid::new_v4().to_string(),
                     database_id: g.database_id,
-                    title: g.name,
+                    title: g.name.clone(),
+                    display_title,
                     platform: g.platform.clone(),
                     platform_id: 0,
                     description: g.overview,
@@ -294,9 +485,16 @@ pub async fn get_games(
                     developer: g.developer,
                     publisher: g.publisher,
                     genres: Some(g.genres),
+                    players: None,
                     rating: g.community_rating,
+                    rating_count: None,
+                    esrb: None,
+                    cooperative: None,
+                    video_url: None,
+                    wikipedia_url: None,
                     box_front_path: box_front,
                     screenshot_path: None,
+                    variant_count: 1,
                 }
             })
             .collect());
@@ -326,10 +524,12 @@ pub async fn get_game_by_id(
                 (None, None)
             };
 
+            let display_title = normalize_title(&g.name);
             Ok(Some(Game {
                 id: uuid::Uuid::new_v4().to_string(),
                 database_id: g.database_id,
-                title: g.name,
+                title: g.name.clone(),
+                display_title,
                 platform: g.platform.clone(),
                 platform_id: 0,
                 description: g.overview,
@@ -338,9 +538,16 @@ pub async fn get_game_by_id(
                 developer: g.developer,
                 publisher: g.publisher,
                 genres: Some(g.genres),
+                players: None,
                 rating: g.community_rating,
+                rating_count: None,
+                esrb: None,
+                cooperative: None,
+                video_url: None,
+                wikipedia_url: None,
                 box_front_path: box_front,
                 screenshot_path: screenshot,
+                variant_count: 1,
             }))
         } else {
             Ok(None)
@@ -348,6 +555,172 @@ pub async fn get_game_by_id(
     } else {
         Ok(None)
     }
+}
+
+/// Get a game by its UUID (for the shipped games database)
+#[tauri::command]
+pub async fn get_game_by_uuid(
+    game_id: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<Game>, String> {
+    let state_guard = state.read().await;
+
+    if let Some(ref games_pool) = state_guard.games_db_pool {
+        let row_opt = sqlx::query(
+            r#"
+            SELECT g.id, g.title, g.platform_id, p.name as platform,
+                   g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                   g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url
+            FROM games g
+            JOIN platforms p ON g.platform_id = p.id
+            WHERE g.id = ?
+            "#
+        )
+        .bind(&game_id)
+        .fetch_optional(games_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(row) = row_opt {
+            use sqlx::Row;
+            let id: String = row.get("id");
+            let title: String = row.get("title");
+            let platform_id: i64 = row.get("platform_id");
+            let platform: String = row.get("platform");
+            let description: Option<String> = row.get("description");
+            let release_date: Option<String> = row.get("release_date");
+            let release_year: Option<i32> = row.get("release_year");
+            let developer: Option<String> = row.get("developer");
+            let publisher: Option<String> = row.get("publisher");
+            let genre: Option<String> = row.get("genre");
+            let players: Option<String> = row.get("players");
+            let rating: Option<f64> = row.get("rating");
+            let rating_count: Option<i64> = row.get("rating_count");
+            let esrb: Option<String> = row.get("esrb");
+            let cooperative: Option<bool> = row.get("cooperative");
+            let video_url: Option<String> = row.get("video_url");
+            let wikipedia_url: Option<String> = row.get("wikipedia_url");
+
+            let display_title = normalize_title(&title);
+
+            // Count matching variants
+            let normalized_lower = display_title.to_lowercase();
+            let all_titles: Vec<(String,)> = sqlx::query_as(
+                "SELECT DISTINCT title FROM games WHERE platform_id = ?"
+            )
+            .bind(platform_id)
+            .fetch_all(games_pool)
+            .await
+            .unwrap_or_default();
+
+            let actual_variant_count = all_titles
+                .iter()
+                .filter(|(t,)| normalize_title(t).to_lowercase() == normalized_lower)
+                .count() as i32;
+
+            return Ok(Some(Game {
+                id,
+                database_id: 0,
+                title,
+                display_title,
+                platform,
+                platform_id,
+                description,
+                release_date,
+                release_year,
+                developer,
+                publisher,
+                genres: genre,
+                players,
+                rating,
+                rating_count,
+                esrb,
+                cooperative,
+                video_url,
+                wikipedia_url,
+                box_front_path: None,
+                screenshot_path: None,
+                variant_count: actual_variant_count,
+            }));
+        }
+    }
+
+    Ok(None)
+}
+
+/// Calculate region priority for sorting (lower = better, USA/English first)
+fn region_priority(title: &str) -> i32 {
+    let title_lower = title.to_lowercase();
+    if title_lower.contains("(usa)") || title_lower.contains("(usa,") {
+        0
+    } else if title_lower.contains("(world)") {
+        1
+    } else if title_lower.contains("(europe)") || title_lower.contains("(en)") {
+        2
+    } else if title_lower.contains("(japan)") || title_lower.contains("(ja)") {
+        3
+    } else {
+        4
+    }
+}
+
+/// Get all variants (regions/versions) for a given game by display title
+#[tauri::command]
+pub async fn get_game_variants(
+    display_title: String,
+    platform_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<GameVariant>, String> {
+    let state_guard = state.read().await;
+
+    if let Some(ref games_pool) = state_guard.games_db_pool {
+        // Search for all games that normalize to this display title
+        let all_games: Vec<(String, String)> = sqlx::query_as(
+            r#"
+            SELECT id, title
+            FROM games
+            WHERE platform_id = ?
+            ORDER BY title
+            "#
+        )
+        .bind(platform_id)
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let normalized_search = display_title.to_lowercase();
+
+        // Filter to matching titles
+        let matching: Vec<(String, String)> = all_games
+            .into_iter()
+            .filter(|(_, title)| {
+                let normalized = normalize_title(title).to_lowercase();
+                normalized == normalized_search
+            })
+            .collect();
+
+        // Deduplicate by title (different ROM dumps have same title but different IDs)
+        // Keep the first entry for each unique title
+        let mut seen_titles: HashMap<String, GameVariant> = HashMap::new();
+        for (id, title) in matching {
+            if !seen_titles.contains_key(&title) {
+                let region = extract_region(&title);
+                seen_titles.insert(title.clone(), GameVariant { id, title, region });
+            }
+        }
+
+        // Convert to vec and sort by region priority (USA/English first)
+        let mut variants: Vec<GameVariant> = seen_titles.into_values().collect();
+        variants.sort_by(|a, b| {
+            let priority_a = region_priority(&a.title);
+            let priority_b = region_priority(&b.title);
+            priority_a.cmp(&priority_b).then_with(|| a.title.cmp(&b.title))
+        });
+
+        return Ok(variants);
+    }
+
+    Ok(Vec::new())
 }
 
 #[tauri::command]
@@ -539,10 +912,12 @@ pub async fn scrape_rom(
         platform_id,
     ).await {
         Ok(Some(scraped)) => {
+            let display_title = normalize_title(&scraped.name);
             let game = Game {
                 id: uuid::Uuid::new_v4().to_string(),
                 database_id: scraped.screenscraper_id,
-                title: scraped.name,
+                title: scraped.name.clone(),
+                display_title,
                 platform: platform.clone(),
                 platform_id: 0,
                 description: scraped.description,
@@ -551,9 +926,16 @@ pub async fn scrape_rom(
                 developer: scraped.developer,
                 publisher: scraped.publisher,
                 genres: Some(scraped.genres.join(", ")),
+                players: None,
                 rating: scraped.rating,
+                rating_count: None,
+                esrb: None,
+                cooperative: None,
+                video_url: None,
+                wikipedia_url: None,
                 box_front_path: scraped.media.box_front,
                 screenshot_path: scraped.media.screenshot,
+                variant_count: 1,
             };
             Ok(ScrapeResult {
                 success: true,
@@ -727,10 +1109,12 @@ pub async fn get_collection_games(
                         find_game_images(path, &g.platform, &g.name).box_front
                     });
 
+                    let display_title = normalize_title(&g.name);
                     games.push(Game {
                         id: game_id,
                         database_id: g.database_id,
-                        title: g.name,
+                        title: g.name.clone(),
+                        display_title,
                         platform: g.platform.clone(),
                         platform_id: 0,
                         description: g.overview,
@@ -739,9 +1123,16 @@ pub async fn get_collection_games(
                         developer: g.developer,
                         publisher: g.publisher,
                         genres: Some(g.genres),
+                        players: None,
                         rating: g.community_rating,
+                        rating_count: None,
+                        esrb: None,
+                        cooperative: None,
+                        video_url: None,
+                        wikipedia_url: None,
                         box_front_path: box_front,
                         screenshot_path: None,
+                        variant_count: 1,
                     });
                 }
             }
@@ -1194,10 +1585,12 @@ pub async fn get_favorites(
                     find_game_images(path, &g.platform, &g.name).box_front
                 });
 
+                let display_title = normalize_title(&g.name);
                 games.push(Game {
                     id: db_id.to_string(),
                     database_id: g.database_id,
-                    title: g.name,
+                    title: g.name.clone(),
+                    display_title,
                     platform: g.platform.clone(),
                     platform_id: 0,
                     description: g.overview,
@@ -1206,9 +1599,16 @@ pub async fn get_favorites(
                     developer: g.developer,
                     publisher: g.publisher,
                     genres: Some(g.genres),
+                    players: None,
                     rating: g.community_rating,
+                    rating_count: None,
+                    esrb: None,
+                    cooperative: None,
+                    video_url: None,
+                    wikipedia_url: None,
                     box_front_path: box_front,
                     screenshot_path: None,
+                    variant_count: 1,
                 });
             }
         }

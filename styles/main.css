@@ -483,6 +483,28 @@ body {
     color: var(--text-primary);
 }
 
+.game-links {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.game-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    color: var(--accent-color);
+    font-size: 13px;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+
+.game-link:hover {
+    background-color: var(--bg-hover);
+}
+
 .play-btn {
     padding: 12px 32px;
     background-color: var(--accent-color);
@@ -1043,4 +1065,89 @@ body {
     padding: 8px 16px;
     border-radius: 4px;
     color: var(--text-secondary);
+}
+
+/* Variant Badge on Game Cards */
+.variant-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--accent-color);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.variant-count {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+/* Game Variants Section in Details */
+.game-variants-section {
+    padding: 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+.game-variants-section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-highlight);
+    margin-bottom: 8px;
+}
+
+.variants-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.variants-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.variant-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+    color: var(--text-primary);
+}
+
+.variant-item:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-color);
+}
+
+.variant-item.selected {
+    background: var(--bg-active);
+    border-color: var(--accent-color);
+}
+
+.variant-title {
+    flex: 1;
+    font-size: 13px;
+}
+
+.variant-region {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 12px;
 }

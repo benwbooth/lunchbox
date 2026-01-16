@@ -132,13 +132,13 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
     let games_db_pool = {
         let resource_path = app.path().resource_dir()
             .ok()
-            .map(|p| p.join("lunchbox-games.db"));
+            .map(|p| p.join("games.db"));
 
         let possible_paths = [
             resource_path,
-            Some(app_data_dir.join("lunchbox-games.db")),
-            Some(PathBuf::from("/usr/share/lunchbox/lunchbox-games.db")),
-            Some(PathBuf::from("./lunchbox-games.db")),
+            Some(app_data_dir.join("games.db")),
+            Some(PathBuf::from("./db/games.db")),  // Dev mode
+            Some(PathBuf::from("/usr/share/lunchbox/games.db")),
         ];
 
         let mut found_pool = None;
@@ -165,8 +165,8 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
 
         if found_pool.is_none() {
             tracing::warn!("No games database found. Browse-first mode disabled.");
-            tracing::info!("To enable, place lunchbox-games.db in the app data directory or run:");
-            tracing::info!("  lunchbox-cli build-db --libretro-path /path/to/libretro-database --output {}", app_data_dir.join("lunchbox-games.db").display());
+            tracing::info!("To enable, place games.db in the app data directory or run:");
+            tracing::info!("  lunchbox-cli build-db --output {}", app_data_dir.join("games.db").display());
         }
 
         found_pool

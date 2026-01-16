@@ -1,13 +1,125 @@
-//! Tauri command bindings for the frontend
+//! API bindings for the frontend
+//!
+//! Automatically detects whether running in Tauri or browser and uses
+//! the appropriate backend (IPC for Tauri, HTTP for browser).
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+// ============ Backend Detection ============
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = invoke)]
     async fn tauri_invoke(cmd: &str, args: JsValue) -> JsValue;
 }
+
+/// Check if running in Tauri context
+fn is_tauri() -> bool {
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return false,
+    };
+    let result = js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))
+        .map(|v| !v.is_undefined())
+        .unwrap_or(false);
+    web_sys::console::log_1(&format!("is_tauri() = {}", result).into());
+    result
+}
+
+/// The HTTP API base URL for browser mode
+const HTTP_API_BASE: &str = "http://127.0.0.1:3001/api";
+
+// ============ HTTP Fetch Helpers ============
+
+async fn http_get<T: DeserializeOwned>(path: &str) -> Result<T, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}{}", HTTP_API_BASE, path);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
+
+    let window = web_sys::window().ok_or("No window")?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{:?}", e))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    let json = wasm_bindgen_futures::JsFuture::from(resp.json().map_err(|e| format!("{:?}", e))?)
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())
+}
+
+async fn http_post<T: DeserializeOwned, B: Serialize>(path: &str, body: &B) -> Result<T, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let body_str = serde_json::to_string(body).map_err(|e| e.to_string())?;
+    opts.set_body(&JsValue::from_str(&body_str));
+
+    let url = format!("{}{}", HTTP_API_BASE, path);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{:?}", e))?;
+
+    let window = web_sys::window().ok_or("No window")?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{:?}", e))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    let json = wasm_bindgen_futures::JsFuture::from(resp.json().map_err(|e| format!("{:?}", e))?)
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())
+}
+
+async fn http_delete(path: &str) -> Result<(), String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("DELETE");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}{}", HTTP_API_BASE, path);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
+
+    let window = web_sys::window().ok_or("No window")?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{:?}", e))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    Ok(())
+}
+
+// ============ Tauri IPC Helpers ============
 
 /// Invoke a Tauri command with arguments
 async fn invoke<T: DeserializeOwned>(cmd: &str, args: impl Serialize) -> Result<T, String> {
@@ -32,10 +144,12 @@ pub struct Platform {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Game {
     pub id: String,
     pub database_id: i64,
     pub title: String,
+    pub display_title: String,
     pub platform: String,
     pub platform_id: i64,
     pub description: Option<String>,
@@ -44,9 +158,23 @@ pub struct Game {
     pub developer: Option<String>,
     pub publisher: Option<String>,
     pub genres: Option<String>,
+    pub players: Option<String>,
     pub rating: Option<f64>,
+    pub rating_count: Option<i64>,
+    pub esrb: Option<String>,
+    pub cooperative: Option<bool>,
+    pub video_url: Option<String>,
+    pub wikipedia_url: Option<String>,
     pub box_front_path: Option<String>,
     pub screenshot_path: Option<String>,
+    pub variant_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameVariant {
+    pub id: String,
+    pub title: String,
+    pub region: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,17 +267,37 @@ pub fn file_to_asset_url(path: &str) -> String {
 
 /// Get all platforms
 pub async fn get_platforms() -> Result<Vec<Platform>, String> {
-    invoke_no_args("get_platforms").await
+    if is_tauri() {
+        invoke_no_args("get_platforms").await
+    } else {
+        http_get("/platforms").await
+    }
 }
 
 /// Get total game count for a platform/search
 pub async fn get_game_count(platform: Option<String>, search: Option<String>) -> Result<i64, String> {
-    #[derive(Serialize)]
-    struct Args {
-        platform: Option<String>,
-        search: Option<String>,
+    if is_tauri() {
+        #[derive(Serialize)]
+        struct Args {
+            platform: Option<String>,
+            search: Option<String>,
+        }
+        invoke("get_game_count", Args { platform, search }).await
+    } else {
+        let mut query = vec![];
+        if let Some(p) = &platform {
+            query.push(format!("platform={}", urlencoding::encode(p)));
+        }
+        if let Some(s) = &search {
+            query.push(format!("search={}", urlencoding::encode(s)));
+        }
+        let path = if query.is_empty() {
+            "/games/count".to_string()
+        } else {
+            format!("/games/count?{}", query.join("&"))
+        };
+        http_get(&path).await
     }
-    invoke("get_game_count", Args { platform, search }).await
 }
 
 /// Get games, optionally filtered by platform or search query
@@ -159,14 +307,36 @@ pub async fn get_games(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<Game>, String> {
-    #[derive(Serialize)]
-    struct Args {
-        platform: Option<String>,
-        search: Option<String>,
-        limit: Option<i64>,
-        offset: Option<i64>,
+    if is_tauri() {
+        #[derive(Serialize)]
+        struct Args {
+            platform: Option<String>,
+            search: Option<String>,
+            limit: Option<i64>,
+            offset: Option<i64>,
+        }
+        invoke("get_games", Args { platform, search, limit, offset }).await
+    } else {
+        let mut query = vec![];
+        if let Some(p) = &platform {
+            query.push(format!("platform={}", urlencoding::encode(p)));
+        }
+        if let Some(s) = &search {
+            query.push(format!("search={}", urlencoding::encode(s)));
+        }
+        if let Some(l) = limit {
+            query.push(format!("limit={}", l));
+        }
+        if let Some(o) = offset {
+            query.push(format!("offset={}", o));
+        }
+        let path = if query.is_empty() {
+            "/games".to_string()
+        } else {
+            format!("/games?{}", query.join("&"))
+        };
+        http_get(&path).await
     }
-    invoke("get_games", Args { platform, search, limit, offset }).await
 }
 
 /// Get a single game by database ID
@@ -176,6 +346,41 @@ pub async fn get_game_by_id(database_id: i64) -> Result<Option<Game>, String> {
         database_id: i64,
     }
     invoke("get_game_by_id", Args { database_id }).await
+}
+
+/// Get a game by its UUID
+pub async fn get_game_by_uuid(game_id: String) -> Result<Option<Game>, String> {
+    if is_tauri() {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Args {
+            game_id: String,
+        }
+        invoke("get_game_by_uuid", Args { game_id }).await
+    } else {
+        http_get(&format!("/games/{}", urlencoding::encode(&game_id))).await
+    }
+}
+
+/// Get all variants (regions/versions) for a game
+pub async fn get_game_variants(display_title: String, platform_id: i64) -> Result<Vec<GameVariant>, String> {
+    if is_tauri() {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Args {
+            display_title: String,
+            platform_id: i64,
+        }
+        invoke("get_game_variants", Args { display_title, platform_id }).await
+    } else {
+        let path = format!(
+            "/games/{}/variants?displayTitle={}&platformId={}",
+            urlencoding::encode(&display_title),
+            urlencoding::encode(&display_title),
+            platform_id
+        );
+        http_get(&path).await
+    }
 }
 
 /// Scan ROM directories
@@ -204,7 +409,11 @@ pub async fn launch_game(rom_path: String, platform: String) -> Result<(), Strin
 
 /// Get settings
 pub async fn get_settings() -> Result<AppSettings, String> {
-    invoke_no_args("get_settings").await
+    if is_tauri() {
+        invoke_no_args("get_settings").await
+    } else {
+        http_get("/settings").await
+    }
 }
 
 /// Save settings
@@ -328,6 +537,7 @@ pub async fn record_play_session(launchbox_db_id: i64, game_title: String, platf
 /// Get play statistics for a specific game
 pub async fn get_play_stats(launchbox_db_id: i64) -> Result<Option<PlayStats>, String> {
     #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
     }
@@ -377,6 +587,7 @@ pub async fn remove_favorite(launchbox_db_id: i64) -> Result<(), String> {
 /// Check if a game is a favorite
 pub async fn is_favorite(launchbox_db_id: i64) -> Result<bool, String> {
     #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
     }
@@ -385,7 +596,11 @@ pub async fn is_favorite(launchbox_db_id: i64) -> Result<bool, String> {
 
 /// Get all favorite games
 pub async fn get_favorites() -> Result<Vec<Game>, String> {
-    invoke_no_args("get_favorites").await
+    if is_tauri() {
+        invoke_no_args("get_favorites").await
+    } else {
+        http_get("/favorites").await
+    }
 }
 
 // ============ Service Connection Tests ============

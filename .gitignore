@@ -23,6 +23,17 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
+*.db.zst
+*.sqlite
+/db/
+
+# LaunchBox data (large)
+/launchbox-data/
+/launchbox-metadata/
+/launchbox-metadata.zip
+/launchbox-platforms.zip
+/openvgdb.zip
+/__MACOSX/
 
 # Environment
 .env

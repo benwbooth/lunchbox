@@ -35,3 +35,9 @@ indicatif = "0.17"
 sqlx.workspace = true
 uuid.workspace = true
 walkdir = "2"
+
+# XML parsing
+quick-xml = "0.37"
+
+# Compression
+zstd = "0.13"

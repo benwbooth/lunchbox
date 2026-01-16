@@ -54,6 +54,9 @@
             sqlx-cli
             just
             nodePackages.tailwindcss
+
+            # Compression
+            zstd
           ];
 
           nativeBuildInputs = with pkgs; [
