@@ -109,7 +109,9 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/games/:uuid", get(get_game_by_uuid))
         .route("/api/games/:uuid/variants", get(get_game_variants))
         .route("/api/settings", get(get_settings))
+        .route("/api/stats/:db_id", get(get_play_stats))
         .route("/api/favorites", get(get_favorites))
+        .route("/api/favorites/check/:db_id", get(check_is_favorite))
         .route("/api/favorites/:game_id", post(add_favorite).delete(remove_favorite))
         .layer(cors)
         .with_state(state)
@@ -530,8 +532,79 @@ async fn get_settings(
 }
 
 // ============================================================================
+// Play Stats
+// ============================================================================
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayStats {
+    pub launchbox_db_id: i64,
+    pub game_title: String,
+    pub platform: String,
+    pub play_count: i64,
+    pub total_play_time_seconds: i64,
+    pub last_played: Option<String>,
+    pub first_played: Option<String>,
+}
+
+async fn get_play_stats(
+    State(state): State<SharedState>,
+    axum::extract::Path(db_id): axum::extract::Path<i64>,
+) -> Result<Json<Option<PlayStats>>, (StatusCode, String)> {
+    let state_guard = state.read().await;
+
+    if let Some(ref db_pool) = state_guard.db_pool {
+        let row: Option<(i64, String, String, i64, i64, Option<String>, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT launchbox_db_id, game_title, platform, play_count, total_play_time_seconds, last_played, first_played
+            FROM play_stats WHERE launchbox_db_id = ?
+            "#
+        )
+        .bind(db_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        if let Some((launchbox_db_id, game_title, platform, play_count, total_play_time_seconds, last_played, first_played)) = row {
+            return Ok(Json(Some(PlayStats {
+                launchbox_db_id,
+                game_title,
+                platform,
+                play_count,
+                total_play_time_seconds,
+                last_played,
+                first_played,
+            })));
+        }
+    }
+
+    Ok(Json(None))
+}
+
+// ============================================================================
 // Favorites
 // ============================================================================
+
+async fn check_is_favorite(
+    State(state): State<SharedState>,
+    axum::extract::Path(db_id): axum::extract::Path<i64>,
+) -> Result<Json<bool>, (StatusCode, String)> {
+    let state_guard = state.read().await;
+
+    if let Some(ref db_pool) = state_guard.db_pool {
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM favorites WHERE launchbox_db_id = ?"
+        )
+        .bind(db_id)
+        .fetch_one(db_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        return Ok(Json(count.0 > 0));
+    }
+
+    Ok(Json(false))
+}
 
 async fn get_favorites(
     State(state): State<SharedState>,

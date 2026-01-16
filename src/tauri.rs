@@ -28,7 +28,7 @@ fn is_tauri() -> bool {
 }
 
 /// The HTTP API base URL for browser mode
-const HTTP_API_BASE: &str = "http://127.0.0.1:3001/api";
+const HTTP_API_BASE: &str = "http://127.0.0.1:3001";
 
 // ============ HTTP Fetch Helpers ============
 
@@ -542,12 +542,16 @@ pub async fn record_play_session(launchbox_db_id: i64, game_title: String, platf
 
 /// Get play statistics for a specific game
 pub async fn get_play_stats(launchbox_db_id: i64) -> Result<Option<PlayStats>, String> {
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Args {
-        launchbox_db_id: i64,
+    if is_tauri() {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Args {
+            launchbox_db_id: i64,
+        }
+        invoke("get_play_stats", Args { launchbox_db_id }).await
+    } else {
+        http_get(&format!("/api/stats/{}", launchbox_db_id)).await
     }
-    invoke("get_play_stats", Args { launchbox_db_id }).await
 }
 
 /// Get recently played games
@@ -592,12 +596,16 @@ pub async fn remove_favorite(launchbox_db_id: i64) -> Result<(), String> {
 
 /// Check if a game is a favorite
 pub async fn is_favorite(launchbox_db_id: i64) -> Result<bool, String> {
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Args {
-        launchbox_db_id: i64,
+    if is_tauri() {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Args {
+            launchbox_db_id: i64,
+        }
+        invoke("is_favorite", Args { launchbox_db_id }).await
+    } else {
+        http_get(&format!("/api/favorites/check/{}", launchbox_db_id)).await
     }
-    invoke("is_favorite", Args { launchbox_db_id }).await
 }
 
 /// Get all favorite games

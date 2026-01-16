@@ -56,9 +56,12 @@ pub fn GameDetails(
                 }
 
                 // Only load variants if this is a new game, not a variant switch
+                web_sys::console::log_1(&format!("Loading variants: is_variant_switch={}, variant_count={}", is_variant_switch, variant_count).into());
                 if !is_variant_switch && variant_count > 1 {
+                    web_sys::console::log_1(&format!("Fetching variants for game_id={}", game_id).into());
                     match tauri::get_game_variants(game_id.clone(), display_title.clone(), platform_id).await {
                         Ok(vars) => {
+                            web_sys::console::log_1(&format!("Got {} variants", vars.len()).into());
                             // Always select the first (preferred) variant - list is sorted by region preference
                             let preferred_variant_id = vars.first().map(|v| v.id.clone());
                             set_selected_variant.set(preferred_variant_id.clone());
@@ -323,10 +326,13 @@ fn VariantsSection(
     selected_variant: ReadSignal<Option<String>>,
     set_selected_variant: WriteSignal<Option<String>>,
 ) -> impl IntoView {
+    web_sys::console::log_1(&format!("VariantsSection: variant_count={}", variant_count).into());
     // Skip if no variants expected
     if variant_count <= 1 {
+        web_sys::console::log_1(&"VariantsSection: skipping (variant_count <= 1)".into());
         return view! { <div></div> }.into_any();
     }
+    web_sys::console::log_1(&"VariantsSection: rendering variants list".into());
 
     view! {
         <div class="game-variants-section">
