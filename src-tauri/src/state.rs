@@ -46,6 +46,8 @@ pub struct AppSettings {
     pub steamgriddb: SteamGridDBSettings,
     #[serde(default)]
     pub igdb: IGDBSettings,
+    #[serde(default)]
+    pub emumovies: EmuMoviesSettings,
 }
 
 /// ScreenScraper API settings
@@ -70,6 +72,13 @@ pub struct IGDBSettings {
     pub client_secret: String,
 }
 
+/// EmuMovies API settings
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EmuMoviesSettings {
+    pub username: String,
+    pub password: String,
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -85,6 +94,7 @@ impl Default for AppSettings {
             screenscraper: ScreenScraperSettings::default(),
             steamgriddb: SteamGridDBSettings::default(),
             igdb: IGDBSettings::default(),
+            emumovies: EmuMoviesSettings::default(),
         }
     }
 }

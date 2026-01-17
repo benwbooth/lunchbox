@@ -1914,7 +1914,13 @@ pub async fn import_game_images(
 
 /// Download an image with fallback to multiple sources
 ///
-/// Tries sources in order: LaunchBox CDN, libretro-thumbnails, SteamGridDB
+/// Tries sources in order:
+/// 1. LaunchBox CDN
+/// 2. libretro-thumbnails
+/// 3. SteamGridDB
+/// 4. IGDB
+/// 5. EmuMovies
+/// 6. ScreenScraper
 #[tauri::command]
 pub async fn download_image_with_fallback(
     game_title: String,
@@ -1929,7 +1935,7 @@ pub async fn download_image_with_fallback(
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
-    let service = ImageService::new(pool.clone(), cache_dir);
+    let service = ImageService::new(pool.clone(), cache_dir.clone());
 
     // Create SteamGridDB client if configured
     let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {
@@ -1942,12 +1948,60 @@ pub async fn download_image_with_fallback(
         None
     };
 
+    // Create IGDB client if configured
+    let igdb_client = if !state_guard.settings.igdb.client_id.is_empty()
+        && !state_guard.settings.igdb.client_secret.is_empty()
+    {
+        Some(crate::scraper::IGDBClient::new(
+            crate::scraper::IGDBConfig {
+                client_id: state_guard.settings.igdb.client_id.clone(),
+                client_secret: state_guard.settings.igdb.client_secret.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    // Create EmuMovies client if configured
+    let emumovies_client = if !state_guard.settings.emumovies.username.is_empty()
+        && !state_guard.settings.emumovies.password.is_empty()
+    {
+        Some(crate::images::EmuMoviesClient::new(
+            crate::images::EmuMoviesConfig {
+                username: state_guard.settings.emumovies.username.clone(),
+                password: state_guard.settings.emumovies.password.clone(),
+            },
+            cache_dir.clone(),
+        ))
+    } else {
+        None
+    };
+
+    // Create ScreenScraper client if configured
+    let screenscraper_client = if !state_guard.settings.screenscraper.dev_id.is_empty()
+        && !state_guard.settings.screenscraper.dev_password.is_empty()
+    {
+        Some(crate::scraper::ScreenScraperClient::new(
+            crate::scraper::ScreenScraperConfig {
+                dev_id: state_guard.settings.screenscraper.dev_id.clone(),
+                dev_password: state_guard.settings.screenscraper.dev_password.clone(),
+                user_id: state_guard.settings.screenscraper.user_id.clone(),
+                user_password: state_guard.settings.screenscraper.user_password.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
     service.download_with_fallback(
         &game_title,
         &platform,
         &image_type,
         launchbox_db_id,
         steamgriddb_client.as_ref(),
+        igdb_client.as_ref(),
+        emumovies_client.as_ref(),
+        screenscraper_client.as_ref(),
     ).await
         .map_err(|e| e.to_string())
 }

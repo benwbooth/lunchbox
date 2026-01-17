@@ -4,7 +4,9 @@
 //! - LaunchBox CDN (primary, requires metadata import)
 //! - libretro-thumbnails (free, no account needed)
 //! - SteamGridDB (requires API key)
-//! - ScreenScraper (requires account)
+//! - IGDB (requires Twitch OAuth credentials)
+//! - EmuMovies (requires account)
+//! - ScreenScraper (requires account, uses ROM checksums)
 //!
 //! Features:
 //! - Parallel downloads with configurable concurrency
@@ -12,6 +14,7 @@
 //! - Local caching with verification
 //! - Progress events for UI updates
 
+pub mod emumovies;
 pub mod libretro;
 
 use anyhow::{Context, Result};
@@ -22,6 +25,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 
+pub use emumovies::{EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType};
 pub use libretro::{LibRetroImageType, LibRetroThumbnailsClient};
 
 /// LaunchBox CDN base URL for images
@@ -38,7 +42,11 @@ pub enum ImageSource {
     LibRetro,
     /// SteamGridDB (requires API key)
     SteamGridDB,
-    /// ScreenScraper (requires account, rate limited)
+    /// IGDB (requires Twitch OAuth credentials)
+    IGDB,
+    /// EmuMovies (requires account)
+    EmuMovies,
+    /// ScreenScraper (requires account, best with ROM checksums)
     ScreenScraper,
 }
 
@@ -616,7 +624,14 @@ impl ImageService {
 
     /// Download an image using multiple sources with fallback
     ///
-    /// Tries sources in order: LaunchBox CDN, libretro-thumbnails, SteamGridDB
+    /// Tries sources in order:
+    /// 1. LaunchBox CDN (if metadata imported)
+    /// 2. libretro-thumbnails (free, no account)
+    /// 3. SteamGridDB (if API key configured)
+    /// 4. IGDB (if Twitch credentials configured)
+    /// 5. EmuMovies (if account configured)
+    /// 6. ScreenScraper (if account configured, title-based search)
+    ///
     /// Returns the local path on success
     pub async fn download_with_fallback(
         &self,
@@ -625,6 +640,9 @@ impl ImageService {
         image_type: &str,
         launchbox_db_id: Option<i64>,
         steamgriddb_client: Option<&crate::scraper::SteamGridDBClient>,
+        igdb_client: Option<&crate::scraper::IGDBClient>,
+        emumovies_client: Option<&EmuMoviesClient>,
+        screenscraper_client: Option<&crate::scraper::ScreenScraperClient>,
     ) -> Result<String> {
         // 1. Try LaunchBox CDN first (if we have database ID and metadata)
         if let Some(db_id) = launchbox_db_id {
@@ -675,7 +693,6 @@ impl ImageService {
                         };
 
                         if let Some(url) = url {
-                            // Download and cache
                             match self.download_from_url(&url, "steamgriddb", game_title, image_type).await {
                                 Ok(path) => {
                                     tracing::debug!("Downloaded from SteamGridDB: {}", path);
@@ -684,6 +701,95 @@ impl ImageService {
                                 Err(e) => {
                                     tracing::debug!("SteamGridDB download failed: {}", e);
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Try IGDB (requires Twitch OAuth credentials)
+        if let Some(client) = igdb_client {
+            if client.has_credentials() {
+                if let Ok(games) = client.search_games(game_title, 1).await {
+                    if let Some(game) = games.first() {
+                        // Map image type to IGDB image
+                        let image = match image_type {
+                            "Box - Front" => game.cover.as_ref(),
+                            "Screenshot - Gameplay" | "Screenshot" => {
+                                game.screenshots.as_ref().and_then(|s| s.first())
+                            }
+                            "Fanart - Background" => {
+                                game.artworks.as_ref().and_then(|a| a.first())
+                            }
+                            _ => game.cover.as_ref(),
+                        };
+
+                        if let Some(img) = image {
+                            // Use 720p size for good quality
+                            let url = img.url("720p");
+                            match self.download_from_url(&url, "igdb", game_title, image_type).await {
+                                Ok(path) => {
+                                    tracing::debug!("Downloaded from IGDB: {}", path);
+                                    return Ok(path);
+                                }
+                                Err(e) => {
+                                    tracing::debug!("IGDB download failed: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Try EmuMovies (requires account)
+        if let Some(client) = emumovies_client {
+            if client.has_credentials() {
+                if let Some(media_type) = emumovies::EmuMoviesMediaType::from_launchbox_type(image_type) {
+                    if let Some(path) = client.find_media(platform, media_type, game_title).await {
+                        tracing::debug!("Downloaded from EmuMovies: {}", path);
+                        return Ok(path);
+                    }
+                }
+            }
+        }
+
+        // 6. Try ScreenScraper (requires account)
+        // Note: ScreenScraper works best with ROM checksums, but we can try name-based search
+        // by using empty checksums - the API will attempt a name match
+        if let Some(client) = screenscraper_client {
+            if client.has_credentials() {
+                // Use platform mapping to get ScreenScraper platform ID
+                let platform_id = crate::scraper::screenscraper::get_screenscraper_platform_id(platform);
+
+                // Try lookup with just the game name (empty checksums for name-based search)
+                if let Ok(Some(game)) = client.lookup_by_checksum(
+                    "",  // CRC32
+                    "",  // MD5
+                    "",  // SHA1
+                    0,   // file size
+                    game_title,
+                    platform_id,
+                ).await {
+                    // Map image type to ScreenScraper media
+                    let url = match image_type {
+                        "Box - Front" => game.media.box_front,
+                        "Box - Back" => game.media.box_back,
+                        "Screenshot - Gameplay" | "Screenshot" => game.media.screenshot,
+                        "Fanart - Background" => game.media.fanart,
+                        "Clear Logo" => game.media.wheel,
+                        _ => game.media.box_front,
+                    };
+
+                    if let Some(url) = url {
+                        match self.download_from_url(&url, "screenscraper", game_title, image_type).await {
+                            Ok(path) => {
+                                tracing::debug!("Downloaded from ScreenScraper: {}", path);
+                                return Ok(path);
+                            }
+                            Err(e) => {
+                                tracing::debug!("ScreenScraper download failed: {}", e);
                             }
                         }
                     }

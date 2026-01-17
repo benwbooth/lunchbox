@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use crate::tauri::{
     get_settings, save_settings, test_screenscraper_connection, test_steamgriddb_connection,
     test_igdb_connection, AppSettings, ScreenScraperSettings, SteamGridDBSettings, IGDBSettings,
+    EmuMoviesSettings,
 };
 
 #[component]
@@ -30,6 +31,10 @@ pub fn Settings(
     // IGDB fields
     let (igdb_client_id, set_igdb_client_id) = signal(String::new());
     let (igdb_client_secret, set_igdb_client_secret) = signal(String::new());
+
+    // EmuMovies fields
+    let (em_username, set_em_username) = signal(String::new());
+    let (em_password, set_em_password) = signal(String::new());
 
     // Form state
     let (saving, set_saving) = signal(false);
@@ -79,6 +84,9 @@ pub fn Settings(
                         // IGDB
                         set_igdb_client_id.set(settings.igdb.client_id);
                         set_igdb_client_secret.set(settings.igdb.client_secret);
+                        // EmuMovies
+                        set_em_username.set(settings.emumovies.username);
+                        set_em_password.set(settings.emumovies.password);
 
                         set_loaded.set(true);
                     }
@@ -112,6 +120,8 @@ pub fn Settings(
         let api_key = sgdb_api_key.get();
         let client_id = igdb_client_id.get();
         let client_secret = igdb_client_secret.get();
+        let em_user = em_username.get();
+        let em_pass = em_password.get();
         let close_fn = on_close;
 
         spawn_local(async move {
@@ -138,6 +148,10 @@ pub fn Settings(
                 igdb: IGDBSettings {
                     client_id,
                     client_secret,
+                },
+                emumovies: EmuMoviesSettings {
+                    username: em_user,
+                    password: em_pass,
                 },
             };
 
@@ -422,6 +436,35 @@ pub fn Settings(
                                         </span>
                                     </Show>
                                 </div>
+                            </div>
+
+                            // EmuMovies Section
+                            <div class="settings-section">
+                                <h3>"EmuMovies"</h3>
+                                <p class="settings-help">
+                                    "Premium media including box art, screenshots, and videos."
+                                    " Requires EmuMovies account (lifetime access available)."
+                                </p>
+                                <label class="settings-label">
+                                    "Username"
+                                    <input
+                                        type="text"
+                                        class="settings-input"
+                                        placeholder="Your EmuMovies username"
+                                        prop:value=move || em_username.get()
+                                        on:input=move |ev| set_em_username.set(event_target_value(&ev))
+                                    />
+                                </label>
+                                <label class="settings-label">
+                                    "Password"
+                                    <input
+                                        type="password"
+                                        class="settings-input"
+                                        placeholder="Your EmuMovies password"
+                                        prop:value=move || em_password.get()
+                                        on:input=move |ev| set_em_password.set(event_target_value(&ev))
+                                    />
+                                </label>
                             </div>
 
                             <Show when=move || save_error.get().is_some()>

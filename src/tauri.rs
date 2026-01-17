@@ -225,6 +225,8 @@ pub struct AppSettings {
     pub steamgriddb: SteamGridDBSettings,
     #[serde(default)]
     pub igdb: IGDBSettings,
+    #[serde(default)]
+    pub emumovies: EmuMoviesSettings,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -244,6 +246,12 @@ pub struct SteamGridDBSettings {
 pub struct IGDBSettings {
     pub client_id: String,
     pub client_secret: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EmuMoviesSettings {
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
