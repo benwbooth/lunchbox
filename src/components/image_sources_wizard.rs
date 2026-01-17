@@ -90,10 +90,10 @@ const SOURCES: &[ImageSource] = &[
     ImageSource {
         id: "screenscraper",
         name: "ScreenScraper",
-        description: "Extensive database with checksum-based matching. Best when scraping ROMs directly.",
+        description: "Extensive database with checksum-based matching. Requires developer API access.",
         needs_account: true,
-        signup_url: Some("https://www.screenscraper.fr/"),
-        signup_instructions: "1. Create account at screenscraper.fr\n2. For API access, register as a developer\n3. Note: Rate limited without subscription\n4. Works best with ROM file checksums",
+        signup_url: Some("https://www.screenscraper.fr/forumsujet.php?frub=12"),
+        signup_instructions: "1. Create account at screenscraper.fr\n2. Post in the API forum requesting developer access\n3. Mention you're building 'Lunchbox' game launcher\n4. They'll reply with devId and devPassword\n5. Your user account gives higher rate limits",
     },
 ];
 
