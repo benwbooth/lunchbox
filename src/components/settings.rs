@@ -435,7 +435,7 @@ pub fn Settings(
                             // Storage location note
                             <Show when=move || !storage_name.get().is_empty()>
                                 <p class="settings-storage-note">
-                                    "Credentials saved to " {move || storage_name.get()}
+                                    "Credentials stored securely in " {move || storage_name.get()}
                                 </p>
                             </Show>
                         </div>

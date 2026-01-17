@@ -927,11 +927,12 @@ body {
 }
 
 .settings-storage-note {
-    margin-top: 16px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color);
-    color: var(--text-muted);
-    font-size: 12px;
+    margin-top: 20px;
+    padding: 12px;
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
     text-align: center;
 }
 
