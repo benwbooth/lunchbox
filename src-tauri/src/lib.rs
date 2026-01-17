@@ -76,6 +76,10 @@ pub fn run() {
             commands::get_image_cache_stats,
             commands::download_image_with_fallback,
             commands::download_libretro_thumbnail,
+            // Unified media download commands
+            commands::get_media_types,
+            commands::download_unified_media,
+            commands::get_cached_media_path,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use crate::app::ViewMode;
+use crate::app::{ViewMode, ArtworkDisplayType};
 
 #[component]
 pub fn Toolbar(
@@ -8,6 +8,8 @@ pub fn Toolbar(
     search_query: ReadSignal<String>,
     set_search_query: WriteSignal<String>,
     set_show_settings: WriteSignal<bool>,
+    artwork_type: ReadSignal<ArtworkDisplayType>,
+    set_artwork_type: WriteSignal<ArtworkDisplayType>,
 ) -> impl IntoView {
     view! {
         <header class="toolbar">
@@ -36,6 +38,38 @@ pub fn Toolbar(
                 </div>
             </div>
             <div class="toolbar-right">
+                // Artwork type dropdown (only show in grid view)
+                <Show when=move || view_mode.get() == ViewMode::Grid>
+                    <select
+                        class="artwork-dropdown"
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            let art_type = match value.as_str() {
+                                "box-front" => ArtworkDisplayType::BoxFront,
+                                "screenshot" => ArtworkDisplayType::Screenshot,
+                                "title-screen" => ArtworkDisplayType::TitleScreen,
+                                "fanart" => ArtworkDisplayType::Fanart,
+                                "clear-logo" => ArtworkDisplayType::ClearLogo,
+                                _ => ArtworkDisplayType::BoxFront,
+                            };
+                            set_artwork_type.set(art_type);
+                        }
+                    >
+                        {ArtworkDisplayType::all().iter().map(|at| {
+                            let id = at.media_type_id();
+                            let label = at.label();
+                            let current = artwork_type.get();
+                            view! {
+                                <option
+                                    value=id
+                                    selected=move || current == *at
+                                >
+                                    {label}
+                                </option>
+                            }
+                        }).collect::<Vec<_>>()}
+                    </select>
+                </Show>
                 <div class="view-toggle">
                     <button
                         class="view-btn"

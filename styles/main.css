@@ -1841,3 +1841,157 @@ body {
 .settings-collapsed h3 {
     font-size: 13px;
 }
+
+/* ============ Artwork Type Dropdown ============ */
+
+.artwork-dropdown {
+    padding: 6px 12px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    margin-right: 12px;
+}
+
+.artwork-dropdown:hover {
+    border-color: var(--accent-color);
+}
+
+.artwork-dropdown:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+/* ============ Download Progress Overlay ============ */
+
+.game-card-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    padding: 24px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.progress-bar {
+    height: 4px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: var(--accent-color);
+    transition: width 0.15s ease;
+}
+
+.progress-source {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.7);
+    text-align: center;
+}
+
+/* ============ 3D Box Viewer ============ */
+
+.box-3d-viewer {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    background-color: var(--bg-primary);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.box-3d-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.box-3d-controls {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+}
+
+.box-3d-hint {
+    background: rgba(0, 0, 0, 0.5);
+    color: rgba(255, 255, 255, 0.7);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+}
+
+/* ============ Media Gallery Tabs ============ */
+
+.media-gallery-section {
+    padding: 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+.media-gallery-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+
+.media-tab {
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px 6px 0 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.media-tab:hover {
+    background: var(--bg-hover);
+}
+
+.media-tab.active {
+    background: var(--bg-primary);
+    border-bottom-color: var(--bg-primary);
+    color: var(--accent-color);
+}
+
+.media-gallery-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 0 8px 8px 8px;
+    padding: 16px;
+    min-height: 300px;
+}
+
+.media-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.media-gallery-item {
+    aspect-ratio: 3 / 4;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.media-gallery-item:hover {
+    transform: scale(1.02);
+}
+
+.media-gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}

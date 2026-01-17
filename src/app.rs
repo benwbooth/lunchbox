@@ -2,6 +2,52 @@ use leptos::prelude::*;
 use crate::components::{Sidebar, GameGrid, GameDetails, Toolbar, Settings};
 use crate::tauri::Game;
 
+/// Artwork type to display in grid view
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum ArtworkDisplayType {
+    #[default]
+    BoxFront,
+    Screenshot,
+    TitleScreen,
+    Fanart,
+    ClearLogo,
+}
+
+impl ArtworkDisplayType {
+    /// Get the media type identifier for API calls
+    pub fn media_type_id(&self) -> &'static str {
+        match self {
+            ArtworkDisplayType::BoxFront => "box-front",
+            ArtworkDisplayType::Screenshot => "screenshot",
+            ArtworkDisplayType::TitleScreen => "title-screen",
+            ArtworkDisplayType::Fanart => "fanart",
+            ArtworkDisplayType::ClearLogo => "clear-logo",
+        }
+    }
+
+    /// Get display label
+    pub fn label(&self) -> &'static str {
+        match self {
+            ArtworkDisplayType::BoxFront => "Box Art",
+            ArtworkDisplayType::Screenshot => "Screenshot",
+            ArtworkDisplayType::TitleScreen => "Title Screen",
+            ArtworkDisplayType::Fanart => "Fanart",
+            ArtworkDisplayType::ClearLogo => "Clear Logo",
+        }
+    }
+
+    /// All artwork types
+    pub fn all() -> &'static [ArtworkDisplayType] {
+        &[
+            ArtworkDisplayType::BoxFront,
+            ArtworkDisplayType::Screenshot,
+            ArtworkDisplayType::TitleScreen,
+            ArtworkDisplayType::Fanart,
+            ArtworkDisplayType::ClearLogo,
+        ]
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     // State for selected platform (now uses platform name)
@@ -18,6 +64,8 @@ pub fn App() -> impl IntoView {
     let (show_settings, set_show_settings) = signal(false);
     // Trigger for refreshing collections
     let (collections_refresh, set_collections_refresh) = signal(0u32);
+    // State for artwork display type in grid
+    let (artwork_type, set_artwork_type) = signal(ArtworkDisplayType::default());
 
     view! {
         <div class="app-container">
@@ -27,6 +75,8 @@ pub fn App() -> impl IntoView {
                 search_query=search_query
                 set_search_query=set_search_query
                 set_show_settings=set_show_settings
+                artwork_type=artwork_type
+                set_artwork_type=set_artwork_type
             />
             <div class="main-content">
                 <Sidebar
@@ -43,6 +93,7 @@ pub fn App() -> impl IntoView {
                     search_query=search_query
                     view_mode=view_mode
                     selected_game=set_selected_game
+                    artwork_type=artwork_type
                 />
             </div>
             <GameDetails

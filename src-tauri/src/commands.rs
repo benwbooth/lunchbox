@@ -1737,3 +1737,240 @@ pub async fn download_libretro_thumbnail(
 
     Ok(result)
 }
+
+// ============ Media Download Service Commands ============
+
+/// Get all available normalized media types
+#[tauri::command]
+pub fn get_media_types() -> Vec<serde_json::Value> {
+    crate::images::NormalizedMediaType::all()
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "id": t.filename(),
+                "name": t.display_name(),
+            })
+        })
+        .collect()
+}
+
+/// Download media for a game using the new unified system
+///
+/// Uses round-robin source selection based on game ID
+#[tauri::command]
+pub async fn download_unified_media(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+    media_type: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<String, String> {
+    use crate::images::{MediaEventSender, NormalizedMediaType, MediaSource, GameMediaId, RoundRobinSourceSelector};
+
+    let normalized_type = NormalizedMediaType::from_str(&media_type)
+        .ok_or_else(|| format!("Unknown media type: {}", media_type))?;
+
+    let state_guard = state.read().await;
+
+    let pool = state_guard.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+
+    // Create event sender
+    let event_sender = MediaEventSender::new(app_handle);
+
+    // Get source using round-robin selection
+    let selector = RoundRobinSourceSelector::new();
+    let source = selector.source_for_game_and_type(launchbox_db_id, normalized_type);
+
+    // Emit started event
+    event_sender.started(launchbox_db_id, normalized_type, source);
+
+    // Build local path using new structure
+    let game_id = GameMediaId::from_launchbox_id(launchbox_db_id);
+    let local_path = game_id.media_path(&cache_dir, normalized_type, "png");
+
+    // Check if already exists
+    if local_path.exists() {
+        let path_str = local_path.to_string_lossy().to_string();
+        event_sender.completed(launchbox_db_id, normalized_type, path_str.clone(), source);
+        return Ok(path_str);
+    }
+
+    // Create parent directories
+    if let Some(parent) = local_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+    }
+
+    // Try to download based on source
+    let result = match source {
+        MediaSource::LaunchBox => {
+            download_from_launchbox_unified(
+                pool,
+                &cache_dir,
+                launchbox_db_id,
+                normalized_type,
+                &local_path,
+            ).await
+        }
+        MediaSource::LibRetro => {
+            download_from_libretro_unified(
+                &cache_dir,
+                &game_title,
+                &platform,
+                normalized_type,
+            ).await
+        }
+        _ => {
+            // Fall back to LaunchBox for unimplemented sources
+            download_from_launchbox_unified(
+                pool,
+                &cache_dir,
+                launchbox_db_id,
+                normalized_type,
+                &local_path,
+            ).await
+        }
+    };
+
+    match result {
+        Ok(path) => {
+            // Record in game_media table
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO game_media (launchbox_db_id, media_type, source, local_path, status, downloaded_at)
+                VALUES (?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP)
+                ON CONFLICT(launchbox_db_id, media_type, source) DO UPDATE SET
+                    local_path = excluded.local_path,
+                    status = 'completed',
+                    downloaded_at = CURRENT_TIMESTAMP
+                "#,
+            )
+            .bind(launchbox_db_id)
+            .bind(normalized_type.filename())
+            .bind(source.as_str())
+            .bind(&path)
+            .execute(pool)
+            .await;
+
+            event_sender.completed(launchbox_db_id, normalized_type, path.clone(), source);
+            Ok(path)
+        }
+        Err(e) => {
+            event_sender.failed(launchbox_db_id, normalized_type, e.to_string(), source);
+            Err(e.to_string())
+        }
+    }
+}
+
+async fn download_from_launchbox_unified(
+    pool: &sqlx::sqlite::SqlitePool,
+    _cache_dir: &std::path::Path,
+    launchbox_db_id: i64,
+    media_type: crate::images::NormalizedMediaType,
+    local_path: &std::path::Path,
+) -> Result<String, anyhow::Error> {
+    let launchbox_type = media_type.to_launchbox_type();
+
+    // Look up filename from game_images table
+    let row: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT filename FROM game_images
+        WHERE launchbox_db_id = ? AND image_type = ?
+        ORDER BY
+            CASE region
+                WHEN 'North America' THEN 0
+                WHEN 'United States' THEN 1
+                WHEN 'World' THEN 2
+                WHEN 'Europe' THEN 3
+                ELSE 10
+            END,
+            filename
+        LIMIT 1
+        "#,
+    )
+    .bind(launchbox_db_id)
+    .bind(launchbox_type)
+    .fetch_optional(pool)
+    .await?;
+
+    let filename = row
+        .map(|(f,)| f)
+        .ok_or_else(|| anyhow::anyhow!("No LaunchBox image found for type {}", launchbox_type))?;
+
+    // Build CDN URL
+    let url = format!("{}/{}", crate::images::LAUNCHBOX_CDN_URL, urlencoding::encode(&filename));
+
+    // Determine actual local path with correct extension
+    let extension = filename.rsplit('.').next().unwrap_or("png");
+    let actual_path = local_path.with_extension(extension);
+
+    // Download
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await?;
+    if !response.status().is_success() {
+        anyhow::bail!("HTTP {}: {}", response.status(), url);
+    }
+
+    let bytes = response.bytes().await?;
+    tokio::fs::write(&actual_path, &bytes).await?;
+
+    Ok(actual_path.to_string_lossy().to_string())
+}
+
+async fn download_from_libretro_unified(
+    cache_dir: &std::path::Path,
+    game_title: &str,
+    platform: &str,
+    media_type: crate::images::NormalizedMediaType,
+) -> Result<String, anyhow::Error> {
+    let libretro_type = match media_type {
+        crate::images::NormalizedMediaType::BoxFront |
+        crate::images::NormalizedMediaType::BoxBack => crate::images::LibRetroImageType::Boxart,
+        crate::images::NormalizedMediaType::Screenshot => crate::images::LibRetroImageType::Snap,
+        crate::images::NormalizedMediaType::TitleScreen => crate::images::LibRetroImageType::Title,
+        _ => anyhow::bail!("Media type not supported by libretro"),
+    };
+
+    let client = crate::images::LibRetroThumbnailsClient::new(cache_dir.to_path_buf());
+    client
+        .find_thumbnail(platform, libretro_type, game_title)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Not found in libretro-thumbnails"))
+}
+
+/// Get the cached path for a media file (if it exists)
+#[tauri::command]
+pub async fn get_cached_media_path(
+    launchbox_db_id: i64,
+    media_type: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<String>, String> {
+    let normalized_type = crate::images::NormalizedMediaType::from_str(&media_type)
+        .ok_or_else(|| format!("Unknown media type: {}", media_type))?;
+
+    let state_guard = state.read().await;
+
+    let pool = match state_guard.db_pool.as_ref() {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    // Check game_media table
+    let row: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT local_path FROM game_media
+        WHERE launchbox_db_id = ? AND media_type = ? AND status = 'completed' AND local_path IS NOT NULL
+        LIMIT 1
+        "#,
+    )
+    .bind(launchbox_db_id)
+    .bind(normalized_type.filename())
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(row.map(|(path,)| path))
+}

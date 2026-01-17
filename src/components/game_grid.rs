@@ -6,7 +6,7 @@ use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
 use web_sys::console;
 use chrono::{Datelike, NaiveDate};
-use crate::app::ViewMode;
+use crate::app::{ViewMode, ArtworkDisplayType};
 use crate::tauri::{self, file_to_asset_url, Game};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -287,6 +287,7 @@ pub fn GameGrid(
     search_query: ReadSignal<String>,
     view_mode: ReadSignal<ViewMode>,
     selected_game: WriteSignal<Option<Game>>,
+    artwork_type: ReadSignal<ArtworkDisplayType>,
 ) -> impl IntoView {
     // Games cache - we load chunks as needed
     let (games, set_games) = signal::<Vec<Game>>(Vec::new());

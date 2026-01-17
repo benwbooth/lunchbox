@@ -18,3 +18,4 @@
 ## Tools
 
 - Never use sed - always use the Edit tool for file modifications
+- Don't use sed for normal reading/writing files - use Read/Write/Edit tools instead

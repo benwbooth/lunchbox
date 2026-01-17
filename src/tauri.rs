@@ -888,3 +888,112 @@ pub async fn download_libretro_thumbnail(
         image_type,
     }).await
 }
+
+// ============ Unified Media Download Commands ============
+
+/// Available media types for download
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaType {
+    pub id: String,
+    pub name: String,
+}
+
+/// Media download event from backend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum MediaEvent {
+    /// Download has started
+    #[serde(rename_all = "camelCase")]
+    Started {
+        game_id: i64,
+        media_type: String,
+        source: String,
+    },
+    /// Download progress update
+    #[serde(rename_all = "camelCase")]
+    Progress {
+        game_id: i64,
+        media_type: String,
+        progress: f32,
+        source: String,
+    },
+    /// Download completed successfully
+    #[serde(rename_all = "camelCase")]
+    Completed {
+        game_id: i64,
+        media_type: String,
+        local_path: String,
+        source: String,
+    },
+    /// Download failed
+    #[serde(rename_all = "camelCase")]
+    Failed {
+        game_id: i64,
+        media_type: String,
+        error: String,
+        source: String,
+    },
+    /// Download was cancelled
+    #[serde(rename_all = "camelCase")]
+    Cancelled {
+        game_id: i64,
+        media_type: String,
+    },
+}
+
+impl MediaEvent {
+    pub fn game_id(&self) -> i64 {
+        match self {
+            MediaEvent::Started { game_id, .. } => *game_id,
+            MediaEvent::Progress { game_id, .. } => *game_id,
+            MediaEvent::Completed { game_id, .. } => *game_id,
+            MediaEvent::Failed { game_id, .. } => *game_id,
+            MediaEvent::Cancelled { game_id, .. } => *game_id,
+        }
+    }
+}
+
+/// Get all available normalized media types
+pub async fn get_media_types() -> Result<Vec<MediaType>, String> {
+    invoke_no_args("get_media_types").await
+}
+
+/// Download media for a game using the unified system with round-robin source selection
+pub async fn download_unified_media(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+    media_type: String,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        game_title: String,
+        platform: String,
+        media_type: String,
+    }
+    invoke("download_unified_media", Args {
+        launchbox_db_id,
+        game_title,
+        platform,
+        media_type,
+    }).await
+}
+
+/// Get the cached path for a media file (if it exists)
+pub async fn get_cached_media_path(
+    launchbox_db_id: i64,
+    media_type: String,
+) -> Result<Option<String>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        media_type: String,
+    }
+    invoke("get_cached_media_path", Args {
+        launchbox_db_id,
+        media_type,
+    }).await
+}

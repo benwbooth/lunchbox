@@ -5,9 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lunchbox</title>
     <link data-trunk rel="css" href="styles/main.css">
+    <!-- Three.js for 3D box viewer -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
     <div id="app"></div>
     <link data-trunk rel="rust" data-wasm-opt="z" />
+    <script data-trunk type="module" src="js/box3d.js"></script>
 </body>
 </html>

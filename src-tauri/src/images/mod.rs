@@ -13,9 +13,14 @@
 //! - Multi-source fallback (tries each source until one succeeds)
 //! - Local caching with verification
 //! - Progress events for UI updates
+//! - Round-robin source selection for testing
 
+pub mod download_service;
 pub mod emumovies;
+pub mod events;
 pub mod libretro;
+pub mod media_types;
+pub mod source_selector;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -25,8 +30,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 
+pub use download_service::{MediaDownloadService, MediaDownloadRequest};
 pub use emumovies::{EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType};
+pub use events::{MediaEvent, MediaEventSender};
 pub use libretro::{LibRetroImageType, LibRetroThumbnailsClient};
+pub use media_types::{GameMediaId, MediaSource, NormalizedMediaType};
+pub use source_selector::RoundRobinSourceSelector;
 
 /// LaunchBox CDN base URL for images
 pub const LAUNCHBOX_CDN_URL: &str = "https://images.launchbox-app.com";
