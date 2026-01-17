@@ -150,7 +150,7 @@ async fn get_platforms(
 
             let mut seen: HashSet<String> = HashSet::new();
             for (title,) in all_titles {
-                let normalized = normalize_title(&title).to_lowercase();
+                let normalized = normalize_for_dedup(&title);
                 seen.insert(normalized);
             }
             // Use database aliases or generate them if not present
@@ -175,6 +175,15 @@ struct GamesQuery {
     offset: Option<i64>,
 }
 
+/// Build search patterns from a query string - splits into words and creates LIKE patterns for each
+fn build_search_patterns(query: &str) -> Vec<String> {
+    query
+        .split_whitespace()
+        .filter(|word| !word.is_empty())
+        .map(|word| format!("%{}%", word))
+        .collect()
+}
+
 async fn get_games(
     State(state): State<SharedState>,
     axum::extract::Query(query): axum::extract::Query<GamesQuery>,
@@ -185,42 +194,59 @@ async fn get_games(
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
         let raw_rows = if let Some(ref search_query) = query.search {
-            let pattern = format!("%{}%", search_query);
-            if let Some(ref platform_name) = query.platform {
-                sqlx::query(
-                    r#"
-                    SELECT g.id, g.title, g.platform_id, p.name as platform,
-                           g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
-                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
-                    FROM games g
-                    JOIN platforms p ON g.platform_id = p.id
-                    WHERE p.name = ? AND g.title LIKE ?
-                    ORDER BY g.title
-                    "#
-                )
-                .bind(platform_name)
-                .bind(&pattern)
-                .fetch_all(games_pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            // Split search into words for flexible matching
+            let patterns = build_search_patterns(search_query);
+            if patterns.is_empty() {
+                Vec::new()
             } else {
-                sqlx::query(
-                    r#"
-                    SELECT g.id, g.title, g.platform_id, p.name as platform,
-                           g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                           g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
-                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
-                    FROM games g
-                    JOIN platforms p ON g.platform_id = p.id
-                    WHERE g.title LIKE ?
-                    ORDER BY g.title
-                    "#
-                )
-                .bind(&pattern)
-                .fetch_all(games_pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                // Build dynamic WHERE clause for multi-word search (SQLite uses ? for placeholders)
+                let like_clauses: Vec<&str> = patterns.iter().map(|_| "g.title LIKE ?").collect();
+                let where_clause = like_clauses.join(" AND ");
+
+                if let Some(ref platform_name) = query.platform {
+                    let sql = format!(
+                        r#"
+                        SELECT g.id, g.title, g.platform_id, p.name as platform,
+                               g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                               g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                               g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
+                        FROM games g
+                        JOIN platforms p ON g.platform_id = p.id
+                        WHERE p.name = ? AND ({})
+                        ORDER BY g.title
+                        "#,
+                        where_clause
+                    );
+                    let mut q = sqlx::query(&sql);
+                    q = q.bind(platform_name);
+                    for pattern in &patterns {
+                        q = q.bind(pattern);
+                    }
+                    q.fetch_all(games_pool)
+                        .await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                } else {
+                    let sql = format!(
+                        r#"
+                        SELECT g.id, g.title, g.platform_id, p.name as platform,
+                               g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                               g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                               g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
+                        FROM games g
+                        JOIN platforms p ON g.platform_id = p.id
+                        WHERE {}
+                        ORDER BY g.title
+                        "#,
+                        where_clause
+                    );
+                    let mut q = sqlx::query(&sql);
+                    for pattern in &patterns {
+                        q = q.bind(pattern);
+                    }
+                    q.fetch_all(games_pool)
+                        .await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                }
             }
         } else if let Some(ref platform_name) = query.platform {
             sqlx::query(
@@ -267,7 +293,7 @@ async fn get_games(
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
 
-            let normalized = normalize_title(&title).to_lowercase();
+            let normalized = normalize_for_dedup(&title);
             let key = format!("{}:{}", platform_id, normalized);
 
             *variant_counts.entry(key.clone()).or_insert(0) += 1;
@@ -345,22 +371,37 @@ async fn get_game_count(
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
         let titles: Vec<(String,)> = if let Some(ref search_query) = query.search {
-            let pattern = format!("%{}%", search_query);
-            if let Some(ref platform_name) = query.platform {
-                sqlx::query_as(
-                    "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ? AND g.title LIKE ?"
-                )
-                .bind(platform_name)
-                .bind(&pattern)
-                .fetch_all(games_pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            // Split search into words for flexible matching
+            let patterns = build_search_patterns(search_query);
+            if patterns.is_empty() {
+                Vec::new()
             } else {
-                sqlx::query_as("SELECT title FROM games WHERE title LIKE ?")
-                    .bind(&pattern)
-                    .fetch_all(games_pool)
-                    .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                let like_clauses: Vec<&str> = patterns.iter().map(|_| "g.title LIKE ?").collect();
+                let where_clause = like_clauses.join(" AND ");
+
+                if let Some(ref platform_name) = query.platform {
+                    let sql = format!(
+                        "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ? AND ({})",
+                        where_clause
+                    );
+                    let mut q = sqlx::query_as(&sql);
+                    q = q.bind(platform_name);
+                    for pattern in &patterns {
+                        q = q.bind(pattern);
+                    }
+                    q.fetch_all(games_pool)
+                        .await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                } else {
+                    let sql = format!("SELECT title FROM games g WHERE {}", where_clause);
+                    let mut q = sqlx::query_as(&sql);
+                    for pattern in &patterns {
+                        q = q.bind(pattern);
+                    }
+                    q.fetch_all(games_pool)
+                        .await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                }
             }
         } else if let Some(ref platform_name) = query.platform {
             sqlx::query_as(
@@ -379,7 +420,7 @@ async fn get_game_count(
 
         let mut seen: HashSet<String> = HashSet::new();
         for (title,) in titles {
-            let normalized = normalize_title(&title).to_lowercase();
+            let normalized = normalize_for_dedup(&title);
             seen.insert(normalized);
         }
         return Ok(Json(seen.len() as i64));
@@ -721,6 +762,7 @@ async fn remove_favorite(
 // Helpers
 // ============================================================================
 
+/// Normalize title for display - removes parenthetical content like (USA), (v1.0)
 fn normalize_title(title: &str) -> String {
     let mut result = String::new();
     let mut depth = 0;
@@ -730,6 +772,34 @@ fn normalize_title(title: &str) -> String {
             '(' => depth += 1,
             ')' => depth = (depth as i32 - 1).max(0) as usize,
             _ if depth == 0 => result.push(c),
+            _ => {}
+        }
+    }
+
+    result.trim().to_string()
+}
+
+/// Normalize title for deduplication - removes punctuation, normalizes whitespace, lowercases
+/// This allows "Canon - The Legend" and "Canon: The Legend" to be considered the same game
+fn normalize_for_dedup(title: &str) -> String {
+    let mut result = String::new();
+    let mut depth = 0;
+    let mut last_was_space = true; // Start true to trim leading spaces
+
+    for c in title.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = (depth as i32 - 1).max(0) as usize,
+            _ if depth == 0 => {
+                if c.is_alphanumeric() {
+                    result.push(c.to_ascii_lowercase());
+                    last_was_space = false;
+                } else if !last_was_space {
+                    // Replace any non-alphanumeric with a single space
+                    result.push(' ');
+                    last_was_space = true;
+                }
+            }
             _ => {}
         }
     }

@@ -1365,7 +1365,12 @@ impl UnifiedImporter {
         pb: &ProgressBar,
     ) -> Result<usize> {
         let mut imported = 0;
+        let mut skipped_dupes = 0;
         let batch_size = 1000;
+
+        // Build dedup cache: (platform_id, normalized_title) -> game_id
+        // This prevents inserting games that only differ by punctuation
+        let mut dedup_cache: HashMap<(i64, String), String> = HashMap::new();
 
         for chunk in games.chunks(batch_size) {
             let mut tx = self.pool.begin().await?;
@@ -1386,7 +1391,18 @@ impl UnifiedImporter {
                     id
                 };
 
+                // Normalize title for deduplication (removes punctuation, lowercases)
+                let normalized = normalize_title(&game.name);
+                let dedup_key = (platform_id, normalized.clone());
+
+                // Check if we already have this game (by normalized title + platform)
+                if dedup_cache.contains_key(&dedup_key) {
+                    skipped_dupes += 1;
+                    continue;
+                }
+
                 let game_id = uuid::Uuid::new_v4().to_string();
+                dedup_cache.insert(dedup_key, game_id.clone());
 
                 sqlx::query(r#"
                     INSERT INTO games (
@@ -1432,6 +1448,10 @@ impl UnifiedImporter {
             pb.inc(chunk.len() as u64);
         }
 
+        if skipped_dupes > 0 {
+            println!("  Skipped {} duplicates (same normalized title + platform)", skipped_dupes);
+        }
+
         Ok(imported)
     }
 
@@ -1469,7 +1489,7 @@ impl UnifiedImporter {
     }
 
     /// Batch import LibRetro games for a single platform
-    /// Uses transaction for speed, matches by CRC or inserts new
+    /// Uses transaction for speed, matches by CRC or normalized title, or inserts new
     pub async fn import_libretro_games_batch(
         &mut self,
         platform_name: &str,
@@ -1496,6 +1516,10 @@ impl UnifiedImporter {
         };
 
         let mut imported = 0;
+        let mut skipped_dupes = 0;
+
+        // Dedup cache for this platform: normalized_title -> game_id
+        let mut dedup_cache: HashMap<String, String> = HashMap::new();
 
         for game in games {
             let primary_rom = game.roms.first();
@@ -1537,8 +1561,17 @@ impl UnifiedImporter {
                 .execute(&mut *tx)
                 .await?;
             } else {
+                // Check dedup cache by normalized title
+                let normalized = normalize_title(&game.name);
+                if dedup_cache.contains_key(&normalized) {
+                    skipped_dupes += 1;
+                    continue;
+                }
+
                 // Insert new game
                 let game_id = uuid::Uuid::new_v4().to_string();
+                dedup_cache.insert(normalized, game_id.clone());
+
                 sqlx::query(r#"
                     INSERT INTO games (
                         id, title, platform_id,
@@ -1565,6 +1598,11 @@ impl UnifiedImporter {
         }
 
         tx.commit().await?;
+
+        if skipped_dupes > 0 {
+            println!("    Skipped {} duplicates", skipped_dupes);
+        }
+
         Ok(imported)
     }
 
