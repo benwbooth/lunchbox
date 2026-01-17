@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::console;
 use chrono::{Datelike, NaiveDate};
 use crate::app::{ViewMode, ArtworkDisplayType};
-use crate::tauri::{self, file_to_asset_url, Game};
+use crate::tauri::{self, Game};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -890,16 +890,16 @@ pub fn GameGrid(
 
 #[component]
 fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
+    use crate::components::LazyImage;
+
     let display_title = game.display_title.clone();
     let first_char = game.display_title.chars().next().unwrap_or('?').to_string();
     let developer = game.developer.clone();
     let variant_count = game.variant_count;
-    let box_front = game.box_front_path.clone();
+    let launchbox_db_id = game.database_id;
+    let platform = game.platform.clone();
+    let title_for_img = game.title.clone();
 
-    // Debug: log variant_count for first few games
-    if game.display_title.starts_with("A") || game.display_title.starts_with("B") {
-        console::log_1(&format!("GameCard '{}': variant_count={}", display_title, variant_count).into());
-    }
     let game_for_click = game.clone();
 
     view! {
@@ -908,22 +908,15 @@ fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
             on:click=move |_| on_select.set(Some(game_for_click.clone()))
         >
             <div class="game-cover">
-                {match box_front {
-                    Some(path) => {
-                        let url = file_to_asset_url(&path);
-                        view! {
-                            <img
-                                src=url
-                                alt=display_title.clone()
-                                class="cover-image"
-                                loading="lazy"
-                            />
-                        }.into_any()
-                    }
-                    None => view! {
-                        <div class="cover-placeholder">{first_char.clone()}</div>
-                    }.into_any()
-                }}
+                <LazyImage
+                    launchbox_db_id=launchbox_db_id
+                    game_title=title_for_img
+                    platform=platform
+                    image_type="Box - Front".to_string()
+                    alt=display_title.clone()
+                    class="cover-image".to_string()
+                    placeholder=first_char.clone()
+                />
                 {(variant_count > 1).then(|| view! {
                     <span class="variant-badge">{variant_count}</span>
                 })}
