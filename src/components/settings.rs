@@ -2,11 +2,12 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use std::cell::Cell;
+use std::rc::Rc;
 use crate::tauri::{
     get_settings, save_settings, get_credential_storage_name,
     test_screenscraper_connection, test_steamgriddb_connection,
-    test_igdb_connection, AppSettings, ScreenScraperSettings, SteamGridDBSettings, IGDBSettings,
-    EmuMoviesSettings,
+    test_igdb_connection, AppSettings,
 };
 use super::ImageSourcesWizard;
 
@@ -15,22 +16,9 @@ pub fn Settings(
     show: ReadSignal<bool>,
     on_close: WriteSignal<bool>,
 ) -> impl IntoView {
-    // ScreenScraper fields
-    let (ss_dev_id, set_ss_dev_id) = signal(String::new());
-    let (ss_dev_password, set_ss_dev_password) = signal(String::new());
-    let (ss_user_id, set_ss_user_id) = signal(String::new());
-    let (ss_user_password, set_ss_user_password) = signal(String::new());
-
-    // SteamGridDB fields
-    let (sgdb_api_key, set_sgdb_api_key) = signal(String::new());
-
-    // IGDB fields
-    let (igdb_client_id, set_igdb_client_id) = signal(String::new());
-    let (igdb_client_secret, set_igdb_client_secret) = signal(String::new());
-
-    // EmuMovies fields
-    let (em_username, set_em_username) = signal(String::new());
-    let (em_password, set_em_password) = signal(String::new());
+    // Settings state: current values and last-saved values
+    let settings = RwSignal::new(AppSettings::default());
+    let saved_settings = RwSignal::new(AppSettings::default());
 
     // Form state
     let (save_error, set_save_error) = signal::<Option<String>>(None);
@@ -38,6 +26,7 @@ pub fn Settings(
     let (loaded, set_loaded) = signal(false);
     let (saving, set_saving) = signal(false);
     let (storage_name, set_storage_name) = signal(String::new());
+    let user_modified = Rc::new(Cell::new(false));
 
     // Connection test state
     let (testing_ss, set_testing_ss) = signal(false);
@@ -51,32 +40,25 @@ pub fn Settings(
     let (show_wizard, set_show_wizard) = signal(false);
 
     // Load settings when shown
+    let user_modified_for_load = user_modified.clone();
     Effect::new(move || {
         if show.get() && !loaded.get() {
+            user_modified_for_load.set(false);
             set_loading.set(true);
+            let user_modified_inner = user_modified_for_load.clone();
             spawn_local(async move {
-                // Fetch storage name
                 if let Ok(name) = get_credential_storage_name().await {
                     set_storage_name.set(name);
                 }
 
                 match get_settings().await {
-                    Ok(settings) => {
-                        // ScreenScraper
-                        set_ss_dev_id.set(settings.screenscraper.dev_id);
-                        set_ss_dev_password.set(settings.screenscraper.dev_password);
-                        set_ss_user_id.set(settings.screenscraper.user_id.unwrap_or_default());
-                        set_ss_user_password.set(settings.screenscraper.user_password.unwrap_or_default());
-                        // SteamGridDB
-                        set_sgdb_api_key.set(settings.steamgriddb.api_key);
-                        // IGDB
-                        set_igdb_client_id.set(settings.igdb.client_id);
-                        set_igdb_client_secret.set(settings.igdb.client_secret);
-                        // EmuMovies
-                        set_em_username.set(settings.emumovies.username);
-                        set_em_password.set(settings.emumovies.password);
-
+                    Ok(s) => {
+                        settings.set(s.clone());
+                        saved_settings.set(s);
                         set_loaded.set(true);
+                        gloo_timers::callback::Timeout::new(100, move || {
+                            user_modified_inner.set(true);
+                        }).forget();
                     }
                     Err(e) => {
                         set_save_error.set(Some(format!("Failed to load settings: {}", e)));
@@ -97,72 +79,39 @@ pub fn Settings(
     // Auto-save function
     let do_save = move || {
         if !loaded.get() || saving.get() {
-            return; // Don't save while loading or already saving
+            return;
         }
 
         set_saving.set(true);
         set_save_error.set(None);
 
-        let dev_id = ss_dev_id.get();
-        let dev_password = ss_dev_password.get();
-        let user_id = ss_user_id.get();
-        let user_password = ss_user_password.get();
-        let api_key = sgdb_api_key.get();
-        let client_id = igdb_client_id.get();
-        let client_secret = igdb_client_secret.get();
-        let em_user = em_username.get();
-        let em_pass = em_password.get();
-
+        let current = settings.get();
         spawn_local(async move {
-            let settings = AppSettings {
-                data_directory: None,
-                media_directory: None,
-                programs_directory: None,
-                saves_directory: None,
-                screenscraper: ScreenScraperSettings {
-                    dev_id,
-                    dev_password,
-                    user_id: if user_id.is_empty() { None } else { Some(user_id) },
-                    user_password: if user_password.is_empty() { None } else { Some(user_password) },
-                },
-                steamgriddb: SteamGridDBSettings {
-                    api_key,
-                },
-                igdb: IGDBSettings {
-                    client_id,
-                    client_secret,
-                },
-                emumovies: EmuMoviesSettings {
-                    username: em_user,
-                    password: em_pass,
-                },
-            };
-
-            if let Err(e) = save_settings(settings).await {
-                set_save_error.set(Some(e));
+            match save_settings(current.clone()).await {
+                Ok(()) => {
+                    saved_settings.set(current);
+                }
+                Err(e) => {
+                    set_save_error.set(Some(e));
+                }
             }
             set_saving.set(false);
         });
     };
 
-    // Auto-save when any field changes (after initial load)
+    // Auto-save when settings change (after initial load)
+    let user_modified_for_save = user_modified.clone();
     Effect::new(move || {
-        // Track all fields
-        let _ = ss_dev_id.get();
-        let _ = ss_dev_password.get();
-        let _ = ss_user_id.get();
-        let _ = ss_user_password.get();
-        let _ = sgdb_api_key.get();
-        let _ = igdb_client_id.get();
-        let _ = igdb_client_secret.get();
-        let _ = em_username.get();
-        let _ = em_password.get();
-
-        // Only save after initial load
-        if loaded.get() {
+        let _ = settings.get(); // Track changes
+        if loaded.get() && user_modified_for_save.get() {
             do_save();
         }
     });
+
+    // Helper to check if a field is saved (current == saved)
+    let is_saved = move |get_field: fn(&AppSettings) -> &str| {
+        !saving.get() && get_field(&settings.get()) == get_field(&saved_settings.get())
+    };
 
     view! {
         <Show when=move || show.get()>
@@ -212,43 +161,69 @@ pub fn Settings(
                                 </div>
                                 <label class="settings-label">
                                     "Developer ID"
-                                    <input
-                                        type="text"
-                                        class="settings-input"
-                                        placeholder="Your dev ID"
-                                        prop:value=move || ss_dev_id.get()
-                                        on:input=move |ev| set_ss_dev_id.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="text"
+                                            class="settings-input"
+                                            placeholder="Your dev ID"
+                                            prop:value=move || settings.get().screenscraper.dev_id
+                                            on:input=move |ev| settings.update(|s| s.screenscraper.dev_id = event_target_value(&ev))
+                                        />
+                                        <Show when=move || is_saved(|s| &s.screenscraper.dev_id)>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <label class="settings-label">
                                     "Developer Password"
-                                    <input
-                                        type="password"
-                                        class="settings-input"
-                                        placeholder="Your dev password"
-                                        prop:value=move || ss_dev_password.get()
-                                        on:input=move |ev| set_ss_dev_password.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="password"
+                                            class="settings-input"
+                                            placeholder="Your dev password"
+                                            prop:value=move || settings.get().screenscraper.dev_password
+                                            on:input=move |ev| settings.update(|s| s.screenscraper.dev_password = event_target_value(&ev))
+                                        />
+                                        <Show when=move || is_saved(|s| &s.screenscraper.dev_password)>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <label class="settings-label">
                                     "User ID (optional, for higher rate limits)"
-                                    <input
-                                        type="text"
-                                        class="settings-input"
-                                        placeholder="Your ScreenScraper username"
-                                        prop:value=move || ss_user_id.get()
-                                        on:input=move |ev| set_ss_user_id.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="text"
+                                            class="settings-input"
+                                            placeholder="Your ScreenScraper username"
+                                            prop:value=move || settings.get().screenscraper.user_id.clone().unwrap_or_default()
+                                            on:input=move |ev| {
+                                                let v = event_target_value(&ev);
+                                                settings.update(|s| s.screenscraper.user_id = if v.is_empty() { None } else { Some(v) })
+                                            }
+                                        />
+                                        <Show when=move || !saving.get() && settings.get().screenscraper.user_id == saved_settings.get().screenscraper.user_id>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <label class="settings-label">
                                     "User Password"
-                                    <input
-                                        type="password"
-                                        class="settings-input"
-                                        placeholder="Your ScreenScraper password"
-                                        prop:value=move || ss_user_password.get()
-                                        on:input=move |ev| set_ss_user_password.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="password"
+                                            class="settings-input"
+                                            placeholder="Your ScreenScraper password"
+                                            prop:value=move || settings.get().screenscraper.user_password.clone().unwrap_or_default()
+                                            on:input=move |ev| {
+                                                let v = event_target_value(&ev);
+                                                settings.update(|s| s.screenscraper.user_password = if v.is_empty() { None } else { Some(v) })
+                                            }
+                                        />
+                                        <Show when=move || !saving.get() && settings.get().screenscraper.user_password == saved_settings.get().screenscraper.user_password>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <div class="settings-test-row">
                                     <button
@@ -256,15 +231,10 @@ pub fn Settings(
                                         on:click=move |_| {
                                             set_testing_ss.set(true);
                                             set_ss_test_result.set(None);
-                                            let dev_id = ss_dev_id.get();
-                                            let dev_password = ss_dev_password.get();
-                                            let user_id = ss_user_id.get();
-                                            let user_password = ss_user_password.get();
+                                            let s = settings.get().screenscraper.clone();
                                             spawn_local(async move {
                                                 let result = test_screenscraper_connection(
-                                                    dev_id, dev_password,
-                                                    if user_id.is_empty() { None } else { Some(user_id) },
-                                                    if user_password.is_empty() { None } else { Some(user_password) },
+                                                    s.dev_id, s.dev_password, s.user_id, s.user_password
                                                 ).await;
                                                 match result {
                                                     Ok(res) => {
@@ -305,13 +275,18 @@ pub fn Settings(
                                 </div>
                                 <label class="settings-label">
                                     "API Key"
-                                    <input
-                                        type="password"
-                                        class="settings-input"
-                                        placeholder="Your SteamGridDB API key"
-                                        prop:value=move || sgdb_api_key.get()
-                                        on:input=move |ev| set_sgdb_api_key.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="password"
+                                            class="settings-input"
+                                            placeholder="Your SteamGridDB API key"
+                                            prop:value=move || settings.get().steamgriddb.api_key
+                                            on:input=move |ev| settings.update(|s| s.steamgriddb.api_key = event_target_value(&ev))
+                                        />
+                                        <Show when=move || is_saved(|s| &s.steamgriddb.api_key)>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <div class="settings-test-row">
                                     <button
@@ -319,7 +294,7 @@ pub fn Settings(
                                         on:click=move |_| {
                                             set_testing_sgdb.set(true);
                                             set_sgdb_test_result.set(None);
-                                            let api_key = sgdb_api_key.get();
+                                            let api_key = settings.get().steamgriddb.api_key.clone();
                                             spawn_local(async move {
                                                 let result = test_steamgriddb_connection(api_key).await;
                                                 match result {
@@ -356,23 +331,33 @@ pub fn Settings(
                                 </div>
                                 <label class="settings-label">
                                     "Twitch Client ID"
-                                    <input
-                                        type="text"
-                                        class="settings-input"
-                                        placeholder="Your Twitch Client ID"
-                                        prop:value=move || igdb_client_id.get()
-                                        on:input=move |ev| set_igdb_client_id.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="text"
+                                            class="settings-input"
+                                            placeholder="Your Twitch Client ID"
+                                            prop:value=move || settings.get().igdb.client_id
+                                            on:input=move |ev| settings.update(|s| s.igdb.client_id = event_target_value(&ev))
+                                        />
+                                        <Show when=move || is_saved(|s| &s.igdb.client_id)>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <label class="settings-label">
                                     "Twitch Client Secret"
-                                    <input
-                                        type="password"
-                                        class="settings-input"
-                                        placeholder="Your Twitch Client Secret"
-                                        prop:value=move || igdb_client_secret.get()
-                                        on:input=move |ev| set_igdb_client_secret.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="password"
+                                            class="settings-input"
+                                            placeholder="Your Twitch Client Secret"
+                                            prop:value=move || settings.get().igdb.client_secret
+                                            on:input=move |ev| settings.update(|s| s.igdb.client_secret = event_target_value(&ev))
+                                        />
+                                        <Show when=move || is_saved(|s| &s.igdb.client_secret)>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <div class="settings-test-row">
                                     <button
@@ -380,10 +365,9 @@ pub fn Settings(
                                         on:click=move |_| {
                                             set_testing_igdb.set(true);
                                             set_igdb_test_result.set(None);
-                                            let client_id = igdb_client_id.get();
-                                            let client_secret = igdb_client_secret.get();
+                                            let igdb = settings.get().igdb.clone();
                                             spawn_local(async move {
-                                                let result = test_igdb_connection(client_id, client_secret).await;
+                                                let result = test_igdb_connection(igdb.client_id, igdb.client_secret).await;
                                                 match result {
                                                     Ok(res) => {
                                                         let msg = if let Some(info) = res.user_info {
@@ -417,23 +401,33 @@ pub fn Settings(
                                 </p>
                                 <label class="settings-label">
                                     "Username"
-                                    <input
-                                        type="text"
-                                        class="settings-input"
-                                        placeholder="Your EmuMovies username"
-                                        prop:value=move || em_username.get()
-                                        on:input=move |ev| set_em_username.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="text"
+                                            class="settings-input"
+                                            placeholder="Your EmuMovies username"
+                                            prop:value=move || settings.get().emumovies.username
+                                            on:input=move |ev| settings.update(|s| s.emumovies.username = event_target_value(&ev))
+                                        />
+                                        <Show when=move || is_saved(|s| &s.emumovies.username)>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                                 <label class="settings-label">
                                     "Password"
-                                    <input
-                                        type="password"
-                                        class="settings-input"
-                                        placeholder="Your EmuMovies password"
-                                        prop:value=move || em_password.get()
-                                        on:input=move |ev| set_em_password.set(event_target_value(&ev))
-                                    />
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="password"
+                                            class="settings-input"
+                                            placeholder="Your EmuMovies password"
+                                            prop:value=move || settings.get().emumovies.password
+                                            on:input=move |ev| settings.update(|s| s.emumovies.password = event_target_value(&ev))
+                                        />
+                                        <Show when=move || is_saved(|s| &s.emumovies.password)>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
                                 </label>
                             </div>
 

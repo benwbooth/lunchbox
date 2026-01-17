@@ -8,6 +8,7 @@
 - No TODOs, no "coming in a future update" - implement it now or break it into smaller steps
 - Keep main.rs thin - modularize command implementations into separate files
 - CLI commands should call into module functions, not contain all the logic inline
+- **Never enumerate struct fields in multiple places** - if adding a field requires changes in 5 places, refactor to use iteration, derive macros, or serde. Define fields once.
 
 ## Workflow
 
