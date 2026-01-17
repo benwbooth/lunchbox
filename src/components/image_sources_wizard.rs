@@ -92,7 +92,7 @@ const SOURCES: &[ImageSource] = &[
         name: "ScreenScraper",
         description: "Extensive database with checksum-based matching. Requires developer API access.",
         needs_account: true,
-        signup_url: Some("https://www.screenscraper.fr/forumsujet.php?frub=12"),
+        signup_url: Some("https://www.screenscraper.fr/forumsujets.php?frub=12&numpage=0"),
         signup_instructions: "1. Create account at screenscraper.fr\n2. Post in the API forum requesting developer access\n3. Mention you're building 'Lunchbox' game launcher\n4. They'll reply with devId and devPassword\n5. Your user account gives higher rate limits",
     },
 ];
