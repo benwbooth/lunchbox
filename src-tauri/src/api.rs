@@ -117,6 +117,9 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/favorites", get(get_favorites))
         .route("/api/favorites/check/:db_id", get(check_is_favorite))
         .route("/api/favorites/:game_id", post(add_favorite).delete(remove_favorite))
+        // rspc-style endpoints for image handling
+        .route("/rspc/get_game_image", get(rspc_get_game_image))
+        .route("/rspc/download_image_with_fallback", get(rspc_download_image_with_fallback))
         .layer(cors)
         .with_state(state)
 }
@@ -787,5 +790,184 @@ async fn remove_favorite(
     }
 
     Ok(Json(false))
+}
+
+// ============================================================================
+// rspc-style Image Endpoints
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetGameImageInput {
+    launchbox_db_id: i64,
+    image_type: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageInfo {
+    pub id: i64,
+    pub launchbox_db_id: i64,
+    pub image_type: String,
+    pub cdn_url: String,
+    pub local_path: Option<String>,
+    pub downloaded: bool,
+}
+
+async fn rspc_get_game_image(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<Json<Option<ImageInfo>>, (StatusCode, String)> {
+    // Parse the input parameter (JSON-encoded)
+    let input_str = params.get("input").ok_or_else(|| {
+        (StatusCode::BAD_REQUEST, "Missing 'input' parameter".to_string())
+    })?;
+
+    let input: GetGameImageInput = serde_json::from_str(input_str).map_err(|e| {
+        (StatusCode::BAD_REQUEST, format!("Invalid input: {}", e))
+    })?;
+
+    tracing::info!("rspc_get_game_image: launchbox_db_id={}, image_type={}",
+        input.launchbox_db_id, input.image_type);
+
+    let state_guard = state.read().await;
+
+    if let Some(ref pool) = state_guard.db_pool {
+        let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+        let service = crate::images::ImageService::new(pool.clone(), cache_dir);
+
+        match service.get_image_by_type(input.launchbox_db_id, &input.image_type).await {
+            Ok(Some(info)) => {
+                return Ok(Json(Some(ImageInfo {
+                    id: info.id,
+                    launchbox_db_id: info.launchbox_db_id,
+                    image_type: info.image_type,
+                    cdn_url: info.cdn_url,
+                    local_path: info.local_path,
+                    downloaded: info.downloaded,
+                })));
+            }
+            Ok(None) => {
+                tracing::info!("  No image metadata found");
+                return Ok(Json(None));
+            }
+            Err(e) => {
+                tracing::warn!("  Error getting image: {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+            }
+        }
+    }
+
+    Ok(Json(None))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadImageWithFallbackInput {
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+}
+
+async fn rspc_download_image_with_fallback(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<Json<String>, (StatusCode, String)> {
+    // Parse the input parameter (JSON-encoded)
+    let input_str = params.get("input").ok_or_else(|| {
+        (StatusCode::BAD_REQUEST, "Missing 'input' parameter".to_string())
+    })?;
+
+    let input: DownloadImageWithFallbackInput = serde_json::from_str(input_str).map_err(|e| {
+        (StatusCode::BAD_REQUEST, format!("Invalid input: {}", e))
+    })?;
+
+    tracing::info!("rspc_download_image_with_fallback: game='{}', platform='{}', type='{}', db_id={:?}",
+        input.game_title, input.platform, input.image_type, input.launchbox_db_id);
+
+    let state_guard = state.read().await;
+
+    let pool = state_guard.db_pool.as_ref()
+        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "Database not initialized".to_string()))?;
+
+    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let service = crate::images::ImageService::new(pool.clone(), cache_dir.clone());
+
+    // Create SteamGridDB client if configured
+    let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {
+        Some(crate::scraper::SteamGridDBClient::new(
+            crate::scraper::SteamGridDBConfig {
+                api_key: state_guard.settings.steamgriddb.api_key.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    // Create IGDB client if configured
+    let igdb_client = if !state_guard.settings.igdb.client_id.is_empty()
+        && !state_guard.settings.igdb.client_secret.is_empty()
+    {
+        Some(crate::scraper::IGDBClient::new(
+            crate::scraper::IGDBConfig {
+                client_id: state_guard.settings.igdb.client_id.clone(),
+                client_secret: state_guard.settings.igdb.client_secret.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    // Create EmuMovies client if configured
+    let emumovies_client = if !state_guard.settings.emumovies.username.is_empty()
+        && !state_guard.settings.emumovies.password.is_empty()
+    {
+        Some(crate::images::EmuMoviesClient::new(
+            crate::images::EmuMoviesConfig {
+                username: state_guard.settings.emumovies.username.clone(),
+                password: state_guard.settings.emumovies.password.clone(),
+            },
+            cache_dir.clone(),
+        ))
+    } else {
+        None
+    };
+
+    // Create ScreenScraper client if configured
+    let screenscraper_client = if !state_guard.settings.screenscraper.dev_id.is_empty()
+        && !state_guard.settings.screenscraper.dev_password.is_empty()
+    {
+        Some(crate::scraper::ScreenScraperClient::new(
+            crate::scraper::ScreenScraperConfig {
+                dev_id: state_guard.settings.screenscraper.dev_id.clone(),
+                dev_password: state_guard.settings.screenscraper.dev_password.clone(),
+                user_id: state_guard.settings.screenscraper.user_id.clone(),
+                user_password: state_guard.settings.screenscraper.user_password.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    match service.download_with_fallback(
+        &input.game_title,
+        &input.platform,
+        &input.image_type,
+        input.launchbox_db_id,
+        steamgriddb_client.as_ref(),
+        igdb_client.as_ref(),
+        emumovies_client.as_ref(),
+        screenscraper_client.as_ref(),
+    ).await {
+        Ok(path) => {
+            tracing::info!("  Download succeeded: {}", path);
+            Ok(Json(path))
+        }
+        Err(e) => {
+            tracing::warn!("  Download failed: {}", e);
+            Err((StatusCode::NOT_FOUND, e.to_string()))
+        }
+    }
 }
 

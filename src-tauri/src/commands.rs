@@ -1510,7 +1510,7 @@ pub async fn get_favorites(
 // ============ Image Commands ============
 
 /// Get the cache directory for images (uses media_directory)
-fn get_cache_dir(settings: &AppSettings) -> PathBuf {
+pub fn get_cache_dir(settings: &AppSettings) -> PathBuf {
     settings.get_media_directory()
 }
 
