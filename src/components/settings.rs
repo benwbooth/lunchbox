@@ -118,6 +118,7 @@ pub fn Settings(
             let settings = AppSettings {
                 launchbox_path: if lb_path.is_empty() { None } else { Some(PathBuf::from(lb_path)) },
                 retroarch_path: if ra_path.is_empty() { None } else { Some(PathBuf::from(ra_path)) },
+                cache_directory: None,  // Uses default location
                 rom_directories: rom_dirs
                     .lines()
                     .filter(|l| !l.trim().is_empty())

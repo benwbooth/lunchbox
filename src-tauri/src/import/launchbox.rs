@@ -275,6 +275,109 @@ impl LaunchBoxImporter {
 
         Ok(mappings)
     }
+
+    /// Get total count of game images
+    pub async fn count_game_images(&self) -> Result<i64> {
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM GameImages")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count)
+    }
+
+    /// Get all game images in batches for import
+    /// Returns a stream of image records for memory-efficient processing
+    pub async fn get_all_game_images(
+        &self,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<LbGameImage>> {
+        let images = sqlx::query_as::<_, LbGameImage>(
+            r#"
+            SELECT FileName, DatabaseId, Type, Region, CRC32
+            FROM GameImages
+            ORDER BY DatabaseId
+            LIMIT ? OFFSET ?
+            "#,
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(images)
+    }
+
+    /// Get images for multiple games at once (more efficient for batch lookups)
+    pub async fn get_images_for_games(&self, database_ids: &[i64]) -> Result<Vec<LbGameImage>> {
+        if database_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build placeholders for IN clause
+        let placeholders: String = database_ids
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let query = format!(
+            r#"
+            SELECT FileName, DatabaseId, Type, Region, CRC32
+            FROM GameImages
+            WHERE DatabaseId IN ({})
+            ORDER BY DatabaseId, Type
+            "#,
+            placeholders
+        );
+
+        let mut q = sqlx::query_as::<_, LbGameImage>(&query);
+        for id in database_ids {
+            q = q.bind(id);
+        }
+
+        let images = q.fetch_all(&self.pool).await?;
+        Ok(images)
+    }
+
+    /// Get the first image of a specific type for a game (most common use case)
+    pub async fn get_primary_image(
+        &self,
+        database_id: i64,
+        image_type: &str,
+    ) -> Result<Option<LbGameImage>> {
+        let image = sqlx::query_as::<_, LbGameImage>(
+            r#"
+            SELECT FileName, DatabaseId, Type, Region, CRC32
+            FROM GameImages
+            WHERE DatabaseId = ? AND Type = ?
+            ORDER BY Region, FileName
+            LIMIT 1
+            "#,
+        )
+        .bind(database_id)
+        .bind(image_type)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(image)
+    }
+
+    /// Get available image types for a game
+    pub async fn get_available_image_types(&self, database_id: i64) -> Result<Vec<String>> {
+        let types: Vec<(String,)> = sqlx::query_as(
+            r#"
+            SELECT DISTINCT Type
+            FROM GameImages
+            WHERE DatabaseId = ?
+            ORDER BY Type
+            "#,
+        )
+        .bind(database_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(types.into_iter().map(|(t,)| t).collect())
+    }
 }
 
 /// Normalize a string for comparison (similar to LaunchBox's CompareName logic)

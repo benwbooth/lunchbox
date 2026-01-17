@@ -37,6 +37,8 @@ pub struct AppSettings {
     pub rom_directories: Vec<PathBuf>,
     pub launchbox_path: Option<PathBuf>,
     pub retroarch_path: Option<PathBuf>,
+    #[serde(default)]
+    pub cache_directory: Option<PathBuf>,
     pub emulators: Vec<EmulatorConfig>,
     pub default_platform_emulators: std::collections::HashMap<String, String>,
     pub screenscraper: ScreenScraperSettings,
@@ -77,6 +79,7 @@ impl Default for AppSettings {
             ],
             launchbox_path: Some(PathBuf::from("/mnt/Windows/Users/benwb/LaunchBox")),
             retroarch_path: None,
+            cache_directory: None, // Will use app data dir if None
             emulators: Vec::new(),
             default_platform_emulators: std::collections::HashMap::new(),
             screenscraper: ScreenScraperSettings::default(),

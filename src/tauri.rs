@@ -216,6 +216,8 @@ pub struct AppSettings {
     pub rom_directories: Vec<std::path::PathBuf>,
     pub launchbox_path: Option<std::path::PathBuf>,
     pub retroarch_path: Option<std::path::PathBuf>,
+    #[serde(default)]
+    pub cache_directory: Option<std::path::PathBuf>,
     pub emulators: Vec<EmulatorConfig>,
     pub default_platform_emulators: std::collections::HashMap<String, String>,
     pub screenscraper: ScreenScraperSettings,
@@ -663,4 +665,91 @@ pub async fn test_igdb_connection(
         client_secret: String,
     }
     invoke("test_igdb_connection", Args { client_id, client_secret }).await
+}
+
+// ============ Image Types and Commands ============
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageInfo {
+    pub id: i64,
+    pub launchbox_db_id: i64,
+    pub image_type: String,
+    pub region: Option<String>,
+    pub cdn_url: String,
+    pub local_path: Option<String>,
+    pub downloaded: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheStats {
+    pub total_images: i64,
+    pub downloaded_images: i64,
+    pub disk_usage_bytes: u64,
+}
+
+/// Get all images for a game
+pub async fn get_game_images(launchbox_db_id: i64) -> Result<Vec<ImageInfo>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+    }
+    invoke("get_game_images", Args { launchbox_db_id }).await
+}
+
+/// Get a specific image type for a game
+pub async fn get_game_image(launchbox_db_id: i64, image_type: String) -> Result<Option<ImageInfo>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        image_type: String,
+    }
+    invoke("get_game_image", Args { launchbox_db_id, image_type }).await
+}
+
+/// Get available image types for a game
+pub async fn get_available_image_types(launchbox_db_id: i64) -> Result<Vec<String>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+    }
+    invoke("get_available_image_types", Args { launchbox_db_id }).await
+}
+
+/// Download a specific image and return its local path
+pub async fn download_image(image_id: i64) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        image_id: i64,
+    }
+    invoke("download_image", Args { image_id }).await
+}
+
+/// Download images for a game (box front and screenshot by default)
+pub async fn download_game_images(
+    launchbox_db_id: i64,
+    image_types: Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        image_types: Option<Vec<String>>,
+    }
+    invoke("download_game_images", Args { launchbox_db_id, image_types }).await
+}
+
+/// Get image cache statistics
+pub async fn get_image_cache_stats() -> Result<CacheStats, String> {
+    invoke_no_args("get_image_cache_stats").await
+}
+
+/// Import game images from LaunchBox metadata database
+pub async fn import_game_images() -> Result<i64, String> {
+    invoke_no_args("import_game_images").await
 }

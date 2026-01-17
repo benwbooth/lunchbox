@@ -1,6 +1,7 @@
 pub mod api;
 mod commands;
 pub mod db;
+pub mod images;
 pub mod import;
 pub mod scanner;
 pub mod scraper;
@@ -57,6 +58,14 @@ pub fn run() {
             commands::test_screenscraper_connection,
             commands::test_steamgriddb_connection,
             commands::test_igdb_connection,
+            // Image commands
+            commands::get_game_images,
+            commands::get_game_image,
+            commands::get_available_image_types,
+            commands::download_image,
+            commands::download_game_images,
+            commands::get_image_cache_stats,
+            commands::import_game_images,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

@@ -1,0 +1,229 @@
+//! Lazy-loading image component with on-demand download from LaunchBox CDN
+
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use web_sys::console;
+use crate::tauri::{self, file_to_asset_url, ImageInfo};
+
+/// Loading state for an image
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImageState {
+    /// Initial state - checking if image exists
+    Loading,
+    /// Image is being downloaded
+    Downloading { progress: f32 },
+    /// Image is ready to display
+    Ready { url: String },
+    /// No image available for this game
+    NoImage,
+    /// Error occurred
+    Error(String),
+}
+
+/// Lazy-loading image component
+///
+/// Automatically loads images from local cache or downloads from LaunchBox CDN.
+/// Shows a loading indicator while downloading and handles errors gracefully.
+#[component]
+pub fn LazyImage(
+    /// LaunchBox database ID of the game
+    launchbox_db_id: i64,
+    /// Image type to display (e.g., "Box - Front")
+    #[prop(default = "Box - Front".to_string())]
+    image_type: String,
+    /// Alt text for the image
+    #[prop(default = "".to_string())]
+    alt: String,
+    /// CSS class for the image element
+    #[prop(default = "".to_string())]
+    class: String,
+    /// Single character placeholder to show if no image
+    #[prop(optional)]
+    placeholder: Option<String>,
+) -> impl IntoView {
+    let (state, set_state) = signal(ImageState::Loading);
+
+    // Track if this component is still mounted
+    let (mounted, set_mounted) = signal(true);
+
+    // Load image on mount
+    Effect::new(move || {
+        let db_id = launchbox_db_id;
+        let img_type = image_type.clone();
+
+        spawn_local(async move {
+            // Check if component is still mounted
+            if !mounted.get() {
+                return;
+            }
+
+            // First, try to get the image info
+            match tauri::get_game_image(db_id, img_type.clone()).await {
+                Ok(Some(info)) => {
+                    if !mounted.get() {
+                        return;
+                    }
+
+                    if info.downloaded {
+                        // Image already downloaded - use local path
+                        if let Some(local_path) = info.local_path {
+                            let url = file_to_asset_url(&local_path);
+                            set_state.set(ImageState::Ready { url });
+                        } else {
+                            // Somehow marked downloaded but no path - trigger download
+                            download_and_update(info, set_state, mounted).await;
+                        }
+                    } else {
+                        // Need to download
+                        set_state.set(ImageState::Downloading { progress: 0.0 });
+                        download_and_update(info, set_state, mounted).await;
+                    }
+                }
+                Ok(None) => {
+                    if mounted.get() {
+                        set_state.set(ImageState::NoImage);
+                    }
+                }
+                Err(e) => {
+                    if mounted.get() {
+                        console::warn_1(&format!("Failed to get image info: {}", e).into());
+                        set_state.set(ImageState::NoImage);
+                    }
+                }
+            }
+        });
+    });
+
+    // Cleanup on unmount
+    on_cleanup(move || {
+        set_mounted.set(false);
+    });
+
+    let placeholder = placeholder.clone();
+    let class = class.clone();
+
+    view! {
+        {move || {
+            let current_state = state.get();
+            let class_str = class.clone();
+            let placeholder = placeholder.clone();
+            let alt_text = alt.clone();
+
+            match current_state {
+                ImageState::Loading => {
+                    view! {
+                        <div class=format!("{} lazy-image-loading", class_str)>
+                            <div class="loading-spinner"></div>
+                        </div>
+                    }.into_any()
+                }
+                ImageState::Downloading { progress } => {
+                    let progress_pct = (progress * 100.0) as i32;
+                    view! {
+                        <div class=format!("{} lazy-image-downloading", class_str)>
+                            <div class="download-progress">
+                                <div class="progress-bar" style:width=format!("{}%", progress_pct)></div>
+                            </div>
+                        </div>
+                    }.into_any()
+                }
+                ImageState::Ready { url } => {
+                    view! {
+                        <img
+                            src=url
+                            alt=alt_text
+                            class=format!("{} lazy-image-ready", class_str)
+                            loading="lazy"
+                        />
+                    }.into_any()
+                }
+                ImageState::NoImage => {
+                    let char = placeholder.unwrap_or_else(|| "?".to_string());
+                    view! {
+                        <div class=format!("{} lazy-image-placeholder", class_str)>
+                            {char}
+                        </div>
+                    }.into_any()
+                }
+                ImageState::Error(_e) => {
+                    let char = placeholder.unwrap_or_else(|| "!".to_string());
+                    view! {
+                        <div class=format!("{} lazy-image-error", class_str)>
+                            {char}
+                        </div>
+                    }.into_any()
+                }
+            }
+        }}
+    }
+}
+
+/// Helper function to download an image and update state
+async fn download_and_update(
+    info: ImageInfo,
+    set_state: WriteSignal<ImageState>,
+    mounted: ReadSignal<bool>,
+) {
+    // Trigger download
+    match tauri::download_image(info.id).await {
+        Ok(local_path) => {
+            if mounted.get() {
+                let url = file_to_asset_url(&local_path);
+                set_state.set(ImageState::Ready { url });
+            }
+        }
+        Err(e) => {
+            if mounted.get() {
+                console::warn_1(&format!("Failed to download image: {}", e).into());
+                // Fall back to CDN URL if download fails
+                set_state.set(ImageState::Ready { url: info.cdn_url });
+            }
+        }
+    }
+}
+
+/// A simpler version that just takes an optional local path and CDN URL
+/// For use when you already have the image info
+#[component]
+pub fn GameImage(
+    /// Local file path (if already downloaded)
+    local_path: Option<String>,
+    /// CDN URL (fallback if not downloaded)
+    cdn_url: Option<String>,
+    /// Alt text for the image
+    #[prop(default = "".to_string())]
+    alt: String,
+    /// CSS class for the image element
+    #[prop(default = "".to_string())]
+    class: String,
+    /// Placeholder character if no image
+    #[prop(optional)]
+    placeholder: Option<String>,
+) -> impl IntoView {
+    // Determine the URL to use
+    let url = local_path
+        .as_ref()
+        .map(|p| file_to_asset_url(p))
+        .or(cdn_url);
+
+    match url {
+        Some(u) => {
+            view! {
+                <img
+                    src=u
+                    alt=alt
+                    class=format!("{} game-image", class)
+                    loading="lazy"
+                />
+            }.into_any()
+        }
+        None => {
+            let char = placeholder.unwrap_or_else(|| "?".to_string());
+            view! {
+                <div class=format!("{} game-image-placeholder", class)>
+                    {char}
+                </div>
+            }.into_any()
+        }
+    }
+}

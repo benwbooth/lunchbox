@@ -4,6 +4,7 @@ use crate::db::schema::{
     extract_region_from_title, normalize_title_for_display,
     Game, GameVariant, Platform,
 };
+use crate::images::{CacheStats, ImageInfo, ImageService};
 use crate::import::{find_game_images, LaunchBoxImporter};
 use crate::scanner::{RomFile, RomScanner};
 use crate::scraper::{get_screenscraper_platform_id, ScreenScraperClient, ScreenScraperConfig};
@@ -1762,4 +1763,151 @@ pub async fn get_favorites(
     } else {
         Ok(Vec::new())
     }
+}
+
+// ============ Image Commands ============
+
+/// Get the default cache directory
+fn get_cache_dir(settings: &AppSettings) -> PathBuf {
+    settings.cache_directory.clone()
+        .unwrap_or_else(|| {
+            // Use XDG_DATA_HOME or fallback to ~/.local/share/lunchbox
+            std::env::var("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::env::var("HOME")
+                        .map(|h| PathBuf::from(h).join(".local").join("share"))
+                        .unwrap_or_else(|_| PathBuf::from("/tmp"))
+                })
+                .join("lunchbox")
+        })
+}
+
+/// Get all images for a game
+#[tauri::command]
+pub async fn get_game_images(
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<ImageInfo>, String> {
+    let state_guard = state.read().await;
+
+    // Try the user's database first (has game_images table)
+    if let Some(ref pool) = state_guard.db_pool {
+        let cache_dir = get_cache_dir(&state_guard.settings);
+        let service = ImageService::new(pool.clone(), cache_dir);
+        return service.get_game_images(launchbox_db_id).await
+            .map_err(|e| e.to_string());
+    }
+
+    Ok(Vec::new())
+}
+
+/// Get a specific image type for a game
+#[tauri::command]
+pub async fn get_game_image(
+    launchbox_db_id: i64,
+    image_type: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<ImageInfo>, String> {
+    let state_guard = state.read().await;
+
+    if let Some(ref pool) = state_guard.db_pool {
+        let cache_dir = get_cache_dir(&state_guard.settings);
+        let service = ImageService::new(pool.clone(), cache_dir);
+        return service.get_image_by_type(launchbox_db_id, &image_type).await
+            .map_err(|e| e.to_string());
+    }
+
+    Ok(None)
+}
+
+/// Get available image types for a game
+#[tauri::command]
+pub async fn get_available_image_types(
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<String>, String> {
+    let state_guard = state.read().await;
+
+    if let Some(ref pool) = state_guard.db_pool {
+        let cache_dir = get_cache_dir(&state_guard.settings);
+        let service = ImageService::new(pool.clone(), cache_dir);
+        return service.get_available_types(launchbox_db_id).await
+            .map_err(|e| e.to_string());
+    }
+
+    Ok(Vec::new())
+}
+
+/// Download a specific image and return its local path
+#[tauri::command]
+pub async fn download_image(
+    image_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<String, String> {
+    let state_guard = state.read().await;
+
+    let pool = state_guard.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let service = ImageService::new(pool.clone(), cache_dir);
+    service.download_image(image_id).await
+        .map_err(|e| e.to_string())
+}
+
+/// Download images for a game (box front and screenshot by default)
+#[tauri::command]
+pub async fn download_game_images(
+    launchbox_db_id: i64,
+    image_types: Option<Vec<String>>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<String>, String> {
+    let state_guard = state.read().await;
+
+    let pool = state_guard.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let service = ImageService::new(pool.clone(), cache_dir);
+    service.download_game_images(launchbox_db_id, image_types).await
+        .map_err(|e| e.to_string())
+}
+
+/// Get image cache statistics
+#[tauri::command]
+pub async fn get_image_cache_stats(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<CacheStats, String> {
+    let state_guard = state.read().await;
+
+    let pool = state_guard.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let service = ImageService::new(pool.clone(), cache_dir);
+    service.get_cache_stats().await
+        .map_err(|e| e.to_string())
+}
+
+/// Import game images from LaunchBox metadata database
+#[tauri::command]
+pub async fn import_game_images(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<i64, String> {
+    let state_guard = state.read().await;
+
+    let pool = state_guard.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    let importer = state_guard.launchbox_importer.as_ref()
+        .ok_or_else(|| "LaunchBox not configured".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let service = ImageService::new(pool.clone(), cache_dir);
+
+    service.import_images_from_launchbox(importer, Some(|imported, total| {
+        tracing::info!("Imported {}/{} images", imported, total);
+    })).await
+        .map_err(|e| e.to_string())
 }
