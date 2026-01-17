@@ -1517,18 +1517,38 @@ impl UnifiedImporter {
 
         let mut imported = 0;
         let mut skipped_dupes = 0;
+        let mut merged_with_launchbox = 0;
 
-        // Dedup cache for this import run: (normalized_title, variant_tags) -> game_id
-        // This prevents inserting duplicate entries within the same LibRetro import
-        // Cross-source dedup (with LaunchBox) happens at display time via normalized titles
+        // Pre-load existing LaunchBox games for this platform: normalized_title -> (id, title)
+        let existing_games: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, title FROM games WHERE platform_id = ? AND metadata_source = 'launchbox'"
+        )
+        .bind(platform_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let launchbox_by_normalized: HashMap<String, (String, String)> = existing_games
+            .into_iter()
+            .map(|(id, title)| (normalize_title(&title), (id, title)))
+            .collect();
+
+        // Group LibRetro games by normalized title to detect multiple variants
+        let mut libretro_by_normalized: HashMap<String, Vec<&lunchbox_core::import::DatGame>> = HashMap::new();
+        for game in games {
+            let normalized = normalize_title(&game.name);
+            libretro_by_normalized.entry(normalized).or_default().push(game);
+        }
+
+        // Dedup cache for this import run
         let mut dedup_cache: HashMap<String, String> = HashMap::new();
 
         for game in games {
             let primary_rom = game.roms.first();
             let crc = primary_rom.and_then(|r| r.crc.as_ref()).map(|c| c.to_uppercase());
+            let normalized = normalize_title(&game.name);
 
-            // Try to find existing game by CRC
-            let existing_id: Option<(String,)> = if let Some(ref crc_val) = crc {
+            // Try to find existing game by CRC first
+            let existing_by_crc: Option<(String,)> = if let Some(ref crc_val) = crc {
                 sqlx::query_as("SELECT id FROM games WHERE libretro_crc32 = ? AND platform_id = ?")
                     .bind(crc_val)
                     .bind(platform_id)
@@ -1538,8 +1558,8 @@ impl UnifiedImporter {
                 None
             };
 
-            if let Some((id,)) = existing_id {
-                // Update existing with any new data
+            if let Some((id,)) = existing_by_crc {
+                // Update existing with any new data (CRC match)
                 sqlx::query(r#"
                     UPDATE games SET
                         libretro_md5 = COALESCE(libretro_md5, ?),
@@ -1562,47 +1582,89 @@ impl UnifiedImporter {
                 .bind(&id)
                 .execute(&mut *tx)
                 .await?;
-            } else {
-                // Check dedup cache by normalized title (within this LibRetro import only)
-                let normalized = normalize_title(&game.name);
-                if dedup_cache.contains_key(&normalized) {
-                    skipped_dupes += 1;
+                imported += 1;
+                continue;
+            }
+
+            // Check if LaunchBox has this game and if this is the ONLY LibRetro variant
+            let libretro_variants = libretro_by_normalized.get(&normalized).map(|v| v.len()).unwrap_or(0);
+
+            if let Some((launchbox_id, _)) = launchbox_by_normalized.get(&normalized) {
+                if libretro_variants == 1 {
+                    // Single LibRetro entry matching a LaunchBox entry = same game, merge
+                    sqlx::query(r#"
+                        UPDATE games SET
+                            libretro_crc32 = COALESCE(?, libretro_crc32),
+                            libretro_md5 = COALESCE(?, libretro_md5),
+                            libretro_sha1 = COALESCE(?, libretro_sha1),
+                            libretro_serial = COALESCE(?, libretro_serial),
+                            release_year = COALESCE(release_year, ?),
+                            developer = COALESCE(developer, ?),
+                            publisher = COALESCE(publisher, ?),
+                            genre = COALESCE(genre, ?),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    "#)
+                    .bind(&crc)
+                    .bind(primary_rom.and_then(|r| r.md5.as_ref()))
+                    .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
+                    .bind(&game.serial)
+                    .bind(game.release_year.map(|y| y as i32))
+                    .bind(&game.developer)
+                    .bind(&game.publisher)
+                    .bind(&game.genre)
+                    .bind(launchbox_id)
+                    .execute(&mut *tx)
+                    .await?;
+                    merged_with_launchbox += 1;
                     continue;
                 }
-
-                // Insert new game
-                let game_id = uuid::Uuid::new_v4().to_string();
-                dedup_cache.insert(normalized, game_id.clone());
-
-                sqlx::query(r#"
-                    INSERT INTO games (
-                        id, title, platform_id,
-                        libretro_crc32, libretro_md5, libretro_sha1, libretro_serial,
-                        release_year, developer, publisher, genre, metadata_source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#)
-                .bind(&game_id)
-                .bind(&game.name)
-                .bind(platform_id)
-                .bind(&crc)
-                .bind(primary_rom.and_then(|r| r.md5.as_ref()))
-                .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
-                .bind(&game.serial)
-                .bind(game.release_year.map(|y| y as i32))
-                .bind(&game.developer)
-                .bind(&game.publisher)
-                .bind(&game.genre)
-                .bind("libretro")
-                .execute(&mut *tx)
-                .await?;
+                // Multiple LibRetro variants = real regional variants, keep them separate
             }
+
+            // Check dedup cache (within this LibRetro import only)
+            if dedup_cache.contains_key(&normalized) {
+                skipped_dupes += 1;
+                continue;
+            }
+
+            // Insert new game
+            let game_id = uuid::Uuid::new_v4().to_string();
+            dedup_cache.insert(normalized, game_id.clone());
+
+            sqlx::query(r#"
+                INSERT INTO games (
+                    id, title, platform_id,
+                    libretro_crc32, libretro_md5, libretro_sha1, libretro_serial,
+                    release_year, developer, publisher, genre, metadata_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#)
+            .bind(&game_id)
+            .bind(&game.name)
+            .bind(platform_id)
+            .bind(&crc)
+            .bind(primary_rom.and_then(|r| r.md5.as_ref()))
+            .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
+            .bind(&game.serial)
+            .bind(game.release_year.map(|y| y as i32))
+            .bind(&game.developer)
+            .bind(&game.publisher)
+            .bind(&game.genre)
+            .bind("libretro")
+            .execute(&mut *tx)
+            .await?;
             imported += 1;
         }
 
         tx.commit().await?;
 
-        if skipped_dupes > 0 {
-            println!("    Skipped {} duplicates", skipped_dupes);
+        if skipped_dupes > 0 || merged_with_launchbox > 0 {
+            if skipped_dupes > 0 {
+                println!("    Skipped {} duplicates", skipped_dupes);
+            }
+            if merged_with_launchbox > 0 {
+                println!("    Merged {} with LaunchBox entries", merged_with_launchbox);
+            }
         }
 
         Ok(imported)
