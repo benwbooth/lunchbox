@@ -8,6 +8,7 @@ use crate::tauri::{
     test_igdb_connection, AppSettings, ScreenScraperSettings, SteamGridDBSettings, IGDBSettings,
     EmuMoviesSettings,
 };
+use super::ImageSourcesWizard;
 
 #[component]
 pub fn Settings(
@@ -49,6 +50,9 @@ pub fn Settings(
     let (sgdb_test_result, set_sgdb_test_result) = signal::<Option<(bool, String)>>(None);
     let (testing_igdb, set_testing_igdb) = signal(false);
     let (igdb_test_result, set_igdb_test_result) = signal::<Option<(bool, String)>>(None);
+
+    // Image sources wizard state
+    let (show_wizard, set_show_wizard) = signal(false);
 
     // Load settings when shown
     Effect::new(move || {
@@ -227,9 +231,23 @@ pub fn Settings(
                                 </label>
                             </div>
 
-                            // ScreenScraper Section
+                            // Image Sources Wizard Button
                             <div class="settings-section">
-                                <h3>"ScreenScraper API"</h3>
+                                <h3>"Image Sources"</h3>
+                                <p class="settings-hint">
+                                    "Configure where to download box art, screenshots, and other game media."
+                                </p>
+                                <button
+                                    class="settings-wizard-btn"
+                                    on:click=move |_| set_show_wizard.set(true)
+                                >
+                                    "Setup Image Sources..."
+                                </button>
+                            </div>
+
+                            // ScreenScraper Section
+                            <div class="settings-section settings-collapsed">
+                                <h3>"ScreenScraper API (Advanced)"</h3>
                                 <div class="settings-service-info">
                                     <p class="settings-hint">
                                         "Metadata, box art, screenshots, and videos based on ROM checksums."
@@ -492,6 +510,12 @@ pub fn Settings(
                     </Show>
                 </div>
             </div>
+
+            // Image Sources Wizard (modal)
+            <ImageSourcesWizard
+                show=show_wizard
+                on_close=set_show_wizard
+            />
         </Show>
     }
 }

@@ -58,6 +58,7 @@ pub fn run() {
             commands::test_screenscraper_connection,
             commands::test_steamgriddb_connection,
             commands::test_igdb_connection,
+            commands::test_emumovies_connection,
             // Image commands
             commands::get_game_images,
             commands::get_game_image,

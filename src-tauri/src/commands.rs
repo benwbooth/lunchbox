@@ -1628,6 +1628,47 @@ pub async fn test_igdb_connection(
     }
 }
 
+#[tauri::command]
+pub async fn test_emumovies_connection(
+    username: String,
+    password: String,
+) -> Result<ConnectionTestResult, String> {
+    use crate::images::{EmuMoviesClient, EmuMoviesConfig};
+
+    if username.is_empty() || password.is_empty() {
+        return Ok(ConnectionTestResult {
+            success: false,
+            message: "Username and password are required".to_string(),
+            user_info: None,
+        });
+    }
+
+    let config = EmuMoviesConfig { username, password };
+    // Use a temp dir for the client since we're just testing
+    let client = EmuMoviesClient::new(config, std::path::PathBuf::from("/tmp"));
+
+    match client.test_connection().await {
+        Ok(()) => Ok(ConnectionTestResult {
+            success: true,
+            message: "Successfully connected to EmuMovies API".to_string(),
+            user_info: None,
+        }),
+        Err(e) => {
+            let err_str = e.to_string();
+            let message = if err_str.contains("401") || err_str.contains("403") {
+                "Invalid credentials. Please check your username and password.".to_string()
+            } else {
+                format!("Connection failed: {}", err_str)
+            };
+            Ok(ConnectionTestResult {
+                success: false,
+                message,
+                user_info: None,
+            })
+        }
+    }
+}
+
 // ============ Favorites Commands ============
 
 #[tauri::command]

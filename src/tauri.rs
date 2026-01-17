@@ -675,6 +675,19 @@ pub async fn test_igdb_connection(
     invoke("test_igdb_connection", Args { client_id, client_secret }).await
 }
 
+/// Test EmuMovies API connection
+pub async fn test_emumovies_connection(
+    username: String,
+    password: String,
+) -> Result<ConnectionTestResult, String> {
+    #[derive(Serialize)]
+    struct Args {
+        username: String,
+        password: String,
+    }
+    invoke("test_emumovies_connection", Args { username, password }).await
+}
+
 // ============ Image Types and Commands ============
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
