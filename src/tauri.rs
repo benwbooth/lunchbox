@@ -95,6 +95,37 @@ async fn http_post<T: DeserializeOwned, B: Serialize>(path: &str, body: &B) -> R
     serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())
 }
 
+async fn http_post_empty<B: Serialize>(path: &str, body: &B) -> Result<(), String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let body_str = serde_json::to_string(body).map_err(|e| e.to_string())?;
+    opts.set_body(&JsValue::from_str(&body_str));
+
+    let url = format!("{}{}", HTTP_API_BASE, path);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{:?}", e))?;
+
+    let window = web_sys::window().ok_or("No window")?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{:?}", e))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    Ok(())
+}
+
 async fn http_delete(path: &str) -> Result<(), String> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -480,7 +511,7 @@ pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
         }
         invoke("save_settings", Args { settings }).await
     } else {
-        http_post("/api/settings", &settings).await
+        http_post_empty("/api/settings", &settings).await
     }
 }
 
