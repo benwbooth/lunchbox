@@ -14,10 +14,8 @@ use crate::tauri::{
 enum SourceStatus {
     /// No configuration needed - always works
     AlwaysAvailable,
-    /// Configured and tested working
+    /// Configured with credentials
     Configured,
-    /// Has credentials but not tested
-    Untested,
     /// Not configured
     NotConfigured,
 }
@@ -25,18 +23,14 @@ enum SourceStatus {
 impl SourceStatus {
     fn icon(&self) -> &'static str {
         match self {
-            SourceStatus::AlwaysAvailable => "✓",
-            SourceStatus::Configured => "✓",
-            SourceStatus::Untested => "?",
+            SourceStatus::AlwaysAvailable | SourceStatus::Configured => "✓",
             SourceStatus::NotConfigured => "○",
         }
     }
 
     fn class(&self) -> &'static str {
         match self {
-            SourceStatus::AlwaysAvailable => "source-status-ok",
-            SourceStatus::Configured => "source-status-ok",
-            SourceStatus::Untested => "source-status-untested",
+            SourceStatus::AlwaysAvailable | SourceStatus::Configured => "source-status-ok",
             SourceStatus::NotConfigured => "source-status-none",
         }
     }
@@ -157,17 +151,18 @@ pub fn ImageSourcesWizard(
                         set_ss_user_password.set(s.screenscraper.user_password.clone().unwrap_or_default());
 
                         // Update status based on whether credentials exist
+                        // Show as Configured if credentials are present (they were saved successfully)
                         if !s.steamgriddb.api_key.is_empty() {
-                            set_steamgriddb_status.set(SourceStatus::Untested);
+                            set_steamgriddb_status.set(SourceStatus::Configured);
                         }
                         if !s.igdb.client_id.is_empty() && !s.igdb.client_secret.is_empty() {
-                            set_igdb_status.set(SourceStatus::Untested);
+                            set_igdb_status.set(SourceStatus::Configured);
                         }
                         if !s.emumovies.username.is_empty() && !s.emumovies.password.is_empty() {
-                            set_emumovies_status.set(SourceStatus::Untested);
+                            set_emumovies_status.set(SourceStatus::Configured);
                         }
                         if !s.screenscraper.dev_id.is_empty() && !s.screenscraper.dev_password.is_empty() {
-                            set_screenscraper_status.set(SourceStatus::Untested);
+                            set_screenscraper_status.set(SourceStatus::Configured);
                         }
 
                         set_settings.set(Some(s));
