@@ -1518,18 +1518,10 @@ impl UnifiedImporter {
         let mut imported = 0;
         let mut skipped_dupes = 0;
 
-        // Pre-load existing games for this platform into dedup cache (handles cross-source dedup)
-        let existing_games: Vec<(String, String)> = sqlx::query_as(
-            "SELECT id, title FROM games WHERE platform_id = ?"
-        )
-        .bind(platform_id)
-        .fetch_all(&mut *tx)
-        .await?;
-
-        let mut dedup_cache: HashMap<String, String> = existing_games
-            .into_iter()
-            .map(|(id, title)| (normalize_title(&title), id))
-            .collect();
+        // Dedup cache for this import run: (normalized_title, variant_tags) -> game_id
+        // This prevents inserting duplicate entries within the same LibRetro import
+        // Cross-source dedup (with LaunchBox) happens at display time via normalized titles
+        let mut dedup_cache: HashMap<String, String> = HashMap::new();
 
         for game in games {
             let primary_rom = game.roms.first();
@@ -1571,34 +1563,9 @@ impl UnifiedImporter {
                 .execute(&mut *tx)
                 .await?;
             } else {
-                // Check dedup cache by normalized title (includes existing DB games from any source)
+                // Check dedup cache by normalized title (within this LibRetro import only)
                 let normalized = normalize_title(&game.name);
-                if let Some(existing_id) = dedup_cache.get(&normalized) {
-                    // Update existing game with LibRetro metadata (CRC, hashes, etc.)
-                    sqlx::query(r#"
-                        UPDATE games SET
-                            libretro_crc32 = COALESCE(?, libretro_crc32),
-                            libretro_md5 = COALESCE(?, libretro_md5),
-                            libretro_sha1 = COALESCE(?, libretro_sha1),
-                            libretro_serial = COALESCE(?, libretro_serial),
-                            release_year = COALESCE(release_year, ?),
-                            developer = COALESCE(developer, ?),
-                            publisher = COALESCE(publisher, ?),
-                            genre = COALESCE(genre, ?),
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                    "#)
-                    .bind(&crc)
-                    .bind(primary_rom.and_then(|r| r.md5.as_ref()))
-                    .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
-                    .bind(&game.serial)
-                    .bind(game.release_year.map(|y| y as i32))
-                    .bind(&game.developer)
-                    .bind(&game.publisher)
-                    .bind(&game.genre)
-                    .bind(existing_id)
-                    .execute(&mut *tx)
-                    .await?;
+                if dedup_cache.contains_key(&normalized) {
                     skipped_dupes += 1;
                     continue;
                 }
