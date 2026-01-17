@@ -111,7 +111,8 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/games/count", get(get_game_count))
         .route("/api/games/:uuid", get(get_game_by_uuid))
         .route("/api/games/:uuid/variants", get(get_game_variants))
-        .route("/api/settings", get(get_settings))
+        .route("/api/settings", get(get_settings).post(save_settings_http))
+        .route("/api/credential-storage", get(get_credential_storage))
         .route("/api/stats/:db_id", get(get_play_stats))
         .route("/api/favorites", get(get_favorites))
         .route("/api/favorites/check/:db_id", get(check_is_favorite))
@@ -578,6 +579,26 @@ async fn get_settings(
 ) -> Result<Json<crate::state::AppSettings>, (StatusCode, String)> {
     let state_guard = state.read().await;
     Ok(Json(state_guard.settings.clone()))
+}
+
+async fn save_settings_http(
+    State(state): State<SharedState>,
+    Json(settings): Json<crate::state::AppSettings>,
+) -> Result<(), (StatusCode, String)> {
+    let mut state_guard = state.write().await;
+
+    if let Some(ref pool) = state_guard.db_pool {
+        crate::state::save_settings(pool, &settings)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    state_guard.settings = settings;
+    Ok(())
+}
+
+async fn get_credential_storage() -> Json<String> {
+    Json(crate::keyring_store::get_credential_storage_name().to_string())
 }
 
 // ============================================================================
