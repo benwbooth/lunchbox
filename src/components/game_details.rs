@@ -87,15 +87,18 @@ pub fn GameDetails(
     });
 
     // Load variant game when pending_variant_load changes
+    // Use untrack to avoid re-triggering when we clear the signal
     Effect::new(move || {
-        if let Some(variant_id) = pending_variant_load.get() {
-            set_pending_variant_load.set(None); // Clear to allow re-triggering
+        let variant_id = pending_variant_load.get();
+        if let Some(variant_id) = variant_id {
             // Update selected_variant to show visual selection
             set_selected_variant.set(Some(variant_id.clone()));
             spawn_local(async move {
                 if let Ok(Some(new_game)) = tauri::get_game_by_uuid(variant_id).await {
                     set_display_game.set(Some(new_game));
                 }
+                // Clear after loading completes to prevent re-triggering during load
+                set_pending_variant_load.set(None);
             });
         }
     });
