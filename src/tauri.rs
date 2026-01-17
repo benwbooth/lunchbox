@@ -373,14 +373,20 @@ pub struct EmuMoviesSettings {
 
 /// Convert a file path to an asset URL for Tauri's asset protocol
 pub fn file_to_asset_url(path: &str) -> String {
-    // Tauri 2 uses asset://localhost/{path}
-    // The path needs to be URL-encoded
-    let encoded = path
-        .replace(' ', "%20")
-        .replace('#', "%23")
-        .replace('?', "%3F")
-        .replace('&', "%26");
-    format!("asset://localhost/{}", encoded)
+    if is_tauri() {
+        // Tauri 2 uses asset://localhost/{path}
+        // The path needs to be URL-encoded
+        let encoded = path
+            .replace(' ', "%20")
+            .replace('#', "%23")
+            .replace('?', "%3F")
+            .replace('&', "%26");
+        format!("asset://localhost/{}", encoded)
+    } else {
+        // Browser mode: use HTTP API to serve assets
+        let encoded = urlencoding::encode(path);
+        format!("{}/assets/{}", HTTP_API_BASE, encoded)
+    }
 }
 
 // ============ Commands ============

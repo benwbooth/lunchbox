@@ -120,6 +120,8 @@ pub fn create_router(state: SharedState) -> Router {
         // rspc-style endpoints for image handling
         .route("/rspc/get_game_image", get(rspc_get_game_image))
         .route("/rspc/download_image_with_fallback", get(rspc_download_image_with_fallback))
+        // Asset serving for browser dev mode
+        .route("/assets/*path", get(serve_asset))
         .layer(cors)
         .with_state(state)
 }
@@ -969,5 +971,51 @@ async fn rspc_download_image_with_fallback(
             Err((StatusCode::NOT_FOUND, e.to_string()))
         }
     }
+}
+
+// ============================================================================
+// Asset Serving (for browser dev mode)
+// ============================================================================
+
+async fn serve_asset(
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> Result<impl axum::response::IntoResponse, (StatusCode, String)> {
+    use axum::response::Response;
+
+    // The path comes in URL-encoded, decode it
+    let decoded_path = urlencoding::decode(&path)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid path encoding: {}", e)))?;
+
+    let file_path = std::path::Path::new(decoded_path.as_ref());
+
+    // Check that the path exists and is a file
+    if !file_path.exists() {
+        return Err((StatusCode::NOT_FOUND, format!("File not found: {}", decoded_path)));
+    }
+
+    if !file_path.is_file() {
+        return Err((StatusCode::BAD_REQUEST, "Not a file".to_string()));
+    }
+
+    // Determine content type based on extension
+    let content_type = match file_path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        _ => "application/octet-stream",
+    };
+
+    // Read the file
+    let data = tokio::fs::read(&file_path).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read file: {}", e)))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", content_type)
+        .header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+        .body(axum::body::Body::from(data))
+        .unwrap())
 }
 
