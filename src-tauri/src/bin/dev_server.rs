@@ -107,9 +107,16 @@ async fn main() -> anyhow::Result<()> {
     let rspc_axum_router = rspc_axum::endpoint(rspc_router, move || rspc_ctx.clone());
 
     // Merge routers - rspc at /rspc, legacy at /api
+    // Add CORS to allow browser requests
+    let cors = tower_http::cors::CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
+
     let combined_router = axum::Router::new()
         .nest("/rspc", rspc_axum_router)
-        .merge(legacy_router);
+        .merge(legacy_router)
+        .layer(cors);
 
     let addr = "127.0.0.1:3001";
     let listener = tokio::net::TcpListener::bind(addr).await?;
