@@ -258,9 +258,9 @@ async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
     Ok(settings)
 }
 
-/// Save settings to database and credentials to keyring
+/// Save settings to database and credentials to keyring (if available)
 pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<()> {
-    // Save credentials to system keyring first
+    // Try to save credentials to system keyring
     crate::keyring_store::store_image_source_credentials(
         &settings.steamgriddb.api_key,
         &settings.igdb.client_id,
@@ -273,12 +273,18 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         settings.screenscraper.user_password.as_deref(),
     )?;
 
-    // Clone settings and clear credentials before saving to database
-    let mut settings_for_db = settings.clone();
-    settings_for_db.steamgriddb = SteamGridDBSettings::default();
-    settings_for_db.igdb = IGDBSettings::default();
-    settings_for_db.emumovies = EmuMoviesSettings::default();
-    settings_for_db.screenscraper = ScreenScraperSettings::default();
+    // If keyring is available, clear credentials from DB copy
+    // If not, store them in DB as fallback
+    let settings_for_db = if crate::keyring_store::is_keyring_available() {
+        let mut s = settings.clone();
+        s.steamgriddb = SteamGridDBSettings::default();
+        s.igdb = IGDBSettings::default();
+        s.emumovies = EmuMoviesSettings::default();
+        s.screenscraper = ScreenScraperSettings::default();
+        s
+    } else {
+        settings.clone()
+    };
 
     let json = serde_json::to_string(&settings_for_db)?;
 

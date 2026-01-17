@@ -1,13 +1,40 @@
 //! Secure credential storage using the system keyring.
 //!
-//! On Linux: Uses Secret Service (GNOME Keyring, KWallet)
+//! On Linux: Uses Secret Service (GNOME Keyring, KWallet with Secret Service enabled)
 //! On macOS: Uses Keychain
 //! On Windows: Uses Credential Manager
+//!
+//! Falls back to in-memory storage if keyring is unavailable.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use keyring::Entry;
+use std::sync::OnceLock;
 
 const SERVICE_NAME: &str = "lunchbox";
+
+/// Check if keyring is available on this system
+fn keyring_available() -> bool {
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        match Entry::new(SERVICE_NAME, "test_availability") {
+            Ok(entry) => {
+                // Try to access the credential store
+                match entry.get_password() {
+                    Ok(_) => true,
+                    Err(keyring::Error::NoEntry) => true, // Store works, just no entry
+                    Err(e) => {
+                        tracing::warn!("System keyring not available: {}. Credentials will be stored in config file.", e);
+                        false
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("System keyring not available: {}. Credentials will be stored in config file.", e);
+                false
+            }
+        }
+    })
+}
 
 /// Credential keys for different services
 pub mod keys {
@@ -22,29 +49,30 @@ pub mod keys {
     pub const SCREENSCRAPER_USER_PASSWORD: &str = "screenscraper_user_password";
 }
 
-/// Store a credential in the system keyring
+/// Store a credential in the system keyring (if available)
 pub fn store_credential(key: &str, value: &str) -> Result<()> {
+    if !keyring_available() {
+        return Ok(()); // Silently skip - credentials stored in config instead
+    }
+
     if value.is_empty() {
-        // Delete the credential if the value is empty
         delete_credential(key).ok();
         return Ok(());
     }
 
-    let entry = Entry::new(SERVICE_NAME, key)
-        .context("Failed to create keyring entry")?;
-
-    entry.set_password(value)
-        .context("Failed to store credential in keyring")?;
-
-    tracing::debug!("Stored credential: {}", key);
+    let entry = Entry::new(SERVICE_NAME, key)?;
+    entry.set_password(value)?;
+    tracing::debug!("Stored credential in keyring: {}", key);
     Ok(())
 }
 
 /// Retrieve a credential from the system keyring
 pub fn get_credential(key: &str) -> Result<Option<String>> {
-    let entry = Entry::new(SERVICE_NAME, key)
-        .context("Failed to create keyring entry")?;
+    if !keyring_available() {
+        return Ok(None); // Credentials come from config instead
+    }
 
+    let entry = Entry::new(SERVICE_NAME, key)?;
     match entry.get_password() {
         Ok(password) => Ok(Some(password)),
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -54,17 +82,24 @@ pub fn get_credential(key: &str) -> Result<Option<String>> {
 
 /// Delete a credential from the system keyring
 pub fn delete_credential(key: &str) -> Result<()> {
-    let entry = Entry::new(SERVICE_NAME, key)
-        .context("Failed to create keyring entry")?;
+    if !keyring_available() {
+        return Ok(());
+    }
 
+    let entry = Entry::new(SERVICE_NAME, key)?;
     match entry.delete_credential() {
         Ok(()) => {
             tracing::debug!("Deleted credential: {}", key);
             Ok(())
         }
-        Err(keyring::Error::NoEntry) => Ok(()), // Already deleted
+        Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(anyhow::anyhow!("Failed to delete credential: {}", e)),
     }
+}
+
+/// Check if keyring storage is being used
+pub fn is_keyring_available() -> bool {
+    keyring_available()
 }
 
 /// Store all image source credentials
@@ -79,6 +114,10 @@ pub fn store_image_source_credentials(
     screenscraper_user_id: Option<&str>,
     screenscraper_user_password: Option<&str>,
 ) -> Result<()> {
+    if !keyring_available() {
+        return Ok(()); // Skip keyring storage
+    }
+
     store_credential(keys::STEAMGRIDDB_API_KEY, steamgriddb_api_key)?;
     store_credential(keys::IGDB_CLIENT_ID, igdb_client_id)?;
     store_credential(keys::IGDB_CLIENT_SECRET, igdb_client_secret)?;
@@ -92,8 +131,12 @@ pub fn store_image_source_credentials(
     Ok(())
 }
 
-/// Load all image source credentials
+/// Load all image source credentials from keyring
 pub fn load_image_source_credentials() -> ImageSourceCredentials {
+    if !keyring_available() {
+        return ImageSourceCredentials::default(); // Credentials come from config
+    }
+
     ImageSourceCredentials {
         steamgriddb_api_key: get_credential(keys::STEAMGRIDDB_API_KEY).ok().flatten().unwrap_or_default(),
         igdb_client_id: get_credential(keys::IGDB_CLIENT_ID).ok().flatten().unwrap_or_default(),
