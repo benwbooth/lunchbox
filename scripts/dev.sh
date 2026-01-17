@@ -9,6 +9,13 @@ set -e
 
 MODE="${1:-browser}"
 
+# Kill any existing dev processes first
+echo "Cleaning up old processes..."
+pkill -f "trunk serve.*1420" 2>/dev/null || true
+pkill -f "dev_server" 2>/dev/null || true
+pkill -f "cargo watch.*dev_server" 2>/dev/null || true
+sleep 1
+
 cleanup() {
     echo ""
     echo "Shutting down..."

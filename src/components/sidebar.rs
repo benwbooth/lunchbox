@@ -21,8 +21,12 @@ pub fn Sidebar(
 
     // Load platforms on component mount
     spawn_local(async move {
+        console::log_1(&"Sidebar: Loading platforms...".into());
         match tauri::get_platforms().await {
-            Ok(p) => set_platforms.set(p),
+            Ok(p) => {
+                console::log_1(&format!("Sidebar: Loaded {} platforms", p.len()).into());
+                set_platforms.set(p);
+            }
             Err(e) => console::error_1(&format!("Failed to load platforms: {}", e).into()),
         }
         set_platforms_loading.set(false);

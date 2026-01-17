@@ -14,6 +14,7 @@
 
 - After implementing a change, always git status/diff/commit/push as a WIP commit
 - Don't wait for the user to ask for a commit
+- Run the app with `./scripts/dev.sh` to test changes
 
 ## Tools
 

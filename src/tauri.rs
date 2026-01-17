@@ -33,21 +33,29 @@ const HTTP_API_BASE: &str = "http://127.0.0.1:3001";
 // ============ HTTP Fetch Helpers ============
 
 async fn http_get<T: DeserializeOwned>(path: &str) -> Result<T, String> {
-    use web_sys::{Request, RequestInit, RequestMode, Response};
+    use web_sys::{Request, RequestInit, RequestMode, Response, console};
 
     let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
     let url = format!("{}{}", HTTP_API_BASE, path);
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
+    console::log_1(&format!("http_get: Fetching {}", url).into());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| {
+        console::error_1(&format!("http_get: Request creation failed: {:?}", e).into());
+        format!("{:?}", e)
+    })?;
 
     let window = web_sys::window().ok_or("No window")?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
         .await
-        .map_err(|e| format!("{:?}", e))?;
+        .map_err(|e| {
+            console::error_1(&format!("http_get: Fetch failed: {:?}", e).into());
+            format!("{:?}", e)
+        })?;
 
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{:?}", e))?;
+    console::log_1(&format!("http_get: Response status {}", resp.status()).into());
 
     if !resp.ok() {
         return Err(format!("HTTP error: {}", resp.status()));
@@ -55,9 +63,15 @@ async fn http_get<T: DeserializeOwned>(path: &str) -> Result<T, String> {
 
     let json = wasm_bindgen_futures::JsFuture::from(resp.json().map_err(|e| format!("{:?}", e))?)
         .await
-        .map_err(|e| format!("{:?}", e))?;
+        .map_err(|e| {
+            console::error_1(&format!("http_get: JSON parse failed: {:?}", e).into());
+            format!("{:?}", e)
+        })?;
 
-    serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())
+    serde_wasm_bindgen::from_value(json).map_err(|e| {
+        console::error_1(&format!("http_get: Deserialization failed: {}", e).into());
+        e.to_string()
+    })
 }
 
 async fn http_post<T: DeserializeOwned, B: Serialize>(path: &str, body: &B) -> Result<T, String> {
