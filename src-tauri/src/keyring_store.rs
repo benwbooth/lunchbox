@@ -19,19 +19,17 @@ fn keyring_available() -> bool {
         tracing::info!("Checking keyring availability...");
         match Entry::new(SERVICE_NAME, "test_availability") {
             Ok(entry) => {
-                tracing::info!("Keyring entry created, testing access...");
-                // Try to access the credential store
-                match entry.get_password() {
-                    Ok(_) => {
-                        tracing::info!("Keyring is available (got existing entry)");
-                        true
-                    }
-                    Err(keyring::Error::NoEntry) => {
-                        tracing::info!("Keyring is available (no entry, as expected)");
+                tracing::info!("Keyring entry created, testing write access...");
+                // Test writing to the credential store
+                match entry.set_password("test") {
+                    Ok(()) => {
+                        tracing::info!("Keyring write succeeded, cleaning up test entry...");
+                        // Clean up the test entry
+                        let _ = entry.delete_credential();
                         true
                     }
                     Err(e) => {
-                        tracing::warn!("System keyring not available: {:?}. Credentials will be stored in config file.", e);
+                        tracing::warn!("System keyring not available (write failed): {:?}. Credentials will be stored in config file.", e);
                         false
                     }
                 }
@@ -58,6 +56,7 @@ pub mod keys {
 }
 
 /// Store a credential in the system keyring (if available)
+/// Returns Ok even if keyring storage fails - the fallback is database storage
 pub fn store_credential(key: &str, value: &str) -> Result<()> {
     if !keyring_available() {
         return Ok(()); // Silently skip - credentials stored in config instead
@@ -69,15 +68,21 @@ pub fn store_credential(key: &str, value: &str) -> Result<()> {
     }
 
     tracing::debug!("Attempting to store credential: {}", key);
-    let entry = Entry::new(SERVICE_NAME, key)?;
+    let entry = match Entry::new(SERVICE_NAME, key) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("Failed to create keyring entry for {}: {:?}", key, e);
+            return Ok(()); // Don't fail, fall back to database
+        }
+    };
     match entry.set_password(value) {
         Ok(()) => {
             tracing::debug!("Stored credential in keyring: {}", key);
             Ok(())
         }
         Err(e) => {
-            tracing::warn!("Failed to store credential {} in keyring: {:?}", key, e);
-            Err(anyhow::anyhow!("Failed to store credential: {}", e))
+            tracing::warn!("Failed to store credential {} in keyring: {:?}. Will use database fallback.", key, e);
+            Ok(()) // Don't fail, fall back to database
         }
     }
 }
