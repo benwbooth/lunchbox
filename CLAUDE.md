@@ -19,3 +19,8 @@
 
 - Never use sed - always use the Edit tool for file modifications
 - Don't use sed for normal reading/writing files - use Read/Write/Edit tools instead
+
+## Database
+
+- `games.db` - Game metadata (games, platforms, images, etc.)
+- `lunchbox.db` - User data (settings, play stats, favorites, collections, etc.)

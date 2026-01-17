@@ -219,7 +219,7 @@ pub async fn get_games(
                 // Search within a specific platform
                 sqlx::query(
                     r#"
-                    SELECT g.id, g.title, g.platform_id, p.name as platform,
+                    SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                            g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                            g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -238,7 +238,7 @@ pub async fn get_games(
                 // Search across all platforms
                 sqlx::query(
                     r#"
-                    SELECT g.id, g.title, g.platform_id, p.name as platform,
+                    SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                            g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                            g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -256,10 +256,10 @@ pub async fn get_games(
         } else if let Some(ref platform_name) = platform {
             sqlx::query(
                 r#"
-                SELECT g.id, g.title, g.platform_id, p.name as platform,
+                SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                        g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
-                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
+                       g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                 FROM games g
                 JOIN platforms p ON g.platform_id = p.id
                 WHERE p.name = ?
@@ -284,6 +284,7 @@ pub async fn get_games(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
+            let launchbox_db_id: i64 = row.get("launchbox_db_id");
             let description: Option<String> = row.get("description");
             let release_date: Option<String> = row.get("release_date");
             let release_year: Option<i32> = row.get("release_year");
@@ -385,7 +386,7 @@ pub async fn get_games(
                     variant_titles.insert(title.clone());
                     (Game {
                         id,
-                        database_id: 0,
+                        database_id: launchbox_db_id,
                         title: title.clone(),
                         display_title: display_title.clone(),
                         platform,
@@ -521,10 +522,10 @@ pub async fn get_game_by_uuid(
     if let Some(ref games_pool) = state_guard.games_db_pool {
         let row_opt = sqlx::query(
             r#"
-            SELECT g.id, g.title, g.platform_id, p.name as platform,
+            SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
                    g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                    g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
-                           g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
+                   g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
             FROM games g
             JOIN platforms p ON g.platform_id = p.id
             WHERE g.id = ?
@@ -541,6 +542,7 @@ pub async fn get_game_by_uuid(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
+            let launchbox_db_id: i64 = row.get("launchbox_db_id");
             let description: Option<String> = row.get("description");
             let release_date: Option<String> = row.get("release_date");
             let release_year: Option<i32> = row.get("release_year");
@@ -583,7 +585,7 @@ pub async fn get_game_by_uuid(
 
             return Ok(Some(Game {
                 id,
-                database_id: 0,
+                database_id: launchbox_db_id,
                 title,
                 display_title,
                 platform,
