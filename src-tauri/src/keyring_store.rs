@@ -123,6 +123,22 @@ pub fn is_keyring_available() -> bool {
     keyring_available()
 }
 
+/// Get the name of the credential storage being used
+pub fn get_credential_storage_name() -> &'static str {
+    if keyring_available() {
+        #[cfg(target_os = "linux")]
+        return "Secret Service (system keyring)";
+        #[cfg(target_os = "macos")]
+        return "macOS Keychain";
+        #[cfg(target_os = "windows")]
+        return "Windows Credential Manager";
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        return "system keyring";
+    } else {
+        "local database"
+    }
+}
+
 /// Store all image source credentials
 pub fn store_image_source_credentials(
     steamgriddb_api_key: &str,

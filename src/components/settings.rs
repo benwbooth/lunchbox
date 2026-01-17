@@ -3,7 +3,8 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use crate::tauri::{
-    get_settings, save_settings, test_screenscraper_connection, test_steamgriddb_connection,
+    get_settings, save_settings, get_credential_storage_name,
+    test_screenscraper_connection, test_steamgriddb_connection,
     test_igdb_connection, AppSettings, ScreenScraperSettings, SteamGridDBSettings, IGDBSettings,
     EmuMoviesSettings,
 };
@@ -36,6 +37,7 @@ pub fn Settings(
     let (loading, set_loading) = signal(false);
     let (loaded, set_loaded) = signal(false);
     let (saving, set_saving) = signal(false);
+    let (storage_name, set_storage_name) = signal(String::new());
 
     // Connection test state
     let (testing_ss, set_testing_ss) = signal(false);
@@ -53,6 +55,11 @@ pub fn Settings(
         if show.get() && !loaded.get() {
             set_loading.set(true);
             spawn_local(async move {
+                // Fetch storage name
+                if let Ok(name) = get_credential_storage_name().await {
+                    set_storage_name.set(name);
+                }
+
                 match get_settings().await {
                     Ok(settings) => {
                         // ScreenScraper
@@ -434,6 +441,13 @@ pub fn Settings(
                                 <div class="settings-error">
                                     {move || save_error.get().unwrap_or_default()}
                                 </div>
+                            </Show>
+
+                            // Storage location note
+                            <Show when=move || !storage_name.get().is_empty()>
+                                <p class="settings-storage-note">
+                                    "Credentials saved to " {move || storage_name.get()}
+                                </p>
                             </Show>
                         </div>
                     </Show>

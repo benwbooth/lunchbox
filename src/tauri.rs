@@ -462,6 +462,16 @@ pub async fn get_settings() -> Result<AppSettings, String> {
     }
 }
 
+/// Get the name of where credentials are stored (keyring or database)
+pub async fn get_credential_storage_name() -> Result<String, String> {
+    if is_tauri() {
+        invoke_no_args("get_credential_storage_name").await
+    } else {
+        // For HTTP mode, we don't know the storage - just say "server"
+        Ok("server".to_string())
+    }
+}
+
 /// Save settings
 pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
     #[derive(Serialize)]

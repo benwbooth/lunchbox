@@ -735,6 +735,11 @@ pub async fn get_settings(
 }
 
 #[tauri::command]
+pub fn get_credential_storage_name() -> String {
+    crate::keyring_store::get_credential_storage_name().to_string()
+}
+
+#[tauri::command]
 pub async fn save_settings(
     settings: AppSettings,
     state: tauri::State<'_, AppStateHandle>,

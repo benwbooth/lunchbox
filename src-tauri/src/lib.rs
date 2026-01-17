@@ -45,6 +45,7 @@ pub fn run() {
             commands::get_game_by_uuid,
             commands::get_game_variants,
             commands::get_settings,
+            commands::get_credential_storage_name,
             commands::save_settings,
             commands::scrape_rom,
             commands::get_collections,
