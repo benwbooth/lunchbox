@@ -15,8 +15,13 @@ use crate::tauri::{self, file_to_asset_url, ImageInfo};
 pub enum ImageState {
     /// Initial state - checking if image exists
     Loading,
-    /// Image is being downloaded
-    Downloading { progress: f32 },
+    /// Image is being downloaded from a source
+    Downloading {
+        /// Progress from 0.0 to 1.0 (or -1.0 for indeterminate)
+        progress: f32,
+        /// Name of the source being tried (e.g., "LaunchBox", "libretro-thumbnails")
+        source: String,
+    },
     /// Image is ready to display
     Ready { url: String },
     /// No image available for this game
@@ -96,7 +101,7 @@ pub fn LazyImage(
 
                     // Need to download from LaunchBox
                     console::log_1(&format!("LazyImage: Downloading from LaunchBox CDN...").into());
-                    set_state.set(ImageState::Downloading { progress: 0.0 });
+                    set_state.set(ImageState::Downloading { progress: -1.0, source: "LaunchBox CDN".to_string() });
                     if let Ok(local_path) = tauri::download_image(info.id).await {
                         if mounted.get() {
                             console::log_1(&format!("LazyImage: LaunchBox download succeeded: {}", local_path).into());
@@ -114,7 +119,7 @@ pub fn LazyImage(
                     // No LaunchBox metadata - try fallback sources directly
                     console::log_1(&format!("LazyImage: No LaunchBox metadata, trying fallback sources...").into());
                     if mounted.get() {
-                        set_state.set(ImageState::Downloading { progress: 0.0 });
+                        set_state.set(ImageState::Downloading { progress: -1.0, source: "Searching sources...".to_string() });
                         try_fallback_sources(&title, &plat, &img_type, Some(db_id), set_state, mounted).await;
                     }
                 }
@@ -122,7 +127,7 @@ pub fn LazyImage(
                     // Error fetching metadata - try fallback sources directly
                     console::log_1(&format!("LazyImage: Error getting metadata: {}, trying fallback...", e).into());
                     if mounted.get() {
-                        set_state.set(ImageState::Downloading { progress: 0.0 });
+                        set_state.set(ImageState::Downloading { progress: -1.0, source: "Searching sources...".to_string() });
                         try_fallback_sources(&title, &plat, &img_type, Some(db_id), set_state, mounted).await;
                     }
                 }
@@ -148,17 +153,28 @@ pub fn LazyImage(
             match current_state {
                 ImageState::Loading => {
                     view! {
-                        <div class=format!("{} lazy-image-loading", class_str)>
-                            <div class="loading-spinner"></div>
+                        <div class=format!("{} lazy-image-downloading", class_str)>
+                            <div class="download-status">
+                                <div class="download-progress">
+                                    <div class="progress-bar indeterminate" style:width="100%"></div>
+                                </div>
+                                <div class="download-source">"Checking cache..."</div>
+                            </div>
                         </div>
                     }.into_any()
                 }
-                ImageState::Downloading { progress } => {
-                    let progress_pct = (progress * 100.0) as i32;
+                ImageState::Downloading { progress, source } => {
+                    // progress -1.0 means indeterminate (searching), 0.0-1.0 means actual progress
+                    let is_indeterminate = progress < 0.0;
+                    let progress_pct = if is_indeterminate { 100 } else { (progress * 100.0) as i32 };
+                    let bar_class = if is_indeterminate { "progress-bar indeterminate" } else { "progress-bar" };
                     view! {
                         <div class=format!("{} lazy-image-downloading", class_str)>
-                            <div class="download-progress">
-                                <div class="progress-bar" style:width=format!("{}%", progress_pct)></div>
+                            <div class="download-status">
+                                <div class="download-progress">
+                                    <div class=bar_class style:width=format!("{}%", progress_pct)></div>
+                                </div>
+                                <div class="download-source">{source}</div>
                             </div>
                         </div>
                     }.into_any()
