@@ -32,10 +32,10 @@ pub fn Settings(
     let (em_password, set_em_password) = signal(String::new());
 
     // Form state
-    let (saving, set_saving) = signal(false);
     let (save_error, set_save_error) = signal::<Option<String>>(None);
     let (loading, set_loading) = signal(false);
     let (loaded, set_loaded) = signal(false);
+    let (saving, set_saving) = signal(false);
 
     // Connection test state
     let (testing_ss, set_testing_ss) = signal(false);
@@ -87,7 +87,12 @@ pub fn Settings(
         }
     });
 
-    let on_save = move |_| {
+    // Auto-save function
+    let do_save = move || {
+        if !loaded.get() || saving.get() {
+            return; // Don't save while loading or already saving
+        }
+
         set_saving.set(true);
         set_save_error.set(None);
 
@@ -100,7 +105,6 @@ pub fn Settings(
         let client_secret = igdb_client_secret.get();
         let em_user = em_username.get();
         let em_pass = em_password.get();
-        let close_fn = on_close;
 
         spawn_local(async move {
             let settings = AppSettings {
@@ -127,27 +131,45 @@ pub fn Settings(
                 },
             };
 
-            match save_settings(settings).await {
-                Ok(_) => {
-                    set_saving.set(false);
-                    close_fn.set(false);
-                }
-                Err(e) => {
-                    set_saving.set(false);
-                    set_save_error.set(Some(e));
-                }
+            if let Err(e) = save_settings(settings).await {
+                set_save_error.set(Some(e));
             }
+            set_saving.set(false);
         });
     };
+
+    // Auto-save when any field changes (after initial load)
+    Effect::new(move || {
+        // Track all fields
+        let _ = ss_dev_id.get();
+        let _ = ss_dev_password.get();
+        let _ = ss_user_id.get();
+        let _ = ss_user_password.get();
+        let _ = sgdb_api_key.get();
+        let _ = igdb_client_id.get();
+        let _ = igdb_client_secret.get();
+        let _ = em_username.get();
+        let _ = em_password.get();
+
+        // Only save after initial load
+        if loaded.get() {
+            do_save();
+        }
+    });
 
     view! {
         <Show when=move || show.get()>
             <div class="settings-overlay" on:click=move |_| on_close.set(false)>
                 <div class="settings-panel" on:click=|ev| ev.stop_propagation()>
                     <button class="close-btn" on:click=move |_| on_close.set(false)>
-                        "x"
+                        "×"
                     </button>
-                    <h2 class="settings-title">"Settings"</h2>
+                    <h2 class="settings-title">
+                        "Settings"
+                        <Show when=move || saving.get()>
+                            <span class="settings-saving">" (saving...)"</span>
+                        </Show>
+                    </h2>
 
                     <Show
                         when=move || !loading.get()
@@ -413,22 +435,6 @@ pub fn Settings(
                                     {move || save_error.get().unwrap_or_default()}
                                 </div>
                             </Show>
-
-                            <div class="settings-actions">
-                                <button
-                                    class="settings-cancel-btn"
-                                    on:click=move |_| on_close.set(false)
-                                >
-                                    "Cancel"
-                                </button>
-                                <button
-                                    class="settings-save-btn"
-                                    on:click=on_save
-                                    disabled=move || saving.get()
-                                >
-                                    {move || if saving.get() { "Saving..." } else { "Save" }}
-                                </button>
-                            </div>
                         </div>
                     </Show>
                 </div>
