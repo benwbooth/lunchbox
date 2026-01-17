@@ -1,5 +1,9 @@
 //! Tauri commands exposed to the frontend
 
+use crate::db::schema::{
+    extract_region_from_title, normalize_title_for_display,
+    Game, GameVariant, Platform,
+};
 use crate::import::{find_game_images, LaunchBoxImporter};
 use crate::scanner::{RomFile, RomScanner};
 use crate::scraper::{get_screenscraper_platform_id, ScreenScraperClient, ScreenScraperConfig};
@@ -87,97 +91,6 @@ fn get_platform_search_aliases(name: &str) -> Option<String> {
     Some(aliases.to_string())
 }
 
-/// Platform for display
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Platform {
-    pub id: i64,
-    pub name: String,
-    pub game_count: i64,
-    pub aliases: Option<String>,
-}
-
-/// Game for display
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Game {
-    pub id: String,
-    pub database_id: i64,
-    pub title: String,
-    pub display_title: String, // Clean title without region/version suffixes
-    pub platform: String,
-    pub platform_id: i64,
-    pub description: Option<String>,
-    pub release_date: Option<String>,
-    pub release_year: Option<i32>,
-    pub developer: Option<String>,
-    pub publisher: Option<String>,
-    pub genres: Option<String>,
-    pub players: Option<String>,
-    pub rating: Option<f64>,
-    pub rating_count: Option<i64>,
-    pub esrb: Option<String>,
-    pub cooperative: Option<bool>,
-    pub video_url: Option<String>,
-    pub wikipedia_url: Option<String>,
-    pub release_type: Option<String>,
-    pub notes: Option<String>,
-    pub sort_title: Option<String>,
-    pub series: Option<String>,
-    pub region: Option<String>,
-    pub play_mode: Option<String>,
-    pub version: Option<String>,
-    pub status: Option<String>,
-    pub steam_app_id: Option<i64>,
-    pub box_front_path: Option<String>,
-    pub screenshot_path: Option<String>,
-    pub variant_count: i32, // Number of variants (regions/versions)
-}
-
-/// Game variant (region/version)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameVariant {
-    pub id: String,
-    pub title: String,
-    pub region: Option<String>,
-}
-
-/// Normalize a game title by removing region/version suffixes
-fn normalize_title(title: &str) -> String {
-    // Remove all parenthetical content like (USA), (World), (v1.0), (Rev A), etc.
-    let mut result = String::new();
-    let mut depth = 0;
-
-    for c in title.chars() {
-        match c {
-            '(' => depth += 1,
-            ')' => depth = (depth as i32 - 1).max(0) as usize,
-            _ if depth == 0 => result.push(c),
-            _ => {}
-        }
-    }
-
-    result.trim().to_string()
-}
-
-/// Extract region from title
-fn extract_region(title: &str) -> Option<String> {
-    // Common region patterns
-    let regions = [
-        "(USA)", "(World)", "(Europe)", "(Japan)", "(En)", "(Ja)", "(De)", "(Fr)",
-        "(USA, Europe)", "(Japan, USA)", "(Japan, Europe)", "(Europe, Australia)",
-        "(Korea)", "(Asia)", "(Taiwan)", "(Germany)", "(France)", "(Spain)", "(Italy)",
-        "(Brazil)", "(Australia)", "(Netherlands)", "(Sweden)", "(China)",
-    ];
-
-    for region in regions {
-        if title.contains(region) {
-            return Some(region.trim_matches(|c| c == '(' || c == ')').to_string());
-        }
-    }
-    None
-}
-
 /// Scan result
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScanResult {
@@ -250,7 +163,7 @@ pub async fn get_platforms(
             // Count unique normalized titles
             let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
             for (title,) in all_titles {
-                let normalized = normalize_title(&title).to_lowercase();
+                let normalized = normalize_title_for_display(&title).to_lowercase();
                 seen.insert(normalized);
             }
             // Use database aliases or generate them if not present
@@ -329,7 +242,7 @@ pub async fn get_game_count(
         // Count unique normalized titles
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (title,) in titles {
-            let normalized = normalize_title(&title).to_lowercase();
+            let normalized = normalize_title_for_display(&title).to_lowercase();
             seen.insert(normalized);
         }
         return Ok(seen.len() as i64);
@@ -449,7 +362,7 @@ pub async fn get_games(
             let version: Option<String> = row.get("version");
             let status: Option<String> = row.get("status");
             let steam_app_id: Option<i64> = row.get("steam_app_id");
-            let display_title = normalize_title(&title);
+            let display_title = normalize_title_for_display(&title);
             let key = display_title.to_lowercase();
 
             grouped.entry(key)
@@ -608,7 +521,7 @@ pub async fn get_games(
                     find_game_images(path, &g.platform, &g.name).box_front
                 });
 
-                let display_title = normalize_title(&g.name);
+                let display_title = normalize_title_for_display(&g.name);
                 Game {
                     id: uuid::Uuid::new_v4().to_string(),
                     database_id: g.database_id,
@@ -670,7 +583,7 @@ pub async fn get_game_by_id(
                 (None, None)
             };
 
-            let display_title = normalize_title(&g.name);
+            let display_title = normalize_title_for_display(&g.name);
             Ok(Some(Game {
                 id: uuid::Uuid::new_v4().to_string(),
                 database_id: g.database_id,
@@ -766,7 +679,7 @@ pub async fn get_game_by_uuid(
             let status: Option<String> = row.get("status");
             let steam_app_id: Option<i64> = row.get("steam_app_id");
 
-            let display_title = normalize_title(&title);
+            let display_title = normalize_title_for_display(&title);
 
             // Count matching variants
             let normalized_lower = display_title.to_lowercase();
@@ -780,7 +693,7 @@ pub async fn get_game_by_uuid(
 
             let actual_variant_count = all_titles
                 .iter()
-                .filter(|(t,)| normalize_title(t).to_lowercase() == normalized_lower)
+                .filter(|(t,)| normalize_title_for_display(t).to_lowercase() == normalized_lower)
                 .count() as i32;
 
             return Ok(Some(Game {
@@ -868,7 +781,7 @@ pub async fn get_game_variants(
         let matching: Vec<(String, String)> = all_games
             .into_iter()
             .filter(|(_, title)| {
-                let normalized = normalize_title(title).to_lowercase();
+                let normalized = normalize_title_for_display(title).to_lowercase();
                 normalized == normalized_search
             })
             .collect();
@@ -878,7 +791,7 @@ pub async fn get_game_variants(
         let mut seen_titles: HashMap<String, GameVariant> = HashMap::new();
         for (id, title) in matching {
             if !seen_titles.contains_key(&title) {
-                let region = extract_region(&title);
+                let region = extract_region_from_title(&title);
                 seen_titles.insert(title.clone(), GameVariant { id, title, region });
             }
         }
@@ -1086,7 +999,7 @@ pub async fn scrape_rom(
         platform_id,
     ).await {
         Ok(Some(scraped)) => {
-            let display_title = normalize_title(&scraped.name);
+            let display_title = normalize_title_for_display(&scraped.name);
             let game = Game {
                 id: uuid::Uuid::new_v4().to_string(),
                 database_id: scraped.screenscraper_id,
@@ -1292,7 +1205,7 @@ pub async fn get_collection_games(
                         find_game_images(path, &g.platform, &g.name).box_front
                     });
 
-                    let display_title = normalize_title(&g.name);
+                    let display_title = normalize_title_for_display(&g.name);
                     games.push(Game {
                         id: game_id,
                         database_id: g.database_id,
@@ -1777,7 +1690,7 @@ pub async fn get_favorites(
                     find_game_images(path, &g.platform, &g.name).box_front
                 });
 
-                let display_title = normalize_title(&g.name);
+                let display_title = normalize_title_for_display(&g.name);
                 games.push(Game {
                     id: db_id.to_string(),
                     database_id: g.database_id,

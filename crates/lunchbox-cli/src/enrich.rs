@@ -52,6 +52,134 @@ impl std::fmt::Display for MatchType {
 /// - Converts to lowercase
 /// - Removes content in parentheses (region tags, version info)
 /// - Removes content in square brackets
+/// Extract all parenthetical content from a title as a sorted, deduplicated list
+/// "Game (USA) (Rev A)" -> ["Rev A", "USA"]
+pub fn extract_tags(title: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+    let mut current_tag = String::new();
+    let mut depth = 0;
+
+    for c in title.chars() {
+        match c {
+            '(' | '[' => {
+                depth += 1;
+                if depth == 1 {
+                    current_tag.clear();
+                } else {
+                    current_tag.push(c);
+                }
+            }
+            ')' | ']' => {
+                if depth == 1 && !current_tag.trim().is_empty() {
+                    tags.push(current_tag.trim().to_string());
+                }
+                depth = (depth - 1).max(0);
+                if depth > 0 {
+                    current_tag.push(c);
+                }
+            }
+            _ if depth > 0 => current_tag.push(c),
+            _ => {}
+        }
+    }
+
+    tags.sort();
+    tags.dedup();
+    tags
+}
+
+/// Check if a tag is a variant-significant tag (region, version, etc.)
+/// vs a metadata tag (publisher, etc.) that should be merged
+///
+/// Variant-significant tags indicate genuinely different game content:
+/// - Regions (USA, Japan, Europe, etc.) - different localizations
+/// - Versions (v1.0, Rev A, etc.) - bug fixes, content changes
+/// - Discs/Parts (Disc 1, Side A, etc.) - multi-disc games
+/// - Special releases (Beta, Proto, Demo, etc.) - different from retail
+/// - Platform/Distribution (Virtual Console, PSN, etc.) - often different content
+/// - Addons (DLC, Expansion) - different products
+pub fn is_variant_tag(tag: &str) -> bool {
+    let tag_lower = tag.to_lowercase();
+    let tag_trimmed = tag_lower.trim();
+
+    // === REGIONS ===
+    // Single word regions
+    let regions = [
+        "usa", "europe", "japan", "world", "asia", "australia", "brazil",
+        "canada", "china", "finland", "france", "germany", "greece",
+        "hong kong", "italy", "korea", "mexico", "netherlands", "norway",
+        "poland", "portugal", "russia", "scandinavia", "spain", "sweden",
+        "taiwan", "uk", "argentina", "austria", "belgium", "chile",
+        "colombia", "czech", "denmark", "hungary", "india", "indonesia",
+        "ireland", "israel", "malaysia", "new zealand", "peru", "philippines",
+        "romania", "singapore", "slovakia", "south africa", "switzerland",
+        "thailand", "turkey", "ukraine", "vietnam",
+    ];
+    if regions.iter().any(|r| tag_trimmed == *r) {
+        return true;
+    }
+
+    // Language codes (2-letter ISO or compound like "En,Fr,De,Es,It")
+    if tag_trimmed.len() == 2 && tag_trimmed.chars().all(|c| c.is_ascii_alphabetic()) {
+        return true; // En, Ja, De, Fr, etc.
+    }
+    if tag_trimmed.contains(',') && tag_trimmed.split(',').all(|p| p.trim().len() <= 3) {
+        return true; // En,Fr,De,Es,It
+    }
+
+    // === VERSIONS ===
+    if tag_trimmed.starts_with("v") && tag_trimmed.chars().nth(1).map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        return true; // v1.0, v1.1, etc.
+    }
+    if tag_trimmed.starts_with("rev") {
+        return true; // Rev A, Rev 1, etc.
+    }
+    if tag_trimmed.starts_with("build") || tag_trimmed.starts_with("ver") {
+        return true;
+    }
+
+    // === DISCS/PARTS ===
+    if tag_trimmed.starts_with("disc") || tag_trimmed.starts_with("disk") {
+        return true;
+    }
+    if tag_trimmed.starts_with("side") || tag_trimmed.starts_with("part") {
+        return true;
+    }
+
+    // === SPECIAL RELEASES ===
+    let special = [
+        "beta", "proto", "prototype", "sample", "demo", "kiosk", "debug",
+        "unl", "unlicensed", "pirate", "hack", "alt", "alternate",
+        "ndc", "competition", "promo", "promotional", "preview",
+        "alpha", "pre-release", "prerelease", "aftermarket",
+    ];
+    if special.iter().any(|s| tag_trimmed.contains(s)) {
+        return true;
+    }
+
+    // === PLATFORM/DISTRIBUTION ===
+    let platforms = [
+        "virtual console", "psn", "xbla", "eshop", "steam", "gog",
+        "switch online", "wiiware", "dsiware", "xbox live", "playstation network",
+        "nintendo online", "game pass", "psplus", "arcade archives",
+    ];
+    if platforms.iter().any(|p| tag_trimmed.contains(p)) {
+        return true;
+    }
+
+    // === ADDONS ===
+    if tag_trimmed == "addon" || tag_trimmed == "dlc" || tag_trimmed.contains("expansion") {
+        return true;
+    }
+
+    false
+}
+
+/// Extract only variant-significant tags from a title
+pub fn extract_variant_tags(title: &str) -> Vec<String> {
+    extract_tags(title).into_iter().filter(|t| is_variant_tag(t)).collect()
+}
+
 /// - Removes "the " prefix
 /// - Removes punctuation
 /// - Normalizes whitespace

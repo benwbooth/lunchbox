@@ -3,7 +3,10 @@
 //! Provides HTTP endpoints that mirror the Tauri commands, allowing
 //! the frontend to work in a regular browser during development.
 
-use crate::commands::{Game, GameVariant, Platform};
+use crate::db::schema::{
+    extract_region_from_title, normalize_title_for_dedup, normalize_title_for_display,
+    Game, GameVariant, Platform,
+};
 use crate::state::AppState;
 use axum::{
     extract::State,
@@ -150,7 +153,7 @@ async fn get_platforms(
 
             let mut seen: HashSet<String> = HashSet::new();
             for (title,) in all_titles {
-                let normalized = normalize_for_dedup(&title);
+                let normalized = normalize_title_for_dedup(&title);
                 seen.insert(normalized);
             }
             // Use database aliases or generate them if not present
@@ -293,7 +296,7 @@ async fn get_games(
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
 
-            let normalized = normalize_for_dedup(&title);
+            let normalized = normalize_title_for_dedup(&title);
             let key = format!("{}:{}", platform_id, normalized);
 
             *variant_counts.entry(key.clone()).or_insert(0) += 1;
@@ -303,7 +306,7 @@ async fn get_games(
                     id,
                     database_id: 0,
                     title: title.clone(),
-                    display_title: normalize_title(&title),
+                    display_title: normalize_title_for_display(&title),
                     platform,
                     platform_id,
                     description: row.get("description"),
@@ -420,7 +423,7 @@ async fn get_game_count(
 
         let mut seen: HashSet<String> = HashSet::new();
         for (title,) in titles {
-            let normalized = normalize_for_dedup(&title);
+            let normalized = normalize_title_for_dedup(&title);
             seen.insert(normalized);
         }
         return Ok(Json(seen.len() as i64));
@@ -458,7 +461,7 @@ async fn get_game_by_uuid(
             let platform_id: i64 = row.get("platform_id");
 
             // Count variants using normalize_for_dedup for consistency with list view
-            let normalized_for_dedup = normalize_for_dedup(&title);
+            let normalized_for_dedup = normalize_title_for_dedup(&title);
             let all_titles: Vec<(String,)> = sqlx::query_as(
                 "SELECT title FROM games WHERE platform_id = ?"
             )
@@ -469,14 +472,14 @@ async fn get_game_by_uuid(
 
             let variant_count = all_titles
                 .iter()
-                .filter(|(t,)| normalize_for_dedup(t) == normalized_for_dedup)
+                .filter(|(t,)| normalize_title_for_dedup(t) == normalized_for_dedup)
                 .count() as i64;
 
             let game = Game {
                 id: row.get("id"),
                 database_id: 0,
                 title: title.clone(),
-                display_title: normalize_title(&title),
+                display_title: normalize_title_for_display(&title),
                 platform: row.get("platform"),
                 platform_id,
                 description: row.get("description"),
@@ -538,7 +541,7 @@ async fn get_game_variants(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
             // Use normalize_for_dedup to match how variants are counted in get_games
-            let normalized = normalize_for_dedup(&title);
+            let normalized = normalize_title_for_dedup(&title);
 
             // Find all variants with the same normalized title
             let variants: Vec<(String, String)> = sqlx::query_as(
@@ -551,10 +554,10 @@ async fn get_game_variants(
 
             let result: Vec<GameVariant> = variants
                 .into_iter()
-                .filter(|(_, t)| normalize_for_dedup(t) == normalized)
+                .filter(|(_, t)| normalize_title_for_dedup(t) == normalized)
                 .map(|(id, title)| GameVariant {
                     id,
-                    region: extract_region(&title),
+                    region: extract_region_from_title(&title),
                     title,
                 })
                 .collect();
@@ -690,7 +693,7 @@ async fn get_favorites(
                     id: row.get("id"),
                     database_id: 0,
                     title: title.clone(),
-                    display_title: normalize_title(&title),
+                    display_title: normalize_title_for_display(&title),
                     platform: row.get("platform"),
                     platform_id: row.get("platform_id"),
                     description: row.get("description"),
@@ -763,67 +766,3 @@ async fn remove_favorite(
     Ok(Json(false))
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/// Normalize title for display - removes parenthetical content like (USA), (v1.0)
-fn normalize_title(title: &str) -> String {
-    let mut result = String::new();
-    let mut depth = 0;
-
-    for c in title.chars() {
-        match c {
-            '(' => depth += 1,
-            ')' => depth = (depth as i32 - 1).max(0) as usize,
-            _ if depth == 0 => result.push(c),
-            _ => {}
-        }
-    }
-
-    result.trim().to_string()
-}
-
-/// Normalize title for deduplication - removes punctuation, normalizes whitespace, lowercases
-/// This allows "Canon - The Legend" and "Canon: The Legend" to be considered the same game
-fn normalize_for_dedup(title: &str) -> String {
-    let mut result = String::new();
-    let mut depth = 0;
-    let mut last_was_space = true; // Start true to trim leading spaces
-
-    for c in title.chars() {
-        match c {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth = (depth as i32 - 1).max(0) as usize,
-            _ if depth == 0 => {
-                if c.is_alphanumeric() {
-                    result.push(c.to_ascii_lowercase());
-                    last_was_space = false;
-                } else if !last_was_space {
-                    // Replace any non-alphanumeric with a single space
-                    result.push(' ');
-                    last_was_space = true;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    result.trim().to_string()
-}
-
-fn extract_region(title: &str) -> Option<String> {
-    let regions = [
-        "(USA)", "(World)", "(Europe)", "(Japan)", "(En)", "(Ja)", "(De)", "(Fr)",
-        "(USA, Europe)", "(Japan, USA)", "(Japan, Europe)", "(Europe, Australia)",
-        "(Korea)", "(Asia)", "(Taiwan)", "(Germany)", "(France)", "(Spain)", "(Italy)",
-        "(Brazil)", "(Australia)", "(Netherlands)", "(Sweden)", "(China)",
-    ];
-
-    for region in regions {
-        if title.contains(region) {
-            return Some(region.trim_matches(|c| c == '(' || c == ')').to_string());
-        }
-    }
-    None
-}

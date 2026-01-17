@@ -19,7 +19,7 @@ use std::path::Path;
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::enrich::{normalize_title, similarity_ratio};
+use crate::enrich::{extract_variant_tags, normalize_title, similarity_ratio};
 
 /// Platform name aliases for matching across different databases
 /// Maps various names to a canonical name (using LaunchBox Platforms.xml names as canonical)
