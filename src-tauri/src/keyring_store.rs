@@ -27,32 +27,31 @@ fn detect_backend() -> KeyringBackend {
         // On Linux, prefer secret-tool if available (more reliable with KWallet)
         #[cfg(target_os = "linux")]
         {
-            if let Ok(output) = std::process::Command::new("secret-tool")
-                .arg("--version")
+            // Check if secret-tool exists (it prints usage even with no args)
+            if std::process::Command::new("secret-tool")
                 .output()
+                .is_ok()
             {
-                if output.status.success() {
-                    // Test that we can actually write
-                    let write_result = std::process::Command::new("secret-tool")
-                        .args(["store", "--label", "lunchbox-test", "service", SERVICE_NAME, "key", "_test"])
-                        .stdin(std::process::Stdio::piped())
-                        .spawn()
-                        .and_then(|mut child| {
-                            use std::io::Write;
-                            if let Some(stdin) = child.stdin.as_mut() {
-                                stdin.write_all(b"test")?;
-                            }
-                            child.wait()
-                        });
+                // Test that we can actually write
+                let write_result = std::process::Command::new("secret-tool")
+                    .args(["store", "--label", "lunchbox-test", "service", SERVICE_NAME, "key", "_test"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        use std::io::Write;
+                        if let Some(stdin) = child.stdin.as_mut() {
+                            stdin.write_all(b"test")?;
+                        }
+                        child.wait()
+                    });
 
-                    if write_result.map(|s| s.success()).unwrap_or(false) {
-                        // Clean up test entry
-                        let _ = std::process::Command::new("secret-tool")
-                            .args(["clear", "service", SERVICE_NAME, "key", "_test"])
-                            .status();
-                        tracing::info!("Using secret-tool for credential storage");
-                        return KeyringBackend::SecretTool;
-                    }
+                if write_result.map(|s| s.success()).unwrap_or(false) {
+                    // Clean up test entry
+                    let _ = std::process::Command::new("secret-tool")
+                        .args(["clear", "service", SERVICE_NAME, "key", "_test"])
+                        .status();
+                    tracing::info!("Using secret-tool for credential storage");
+                    return KeyringBackend::SecretTool;
                 }
             }
         }
