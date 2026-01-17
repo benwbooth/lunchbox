@@ -38,15 +38,12 @@ pub fn run() {
         .manage(Arc::new(RwLock::new(AppState::default())))
         .invoke_handler(tauri::generate_handler![
             commands::greet,
-            commands::scan_roms,
             commands::get_platforms,
             commands::get_game_count,
             commands::get_games,
             commands::get_game_by_id,
             commands::get_game_by_uuid,
             commands::get_game_variants,
-            commands::import_launchbox,
-            commands::launch_game,
             commands::get_settings,
             commands::save_settings,
             commands::scrape_rom,
@@ -76,7 +73,6 @@ pub fn run() {
             commands::download_image,
             commands::download_game_images,
             commands::get_image_cache_stats,
-            commands::import_game_images,
             commands::download_image_with_fallback,
             commands::download_libretro_thumbnail,
         ])

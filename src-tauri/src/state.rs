@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 use crate::db;
-use crate::import::LaunchBoxImporter;
 
 /// Application state shared across commands
 pub struct AppState {
@@ -15,8 +14,6 @@ pub struct AppState {
     pub db_pool: Option<SqlitePool>,
     /// Shipped games database (LibRetro-based, read-only)
     pub games_db_pool: Option<SqlitePool>,
-    /// LaunchBox importer (optional, for users with existing libraries)
-    pub launchbox_importer: Option<LaunchBoxImporter>,
     pub settings: AppSettings,
 }
 
@@ -25,7 +22,6 @@ impl Default for AppState {
         Self {
             db_pool: None,
             games_db_pool: None,
-            launchbox_importer: None,
             settings: AppSettings::default(),
         }
     }
@@ -34,13 +30,21 @@ impl Default for AppState {
 /// User-configurable settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
-    pub rom_directories: Vec<PathBuf>,
-    pub launchbox_path: Option<PathBuf>,
-    pub retroarch_path: Option<PathBuf>,
+    /// Directory for app data (database, settings). Defaults to OS app data dir.
     #[serde(default)]
-    pub cache_directory: Option<PathBuf>,
-    pub emulators: Vec<EmulatorConfig>,
-    pub default_platform_emulators: std::collections::HashMap<String, String>,
+    pub data_directory: Option<PathBuf>,
+    /// Directory for media files (images, videos). Defaults to data_directory/media.
+    #[serde(default)]
+    pub media_directory: Option<PathBuf>,
+    /// Directory for programs (emulators, cores). Defaults to data_directory/programs.
+    #[serde(default)]
+    pub programs_directory: Option<PathBuf>,
+    /// Directory for save game backups. Defaults to data_directory/saves.
+    #[serde(default)]
+    pub saves_directory: Option<PathBuf>,
+
+    // Image source API credentials (stored in keyring when available)
+    #[serde(default)]
     pub screenscraper: ScreenScraperSettings,
     #[serde(default)]
     pub steamgriddb: SteamGridDBSettings,
@@ -95,15 +99,10 @@ pub struct EmuMoviesSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            rom_directories: vec![
-                PathBuf::from("/mnt/roms"),
-                PathBuf::from("/mnt/ext/roms"),
-            ],
-            launchbox_path: Some(PathBuf::from("/mnt/Windows/Users/benwb/LaunchBox")),
-            retroarch_path: None,
-            cache_directory: None, // Will use app data dir if None
-            emulators: Vec::new(),
-            default_platform_emulators: std::collections::HashMap::new(),
+            data_directory: None,
+            media_directory: None,
+            programs_directory: None,
+            saves_directory: None,
             screenscraper: ScreenScraperSettings::default(),
             steamgriddb: SteamGridDBSettings::default(),
             igdb: IGDBSettings::default(),
@@ -112,21 +111,39 @@ impl Default for AppSettings {
     }
 }
 
-/// Emulator configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmulatorConfig {
-    pub id: String,
-    pub name: String,
-    pub executable_path: PathBuf,
-    pub emulator_type: EmulatorType,
-    pub command_template: String,
-    pub supported_platforms: Vec<String>,
-}
+impl AppSettings {
+    /// Get the base data directory (uses OS-appropriate default if not set)
+    /// - Linux: ~/.local/share/lunchbox
+    /// - macOS: ~/Library/Application Support/lunchbox
+    /// - Windows: %APPDATA%\lunchbox
+    pub fn get_data_directory(&self) -> PathBuf {
+        self.data_directory.clone().unwrap_or_else(|| {
+            directories::ProjectDirs::from("", "", "lunchbox")
+                .map(|dirs| dirs.data_dir().to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("."))
+        })
+    }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EmulatorType {
-    RetroArch,
-    Standalone,
+    /// Get the media directory (images, videos, etc.)
+    pub fn get_media_directory(&self) -> PathBuf {
+        self.media_directory.clone().unwrap_or_else(|| {
+            self.get_data_directory().join("media")
+        })
+    }
+
+    /// Get the programs directory (emulators, cores, etc.)
+    pub fn get_programs_directory(&self) -> PathBuf {
+        self.programs_directory.clone().unwrap_or_else(|| {
+            self.get_data_directory().join("programs")
+        })
+    }
+
+    /// Get the saves directory (save game backups)
+    pub fn get_saves_directory(&self) -> PathBuf {
+        self.saves_directory.clone().unwrap_or_else(|| {
+            self.get_data_directory().join("saves")
+        })
+    }
 }
 
 /// Initialize app state on startup
@@ -198,33 +215,10 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
         found_pool
     };
 
-    // Try to connect to LaunchBox if configured (optional supplement)
-    let launchbox_importer = if let Some(ref lb_path) = settings.launchbox_path {
-        let metadata_path = lb_path.join("Metadata").join("LaunchBox.Metadata.db");
-        if metadata_path.exists() {
-            match LaunchBoxImporter::connect(&metadata_path).await {
-                Ok(importer) => {
-                    tracing::info!("Connected to LaunchBox metadata database");
-                    Some(importer)
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to connect to LaunchBox: {}", e);
-                    None
-                }
-            }
-        } else {
-            tracing::info!("LaunchBox metadata database not found at {}", metadata_path.display());
-            None
-        }
-    } else {
-        None
-    };
-
     // Update state
     let mut state_guard = state.write().await;
     state_guard.db_pool = Some(pool);
     state_guard.games_db_pool = games_db_pool;
-    state_guard.launchbox_importer = launchbox_importer;
     state_guard.settings = settings;
 
     tracing::info!("App state initialized successfully");

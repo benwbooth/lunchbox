@@ -270,38 +270,17 @@ pub struct GameVariant {
     pub region: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanResult {
-    pub total_files: usize,
-    pub roms: Vec<RomFile>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RomFile {
-    pub path: String,
-    pub file_name: String,
-    pub clean_name: String,
-    pub extension: String,
-    pub size: u64,
-    pub region: Option<String>,
-    pub version: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportResult {
-    pub platforms_imported: usize,
-    pub games_imported: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppSettings {
-    pub rom_directories: Vec<std::path::PathBuf>,
-    pub launchbox_path: Option<std::path::PathBuf>,
-    pub retroarch_path: Option<std::path::PathBuf>,
     #[serde(default)]
-    pub cache_directory: Option<std::path::PathBuf>,
-    pub emulators: Vec<EmulatorConfig>,
-    pub default_platform_emulators: std::collections::HashMap<String, String>,
+    pub data_directory: Option<String>,
+    #[serde(default)]
+    pub media_directory: Option<String>,
+    #[serde(default)]
+    pub programs_directory: Option<String>,
+    #[serde(default)]
+    pub saves_directory: Option<String>,
+    #[serde(default)]
     pub screenscraper: ScreenScraperSettings,
     #[serde(default)]
     pub steamgriddb: SteamGridDBSettings,
@@ -343,22 +322,6 @@ pub struct EmuMoviesSettings {
     pub username: String,
     #[serde(default)]
     pub password: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmulatorConfig {
-    pub id: String,
-    pub name: String,
-    pub executable_path: std::path::PathBuf,
-    pub emulator_type: EmulatorType,
-    pub command_template: String,
-    pub supported_platforms: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EmulatorType {
-    RetroArch,
-    Standalone,
 }
 
 // ============ Helpers ============
@@ -488,30 +451,6 @@ pub async fn get_game_variants(game_id: String, display_title: String, platform_
         let path = format!("/api/games/{}/variants", urlencoding::encode(&game_id));
         http_get(&path).await
     }
-}
-
-/// Scan ROM directories
-pub async fn scan_roms(paths: Vec<String>) -> Result<ScanResult, String> {
-    #[derive(Serialize)]
-    struct Args {
-        paths: Vec<String>,
-    }
-    invoke("scan_roms", Args { paths }).await
-}
-
-/// Import from LaunchBox
-pub async fn import_launchbox() -> Result<ImportResult, String> {
-    invoke_no_args("import_launchbox").await
-}
-
-/// Launch a game
-pub async fn launch_game(rom_path: String, platform: String) -> Result<(), String> {
-    #[derive(Serialize)]
-    struct Args {
-        rom_path: String,
-        platform: String,
-    }
-    invoke("launch_game", Args { rom_path, platform }).await
 }
 
 /// Get settings
@@ -859,11 +798,6 @@ pub async fn download_game_images(
 /// Get image cache statistics
 pub async fn get_image_cache_stats() -> Result<CacheStats, String> {
     invoke_no_args("get_image_cache_stats").await
-}
-
-/// Import game images from LaunchBox metadata database
-pub async fn import_game_images() -> Result<i64, String> {
-    invoke_no_args("import_game_images").await
 }
 
 /// Download an image with fallback to multiple sources

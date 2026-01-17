@@ -104,7 +104,6 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(RwLock::new(AppState {
         db_pool: Some(db_pool),
         games_db_pool,
-        launchbox_importer: None,
         settings,
     }));
 

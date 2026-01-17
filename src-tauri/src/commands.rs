@@ -5,8 +5,6 @@ use crate::db::schema::{
     Game, GameVariant, Platform,
 };
 use crate::images::{CacheStats, ImageInfo, ImageService};
-use crate::import::{find_game_images, LaunchBoxImporter};
-use crate::scanner::{RomFile, RomScanner};
 use crate::scraper::{get_screenscraper_platform_id, ScreenScraperClient, ScreenScraperConfig};
 use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
@@ -92,46 +90,9 @@ fn get_platform_search_aliases(name: &str) -> Option<String> {
     Some(aliases.to_string())
 }
 
-/// Scan result
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ScanResult {
-    pub total_files: usize,
-    pub roms: Vec<RomFile>,
-}
-
-/// Import result
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ImportResult {
-    pub platforms_imported: usize,
-    pub games_imported: usize,
-}
-
 #[tauri::command]
 pub fn greet(name: &str) -> String {
     format!("Hello, {}! Welcome to Lunchbox.", name)
-}
-
-#[tauri::command]
-pub async fn scan_roms(
-    paths: Vec<String>,
-    state: tauri::State<'_, AppStateHandle>,
-) -> Result<ScanResult, String> {
-    tracing::info!("Scanning ROM paths: {:?}", paths);
-
-    let paths: Vec<PathBuf> = if paths.is_empty() {
-        let state_guard = state.read().await;
-        state_guard.settings.rom_directories.clone()
-    } else {
-        paths.into_iter().map(PathBuf::from).collect()
-    };
-
-    let scanner = RomScanner::new();
-    let roms = scanner.scan_directories(&paths);
-
-    Ok(ScanResult {
-        total_files: roms.len(),
-        roms,
-    })
 }
 
 #[tauri::command]
@@ -172,24 +133,6 @@ pub async fn get_platforms(
             result.push(Platform { id, name, game_count: seen.len() as i64, aliases });
         }
         return Ok(result);
-    }
-
-    // Fall back to LaunchBox if available
-    if let Some(ref importer) = state_guard.launchbox_importer {
-        let platforms = importer
-            .get_platforms()
-            .await
-            .map_err(|e: anyhow::Error| e.to_string())?;
-
-        return Ok(platforms
-            .into_iter()
-            .map(|p| Platform {
-                id: p.platform_key,
-                name: p.name,
-                game_count: 0,
-                aliases: None,
-            })
-            .collect());
     }
 
     // No database available - show empty state
@@ -495,71 +438,6 @@ pub async fn get_games(
         return Ok(games);
     }
 
-    // Fall back to LaunchBox if available
-    if let Some(ref importer) = state_guard.launchbox_importer {
-        let lb_limit = limit.unwrap_or(10000) as i64;
-        let games = if let Some(ref query) = search {
-            importer
-                .search_games(query, lb_limit)
-                .await
-                .map_err(|e: anyhow::Error| e.to_string())?
-        } else if let Some(ref platform_name) = platform {
-            importer
-                .get_games_by_platform(platform_name)
-                .await
-                .map_err(|e: anyhow::Error| e.to_string())?
-        } else {
-            Vec::new()
-        };
-
-        let lb_path = state_guard.settings.launchbox_path.clone();
-
-        return Ok(games
-            .into_iter()
-            .map(|g| {
-                // Find box front image for grid display
-                let box_front = lb_path.as_ref().and_then(|path| {
-                    find_game_images(path, &g.platform, &g.name).box_front
-                });
-
-                let display_title = normalize_title_for_display(&g.name);
-                Game {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    database_id: g.database_id,
-                    title: g.name.clone(),
-                    display_title,
-                    platform: g.platform.clone(),
-                    platform_id: 0,
-                    description: g.overview,
-                    release_date: g.release_date,
-                    release_year: g.release_year,
-                    developer: g.developer,
-                    publisher: g.publisher,
-                    genres: Some(g.genres),
-                    players: None,
-                    rating: g.community_rating,
-                    rating_count: None,
-                    esrb: None,
-                    cooperative: None,
-                    video_url: None,
-                    wikipedia_url: None,
-                    release_type: None,
-                    notes: None,
-                    sort_title: None,
-                    series: None,
-                    region: None,
-                    play_mode: None,
-                    version: None,
-                    status: None,
-                    steam_app_id: None,
-                    box_front_path: box_front,
-                    screenshot_path: None,
-                    variant_count: 1,
-                }
-            })
-            .collect());
-    }
-
     Ok(Vec::new())
 }
 
@@ -570,60 +448,66 @@ pub async fn get_game_by_id(
 ) -> Result<Option<Game>, String> {
     let state_guard = state.read().await;
 
-    if let Some(ref importer) = state_guard.launchbox_importer {
-        if let Some(g) = importer
-            .get_game_by_id(database_id)
-            .await
-            .map_err(|e: anyhow::Error| e.to_string())?
-        {
-            // Find images on disk using game name and platform
-            let (box_front, screenshot) = if let Some(ref lb_path) = state_guard.settings.launchbox_path {
-                let images = find_game_images(lb_path, &g.platform, &g.name);
-                (images.box_front, images.screenshot)
-            } else {
-                (None, None)
-            };
+    // Look up by launchbox_db_id in the games database
+    if let Some(ref games_pool) = state_guard.games_db_pool {
+        use sqlx::Row;
+        let row_opt = sqlx::query(
+            r#"
+            SELECT g.id, g.title, g.platform_id, p.name as platform,
+                   g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                   g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                   g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
+            FROM games g
+            JOIN platforms p ON g.platform_id = p.id
+            WHERE g.launchbox_db_id = ?
+            LIMIT 1
+            "#
+        )
+        .bind(database_id)
+        .fetch_optional(games_pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
-            let display_title = normalize_title_for_display(&g.name);
-            Ok(Some(Game {
-                id: uuid::Uuid::new_v4().to_string(),
-                database_id: g.database_id,
-                title: g.name.clone(),
+        if let Some(row) = row_opt {
+            let title: String = row.get("title");
+            let display_title = normalize_title_for_display(&title);
+            return Ok(Some(Game {
+                id: row.get::<i64, _>("id").to_string(),
+                database_id,
+                title,
                 display_title,
-                platform: g.platform.clone(),
-                platform_id: 0,
-                description: g.overview,
-                release_date: g.release_date,
-                release_year: g.release_year,
-                developer: g.developer,
-                publisher: g.publisher,
-                genres: Some(g.genres),
-                players: None,
-                rating: g.community_rating,
-                rating_count: None,
-                esrb: None,
-                cooperative: None,
-                video_url: None,
-                wikipedia_url: None,
-                release_type: None,
-                notes: None,
-                sort_title: None,
-                series: None,
-                region: None,
-                play_mode: None,
-                version: None,
-                status: None,
-                steam_app_id: None,
-                box_front_path: box_front,
-                screenshot_path: screenshot,
+                platform: row.get("platform"),
+                platform_id: row.get("platform_id"),
+                description: row.get("description"),
+                release_date: row.get("release_date"),
+                release_year: row.get("release_year"),
+                developer: row.get("developer"),
+                publisher: row.get("publisher"),
+                genres: row.get("genre"),
+                players: row.get("players"),
+                rating: row.get("rating"),
+                rating_count: row.get("rating_count"),
+                esrb: row.get("esrb"),
+                cooperative: row.get("cooperative"),
+                video_url: row.get("video_url"),
+                wikipedia_url: row.get("wikipedia_url"),
+                release_type: row.get("release_type"),
+                notes: row.get("notes"),
+                sort_title: row.get("sort_title"),
+                series: row.get("series"),
+                region: row.get("region"),
+                play_mode: row.get("play_mode"),
+                version: row.get("version"),
+                status: row.get("status"),
+                steam_app_id: row.get("steam_app_id"),
+                box_front_path: None,
+                screenshot_path: None,
                 variant_count: 1,
-            }))
-        } else {
-            Ok(None)
+            }));
         }
-    } else {
-        Ok(None)
     }
+
+    Ok(None)
 }
 
 /// Get a game by its UUID (for the shipped games database)
@@ -843,85 +727,6 @@ pub async fn get_game_variants(
 }
 
 #[tauri::command]
-pub async fn import_launchbox(
-    state: tauri::State<'_, AppStateHandle>,
-) -> Result<ImportResult, String> {
-    let state_guard = state.read().await;
-
-    if state_guard.launchbox_importer.is_none() {
-        return Err("LaunchBox not configured".to_string());
-    }
-
-    let importer = state_guard.launchbox_importer.as_ref().unwrap();
-
-    let platform_count = importer
-        .count_platforms()
-        .await
-        .map_err(|e: anyhow::Error| e.to_string())?;
-
-    let game_count = importer
-        .count_games()
-        .await
-        .map_err(|e: anyhow::Error| e.to_string())?;
-
-    Ok(ImportResult {
-        platforms_imported: platform_count as usize,
-        games_imported: game_count as usize,
-    })
-}
-
-#[tauri::command]
-pub async fn launch_game(
-    rom_path: String,
-    platform: String,
-    state: tauri::State<'_, AppStateHandle>,
-) -> Result<(), String> {
-    let state_guard = state.read().await;
-
-    let emulator = state_guard
-        .settings
-        .default_platform_emulators
-        .get(&platform);
-
-    if let Some(emu_id) = emulator {
-        let emu_config = state_guard
-            .settings
-            .emulators
-            .iter()
-            .find(|e| &e.id == emu_id);
-
-        if let Some(config) = emu_config {
-            let command = config
-                .command_template
-                .replace("{ROM}", &rom_path)
-                .replace("{CORE}", "");
-
-            tracing::info!("Launching: {} {}", config.executable_path.display(), command);
-
-            std::process::Command::new(&config.executable_path)
-                .args(command.split_whitespace())
-                .spawn()
-                .map_err(|e| e.to_string())?;
-
-            return Ok(());
-        }
-    }
-
-    if let Some(ref retroarch_path) = state_guard.settings.retroarch_path {
-        tracing::info!("Launching with RetroArch: {}", rom_path);
-
-        std::process::Command::new(retroarch_path)
-            .arg(&rom_path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-
-        return Ok(());
-    }
-
-    Err("No emulator configured for this platform".to_string())
-}
-
-#[tauri::command]
 pub async fn get_settings(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<AppSettings, String> {
@@ -940,23 +745,6 @@ pub async fn save_settings(
         crate::state::save_settings(pool, &settings)
             .await
             .map_err(|e: anyhow::Error| e.to_string())?;
-    }
-
-    if settings.launchbox_path != state_guard.settings.launchbox_path {
-        if let Some(ref lb_path) = settings.launchbox_path {
-            let metadata_path = lb_path.join("Metadata").join("LaunchBox.Metadata.db");
-            if metadata_path.exists() {
-                match LaunchBoxImporter::connect(&metadata_path).await {
-                    Ok(importer) => {
-                        state_guard.launchbox_importer = Some(importer);
-                        tracing::info!("Reconnected to LaunchBox");
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to reconnect to LaunchBox: {}", e);
-                    }
-                }
-            }
-        }
     }
 
     state_guard.settings = settings;
@@ -1214,8 +1002,7 @@ pub async fn get_collection_games(
     let pool = state_guard.db_pool.as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
-    // Get launchbox_db_ids from the collection_games table
-    // Note: We store launchbox_db_id as game_id in collection_games for now
+    // Get game_ids from the collection_games table
     let game_ids: Vec<(String,)> = sqlx::query_as(
         "SELECT game_id FROM collection_games WHERE collection_id = ? ORDER BY sort_order"
     )
@@ -1224,61 +1011,68 @@ pub async fn get_collection_games(
     .await
     .map_err(|e| e.to_string())?;
 
-    // If we have a LaunchBox importer, look up each game
-    if let Some(ref importer) = state_guard.launchbox_importer {
-        let lb_path = state_guard.settings.launchbox_path.clone();
-        let mut games = Vec::new();
-
+    // Look up each game from the games database
+    let mut games = Vec::new();
+    if let Some(ref games_pool) = state_guard.games_db_pool {
+        use sqlx::Row;
         for (game_id,) in game_ids {
-            // Try to parse as i64 (LaunchBox database ID)
-            if let Ok(db_id) = game_id.parse::<i64>() {
-                if let Ok(Some(g)) = importer.get_game_by_id(db_id).await {
-                    let box_front = lb_path.as_ref().and_then(|path| {
-                        find_game_images(path, &g.platform, &g.name).box_front
-                    });
+            let row_opt = sqlx::query(
+                r#"
+                SELECT g.id, g.title, g.platform_id, p.name as platform,
+                       g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                       g.players, g.rating, g.launchbox_db_id
+                FROM games g
+                JOIN platforms p ON g.platform_id = p.id
+                WHERE g.id = ?
+                LIMIT 1
+                "#
+            )
+            .bind(&game_id)
+            .fetch_optional(games_pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
-                    let display_title = normalize_title_for_display(&g.name);
-                    games.push(Game {
-                        id: game_id,
-                        database_id: g.database_id,
-                        title: g.name.clone(),
-                        display_title,
-                        platform: g.platform.clone(),
-                        platform_id: 0,
-                        description: g.overview,
-                        release_date: g.release_date,
-                        release_year: g.release_year,
-                        developer: g.developer,
-                        publisher: g.publisher,
-                        genres: Some(g.genres),
-                        players: None,
-                        rating: g.community_rating,
-                        rating_count: None,
-                        esrb: None,
-                        cooperative: None,
-                        video_url: None,
-                        wikipedia_url: None,
-                        release_type: None,
-                        notes: None,
-                        sort_title: None,
-                        series: None,
-                        region: None,
-                        play_mode: None,
-                        version: None,
-                        status: None,
-                        steam_app_id: None,
-                        box_front_path: box_front,
-                        screenshot_path: None,
-                        variant_count: 1,
-                    });
-                }
+            if let Some(row) = row_opt {
+                let title: String = row.get("title");
+                let display_title = normalize_title_for_display(&title);
+                games.push(Game {
+                    id: game_id,
+                    database_id: row.get("launchbox_db_id"),
+                    title,
+                    display_title,
+                    platform: row.get("platform"),
+                    platform_id: row.get("platform_id"),
+                    description: row.get("description"),
+                    release_date: row.get("release_date"),
+                    release_year: row.get("release_year"),
+                    developer: row.get("developer"),
+                    publisher: row.get("publisher"),
+                    genres: row.get("genre"),
+                    players: row.get("players"),
+                    rating: row.get("rating"),
+                    rating_count: None,
+                    esrb: None,
+                    cooperative: None,
+                    video_url: None,
+                    wikipedia_url: None,
+                    release_type: None,
+                    notes: None,
+                    sort_title: None,
+                    series: None,
+                    region: None,
+                    play_mode: None,
+                    version: None,
+                    status: None,
+                    steam_app_id: None,
+                    box_front_path: None,
+                    screenshot_path: None,
+                    variant_count: 1,
+                });
             }
         }
-
-        Ok(games)
-    } else {
-        Ok(Vec::new())
     }
+
+    Ok(games)
 }
 
 #[tauri::command]
@@ -1586,6 +1380,8 @@ pub async fn is_favorite(
 pub async fn get_favorites(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Vec<Game>, String> {
+    use sqlx::Row;
+
     let state_guard = state.read().await;
 
     let pool = state_guard.db_pool.as_ref()
@@ -1598,76 +1394,117 @@ pub async fn get_favorites(
     .await
     .map_err(|e| e.to_string())?;
 
-    // Look up full game info from LaunchBox
-    if let Some(ref importer) = state_guard.launchbox_importer {
-        let lb_path = state_guard.settings.launchbox_path.clone();
-        let mut games = Vec::new();
+    // Look up full game info from games database
+    let games_pool = state_guard.games_db_pool.as_ref();
+    let mut games = Vec::new();
 
-        for (db_id, _title, _platform) in favorites {
-            if let Ok(Some(g)) = importer.get_game_by_id(db_id).await {
-                let box_front = lb_path.as_ref().and_then(|path| {
-                    find_game_images(path, &g.platform, &g.name).box_front
-                });
+    for (db_id, title, platform) in favorites {
+        // Try to get full game info from games_db
+        if let Some(gp) = games_pool {
+            let row_opt = sqlx::query(r#"
+                SELECT g.id, g.title, g.platform_id, p.name as platform,
+                       g.launchbox_db_id,
+                       g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                       g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status,
+                       g.steam_app_id
+                FROM games g
+                JOIN platforms p ON g.platform_id = p.id
+                WHERE g.launchbox_db_id = ?
+                LIMIT 1
+            "#)
+            .bind(db_id)
+            .fetch_optional(gp)
+            .await
+            .map_err(|e| e.to_string())?;
 
-                let display_title = normalize_title_for_display(&g.name);
+            if let Some(row) = row_opt {
+                let title_str: String = row.get("title");
+                let display_title = normalize_title_for_display(&title_str);
+                let region = extract_region_from_title(&title_str);
+
                 games.push(Game {
-                    id: db_id.to_string(),
-                    database_id: g.database_id,
-                    title: g.name.clone(),
+                    id: row.get::<i64, _>("id").to_string(),
+                    database_id: db_id,  // We already have this from favorites table
+                    title: title_str,
                     display_title,
-                    platform: g.platform.clone(),
-                    platform_id: 0,
-                    description: g.overview,
-                    release_date: g.release_date,
-                    release_year: g.release_year,
-                    developer: g.developer,
-                    publisher: g.publisher,
-                    genres: Some(g.genres),
-                    players: None,
-                    rating: g.community_rating,
-                    rating_count: None,
-                    esrb: None,
-                    cooperative: None,
-                    video_url: None,
-                    wikipedia_url: None,
-                    release_type: None,
-                    notes: None,
-                    sort_title: None,
-                    series: None,
-                    region: None,
-                    play_mode: None,
-                    version: None,
-                    status: None,
-                    steam_app_id: None,
-                    box_front_path: box_front,
+                    platform: row.get("platform"),
+                    platform_id: row.get("platform_id"),
+                    description: row.get("description"),
+                    release_date: row.get("release_date"),
+                    release_year: row.get("release_year"),
+                    developer: row.get("developer"),
+                    publisher: row.get("publisher"),
+                    genres: row.get("genre"),
+                    players: row.get("players"),
+                    rating: row.get("rating"),
+                    rating_count: row.get("rating_count"),
+                    esrb: row.get("esrb"),
+                    cooperative: row.get("cooperative"),
+                    video_url: row.get("video_url"),
+                    wikipedia_url: row.get("wikipedia_url"),
+                    release_type: row.get("release_type"),
+                    notes: row.get("notes"),
+                    sort_title: row.get("sort_title"),
+                    series: row.get("series"),
+                    region: region.or_else(|| row.get("region")),
+                    play_mode: row.get("play_mode"),
+                    version: row.get("version"),
+                    status: row.get("status"),
+                    steam_app_id: row.get("steam_app_id"),
+                    box_front_path: None,
                     screenshot_path: None,
                     variant_count: 1,
                 });
+                continue;
             }
         }
 
-        Ok(games)
-    } else {
-        Ok(Vec::new())
+        // Fallback: return minimal info from favorites table
+        let display_title = normalize_title_for_display(&title);
+        games.push(Game {
+            id: db_id.to_string(),
+            database_id: db_id,
+            title: title.clone(),
+            display_title,
+            platform,
+            platform_id: 0,
+            description: None,
+            release_date: None,
+            release_year: None,
+            developer: None,
+            publisher: None,
+            genres: None,
+            players: None,
+            rating: None,
+            rating_count: None,
+            esrb: None,
+            cooperative: None,
+            video_url: None,
+            wikipedia_url: None,
+            release_type: None,
+            notes: None,
+            sort_title: None,
+            series: None,
+            region: None,
+            play_mode: None,
+            version: None,
+            status: None,
+            steam_app_id: None,
+            box_front_path: None,
+            screenshot_path: None,
+            variant_count: 1,
+        });
     }
+
+    Ok(games)
 }
 
 // ============ Image Commands ============
 
-/// Get the default cache directory
+/// Get the cache directory for images (uses media_directory)
 fn get_cache_dir(settings: &AppSettings) -> PathBuf {
-    settings.cache_directory.clone()
-        .unwrap_or_else(|| {
-            // Use XDG_DATA_HOME or fallback to ~/.local/share/lunchbox
-            std::env::var("XDG_DATA_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| {
-                    std::env::var("HOME")
-                        .map(|h| PathBuf::from(h).join(".local").join("share"))
-                        .unwrap_or_else(|_| PathBuf::from("/tmp"))
-                })
-                .join("lunchbox")
-        })
+    settings.get_media_directory()
 }
 
 /// Get all images for a game
@@ -1774,28 +1611,6 @@ pub async fn get_image_cache_stats(
     let cache_dir = get_cache_dir(&state_guard.settings);
     let service = ImageService::new(pool.clone(), cache_dir);
     service.get_cache_stats().await
-        .map_err(|e| e.to_string())
-}
-
-/// Import game images from LaunchBox metadata database
-#[tauri::command]
-pub async fn import_game_images(
-    state: tauri::State<'_, AppStateHandle>,
-) -> Result<i64, String> {
-    let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    let importer = state_guard.launchbox_importer.as_ref()
-        .ok_or_else(|| "LaunchBox not configured".to_string())?;
-
-    let cache_dir = get_cache_dir(&state_guard.settings);
-    let service = ImageService::new(pool.clone(), cache_dir);
-
-    service.import_images_from_launchbox(importer, Some(|imported, total| {
-        tracing::info!("Imported {}/{} images", imported, total);
-    })).await
         .map_err(|e| e.to_string())
 }
 

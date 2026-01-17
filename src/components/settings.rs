@@ -2,7 +2,6 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::path::PathBuf;
 use crate::tauri::{
     get_settings, save_settings, test_screenscraper_connection, test_steamgriddb_connection,
     test_igdb_connection, AppSettings, ScreenScraperSettings, SteamGridDBSettings, IGDBSettings,
@@ -15,11 +14,6 @@ pub fn Settings(
     show: ReadSignal<bool>,
     on_close: WriteSignal<bool>,
 ) -> impl IntoView {
-    // Local state for form fields
-    let (launchbox_path, set_launchbox_path) = signal(String::new());
-    let (retroarch_path, set_retroarch_path) = signal(String::new());
-    let (rom_directories, set_rom_directories) = signal(String::new());
-
     // ScreenScraper fields
     let (ss_dev_id, set_ss_dev_id) = signal(String::new());
     let (ss_dev_password, set_ss_dev_password) = signal(String::new());
@@ -61,23 +55,6 @@ pub fn Settings(
             spawn_local(async move {
                 match get_settings().await {
                     Ok(settings) => {
-                        set_launchbox_path.set(
-                            settings.launchbox_path
-                                .map(|p: PathBuf| p.display().to_string())
-                                .unwrap_or_default()
-                        );
-                        set_retroarch_path.set(
-                            settings.retroarch_path
-                                .map(|p: PathBuf| p.display().to_string())
-                                .unwrap_or_default()
-                        );
-                        set_rom_directories.set(
-                            settings.rom_directories
-                                .iter()
-                                .map(|p: &PathBuf| p.display().to_string())
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        );
                         // ScreenScraper
                         set_ss_dev_id.set(settings.screenscraper.dev_id);
                         set_ss_dev_password.set(settings.screenscraper.dev_password);
@@ -114,9 +91,6 @@ pub fn Settings(
         set_saving.set(true);
         set_save_error.set(None);
 
-        let lb_path = launchbox_path.get();
-        let ra_path = retroarch_path.get();
-        let rom_dirs = rom_directories.get();
         let dev_id = ss_dev_id.get();
         let dev_password = ss_dev_password.get();
         let user_id = ss_user_id.get();
@@ -130,16 +104,10 @@ pub fn Settings(
 
         spawn_local(async move {
             let settings = AppSettings {
-                launchbox_path: if lb_path.is_empty() { None } else { Some(PathBuf::from(lb_path)) },
-                retroarch_path: if ra_path.is_empty() { None } else { Some(PathBuf::from(ra_path)) },
-                cache_directory: None,  // Uses default location
-                rom_directories: rom_dirs
-                    .lines()
-                    .filter(|l| !l.trim().is_empty())
-                    .map(|l| PathBuf::from(l.trim()))
-                    .collect(),
-                emulators: vec![],
-                default_platform_emulators: std::collections::HashMap::new(),
+                data_directory: None,
+                media_directory: None,
+                programs_directory: None,
+                saves_directory: None,
                 screenscraper: ScreenScraperSettings {
                     dev_id,
                     dev_password,
@@ -186,51 +154,6 @@ pub fn Settings(
                         fallback=|| view! { <div class="loading">"Loading settings..."</div> }
                     >
                         <div class="settings-form">
-                            <div class="settings-section">
-                                <h3>"LaunchBox Integration"</h3>
-                                <label class="settings-label">
-                                    "LaunchBox Installation Path"
-                                    <input
-                                        type="text"
-                                        class="settings-input"
-                                        placeholder="/path/to/LaunchBox"
-                                        prop:value=move || launchbox_path.get()
-                                        on:input=move |ev| set_launchbox_path.set(event_target_value(&ev))
-                                    />
-                                </label>
-                                <p class="settings-hint">
-                                    "Path to your LaunchBox installation folder (contains Metadata/LaunchBox.Metadata.db)"
-                                </p>
-                            </div>
-
-                            <div class="settings-section">
-                                <h3>"ROM Directories"</h3>
-                                <label class="settings-label">
-                                    "ROM Paths (one per line)"
-                                    <textarea
-                                        class="settings-textarea"
-                                        placeholder="/mnt/roms\n/mnt/ext/roms"
-                                        rows="4"
-                                        prop:value=move || rom_directories.get()
-                                        on:input=move |ev| set_rom_directories.set(event_target_value(&ev))
-                                    />
-                                </label>
-                            </div>
-
-                            <div class="settings-section">
-                                <h3>"Emulators"</h3>
-                                <label class="settings-label">
-                                    "RetroArch Path"
-                                    <input
-                                        type="text"
-                                        class="settings-input"
-                                        placeholder="/usr/bin/retroarch"
-                                        prop:value=move || retroarch_path.get()
-                                        on:input=move |ev| set_retroarch_path.set(event_target_value(&ev))
-                                    />
-                                </label>
-                            </div>
-
                             // Image Sources Wizard Button
                             <div class="settings-section">
                                 <h3>"Image Sources"</h3>
