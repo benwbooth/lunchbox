@@ -19,6 +19,7 @@
 
 - Never use sed - always use the Edit tool for file modifications
 - Don't use sed for normal reading/writing files - use Read/Write/Edit tools instead
+- Never run `cargo clean` or similar destructive clean commands - they waste time rebuilding
 
 ## Database
 

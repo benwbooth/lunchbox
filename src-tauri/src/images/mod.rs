@@ -653,44 +653,61 @@ impl ImageService {
         emumovies_client: Option<&EmuMoviesClient>,
         screenscraper_client: Option<&crate::scraper::ScreenScraperClient>,
     ) -> Result<String> {
+        tracing::info!("download_with_fallback: game='{}', platform='{}', type='{}', db_id={:?}",
+            game_title, platform, image_type, launchbox_db_id);
+
         // 1. Try LaunchBox CDN first (if we have database ID and metadata)
         if let Some(db_id) = launchbox_db_id {
+            tracing::info!("  [1/6] Checking LaunchBox metadata for db_id={}...", db_id);
             if let Ok(Some(info)) = self.get_image_by_type(db_id, image_type).await {
+                tracing::info!("  [1/6] Found LaunchBox metadata, downloaded={}", info.downloaded);
                 if info.downloaded {
                     if let Some(path) = info.local_path {
                         if std::path::Path::new(&path).exists() {
-                            tracing::debug!("Using cached LaunchBox image: {}", path);
+                            tracing::info!("  [1/6] Using cached LaunchBox image: {}", path);
                             return Ok(path);
                         }
                     }
                 }
 
                 // Try to download from LaunchBox CDN
+                tracing::info!("  [1/6] Downloading from LaunchBox CDN...");
                 match self.download_image(info.id).await {
                     Ok(path) => {
-                        tracing::debug!("Downloaded from LaunchBox CDN: {}", path);
+                        tracing::info!("  [1/6] SUCCESS from LaunchBox CDN: {}", path);
                         return Ok(path);
                     }
                     Err(e) => {
-                        tracing::debug!("LaunchBox CDN failed, trying fallbacks: {}", e);
+                        tracing::info!("  [1/6] LaunchBox CDN failed: {}", e);
                     }
                 }
+            } else {
+                tracing::info!("  [1/6] No LaunchBox metadata found");
             }
+        } else {
+            tracing::info!("  [1/6] Skipping LaunchBox (no db_id)");
         }
 
         // 2. Try libretro-thumbnails (free, no account needed)
+        tracing::info!("  [2/6] Trying libretro-thumbnails...");
         let libretro_type = libretro::LibRetroImageType::from_launchbox_type(image_type);
         if let Some(lt) = libretro_type {
             let libretro_client = LibRetroThumbnailsClient::new(self.cache_dir.clone());
+            tracing::info!("  [2/6] libretro type={:?}, searching for '{}'...", lt, game_title);
             if let Some(path) = libretro_client.find_thumbnail(platform, lt, game_title).await {
-                tracing::debug!("Downloaded from libretro-thumbnails: {}", path);
+                tracing::info!("  [2/6] SUCCESS from libretro-thumbnails: {}", path);
                 return Ok(path);
             }
+            tracing::info!("  [2/6] libretro-thumbnails: not found");
+        } else {
+            tracing::info!("  [2/6] Skipping libretro (unsupported image type)");
         }
 
         // 3. Try SteamGridDB (requires API key)
+        tracing::info!("  [3/6] Trying SteamGridDB...");
         if let Some(client) = steamgriddb_client {
             if client.has_credentials() {
+                tracing::info!("  [3/6] SteamGridDB has credentials, searching...");
                 if let Ok(result) = client.search_and_get_artwork(game_title).await {
                     if let Some((_, artwork)) = result {
                         // Map image type to SteamGridDB artwork type
@@ -704,22 +721,34 @@ impl ImageService {
                         if let Some(url) = url {
                             match self.download_from_url(&url, "steamgriddb", game_title, image_type).await {
                                 Ok(path) => {
-                                    tracing::debug!("Downloaded from SteamGridDB: {}", path);
+                                    tracing::info!("  [3/6] SUCCESS from SteamGridDB: {}", path);
                                     return Ok(path);
                                 }
                                 Err(e) => {
-                                    tracing::debug!("SteamGridDB download failed: {}", e);
+                                    tracing::info!("  [3/6] SteamGridDB download failed: {}", e);
                                 }
                             }
+                        } else {
+                            tracing::info!("  [3/6] SteamGridDB: no matching artwork type");
                         }
+                    } else {
+                        tracing::info!("  [3/6] SteamGridDB: no results found");
                     }
+                } else {
+                    tracing::info!("  [3/6] SteamGridDB: search failed");
                 }
+            } else {
+                tracing::info!("  [3/6] SteamGridDB: no credentials configured");
             }
+        } else {
+            tracing::info!("  [3/6] SteamGridDB: client not available");
         }
 
         // 4. Try IGDB (requires Twitch OAuth credentials)
+        tracing::info!("  [4/6] Trying IGDB...");
         if let Some(client) = igdb_client {
             if client.has_credentials() {
+                tracing::info!("  [4/6] IGDB has credentials, searching...");
                 if let Ok(games) = client.search_games(game_title, 1).await {
                     if let Some(game) = games.first() {
                         // Map image type to IGDB image
@@ -739,23 +768,35 @@ impl ImageService {
                             let url = img.url("720p");
                             match self.download_from_url(&url, "igdb", game_title, image_type).await {
                                 Ok(path) => {
-                                    tracing::debug!("Downloaded from IGDB: {}", path);
+                                    tracing::info!("  [4/6] SUCCESS from IGDB: {}", path);
                                     return Ok(path);
                                 }
                                 Err(e) => {
-                                    tracing::debug!("IGDB download failed: {}", e);
+                                    tracing::info!("  [4/6] IGDB download failed: {}", e);
                                 }
                             }
+                        } else {
+                            tracing::info!("  [4/6] IGDB: no matching image type");
                         }
+                    } else {
+                        tracing::info!("  [4/6] IGDB: no results found");
                     }
+                } else {
+                    tracing::info!("  [4/6] IGDB: search failed");
                 }
+            } else {
+                tracing::info!("  [4/6] IGDB: no credentials configured");
             }
+        } else {
+            tracing::info!("  [4/6] IGDB: client not available");
         }
 
         // 5. Try EmuMovies (requires account, uses FTP - blocking)
+        tracing::info!("  [5/6] Trying EmuMovies...");
         if let Some(client) = emumovies_client {
             if client.has_credentials() {
                 if let Some(media_type) = emumovies::EmuMoviesMediaType::from_launchbox_type(image_type) {
+                    tracing::info!("  [5/6] EmuMovies has credentials, searching via FTP...");
                     let client = client.clone();
                     let platform = platform.to_string();
                     let game_title = game_title.to_string();
@@ -763,20 +804,29 @@ impl ImageService {
                         client.find_media(&platform, media_type, &game_title)
                     }).await;
                     if let Ok(Some(path)) = result {
-                        tracing::debug!("Downloaded from EmuMovies: {}", path);
+                        tracing::info!("  [5/6] SUCCESS from EmuMovies: {}", path);
                         return Ok(path);
                     }
+                    tracing::info!("  [5/6] EmuMovies: not found");
+                } else {
+                    tracing::info!("  [5/6] EmuMovies: unsupported media type");
                 }
+            } else {
+                tracing::info!("  [5/6] EmuMovies: no credentials configured");
             }
+        } else {
+            tracing::info!("  [5/6] EmuMovies: client not available");
         }
 
         // 6. Try ScreenScraper (requires account)
         // Note: ScreenScraper works best with ROM checksums, but we can try name-based search
         // by using empty checksums - the API will attempt a name match
+        tracing::info!("  [6/6] Trying ScreenScraper...");
         if let Some(client) = screenscraper_client {
             if client.has_credentials() {
                 // Use platform mapping to get ScreenScraper platform ID
                 let platform_id = crate::scraper::screenscraper::get_screenscraper_platform_id(platform);
+                tracing::info!("  [6/6] ScreenScraper has credentials, searching (platform_id={:?})...", platform_id);
 
                 // Try lookup with just the game name (empty checksums for name-based search)
                 if let Ok(Some(game)) = client.lookup_by_checksum(
@@ -800,18 +850,27 @@ impl ImageService {
                     if let Some(url) = url {
                         match self.download_from_url(&url, "screenscraper", game_title, image_type).await {
                             Ok(path) => {
-                                tracing::debug!("Downloaded from ScreenScraper: {}", path);
+                                tracing::info!("  [6/6] SUCCESS from ScreenScraper: {}", path);
                                 return Ok(path);
                             }
                             Err(e) => {
-                                tracing::debug!("ScreenScraper download failed: {}", e);
+                                tracing::info!("  [6/6] ScreenScraper download failed: {}", e);
                             }
                         }
+                    } else {
+                        tracing::info!("  [6/6] ScreenScraper: no matching image type");
                     }
+                } else {
+                    tracing::info!("  [6/6] ScreenScraper: no results found");
                 }
+            } else {
+                tracing::info!("  [6/6] ScreenScraper: no credentials configured");
             }
+        } else {
+            tracing::info!("  [6/6] ScreenScraper: client not available");
         }
 
+        tracing::info!("  FAILED: No image found from any source for: {} - {} - {}", game_title, platform, image_type);
         anyhow::bail!("No image found from any source for: {} - {} - {}", game_title, platform, image_type)
     }
 

@@ -72,9 +72,14 @@ pub fn LazyImage(
                 return;
             }
 
+            console::log_1(&format!("LazyImage: Loading {} for '{}' (db_id={}, platform={})",
+                img_type, title, db_id, plat).into());
+
             // First, try to get the image info from LaunchBox metadata
             match tauri::get_game_image(db_id, img_type.clone()).await {
                 Ok(Some(info)) => {
+                    console::log_1(&format!("LazyImage: Found LaunchBox metadata for db_id={}, downloaded={}",
+                        db_id, info.downloaded).into());
                     if !mounted.get() {
                         return;
                     }
@@ -82,6 +87,7 @@ pub fn LazyImage(
                     if info.downloaded {
                         // Image already downloaded - use local path
                         if let Some(local_path) = info.local_path {
+                            console::log_1(&format!("LazyImage: Using cached image: {}", local_path).into());
                             let url = file_to_asset_url(&local_path);
                             set_state.set(ImageState::Ready { url });
                             return;
@@ -89,9 +95,11 @@ pub fn LazyImage(
                     }
 
                     // Need to download from LaunchBox
+                    console::log_1(&format!("LazyImage: Downloading from LaunchBox CDN...").into());
                     set_state.set(ImageState::Downloading { progress: 0.0 });
                     if let Ok(local_path) = tauri::download_image(info.id).await {
                         if mounted.get() {
+                            console::log_1(&format!("LazyImage: LaunchBox download succeeded: {}", local_path).into());
                             let url = file_to_asset_url(&local_path);
                             set_state.set(ImageState::Ready { url });
                             return;
@@ -99,10 +107,20 @@ pub fn LazyImage(
                     }
 
                     // LaunchBox download failed - try multi-source fallback
+                    console::log_1(&format!("LazyImage: LaunchBox failed, trying fallback sources...").into());
                     try_fallback_sources(&title, &plat, &img_type, Some(db_id), set_state, mounted).await;
                 }
-                Ok(None) | Err(_) => {
+                Ok(None) => {
                     // No LaunchBox metadata - try fallback sources directly
+                    console::log_1(&format!("LazyImage: No LaunchBox metadata, trying fallback sources...").into());
+                    if mounted.get() {
+                        set_state.set(ImageState::Downloading { progress: 0.0 });
+                        try_fallback_sources(&title, &plat, &img_type, Some(db_id), set_state, mounted).await;
+                    }
+                }
+                Err(e) => {
+                    // Error fetching metadata - try fallback sources directly
+                    console::log_1(&format!("LazyImage: Error getting metadata: {}, trying fallback...", e).into());
                     if mounted.get() {
                         set_state.set(ImageState::Downloading { progress: 0.0 });
                         try_fallback_sources(&title, &plat, &img_type, Some(db_id), set_state, mounted).await;
@@ -186,9 +204,13 @@ async fn try_fallback_sources(
     mounted: ReadSignal<bool>,
 ) {
     if !mounted.get() || game_title.is_empty() {
+        console::log_1(&format!("LazyImage: Skipping fallback - unmounted or empty title").into());
         set_state.set(ImageState::NoImage);
         return;
     }
+
+    console::log_1(&format!("LazyImage: Calling download_image_with_fallback('{}', '{}', '{}', {:?})",
+        game_title, platform, image_type, launchbox_db_id).into());
 
     // Try multi-source download
     match tauri::download_image_with_fallback(
@@ -198,14 +220,15 @@ async fn try_fallback_sources(
         launchbox_db_id,
     ).await {
         Ok(local_path) => {
+            console::log_1(&format!("LazyImage: Fallback succeeded! Path: {}", local_path).into());
             if mounted.get() {
                 let url = file_to_asset_url(&local_path);
                 set_state.set(ImageState::Ready { url });
             }
         }
         Err(e) => {
+            console::log_1(&format!("LazyImage: All sources failed for '{}': {}", game_title, e).into());
             if mounted.get() {
-                console::log_1(&format!("No image found from any source: {}", e).into());
                 set_state.set(ImageState::NoImage);
             }
         }

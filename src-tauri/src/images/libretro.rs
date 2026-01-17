@@ -222,10 +222,13 @@ impl LibRetroThumbnailsClient {
         let url = build_thumbnail_url(platform, image_type, game_name)
             .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
 
+        tracing::info!("libretro: Trying URL: {}", url);
         let cache_path = self.get_cache_path(platform, image_type, game_name);
+        tracing::info!("libretro: Cache path: {}", cache_path.display());
 
         // Check cache first
         if cache_path.exists() {
+            tracing::info!("libretro: Cache hit!");
             return Ok(cache_path.to_string_lossy().to_string());
         }
 
@@ -238,6 +241,7 @@ impl LibRetroThumbnailsClient {
             .context("Failed to fetch from libretro-thumbnails")?;
 
         if !response.status().is_success() {
+            tracing::info!("libretro: HTTP {} for {}", response.status(), url);
             anyhow::bail!(
                 "libretro-thumbnails: HTTP {} for {}",
                 response.status(),
@@ -246,6 +250,7 @@ impl LibRetroThumbnailsClient {
         }
 
         let bytes = response.bytes().await?;
+        tracing::info!("libretro: Downloaded {} bytes", bytes.len());
 
         // Create parent directories
         if let Some(parent) = cache_path.parent() {
@@ -254,6 +259,7 @@ impl LibRetroThumbnailsClient {
 
         // Write to cache
         tokio::fs::write(&cache_path, &bytes).await?;
+        tracing::info!("libretro: Saved to {}", cache_path.display());
 
         Ok(cache_path.to_string_lossy().to_string())
     }
