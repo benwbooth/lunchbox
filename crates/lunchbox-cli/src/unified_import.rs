@@ -1622,15 +1622,16 @@ impl UnifiedImporter {
                 // Multiple LibRetro variants = real regional variants, keep them separate
             }
 
-            // Check dedup cache (within this LibRetro import only)
-            if dedup_cache.contains_key(&normalized) {
+            // Check dedup cache by full title (within this LibRetro import only)
+            // Use full title so regional variants like (USA), (Europe) are kept separate
+            if dedup_cache.contains_key(&game.name) {
                 skipped_dupes += 1;
                 continue;
             }
 
             // Insert new game
             let game_id = uuid::Uuid::new_v4().to_string();
-            dedup_cache.insert(normalized, game_id.clone());
+            dedup_cache.insert(game.name.clone(), game_id.clone());
 
             sqlx::query(r#"
                 INSERT INTO games (
