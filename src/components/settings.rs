@@ -108,11 +108,6 @@ pub fn Settings(
         }
     });
 
-    // Helper to check if a field is saved (current == saved)
-    let is_saved = move |get_field: fn(&AppSettings) -> &str| {
-        !saving.get() && get_field(&settings.get()) == get_field(&saved_settings.get())
-    };
-
     view! {
         <Show when=move || show.get()>
             <div class="settings-overlay" on:click=move |_| on_close.set(false)>
@@ -169,7 +164,7 @@ pub fn Settings(
                                             prop:value=move || settings.get().screenscraper.dev_id
                                             on:input=move |ev| settings.update(|s| s.screenscraper.dev_id = event_target_value(&ev))
                                         />
-                                        <Show when=move || is_saved(|s| &s.screenscraper.dev_id)>
+                                        <Show when=move || !saving.get() && settings.get().screenscraper.dev_id == saved_settings.get().screenscraper.dev_id>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
@@ -184,7 +179,7 @@ pub fn Settings(
                                             prop:value=move || settings.get().screenscraper.dev_password
                                             on:input=move |ev| settings.update(|s| s.screenscraper.dev_password = event_target_value(&ev))
                                         />
-                                        <Show when=move || is_saved(|s| &s.screenscraper.dev_password)>
+                                        <Show when=move || !saving.get() && settings.get().screenscraper.dev_password == saved_settings.get().screenscraper.dev_password>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
@@ -283,7 +278,7 @@ pub fn Settings(
                                             prop:value=move || settings.get().steamgriddb.api_key
                                             on:input=move |ev| settings.update(|s| s.steamgriddb.api_key = event_target_value(&ev))
                                         />
-                                        <Show when=move || is_saved(|s| &s.steamgriddb.api_key)>
+                                        <Show when=move || !saving.get() && settings.get().steamgriddb.api_key == saved_settings.get().steamgriddb.api_key>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
@@ -339,7 +334,7 @@ pub fn Settings(
                                             prop:value=move || settings.get().igdb.client_id
                                             on:input=move |ev| settings.update(|s| s.igdb.client_id = event_target_value(&ev))
                                         />
-                                        <Show when=move || is_saved(|s| &s.igdb.client_id)>
+                                        <Show when=move || !saving.get() && settings.get().igdb.client_id == saved_settings.get().igdb.client_id>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
@@ -354,7 +349,7 @@ pub fn Settings(
                                             prop:value=move || settings.get().igdb.client_secret
                                             on:input=move |ev| settings.update(|s| s.igdb.client_secret = event_target_value(&ev))
                                         />
-                                        <Show when=move || is_saved(|s| &s.igdb.client_secret)>
+                                        <Show when=move || !saving.get() && settings.get().igdb.client_secret == saved_settings.get().igdb.client_secret>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
@@ -409,7 +404,7 @@ pub fn Settings(
                                             prop:value=move || settings.get().emumovies.username
                                             on:input=move |ev| settings.update(|s| s.emumovies.username = event_target_value(&ev))
                                         />
-                                        <Show when=move || is_saved(|s| &s.emumovies.username)>
+                                        <Show when=move || !saving.get() && settings.get().emumovies.username == saved_settings.get().emumovies.username>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
@@ -424,7 +419,7 @@ pub fn Settings(
                                             prop:value=move || settings.get().emumovies.password
                                             on:input=move |ev| settings.update(|s| s.emumovies.password = event_target_value(&ev))
                                         />
-                                        <Show when=move || is_saved(|s| &s.emumovies.password)>
+                                        <Show when=move || !saving.get() && settings.get().emumovies.password == saved_settings.get().emumovies.password>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
