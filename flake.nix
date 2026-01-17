@@ -56,6 +56,9 @@
             nodePackages.tailwindcss
             cargo-watch
 
+            # Credential storage (secret-tool CLI)
+            libsecret
+
             # Compression
             zstd
           ];
