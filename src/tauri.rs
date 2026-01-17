@@ -753,3 +753,48 @@ pub async fn get_image_cache_stats() -> Result<CacheStats, String> {
 pub async fn import_game_images() -> Result<i64, String> {
     invoke_no_args("import_game_images").await
 }
+
+/// Download an image with fallback to multiple sources
+///
+/// Tries sources in order: LaunchBox CDN, libretro-thumbnails, SteamGridDB
+pub async fn download_image_with_fallback(
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        image_type: String,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke("download_image_with_fallback", Args {
+        game_title,
+        platform,
+        image_type,
+        launchbox_db_id,
+    }).await
+}
+
+/// Download a thumbnail from libretro-thumbnails
+pub async fn download_libretro_thumbnail(
+    game_title: String,
+    platform: String,
+    image_type: String,
+) -> Result<Option<String>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        image_type: String,
+    }
+    invoke("download_libretro_thumbnail", Args {
+        game_title,
+        platform,
+        image_type,
+    }).await
+}

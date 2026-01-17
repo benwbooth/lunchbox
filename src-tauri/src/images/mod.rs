@@ -1,10 +1,18 @@
 //! Image download and caching service
 //!
-//! Handles downloading game images from the LaunchBox CDN with:
+//! Handles downloading game images from multiple sources:
+//! - LaunchBox CDN (primary, requires metadata import)
+//! - libretro-thumbnails (free, no account needed)
+//! - SteamGridDB (requires API key)
+//! - ScreenScraper (requires account)
+//!
+//! Features:
 //! - Parallel downloads with configurable concurrency
-//! - Download queue with viewport-based priority
+//! - Multi-source fallback (tries each source until one succeeds)
 //! - Local caching with verification
 //! - Progress events for UI updates
+
+pub mod libretro;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -14,8 +22,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 
+pub use libretro::{LibRetroImageType, LibRetroThumbnailsClient};
+
 /// LaunchBox CDN base URL for images
 pub const LAUNCHBOX_CDN_URL: &str = "https://images.launchbox-app.com";
+
+/// Image source priority (lower = tried first)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ImageSource {
+    /// Local file already on disk (from LaunchBox installation)
+    Local,
+    /// LaunchBox CDN (requires game_images table populated)
+    LaunchBox,
+    /// libretro-thumbnails (free, no account)
+    LibRetro,
+    /// SteamGridDB (requires API key)
+    SteamGridDB,
+    /// ScreenScraper (requires account, rate limited)
+    ScreenScraper,
+}
 
 /// Default concurrent downloads
 const DEFAULT_CONCURRENCY: usize = 10;
@@ -587,6 +612,142 @@ impl ImageService {
             downloaded_images: downloaded,
             disk_usage_bytes: disk_usage,
         })
+    }
+
+    /// Download an image using multiple sources with fallback
+    ///
+    /// Tries sources in order: LaunchBox CDN, libretro-thumbnails, SteamGridDB
+    /// Returns the local path on success
+    pub async fn download_with_fallback(
+        &self,
+        game_title: &str,
+        platform: &str,
+        image_type: &str,
+        launchbox_db_id: Option<i64>,
+        steamgriddb_client: Option<&crate::scraper::SteamGridDBClient>,
+    ) -> Result<String> {
+        // 1. Try LaunchBox CDN first (if we have database ID and metadata)
+        if let Some(db_id) = launchbox_db_id {
+            if let Ok(Some(info)) = self.get_image_by_type(db_id, image_type).await {
+                if info.downloaded {
+                    if let Some(path) = info.local_path {
+                        if std::path::Path::new(&path).exists() {
+                            tracing::debug!("Using cached LaunchBox image: {}", path);
+                            return Ok(path);
+                        }
+                    }
+                }
+
+                // Try to download from LaunchBox CDN
+                match self.download_image(info.id).await {
+                    Ok(path) => {
+                        tracing::debug!("Downloaded from LaunchBox CDN: {}", path);
+                        return Ok(path);
+                    }
+                    Err(e) => {
+                        tracing::debug!("LaunchBox CDN failed, trying fallbacks: {}", e);
+                    }
+                }
+            }
+        }
+
+        // 2. Try libretro-thumbnails (free, no account needed)
+        let libretro_type = libretro::LibRetroImageType::from_launchbox_type(image_type);
+        if let Some(lt) = libretro_type {
+            let libretro_client = LibRetroThumbnailsClient::new(self.cache_dir.clone());
+            if let Some(path) = libretro_client.find_thumbnail(platform, lt, game_title).await {
+                tracing::debug!("Downloaded from libretro-thumbnails: {}", path);
+                return Ok(path);
+            }
+        }
+
+        // 3. Try SteamGridDB (requires API key)
+        if let Some(client) = steamgriddb_client {
+            if client.has_credentials() {
+                if let Ok(result) = client.search_and_get_artwork(game_title).await {
+                    if let Some((_, artwork)) = result {
+                        // Map image type to SteamGridDB artwork type
+                        let url = match image_type {
+                            "Box - Front" => artwork.grids.first().map(|a| a.url.clone()),
+                            "Banner" => artwork.heroes.first().map(|a| a.url.clone()),
+                            "Clear Logo" => artwork.logos.first().map(|a| a.url.clone()),
+                            _ => artwork.grids.first().map(|a| a.url.clone()),
+                        };
+
+                        if let Some(url) = url {
+                            // Download and cache
+                            match self.download_from_url(&url, "steamgriddb", game_title, image_type).await {
+                                Ok(path) => {
+                                    tracing::debug!("Downloaded from SteamGridDB: {}", path);
+                                    return Ok(path);
+                                }
+                                Err(e) => {
+                                    tracing::debug!("SteamGridDB download failed: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!("No image found from any source for: {} - {} - {}", game_title, platform, image_type)
+    }
+
+    /// Download an image from a URL and cache it
+    async fn download_from_url(
+        &self,
+        url: &str,
+        source: &str,
+        game_title: &str,
+        image_type: &str,
+    ) -> Result<String> {
+        // Create a sanitized filename
+        let safe_title = game_title
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' })
+            .collect::<String>();
+
+        let safe_type = image_type.replace(" - ", "_").replace(' ', "_");
+
+        // Get extension from URL or default to .png
+        let ext = url
+            .rsplit('.')
+            .next()
+            .filter(|e| ["png", "jpg", "jpeg", "webp", "gif"].contains(e))
+            .unwrap_or("png");
+
+        let cache_path = self.cache_dir
+            .join(source)
+            .join(format!("{}_{}.{}", safe_title, safe_type, ext));
+
+        // Check cache first
+        if cache_path.exists() {
+            return Ok(cache_path.to_string_lossy().to_string());
+        }
+
+        // Download
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .context("Failed to fetch image")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("HTTP {}: {}", response.status(), url);
+        }
+
+        let bytes = response.bytes().await?;
+
+        // Create parent directories
+        if let Some(parent) = cache_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+
+        tokio::fs::write(&cache_path, &bytes).await?;
+
+        Ok(cache_path.to_string_lossy().to_string())
     }
 }
 

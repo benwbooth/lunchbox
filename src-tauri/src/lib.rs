@@ -66,6 +66,8 @@ pub fn run() {
             commands::download_game_images,
             commands::get_image_cache_stats,
             commands::import_game_images,
+            commands::download_image_with_fallback,
+            commands::download_libretro_thumbnail,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

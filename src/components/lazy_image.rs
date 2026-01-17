@@ -1,4 +1,9 @@
-//! Lazy-loading image component with on-demand download from LaunchBox CDN
+//! Lazy-loading image component with on-demand download from multiple sources
+//!
+//! Supports:
+//! - LaunchBox CDN (primary, requires metadata import)
+//! - libretro-thumbnails (free, no account needed)
+//! - SteamGridDB (requires API key)
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -22,12 +27,20 @@ pub enum ImageState {
 
 /// Lazy-loading image component
 ///
-/// Automatically loads images from local cache or downloads from LaunchBox CDN.
-/// Shows a loading indicator while downloading and handles errors gracefully.
+/// Automatically loads images from local cache or downloads from multiple sources:
+/// 1. LaunchBox CDN (if metadata imported)
+/// 2. libretro-thumbnails (free fallback)
+/// 3. SteamGridDB (if API key configured)
 #[component]
 pub fn LazyImage(
     /// LaunchBox database ID of the game
     launchbox_db_id: i64,
+    /// Game title (for fallback sources)
+    #[prop(default = "".to_string())]
+    game_title: String,
+    /// Platform name (for fallback sources)
+    #[prop(default = "".to_string())]
+    platform: String,
     /// Image type to display (e.g., "Box - Front")
     #[prop(default = "Box - Front".to_string())]
     image_type: String,
@@ -50,6 +63,8 @@ pub fn LazyImage(
     Effect::new(move || {
         let db_id = launchbox_db_id;
         let img_type = image_type.clone();
+        let title = game_title.clone();
+        let plat = platform.clone();
 
         spawn_local(async move {
             // Check if component is still mounted
@@ -57,7 +72,7 @@ pub fn LazyImage(
                 return;
             }
 
-            // First, try to get the image info
+            // First, try to get the image info from LaunchBox metadata
             match tauri::get_game_image(db_id, img_type.clone()).await {
                 Ok(Some(info)) => {
                     if !mounted.get() {
@@ -69,25 +84,28 @@ pub fn LazyImage(
                         if let Some(local_path) = info.local_path {
                             let url = file_to_asset_url(&local_path);
                             set_state.set(ImageState::Ready { url });
-                        } else {
-                            // Somehow marked downloaded but no path - trigger download
-                            download_and_update(info, set_state, mounted).await;
+                            return;
                         }
-                    } else {
-                        // Need to download
+                    }
+
+                    // Need to download from LaunchBox
+                    set_state.set(ImageState::Downloading { progress: 0.0 });
+                    if let Ok(local_path) = tauri::download_image(info.id).await {
+                        if mounted.get() {
+                            let url = file_to_asset_url(&local_path);
+                            set_state.set(ImageState::Ready { url });
+                            return;
+                        }
+                    }
+
+                    // LaunchBox download failed - try multi-source fallback
+                    try_fallback_sources(&title, &plat, &img_type, Some(db_id), set_state, mounted).await;
+                }
+                Ok(None) | Err(_) => {
+                    // No LaunchBox metadata - try fallback sources directly
+                    if mounted.get() {
                         set_state.set(ImageState::Downloading { progress: 0.0 });
-                        download_and_update(info, set_state, mounted).await;
-                    }
-                }
-                Ok(None) => {
-                    if mounted.get() {
-                        set_state.set(ImageState::NoImage);
-                    }
-                }
-                Err(e) => {
-                    if mounted.get() {
-                        console::warn_1(&format!("Failed to get image info: {}", e).into());
-                        set_state.set(ImageState::NoImage);
+                        try_fallback_sources(&title, &plat, &img_type, Some(db_id), set_state, mounted).await;
                     }
                 }
             }
@@ -158,7 +176,44 @@ pub fn LazyImage(
     }
 }
 
-/// Helper function to download an image and update state
+/// Try fallback sources (libretro-thumbnails, SteamGridDB)
+async fn try_fallback_sources(
+    game_title: &str,
+    platform: &str,
+    image_type: &str,
+    launchbox_db_id: Option<i64>,
+    set_state: WriteSignal<ImageState>,
+    mounted: ReadSignal<bool>,
+) {
+    if !mounted.get() || game_title.is_empty() {
+        set_state.set(ImageState::NoImage);
+        return;
+    }
+
+    // Try multi-source download
+    match tauri::download_image_with_fallback(
+        game_title.to_string(),
+        platform.to_string(),
+        image_type.to_string(),
+        launchbox_db_id,
+    ).await {
+        Ok(local_path) => {
+            if mounted.get() {
+                let url = file_to_asset_url(&local_path);
+                set_state.set(ImageState::Ready { url });
+            }
+        }
+        Err(e) => {
+            if mounted.get() {
+                console::log_1(&format!("No image found from any source: {}", e).into());
+                set_state.set(ImageState::NoImage);
+            }
+        }
+    }
+}
+
+/// Helper function to download an image and update state (for LaunchBox-only path)
+#[allow(dead_code)]
 async fn download_and_update(
     info: ImageInfo,
     set_state: WriteSignal<ImageState>,

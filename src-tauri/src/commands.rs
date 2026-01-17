@@ -1911,3 +1911,68 @@ pub async fn import_game_images(
     })).await
         .map_err(|e| e.to_string())
 }
+
+/// Download an image with fallback to multiple sources
+///
+/// Tries sources in order: LaunchBox CDN, libretro-thumbnails, SteamGridDB
+#[tauri::command]
+pub async fn download_image_with_fallback(
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<String, String> {
+    let state_guard = state.read().await;
+
+    let pool = state_guard.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let service = ImageService::new(pool.clone(), cache_dir);
+
+    // Create SteamGridDB client if configured
+    let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {
+        Some(crate::scraper::SteamGridDBClient::new(
+            crate::scraper::SteamGridDBConfig {
+                api_key: state_guard.settings.steamgriddb.api_key.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    service.download_with_fallback(
+        &game_title,
+        &platform,
+        &image_type,
+        launchbox_db_id,
+        steamgriddb_client.as_ref(),
+    ).await
+        .map_err(|e| e.to_string())
+}
+
+/// Download a thumbnail from libretro-thumbnails
+#[tauri::command]
+pub async fn download_libretro_thumbnail(
+    game_title: String,
+    platform: String,
+    image_type: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<String>, String> {
+    let state_guard = state.read().await;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+
+    let libretro_type = match image_type.as_str() {
+        "Box - Front" | "Box - Back" => crate::images::LibRetroImageType::Boxart,
+        "Screenshot - Gameplay" | "Screenshot" => crate::images::LibRetroImageType::Snap,
+        "Screenshot - Game Title" => crate::images::LibRetroImageType::Title,
+        _ => return Ok(None),
+    };
+
+    let client = crate::images::LibRetroThumbnailsClient::new(cache_dir);
+    let result = client.find_thumbnail(&platform, libretro_type, &game_title).await;
+
+    Ok(result)
+}
