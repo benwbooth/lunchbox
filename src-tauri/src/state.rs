@@ -54,13 +54,13 @@ pub struct AppSettings {
 /// Note: Credentials are stored in system keyring, not in JSON config
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScreenScraperSettings {
-    #[serde(skip)]
+    #[serde(default)]
     pub dev_id: String,
-    #[serde(skip)]
+    #[serde(default)]
     pub dev_password: String,
-    #[serde(skip)]
+    #[serde(default)]
     pub user_id: Option<String>,
-    #[serde(skip)]
+    #[serde(default)]
     pub user_password: Option<String>,
 }
 
@@ -68,7 +68,7 @@ pub struct ScreenScraperSettings {
 /// Note: Credentials are stored in system keyring, not in JSON config
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SteamGridDBSettings {
-    #[serde(skip)]
+    #[serde(default)]
     pub api_key: String,
 }
 
@@ -76,9 +76,9 @@ pub struct SteamGridDBSettings {
 /// Note: Credentials are stored in system keyring, not in JSON config
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IGDBSettings {
-    #[serde(skip)]
+    #[serde(default)]
     pub client_id: String,
-    #[serde(skip)]
+    #[serde(default)]
     pub client_secret: String,
 }
 
@@ -86,9 +86,9 @@ pub struct IGDBSettings {
 /// Note: Credentials are stored in system keyring, not in JSON config
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EmuMoviesSettings {
-    #[serde(skip)]
+    #[serde(default)]
     pub username: String,
-    #[serde(skip)]
+    #[serde(default)]
     pub password: String,
 }
 
@@ -260,17 +260,7 @@ async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
 
 /// Save settings to database and credentials to keyring
 pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<()> {
-    // Save non-sensitive settings to database (credentials are skipped via #[serde(skip)])
-    let json = serde_json::to_string(settings)?;
-
-    sqlx::query(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_settings', ?)"
-    )
-    .bind(&json)
-    .execute(pool)
-    .await?;
-
-    // Save credentials to system keyring
+    // Save credentials to system keyring first
     crate::keyring_store::store_image_source_credentials(
         &settings.steamgriddb.api_key,
         &settings.igdb.client_id,
@@ -282,6 +272,22 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         settings.screenscraper.user_id.as_deref(),
         settings.screenscraper.user_password.as_deref(),
     )?;
+
+    // Clone settings and clear credentials before saving to database
+    let mut settings_for_db = settings.clone();
+    settings_for_db.steamgriddb = SteamGridDBSettings::default();
+    settings_for_db.igdb = IGDBSettings::default();
+    settings_for_db.emumovies = EmuMoviesSettings::default();
+    settings_for_db.screenscraper = ScreenScraperSettings::default();
+
+    let json = serde_json::to_string(&settings_for_db)?;
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('app_settings', ?)"
+    )
+    .bind(&json)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }

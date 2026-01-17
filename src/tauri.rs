@@ -313,26 +313,35 @@ pub struct AppSettings {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScreenScraperSettings {
+    #[serde(default)]
     pub dev_id: String,
+    #[serde(default)]
     pub dev_password: String,
+    #[serde(default)]
     pub user_id: Option<String>,
+    #[serde(default)]
     pub user_password: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SteamGridDBSettings {
+    #[serde(default)]
     pub api_key: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IGDBSettings {
+    #[serde(default)]
     pub client_id: String,
+    #[serde(default)]
     pub client_secret: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EmuMoviesSettings {
+    #[serde(default)]
     pub username: String,
+    #[serde(default)]
     pub password: String,
 }
 
