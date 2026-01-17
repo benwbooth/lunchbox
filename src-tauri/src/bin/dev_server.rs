@@ -38,14 +38,26 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("User database path: {}", db_path.display());
     let db_pool = db::init_pool(&db_path).await?;
 
-    // Load settings
-    let settings: lunchbox_lib::state::AppSettings = sqlx::query_as::<_, (String,)>(
+    // Load settings from database
+    let mut settings: lunchbox_lib::state::AppSettings = sqlx::query_as::<_, (String,)>(
         "SELECT value FROM settings WHERE key = 'app_settings'",
     )
     .fetch_optional(&db_pool)
     .await?
     .map(|(json,)| serde_json::from_str(&json).unwrap_or_default())
     .unwrap_or_default();
+
+    // Load credentials from system keyring
+    let creds = lunchbox_lib::keyring_store::load_image_source_credentials();
+    settings.steamgriddb.api_key = creds.steamgriddb_api_key;
+    settings.igdb.client_id = creds.igdb_client_id;
+    settings.igdb.client_secret = creds.igdb_client_secret;
+    settings.emumovies.username = creds.emumovies_username;
+    settings.emumovies.password = creds.emumovies_password;
+    settings.screenscraper.dev_id = creds.screenscraper_dev_id;
+    settings.screenscraper.dev_password = creds.screenscraper_dev_password;
+    settings.screenscraper.user_id = creds.screenscraper_user_id;
+    settings.screenscraper.user_password = creds.screenscraper_user_password;
 
     // Try to load shipped games database
     let games_db_pool = {

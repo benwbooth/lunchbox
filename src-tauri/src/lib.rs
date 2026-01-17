@@ -3,6 +3,7 @@ mod commands;
 pub mod db;
 pub mod images;
 pub mod import;
+pub mod keyring_store;
 pub mod router;
 pub mod scanner;
 pub mod scraper;
