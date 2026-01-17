@@ -1481,12 +1481,8 @@ pub async fn get_most_played(
 
 // ============ Service Connection Tests ============
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConnectionTestResult {
-    pub success: bool,
-    pub message: String,
-    pub user_info: Option<String>,
-}
+// Re-export ConnectionTestResult from router for Tauri commands
+pub use crate::router::ConnectionTestResult;
 
 #[tauri::command]
 pub async fn test_screenscraper_connection(
@@ -1495,97 +1491,12 @@ pub async fn test_screenscraper_connection(
     user_id: Option<String>,
     user_password: Option<String>,
 ) -> Result<ConnectionTestResult, String> {
-    use crate::scraper::{ScreenScraperClient, ScreenScraperConfig};
-
-    if dev_id.is_empty() || dev_password.is_empty() {
-        return Ok(ConnectionTestResult {
-            success: false,
-            message: "Developer ID and password are required".to_string(),
-            user_info: None,
-        });
-    }
-
-    let config = ScreenScraperConfig {
-        dev_id,
-        dev_password,
-        user_id: user_id.clone(),
-        user_password,
-    };
-
-    let client = ScreenScraperClient::new(config);
-
-    // Test by looking up a well-known game (Super Mario Bros CRC)
-    match client.lookup_by_checksum(
-        "3337EC46",  // CRC32 for Super Mario Bros (NES)
-        "811B027E",  // partial MD5
-        "",
-        40976,
-        "Super Mario Bros.nes",
-        Some(3),  // NES platform ID
-    ).await {
-        Ok(_) => {
-            let user_msg = user_id.map(|u| format!("Logged in as: {}", u));
-            Ok(ConnectionTestResult {
-                success: true,
-                message: "Successfully connected to ScreenScraper API".to_string(),
-                user_info: user_msg,
-            })
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            let message = if err_str.contains("401") || err_str.contains("403") {
-                "Invalid credentials. Please check your developer ID and password.".to_string()
-            } else if err_str.contains("429") {
-                "Rate limited. ScreenScraper connection works but you've hit the request limit.".to_string()
-            } else {
-                format!("Connection failed: {}", err_str)
-            };
-            Ok(ConnectionTestResult {
-                success: false,
-                message,
-                user_info: None,
-            })
-        }
-    }
+    Ok(crate::router::test_screenscraper_impl(dev_id, dev_password, user_id, user_password).await)
 }
 
 #[tauri::command]
-pub async fn test_steamgriddb_connection(
-    api_key: String,
-) -> Result<ConnectionTestResult, String> {
-    use crate::scraper::{SteamGridDBClient, SteamGridDBConfig};
-
-    if api_key.is_empty() {
-        return Ok(ConnectionTestResult {
-            success: false,
-            message: "API key is required".to_string(),
-            user_info: None,
-        });
-    }
-
-    let config = SteamGridDBConfig { api_key };
-    let client = SteamGridDBClient::new(config);
-
-    match client.test_connection().await {
-        Ok(()) => Ok(ConnectionTestResult {
-            success: true,
-            message: "Successfully connected to SteamGridDB API".to_string(),
-            user_info: None,
-        }),
-        Err(e) => {
-            let err_str = e.to_string();
-            let message = if err_str.contains("401") || err_str.contains("403") {
-                "Invalid API key. Please check your key.".to_string()
-            } else {
-                format!("Connection failed: {}", err_str)
-            };
-            Ok(ConnectionTestResult {
-                success: false,
-                message,
-                user_info: None,
-            })
-        }
-    }
+pub async fn test_steamgriddb_connection(api_key: String) -> Result<ConnectionTestResult, String> {
+    Ok(crate::router::test_steamgriddb_impl(api_key).await)
 }
 
 #[tauri::command]
@@ -1593,39 +1504,7 @@ pub async fn test_igdb_connection(
     client_id: String,
     client_secret: String,
 ) -> Result<ConnectionTestResult, String> {
-    use crate::scraper::{IGDBClient, IGDBConfig};
-
-    if client_id.is_empty() || client_secret.is_empty() {
-        return Ok(ConnectionTestResult {
-            success: false,
-            message: "Client ID and Client Secret are required".to_string(),
-            user_info: None,
-        });
-    }
-
-    let config = IGDBConfig { client_id, client_secret };
-    let client = IGDBClient::new(config);
-
-    match client.test_connection().await {
-        Ok(found_game) => Ok(ConnectionTestResult {
-            success: true,
-            message: "Successfully connected to IGDB API".to_string(),
-            user_info: Some(found_game),
-        }),
-        Err(e) => {
-            let err_str = e.to_string();
-            let message = if err_str.contains("401") || err_str.contains("403") || err_str.contains("invalid") {
-                "Invalid credentials. Please check your Twitch Client ID and Secret.".to_string()
-            } else {
-                format!("Connection failed: {}", err_str)
-            };
-            Ok(ConnectionTestResult {
-                success: false,
-                message,
-                user_info: None,
-            })
-        }
-    }
+    Ok(crate::router::test_igdb_impl(client_id, client_secret).await)
 }
 
 #[tauri::command]
@@ -1633,40 +1512,7 @@ pub async fn test_emumovies_connection(
     username: String,
     password: String,
 ) -> Result<ConnectionTestResult, String> {
-    use crate::images::{EmuMoviesClient, EmuMoviesConfig};
-
-    if username.is_empty() || password.is_empty() {
-        return Ok(ConnectionTestResult {
-            success: false,
-            message: "Username and password are required".to_string(),
-            user_info: None,
-        });
-    }
-
-    let config = EmuMoviesConfig { username, password };
-    // Use a temp dir for the client since we're just testing
-    let client = EmuMoviesClient::new(config, std::path::PathBuf::from("/tmp"));
-
-    match client.test_connection().await {
-        Ok(()) => Ok(ConnectionTestResult {
-            success: true,
-            message: "Successfully connected to EmuMovies API".to_string(),
-            user_info: None,
-        }),
-        Err(e) => {
-            let err_str = e.to_string();
-            let message = if err_str.contains("401") || err_str.contains("403") {
-                "Invalid credentials. Please check your username and password.".to_string()
-            } else {
-                format!("Connection failed: {}", err_str)
-            };
-            Ok(ConnectionTestResult {
-                success: false,
-                message,
-                user_info: None,
-            })
-        }
-    }
+    Ok(crate::router::test_emumovies_impl(username, password).await)
 }
 
 // ============ Favorites Commands ============

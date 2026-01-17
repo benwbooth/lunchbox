@@ -5,7 +5,7 @@
 //!
 //! This allows hot-reloading the backend while keeping the browser open.
 
-use lunchbox_lib::{api, db, state::AppState};
+use lunchbox_lib::{api, db, router, state::AppState};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -96,8 +96,21 @@ async fn main() -> anyhow::Result<()> {
         settings,
     }));
 
-    // Create and start HTTP server
-    let router = api::create_router(state);
+    // Build rspc router
+    let rspc_router = router::build_router();
+
+    // Create and start HTTP server with both legacy and rspc routes
+    let legacy_router = api::create_router(state.clone());
+
+    // Create rspc Axum endpoint
+    let rspc_ctx = router::Ctx { state };
+    let rspc_axum_router = rspc_axum::endpoint(rspc_router, move || rspc_ctx.clone());
+
+    // Merge routers - rspc at /rspc, legacy at /api
+    let combined_router = axum::Router::new()
+        .nest("/rspc", rspc_axum_router)
+        .merge(legacy_router);
+
     let addr = "127.0.0.1:3001";
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
@@ -109,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("  Then open browser to:      http://127.0.0.1:1420");
     tracing::info!("═══════════════════════════════════════════════════════");
 
-    axum::serve(listener, router).await?;
+    axum::serve(listener, combined_router).await?;
 
     Ok(())
 }

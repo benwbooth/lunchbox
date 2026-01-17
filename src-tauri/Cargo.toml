@@ -54,6 +54,12 @@ urlencoding = "2"
 axum = "0.7"
 tower-http = { version = "0.6", features = ["cors"] }
 
+# rspc - unified Tauri + HTTP API
+rspc = "0.3"
+rspc-tauri = "0.1.1"
+rspc-axum = "0.2"
+specta = "2.0.0-rc.20"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

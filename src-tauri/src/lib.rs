@@ -3,10 +3,12 @@ mod commands;
 pub mod db;
 pub mod images;
 pub mod import;
+pub mod router;
 pub mod scanner;
 pub mod scraper;
 pub mod state;
 
+use router::Ctx;
 use state::AppState;
 use std::sync::Arc;
 use tauri::Manager;
@@ -21,10 +23,17 @@ pub fn run() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    // Build rspc router (shared between Tauri IPC and HTTP)
+    let rspc_router = router::build_router();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // rspc plugin for Tauri IPC
+        .plugin(rspc_tauri::plugin(rspc_router.clone(), |_| Ctx {
+            state: Arc::new(RwLock::new(AppState::default())),
+        }))
         .manage(Arc::new(RwLock::new(AppState::default())))
         .invoke_handler(tauri::generate_handler![
             commands::greet,
@@ -70,7 +79,7 @@ pub fn run() {
             commands::download_image_with_fallback,
             commands::download_libretro_thumbnail,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = state::initialize_app_state(&handle).await {
@@ -82,13 +91,27 @@ pub fn run() {
             #[cfg(debug_assertions)]
             {
                 let state = app.state::<Arc<RwLock<AppState>>>().inner().clone();
+                let rspc_router_for_http = rspc_router.clone();
                 tauri::async_runtime::spawn(async move {
-                    let router = api::create_router(state);
+                    // Combine legacy API routes with rspc routes
+                    let legacy_router = api::create_router(state.clone());
+
+                    // Create rspc Axum endpoint
+                    let rspc_ctx = Ctx { state };
+                    let rspc_axum_router = rspc_axum::endpoint(rspc_router_for_http, move || rspc_ctx.clone());
+
+                    // Merge routers - rspc at /rspc, legacy at /api
+                    let combined_router = axum::Router::new()
+                        .nest("/rspc", rspc_axum_router)
+                        .merge(legacy_router);
+
                     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
                         .await
                         .expect("Failed to bind HTTP API server");
                     tracing::info!("HTTP API server running on http://127.0.0.1:3001");
-                    axum::serve(listener, router)
+                    tracing::info!("  - rspc routes: http://127.0.0.1:3001/rspc");
+                    tracing::info!("  - legacy routes: http://127.0.0.1:3001/api");
+                    axum::serve(listener, combined_router)
                         .await
                         .expect("HTTP API server error");
                 });

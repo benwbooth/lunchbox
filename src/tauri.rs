@@ -119,19 +119,101 @@ async fn http_delete(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-// ============ Tauri IPC Helpers ============
+// ============ rspc HTTP Client ============
 
-/// Invoke a Tauri command with arguments
-async fn invoke<T: DeserializeOwned>(cmd: &str, args: impl Serialize) -> Result<T, String> {
-    let args = serde_wasm_bindgen::to_value(&args).map_err(|e| e.to_string())?;
-    let result = tauri_invoke(cmd, args).await;
-    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+/// JSON-RPC response wrapper from rspc
+#[derive(Debug, Deserialize)]
+struct RspcJsonRpcResponse {
+    result: RspcResult,
 }
 
-/// Invoke a Tauri command with no arguments
+/// Inner result from rspc (can be response or error)
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", content = "data")]
+enum RspcResult {
+    #[serde(rename = "response")]
+    Response(serde_json::Value),
+    #[serde(rename = "error")]
+    Error(RspcError),
+}
+
+#[derive(Debug, Deserialize)]
+struct RspcError {
+    code: i32,
+    message: String,
+}
+
+/// Call an rspc query via HTTP
+async fn rspc_query<T: DeserializeOwned, A: Serialize>(procedure: &str, args: &A) -> Result<T, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    // Build URL - only add input param if args is not ()
+    let url = if std::any::type_name::<A>() == "()" {
+        format!("{}/rspc/{}", HTTP_API_BASE, procedure)
+    } else {
+        let args_json = serde_json::to_string(args).map_err(|e| e.to_string())?;
+        let encoded_args = urlencoding::encode(&args_json);
+        format!("{}/rspc/{}?input={}", HTTP_API_BASE, procedure, encoded_args)
+    };
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
+
+    let window = web_sys::window().ok_or("No window")?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{:?}", e))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    let json = wasm_bindgen_futures::JsFuture::from(resp.json().map_err(|e| format!("{:?}", e))?)
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+
+    let response: RspcJsonRpcResponse = serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
+
+    match response.result {
+        RspcResult::Response(data) => {
+            serde_json::from_value(data).map_err(|e| e.to_string())
+        }
+        RspcResult::Error(error) => {
+            Err(error.message)
+        }
+    }
+}
+
+// ============ Tauri IPC Helpers ============
+
+/// Invoke a Tauri command with arguments.
+/// Automatically falls back to rspc HTTP when not running in Tauri.
+async fn invoke<T: DeserializeOwned>(cmd: &str, args: impl Serialize) -> Result<T, String> {
+    if is_tauri() {
+        let args = serde_wasm_bindgen::to_value(&args).map_err(|e| e.to_string())?;
+        let result = tauri_invoke(cmd, args).await;
+        serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+    } else {
+        // Use rspc HTTP endpoint
+        rspc_query(cmd, &args).await
+    }
+}
+
+/// Invoke a Tauri command with no arguments.
+/// Automatically falls back to rspc HTTP when not running in Tauri.
 async fn invoke_no_args<T: DeserializeOwned>(cmd: &str) -> Result<T, String> {
-    let result = tauri_invoke(cmd, JsValue::NULL).await;
-    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+    if is_tauri() {
+        let result = tauri_invoke(cmd, JsValue::NULL).await;
+        serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+    } else {
+        // Use rspc HTTP endpoint with empty args
+        rspc_query(cmd, &()).await
+    }
 }
 
 // ============ Types ============
