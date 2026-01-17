@@ -124,7 +124,6 @@ pub fn GameDetails(
                     let wikipedia_url = g.wikipedia_url.clone();
                     let box_front = g.box_front_path.clone();
                     let db_id = g.database_id;
-                    let variant_count = g.variant_count;
 
                     let title_for_fav = g.title.clone();
                     let platform_for_fav = g.platform.clone();
@@ -303,9 +302,8 @@ pub fn GameDetails(
                                     <p>{description}</p>
                                 </div>
 
-                                // Variants section (only show if multiple variants)
+                                // Variants section
                                 <VariantsSection
-                                    variant_count=variant_count
                                     variants=variants
                                     selected_variant=selected_variant
                                     set_selected_variant=set_pending_variant_load
@@ -321,38 +319,33 @@ pub fn GameDetails(
 
 #[component]
 fn VariantsSection(
-    variant_count: i32,
     variants: ReadSignal<Vec<GameVariant>>,
     selected_variant: ReadSignal<Option<String>>,
     set_selected_variant: WriteSignal<Option<String>>,
 ) -> impl IntoView {
-    web_sys::console::log_1(&format!("VariantsSection: variant_count={}", variant_count).into());
-    // Skip if no variants expected
-    if variant_count <= 1 {
-        web_sys::console::log_1(&"VariantsSection: skipping (variant_count <= 1)".into());
-        return view! { <div></div> }.into_any();
-    }
-    web_sys::console::log_1(&"VariantsSection: rendering variants list".into());
-
+    // Use the actual variants list length, not the game's variant_count
+    // This prevents flashing when switching between variants
     view! {
-        <div class="game-variants-section">
-            <h2>"Versions"</h2>
-            <p class="variants-hint">"Select a version to play:"</p>
-            <div class="variants-list">
-                <For
-                    each=move || variants.get()
-                    key=|v| v.id.clone()
-                    let:variant
-                >
-                    <VariantItem
-                        variant=variant
-                        selected_variant=selected_variant
-                        set_selected_variant=set_selected_variant
-                    />
-                </For>
+        <Show when=move || { variants.get().len() > 1 }>
+            <div class="game-variants-section">
+                <h2>"Versions"</h2>
+                <p class="variants-hint">"Select a version to play:"</p>
+                <div class="variants-list">
+                    <For
+                        each=move || variants.get()
+                        key=|v| v.id.clone()
+                        let:variant
+                    >
+                        <VariantItem
+                            variant=variant
+                            selected_variant=selected_variant
+                            set_selected_variant=set_selected_variant
+                        />
+                    </For>
+                </div>
             </div>
-        </div>
-    }.into_any()
+        </Show>
+    }
 }
 
 #[component]
