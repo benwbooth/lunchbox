@@ -457,22 +457,26 @@ async fn get_game_by_uuid(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
 
-            // Count variants
-            let normalized = normalize_title(&title);
-            let variant_count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM games WHERE platform_id = ? AND title LIKE ?"
+            // Count variants using normalize_for_dedup for consistency with list view
+            let normalized_for_dedup = normalize_for_dedup(&title);
+            let all_titles: Vec<(String,)> = sqlx::query_as(
+                "SELECT title FROM games WHERE platform_id = ?"
             )
             .bind(platform_id)
-            .bind(format!("{}%", normalized))
-            .fetch_one(games_pool)
+            .fetch_all(games_pool)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            let variant_count = all_titles
+                .iter()
+                .filter(|(t,)| normalize_for_dedup(t) == normalized_for_dedup)
+                .count() as i64;
 
             let game = Game {
                 id: row.get("id"),
                 database_id: 0,
                 title: title.clone(),
-                display_title: normalized,
+                display_title: normalize_title(&title),
                 platform: row.get("platform"),
                 platform_id,
                 description: row.get("description"),
@@ -499,7 +503,7 @@ async fn get_game_by_uuid(
                 steam_app_id: row.get("steam_app_id"),
                 box_front_path: None,
                 screenshot_path: None,
-                variant_count: variant_count.0 as i32,
+                variant_count: variant_count as i32,
             };
 
             return Ok(Json(Some(game)));
@@ -533,7 +537,8 @@ async fn get_game_variants(
             use sqlx::Row;
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
-            let normalized = normalize_title(&title);
+            // Use normalize_for_dedup to match how variants are counted in get_games
+            let normalized = normalize_for_dedup(&title);
 
             // Find all variants with the same normalized title
             let variants: Vec<(String, String)> = sqlx::query_as(
@@ -546,7 +551,7 @@ async fn get_game_variants(
 
             let result: Vec<GameVariant> = variants
                 .into_iter()
-                .filter(|(_, t)| normalize_title(t) == normalized)
+                .filter(|(_, t)| normalize_for_dedup(t) == normalized)
                 .map(|(id, title)| GameVariant {
                     id,
                     region: extract_region(&title),
