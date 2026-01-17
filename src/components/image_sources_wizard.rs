@@ -85,7 +85,7 @@ const SOURCES: &[ImageSource] = &[
         description: "Premium media library with box art, screenshots, videos, and manuals. Lifetime access available.",
         needs_account: true,
         signup_url: Some("https://emumovies.com/"),
-        signup_instructions: "1. Purchase or use existing EmuMovies account\n2. Enter your username and password below\n3. Lifetime accounts have unlimited API access",
+        signup_instructions: "1. Purchase or use existing EmuMovies account\n2. Enter your forum username and password below\n3. Lifetime accounts have unlimited FTP access",
     },
     ImageSource {
         id: "screenscraper",

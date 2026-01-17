@@ -743,11 +743,17 @@ impl ImageService {
             }
         }
 
-        // 5. Try EmuMovies (requires account)
+        // 5. Try EmuMovies (requires account, uses FTP - blocking)
         if let Some(client) = emumovies_client {
             if client.has_credentials() {
                 if let Some(media_type) = emumovies::EmuMoviesMediaType::from_launchbox_type(image_type) {
-                    if let Some(path) = client.find_media(platform, media_type, game_title).await {
+                    let client = client.clone();
+                    let platform = platform.to_string();
+                    let game_title = game_title.to_string();
+                    let result = tokio::task::spawn_blocking(move || {
+                        client.find_media(&platform, media_type, &game_title)
+                    }).await;
+                    if let Ok(Some(path)) = result {
                         tracing::debug!("Downloaded from EmuMovies: {}", path);
                         return Ok(path);
                     }

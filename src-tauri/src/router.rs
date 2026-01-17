@@ -181,22 +181,28 @@ pub async fn test_emumovies_impl(username: String, password: String) -> Connecti
         };
     }
 
-    let config = EmuMoviesConfig {
-        username: username.clone(),
-        password,
-    };
-    // Use a temp dir for the client since we're just testing
-    let client = EmuMoviesClient::new(config, std::path::PathBuf::from("/tmp"));
+    let username_clone = username.clone();
 
-    match client.test_connection().await {
-        Ok(()) => ConnectionTestResult {
+    // FTP operations are blocking, so run in spawn_blocking
+    let result = tokio::task::spawn_blocking(move || {
+        let config = EmuMoviesConfig {
+            username: username_clone,
+            password,
+        };
+        // Use a temp dir for the client since we're just testing
+        let client = EmuMoviesClient::new(config, std::path::PathBuf::from("/tmp"));
+        client.test_connection()
+    }).await;
+
+    match result {
+        Ok(Ok(())) => ConnectionTestResult {
             success: true,
-            message: "Successfully connected to EmuMovies API".to_string(),
+            message: "Successfully connected to EmuMovies FTP".to_string(),
             user_info: Some(format!("Logged in as: {}", username)),
         },
-        Err(e) => {
+        Ok(Err(e)) => {
             let err_str = e.to_string();
-            let message = if err_str.contains("401") || err_str.contains("403") {
+            let message = if err_str.contains("login") || err_str.contains("530") {
                 "Invalid credentials. Please check your username and password.".to_string()
             } else {
                 format!("Connection failed: {}", err_str)
@@ -206,6 +212,11 @@ pub async fn test_emumovies_impl(username: String, password: String) -> Connecti
                 message,
                 user_info: None,
             }
+        }
+        Err(e) => ConnectionTestResult {
+            success: false,
+            message: format!("Connection task failed: {}", e),
+            user_info: None,
         }
     }
 }
