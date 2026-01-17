@@ -738,17 +738,48 @@ pub async fn get_game_by_uuid(
 /// Calculate region priority for sorting (lower = better, USA/English first)
 fn region_priority(title: &str) -> i32 {
     let title_lower = title.to_lowercase();
-    if title_lower.contains("(usa)") || title_lower.contains("(usa,") {
-        0
-    } else if title_lower.contains("(world)") {
-        1
-    } else if title_lower.contains("(europe)") || title_lower.contains("(en)") {
-        2
-    } else if title_lower.contains("(japan)") || title_lower.contains("(ja)") {
-        3
-    } else {
-        4
+
+    // USA is highest priority
+    if title_lower.contains("(usa)") || title_lower.contains("(usa,") || title_lower.contains(", usa)") {
+        return 0;
     }
+
+    // Check for English language indicator
+    let has_english = title_lower.contains("(en)") || title_lower.contains("(en,")
+        || title_lower.contains(", en)") || title_lower.contains(", en,");
+
+    // World with English
+    if title_lower.contains("(world)") {
+        return if has_english { 1 } else { 2 };
+    }
+
+    // English language versions (any region)
+    if has_english {
+        return 3;
+    }
+
+    // Europe (often has English)
+    if title_lower.contains("(europe)") || title_lower.contains("(europe,") {
+        return 4;
+    }
+
+    // Other English-speaking regions
+    if title_lower.contains("(australia)") || title_lower.contains("(uk)") || title_lower.contains("(canada)") {
+        return 5;
+    }
+
+    // Japan
+    if title_lower.contains("(japan)") || title_lower.contains("(ja)") {
+        return 6;
+    }
+
+    // No region info - could be anything, put before non-English
+    if !title_lower.contains("(") {
+        return 7;
+    }
+
+    // Everything else (other languages/regions)
+    8
 }
 
 /// Get all variants (regions/versions) for a given game by display title
