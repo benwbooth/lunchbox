@@ -12,6 +12,7 @@ use std::sync::Arc;
 use walkdir::WalkDir;
 
 use super::checksum::Checksums;
+use crate::tags::{self, TagCategory};
 
 /// Common ROM file extensions by platform
 pub const ROM_EXTENSIONS: &[&str] = &[
@@ -220,6 +221,7 @@ impl RomScanner {
 }
 
 /// Parse ROM filename to extract clean name, region, and version
+/// Uses centralized tags module for parsing.
 fn parse_rom_name(filename: &str) -> (String, Option<String>, Option<String>) {
     // Remove extension
     let name = filename
@@ -227,50 +229,20 @@ fn parse_rom_name(filename: &str) -> (String, Option<String>, Option<String>) {
         .map(|(name, _)| name)
         .unwrap_or(filename);
 
-    let mut clean_name = name.to_string();
-    let mut region = None;
-    let mut version = None;
+    // Parse using centralized tags module
+    let (clean_name, parsed_tags) = tags::parse_title_tags(name);
 
-    // Extract region from parentheses (USA), (Europe), (Japan), etc.
-    if let Some(start) = name.find('(') {
-        if let Some(end) = name[start..].find(')') {
-            let tag = &name[start + 1..start + end];
+    // Find first region tag
+    let region = parsed_tags.iter()
+        .find(|t| t.category == TagCategory::Region || t.category == TagCategory::Language)
+        .map(|t| t.text.clone());
 
-            // Check if it's a region tag
-            let regions = ["USA", "Europe", "Japan", "World", "En", "Fr", "De", "Es", "It",
-                          "U", "E", "J", "JU", "UE", "Asia", "Korea", "China", "Brazil",
-                          "Australia", "Germany", "France", "Spain", "Italy", "Netherlands"];
+    // Find first revision tag
+    let version = parsed_tags.iter()
+        .find(|t| t.category == TagCategory::Revision)
+        .map(|t| t.text.clone());
 
-            if regions.iter().any(|r| tag.contains(r)) {
-                region = Some(tag.to_string());
-            }
-
-            // Check for version
-            if tag.starts_with('v') || tag.starts_with('V') || tag.contains("Rev") {
-                version = Some(tag.to_string());
-            }
-        }
-    }
-
-    // Clean up the name - remove tags in parentheses and brackets
-    let mut result = String::new();
-    let mut depth: i32 = 0;
-    let mut bracket_depth: i32 = 0;
-
-    for c in clean_name.chars() {
-        match c {
-            '(' => depth += 1,
-            ')' => depth = depth.saturating_sub(1),
-            '[' => bracket_depth += 1,
-            ']' => bracket_depth = bracket_depth.saturating_sub(1),
-            _ if depth == 0 && bracket_depth == 0 => result.push(c),
-            _ => {}
-        }
-    }
-
-    clean_name = result.trim().to_string();
-
-    (clean_name, region, version)
+    (clean_name.trim().to_string(), region, version)
 }
 
 /// Normalize a name for database matching (similar to LaunchBox's CompareName)

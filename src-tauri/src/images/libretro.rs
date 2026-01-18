@@ -6,6 +6,7 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+use crate::tags;
 
 /// libretro-thumbnails CDN base URL
 pub const LIBRETRO_THUMBNAILS_URL: &str = "https://thumbnails.libretro.com";
@@ -302,47 +303,31 @@ impl LibRetroThumbnailsClient {
     }
 }
 
-/// Remove region codes like (USA), (Europe), (Japan), etc.
+/// Remove region codes like (USA), (Europe), (Japan), etc. (uses centralized tags module)
 fn remove_region_codes(name: &str) -> String {
-    let mut result = name.to_string();
-
-    // Common region patterns
-    let patterns = [
-        "(USA)",
-        "(Europe)",
-        "(Japan)",
-        "(World)",
-        "(U)",
-        "(E)",
-        "(J)",
-        "(W)",
-        "(En)",
-        "(Fr)",
-        "(De)",
-        "(Es)",
-        "(It)",
-        "(En,Fr,De)",
-        "(En,Fr,De,Es,It)",
-    ];
-
-    for pattern in patterns {
-        result = result.replace(pattern, "");
-    }
-
-    result.trim().to_string()
+    tags::strip_region_and_language_tags(name)
 }
 
 /// Move leading articles to end: "The Legend of Zelda" -> "Legend of Zelda, The"
 fn move_article_to_end(name: &str) -> Option<String> {
-    let articles = ["The ", "A ", "An "];
+    // Move "The", "A", "An" from start to end for matching
+    let (base, parsed_tags) = tags::parse_title_tags(name);
+    let base_trimmed = base.trim();
 
+    let articles = ["The ", "A ", "An "];
     for article in articles {
-        if name.starts_with(article) {
-            let rest = &name[article.len()..];
-            return Some(format!("{}, {}", rest, article.trim()));
+        if base_trimmed.starts_with(article) {
+            let rest = &base_trimmed[article.len()..];
+            // Reconstruct with moved article
+            let mut result = format!("{}, {}", rest, article.trim());
+            // Add back tags
+            for tag in &parsed_tags {
+                result.push(' ');
+                result.push_str(&tag.original);
+            }
+            return Some(result.trim().to_string());
         }
     }
-
     None
 }
 

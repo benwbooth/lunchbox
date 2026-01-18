@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use suppaftp::FtpStream;
+use crate::tags;
 
 /// EmuMovies FTP configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -669,49 +670,14 @@ impl EmuMoviesClient {
     }
 }
 
-/// Normalize a game name for matching
+/// Normalize a game name for matching (uses centralized tags module)
 fn normalize_game_name(name: &str) -> String {
-    name.to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-')
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    tags::normalize_title_for_matching(name)
 }
 
-/// Remove region codes like (USA), (Europe), etc.
-/// Also handles normalized index keys where region codes are without parentheses
+/// Remove region codes like (USA), (Europe), etc. (uses centralized tags module)
 fn remove_region_codes(name: &str) -> String {
-    let mut result = name.to_string();
-
-    // Patterns with parentheses (for raw filenames)
-    let paren_patterns = [
-        "(usa)", "(europe)", "(japan)", "(world)", "(u)", "(e)", "(j)", "(w)",
-        "(en)", "(fr)", "(de)", "(es)", "(it)", "(en,fr,de)", "(en,fr,de,es,it)",
-        "(usa, europe)", "(japan, usa)", "(rev a)", "(rev b)", "(v1.0)", "(v1.1)",
-    ];
-
-    for pattern in paren_patterns {
-        result = result.replace(pattern, "");
-    }
-
-    // Also remove trailing region codes without parentheses (from normalized index keys)
-    // These are common region suffixes that appear at the end of normalized names
-    let trailing_regions = [
-        " usa", " europe", " japan", " world", " en", " fr", " de", " es", " it",
-        " usa europe", " japan usa", " rev a", " rev b", " rev 1", " rev 2",
-        " v10", " v11", " v12", " alt", " proto", " aftermarket", " unl", " pirate",
-    ];
-
-    // Remove trailing region codes (only from the end)
-    for suffix in trailing_regions {
-        if result.ends_with(suffix) {
-            result = result[..result.len() - suffix.len()].to_string();
-        }
-    }
-
-    result.trim().to_string()
+    tags::strip_region_and_language_tags(name)
 }
 
 /// Move leading articles to end: "The Legend of Zelda" -> "Legend of Zelda, The"

@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use crate::tags;
 
 /// Platform from database
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -190,65 +191,24 @@ pub struct GameImage {
 
 /// Normalize a game title for display by removing region/version suffixes
 /// "Super Mario Bros. (USA) (Rev A)" -> "Super Mario Bros."
+/// Uses centralized tags module for parsing.
 pub fn normalize_title_for_display(title: &str) -> String {
-    let mut result = String::new();
-    let mut depth = 0;
-
-    for c in title.chars() {
-        match c {
-            '(' => depth += 1,
-            ')' => depth = (depth as i32 - 1).max(0) as usize,
-            _ if depth == 0 => result.push(c),
-            _ => {}
-        }
-    }
-
-    result.trim().to_string()
+    let (base, _tags) = tags::parse_title_tags(title);
+    base.trim().to_string()
 }
 
 /// Normalize title for deduplication - removes punctuation, normalizes whitespace, lowercases
 /// This allows "Canon - The Legend" and "Canon: The Legend" to be considered the same game
+/// Uses centralized tags module.
 pub fn normalize_title_for_dedup(title: &str) -> String {
-    let mut result = String::new();
-    let mut depth = 0;
-    let mut last_was_space = true; // Start true to trim leading spaces
-
-    for c in title.chars() {
-        match c {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth = (depth as i32 - 1).max(0) as usize,
-            _ if depth == 0 => {
-                if c.is_alphanumeric() {
-                    result.push(c.to_ascii_lowercase());
-                    last_was_space = false;
-                } else if !last_was_space {
-                    // Replace any non-alphanumeric with a single space
-                    result.push(' ');
-                    last_was_space = true;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    result.trim().to_string()
+    tags::normalize_title_for_matching(title)
 }
 
 /// Extract region from title (e.g., "(USA)" -> "USA")
+/// Uses centralized tags module.
 pub fn extract_region_from_title(title: &str) -> Option<String> {
-    let regions = [
-        "(USA)", "(World)", "(Europe)", "(Japan)", "(En)", "(Ja)", "(De)", "(Fr)",
-        "(USA, Europe)", "(Japan, USA)", "(Japan, Europe)", "(Europe, Australia)",
-        "(Korea)", "(Asia)", "(Taiwan)", "(Germany)", "(France)", "(Spain)", "(Italy)",
-        "(Brazil)", "(Australia)", "(Netherlands)", "(Sweden)", "(China)",
-    ];
-
-    for region in regions {
-        if title.contains(region) {
-            return Some(region.trim_matches(|c| c == '(' || c == ')').to_string());
-        }
-    }
-    None
+    let regions = tags::get_region_tags(title);
+    regions.into_iter().next()
 }
 
 /// Game for API/frontend display - extends DbGame with computed fields

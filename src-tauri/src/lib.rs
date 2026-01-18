@@ -8,6 +8,7 @@ pub mod router;
 pub mod scanner;
 pub mod scraper;
 pub mod state;
+pub mod tags;
 
 use router::Ctx;
 use state::AppState;

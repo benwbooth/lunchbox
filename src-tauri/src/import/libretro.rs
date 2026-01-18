@@ -21,6 +21,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use crate::tags;
 
 /// Header information from a DAT file
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -62,33 +63,15 @@ pub struct DatGame {
 impl DatGame {
     /// Extract region from game name if not explicitly set
     /// e.g., "Super Mario Bros. (USA)" -> "USA"
+    /// Uses centralized tags module for parsing.
     pub fn infer_region(&self) -> Option<String> {
         if self.region.is_some() {
             return self.region.clone();
         }
 
-        // Try to extract from name
-        if let Some(start) = self.name.rfind('(') {
-            if let Some(end) = self.name.rfind(')') {
-                if end > start {
-                    let region = &self.name[start + 1..end];
-                    // Common region codes
-                    if matches!(
-                        region,
-                        "USA"
-                            | "Europe"
-                            | "Japan"
-                            | "World"
-                            | "USA, Europe"
-                            | "Japan, USA"
-                            | "Europe, USA"
-                    ) {
-                        return Some(region.to_string());
-                    }
-                }
-            }
-        }
-        None
+        // Use centralized tags module to extract region
+        let regions = tags::get_region_tags(&self.name);
+        regions.into_iter().next()
     }
 }
 
