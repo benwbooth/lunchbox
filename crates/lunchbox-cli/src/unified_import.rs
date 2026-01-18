@@ -1508,13 +1508,20 @@ impl UnifiedImporter {
         let mut tx = self.pool.begin().await?;
 
         let platform_id = if let Some(&id) = self.platform_cache.get(&platform_canonical) {
+            // Update libretro_name if not already set (platform may have been created by LaunchBox import)
+            sqlx::query(
+                "UPDATE platforms SET libretro_name = COALESCE(libretro_name, ?) WHERE id = ?"
+            )
+            .bind(platform_name)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
             id
         } else {
             let id: i64 = sqlx::query_scalar(
-                "INSERT INTO platforms (name, libretro_name) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET libretro_name=COALESCE(libretro_name, ?) RETURNING id"
+                "INSERT INTO platforms (name, libretro_name) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET libretro_name=COALESCE(platforms.libretro_name, excluded.libretro_name) RETURNING id"
             )
             .bind(&platform_canonical)
-            .bind(platform_name)
             .bind(platform_name)
             .fetch_one(&mut *tx)
             .await?;
