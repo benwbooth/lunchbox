@@ -36,7 +36,8 @@
 
 - **Games database**: `~/.local/share/lunchbox/games.db` (read-only)
   - Contains: games, platforms, game_alternate_names
-  - Created by the unified import CLI tool (`lunchbox-cli build-db`)
+  - Created by the unified import CLI tool (`lunchbox-cli unified-build`)
 - **User database**: `~/.local/share/lunchbox/user.db` (created on first write)
   - Contains: settings, favorites, collections, play_sessions
   - Only created when user saves data (no empty files)
+- **IMPORTANT**: Never rebuild the games database without asking first - it takes a long time
