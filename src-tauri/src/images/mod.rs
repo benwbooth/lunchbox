@@ -817,24 +817,47 @@ impl ImageService {
         if let Some(lt) = libretro_type {
             // Use libretro_platform if provided, otherwise fall back to regular platform name
             let lr_platform = libretro_platform.unwrap_or(platform);
-            // Use libretro_title (No-Intro format) if provided, otherwise fall back to game_title
-            let lr_title = libretro_title.unwrap_or(game_title);
             let libretro_client = LibRetroThumbnailsClient::new(self.cache_dir.clone());
-            tracing::info!("  [2/6] libretro type={:?}, platform='{}', title='{}'...", lt, lr_platform, lr_title);
-            if let Some(url) = libretro_client.get_thumbnail_url(lr_platform, lt, lr_title) {
-                tracing::info!("  [2/6] Trying URL: {}", url);
-                match self.download_to_cache(&url, &game_id, ImageSource::LibRetro, image_type).await {
-                    Ok(path) => {
-                        tracing::info!("  [2/6] SUCCESS from libretro-thumbnails: {}", path);
-                        return Ok(path);
-                    }
-                    Err(e) => {
-                        tracing::info!("  [2/6] libretro-thumbnails download failed: {}", e);
+
+            // Build list of titles to try
+            let mut titles_to_try = Vec::new();
+
+            // If we have libretro_title (No-Intro format), try it first
+            if let Some(lr_title) = libretro_title {
+                titles_to_try.push(lr_title.to_string());
+            }
+
+            // Also try the game title with common region suffixes
+            let base_title = game_title;
+            if !base_title.contains('(') {
+                // No region code - try common ones
+                titles_to_try.push(format!("{} (World)", base_title));
+                titles_to_try.push(format!("{} (USA)", base_title));
+                titles_to_try.push(format!("{} (USA, Europe)", base_title));
+                titles_to_try.push(format!("{} (Europe)", base_title));
+                titles_to_try.push(format!("{} (Japan)", base_title));
+            }
+            // Also try the raw title
+            titles_to_try.push(base_title.to_string());
+
+            tracing::info!("  [2/6] libretro type={:?}, platform='{}', trying {} titles...", lt, lr_platform, titles_to_try.len());
+
+            for lr_title in &titles_to_try {
+                if let Some(url) = libretro_client.get_thumbnail_url(lr_platform, lt, lr_title) {
+                    tracing::info!("  [2/6] Trying URL: {}", url);
+                    match self.download_to_cache(&url, &game_id, ImageSource::LibRetro, image_type).await {
+                        Ok(path) => {
+                            tracing::info!("  [2/6] SUCCESS from libretro-thumbnails: {}", path);
+                            return Ok(path);
+                        }
+                        Err(_) => {
+                            // Try next title
+                            continue;
+                        }
                     }
                 }
-            } else {
-                tracing::info!("  [2/6] libretro-thumbnails: no URL found (platform '{}' not mapped)", lr_platform);
             }
+            tracing::info!("  [2/6] libretro-thumbnails: no image found after trying {} titles", titles_to_try.len());
         } else {
             tracing::info!("  [2/6] Skipping libretro (unsupported image type)");
         }

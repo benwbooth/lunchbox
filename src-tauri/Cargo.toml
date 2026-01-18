@@ -19,6 +19,10 @@ path = "src/main.rs"
 name = "dev_server"
 path = "src/bin/dev_server.rs"
 
+[[bin]]
+name = "test_image_sources"
+path = "src/bin/test_image_sources.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
