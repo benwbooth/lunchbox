@@ -788,9 +788,15 @@ impl ImageService {
         if let Some(lb_platform) = launchbox_platform {
             tracing::info!("  [1/6] Trying LaunchBox CDN...");
             // LaunchBox CDN URL format: {platform}/{image_type}/{game_title}-01.jpg
-            // Example: Nintendo - NES/Box - Front/Super Mario Bros.-01.jpg
-            let cdn_filename = format!("{}/{}/{}-01.jpg", lb_platform, image_type, game_title);
-            let cdn_url = format!("{}/{}", LAUNCHBOX_CDN_URL, urlencoding::encode(&cdn_filename));
+            // Example: Nintendo Entertainment System/Box - Front/Super Mario Bros.-01.jpg
+            // Each path segment must be URL encoded separately (not the slashes)
+            let cdn_url = format!(
+                "{}/{}/{}/{}-01.jpg",
+                LAUNCHBOX_CDN_URL,
+                urlencoding::encode(lb_platform),
+                urlencoding::encode(image_type),
+                urlencoding::encode(game_title)
+            );
             tracing::info!("  [1/6] Trying URL: {}", cdn_url);
             match self.download_to_cache(&cdn_url, &game_id, ImageSource::LaunchBox, image_type).await {
                 Ok(path) => {
