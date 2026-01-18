@@ -763,7 +763,9 @@ impl ImageService {
         platform: &str,
         image_type: &str,
         launchbox_db_id: Option<i64>,
-        libretro_platform: Option<&str>,
+        launchbox_platform: Option<&str>,  // LaunchBox platform name for CDN URLs
+        libretro_platform: Option<&str>,   // libretro platform name
+        libretro_title: Option<&str>,      // No-Intro title for libretro lookups
         steamgriddb_client: Option<&crate::scraper::SteamGridDBClient>,
         igdb_client: Option<&crate::scraper::IGDBClient>,
         emumovies_client: Option<&EmuMoviesClient>,
@@ -782,27 +784,25 @@ impl ImageService {
         }
         tracing::info!("  No cached image found, trying sources...");
 
-        // 1. Try LaunchBox CDN first (if we have database ID and metadata)
-        if let Some(db_id) = launchbox_db_id {
-            if db_id > 0 {
-                tracing::info!("  [1/6] Checking LaunchBox metadata for db_id={}...", db_id);
-                if let Ok(Some(info)) = self.get_image_by_type(db_id, image_type).await {
-                    tracing::info!("  [1/6] Found LaunchBox metadata, downloading from CDN...");
-                    match self.download_to_cache(&info.cdn_url, &game_id, ImageSource::LaunchBox, image_type).await {
-                        Ok(path) => {
-                            tracing::info!("  [1/6] SUCCESS from LaunchBox CDN: {}", path);
-                            return Ok(path);
-                        }
-                        Err(e) => {
-                            tracing::info!("  [1/6] LaunchBox CDN failed: {}", e);
-                        }
-                    }
-                } else {
-                    tracing::info!("  [1/6] No LaunchBox metadata found");
+        // 1. Try LaunchBox CDN first (construct URL from platform/type/title)
+        if let Some(lb_platform) = launchbox_platform {
+            tracing::info!("  [1/6] Trying LaunchBox CDN...");
+            // LaunchBox CDN URL format: {platform}/{image_type}/{game_title}-01.jpg
+            // Example: Nintendo - NES/Box - Front/Super Mario Bros.-01.jpg
+            let cdn_filename = format!("{}/{}/{}-01.jpg", lb_platform, image_type, game_title);
+            let cdn_url = format!("{}/{}", LAUNCHBOX_CDN_URL, urlencoding::encode(&cdn_filename));
+            tracing::info!("  [1/6] Trying URL: {}", cdn_url);
+            match self.download_to_cache(&cdn_url, &game_id, ImageSource::LaunchBox, image_type).await {
+                Ok(path) => {
+                    tracing::info!("  [1/6] SUCCESS from LaunchBox CDN: {}", path);
+                    return Ok(path);
+                }
+                Err(e) => {
+                    tracing::info!("  [1/6] LaunchBox CDN failed: {}", e);
                 }
             }
         } else {
-            tracing::info!("  [1/6] Skipping LaunchBox (no db_id)");
+            tracing::info!("  [1/6] Skipping LaunchBox (no launchbox_platform)");
         }
 
         // 2. Try libretro-thumbnails (free, no account needed)
@@ -811,10 +811,11 @@ impl ImageService {
         if let Some(lt) = libretro_type {
             // Use libretro_platform if provided, otherwise fall back to regular platform name
             let lr_platform = libretro_platform.unwrap_or(platform);
+            // Use libretro_title (No-Intro format) if provided, otherwise fall back to game_title
+            let lr_title = libretro_title.unwrap_or(game_title);
             let libretro_client = LibRetroThumbnailsClient::new(self.cache_dir.clone());
-            tracing::info!("  [2/6] libretro type={:?}, platform='{}', searching for '{}'...", lt, lr_platform, game_title);
-            // libretro has its own cache path, but we should download to new structure
-            if let Some(url) = libretro_client.get_thumbnail_url(lr_platform, lt, game_title) {
+            tracing::info!("  [2/6] libretro type={:?}, platform='{}', title='{}'...", lt, lr_platform, lr_title);
+            if let Some(url) = libretro_client.get_thumbnail_url(lr_platform, lt, lr_title) {
                 tracing::info!("  [2/6] Trying URL: {}", url);
                 match self.download_to_cache(&url, &game_id, ImageSource::LibRetro, image_type).await {
                     Ok(path) => {

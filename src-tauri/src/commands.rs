@@ -1678,25 +1678,37 @@ pub async fn download_image_with_fallback(
 ) -> Result<String, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let games_pool = state_guard.games_db_pool.as_ref()
+        .ok_or_else(|| "Games database not initialized".to_string())?;
 
-    // Look up platform info to get libretro_name
-    let platform_info: Option<(Option<String>,)> = sqlx::query_as(
-        "SELECT libretro_name FROM platforms WHERE name = ?"
+    // Look up platform info to get launchbox_name and libretro_name
+    let platform_info: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?"
     )
     .bind(&platform)
-    .fetch_optional(pool)
+    .fetch_optional(games_pool)
     .await
     .ok()
     .flatten();
 
-    let libretro_platform = platform_info
-        .and_then(|(name,)| name)
-        .unwrap_or_else(|| platform.clone());
+    let (launchbox_platform, libretro_platform) = platform_info
+        .map(|(lb, lr)| (lb, lr))
+        .unwrap_or((None, None));
+
+    // Look up libretro_title if we have a launchbox_db_id
+    let libretro_title: Option<String> = if let Some(db_id) = launchbox_db_id {
+        sqlx::query_scalar("SELECT libretro_title FROM games WHERE launchbox_db_id = ?")
+            .bind(db_id)
+            .fetch_optional(games_pool)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
 
     let cache_dir = get_cache_dir(&state_guard.settings);
-    let service = ImageService::new(pool.clone(), cache_dir.clone());
+    let service = ImageService::new(games_pool.clone(), cache_dir.clone());
 
     // Create SteamGridDB client if configured
     let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {
@@ -1759,7 +1771,9 @@ pub async fn download_image_with_fallback(
         &platform,
         &image_type,
         launchbox_db_id,
-        Some(libretro_platform.as_str()),
+        launchbox_platform.as_deref(),
+        libretro_platform.as_deref(),
+        libretro_title.as_deref(),
         steamgriddb_client.as_ref(),
         igdb_client.as_ref(),
         emumovies_client.as_ref(),
