@@ -8,11 +8,14 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 
 /// Maximum concurrent image operations (cache checks + downloads)
 const MAX_CONCURRENT_REQUESTS: usize = 6;
+
+/// Maximum entries in the frontend image URL cache
+const IMAGE_CACHE_MAX_SIZE: usize = 500;
 
 /// Request queue for throttling image loads
 struct RequestQueue {
@@ -29,8 +32,70 @@ impl RequestQueue {
     }
 }
 
+/// LRU cache for image URLs - avoids HTTP roundtrip for recently viewed images
+struct ImageUrlCache {
+    /// Map from cache key to (url, source, access_order)
+    entries: HashMap<String, (String, String, u64)>,
+    /// Counter for LRU ordering
+    access_counter: u64,
+}
+
+impl ImageUrlCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            access_counter: 0,
+        }
+    }
+
+    /// Create cache key from game identity
+    fn make_key(db_id: i64, title: &str, platform: &str, image_type: &str) -> String {
+        if db_id > 0 {
+            format!("lb-{}:{}", db_id, image_type)
+        } else {
+            format!("{}:{}:{}", title, platform, image_type)
+        }
+    }
+
+    /// Get cached URL if available, updating access time
+    fn get(&mut self, key: &str) -> Option<(String, String)> {
+        if let Some((url, source, _)) = self.entries.get_mut(key) {
+            self.access_counter += 1;
+            let url = url.clone();
+            let source = source.clone();
+            // Update access time
+            self.entries.get_mut(key).unwrap().2 = self.access_counter;
+            Some((url, source))
+        } else {
+            None
+        }
+    }
+
+    /// Insert URL into cache, evicting oldest if at capacity
+    fn insert(&mut self, key: String, url: String, source: String) {
+        // Evict oldest entries if at capacity
+        while self.entries.len() >= IMAGE_CACHE_MAX_SIZE {
+            // Find oldest entry
+            let oldest_key = self.entries
+                .iter()
+                .min_by_key(|(_, (_, _, access))| access)
+                .map(|(k, _)| k.clone());
+
+            if let Some(k) = oldest_key {
+                self.entries.remove(&k);
+            } else {
+                break;
+            }
+        }
+
+        self.access_counter += 1;
+        self.entries.insert(key, (url, source, self.access_counter));
+    }
+}
+
 thread_local! {
     static REQUEST_QUEUE: RefCell<RequestQueue> = RefCell::new(RequestQueue::new());
+    static IMAGE_URL_CACHE: RefCell<ImageUrlCache> = RefCell::new(ImageUrlCache::new());
 }
 
 /// Release a slot and process next pending request
@@ -170,7 +235,19 @@ pub fn LazyImage(
             return;
         }
 
-        // Step 1: Fast cache check - NOT queued, runs immediately
+        // Step 0: Check frontend LRU cache first (instant, no HTTP)
+        let cache_key = ImageUrlCache::make_key(db_id, &title, &plat, &img_type);
+        let frontend_cached = IMAGE_URL_CACHE.with(|c| c.borrow_mut().get(&cache_key));
+
+        if let Some((url, source)) = frontend_cached {
+            let _ = set_state.try_set(ImageState::Ready {
+                url,
+                source: Some(source),
+            });
+            return;
+        }
+
+        // Step 1: Backend cache check - NOT queued, runs immediately
         spawn_local(async move {
             if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
@@ -186,6 +263,10 @@ pub fn LazyImage(
                 Ok(Some(cached)) => {
                     if mounted.load(std::sync::atomic::Ordering::Relaxed) {
                         let url = file_to_asset_url(&cached.path);
+                        // Store in frontend cache for instant access next time
+                        IMAGE_URL_CACHE.with(|c| {
+                            c.borrow_mut().insert(cache_key.clone(), url.clone(), cached.source.clone())
+                        });
                         let _ = set_state.try_set(ImageState::Ready {
                             url,
                             source: Some(cached.source),
@@ -214,6 +295,7 @@ pub fn LazyImage(
             let plat2 = plat.clone();
             let img_type2 = img_type.clone();
             let mounted2 = mounted.clone();
+            let cache_key2 = cache_key.clone();
 
             queue_request(move || {
                 spawn_local(async move {
@@ -237,6 +319,11 @@ pub fn LazyImage(
                             if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
                                 let source = source_from_path(&local_path);
                                 let url = file_to_asset_url(&local_path);
+                                // Store in frontend cache
+                                let source_str = source.clone().unwrap_or_default();
+                                IMAGE_URL_CACHE.with(|c| {
+                                    c.borrow_mut().insert(cache_key2, url.clone(), source_str)
+                                });
                                 let _ = set_state.try_set(ImageState::Ready { url, source });
                             }
                         }
