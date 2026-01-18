@@ -186,6 +186,11 @@ impl LibRetroThumbnailsClient {
         Self { client, cache_dir }
     }
 
+    /// Get the URL for a thumbnail (without downloading)
+    pub fn get_thumbnail_url(&self, platform: &str, image_type: LibRetroImageType, game_name: &str) -> Option<String> {
+        build_thumbnail_url(platform, image_type, game_name)
+    }
+
     /// Get cache path for an image
     fn get_cache_path(&self, platform: &str, image_type: LibRetroImageType, game_name: &str) -> PathBuf {
         let platform_dir = get_libretro_platform_name(platform).unwrap_or("Unknown");

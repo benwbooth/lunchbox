@@ -319,6 +319,70 @@ impl EmuMoviesClient {
         None
     }
 
+    /// Download media to the new unified cache structure
+    pub fn download_to_path(
+        &self,
+        platform: &str,
+        media_type: EmuMoviesMediaType,
+        game_name: &str,
+        cache_dir: &std::path::Path,
+        game_id: &str,
+        image_type: &str,
+    ) -> Result<String> {
+        use super::{get_media_path, ImageSource};
+
+        let cache_path = get_media_path(cache_dir, game_id, ImageSource::EmuMovies, image_type);
+
+        // Check cache first
+        if cache_path.exists() {
+            return Ok(cache_path.to_string_lossy().to_string());
+        }
+
+        // Try to find the media file (with fuzzy matching)
+        let remote_path = self.get_media_fuzzy(platform, media_type, game_name)?
+            .ok_or_else(|| anyhow::anyhow!("No EmuMovies media found for: {}", game_name))?;
+
+        // Create parent directories
+        if let Some(parent) = cache_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Download the file
+        self.download_file(&remote_path, &cache_path)?;
+
+        Ok(cache_path.to_string_lossy().to_string())
+    }
+
+    /// Get media with fuzzy matching (returns remote path without downloading)
+    fn get_media_fuzzy(
+        &self,
+        platform: &str,
+        media_type: EmuMoviesMediaType,
+        game_name: &str,
+    ) -> Result<Option<String>> {
+        // Try exact match first
+        if let Some(path) = self.get_media(platform, media_type, game_name)? {
+            return Ok(Some(path));
+        }
+
+        // Try without region codes
+        let clean_name = remove_region_codes(game_name);
+        if clean_name != game_name {
+            if let Some(path) = self.get_media(platform, media_type, &clean_name)? {
+                return Ok(Some(path));
+            }
+        }
+
+        // Try with "The" moved to end
+        if let Some(modified) = move_article_to_end(game_name) {
+            if let Some(path) = self.get_media(platform, media_type, &modified)? {
+                return Ok(Some(path));
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Test connection with credentials
     pub fn test_connection(&self) -> Result<()> {
         if !self.has_credentials() {

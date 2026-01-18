@@ -59,6 +59,121 @@ pub enum ImageSource {
     ScreenScraper,
 }
 
+impl ImageSource {
+    /// Get the folder name for this source
+    pub fn folder_name(&self) -> &'static str {
+        match self {
+            ImageSource::Local => "local",
+            ImageSource::LaunchBox => "launchbox",
+            ImageSource::LibRetro => "libretro",
+            ImageSource::SteamGridDB => "steamgriddb",
+            ImageSource::IGDB => "igdb",
+            ImageSource::EmuMovies => "emumovies",
+            ImageSource::ScreenScraper => "screenscraper",
+        }
+    }
+
+    /// All sources in priority order for cache lookup
+    pub fn all_sources() -> &'static [ImageSource] {
+        &[
+            ImageSource::LaunchBox,
+            ImageSource::LibRetro,
+            ImageSource::SteamGridDB,
+            ImageSource::IGDB,
+            ImageSource::EmuMovies,
+            ImageSource::ScreenScraper,
+        ]
+    }
+
+    /// Get source from folder name
+    pub fn from_folder_name(name: &str) -> Option<ImageSource> {
+        match name {
+            "local" => Some(ImageSource::Local),
+            "launchbox" => Some(ImageSource::LaunchBox),
+            "libretro" => Some(ImageSource::LibRetro),
+            "steamgriddb" => Some(ImageSource::SteamGridDB),
+            "igdb" => Some(ImageSource::IGDB),
+            "emumovies" => Some(ImageSource::EmuMovies),
+            "screenscraper" => Some(ImageSource::ScreenScraper),
+            _ => None,
+        }
+    }
+
+    /// Get 2-letter abbreviation for UI display
+    pub fn abbreviation(&self) -> &'static str {
+        match self {
+            ImageSource::Local => "LC",
+            ImageSource::LaunchBox => "LB",
+            ImageSource::LibRetro => "LR",
+            ImageSource::SteamGridDB => "SG",
+            ImageSource::IGDB => "IG",
+            ImageSource::EmuMovies => "EM",
+            ImageSource::ScreenScraper => "SS",
+        }
+    }
+}
+
+/// Normalize image type to folder-safe name (e.g., "Box - Front" -> "box-front")
+pub fn normalize_image_type(image_type: &str) -> String {
+    image_type
+        .to_lowercase()
+        .replace(" - ", "-")
+        .replace(' ', "-")
+}
+
+/// Get the media cache path for a game/source/type combination
+/// Structure: {cache_dir}/media/{game_id}/{source}/{image_type}.png
+pub fn get_media_path(
+    cache_dir: &Path,
+    game_id: &str,
+    source: ImageSource,
+    image_type: &str,
+) -> PathBuf {
+    cache_dir
+        .join("media")
+        .join(game_id)
+        .join(source.folder_name())
+        .join(format!("{}.png", normalize_image_type(image_type)))
+}
+
+/// Find cached media for a game by checking all source folders
+/// Returns the path and source of the first found image
+pub fn find_cached_media(
+    cache_dir: &Path,
+    game_id: &str,
+    image_type: &str,
+) -> Option<(PathBuf, ImageSource)> {
+    let normalized_type = normalize_image_type(image_type);
+    let game_dir = cache_dir.join("media").join(game_id);
+
+    for source in ImageSource::all_sources() {
+        let path = game_dir
+            .join(source.folder_name())
+            .join(format!("{}.png", normalized_type));
+        if path.exists() {
+            tracing::debug!("Cache hit: {} from {:?}", path.display(), source);
+            return Some((path, *source));
+        }
+    }
+    None
+}
+
+/// Get game ID string for cache path (uses launchbox_db_id or hash)
+pub fn get_game_cache_id(launchbox_db_id: Option<i64>, game_title: &str, platform: &str) -> String {
+    if let Some(db_id) = launchbox_db_id {
+        if db_id > 0 {
+            return format!("lb-{}", db_id);
+        }
+    }
+    // Fallback: hash of platform + title
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    platform.to_lowercase().hash(&mut hasher);
+    game_title.to_lowercase().hash(&mut hasher);
+    format!("hash-{:x}", hasher.finish())
+}
+
 /// Default concurrent downloads
 const DEFAULT_CONCURRENCY: usize = 10;
 
@@ -653,36 +768,37 @@ impl ImageService {
         emumovies_client: Option<&EmuMoviesClient>,
         screenscraper_client: Option<&crate::scraper::ScreenScraperClient>,
     ) -> Result<String> {
-        tracing::info!("download_with_fallback: game='{}', platform='{}', type='{}', db_id={:?}",
-            game_title, platform, image_type, launchbox_db_id);
+        // Compute game_id for cache path
+        let game_id = get_game_cache_id(launchbox_db_id, game_title, platform);
+
+        tracing::info!("download_with_fallback: game='{}', platform='{}', type='{}', game_id={}",
+            game_title, platform, image_type, game_id);
+
+        // Check cache first - this is the fast path for already-downloaded images
+        if let Some((path, source)) = find_cached_media(&self.cache_dir, &game_id, image_type) {
+            tracing::info!("  Cache hit from {:?}: {}", source, path.display());
+            return Ok(path.to_string_lossy().to_string());
+        }
+        tracing::info!("  No cached image found, trying sources...");
 
         // 1. Try LaunchBox CDN first (if we have database ID and metadata)
         if let Some(db_id) = launchbox_db_id {
-            tracing::info!("  [1/6] Checking LaunchBox metadata for db_id={}...", db_id);
-            if let Ok(Some(info)) = self.get_image_by_type(db_id, image_type).await {
-                tracing::info!("  [1/6] Found LaunchBox metadata, downloaded={}", info.downloaded);
-                if info.downloaded {
-                    if let Some(path) = info.local_path {
-                        if std::path::Path::new(&path).exists() {
-                            tracing::info!("  [1/6] Using cached LaunchBox image: {}", path);
+            if db_id > 0 {
+                tracing::info!("  [1/6] Checking LaunchBox metadata for db_id={}...", db_id);
+                if let Ok(Some(info)) = self.get_image_by_type(db_id, image_type).await {
+                    tracing::info!("  [1/6] Found LaunchBox metadata, downloading from CDN...");
+                    match self.download_to_cache(&info.cdn_url, &game_id, ImageSource::LaunchBox, image_type).await {
+                        Ok(path) => {
+                            tracing::info!("  [1/6] SUCCESS from LaunchBox CDN: {}", path);
                             return Ok(path);
                         }
+                        Err(e) => {
+                            tracing::info!("  [1/6] LaunchBox CDN failed: {}", e);
+                        }
                     }
+                } else {
+                    tracing::info!("  [1/6] No LaunchBox metadata found");
                 }
-
-                // Try to download from LaunchBox CDN
-                tracing::info!("  [1/6] Downloading from LaunchBox CDN...");
-                match self.download_image(info.id).await {
-                    Ok(path) => {
-                        tracing::info!("  [1/6] SUCCESS from LaunchBox CDN: {}", path);
-                        return Ok(path);
-                    }
-                    Err(e) => {
-                        tracing::info!("  [1/6] LaunchBox CDN failed: {}", e);
-                    }
-                }
-            } else {
-                tracing::info!("  [1/6] No LaunchBox metadata found");
             }
         } else {
             tracing::info!("  [1/6] Skipping LaunchBox (no db_id)");
@@ -694,11 +810,20 @@ impl ImageService {
         if let Some(lt) = libretro_type {
             let libretro_client = LibRetroThumbnailsClient::new(self.cache_dir.clone());
             tracing::info!("  [2/6] libretro type={:?}, searching for '{}'...", lt, game_title);
-            if let Some(path) = libretro_client.find_thumbnail(platform, lt, game_title).await {
-                tracing::info!("  [2/6] SUCCESS from libretro-thumbnails: {}", path);
-                return Ok(path);
+            // libretro has its own cache path, but we should download to new structure
+            if let Some(url) = libretro_client.get_thumbnail_url(platform, lt, game_title) {
+                match self.download_to_cache(&url, &game_id, ImageSource::LibRetro, image_type).await {
+                    Ok(path) => {
+                        tracing::info!("  [2/6] SUCCESS from libretro-thumbnails: {}", path);
+                        return Ok(path);
+                    }
+                    Err(e) => {
+                        tracing::info!("  [2/6] libretro-thumbnails download failed: {}", e);
+                    }
+                }
+            } else {
+                tracing::info!("  [2/6] libretro-thumbnails: no URL found");
             }
-            tracing::info!("  [2/6] libretro-thumbnails: not found");
         } else {
             tracing::info!("  [2/6] Skipping libretro (unsupported image type)");
         }
@@ -719,7 +844,7 @@ impl ImageService {
                         };
 
                         if let Some(url) = url {
-                            match self.download_from_url(&url, "steamgriddb", game_title, image_type).await {
+                            match self.download_to_cache(&url, &game_id, ImageSource::SteamGridDB, image_type).await {
                                 Ok(path) => {
                                     tracing::info!("  [3/6] SUCCESS from SteamGridDB: {}", path);
                                     return Ok(path);
@@ -766,7 +891,7 @@ impl ImageService {
                         if let Some(img) = image {
                             // Use 720p size for good quality
                             let url = img.url("720p");
-                            match self.download_from_url(&url, "igdb", game_title, image_type).await {
+                            match self.download_to_cache(&url, &game_id, ImageSource::IGDB, image_type).await {
                                 Ok(path) => {
                                     tracing::info!("  [4/6] SUCCESS from IGDB: {}", path);
                                     return Ok(path);
@@ -797,13 +922,16 @@ impl ImageService {
             if client.has_credentials() {
                 if let Some(media_type) = emumovies::EmuMoviesMediaType::from_launchbox_type(image_type) {
                     tracing::info!("  [5/6] EmuMovies has credentials, searching via FTP...");
+                    let cache_dir = self.cache_dir.clone();
+                    let game_id_clone = game_id.clone();
+                    let image_type_str = image_type.to_string();
                     let client = client.clone();
                     let platform = platform.to_string();
                     let game_title = game_title.to_string();
                     let result = tokio::task::spawn_blocking(move || {
-                        client.find_media(&platform, media_type, &game_title)
+                        client.download_to_path(&platform, media_type, &game_title, &cache_dir, &game_id_clone, &image_type_str)
                     }).await;
-                    if let Ok(Some(path)) = result {
+                    if let Ok(Ok(path)) = result {
                         tracing::info!("  [5/6] SUCCESS from EmuMovies: {}", path);
                         return Ok(path);
                     }
@@ -819,16 +947,12 @@ impl ImageService {
         }
 
         // 6. Try ScreenScraper (requires account)
-        // Note: ScreenScraper works best with ROM checksums, but we can try name-based search
-        // by using empty checksums - the API will attempt a name match
         tracing::info!("  [6/6] Trying ScreenScraper...");
         if let Some(client) = screenscraper_client {
             if client.has_credentials() {
-                // Use platform mapping to get ScreenScraper platform ID
                 let platform_id = crate::scraper::screenscraper::get_screenscraper_platform_id(platform);
                 tracing::info!("  [6/6] ScreenScraper has credentials, searching (platform_id={:?})...", platform_id);
 
-                // Try lookup with just the game name (empty checksums for name-based search)
                 if let Ok(Some(game)) = client.lookup_by_checksum(
                     "",  // CRC32
                     "",  // MD5
@@ -837,7 +961,6 @@ impl ImageService {
                     game_title,
                     platform_id,
                 ).await {
-                    // Map image type to ScreenScraper media
                     let url = match image_type {
                         "Box - Front" => game.media.box_front,
                         "Box - Back" => game.media.box_back,
@@ -848,7 +971,7 @@ impl ImageService {
                     };
 
                     if let Some(url) = url {
-                        match self.download_from_url(&url, "screenscraper", game_title, image_type).await {
+                        match self.download_to_cache(&url, &game_id, ImageSource::ScreenScraper, image_type).await {
                             Ok(path) => {
                                 tracing::info!("  [6/6] SUCCESS from ScreenScraper: {}", path);
                                 return Ok(path);
@@ -874,32 +997,15 @@ impl ImageService {
         anyhow::bail!("No image found from any source for: {} - {} - {}", game_title, platform, image_type)
     }
 
-    /// Download an image from a URL and cache it
-    async fn download_from_url(
+    /// Download an image from a URL and cache it using new structure
+    async fn download_to_cache(
         &self,
         url: &str,
-        source: &str,
-        game_title: &str,
+        game_id: &str,
+        source: ImageSource,
         image_type: &str,
     ) -> Result<String> {
-        // Create a sanitized filename
-        let safe_title = game_title
-            .chars()
-            .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' })
-            .collect::<String>();
-
-        let safe_type = image_type.replace(" - ", "_").replace(' ', "_");
-
-        // Get extension from URL or default to .png
-        let ext = url
-            .rsplit('.')
-            .next()
-            .filter(|e| ["png", "jpg", "jpeg", "webp", "gif"].contains(e))
-            .unwrap_or("png");
-
-        let cache_path = self.cache_dir
-            .join(source)
-            .join(format!("{}_{}.{}", safe_title, safe_type, ext));
+        let cache_path = get_media_path(&self.cache_dir, game_id, source, image_type);
 
         // Check cache first
         if cache_path.exists() {

@@ -864,6 +864,37 @@ pub async fn get_image_cache_stats() -> Result<CacheStats, String> {
     invoke_no_args("get_image_cache_stats").await
 }
 
+/// Result from cache check
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CachedMediaResult {
+    pub path: String,
+    pub source: String,
+}
+
+/// Check if media is cached locally (fast path - no network requests)
+pub async fn check_cached_media(
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+) -> Result<Option<CachedMediaResult>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        image_type: String,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke("check_cached_media", Args {
+        game_title,
+        platform,
+        image_type,
+        launchbox_db_id,
+    }).await
+}
+
 /// Download an image with fallback to multiple sources
 ///
 /// Tries sources in order: LaunchBox CDN, libretro-thumbnails, SteamGridDB

@@ -120,6 +120,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/favorites/:game_id", post(add_favorite).delete(remove_favorite))
         // rspc-style endpoints for image handling
         .route("/rspc/get_game_image", get(rspc_get_game_image))
+        .route("/rspc/check_cached_media", get(rspc_check_cached_media))
         .route("/rspc/download_image_with_fallback", get(rspc_download_image_with_fallback))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
@@ -891,6 +892,59 @@ async fn rspc_get_game_image(
     }
 
     rspc_ok::<Option<ImageInfo>>(None).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckCachedMediaInput {
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedMediaResult {
+    path: String,
+    source: String,
+}
+
+/// Check if media is cached locally (fast path - no network requests)
+async fn rspc_check_cached_media(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Option<CachedMediaResult>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: CheckCachedMediaInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<Option<CachedMediaResult>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+
+    // Compute game_id
+    let game_id = crate::images::get_game_cache_id(
+        input.launchbox_db_id,
+        &input.game_title,
+        &input.platform,
+    );
+
+    // Check cache
+    if let Some((path, source)) = crate::images::find_cached_media(&cache_dir, &game_id, &input.image_type) {
+        tracing::debug!("Cache hit for {}: {:?}", game_id, path);
+        return rspc_ok(Some(CachedMediaResult {
+            path: path.to_string_lossy().to_string(),
+            source: source.abbreviation().to_string(),
+        })).into_response();
+    }
+
+    rspc_ok::<Option<CachedMediaResult>>(None).into_response()
 }
 
 #[derive(Debug, Deserialize)]
