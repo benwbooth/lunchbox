@@ -7,7 +7,61 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
+
+/// Maximum concurrent image operations (cache checks + downloads)
+const MAX_CONCURRENT_REQUESTS: usize = 6;
+
+/// Request queue for throttling image loads
+struct RequestQueue {
+    active: usize,
+    pending: VecDeque<Box<dyn FnOnce()>>,
+}
+
+impl RequestQueue {
+    fn new() -> Self {
+        Self {
+            active: 0,
+            pending: VecDeque::new(),
+        }
+    }
+}
+
+thread_local! {
+    static REQUEST_QUEUE: RefCell<RequestQueue> = RefCell::new(RequestQueue::new());
+}
+
+/// Release a slot and process next pending request
+fn release_slot() {
+    REQUEST_QUEUE.with(|q| {
+        let mut queue = q.borrow_mut();
+        queue.active = queue.active.saturating_sub(1);
+
+        // Process next pending request if any
+        if let Some(task) = queue.pending.pop_front() {
+            queue.active += 1;
+            // Drop borrow before calling task
+            drop(queue);
+            task();
+        }
+    });
+}
+
+/// Queue a request to run when a slot is available
+fn queue_request<F: FnOnce() + 'static>(f: F) {
+    REQUEST_QUEUE.with(|q| {
+        let mut queue = q.borrow_mut();
+        if queue.active < MAX_CONCURRENT_REQUESTS {
+            queue.active += 1;
+            drop(queue);
+            f();
+        } else {
+            queue.pending.push_back(Box::new(f));
+        }
+    });
+}
 
 /// Log to backend for debugging
 fn log(msg: &str) {
@@ -90,7 +144,7 @@ pub fn LazyImage(
 
     // Use Arc<AtomicBool> for mounted flag - survives after component disposal and is thread-safe
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::AtomicBool;
     let mounted = Arc::new(AtomicBool::new(true));
     let mounted_for_cleanup = mounted.clone();
 
@@ -101,81 +155,86 @@ pub fn LazyImage(
         let plat = platform.clone();
         let mounted = mounted.clone();
 
-        spawn_local(async move {
-            // Check if component is still mounted
-            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
+        // Skip if no title - don't even queue
+        if title.is_empty() {
+            let _ = set_state.try_set(ImageState::NoImage);
+            return;
+        }
 
-            // Skip if no title
-            if title.is_empty() {
-                if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                    let _ = set_state.try_set(ImageState::NoImage);
-                }
-                return;
-            }
-
-            log(&format!("LazyImage: Loading '{}' (db_id={}, platform={})", title, db_id, plat));
-
-            // Step 1: Fast cache check (no network, just filesystem)
-            let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
-            match tauri::check_cached_media(
-                title.clone(),
-                plat.clone(),
-                img_type.clone(),
-                db_id_opt,
-            ).await {
-                Ok(Some(cached)) => {
-                    log(&format!("LazyImage: Cache HIT for '{}': {}", title, cached.path));
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        let url = file_to_asset_url(&cached.path);
-                        let _ = set_state.try_set(ImageState::Ready {
-                            url,
-                            source: Some(cached.source),
-                        });
-                    }
+        // Queue the image load request
+        queue_request(move || {
+            spawn_local(async move {
+                // Check if component is still mounted before starting
+                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                    release_slot();
                     return;
                 }
-                Ok(None) => {
-                    log(&format!("LazyImage: Cache MISS for '{}'", title));
-                }
-                Err(e) => {
-                    log(&format!("LazyImage: Cache check ERROR for '{}': {}", title, e));
-                }
-            }
 
-            // Step 2: Download from sources
-            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                log(&format!("LazyImage: Unmounted before download for '{}'", title));
-                return;
-            }
-            let _ = set_state.try_set(ImageState::Downloading {
-                progress: -1.0,
-                source: "Searching...".to_string(),
+                log(&format!("LazyImage: Loading '{}' (db_id={}, platform={})", title, db_id, plat));
+
+                // Step 1: Fast cache check (no network, just filesystem)
+                let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
+                match tauri::check_cached_media(
+                    title.clone(),
+                    plat.clone(),
+                    img_type.clone(),
+                    db_id_opt,
+                ).await {
+                    Ok(Some(cached)) => {
+                        log(&format!("LazyImage: Cache HIT for '{}': {}", title, cached.path));
+                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                            let url = file_to_asset_url(&cached.path);
+                            let _ = set_state.try_set(ImageState::Ready {
+                                url,
+                                source: Some(cached.source),
+                            });
+                        }
+                        release_slot();
+                        return;
+                    }
+                    Ok(None) => {
+                        log(&format!("LazyImage: Cache MISS for '{}'", title));
+                    }
+                    Err(e) => {
+                        log(&format!("LazyImage: Cache check ERROR for '{}': {}", title, e));
+                    }
+                }
+
+                // Step 2: Download from sources
+                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                    log(&format!("LazyImage: Unmounted before download for '{}'", title));
+                    release_slot();
+                    return;
+                }
+                let _ = set_state.try_set(ImageState::Downloading {
+                    progress: -1.0,
+                    source: "Searching...".to_string(),
+                });
+
+                log(&format!("LazyImage: Starting download for '{}'", title));
+                match tauri::download_image_with_fallback(
+                    title.clone(),
+                    plat.clone(),
+                    img_type.clone(),
+                    db_id_opt,
+                ).await {
+                    Ok(local_path) => {
+                        log(&format!("LazyImage: Download SUCCESS for '{}': {}", title, local_path));
+                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                            let source = source_from_path(&local_path);
+                            let url = file_to_asset_url(&local_path);
+                            let _ = set_state.try_set(ImageState::Ready { url, source });
+                        }
+                    }
+                    Err(e) => {
+                        log(&format!("LazyImage: Download FAILED for '{}': {}", title, e));
+                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                            let _ = set_state.try_set(ImageState::NoImage);
+                        }
+                    }
+                }
+                release_slot();
             });
-
-            log(&format!("LazyImage: Starting download for '{}'", title));
-            match tauri::download_image_with_fallback(
-                title.clone(),
-                plat.clone(),
-                img_type.clone(),
-                db_id_opt,
-            ).await {
-                Ok(local_path) => {
-                    log(&format!("LazyImage: Download SUCCESS for '{}': {}", title, local_path));
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        let source = source_from_path(&local_path);
-                        let url = file_to_asset_url(&local_path);
-                        let _ = set_state.try_set(ImageState::Ready { url, source });
-                    }
-                }
-                Err(e) => {
-                    log(&format!("LazyImage: Download FAILED for '{}': {}", title, e));
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        let _ = set_state.try_set(ImageState::NoImage);
-                    }
-                }
-            }
         });
     });
 
