@@ -33,19 +33,28 @@ async fn main() -> anyhow::Result<()> {
 
     std::fs::create_dir_all(&data_dir)?;
 
-    // Initialize user database
-    let db_path = data_dir.join("lunchbox.db");
-    tracing::info!("User database path: {}", db_path.display());
-    let db_pool = db::init_pool(&db_path).await?;
+    // User database path - only open if it exists
+    let user_db_path = data_dir.join("user.db");
+    let db_pool = if user_db_path.exists() {
+        tracing::info!("Found user database at: {}", user_db_path.display());
+        Some(db::init_pool(&user_db_path).await?)
+    } else {
+        tracing::info!("No user database yet (will be created on first write)");
+        None
+    };
 
-    // Load settings from database
-    let mut settings: lunchbox_lib::state::AppSettings = sqlx::query_as::<_, (String,)>(
-        "SELECT value FROM settings WHERE key = 'app_settings'",
-    )
-    .fetch_optional(&db_pool)
-    .await?
-    .map(|(json,)| serde_json::from_str(&json).unwrap_or_default())
-    .unwrap_or_default();
+    // Load settings from database if it exists
+    let mut settings: lunchbox_lib::state::AppSettings = if let Some(ref pool) = db_pool {
+        sqlx::query_as::<_, (String,)>(
+            "SELECT value FROM settings WHERE key = 'app_settings'",
+        )
+        .fetch_optional(pool)
+        .await?
+        .map(|(json,)| serde_json::from_str(&json).unwrap_or_default())
+        .unwrap_or_default()
+    } else {
+        Default::default()
+    };
 
     // Load credentials from system keyring
     let creds = lunchbox_lib::keyring_store::load_image_source_credentials();
@@ -102,7 +111,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Create app state
     let state = Arc::new(RwLock::new(AppState {
-        db_pool: Some(db_pool),
+        db_pool,
+        user_db_path: Some(user_db_path),
         games_db_pool,
         settings,
     }));

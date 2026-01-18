@@ -11,8 +11,11 @@ use crate::db;
 /// Application state shared across commands
 pub struct AppState {
     /// User database (collections, favorites, play stats, settings)
+    /// Only created when user actually saves something
     pub db_pool: Option<SqlitePool>,
-    /// Shipped games database (LibRetro-based, read-only)
+    /// Path to user database (for lazy creation)
+    pub user_db_path: Option<std::path::PathBuf>,
+    /// Shipped games database (read-only)
     pub games_db_pool: Option<SqlitePool>,
     pub settings: AppSettings,
 }
@@ -21,6 +24,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             db_pool: None,
+            user_db_path: None,
             games_db_pool: None,
             settings: AppSettings::default(),
         }
@@ -161,17 +165,27 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
 
     std::fs::create_dir_all(&app_data_dir)?;
 
-    let db_path = app_data_dir.join("lunchbox.db");
-    tracing::info!("User database path: {}", db_path.display());
+    // User database path - only created when needed (first write operation)
+    let user_db_path = app_data_dir.join("user.db");
 
-    // Initialize user database (collections, favorites, settings)
-    let pool = db::init_pool(&db_path).await?;
+    // Initialize user database only if it already exists
+    // This avoids creating empty database files
+    let user_pool = if user_db_path.exists() {
+        tracing::info!("Found user database at: {}", user_db_path.display());
+        Some(db::init_pool(&user_db_path).await?)
+    } else {
+        tracing::info!("No user database yet (will be created on first write)");
+        None
+    };
 
-    // Load settings from database
-    let settings = load_settings(&pool).await.unwrap_or_default();
+    // Load settings from user database if it exists
+    let settings = if let Some(ref pool) = user_pool {
+        load_settings(pool).await.unwrap_or_default()
+    } else {
+        AppSettings::default()
+    };
 
-    // Try to load shipped games database
-    // First check app resource directory, then common paths
+    // Try to load games database (read-only)
     let games_db_pool = {
         let resource_path = app.path().resource_dir()
             .ok()
@@ -195,7 +209,7 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
                     .await
                 {
                     Ok(pool) => {
-                        tracing::info!("Connected to games database");
+                        tracing::info!("Connected to games database (read-only)");
                         found_pool = Some(pool);
                         break;
                     }
@@ -217,12 +231,30 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
 
     // Update state
     let mut state_guard = state.write().await;
-    state_guard.db_pool = Some(pool);
+    state_guard.db_pool = user_pool;
     state_guard.games_db_pool = games_db_pool;
     state_guard.settings = settings;
+    state_guard.user_db_path = Some(user_db_path);
 
     tracing::info!("App state initialized successfully");
     Ok(())
+}
+
+/// Ensure user database exists and is initialized
+/// Call this before any write operation to the user database
+pub async fn ensure_user_db(state: &mut AppState) -> Result<&SqlitePool> {
+    if state.db_pool.is_some() {
+        return Ok(state.db_pool.as_ref().unwrap());
+    }
+
+    let path = state.user_db_path.as_ref()
+        .ok_or_else(|| anyhow::anyhow!("User database path not set"))?;
+
+    tracing::info!("Creating user database at: {}", path.display());
+    let pool = db::init_pool(path).await?;
+    state.db_pool = Some(pool);
+
+    Ok(state.db_pool.as_ref().unwrap())
 }
 
 /// Load settings from database and keyring
