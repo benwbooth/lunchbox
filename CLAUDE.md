@@ -23,6 +23,15 @@
 - Never run `cargo clean` or similar destructive clean commands - they waste time rebuilding
 - Use `uv run python` instead of `python` or `python3`
 
+## API Endpoints
+
+- All backend endpoints must be added to BOTH:
+  - `src-tauri/src/commands.rs` (Tauri IPC for native mode)
+  - `src-tauri/src/api.rs` (HTTP API for browser dev mode)
+  - `src-tauri/src/lib.rs` (register the command)
+- Never add an endpoint to only one place - both must stay in sync
+- Frontend uses rspc-style calls that work with both backends
+
 ## Database
 
 - `games.db` - Game metadata (games, platforms, images, etc.)

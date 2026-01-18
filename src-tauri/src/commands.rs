@@ -1621,6 +1621,44 @@ pub async fn get_image_cache_stats(
         .map_err(|e| e.to_string())
 }
 
+/// Result from cache check
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CachedMediaResult {
+    pub path: String,
+    pub source: String,
+}
+
+/// Check if media is cached locally (fast path - no network requests)
+#[tauri::command]
+pub async fn check_cached_media(
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<CachedMediaResult>, String> {
+    let state_guard = state.read().await;
+    let cache_dir = get_cache_dir(&state_guard.settings);
+
+    // Compute game_id
+    let game_id = crate::images::get_game_cache_id(
+        launchbox_db_id,
+        &game_title,
+        &platform,
+    );
+
+    // Check cache
+    if let Some((path, source)) = crate::images::find_cached_media(&cache_dir, &game_id, &image_type) {
+        return Ok(Some(CachedMediaResult {
+            path: path.to_string_lossy().to_string(),
+            source: source.abbreviation().to_string(),
+        }));
+    }
+
+    Ok(None)
+}
+
 /// Download an image with fallback to multiple sources
 ///
 /// Tries sources in order:

@@ -74,6 +74,7 @@ pub fn run() {
             commands::download_image,
             commands::download_game_images,
             commands::get_image_cache_stats,
+            commands::check_cached_media,
             commands::download_image_with_fallback,
             commands::download_libretro_thumbnail,
             // Unified media download commands
