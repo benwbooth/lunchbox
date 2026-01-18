@@ -846,6 +846,7 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
             libretro_md5 TEXT,
             libretro_sha1 TEXT,
             libretro_serial TEXT,
+            libretro_title TEXT,  -- Original No-Intro title for libretro thumbnail lookups
             screenscraper_id INTEGER,
             igdb_id INTEGER,
             steamgriddb_id INTEGER,
@@ -1379,15 +1380,24 @@ impl UnifiedImporter {
                 // Get or create platform
                 let platform_canonical = normalize_platform_name(&game.platform);
                 let platform_id = if let Some(&id) = self.platform_cache.get(&platform_canonical) {
+                    // Update launchbox_name if not already set (in case platform was created by another source)
+                    sqlx::query(
+                        "UPDATE platforms SET launchbox_name = COALESCE(launchbox_name, ?) WHERE id = ?"
+                    )
+                    .bind(&game.platform)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
                     id
                 } else {
                     let id: i64 = sqlx::query_scalar(
-                        "INSERT INTO platforms (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=name RETURNING id"
+                        "INSERT INTO platforms (name, launchbox_name) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET launchbox_name = COALESCE(platforms.launchbox_name, excluded.launchbox_name) RETURNING id"
                     )
                     .bind(&platform_canonical)
+                    .bind(&game.platform)
                     .fetch_one(&mut *tx)
                     .await?;
-                    self.platform_cache.insert(platform_canonical, id);
+                    self.platform_cache.insert(platform_canonical.clone(), id);
                     id
                 };
 
@@ -1565,6 +1575,7 @@ impl UnifiedImporter {
                         libretro_md5 = COALESCE(libretro_md5, ?),
                         libretro_sha1 = COALESCE(libretro_sha1, ?),
                         libretro_serial = COALESCE(libretro_serial, ?),
+                        libretro_title = COALESCE(libretro_title, ?),
                         release_year = COALESCE(release_year, ?),
                         developer = COALESCE(developer, ?),
                         publisher = COALESCE(publisher, ?),
@@ -1575,6 +1586,7 @@ impl UnifiedImporter {
                 .bind(primary_rom.and_then(|r| r.md5.as_ref()))
                 .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
                 .bind(&game.serial)
+                .bind(&game.name)
                 .bind(game.release_year.map(|y| y as i32))
                 .bind(&game.developer)
                 .bind(&game.publisher)
@@ -1598,6 +1610,7 @@ impl UnifiedImporter {
                             libretro_md5 = COALESCE(?, libretro_md5),
                             libretro_sha1 = COALESCE(?, libretro_sha1),
                             libretro_serial = COALESCE(?, libretro_serial),
+                            libretro_title = COALESCE(libretro_title, ?),
                             release_year = COALESCE(release_year, ?),
                             developer = COALESCE(developer, ?),
                             publisher = COALESCE(publisher, ?),
@@ -1609,6 +1622,7 @@ impl UnifiedImporter {
                     .bind(primary_rom.and_then(|r| r.md5.as_ref()))
                     .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
                     .bind(&game.serial)
+                    .bind(&game.name)
                     .bind(game.release_year.map(|y| y as i32))
                     .bind(&game.developer)
                     .bind(&game.publisher)
@@ -1636,9 +1650,9 @@ impl UnifiedImporter {
             sqlx::query(r#"
                 INSERT INTO games (
                     id, title, platform_id,
-                    libretro_crc32, libretro_md5, libretro_sha1, libretro_serial,
+                    libretro_crc32, libretro_md5, libretro_sha1, libretro_serial, libretro_title,
                     release_year, developer, publisher, genre, metadata_source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#)
             .bind(&game_id)
             .bind(&game.name)
@@ -1647,6 +1661,7 @@ impl UnifiedImporter {
             .bind(primary_rom.and_then(|r| r.md5.as_ref()))
             .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
             .bind(&game.serial)
+            .bind(&game.name)  // libretro_title = original libretro name
             .bind(game.release_year.map(|y| y as i32))
             .bind(&game.developer)
             .bind(&game.publisher)
