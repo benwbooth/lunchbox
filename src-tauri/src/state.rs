@@ -198,7 +198,8 @@ fn find_or_decompress_database(
     // Possible locations for compressed database
     let possible_zst_paths: Vec<PathBuf> = [
         resource_dir.map(|p| p.join(&zst_file)),
-        Some(PathBuf::from(format!("./db/{}", zst_file))),  // Dev mode
+        Some(PathBuf::from(format!("../db/{}", zst_file))),  // Dev mode (from src-tauri)
+        Some(PathBuf::from(format!("./db/{}", zst_file))),   // Dev mode (from root)
         Some(PathBuf::from(format!("/usr/share/lunchbox/{}", zst_file))),
     ]
     .into_iter()
@@ -208,7 +209,8 @@ fn find_or_decompress_database(
     // Also check for uncompressed in other locations (dev mode, system)
     let possible_db_paths: Vec<PathBuf> = [
         resource_dir.map(|p| p.join(&db_file)),
-        Some(PathBuf::from(format!("./db/{}", db_file))),  // Dev mode
+        Some(PathBuf::from(format!("../db/{}", db_file))),  // Dev mode (from src-tauri)
+        Some(PathBuf::from(format!("./db/{}", db_file))),   // Dev mode (from root)
         Some(PathBuf::from(format!("/usr/share/lunchbox/{}", db_file))),
     ]
     .into_iter()
