@@ -1085,3 +1085,88 @@ pub async fn get_cached_media_path(
         media_type,
     }).await
 }
+
+// ============ Video Download Commands ============
+
+/// Video download event from backend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum VideoEvent {
+    /// Video download has started
+    #[serde(rename_all = "camelCase")]
+    Started {
+        game_id: i64,
+        total_bytes: Option<u64>,
+    },
+    /// Video download progress update
+    #[serde(rename_all = "camelCase")]
+    Progress {
+        game_id: i64,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+        progress: f32,
+    },
+    /// Video download completed successfully
+    #[serde(rename_all = "camelCase")]
+    Completed {
+        game_id: i64,
+        local_path: String,
+    },
+    /// Video download failed
+    #[serde(rename_all = "camelCase")]
+    Failed {
+        game_id: i64,
+        error: String,
+    },
+}
+
+impl VideoEvent {
+    pub fn game_id(&self) -> i64 {
+        match self {
+            VideoEvent::Started { game_id, .. } => *game_id,
+            VideoEvent::Progress { game_id, .. } => *game_id,
+            VideoEvent::Completed { game_id, .. } => *game_id,
+            VideoEvent::Failed { game_id, .. } => *game_id,
+        }
+    }
+}
+
+/// Check if a video is cached for a game
+pub async fn check_cached_video(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+) -> Result<Option<String>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke("check_cached_video", Args {
+        game_title,
+        platform,
+        launchbox_db_id,
+    }).await
+}
+
+/// Download a video for a game from EmuMovies
+pub async fn download_game_video(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke("download_game_video", Args {
+        game_title,
+        platform,
+        launchbox_db_id,
+    }).await
+}

@@ -32,7 +32,7 @@ use tokio::sync::{mpsc, RwLock, Semaphore};
 
 pub use download_service::{MediaDownloadService, MediaDownloadRequest};
 pub use emumovies::{EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType};
-pub use events::{MediaEvent, MediaEventSender};
+pub use events::{MediaEvent, MediaEventSender, VideoEvent, VideoEventSender, VIDEO_EVENT_NAME};
 pub use libretro::{LibRetroImageType, LibRetroThumbnailsClient};
 pub use media_types::{GameMediaId, MediaSource, NormalizedMediaType};
 pub use source_selector::RoundRobinSourceSelector;

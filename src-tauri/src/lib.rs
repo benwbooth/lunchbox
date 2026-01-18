@@ -81,6 +81,9 @@ pub fn run() {
             commands::get_media_types,
             commands::download_unified_media,
             commands::get_cached_media_path,
+            // Video download commands
+            commands::check_cached_video,
+            commands::download_game_video,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

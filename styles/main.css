@@ -1531,6 +1531,171 @@ body {
     margin-left: 12px;
 }
 
+/* Video Player Section */
+.video-player-section {
+    border-top: 1px solid var(--border-color);
+}
+
+.video-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 24px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.video-header:hover {
+    background: var(--bg-hover);
+}
+
+.video-toggle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    width: 12px;
+}
+
+.video-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-highlight);
+    margin: 0;
+    flex: 1;
+}
+
+.video-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.video-badge.ready {
+    background: var(--success-color);
+    color: var(--bg-primary);
+}
+
+.video-badge.downloading {
+    background: var(--accent-color);
+    color: white;
+}
+
+.video-badge.no-video {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.video-badge.error {
+    background: var(--danger-color);
+    color: white;
+}
+
+.video-content {
+    padding: 0 24px 24px;
+}
+
+.video-loading,
+.video-downloading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    gap: 12px;
+    color: var(--text-secondary);
+}
+
+.loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.download-status {
+    width: 100%;
+    max-width: 300px;
+    text-align: center;
+}
+
+.download-status span {
+    font-size: 13px;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.video-downloading .download-progress {
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.video-downloading .download-progress .progress-bar {
+    height: 100%;
+    background: var(--accent-color);
+    transition: width 0.2s ease;
+}
+
+.video-downloading .download-progress .progress-bar.indeterminate {
+    animation: indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(0%); }
+    100% { transform: translateX(100%); }
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+}
+
+.game-video {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.game-video:focus {
+    outline: none;
+}
+
+.video-not-available,
+.video-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    gap: 8px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.video-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.error-detail {
+    font-size: 12px;
+    color: var(--danger-color);
+}
+
 /* Platform Search */
 .platform-search-header {
     padding: 8px 12px;

@@ -19,10 +19,11 @@ pub enum NormalizedMediaType {
     ClearLogo,
     Fanart,
     Banner,
+    Video,
 }
 
 impl NormalizedMediaType {
-    /// All media types in display order
+    /// All media types in display order (excluding video)
     pub fn all() -> &'static [NormalizedMediaType] {
         &[
             NormalizedMediaType::BoxFront,
@@ -36,6 +37,26 @@ impl NormalizedMediaType {
         ]
     }
 
+    /// All media types including video
+    pub fn all_with_video() -> &'static [NormalizedMediaType] {
+        &[
+            NormalizedMediaType::BoxFront,
+            NormalizedMediaType::BoxBack,
+            NormalizedMediaType::Box3D,
+            NormalizedMediaType::Screenshot,
+            NormalizedMediaType::TitleScreen,
+            NormalizedMediaType::ClearLogo,
+            NormalizedMediaType::Fanart,
+            NormalizedMediaType::Banner,
+            NormalizedMediaType::Video,
+        ]
+    }
+
+    /// Check if this is a video type
+    pub fn is_video(&self) -> bool {
+        matches!(self, NormalizedMediaType::Video)
+    }
+
     /// Get the filename for this media type (without extension)
     pub fn filename(&self) -> &'static str {
         match self {
@@ -47,6 +68,7 @@ impl NormalizedMediaType {
             NormalizedMediaType::ClearLogo => "clear-logo",
             NormalizedMediaType::Fanart => "fanart",
             NormalizedMediaType::Banner => "banner",
+            NormalizedMediaType::Video => "video",
         }
     }
 
@@ -61,6 +83,7 @@ impl NormalizedMediaType {
             "clear-logo" => Some(NormalizedMediaType::ClearLogo),
             "fanart" => Some(NormalizedMediaType::Fanart),
             "banner" => Some(NormalizedMediaType::Banner),
+            "video" => Some(NormalizedMediaType::Video),
             _ => None,
         }
     }
@@ -91,6 +114,7 @@ impl NormalizedMediaType {
             NormalizedMediaType::ClearLogo => "Clear Logo",
             NormalizedMediaType::Fanart => "Fanart - Background",
             NormalizedMediaType::Banner => "Banner",
+            NormalizedMediaType::Video => "Video",
         }
     }
 
@@ -115,6 +139,7 @@ impl NormalizedMediaType {
             NormalizedMediaType::ClearLogo => Some("Logos"),
             NormalizedMediaType::Fanart => Some("Fanart"),
             NormalizedMediaType::Banner => Some("Banner"),
+            NormalizedMediaType::Video => Some("Video"),
         }
     }
 
@@ -140,6 +165,7 @@ impl NormalizedMediaType {
             NormalizedMediaType::ClearLogo => "Clear Logo",
             NormalizedMediaType::Fanart => "Fanart",
             NormalizedMediaType::Banner => "Banner",
+            NormalizedMediaType::Video => "Video",
         }
     }
 }

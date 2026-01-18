@@ -123,6 +123,9 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/get_game_image", get(rspc_get_game_image))
         .route("/rspc/check_cached_media", get(rspc_check_cached_media))
         .route("/rspc/download_image_with_fallback", get(rspc_download_image_with_fallback))
+        // rspc-style endpoints for video handling
+        .route("/rspc/check_cached_video", get(rspc_check_cached_video))
+        .route("/rspc/download_game_video", get(rspc_download_game_video))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
         .layer(cors)
@@ -1144,6 +1147,8 @@ async fn serve_asset(
         Some("gif") => "image/gif",
         Some("webp") => "image/webp",
         Some("svg") => "image/svg+xml",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
         _ => "application/octet-stream",
     };
 
@@ -1159,3 +1164,160 @@ async fn serve_asset(
         .unwrap())
 }
 
+// ============================================================================
+// Video Handlers
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckCachedVideoInput {
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+}
+
+async fn rspc_check_cached_video(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    // Parse the input parameter (JSON-encoded)
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Option<String>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: CheckCachedVideoInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+
+    // Build the expected video path
+    let game_id = match input.launchbox_db_id {
+        Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
+        None => {
+            // Fall back to computing hash from platform and title
+            let games_pool = match state_guard.games_db_pool.as_ref() {
+                Some(p) => p,
+                None => return rspc_err::<Option<String>>("Games database not initialized".to_string()).into_response(),
+            };
+
+            // Get platform_id
+            let platform_id: Option<(i64,)> = match sqlx::query_as(
+                "SELECT id FROM platforms WHERE name = ?"
+            )
+            .bind(&input.platform)
+            .fetch_optional(games_pool)
+            .await {
+                Ok(r) => r,
+                Err(e) => return rspc_err::<Option<String>>(e.to_string()).into_response(),
+            };
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &input.game_title)
+        }
+    };
+
+    let video_path = cache_dir
+        .join("media")
+        .join(game_id.directory_name())
+        .join("emumovies")
+        .join("video.mp4");
+
+    if video_path.exists() {
+        rspc_ok(Some(video_path.to_string_lossy().to_string())).into_response()
+    } else {
+        rspc_ok::<Option<String>>(None).into_response()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadGameVideoInput {
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+}
+
+async fn rspc_download_game_video(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    // Parse the input parameter (JSON-encoded)
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<String>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: DownloadGameVideoInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    tracing::info!("rspc_download_game_video: game='{}', platform='{}', db_id={:?}",
+        input.game_title, input.platform, input.launchbox_db_id);
+
+    let state_guard = state.read().await;
+
+    // Check if EmuMovies is configured
+    if state_guard.settings.emumovies.username.is_empty()
+        || state_guard.settings.emumovies.password.is_empty()
+    {
+        return rspc_err::<String>("EmuMovies credentials not configured. Configure them in Settings.".to_string()).into_response();
+    }
+
+    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+
+    // Build the game cache directory
+    let game_id = match input.launchbox_db_id {
+        Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
+        None => {
+            // Fall back to computing hash from platform and title
+            let games_pool = match state_guard.games_db_pool.as_ref() {
+                Some(p) => p,
+                None => return rspc_err::<String>("Games database not initialized".to_string()).into_response(),
+            };
+
+            // Get platform_id
+            let platform_id: Option<(i64,)> = match sqlx::query_as(
+                "SELECT id FROM platforms WHERE name = ?"
+            )
+            .bind(&input.platform)
+            .fetch_optional(games_pool)
+            .await {
+                Ok(r) => r,
+                Err(e) => return rspc_err::<String>(e.to_string()).into_response(),
+            };
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &input.game_title)
+        }
+    };
+
+    let game_cache_dir = cache_dir
+        .join("media")
+        .join(game_id.directory_name());
+
+    // Create EmuMovies client
+    let client = crate::images::EmuMoviesClient::new(
+        crate::images::EmuMoviesConfig {
+            username: state_guard.settings.emumovies.username.clone(),
+            password: state_guard.settings.emumovies.password.clone(),
+        },
+        cache_dir.clone(),
+    );
+
+    // Download the video
+    match client.get_video(&input.platform, &input.game_title, &game_cache_dir, None) {
+        Ok(video_path) => {
+            tracing::info!("  Video download succeeded: {}", video_path.display());
+            rspc_ok(video_path.to_string_lossy().to_string()).into_response()
+        }
+        Err(e) => {
+            tracing::warn!("  Video download failed: {}", e);
+            rspc_err::<String>(e.to_string()).into_response()
+        }
+    }
+}

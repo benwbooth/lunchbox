@@ -2066,3 +2066,112 @@ pub async fn get_cached_media_path(
 
     Ok(row.map(|(path,)| path))
 }
+
+// ============ Video Download Commands ============
+
+/// Check if a video is cached for a game
+#[tauri::command]
+pub async fn check_cached_video(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<String>, String> {
+    let state_guard = state.read().await;
+    let cache_dir = get_cache_dir(&state_guard.settings);
+
+    // Build the expected video path
+    let game_id = match launchbox_db_id {
+        Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
+        None => {
+            // Fall back to computing hash from platform and title
+            let games_pool = state_guard.games_db_pool.as_ref()
+                .ok_or_else(|| "Games database not initialized".to_string())?;
+
+            // Get platform_id
+            let platform_id: Option<(i64,)> = sqlx::query_as(
+                "SELECT id FROM platforms WHERE name = ?"
+            )
+            .bind(&platform)
+            .fetch_optional(games_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &game_title)
+        }
+    };
+
+    let video_path = cache_dir
+        .join("media")
+        .join(game_id.directory_name())
+        .join("emumovies")
+        .join("video.mp4");
+
+    if video_path.exists() {
+        Ok(Some(video_path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Download a video for a game from EmuMovies
+#[tauri::command]
+pub async fn download_game_video(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<String, String> {
+    let state_guard = state.read().await;
+
+    // Check if EmuMovies is configured
+    if state_guard.settings.emumovies.username.is_empty()
+        || state_guard.settings.emumovies.password.is_empty()
+    {
+        return Err("EmuMovies credentials not configured. Configure them in Settings.".to_string());
+    }
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+
+    // Build the game cache directory
+    let game_id = match launchbox_db_id {
+        Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
+        None => {
+            // Fall back to computing hash from platform and title
+            let games_pool = state_guard.games_db_pool.as_ref()
+                .ok_or_else(|| "Games database not initialized".to_string())?;
+
+            // Get platform_id
+            let platform_id: Option<(i64,)> = sqlx::query_as(
+                "SELECT id FROM platforms WHERE name = ?"
+            )
+            .bind(&platform)
+            .fetch_optional(games_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &game_title)
+        }
+    };
+
+    let game_cache_dir = cache_dir
+        .join("media")
+        .join(game_id.directory_name());
+
+    // Create EmuMovies client
+    let client = crate::images::EmuMoviesClient::new(
+        crate::images::EmuMoviesConfig {
+            username: state_guard.settings.emumovies.username.clone(),
+            password: state_guard.settings.emumovies.password.clone(),
+        },
+        cache_dir.clone(),
+    );
+
+    // Download the video
+    let video_path = client.get_video(&platform, &game_title, &game_cache_dir, None)
+        .map_err(|e| e.to_string())?;
+
+    Ok(video_path.to_string_lossy().to_string())
+}
