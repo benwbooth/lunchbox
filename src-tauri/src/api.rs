@@ -215,7 +215,7 @@ async fn get_games(
                 if let Some(ref platform_name) = query.platform {
                     let sql = format!(
                         r#"
-                        SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+                        SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                                g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                                g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                                g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -237,7 +237,7 @@ async fn get_games(
                 } else {
                     let sql = format!(
                         r#"
-                        SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+                        SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                                g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                                g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                                g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -260,7 +260,7 @@ async fn get_games(
         } else if let Some(ref platform_name) = query.platform {
             sqlx::query(
                 r#"
-                SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+                SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                        g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                        g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -277,7 +277,7 @@ async fn get_games(
         } else {
             sqlx::query(
                 r#"
-                SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+                SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                        g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                        g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -448,7 +448,7 @@ async fn get_game_by_uuid(
     if let Some(ref games_pool) = state_guard.games_db_pool {
         let row = sqlx::query(
             r#"
-            SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+            SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                    g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                    g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                    g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
