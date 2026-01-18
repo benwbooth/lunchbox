@@ -13,12 +13,14 @@ use crate::tauri::{self, file_to_asset_url};
 /// Loading state for a video
 #[derive(Debug, Clone, PartialEq)]
 pub enum VideoState {
-    /// Initial state - checking if video exists
+    /// Initial state - not yet checked
+    Initial,
+    /// Checking if video exists
     Checking,
     /// Video is being downloaded
-    Downloading { progress: f32 },
+    Downloading,
     /// Video is ready to play
-    Ready { url: String },
+    Ready(String),
     /// No video available for this game
     NoVideo,
     /// Error occurred
@@ -27,8 +29,7 @@ pub enum VideoState {
 
 /// Video player component
 ///
-/// Automatically checks for cached video and displays download progress
-/// if video needs to be fetched from EmuMovies.
+/// Shows a collapsible video section. Only checks/downloads when expanded.
 #[component]
 pub fn VideoPlayer(
     /// Game title (for video lookup)
@@ -38,149 +39,119 @@ pub fn VideoPlayer(
     /// LaunchBox database ID
     launchbox_db_id: i64,
 ) -> impl IntoView {
-    let (state, set_state) = signal(VideoState::Checking);
+    let (state, set_state) = signal(VideoState::Initial);
     let (is_expanded, set_is_expanded) = signal(false);
 
-    // Use Arc<AtomicBool> for mounted flag
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    let mounted = Arc::new(AtomicBool::new(true));
-    let mounted_for_cleanup = mounted.clone();
+    // Store props in signals to avoid closure capture issues
+    let title = StoredValue::new(game_title);
+    let plat = StoredValue::new(platform);
+    let db_id = launchbox_db_id;
 
-    // Check for cached video when expanded
-    Effect::new(move || {
-        let expanded = is_expanded.get();
-        if !expanded {
+    // Load video when first expanded
+    let load_video = move || {
+        // Only load once
+        if state.get() != VideoState::Initial {
             return;
         }
 
-        let title = game_title.clone();
-        let plat = platform.clone();
-        let db_id = launchbox_db_id;
-        let mounted = mounted.clone();
+        set_state.set(VideoState::Checking);
+
+        let title = title.get_value();
+        let plat = plat.get_value();
+        let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
 
         spawn_local(async move {
-            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
-
-            let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
-
             // Check cache first
-            match tauri::check_cached_video(
-                title.clone(),
-                plat.clone(),
-                db_id_opt,
-            ).await {
+            match tauri::check_cached_video(title.clone(), plat.clone(), db_id_opt).await {
                 Ok(Some(cached_path)) => {
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        let url = file_to_asset_url(&cached_path);
-                        let _ = set_state.try_set(VideoState::Ready { url });
-                    }
+                    let url = file_to_asset_url(&cached_path);
+                    set_state.set(VideoState::Ready(url));
                     return;
                 }
                 Ok(None) => {
-                    // Not cached - need to download
+                    // Not cached - try to download
                 }
                 Err(_) => {
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        // If cache check fails, assume no video
-                        let _ = set_state.try_set(VideoState::NoVideo);
-                    }
+                    set_state.set(VideoState::NoVideo);
                     return;
                 }
             }
 
-            // Start download
-            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
-            let _ = set_state.try_set(VideoState::Downloading { progress: -1.0 });
+            // Try downloading
+            set_state.set(VideoState::Downloading);
 
-            match tauri::download_game_video(
-                title.clone(),
-                plat.clone(),
-                db_id_opt,
-            ).await {
+            match tauri::download_game_video(title.clone(), plat.clone(), db_id_opt).await {
                 Ok(local_path) => {
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        let url = file_to_asset_url(&local_path);
-                        let _ = set_state.try_set(VideoState::Ready { url });
-                    }
+                    let url = file_to_asset_url(&local_path);
+                    set_state.set(VideoState::Ready(url));
                 }
                 Err(e) => {
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        // Check if it's a "not found" error vs an actual error
-                        if e.contains("not found") || e.contains("No video") || e.contains("Unknown platform") {
-                            let _ = set_state.try_set(VideoState::NoVideo);
-                        } else {
-                            let _ = set_state.try_set(VideoState::Error(e));
-                        }
+                    if e.contains("not found") || e.contains("No video") || e.contains("Unknown platform") || e.contains("not configured") {
+                        set_state.set(VideoState::NoVideo);
+                    } else {
+                        set_state.set(VideoState::Error(e));
                     }
                 }
             }
         });
-    });
-
-    // Cleanup on unmount
-    on_cleanup(move || {
-        mounted_for_cleanup.store(false, std::sync::atomic::Ordering::Relaxed);
-    });
+    };
 
     view! {
         <div class="video-player-section">
             <div
                 class="video-header"
-                on:click=move |_| set_is_expanded.update(|e| *e = !*e)
+                on:click=move |_| {
+                    let was_expanded = is_expanded.get();
+                    set_is_expanded.set(!was_expanded);
+                    if !was_expanded {
+                        load_video();
+                    }
+                }
             >
                 <span class="video-toggle">
                     {move || if is_expanded.get() { "▼" } else { "▶" }}
                 </span>
                 <h3>"Video"</h3>
-                {move || match state.get() {
-                    VideoState::Ready { .. } => view! {
-                        <span class="video-badge ready">"Available"</span>
-                    }.into_any(),
-                    VideoState::Downloading { .. } => view! {
-                        <span class="video-badge downloading">"Downloading..."</span>
-                    }.into_any(),
-                    VideoState::NoVideo => view! {
-                        <span class="video-badge no-video">"Not Available"</span>
-                    }.into_any(),
-                    VideoState::Error(_) => view! {
-                        <span class="video-badge error">"Error"</span>
-                    }.into_any(),
-                    VideoState::Checking => view! {
-                        <span class="video-badge checking">"..."</span>
-                    }.into_any(),
+                {move || {
+                    let badge_class = match state.get() {
+                        VideoState::Ready(_) => "video-badge ready",
+                        VideoState::Downloading | VideoState::Checking => "video-badge downloading",
+                        VideoState::NoVideo => "video-badge no-video",
+                        VideoState::Error(_) => "video-badge error",
+                        VideoState::Initial => "video-badge",
+                    };
+                    let badge_text = match state.get() {
+                        VideoState::Ready(_) => "Available",
+                        VideoState::Downloading => "Downloading...",
+                        VideoState::Checking => "Checking...",
+                        VideoState::NoVideo => "Not Available",
+                        VideoState::Error(_) => "Error",
+                        VideoState::Initial => "",
+                    };
+                    view! { <span class=badge_class>{badge_text}</span> }
                 }}
             </div>
 
             <Show when=move || is_expanded.get()>
                 <div class="video-content">
                     {move || match state.get() {
-                        VideoState::Checking => view! {
+                        VideoState::Initial | VideoState::Checking => view! {
                             <div class="video-loading">
                                 <div class="loading-spinner"></div>
                                 <span>"Checking for video..."</span>
                             </div>
                         }.into_any(),
-                        VideoState::Downloading { progress } => {
-                            let is_indeterminate = progress < 0.0;
-                            let progress_pct = if is_indeterminate { 100 } else { (progress * 100.0) as i32 };
-                            let bar_class = if is_indeterminate { "progress-bar indeterminate" } else { "progress-bar" };
-                            view! {
-                                <div class="video-downloading">
-                                    <div class="download-status">
-                                        <span>"Downloading video from EmuMovies..."</span>
-                                        <div class="download-progress">
-                                            <div class=bar_class style:width=format!("{}%", progress_pct)></div>
-                                        </div>
+                        VideoState::Downloading => view! {
+                            <div class="video-downloading">
+                                <div class="download-status">
+                                    <span>"Downloading video from EmuMovies..."</span>
+                                    <div class="download-progress">
+                                        <div class="progress-bar indeterminate" style="width: 100%"></div>
                                     </div>
                                 </div>
-                            }.into_any()
-                        }
-                        VideoState::Ready { url } => view! {
+                            </div>
+                        }.into_any(),
+                        VideoState::Ready(url) => view! {
                             <div class="video-container">
                                 <video
                                     src=url

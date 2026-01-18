@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats};
-// use super::VideoPlayer;  // Temporarily disabled for debugging
+use super::VideoPlayer;
 
 #[component]
 pub fn GameDetails(
@@ -306,12 +306,12 @@ pub fn GameDetails(
                                     <p>{description}</p>
                                 </div>
 
-                                // Video player section - temporarily disabled
-                                // <VideoPlayer
-                                //     game_title=g.title.clone()
-                                //     platform=g.platform.clone()
-                                //     launchbox_db_id=db_id
-                                // />
+                                // Video player section
+                                <VideoPlayer
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    launchbox_db_id=db_id
+                                />
 
                                 // Variants section
                                 <VariantsSection
