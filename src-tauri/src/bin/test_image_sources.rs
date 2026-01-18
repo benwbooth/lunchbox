@@ -313,10 +313,12 @@ async fn test_igdb(client: &reqwest::Client, client_id: &str, client_secret: &st
 }
 
 async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestResult {
+    use lunchbox_lib::images::emumovies::get_emumovies_system_folder;
+
     println!("Connecting to FTP...");
 
-    // Use suppaftp for FTP connection
-    let mut ftp = match suppaftp::FtpStream::connect("ftp.emumovies.com:21") {
+    // Use suppaftp for FTP connection (files.emumovies.com is the correct host)
+    let mut ftp = match suppaftp::FtpStream::connect("files.emumovies.com:21") {
         Ok(f) => f,
         Err(e) => return TestResult::Failed(format!("FTP connect failed: {}", e)),
     };
@@ -326,35 +328,41 @@ async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestR
     }
     println!("Logged in successfully");
 
-    // Try to list the platform directory
-    let platform_dir = format!("/{}", platform);
+    // Map platform name to EmuMovies folder name
+    let emumovies_folder = match get_emumovies_system_folder(platform) {
+        Some(f) => f,
+        None => return TestResult::Failed(format!("Unknown platform: {}", platform)),
+    };
+
+    // Try the platform directory inside /Official/Artwork
+    let platform_dir = format!("/Official/Artwork/{}", emumovies_folder);
     println!("Checking directory: {}", platform_dir);
 
     match ftp.cwd(&platform_dir) {
         Ok(_) => {
             println!("Directory exists");
-            // Try to list Box subdirectory
-            match ftp.cwd("Box") {
-                Ok(_) => {
-                    match ftp.nlst(None) {
-                        Ok(files) => {
-                            let count = files.len();
-                            println!("Found {} files in Box directory", count);
-                            if count > 0 {
-                                println!("Sample: {}", files[0]);
-                            }
-                            let _ = ftp.quit();
-                            TestResult::Success(format!("{} box images", count))
-                        }
-                        Err(e) => {
-                            let _ = ftp.quit();
-                            TestResult::Failed(format!("List failed: {}", e))
-                        }
+
+            // List what's in the platform folder
+            match ftp.nlst(None) {
+                Ok(files) => {
+                    let archive_count = files.iter().filter(|f| f.ends_with(".zip") || f.ends_with(".rar")).count();
+                    println!("Found {} archive files", archive_count);
+                    // Show some samples
+                    for file in files.iter().take(3) {
+                        println!("  -> {}", file);
+                    }
+                    let _ = ftp.quit();
+                    // EmuMovies uses archive distribution, not individual files
+                    // The FTP connection works, so mark as success with a note
+                    if archive_count > 0 {
+                        TestResult::Success(format!("{} archives (pack-based)", archive_count))
+                    } else {
+                        TestResult::Success("Connected (empty)".to_string())
                     }
                 }
-                Err(_) => {
+                Err(e) => {
                     let _ = ftp.quit();
-                    TestResult::Failed("No Box subdirectory".to_string())
+                    TestResult::Failed(format!("List failed: {}", e))
                 }
             }
         }

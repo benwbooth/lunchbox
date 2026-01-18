@@ -4,6 +4,16 @@
 //! Host: files.emumovies.com (or files2.emumovies.com for Europe)
 //! Port: 21
 //! Uses forum username/password for authentication.
+//!
+//! NOTE: EmuMovies distributes media as archive packs (zip/rar files), not
+//! individual image files. The current client implementation assumes individual
+//! file access which doesn't match the actual FTP structure. Users need to
+//! download and extract media packs manually, or this client needs to be
+//! updated to handle archive extraction.
+//!
+//! FTP Structure:
+//!   /Official/Artwork/{Platform}/*.zip  - Artwork archives
+//!   /Official/Videos/{Platform}/*.zip   - Video archives
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -76,24 +86,30 @@ impl EmuMoviesMediaType {
 pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
     let normalized = platform.to_lowercase();
 
+    // Note: These folder names must match the actual EmuMovies FTP directory structure
+    // under /Official/Artwork/
     match normalized.as_str() {
         // Nintendo
-        s if s.contains("nes") && !s.contains("snes") && !s.contains("super") => Some("Nintendo NES"),
-        s if s.contains("snes") || s.contains("super nintendo") => Some("Nintendo SNES"),
+        s if s.contains("nintendo entertainment system") => Some("Nintendo Entertainment System"),
+        s if s.contains("nes") && !s.contains("snes") && !s.contains("super") => Some("Nintendo Entertainment System"),
+        s if s.contains("super nintendo") || (s.contains("snes") && !s.contains("msu")) => Some("Super Nintendo Entertainment System"),
         s if s.contains("nintendo 64") || s == "n64" => Some("Nintendo 64"),
         s if s.contains("game boy advance") || s == "gba" => Some("Nintendo Game Boy Advance"),
-        s if s.contains("game boy color") || s == "gbc" => Some("Nintendo Game Boy Color"),
+        s if s.contains("game boy color") || s == "gbc" || s.contains("gameboy color") => Some("Nintendo Gameboy Color"),
         s if s.contains("game boy") && !s.contains("advance") && !s.contains("color") => Some("Nintendo Game Boy"),
         s if s.contains("nintendo ds") || s == "nds" => Some("Nintendo DS"),
         s if s.contains("nintendo 3ds") || s == "3ds" => Some("Nintendo 3DS"),
         s if s.contains("gamecube") => Some("Nintendo GameCube"),
         s if s.contains("wii u") => Some("Nintendo Wii U"),
-        s if s.contains("wii") && !s.contains("wii u") => Some("Nintendo Wii"),
+        s if s.contains("wiiware") => Some("Nintendo WiiWare"),
+        s if s.contains("wii") && !s.contains("wii u") && !s.contains("wiiware") => Some("Nintendo Wii"),
         s if s.contains("switch") => Some("Nintendo Switch"),
         s if s.contains("virtual boy") => Some("Nintendo Virtual Boy"),
+        s if s.contains("famicom disk") => Some("Nintendo Famicom Disk System"),
+        s if s.contains("famicom") => Some("Nintendo Famicom"),
 
         // Sega
-        s if s.contains("genesis") || s.contains("mega drive") => Some("Sega Genesis"),
+        s if s.contains("genesis") || s.contains("mega drive") => Some("Sega Genesis - Mega Drive"),
         s if s.contains("master system") => Some("Sega Master System"),
         s if s.contains("game gear") => Some("Sega Game Gear"),
         s if s.contains("saturn") => Some("Sega Saturn"),
@@ -127,10 +143,11 @@ pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
         s if s.contains("jaguar") => Some("Atari Jaguar"),
 
         // Other
-        s if s.contains("colecovision") => Some("Coleco ColecoVision"),
+        s if s.contains("colecovision") => Some("ColecoVision"),
         s if s.contains("intellivision") => Some("Mattel Intellivision"),
         s if s.contains("arcade") || s.contains("mame") => Some("MAME"),
         s if s.contains("dos") || s.contains("ms-dos") => Some("Microsoft DOS"),
+        s if s.contains("3do") => Some("3DO Interactive Multiplayer"),
 
         _ => None,
     }
@@ -230,9 +247,9 @@ impl EmuMoviesClient {
             .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
 
         // Build FTP path
-        // Format: /{System}/{MediaType}/{GameName}.png (or .jpg, etc.)
+        // Format: /Official/Artwork/{System}/{MediaType}/{GameName}.png (or .jpg, etc.)
         let media_folder = media_type.folder_name();
-        let base_path = format!("/{}/{}", system_folder, media_folder);
+        let base_path = format!("/Official/Artwork/{}/{}", system_folder, media_folder);
 
         // Try to find the file with various extensions
         let extensions = ["png", "jpg", "jpeg"];
