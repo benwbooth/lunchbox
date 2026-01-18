@@ -334,43 +334,50 @@ async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestR
         None => return TestResult::Failed(format!("Unknown platform: {}", platform)),
     };
 
-    // Try the platform directory inside /Official/Artwork
-    let platform_dir = format!("/Official/Artwork/{}", emumovies_folder);
-    println!("Checking directory: {}", platform_dir);
+    // Check Artwork folder (archives)
+    let artwork_dir = format!("/Official/Artwork/{}", emumovies_folder);
+    let artwork_archives = match ftp.nlst(Some(&artwork_dir)) {
+        Ok(files) => files.iter().filter(|f| f.ends_with(".zip") || f.ends_with(".rar")).count(),
+        Err(_) => 0,
+    };
+    println!("Artwork: {} archives in {}", artwork_archives, artwork_dir);
 
-    match ftp.cwd(&platform_dir) {
-        Ok(_) => {
-            println!("Directory exists");
-
-            // List what's in the platform folder
-            match ftp.nlst(None) {
-                Ok(files) => {
-                    let archive_count = files.iter().filter(|f| f.ends_with(".zip") || f.ends_with(".rar")).count();
-                    println!("Found {} archive files", archive_count);
-                    // Show some samples
-                    for file in files.iter().take(3) {
-                        println!("  -> {}", file);
-                    }
-                    let _ = ftp.quit();
-                    // EmuMovies uses archive distribution, not individual files
-                    // The FTP connection works, so mark as success with a note
-                    if archive_count > 0 {
-                        TestResult::Success(format!("{} archives (pack-based)", archive_count))
-                    } else {
-                        TestResult::Success("Connected (empty)".to_string())
-                    }
-                }
-                Err(e) => {
-                    let _ = ftp.quit();
-                    TestResult::Failed(format!("List failed: {}", e))
-                }
-            }
-        }
-        Err(e) => {
-            let _ = ftp.quit();
-            TestResult::Failed(format!("Platform dir not found: {}", e))
-        }
+    // Need to reconnect after nlst (FTP quirk)
+    let mut ftp = match suppaftp::FtpStream::connect("files.emumovies.com:21") {
+        Ok(f) => f,
+        Err(e) => return TestResult::Failed(format!("FTP reconnect failed: {}", e)),
+    };
+    if let Err(e) = ftp.login(username, password) {
+        return TestResult::Failed(format!("FTP login failed: {}", e));
     }
+
+    // Find Video Snaps folder for this platform
+    let video_folder = match ftp.nlst(Some("/Official/Video Snaps (HQ)")) {
+        Ok(folders) => folders.into_iter().find(|f| f.contains(emumovies_folder)),
+        Err(_) => None,
+    };
+
+    let video_count = if let Some(ref vf) = video_folder {
+        // Reconnect again
+        let mut ftp = match suppaftp::FtpStream::connect("files.emumovies.com:21") {
+            Ok(f) => f,
+            Err(_) => return TestResult::Success(format!("{} art archives, videos unavailable", artwork_archives)),
+        };
+        let _ = ftp.login(username, password);
+        match ftp.nlst(Some(vf)) {
+            Ok(files) => {
+                let count = files.iter().filter(|f| f.ends_with(".mp4")).count();
+                println!("Videos: {} mp4 files in {}", count, vf.rsplit('/').next().unwrap_or(vf));
+                let _ = ftp.quit();
+                count
+            }
+            Err(_) => 0,
+        }
+    } else {
+        0
+    };
+
+    TestResult::Success(format!("{} art archives, {} videos", artwork_archives, video_count))
 }
 
 async fn test_screenscraper(
