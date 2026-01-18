@@ -1681,6 +1681,20 @@ pub async fn download_image_with_fallback(
     let pool = state_guard.db_pool.as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
+    // Look up platform info to get libretro_name
+    let platform_info: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT libretro_name FROM platforms WHERE name = ?"
+    )
+    .bind(&platform)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let libretro_platform = platform_info
+        .and_then(|(name,)| name)
+        .unwrap_or_else(|| platform.clone());
+
     let cache_dir = get_cache_dir(&state_guard.settings);
     let service = ImageService::new(pool.clone(), cache_dir.clone());
 
@@ -1745,6 +1759,7 @@ pub async fn download_image_with_fallback(
         &platform,
         &image_type,
         launchbox_db_id,
+        Some(libretro_platform.as_str()),
         steamgriddb_client.as_ref(),
         igdb_client.as_ref(),
         emumovies_client.as_ref(),

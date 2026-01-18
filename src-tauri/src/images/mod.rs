@@ -763,6 +763,7 @@ impl ImageService {
         platform: &str,
         image_type: &str,
         launchbox_db_id: Option<i64>,
+        libretro_platform: Option<&str>,
         steamgriddb_client: Option<&crate::scraper::SteamGridDBClient>,
         igdb_client: Option<&crate::scraper::IGDBClient>,
         emumovies_client: Option<&EmuMoviesClient>,
@@ -808,10 +809,13 @@ impl ImageService {
         tracing::info!("  [2/6] Trying libretro-thumbnails...");
         let libretro_type = libretro::LibRetroImageType::from_launchbox_type(image_type);
         if let Some(lt) = libretro_type {
+            // Use libretro_platform if provided, otherwise fall back to regular platform name
+            let lr_platform = libretro_platform.unwrap_or(platform);
             let libretro_client = LibRetroThumbnailsClient::new(self.cache_dir.clone());
-            tracing::info!("  [2/6] libretro type={:?}, searching for '{}'...", lt, game_title);
+            tracing::info!("  [2/6] libretro type={:?}, platform='{}', searching for '{}'...", lt, lr_platform, game_title);
             // libretro has its own cache path, but we should download to new structure
-            if let Some(url) = libretro_client.get_thumbnail_url(platform, lt, game_title) {
+            if let Some(url) = libretro_client.get_thumbnail_url(lr_platform, lt, game_title) {
+                tracing::info!("  [2/6] Trying URL: {}", url);
                 match self.download_to_cache(&url, &game_id, ImageSource::LibRetro, image_type).await {
                     Ok(path) => {
                         tracing::info!("  [2/6] SUCCESS from libretro-thumbnails: {}", path);
@@ -822,7 +826,7 @@ impl ImageService {
                     }
                 }
             } else {
-                tracing::info!("  [2/6] libretro-thumbnails: no URL found");
+                tracing::info!("  [2/6] libretro-thumbnails: no URL found (platform '{}' not mapped)", lr_platform);
             }
         } else {
             tracing::info!("  [2/6] Skipping libretro (unsupported image type)");

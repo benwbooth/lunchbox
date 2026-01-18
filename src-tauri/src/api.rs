@@ -998,6 +998,20 @@ async fn rspc_download_image_with_fallback(
         None => return rspc_err::<String>("Database not initialized".to_string()).into_response(),
     };
 
+    // Look up platform info to get libretro_name
+    let platform_info: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT libretro_name FROM platforms WHERE name = ?"
+    )
+    .bind(&input.platform)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let libretro_platform = platform_info
+        .and_then(|(name,)| name)
+        .unwrap_or_else(|| input.platform.clone());
+
     let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
     let service = crate::images::ImageService::new(pool.clone(), cache_dir.clone());
 
@@ -1062,6 +1076,7 @@ async fn rspc_download_image_with_fallback(
         &input.platform,
         &input.image_type,
         input.launchbox_db_id,
+        Some(libretro_platform.as_str()),
         steamgriddb_client.as_ref(),
         igdb_client.as_ref(),
         emumovies_client.as_ref(),

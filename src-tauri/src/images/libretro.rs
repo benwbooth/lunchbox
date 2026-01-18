@@ -155,16 +155,24 @@ pub fn normalize_game_name(name: &str) -> String {
 
 /// Build a libretro thumbnail URL
 pub fn build_thumbnail_url(platform: &str, image_type: LibRetroImageType, game_name: &str) -> Option<String> {
-    let platform_dir = get_libretro_platform_name(platform)?;
+    // If platform already looks like a libretro platform name (contains " - "), use it directly
+    // Otherwise, try to map from display name
+    let platform_dir = if platform.contains(" - ") || platform == "MAME" || platform == "DOS" {
+        platform
+    } else {
+        get_libretro_platform_name(platform)?
+    };
+
     let type_dir = image_type.path_segment();
     let normalized_name = normalize_game_name(game_name);
 
-    // URL encode the game name (but keep the structure)
+    // URL encode the platform and game name for the URL
+    let encoded_platform = urlencoding::encode(platform_dir);
     let encoded_name = urlencoding::encode(&normalized_name);
 
     Some(format!(
         "{}/{}/{}/{}.png",
-        LIBRETRO_THUMBNAILS_URL, platform_dir, type_dir, encoded_name
+        LIBRETRO_THUMBNAILS_URL, encoded_platform, type_dir, encoded_name
     ))
 }
 
