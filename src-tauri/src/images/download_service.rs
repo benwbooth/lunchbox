@@ -213,33 +213,76 @@ impl MediaDownloadService {
     }
 
     /// Download media for a single request
+    /// Tries all available sources in order until one succeeds
     async fn download_media(
         &self,
         request: MediaDownloadRequest,
-        cancel_rx: tokio::sync::oneshot::Receiver<()>,
+        mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
     ) {
         let key = (request.launchbox_db_id, request.media_type);
 
-        // Get source for this game
-        let source = self
+        // Get all sources in fallback order
+        let sources = self
             .source_selector
-            .source_for_game_and_type(request.launchbox_db_id, request.media_type);
+            .sources_in_order(request.launchbox_db_id, request.media_type);
 
-        // Emit started event
+        let primary_source = sources.first().copied().unwrap_or(MediaSource::LaunchBox);
+
+        // Emit started event with primary source
         self.event_sender
-            .started(request.launchbox_db_id, request.media_type, source);
+            .started(request.launchbox_db_id, request.media_type, primary_source);
 
-        // Try to download with cancellation support
-        let result = tokio::select! {
-            _ = cancel_rx => {
-                Err(anyhow::anyhow!("Cancelled"))
-            }
-            result = self.download_from_source(&request, source) => {
-                result
-            }
-        };
+        // Try each source in order until one succeeds
+        let mut last_error: Option<anyhow::Error> = None;
+        let mut successful_source = primary_source;
 
-        // Clean up
+        for source in &sources {
+            // Check for cancellation
+            match cancel_rx.try_recv() {
+                Ok(_) | Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+                    // Cancelled
+                    last_error = Some(anyhow::anyhow!("Cancelled"));
+                    break;
+                }
+                Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                    // Not cancelled, continue
+                }
+            }
+
+            match self.download_from_source(&request, *source).await {
+                Ok(local_path) => {
+                    // Success! Clean up and emit event
+                    {
+                        let mut downloading = self.downloading.write().await;
+                        downloading.remove(&key);
+                    }
+                    {
+                        let mut cancels = self.cancel_channels.write().await;
+                        cancels.remove(&key);
+                    }
+                    self.event_sender.completed(
+                        request.launchbox_db_id,
+                        request.media_type,
+                        local_path,
+                        *source,
+                    );
+                    return;
+                }
+                Err(e) => {
+                    // Log and try next source
+                    tracing::debug!(
+                        "Source {:?} failed for game {}: {}",
+                        source,
+                        request.launchbox_db_id,
+                        e
+                    );
+                    last_error = Some(e);
+                    successful_source = *source;
+                }
+            }
+        }
+
+        // All sources failed - clean up and emit error
         {
             let mut downloading = self.downloading.write().await;
             downloading.remove(&key);
@@ -249,27 +292,19 @@ impl MediaDownloadService {
             cancels.remove(&key);
         }
 
-        // Emit result event
-        match result {
-            Ok(local_path) => {
-                self.event_sender.completed(
-                    request.launchbox_db_id,
-                    request.media_type,
-                    local_path,
-                    source,
-                );
-            }
-            Err(e) if e.to_string() == "Cancelled" => {
-                // Already emitted cancelled event
-            }
-            Err(e) => {
-                self.event_sender.failed(
-                    request.launchbox_db_id,
-                    request.media_type,
-                    e.to_string(),
-                    source,
-                );
-            }
+        let error_msg = last_error
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "No sources available".to_string());
+
+        if error_msg == "Cancelled" {
+            // Already handled
+        } else {
+            self.event_sender.failed(
+                request.launchbox_db_id,
+                request.media_type,
+                format!("All {} sources failed: {}", sources.len(), error_msg),
+                successful_source,
+            );
         }
     }
 
