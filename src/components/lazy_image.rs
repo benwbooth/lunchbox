@@ -181,7 +181,7 @@ pub fn LazyImage(
 
     // Cleanup on unmount
     on_cleanup(move || {
-        mounted_for_cleanup.store(false, std::sync::atomic::std::sync::atomic::Ordering::Relaxed);
+        mounted_for_cleanup.store(false, std::sync::atomic::Ordering::Relaxed);
     });
 
     let placeholder = placeholder.clone();
