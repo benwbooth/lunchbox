@@ -155,85 +155,90 @@ pub fn LazyImage(
         let plat = platform.clone();
         let mounted = mounted.clone();
 
-        // Skip if no title - don't even queue
+        // Skip if no title
         if title.is_empty() {
             let _ = set_state.try_set(ImageState::NoImage);
             return;
         }
 
-        // Queue the image load request
-        queue_request(move || {
-            spawn_local(async move {
-                // Check if component is still mounted before starting
-                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                    release_slot();
-                    return;
+        // Step 1: Fast cache check - NOT queued, runs immediately
+        spawn_local(async move {
+            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+
+            let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
+            match tauri::check_cached_media(
+                title.clone(),
+                plat.clone(),
+                img_type.clone(),
+                db_id_opt,
+            ).await {
+                Ok(Some(cached)) => {
+                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                        let url = file_to_asset_url(&cached.path);
+                        let _ = set_state.try_set(ImageState::Ready {
+                            url,
+                            source: Some(cached.source),
+                        });
+                    }
+                    return; // Cache hit - done!
                 }
+                Ok(None) => {
+                    // Cache miss - need to download
+                }
+                Err(_e) => {
+                    // Error checking cache - try downloading anyway
+                }
+            }
 
-                log(&format!("LazyImage: Loading '{}' (db_id={}, platform={})", title, db_id, plat));
+            // Step 2: Queue download (only downloads are rate-limited)
+            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            let _ = set_state.try_set(ImageState::Downloading {
+                progress: -1.0,
+                source: "Queued...".to_string(),
+            });
 
-                // Step 1: Fast cache check (no network, just filesystem)
-                let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
-                match tauri::check_cached_media(
-                    title.clone(),
-                    plat.clone(),
-                    img_type.clone(),
-                    db_id_opt,
-                ).await {
-                    Ok(Some(cached)) => {
-                        log(&format!("LazyImage: Cache HIT for '{}': {}", title, cached.path));
-                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                            let url = file_to_asset_url(&cached.path);
-                            let _ = set_state.try_set(ImageState::Ready {
-                                url,
-                                source: Some(cached.source),
-                            });
-                        }
+            let title2 = title.clone();
+            let plat2 = plat.clone();
+            let img_type2 = img_type.clone();
+            let mounted2 = mounted.clone();
+
+            queue_request(move || {
+                spawn_local(async move {
+                    if !mounted2.load(std::sync::atomic::Ordering::Relaxed) {
                         release_slot();
                         return;
                     }
-                    Ok(None) => {
-                        log(&format!("LazyImage: Cache MISS for '{}'", title));
-                    }
-                    Err(e) => {
-                        log(&format!("LazyImage: Cache check ERROR for '{}': {}", title, e));
-                    }
-                }
 
-                // Step 2: Download from sources
-                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                    log(&format!("LazyImage: Unmounted before download for '{}'", title));
+                    let _ = set_state.try_set(ImageState::Downloading {
+                        progress: -1.0,
+                        source: "Searching...".to_string(),
+                    });
+
+                    match tauri::download_image_with_fallback(
+                        title2.clone(),
+                        plat2.clone(),
+                        img_type2.clone(),
+                        db_id_opt,
+                    ).await {
+                        Ok(local_path) => {
+                            if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
+                                let source = source_from_path(&local_path);
+                                let url = file_to_asset_url(&local_path);
+                                let _ = set_state.try_set(ImageState::Ready { url, source });
+                            }
+                        }
+                        Err(_e) => {
+                            if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
+                                let _ = set_state.try_set(ImageState::NoImage);
+                            }
+                        }
+                    }
                     release_slot();
-                    return;
-                }
-                let _ = set_state.try_set(ImageState::Downloading {
-                    progress: -1.0,
-                    source: "Searching...".to_string(),
                 });
-
-                log(&format!("LazyImage: Starting download for '{}'", title));
-                match tauri::download_image_with_fallback(
-                    title.clone(),
-                    plat.clone(),
-                    img_type.clone(),
-                    db_id_opt,
-                ).await {
-                    Ok(local_path) => {
-                        log(&format!("LazyImage: Download SUCCESS for '{}': {}", title, local_path));
-                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                            let source = source_from_path(&local_path);
-                            let url = file_to_asset_url(&local_path);
-                            let _ = set_state.try_set(ImageState::Ready { url, source });
-                        }
-                    }
-                    Err(e) => {
-                        log(&format!("LazyImage: Download FAILED for '{}': {}", title, e));
-                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                            let _ = set_state.try_set(ImageState::NoImage);
-                        }
-                    }
-                }
-                release_slot();
             });
         });
     });
@@ -255,25 +260,28 @@ pub fn LazyImage(
 
             match current_state {
                 ImageState::Loading => {
+                    let char = placeholder.clone().unwrap_or_else(|| "?".to_string());
                     view! {
-                        <div class=format!("{} lazy-image-downloading", class_str)>
-                            <div class="download-status">
+                        <div class=format!("{} lazy-image-loading", class_str)>
+                            <span class="placeholder-char">{char}</span>
+                            <div class="download-status-bottom">
                                 <div class="download-progress">
-                                    <div class="progress-bar indeterminate" style:width="100%"></div>
+                                    <div class="progress-bar indeterminate"></div>
                                 </div>
-                                <div class="download-source">"Checking cache..."</div>
                             </div>
                         </div>
                     }.into_any()
                 }
                 ImageState::Downloading { progress, source } => {
+                    let char = placeholder.clone().unwrap_or_else(|| "?".to_string());
                     // progress -1.0 means indeterminate (searching), 0.0-1.0 means actual progress
                     let is_indeterminate = progress < 0.0;
                     let progress_pct = if is_indeterminate { 100 } else { (progress * 100.0) as i32 };
                     let bar_class = if is_indeterminate { "progress-bar indeterminate" } else { "progress-bar" };
                     view! {
                         <div class=format!("{} lazy-image-downloading", class_str)>
-                            <div class="download-status">
+                            <span class="placeholder-char">{char}</span>
+                            <div class="download-status-bottom">
                                 <div class="download-progress">
                                     <div class=bar_class style:width=format!("{}%", progress_pct)></div>
                                 </div>

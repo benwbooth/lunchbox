@@ -317,48 +317,46 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+}
+
+/* Placeholder character (shows during loading/downloading) */
+.lazy-image-loading .placeholder-char,
+.lazy-image-downloading .placeholder-char,
+.lazy-image-placeholder,
+.lazy-image-error {
     font-size: 48px;
     font-weight: bold;
     color: var(--text-secondary);
     text-transform: uppercase;
 }
 
-.lazy-image-loading .loading-spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid var(--bg-tertiary);
-    border-top-color: var(--accent-color);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+/* Progress bar at bottom of image box */
+.download-status-bottom {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 8px 6px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.lazy-image-downloading .download-status {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    width: 80%;
-}
-
-.lazy-image-downloading .download-progress {
+.download-status-bottom .download-progress {
     width: 100%;
-    height: 4px;
-    background-color: var(--bg-tertiary);
+    height: 3px;
+    background-color: rgba(255, 255, 255, 0.2);
     border-radius: 2px;
     overflow: hidden;
 }
 
-.lazy-image-downloading .progress-bar {
+.download-status-bottom .progress-bar {
     height: 100%;
     background-color: var(--accent-color);
     transition: width 0.2s ease;
 }
 
-.lazy-image-downloading .progress-bar.indeterminate {
+.download-status-bottom .progress-bar.indeterminate {
+    width: 100%;
     animation: indeterminate-progress 1.5s ease-in-out infinite;
     background: linear-gradient(90deg, var(--accent-color) 0%, var(--accent-color-light, #6aa3ff) 50%, var(--accent-color) 100%);
     background-size: 200% 100%;
@@ -369,14 +367,14 @@ body {
     100% { background-position: -100% 0; }
 }
 
-.lazy-image-downloading .download-source {
-    font-size: 10px;
-    color: var(--text-secondary);
+.download-status-bottom .download-source {
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.8);
     text-align: center;
+    margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 100%;
 }
 
 /* Image container for source badge positioning */
