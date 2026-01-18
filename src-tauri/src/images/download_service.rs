@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 
+use super::emumovies::{EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType};
 use super::events::MediaEventSender;
 use super::media_types::{GameMediaId, MediaSource, NormalizedMediaType};
 use super::source_selector::RoundRobinSourceSelector;
@@ -83,6 +84,8 @@ pub struct MediaDownloadService {
     viewport_games: Arc<RwLock<HashSet<i64>>>,
     /// Cancel channels by (game_id, media_type)
     cancel_channels: Arc<RwLock<HashMap<(i64, NormalizedMediaType), tokio::sync::oneshot::Sender<()>>>>,
+    /// EmuMovies configuration (for FTP access)
+    emumovies_config: Option<EmuMoviesConfig>,
 }
 
 impl MediaDownloadService {
@@ -111,6 +114,7 @@ impl MediaDownloadService {
             request_tx,
             viewport_games: Arc::new(RwLock::new(HashSet::new())),
             cancel_channels: Arc::new(RwLock::new(HashMap::new())),
+            emumovies_config: None,
         };
 
         (service, request_rx)
@@ -125,6 +129,12 @@ impl MediaDownloadService {
     /// Set source selector
     pub fn with_source_selector(mut self, selector: RoundRobinSourceSelector) -> Self {
         self.source_selector = selector;
+        self
+    }
+
+    /// Set EmuMovies configuration for FTP access
+    pub fn with_emumovies_config(mut self, config: EmuMoviesConfig) -> Self {
+        self.emumovies_config = Some(config);
         self
     }
 
@@ -321,9 +331,12 @@ impl MediaDownloadService {
             MediaSource::LibRetro => {
                 self.download_from_libretro(request).await
             }
+            MediaSource::EmuMovies => {
+                self.download_from_emumovies(request).await
+            }
             _ => {
-                // Other sources not yet implemented - fall back to LaunchBox
-                self.download_from_launchbox(request).await
+                // Other sources not yet implemented
+                anyhow::bail!("Source {:?} not implemented", source)
             }
         }
     }
@@ -430,6 +443,105 @@ impl MediaDownloadService {
             request.launchbox_db_id,
             request.media_type,
             MediaSource::LibRetro,
+            "",
+            &local_path,
+        )
+        .await?;
+
+        Ok(local_path)
+    }
+
+    /// Download from EmuMovies archive (extracts from locally cached archive) or FTP for videos
+    async fn download_from_emumovies(&self, request: &MediaDownloadRequest) -> Result<String> {
+        // Convert media type to EmuMovies type
+        let em_media_type = EmuMoviesMediaType::from_launchbox_type(
+            request.media_type.to_launchbox_type()
+        ).ok_or_else(|| anyhow::anyhow!("Media type not supported by EmuMovies"))?;
+
+        // Create client with credentials if available (needed for FTP video downloads)
+        let config = self.emumovies_config.clone().unwrap_or_default();
+        let client = EmuMoviesClient::new(config.clone(), self.cache_dir.clone());
+
+        let game_id = GameMediaId::from_launchbox_id(request.launchbox_db_id);
+        let game_cache_dir = self.cache_dir.join(game_id.directory_name());
+
+        // Videos require FTP connection to download
+        if em_media_type.is_video() {
+            // Check if credentials are configured
+            if !client.has_credentials() {
+                anyhow::bail!("EmuMovies video downloads require credentials. Configure them in Settings.");
+            }
+
+            // Download video via FTP (blocking operation)
+            let platform = request.platform.clone();
+            let game_title = request.game_title.clone();
+            let video_path = tokio::task::spawn_blocking(move || {
+                client.get_video(&platform, &game_title, &game_cache_dir, None)
+            })
+            .await
+            .context("Video download task failed")??;
+
+            let local_path = video_path.to_string_lossy().to_string();
+
+            // Record in database
+            self.record_download(
+                request.launchbox_db_id,
+                request.media_type,
+                MediaSource::EmuMovies,
+                "",
+                &local_path,
+            )
+            .await?;
+
+            return Ok(local_path);
+        }
+
+        // For images, extract from locally cached archives
+
+        // Build archive path
+        let archive_path = self.cache_dir
+            .join("emumovies-archives")
+            .join(format!(
+                "{}-{}.zip",
+                request.platform.to_lowercase()
+                    .chars()
+                    .map(|c| if c.is_alphanumeric() { c } else { '-' })
+                    .collect::<String>(),
+                em_media_type.archive_pattern().to_lowercase()
+            ));
+
+        // Check if archive exists
+        if !archive_path.exists() {
+            anyhow::bail!("EmuMovies archive not downloaded: {}", archive_path.display());
+        }
+
+        // Get or build index
+        let index = client.get_or_build_index(&archive_path)?;
+
+        // Find entry for this game
+        let entry_path = index.find_entry(&request.game_title)
+            .ok_or_else(|| anyhow::anyhow!(
+                "Game '{}' not found in EmuMovies archive",
+                request.game_title
+            ))?;
+
+        // Build output path
+        let ext = entry_path.rsplit('.').next().unwrap_or("png");
+        let output_path = self.cache_dir
+            .join(game_id.directory_name())
+            .join("emumovies")
+            .join(format!("{}.{}", request.media_type.filename(), ext));
+
+        // Extract from archive
+        client.extract_from_archive(&archive_path, entry_path, &output_path)?;
+
+        let local_path = output_path.to_string_lossy().to_string();
+
+        // Record in database
+        self.record_download(
+            request.launchbox_db_id,
+            request.media_type,
+            MediaSource::EmuMovies,
             "",
             &local_path,
         )

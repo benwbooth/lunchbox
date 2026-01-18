@@ -681,17 +681,34 @@ fn normalize_game_name(name: &str) -> String {
 }
 
 /// Remove region codes like (USA), (Europe), etc.
+/// Also handles normalized index keys where region codes are without parentheses
 fn remove_region_codes(name: &str) -> String {
     let mut result = name.to_string();
 
-    let patterns = [
+    // Patterns with parentheses (for raw filenames)
+    let paren_patterns = [
         "(usa)", "(europe)", "(japan)", "(world)", "(u)", "(e)", "(j)", "(w)",
         "(en)", "(fr)", "(de)", "(es)", "(it)", "(en,fr,de)", "(en,fr,de,es,it)",
         "(usa, europe)", "(japan, usa)", "(rev a)", "(rev b)", "(v1.0)", "(v1.1)",
     ];
 
-    for pattern in patterns {
+    for pattern in paren_patterns {
         result = result.replace(pattern, "");
+    }
+
+    // Also remove trailing region codes without parentheses (from normalized index keys)
+    // These are common region suffixes that appear at the end of normalized names
+    let trailing_regions = [
+        " usa", " europe", " japan", " world", " en", " fr", " de", " es", " it",
+        " usa europe", " japan usa", " rev a", " rev b", " rev 1", " rev 2",
+        " v10", " v11", " v12", " alt", " proto", " aftermarket", " unl", " pirate",
+    ];
+
+    // Remove trailing region codes (only from the end)
+    for suffix in trailing_regions {
+        if result.ends_with(suffix) {
+            result = result[..result.len() - suffix.len()].to_string();
+        }
     }
 
     result.trim().to_string()
