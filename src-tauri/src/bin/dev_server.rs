@@ -109,11 +109,53 @@ async fn main() -> anyhow::Result<()> {
         found_pool
     };
 
+    // Try to load images database (separate file for LaunchBox CDN metadata)
+    let images_db_pool = {
+        let possible_paths = [
+            Some(data_dir.join("game_images.db")),
+            Some(PathBuf::from("./db/game_images.db")),  // Dev mode
+            Some(PathBuf::from("/usr/share/lunchbox/game_images.db")),
+        ];
+
+        let mut found_pool = None;
+        for path_opt in possible_paths.iter().flatten() {
+            if path_opt.exists() {
+                tracing::info!("Found images database at: {}", path_opt.display());
+                let db_url = format!("sqlite:{}?mode=ro", path_opt.display());
+                match SqlitePoolOptions::new()
+                    .max_connections(4)
+                    .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
+                    .await
+                {
+                    Ok(pool) => {
+                        tracing::info!("Connected to images database");
+                        found_pool = Some(pool);
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to connect to images database at {}: {}",
+                            path_opt.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        if found_pool.is_none() {
+            tracing::info!("No images database found (LaunchBox CDN will be disabled)");
+        }
+
+        found_pool
+    };
+
     // Create app state
     let state = Arc::new(RwLock::new(AppState {
         db_pool,
         user_db_path: Some(user_db_path),
         games_db_pool,
+        images_db_pool,
         settings,
     }));
 

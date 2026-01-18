@@ -17,6 +17,8 @@ pub struct AppState {
     pub user_db_path: Option<std::path::PathBuf>,
     /// Shipped games database (read-only)
     pub games_db_pool: Option<SqlitePool>,
+    /// Separate game images database (LaunchBox CDN metadata, read-only)
+    pub images_db_pool: Option<SqlitePool>,
     pub settings: AppSettings,
 }
 
@@ -26,6 +28,7 @@ impl Default for AppState {
             db_pool: None,
             user_db_path: None,
             games_db_pool: None,
+            images_db_pool: None,
             settings: AppSettings::default(),
         }
     }
@@ -229,10 +232,53 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
         found_pool
     };
 
+    // Try to load game_images database (separate file for LaunchBox CDN metadata)
+    let images_db_pool = {
+        let resource_path = app.path().resource_dir()
+            .ok()
+            .map(|p| p.join("game_images.db"));
+
+        let possible_paths = [
+            resource_path,
+            Some(app_data_dir.join("game_images.db")),
+            Some(PathBuf::from("./db/game_images.db")),  // Dev mode
+            Some(PathBuf::from("/usr/share/lunchbox/game_images.db")),
+        ];
+
+        let mut found_pool = None;
+        for path_opt in possible_paths.iter().flatten() {
+            if path_opt.exists() {
+                tracing::info!("Found images database at: {}", path_opt.display());
+                let db_url = format!("sqlite:{}?mode=ro", path_opt.display());
+                match SqlitePoolOptions::new()
+                    .max_connections(4)
+                    .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
+                    .await
+                {
+                    Ok(pool) => {
+                        tracing::info!("Connected to images database (read-only)");
+                        found_pool = Some(pool);
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to connect to images database at {}: {}", path_opt.display(), e);
+                    }
+                }
+            }
+        }
+
+        if found_pool.is_none() {
+            tracing::info!("No images database found (LaunchBox CDN will be disabled)");
+        }
+
+        found_pool
+    };
+
     // Update state
     let mut state_guard = state.write().await;
     state_guard.db_pool = user_pool;
     state_guard.games_db_pool = games_db_pool;
+    state_guard.images_db_pool = images_db_pool;
     state_guard.settings = settings;
     state_guard.user_db_path = Some(user_db_path);
 

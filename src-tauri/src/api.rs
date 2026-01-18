@@ -882,9 +882,12 @@ async fn rspc_get_game_image(
 
     let state_guard = state.read().await;
 
-    if let Some(ref pool) = state_guard.db_pool {
+    if let Some(ref games_pool) = state_guard.games_db_pool {
         let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
-        let service = crate::images::ImageService::new(pool.clone(), cache_dir);
+        let mut service = crate::images::ImageService::new(games_pool.clone(), cache_dir);
+        if let Some(ref images_pool) = state_guard.images_db_pool {
+            service = service.with_images_pool(images_pool.clone());
+        }
 
         match service.get_image_by_type(input.launchbox_db_id, &input.image_type).await {
             Ok(Some(info)) => {
@@ -1025,7 +1028,10 @@ async fn rspc_download_image_with_fallback(
     };
 
     let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
-    let service = crate::images::ImageService::new(games_pool.clone(), cache_dir.clone());
+    let mut service = crate::images::ImageService::new(games_pool.clone(), cache_dir.clone());
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
+    }
 
     // Create SteamGridDB client if configured
     let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {

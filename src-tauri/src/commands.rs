@@ -1522,15 +1522,17 @@ pub async fn get_game_images(
 ) -> Result<Vec<ImageInfo>, String> {
     let state_guard = state.read().await;
 
-    // Try the user's database first (has game_images table)
-    if let Some(ref pool) = state_guard.db_pool {
-        let cache_dir = get_cache_dir(&state_guard.settings);
-        let service = ImageService::new(pool.clone(), cache_dir);
-        return service.get_game_images(launchbox_db_id).await
-            .map_err(|e| e.to_string());
+    let games_pool = state_guard.games_db_pool.as_ref()
+        .ok_or_else(|| "Games database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let mut service = ImageService::new(games_pool.clone(), cache_dir);
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
     }
 
-    Ok(Vec::new())
+    service.get_game_images(launchbox_db_id).await
+        .map_err(|e| e.to_string())
 }
 
 /// Get a specific image type for a game
@@ -1542,14 +1544,17 @@ pub async fn get_game_image(
 ) -> Result<Option<ImageInfo>, String> {
     let state_guard = state.read().await;
 
-    if let Some(ref pool) = state_guard.db_pool {
-        let cache_dir = get_cache_dir(&state_guard.settings);
-        let service = ImageService::new(pool.clone(), cache_dir);
-        return service.get_image_by_type(launchbox_db_id, &image_type).await
-            .map_err(|e| e.to_string());
+    let games_pool = state_guard.games_db_pool.as_ref()
+        .ok_or_else(|| "Games database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let mut service = ImageService::new(games_pool.clone(), cache_dir);
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
     }
 
-    Ok(None)
+    service.get_image_by_type(launchbox_db_id, &image_type).await
+        .map_err(|e| e.to_string())
 }
 
 /// Get available image types for a game
@@ -1560,14 +1565,17 @@ pub async fn get_available_image_types(
 ) -> Result<Vec<String>, String> {
     let state_guard = state.read().await;
 
-    if let Some(ref pool) = state_guard.db_pool {
-        let cache_dir = get_cache_dir(&state_guard.settings);
-        let service = ImageService::new(pool.clone(), cache_dir);
-        return service.get_available_types(launchbox_db_id).await
-            .map_err(|e| e.to_string());
+    let games_pool = state_guard.games_db_pool.as_ref()
+        .ok_or_else(|| "Games database not initialized".to_string())?;
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let mut service = ImageService::new(games_pool.clone(), cache_dir);
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
     }
 
-    Ok(Vec::new())
+    service.get_available_types(launchbox_db_id).await
+        .map_err(|e| e.to_string())
 }
 
 /// Download a specific image and return its local path
@@ -1578,11 +1586,15 @@ pub async fn download_image(
 ) -> Result<String, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let games_pool = state_guard.games_db_pool.as_ref()
+        .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
-    let service = ImageService::new(pool.clone(), cache_dir);
+    let mut service = ImageService::new(games_pool.clone(), cache_dir);
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
+    }
+
     service.download_image(image_id).await
         .map_err(|e| e.to_string())
 }
@@ -1596,11 +1608,15 @@ pub async fn download_game_images(
 ) -> Result<Vec<String>, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let games_pool = state_guard.games_db_pool.as_ref()
+        .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
-    let service = ImageService::new(pool.clone(), cache_dir);
+    let mut service = ImageService::new(games_pool.clone(), cache_dir);
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
+    }
+
     service.download_game_images(launchbox_db_id, image_types).await
         .map_err(|e| e.to_string())
 }
@@ -1612,11 +1628,15 @@ pub async fn get_image_cache_stats(
 ) -> Result<CacheStats, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let games_pool = state_guard.games_db_pool.as_ref()
+        .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
-    let service = ImageService::new(pool.clone(), cache_dir);
+    let mut service = ImageService::new(games_pool.clone(), cache_dir);
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
+    }
+
     service.get_cache_stats().await
         .map_err(|e| e.to_string())
 }
@@ -1708,7 +1728,10 @@ pub async fn download_image_with_fallback(
     };
 
     let cache_dir = get_cache_dir(&state_guard.settings);
-    let service = ImageService::new(games_pool.clone(), cache_dir.clone());
+    let mut service = ImageService::new(games_pool.clone(), cache_dir.clone());
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
+    }
 
     // Create SteamGridDB client if configured
     let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {

@@ -910,6 +910,11 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_db_id ON game_alternate_names(launchbox_db_id)").execute(pool).await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_name ON game_alternate_names(alternate_name)").execute(pool).await?;
 
+    Ok(())
+}
+
+/// Create schema for the separate game_images database
+pub async fn create_images_schema(pool: &SqlitePool) -> Result<()> {
     // Game images table (LaunchBox CDN metadata for UUID-based lookups)
     sqlx::query(r#"
         CREATE TABLE IF NOT EXISTS game_images (
@@ -928,6 +933,41 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_game_images_lookup ON game_images(launchbox_db_id, image_type)").execute(pool).await?;
 
     Ok(())
+}
+
+/// Batch import game images to a separate database (LaunchBox CDN metadata)
+pub async fn import_game_images_batch(
+    pool: &SqlitePool,
+    images: &[crate::launchbox::GameImage],
+    pb: &ProgressBar,
+) -> Result<usize> {
+    let mut imported = 0;
+    let batch_size = 10000;
+
+    for chunk in images.chunks(batch_size) {
+        let mut tx = pool.begin().await?;
+
+        for img in chunk {
+            sqlx::query(r#"
+                INSERT OR IGNORE INTO game_images (launchbox_db_id, filename, image_type, region, crc32)
+                VALUES (?, ?, ?, ?, ?)
+            "#)
+            .bind(img.database_id)
+            .bind(&img.filename)
+            .bind(&img.image_type)
+            .bind(&img.region)
+            .bind(&img.crc32)
+            .execute(&mut *tx)
+            .await?;
+
+            imported += 1;
+        }
+
+        tx.commit().await?;
+        pb.inc(chunk.len() as u64);
+    }
+
+    Ok(imported)
 }
 
 /// Game record for import
@@ -1512,40 +1552,6 @@ impl UnifiedImporter {
         Ok(imported)
     }
 
-    /// Batch import game images (LaunchBox CDN metadata)
-    pub async fn import_game_images_batch(
-        &self,
-        images: &[crate::launchbox::GameImage],
-        pb: &ProgressBar,
-    ) -> Result<usize> {
-        let mut imported = 0;
-        let batch_size = 10000; // Larger batch size since these are simple inserts
-
-        for chunk in images.chunks(batch_size) {
-            let mut tx = self.pool.begin().await?;
-
-            for img in chunk {
-                sqlx::query(r#"
-                    INSERT OR IGNORE INTO game_images (launchbox_db_id, filename, image_type, region, crc32)
-                    VALUES (?, ?, ?, ?, ?)
-                "#)
-                .bind(img.database_id)
-                .bind(&img.filename)
-                .bind(&img.image_type)
-                .bind(&img.region)
-                .bind(&img.crc32)
-                .execute(&mut *tx)
-                .await?;
-
-                imported += 1;
-            }
-
-            tx.commit().await?;
-            pb.inc(chunk.len() as u64);
-        }
-
-        Ok(imported)
-    }
 
     /// Batch import LibRetro games for a single platform
     /// Uses transaction for speed, matches by CRC or normalized title, or inserts new
@@ -1824,15 +1830,36 @@ pub async fn build_unified_database(
             pb.finish_with_message("Done");
             println!("  Imported {} alternate names", alt_imported);
 
-            // Import game images (for LaunchBox CDN lookups)
+            // Import game images to separate database (for LaunchBox CDN lookups)
             println!("  Parsing game images...");
             let game_images = launchbox::parse_game_images(xml_path)?;
             println!("  Parsed {} game images", game_images.len());
 
+            // Create separate images database
+            let images_db_path = output.with_file_name("game_images.db");
+            println!("  Creating images database: {}", images_db_path.display());
+
+            // Remove existing images database if present
+            if images_db_path.exists() {
+                std::fs::remove_file(&images_db_path)?;
+            }
+
+            let images_pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(
+                    SqliteConnectOptions::from_str(&format!("sqlite:{}?mode=rwc", images_db_path.display()))?
+                        .create_if_missing(true)
+                )
+                .await?;
+
+            create_images_schema(&images_pool).await?;
+
             let pb = create_progress_bar(game_images.len() as u64, "Importing game images");
-            let images_imported = importer.import_game_images_batch(&game_images, &pb).await?;
+            let images_imported = import_game_images_batch(&images_pool, &game_images, &pb).await?;
             pb.finish_with_message("Done");
             println!("  Imported {} game images", images_imported);
+
+            images_pool.close().await;
             println!();
         }
     }

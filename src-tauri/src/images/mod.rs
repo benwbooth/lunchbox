@@ -230,6 +230,8 @@ pub struct DownloadRequest {
 /// Image download service
 pub struct ImageService {
     pool: SqlitePool,
+    /// Separate pool for game_images database (LaunchBox CDN metadata)
+    images_pool: Option<SqlitePool>,
     cache_dir: PathBuf,
     client: reqwest::Client,
     concurrency: usize,
@@ -248,11 +250,18 @@ impl ImageService {
 
         Self {
             pool,
+            images_pool: None,
             cache_dir,
             client,
             concurrency: DEFAULT_CONCURRENCY,
             download_tx: None,
         }
+    }
+
+    /// Set the images database pool (for LaunchBox CDN metadata)
+    pub fn with_images_pool(mut self, pool: SqlitePool) -> Self {
+        self.images_pool = Some(pool);
+        self
     }
 
     /// Set download concurrency
@@ -276,6 +285,10 @@ impl ImageService {
         &self,
         launchbox_db_id: i64,
     ) -> Result<Vec<ImageInfo>> {
+        let Some(images_pool) = &self.images_pool else {
+            return Ok(vec![]);
+        };
+
         let rows: Vec<(i64, i64, String, String, Option<String>, Option<String>, i64)> =
             sqlx::query_as(
                 r#"
@@ -294,7 +307,7 @@ impl ImageService {
                 "#,
             )
             .bind(launchbox_db_id)
-            .fetch_all(&self.pool)
+            .fetch_all(images_pool)
             .await?;
 
         Ok(rows
@@ -321,6 +334,10 @@ impl ImageService {
         launchbox_db_id: i64,
         image_type: &str,
     ) -> Result<Option<ImageInfo>> {
+        let Some(images_pool) = &self.images_pool else {
+            return Ok(None);
+        };
+
         let row: Option<(i64, i64, String, String, Option<String>, Option<String>, i64)> =
             sqlx::query_as(
                 r#"
@@ -341,7 +358,7 @@ impl ImageService {
             )
             .bind(launchbox_db_id)
             .bind(image_type)
-            .fetch_optional(&self.pool)
+            .fetch_optional(images_pool)
             .await?;
 
         Ok(row.map(
@@ -361,6 +378,10 @@ impl ImageService {
 
     /// Get available image types for a game
     pub async fn get_available_types(&self, launchbox_db_id: i64) -> Result<Vec<String>> {
+        let Some(images_pool) = &self.images_pool else {
+            return Ok(vec![]);
+        };
+
         let types: Vec<(String,)> = sqlx::query_as(
             r#"
             SELECT DISTINCT image_type
@@ -377,7 +398,7 @@ impl ImageService {
             "#,
         )
         .bind(launchbox_db_id)
-        .fetch_all(&self.pool)
+        .fetch_all(images_pool)
         .await?;
 
         Ok(types.into_iter().map(|(t,)| t).collect())
@@ -385,12 +406,16 @@ impl ImageService {
 
     /// Download a single image and update the database
     pub async fn download_image(&self, image_id: i64) -> Result<String> {
+        let Some(images_pool) = &self.images_pool else {
+            anyhow::bail!("Images database not available");
+        };
+
         // Get image info
         let row: (String, i64) = sqlx::query_as(
             "SELECT filename, launchbox_db_id FROM game_images WHERE id = ?",
         )
         .bind(image_id)
-        .fetch_one(&self.pool)
+        .fetch_one(images_pool)
         .await
         .context("Image not found")?;
 
@@ -399,13 +424,6 @@ impl ImageService {
 
         // Check if already downloaded
         if local_path.exists() {
-            // Update database if needed
-            sqlx::query("UPDATE game_images SET downloaded = 1, local_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                .bind(local_path.to_string_lossy().to_string())
-                .bind(image_id)
-                .execute(&self.pool)
-                .await?;
-
             return Ok(local_path.to_string_lossy().to_string());
         }
 
@@ -430,17 +448,7 @@ impl ImageService {
         let bytes = response.bytes().await?;
         tokio::fs::write(&local_path, &bytes).await?;
 
-        // Update database
-        let local_path_str = local_path.to_string_lossy().to_string();
-        sqlx::query(
-            "UPDATE game_images SET downloaded = 1, local_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        )
-        .bind(&local_path_str)
-        .bind(image_id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(local_path_str)
+        Ok(local_path.to_string_lossy().to_string())
     }
 
     /// Download images for a game (prioritizes Box - Front)
@@ -784,17 +792,17 @@ impl ImageService {
         }
         tracing::info!("  No cached image found, trying sources...");
 
-        // 1. LaunchBox CDN (requires game_images table to be populated)
+        // 1. LaunchBox CDN (requires game_images database)
         tracing::info!("  [1/6] Trying LaunchBox CDN...");
         let _ = launchbox_platform; // silence unused warning
-        if let Some(db_id) = launchbox_db_id {
+        if let (Some(db_id), Some(images_pool)) = (launchbox_db_id, &self.images_pool) {
             // Query game_images for the UUID filename
             let filename: Option<String> = sqlx::query_scalar(
                 "SELECT filename FROM game_images WHERE launchbox_db_id = ? AND image_type = ? LIMIT 1"
             )
             .bind(db_id)
             .bind(image_type)
-            .fetch_optional(&self.pool)
+            .fetch_optional(images_pool)
             .await
             .ok()
             .flatten();
@@ -814,8 +822,10 @@ impl ImageService {
             } else {
                 tracing::info!("  [1/6] LaunchBox CDN: no image found in game_images table for db_id={}, type='{}'", db_id, image_type);
             }
-        } else {
+        } else if launchbox_db_id.is_none() {
             tracing::info!("  [1/6] LaunchBox CDN: no launchbox_db_id available");
+        } else {
+            tracing::info!("  [1/6] LaunchBox CDN: no images database available");
         }
 
         // 2. Try libretro-thumbnails (free, no account needed)
