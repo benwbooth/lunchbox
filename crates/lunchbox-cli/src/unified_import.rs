@@ -282,6 +282,7 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     // Atari - ST
     // =========================================================================
     aliases.insert("st", "Atari ST");
+    aliases.insert("atari st", "Atari ST");
     aliases.insert("atari - st", "Atari ST");
 
     // =========================================================================
@@ -478,9 +479,11 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     // Amstrad - CPC
     // =========================================================================
     aliases.insert("cpc", "Amstrad CPC");
+    aliases.insert("amstrad cpc", "Amstrad CPC");
     aliases.insert("amstrad - cpc", "Amstrad CPC");
 
     aliases.insert("gx4000", "Amstrad GX4000");
+    aliases.insert("amstrad gx4000", "Amstrad GX4000");
     aliases.insert("amstrad - gx4000", "Amstrad GX4000");
 
     // =========================================================================
@@ -790,16 +793,10 @@ pub fn normalize_platform_name(name: &str) -> String {
     let aliases = get_platform_aliases();
     let lower = name.to_lowercase().trim().to_string();
 
-    // Check direct alias match
+    // Check direct alias match only - contains() check was too greedy
+    // (e.g., "amstrad cpc" contains "pc" which would incorrectly match Windows)
     if let Some(&canonical) = aliases.get(lower.as_str()) {
         return canonical.to_string();
-    }
-
-    // Check if name contains a known alias
-    for (alias, canonical) in &aliases {
-        if lower.contains(alias) {
-            return canonical.to_string();
-        }
     }
 
     // No match - return original name cleaned up
