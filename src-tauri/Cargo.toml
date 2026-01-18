@@ -56,6 +56,7 @@ directories = "5"
 walkdir = "2"
 urlencoding = "2"
 keyring = { version = "3", features = ["linux-native", "apple-native", "windows-native"] }
+zstd = "0.13"
 
 # HTTP API for dev mode
 axum = "0.7"

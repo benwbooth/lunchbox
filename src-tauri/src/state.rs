@@ -3,7 +3,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 use crate::db;
@@ -153,6 +153,94 @@ impl AppSettings {
     }
 }
 
+/// Decompress a zstd-compressed database file
+fn decompress_database(compressed_path: &Path, output_path: &Path) -> Result<()> {
+    use std::fs::File;
+    use std::io::{BufReader, BufWriter};
+
+    tracing::info!(
+        "Decompressing {} to {}...",
+        compressed_path.display(),
+        output_path.display()
+    );
+
+    let input_file = File::open(compressed_path)?;
+    let reader = BufReader::new(input_file);
+    let mut decoder = zstd::Decoder::new(reader)?;
+
+    let output_file = File::create(output_path)?;
+    let mut writer = BufWriter::new(output_file);
+
+    std::io::copy(&mut decoder, &mut writer)?;
+
+    tracing::info!("Decompression complete");
+    Ok(())
+}
+
+/// Find and decompress a database if the uncompressed version doesn't exist
+/// Returns the path to the uncompressed database if found/decompressed
+fn find_or_decompress_database(
+    db_name: &str,
+    app_data_dir: &Path,
+    resource_dir: Option<&Path>,
+) -> Option<PathBuf> {
+    let db_file = format!("{}.db", db_name);
+    let zst_file = format!("{}.db.zst", db_name);
+
+    // Target location for decompressed database
+    let target_path = app_data_dir.join(&db_file);
+
+    // If uncompressed database already exists in app data dir, use it
+    if target_path.exists() {
+        return Some(target_path);
+    }
+
+    // Possible locations for compressed database
+    let possible_zst_paths: Vec<PathBuf> = [
+        resource_dir.map(|p| p.join(&zst_file)),
+        Some(PathBuf::from(format!("./db/{}", zst_file))),  // Dev mode
+        Some(PathBuf::from(format!("/usr/share/lunchbox/{}", zst_file))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    // Also check for uncompressed in other locations (dev mode, system)
+    let possible_db_paths: Vec<PathBuf> = [
+        resource_dir.map(|p| p.join(&db_file)),
+        Some(PathBuf::from(format!("./db/{}", db_file))),  // Dev mode
+        Some(PathBuf::from(format!("/usr/share/lunchbox/{}", db_file))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    // First check if uncompressed exists anywhere
+    for path in &possible_db_paths {
+        if path.exists() {
+            return Some(path.clone());
+        }
+    }
+
+    // Try to find and decompress a .zst file
+    for zst_path in &possible_zst_paths {
+        if zst_path.exists() {
+            if let Err(e) = decompress_database(zst_path, &target_path) {
+                tracing::warn!(
+                    "Failed to decompress {} to {}: {}",
+                    zst_path.display(),
+                    target_path.display(),
+                    e
+                );
+                continue;
+            }
+            return Some(target_path);
+        }
+    }
+
+    None
+}
+
 /// Initialize app state on startup
 pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -167,6 +255,9 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
         .expect("Failed to get app data directory");
 
     std::fs::create_dir_all(&app_data_dir)?;
+
+    // Get resource directory for bundled databases
+    let resource_dir = app.path().resource_dir().ok();
 
     // User database path - only created when needed (first write operation)
     let user_db_path = app_data_dir.join("user.db");
@@ -188,24 +279,18 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
         AppSettings::default()
     };
 
-    // Try to load games database (read-only)
+    // Find or decompress games database, then connect
     let games_db_pool = {
-        let resource_path = app.path().resource_dir()
-            .ok()
-            .map(|p| p.join("games.db"));
+        let games_db_path = find_or_decompress_database(
+            "games",
+            &app_data_dir,
+            resource_dir.as_deref(),
+        );
 
-        let possible_paths = [
-            resource_path,
-            Some(app_data_dir.join("games.db")),
-            Some(PathBuf::from("./db/games.db")),  // Dev mode
-            Some(PathBuf::from("/usr/share/lunchbox/games.db")),
-        ];
-
-        let mut found_pool = None;
-        for path_opt in possible_paths.iter().flatten() {
-            if path_opt.exists() {
-                tracing::info!("Found games database at: {}", path_opt.display());
-                let db_url = format!("sqlite:{}?mode=ro", path_opt.display());
+        match games_db_path {
+            Some(path) => {
+                tracing::info!("Found games database at: {}", path.display());
+                let db_url = format!("sqlite:{}?mode=ro", path.display());
                 match SqlitePoolOptions::new()
                     .max_connections(4)
                     .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
@@ -213,43 +298,34 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
                 {
                     Ok(pool) => {
                         tracing::info!("Connected to games database (read-only)");
-                        found_pool = Some(pool);
-                        break;
+                        Some(pool)
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to connect to games database at {}: {}", path_opt.display(), e);
+                        tracing::warn!("Failed to connect to games database: {}", e);
+                        None
                     }
                 }
             }
+            None => {
+                tracing::warn!("No games database found. Browse-first mode disabled.");
+                tracing::info!("To enable, run: lunchbox-cli unified-build --download");
+                None
+            }
         }
-
-        if found_pool.is_none() {
-            tracing::warn!("No games database found. Browse-first mode disabled.");
-            tracing::info!("To enable, place games.db in the app data directory or run:");
-            tracing::info!("  lunchbox-cli build-db --output {}", app_data_dir.join("games.db").display());
-        }
-
-        found_pool
     };
 
-    // Try to load game_images database (separate file for LaunchBox CDN metadata)
+    // Find or decompress game_images database, then connect
     let images_db_pool = {
-        let resource_path = app.path().resource_dir()
-            .ok()
-            .map(|p| p.join("game_images.db"));
+        let images_db_path = find_or_decompress_database(
+            "game_images",
+            &app_data_dir,
+            resource_dir.as_deref(),
+        );
 
-        let possible_paths = [
-            resource_path,
-            Some(app_data_dir.join("game_images.db")),
-            Some(PathBuf::from("./db/game_images.db")),  // Dev mode
-            Some(PathBuf::from("/usr/share/lunchbox/game_images.db")),
-        ];
-
-        let mut found_pool = None;
-        for path_opt in possible_paths.iter().flatten() {
-            if path_opt.exists() {
-                tracing::info!("Found images database at: {}", path_opt.display());
-                let db_url = format!("sqlite:{}?mode=ro", path_opt.display());
+        match images_db_path {
+            Some(path) => {
+                tracing::info!("Found images database at: {}", path.display());
+                let db_url = format!("sqlite:{}?mode=ro", path.display());
                 match SqlitePoolOptions::new()
                     .max_connections(4)
                     .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
@@ -257,21 +333,19 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
                 {
                     Ok(pool) => {
                         tracing::info!("Connected to images database (read-only)");
-                        found_pool = Some(pool);
-                        break;
+                        Some(pool)
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to connect to images database at {}: {}", path_opt.display(), e);
+                        tracing::warn!("Failed to connect to images database: {}", e);
+                        None
                     }
                 }
             }
+            None => {
+                tracing::info!("No images database found (LaunchBox CDN will be disabled)");
+                None
+            }
         }
-
-        if found_pool.is_none() {
-            tracing::info!("No images database found (LaunchBox CDN will be disabled)");
-        }
-
-        found_pool
     };
 
     // Update state
