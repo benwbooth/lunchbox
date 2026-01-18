@@ -88,25 +88,30 @@ pub fn LazyImage(
 ) -> impl IntoView {
     let (state, set_state) = signal(ImageState::Loading);
 
-    // Track if this component is still mounted
-    let (mounted, set_mounted) = signal(true);
+    // Use Arc<AtomicBool> for mounted flag - survives after component disposal and is thread-safe
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let mounted = Arc::new(AtomicBool::new(true));
+    let mounted_for_cleanup = mounted.clone();
 
-    // Load image on mount
     Effect::new(move || {
         let db_id = launchbox_db_id;
         let img_type = image_type.clone();
         let title = game_title.clone();
         let plat = platform.clone();
+        let mounted = mounted.clone();
 
         spawn_local(async move {
             // Check if component is still mounted
-            if !mounted.get() {
+            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
 
             // Skip if no title
             if title.is_empty() {
-                set_state.set(ImageState::NoImage);
+                if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = set_state.try_set(ImageState::NoImage);
+                }
                 return;
             }
 
@@ -122,9 +127,9 @@ pub fn LazyImage(
             ).await {
                 Ok(Some(cached)) => {
                     log(&format!("LazyImage: Cache HIT for '{}': {}", title, cached.path));
-                    if mounted.get() {
+                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
                         let url = file_to_asset_url(&cached.path);
-                        set_state.set(ImageState::Ready {
+                        let _ = set_state.try_set(ImageState::Ready {
                             url,
                             source: Some(cached.source),
                         });
@@ -140,11 +145,11 @@ pub fn LazyImage(
             }
 
             // Step 2: Download from sources
-            if !mounted.get() {
+            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
                 log(&format!("LazyImage: Unmounted before download for '{}'", title));
                 return;
             }
-            set_state.set(ImageState::Downloading {
+            let _ = set_state.try_set(ImageState::Downloading {
                 progress: -1.0,
                 source: "Searching...".to_string(),
             });
@@ -158,16 +163,16 @@ pub fn LazyImage(
             ).await {
                 Ok(local_path) => {
                     log(&format!("LazyImage: Download SUCCESS for '{}': {}", title, local_path));
-                    if mounted.get() {
+                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
                         let source = source_from_path(&local_path);
                         let url = file_to_asset_url(&local_path);
-                        set_state.set(ImageState::Ready { url, source });
+                        let _ = set_state.try_set(ImageState::Ready { url, source });
                     }
                 }
                 Err(e) => {
                     log(&format!("LazyImage: Download FAILED for '{}': {}", title, e));
-                    if mounted.get() {
-                        set_state.set(ImageState::NoImage);
+                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                        let _ = set_state.try_set(ImageState::NoImage);
                     }
                 }
             }
@@ -176,7 +181,7 @@ pub fn LazyImage(
 
     // Cleanup on unmount
     on_cleanup(move || {
-        set_mounted.set(false);
+        mounted_for_cleanup.store(false, std::sync::atomic::std::sync::atomic::Ordering::Relaxed);
     });
 
     let placeholder = placeholder.clone();
@@ -259,22 +264,22 @@ pub fn LazyImage(
 async fn download_and_update(
     info: ImageInfo,
     set_state: WriteSignal<ImageState>,
-    mounted: ReadSignal<bool>,
+    mounted: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
     // Trigger download
     match tauri::download_image(info.id).await {
         Ok(local_path) => {
-            if mounted.get() {
+            if mounted.load(std::sync::atomic::Ordering::Relaxed) {
                 let source = source_from_path(&local_path);
                 let url = file_to_asset_url(&local_path);
-                set_state.set(ImageState::Ready { url, source });
+                let _ = set_state.try_set(ImageState::Ready { url, source });
             }
         }
         Err(e) => {
-            if mounted.get() {
+            if mounted.load(std::sync::atomic::Ordering::Relaxed) {
                 log(&format!("Failed to download image: {}", e));
                 // Fall back to CDN URL if download fails
-                set_state.set(ImageState::Ready { url: info.cdn_url, source: Some("LB".to_string()) });
+                let _ = set_state.try_set(ImageState::Ready { url: info.cdn_url, source: Some("LB".to_string()) });
             }
         }
     }
