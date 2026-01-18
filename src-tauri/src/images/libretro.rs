@@ -46,76 +46,69 @@ pub fn get_libretro_platform_name(platform: &str) -> Option<&'static str> {
     let normalized = platform.to_lowercase();
 
     match normalized.as_str() {
-        // Nintendo
-        s if s.contains("nes") && !s.contains("snes") && !s.contains("super") => {
-            Some("Nintendo - Nintendo Entertainment System")
-        }
-        s if s.contains("snes") || s.contains("super nintendo") => {
+        // Nintendo - exact matches first
+        "nintendo entertainment system" | "nes" => Some("Nintendo - Nintendo Entertainment System"),
+        "super nintendo entertainment system" | "super nintendo" | "snes" => {
             Some("Nintendo - Super Nintendo Entertainment System")
         }
-        s if s.contains("nintendo 64") || s == "n64" => Some("Nintendo - Nintendo 64"),
-        s if s.contains("game boy advance") || s == "gba" => Some("Nintendo - Game Boy Advance"),
-        s if s.contains("game boy color") || s == "gbc" => Some("Nintendo - Game Boy Color"),
-        s if s.contains("game boy") && !s.contains("advance") && !s.contains("color") => {
-            Some("Nintendo - Game Boy")
-        }
-        s if s.contains("nintendo ds") || s == "nds" => Some("Nintendo - Nintendo DS"),
-        s if s.contains("nintendo 3ds") || s == "3ds" => Some("Nintendo - Nintendo 3DS"),
-        s if s.contains("gamecube") => Some("Nintendo - GameCube"),
-        s if s.contains("wii u") => Some("Nintendo - Wii U"),
-        s if s.contains("wii") && !s.contains("wii u") => Some("Nintendo - Wii"),
-        s if s.contains("switch") => Some("Nintendo - Switch"),
-        s if s.contains("virtual boy") => Some("Nintendo - Virtual Boy"),
+        "nintendo 64" | "n64" => Some("Nintendo - Nintendo 64"),
+        "nintendo game boy advance" | "game boy advance" | "gba" => Some("Nintendo - Game Boy Advance"),
+        "nintendo game boy color" | "game boy color" | "gbc" => Some("Nintendo - Game Boy Color"),
+        "nintendo game boy" | "game boy" | "gb" => Some("Nintendo - Game Boy"),
+        "nintendo ds" | "nds" => Some("Nintendo - Nintendo DS"),
+        "nintendo 3ds" | "3ds" => Some("Nintendo - Nintendo 3DS"),
+        "nintendo gamecube" | "gamecube" | "gc" => Some("Nintendo - GameCube"),
+        "nintendo wii u" | "wii u" | "wiiu" => Some("Nintendo - Wii U"),
+        "nintendo wii" | "wii" => Some("Nintendo - Wii"),
+        "nintendo switch" | "switch" => Some("Nintendo - Switch"),
+        "nintendo virtual boy" | "virtual boy" => Some("Nintendo - Virtual Boy"),
+        "nintendo famicom disk system" | "famicom disk system" | "fds" => Some("Nintendo - Famicom Disk System"),
 
         // Sega
-        s if s.contains("genesis") || s.contains("mega drive") => {
-            Some("Sega - Mega Drive - Genesis")
-        }
-        s if s.contains("master system") => Some("Sega - Master System - Mark III"),
-        s if s.contains("game gear") => Some("Sega - Game Gear"),
-        s if s.contains("saturn") => Some("Sega - Saturn"),
-        s if s.contains("dreamcast") => Some("Sega - Dreamcast"),
-        s if s.contains("sega cd") || s.contains("mega-cd") => Some("Sega - Mega-CD - Sega CD"),
-        s if s.contains("32x") => Some("Sega - 32X"),
+        "sega genesis" | "sega mega drive" | "genesis" | "mega drive" => Some("Sega - Mega Drive - Genesis"),
+        "sega master system" | "master system" => Some("Sega - Master System - Mark III"),
+        "sega game gear" | "game gear" => Some("Sega - Game Gear"),
+        "sega saturn" | "saturn" => Some("Sega - Saturn"),
+        "sega dreamcast" | "dreamcast" => Some("Sega - Dreamcast"),
+        "sega cd" | "mega-cd" | "mega cd" => Some("Sega - Mega-CD - Sega CD"),
+        "sega 32x" | "32x" => Some("Sega - 32X"),
 
         // Sony
-        s if s.contains("playstation 2") || s == "ps2" => Some("Sony - PlayStation 2"),
-        s if s.contains("playstation 3") || s == "ps3" => Some("Sony - PlayStation 3"),
-        s if s.contains("playstation portable") || s == "psp" => {
-            Some("Sony - PlayStation Portable")
-        }
-        s if s.contains("ps vita") || s.contains("vita") => Some("Sony - PlayStation Vita"),
-        s if s.contains("playstation") && !s.contains("2") && !s.contains("3") => {
-            Some("Sony - PlayStation")
-        }
+        "sony playstation 2" | "playstation 2" | "ps2" => Some("Sony - PlayStation 2"),
+        "sony playstation 3" | "playstation 3" | "ps3" => Some("Sony - PlayStation 3"),
+        "sony playstation portable" | "playstation portable" | "psp" => Some("Sony - PlayStation Portable"),
+        "sony playstation vita" | "playstation vita" | "ps vita" | "psvita" => Some("Sony - PlayStation Vita"),
+        "sony playstation" | "playstation" | "ps1" | "psx" => Some("Sony - PlayStation"),
 
         // NEC
-        s if s.contains("turbografx") && s.contains("cd") => {
-            Some("NEC - PC Engine CD - TurboGrafx-CD")
-        }
-        s if s.contains("turbografx") || s.contains("pc engine") => {
-            Some("NEC - PC Engine - TurboGrafx 16")
-        }
-        s if s.contains("supergrafx") => Some("NEC - PC Engine SuperGrafx"),
+        "nec turbografx-cd" | "turbografx-cd" | "pc engine cd" => Some("NEC - PC Engine CD - TurboGrafx-CD"),
+        "nec turbografx-16" | "turbografx-16" | "pc engine" => Some("NEC - PC Engine - TurboGrafx 16"),
+        "nec pc engine supergrafx" | "supergrafx" => Some("NEC - PC Engine SuperGrafx"),
 
         // SNK
-        s if s.contains("neo geo pocket color") => Some("SNK - Neo Geo Pocket Color"),
-        s if s.contains("neo geo pocket") => Some("SNK - Neo Geo Pocket"),
-        s if s.contains("neo geo cd") => Some("SNK - Neo Geo CD"),
-        s if s.contains("neo geo") => Some("SNK - Neo Geo"),
+        "snk neo geo pocket color" | "neo geo pocket color" | "ngpc" => Some("SNK - Neo Geo Pocket Color"),
+        "snk neo geo pocket" | "neo geo pocket" | "ngp" => Some("SNK - Neo Geo Pocket"),
+        "snk neo geo cd" | "neo geo cd" => Some("SNK - Neo Geo CD"),
+        "snk neo geo" | "neo geo" | "neogeo" => Some("SNK - Neo Geo"),
 
         // Atari
-        s if s.contains("atari 2600") => Some("Atari - 2600"),
-        s if s.contains("atari 5200") => Some("Atari - 5200"),
-        s if s.contains("atari 7800") => Some("Atari - 7800"),
-        s if s.contains("lynx") => Some("Atari - Lynx"),
-        s if s.contains("jaguar") => Some("Atari - Jaguar"),
+        "atari 2600" | "atari2600" => Some("Atari - 2600"),
+        "atari 5200" | "atari5200" => Some("Atari - 5200"),
+        "atari 7800" | "atari7800" => Some("Atari - 7800"),
+        "atari lynx" | "lynx" => Some("Atari - Lynx"),
+        "atari jaguar" | "jaguar" => Some("Atari - Jaguar"),
+        "atari st" => Some("Atari - ST"),
 
         // Other
-        s if s.contains("colecovision") => Some("Coleco - ColecoVision"),
-        s if s.contains("intellivision") => Some("Mattel - Intellivision"),
-        s if s.contains("arcade") || s.contains("mame") => Some("MAME"),
-        s if s.contains("dos") || s.contains("ms-dos") => Some("DOS"),
+        "colecovision" => Some("Coleco - ColecoVision"),
+        "mattel intellivision" | "intellivision" => Some("Mattel - Intellivision"),
+        "arcade" | "mame" => Some("MAME"),
+        "dos" | "ms-dos" => Some("DOS"),
+        "commodore 64" | "c64" => Some("Commodore - 64"),
+        "commodore amiga" | "amiga" => Some("Commodore - Amiga"),
+        "zx spectrum" | "sinclair zx spectrum" => Some("Sinclair - ZX Spectrum"),
+        "msx" => Some("Microsoft - MSX"),
+        "msx2" => Some("Microsoft - MSX2"),
 
         _ => None,
     }
