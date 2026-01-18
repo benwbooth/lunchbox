@@ -784,32 +784,12 @@ impl ImageService {
         }
         tracing::info!("  No cached image found, trying sources...");
 
-        // 1. Try LaunchBox CDN first (construct URL from platform/type/title)
-        if let Some(lb_platform) = launchbox_platform {
-            tracing::info!("  [1/6] Trying LaunchBox CDN...");
-            // LaunchBox CDN URL format: {platform}/{image_type}/{game_title}-01.jpg
-            // Example: Nintendo Entertainment System/Box - Front/Super Mario Bros.-01.jpg
-            // Each path segment must be URL encoded separately (not the slashes)
-            let cdn_url = format!(
-                "{}/{}/{}/{}-01.jpg",
-                LAUNCHBOX_CDN_URL,
-                urlencoding::encode(lb_platform),
-                urlencoding::encode(image_type),
-                urlencoding::encode(game_title)
-            );
-            tracing::info!("  [1/6] Trying URL: {}", cdn_url);
-            match self.download_to_cache(&cdn_url, &game_id, ImageSource::LaunchBox, image_type).await {
-                Ok(path) => {
-                    tracing::info!("  [1/6] SUCCESS from LaunchBox CDN: {}", path);
-                    return Ok(path);
-                }
-                Err(e) => {
-                    tracing::info!("  [1/6] LaunchBox CDN failed: {}", e);
-                }
-            }
-        } else {
-            tracing::info!("  [1/6] Skipping LaunchBox (no launchbox_platform)");
-        }
+        // 1. LaunchBox CDN - DISABLED
+        // LaunchBox CDN uses UUID-based URLs (e.g., images.launchbox-app.com/r2_{uuid}.jpg)
+        // We would need to import the game_images metadata to use this source.
+        // For now, skip to libretro which works with title-based URLs.
+        tracing::info!("  [1/6] Skipping LaunchBox CDN (requires image metadata import)");
+        let _ = launchbox_platform; // silence unused warning
 
         // 2. Try libretro-thumbnails (free, no account needed)
         tracing::info!("  [2/6] Trying libretro-thumbnails...");
