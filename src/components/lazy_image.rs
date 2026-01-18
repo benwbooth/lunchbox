@@ -7,8 +7,12 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use web_sys::console;
-use crate::tauri::{self, file_to_asset_url, ImageInfo};
+use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
+
+/// Log to backend for debugging
+fn log(msg: &str) {
+    log_to_backend("info", msg);
+}
 
 /// Loading state for an image
 #[derive(Debug, Clone, PartialEq)]
@@ -106,6 +110,8 @@ pub fn LazyImage(
                 return;
             }
 
+            log(&format!("LazyImage: Loading '{}' (db_id={}, platform={})", title, db_id, plat));
+
             // Step 1: Fast cache check (no network, just filesystem)
             let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
             match tauri::check_cached_media(
@@ -115,7 +121,7 @@ pub fn LazyImage(
                 db_id_opt,
             ).await {
                 Ok(Some(cached)) => {
-                    // Cache hit - display immediately
+                    log(&format!("LazyImage: Cache HIT for '{}': {}", title, cached.path));
                     if mounted.get() {
                         let url = file_to_asset_url(&cached.path);
                         set_state.set(ImageState::Ready {
@@ -126,16 +132,16 @@ pub fn LazyImage(
                     return;
                 }
                 Ok(None) => {
-                    // Cache miss - need to download
+                    log(&format!("LazyImage: Cache MISS for '{}'", title));
                 }
                 Err(e) => {
-                    console::log_1(&format!("LazyImage: Cache check error: {}", e).into());
-                    // Continue to download
+                    log(&format!("LazyImage: Cache check ERROR for '{}': {}", title, e));
                 }
             }
 
             // Step 2: Download from sources
             if !mounted.get() {
+                log(&format!("LazyImage: Unmounted before download for '{}'", title));
                 return;
             }
             set_state.set(ImageState::Downloading {
@@ -143,6 +149,7 @@ pub fn LazyImage(
                 source: "Searching...".to_string(),
             });
 
+            log(&format!("LazyImage: Starting download for '{}'", title));
             match tauri::download_image_with_fallback(
                 title.clone(),
                 plat.clone(),
@@ -150,6 +157,7 @@ pub fn LazyImage(
                 db_id_opt,
             ).await {
                 Ok(local_path) => {
+                    log(&format!("LazyImage: Download SUCCESS for '{}': {}", title, local_path));
                     if mounted.get() {
                         let source = source_from_path(&local_path);
                         let url = file_to_asset_url(&local_path);
@@ -157,7 +165,7 @@ pub fn LazyImage(
                     }
                 }
                 Err(e) => {
-                    console::log_1(&format!("LazyImage: Download failed for '{}': {}", title, e).into());
+                    log(&format!("LazyImage: Download FAILED for '{}': {}", title, e));
                     if mounted.get() {
                         set_state.set(ImageState::NoImage);
                     }
@@ -264,7 +272,7 @@ async fn download_and_update(
         }
         Err(e) => {
             if mounted.get() {
-                console::warn_1(&format!("Failed to download image: {}", e).into());
+                log(&format!("Failed to download image: {}", e));
                 // Fall back to CDN URL if download fails
                 set_state.set(ImageState::Ready { url: info.cdn_url, source: Some("LB".to_string()) });
             }

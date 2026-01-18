@@ -30,6 +30,43 @@ fn is_tauri() -> bool {
 /// The HTTP API base URL for browser mode
 const HTTP_API_BASE: &str = "http://127.0.0.1:3001";
 
+// ============ Backend Logging ============
+
+/// Send a log message to the backend (fire and forget)
+pub fn log_to_backend(level: &str, message: &str) {
+    use wasm_bindgen_futures::spawn_local;
+    let level = level.to_string();
+    let message = message.to_string();
+    spawn_local(async move {
+        let _ = log_to_backend_async(&level, &message).await;
+    });
+}
+
+async fn log_to_backend_async(level: &str, message: &str) -> Result<(), String> {
+    use web_sys::{Request, RequestInit, RequestMode};
+
+    #[derive(Serialize)]
+    struct LogMessage<'a> {
+        level: &'a str,
+        message: &'a str,
+    }
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let body = serde_json::to_string(&LogMessage { level, message }).map_err(|e| e.to_string())?;
+    opts.set_body(&JsValue::from_str(&body));
+
+    let url = format!("{}/api/log", HTTP_API_BASE);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
+    request.headers().set("Content-Type", "application/json").map_err(|e| format!("{:?}", e))?;
+
+    let window = web_sys::window().ok_or("No window")?;
+    let _ = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await;
+    Ok(())
+}
+
 // ============ HTTP Fetch Helpers ============
 
 async fn http_get<T: DeserializeOwned>(path: &str) -> Result<T, String> {

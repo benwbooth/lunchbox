@@ -107,6 +107,7 @@ pub fn create_router(state: SharedState) -> Router {
 
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/log", post(frontend_log))
         .route("/api/platforms", get(get_platforms))
         .route("/api/games", get(get_games))
         .route("/api/games/count", get(get_game_count))
@@ -129,6 +130,22 @@ pub fn create_router(state: SharedState) -> Router {
 }
 
 async fn health() -> &'static str {
+    "ok"
+}
+
+#[derive(Debug, Deserialize)]
+struct LogMessage {
+    level: String,
+    message: String,
+}
+
+async fn frontend_log(Json(log): Json<LogMessage>) -> &'static str {
+    match log.level.as_str() {
+        "error" => tracing::error!("[FRONTEND] {}", log.message),
+        "warn" => tracing::warn!("[FRONTEND] {}", log.message),
+        "info" => tracing::info!("[FRONTEND] {}", log.message),
+        _ => tracing::debug!("[FRONTEND] {}", log.message),
+    }
     "ok"
 }
 
