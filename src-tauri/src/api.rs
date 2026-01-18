@@ -11,6 +11,7 @@ use crate::state::AppState;
 use axum::{
     extract::State,
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -798,6 +799,33 @@ async fn remove_favorite(
 // rspc-style Image Endpoints
 // ============================================================================
 
+// JSON-RPC response wrapper for rspc compatibility
+#[derive(Debug, serde::Serialize)]
+struct RspcResponse<T: serde::Serialize> {
+    result: RspcResult<T>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "type", content = "data")]
+enum RspcResult<T: serde::Serialize> {
+    #[serde(rename = "response")]
+    Response(T),
+    #[serde(rename = "error")]
+    Error { message: String },
+}
+
+fn rspc_ok<T: serde::Serialize>(data: T) -> Json<RspcResponse<T>> {
+    Json(RspcResponse {
+        result: RspcResult::Response(data),
+    })
+}
+
+fn rspc_err<T: serde::Serialize>(message: String) -> (StatusCode, Json<RspcResponse<T>>) {
+    (StatusCode::OK, Json(RspcResponse {
+        result: RspcResult::Error { message },
+    }))
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GetGameImageInput {
@@ -819,15 +847,17 @@ pub struct ImageInfo {
 async fn rspc_get_game_image(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
-) -> Result<Json<Option<ImageInfo>>, (StatusCode, String)> {
+) -> impl axum::response::IntoResponse {
     // Parse the input parameter (JSON-encoded)
-    let input_str = params.get("input").ok_or_else(|| {
-        (StatusCode::BAD_REQUEST, "Missing 'input' parameter".to_string())
-    })?;
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Option<ImageInfo>>("Missing 'input' parameter".to_string()).into_response(),
+    };
 
-    let input: GetGameImageInput = serde_json::from_str(input_str).map_err(|e| {
-        (StatusCode::BAD_REQUEST, format!("Invalid input: {}", e))
-    })?;
+    let input: GetGameImageInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<Option<ImageInfo>>(format!("Invalid input: {}", e)).into_response(),
+    };
 
     tracing::info!("rspc_get_game_image: launchbox_db_id={}, image_type={}",
         input.launchbox_db_id, input.image_type);
@@ -840,27 +870,27 @@ async fn rspc_get_game_image(
 
         match service.get_image_by_type(input.launchbox_db_id, &input.image_type).await {
             Ok(Some(info)) => {
-                return Ok(Json(Some(ImageInfo {
+                return rspc_ok(Some(ImageInfo {
                     id: info.id,
                     launchbox_db_id: info.launchbox_db_id,
                     image_type: info.image_type,
                     cdn_url: info.cdn_url,
                     local_path: info.local_path,
                     downloaded: info.downloaded,
-                })));
+                })).into_response();
             }
             Ok(None) => {
                 tracing::info!("  No image metadata found");
-                return Ok(Json(None));
+                return rspc_ok::<Option<ImageInfo>>(None).into_response();
             }
             Err(e) => {
                 tracing::warn!("  Error getting image: {}", e);
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+                return rspc_err::<Option<ImageInfo>>(e.to_string()).into_response();
             }
         }
     }
 
-    Ok(Json(None))
+    rspc_ok::<Option<ImageInfo>>(None).into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -875,23 +905,27 @@ struct DownloadImageWithFallbackInput {
 async fn rspc_download_image_with_fallback(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
-) -> Result<Json<String>, (StatusCode, String)> {
+) -> impl IntoResponse {
     // Parse the input parameter (JSON-encoded)
-    let input_str = params.get("input").ok_or_else(|| {
-        (StatusCode::BAD_REQUEST, "Missing 'input' parameter".to_string())
-    })?;
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<String>("Missing 'input' parameter".to_string()).into_response(),
+    };
 
-    let input: DownloadImageWithFallbackInput = serde_json::from_str(input_str).map_err(|e| {
-        (StatusCode::BAD_REQUEST, format!("Invalid input: {}", e))
-    })?;
+    let input: DownloadImageWithFallbackInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
+    };
 
     tracing::info!("rspc_download_image_with_fallback: game='{}', platform='{}', type='{}', db_id={:?}",
         input.game_title, input.platform, input.image_type, input.launchbox_db_id);
 
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "Database not initialized".to_string()))?;
+    let pool = match state_guard.db_pool.as_ref() {
+        Some(p) => p,
+        None => return rspc_err::<String>("Database not initialized".to_string()).into_response(),
+    };
 
     let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
     let service = crate::images::ImageService::new(pool.clone(), cache_dir.clone());
@@ -964,11 +998,11 @@ async fn rspc_download_image_with_fallback(
     ).await {
         Ok(path) => {
             tracing::info!("  Download succeeded: {}", path);
-            Ok(Json(path))
+            rspc_ok(path).into_response()
         }
         Err(e) => {
             tracing::warn!("  Download failed: {}", e);
-            Err((StatusCode::NOT_FOUND, e.to_string()))
+            rspc_err::<String>(e.to_string()).into_response()
         }
     }
 }
