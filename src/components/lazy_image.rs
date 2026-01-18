@@ -142,6 +142,17 @@ pub fn LazyImage(
 ) -> impl IntoView {
     let (state, set_state) = signal(ImageState::Loading);
 
+    // Create a signal to track the game identity - this makes the Effect re-run when props change
+    // This is critical for virtual scrolling where components may be reused with different props
+    let (game_key, set_game_key) = signal((launchbox_db_id, game_title.clone(), platform.clone(), image_type.clone()));
+
+    // Update game_key when props differ (handles component reuse in virtual scroll)
+    let current_props = (launchbox_db_id, game_title.clone(), platform.clone(), image_type.clone());
+    if game_key.get_untracked() != current_props {
+        set_game_key.set(current_props);
+        set_state.set(ImageState::Loading);
+    }
+
     // Use Arc<AtomicBool> for mounted flag - survives after component disposal and is thread-safe
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
@@ -149,10 +160,8 @@ pub fn LazyImage(
     let mounted_for_cleanup = mounted.clone();
 
     Effect::new(move || {
-        let db_id = launchbox_db_id;
-        let img_type = image_type.clone();
-        let title = game_title.clone();
-        let plat = platform.clone();
+        // Track game_key so this effect re-runs when the game changes
+        let (db_id, title, plat, img_type) = game_key.get();
         let mounted = mounted.clone();
 
         // Skip if no title
@@ -186,11 +195,9 @@ pub fn LazyImage(
                 }
                 Ok(None) => {
                     // Cache miss - need to download
-                    log_to_backend("debug", &format!("Cache miss for {}", title));
                 }
-                Err(e) => {
-                    // Error checking cache - log and try downloading anyway
-                    log_to_backend("warn", &format!("Cache check error for {}: {}", title, e));
+                Err(_e) => {
+                    // Error checking cache - try downloading anyway
                 }
             }
 
