@@ -17,11 +17,12 @@ const LIBRETRO_THUMBNAILS_URL: &str = "https://thumbnails.libretro.com";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Test game: Super Mario Bros. on NES
+    // Test game: Super Mario Bros. on NES (launchbox_db_id 140 has box art)
     let game_title = "Super Mario Bros.";
     let platform = "Nintendo Entertainment System";
     let libretro_platform = "Nintendo - Nintendo Entertainment System";
     let libretro_title = "Super Mario Bros. (World)";
+    let launchbox_db_id: i64 = 140;  // Known to have Box - Front images
 
     let client = reqwest::Client::builder()
         .user_agent("Lunchbox/1.0")
@@ -109,7 +110,7 @@ async fn main() -> Result<()> {
 
     // Test 6: LaunchBox CDN (requires game_images.db)
     println!("━━━ Test 6: LaunchBox CDN ━━━");
-    let lb_result = test_launchbox_cdn(&client, game_title, platform).await;
+    let lb_result = test_launchbox_cdn(&client, launchbox_db_id).await;
     results.push(("LaunchBox CDN", lb_result));
     println!();
 
@@ -312,8 +313,6 @@ async fn test_igdb(client: &reqwest::Client, client_id: &str, client_secret: &st
 }
 
 async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestResult {
-    use std::io::{BufRead, BufReader};
-
     println!("Connecting to FTP...");
 
     // Use suppaftp for FTP connection
@@ -433,7 +432,7 @@ async fn test_screenscraper(
     }
 }
 
-async fn test_launchbox_cdn(client: &reqwest::Client, game_title: &str, platform: &str) -> TestResult {
+async fn test_launchbox_cdn(client: &reqwest::Client, launchbox_db_id: i64) -> TestResult {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::str::FromStr;
 
@@ -458,6 +457,7 @@ async fn test_launchbox_cdn(client: &reqwest::Client, game_title: &str, platform
     };
 
     println!("Using database: {}", db_path);
+    println!("LaunchBox DB ID: {}", launchbox_db_id);
 
     // Connect to database
     let db_url = format!("sqlite:{}?mode=ro", db_path);
@@ -469,53 +469,6 @@ async fn test_launchbox_cdn(client: &reqwest::Client, game_title: &str, platform
         Ok(p) => p,
         Err(e) => return TestResult::Failed(format!("DB connect failed: {}", e)),
     };
-
-    // Find game by title in games.db first
-    let games_db_paths = [
-        "../db/games.db",
-        "./db/games.db",
-        &format!("{}/.local/share/lunchbox/games.db", std::env::var("HOME").unwrap_or_default()),
-    ];
-
-    let mut games_db_path = None;
-    for path in &games_db_paths {
-        if std::path::Path::new(path).exists() {
-            games_db_path = Some(path.to_string());
-            break;
-        }
-    }
-
-    let games_db_path = match games_db_path {
-        Some(p) => p,
-        None => return TestResult::Failed("games.db not found".to_string()),
-    };
-
-    let games_db_url = format!("sqlite:{}?mode=ro", games_db_path);
-    let games_pool = match SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(SqliteConnectOptions::from_str(&games_db_url).unwrap().read_only(true))
-        .await
-    {
-        Ok(p) => p,
-        Err(e) => return TestResult::Failed(format!("Games DB connect failed: {}", e)),
-    };
-
-    // Find game
-    let row: Option<(i64,)> = sqlx::query_as(
-        "SELECT launchbox_db_id FROM games WHERE title LIKE ? AND launchbox_db_id IS NOT NULL LIMIT 1"
-    )
-    .bind(format!("%{}%", game_title))
-    .fetch_optional(&games_pool)
-    .await
-    .ok()
-    .flatten();
-
-    let launchbox_db_id = match row {
-        Some((id,)) => id,
-        None => return TestResult::Failed("Game not found in database".to_string()),
-    };
-
-    println!("Found game with LaunchBox ID: {}", launchbox_db_id);
 
     // Look up image in game_images
     let image_row: Option<(String,)> = sqlx::query_as(
@@ -529,7 +482,7 @@ async fn test_launchbox_cdn(client: &reqwest::Client, game_title: &str, platform
 
     let filename = match image_row {
         Some((f,)) => f,
-        None => return TestResult::Failed("No image in database".to_string()),
+        None => return TestResult::Failed("No Box - Front image in database".to_string()),
     };
 
     // Build CDN URL
