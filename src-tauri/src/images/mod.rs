@@ -154,8 +154,10 @@ pub fn find_cached_media(
 
     // Fast path: if game directory doesn't exist, no cache hit possible
     if !game_dir.exists() {
+        tracing::trace!("find_cached_media: game_dir does not exist: {:?}", game_dir);
         return None;
     }
+    tracing::trace!("find_cached_media: checking game_dir={:?}, type={}", game_dir, normalized_type);
 
     for source in ImageSource::all_sources() {
         let source_dir = game_dir.join(source.folder_name());
