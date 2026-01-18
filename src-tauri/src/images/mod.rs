@@ -122,7 +122,8 @@ pub fn normalize_image_type(image_type: &str) -> String {
 }
 
 /// Get the media cache path for a game/source/type combination
-/// Structure: {cache_dir}/media/{game_id}/{source}/{image_type}.png
+/// Structure: {cache_dir}/{game_id}/{source}/{image_type}.png
+/// Note: cache_dir is already the media directory (e.g., ~/.local/share/lunchbox/media)
 pub fn get_media_path(
     cache_dir: &Path,
     game_id: &str,
@@ -130,7 +131,6 @@ pub fn get_media_path(
     image_type: &str,
 ) -> PathBuf {
     cache_dir
-        .join("media")
         .join(game_id)
         .join(source.folder_name())
         .join(format!("{}.png", normalize_image_type(image_type)))
@@ -144,7 +144,7 @@ pub fn find_cached_media(
     image_type: &str,
 ) -> Option<(PathBuf, ImageSource)> {
     let normalized_type = normalize_image_type(image_type);
-    let game_dir = cache_dir.join("media").join(game_id);
+    let game_dir = cache_dir.join(game_id);
 
     for source in ImageSource::all_sources() {
         let path = game_dir
