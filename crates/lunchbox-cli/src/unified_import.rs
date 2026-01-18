@@ -910,6 +910,23 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_db_id ON game_alternate_names(launchbox_db_id)").execute(pool).await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_name ON game_alternate_names(alternate_name)").execute(pool).await?;
 
+    // Game images table (LaunchBox CDN metadata for UUID-based lookups)
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS game_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            launchbox_db_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            image_type TEXT NOT NULL,
+            region TEXT,
+            crc32 TEXT,
+            UNIQUE(launchbox_db_id, filename)
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_game_images_lookup ON game_images(launchbox_db_id, image_type)").execute(pool).await?;
+
     Ok(())
 }
 
@@ -1495,6 +1512,41 @@ impl UnifiedImporter {
         Ok(imported)
     }
 
+    /// Batch import game images (LaunchBox CDN metadata)
+    pub async fn import_game_images_batch(
+        &self,
+        images: &[crate::launchbox::GameImage],
+        pb: &ProgressBar,
+    ) -> Result<usize> {
+        let mut imported = 0;
+        let batch_size = 10000; // Larger batch size since these are simple inserts
+
+        for chunk in images.chunks(batch_size) {
+            let mut tx = self.pool.begin().await?;
+
+            for img in chunk {
+                sqlx::query(r#"
+                    INSERT OR IGNORE INTO game_images (launchbox_db_id, filename, image_type, region, crc32)
+                    VALUES (?, ?, ?, ?, ?)
+                "#)
+                .bind(img.database_id)
+                .bind(&img.filename)
+                .bind(&img.image_type)
+                .bind(&img.region)
+                .bind(&img.crc32)
+                .execute(&mut *tx)
+                .await?;
+
+                imported += 1;
+            }
+
+            tx.commit().await?;
+            pb.inc(chunk.len() as u64);
+        }
+
+        Ok(imported)
+    }
+
     /// Batch import LibRetro games for a single platform
     /// Uses transaction for speed, matches by CRC or normalized title, or inserts new
     pub async fn import_libretro_games_batch(
@@ -1771,6 +1823,16 @@ pub async fn build_unified_database(
             let alt_imported = importer.import_alternate_names_batch(&alt_names, &pb).await?;
             pb.finish_with_message("Done");
             println!("  Imported {} alternate names", alt_imported);
+
+            // Import game images (for LaunchBox CDN lookups)
+            println!("  Parsing game images...");
+            let game_images = launchbox::parse_game_images(xml_path)?;
+            println!("  Parsed {} game images", game_images.len());
+
+            let pb = create_progress_bar(game_images.len() as u64, "Importing game images");
+            let images_imported = importer.import_game_images_batch(&game_images, &pb).await?;
+            pb.finish_with_message("Done");
+            println!("  Imported {} game images", images_imported);
             println!();
         }
     }

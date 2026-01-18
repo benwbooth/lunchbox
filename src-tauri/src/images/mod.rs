@@ -784,12 +784,39 @@ impl ImageService {
         }
         tracing::info!("  No cached image found, trying sources...");
 
-        // 1. LaunchBox CDN - DISABLED
-        // LaunchBox CDN uses UUID-based URLs (e.g., images.launchbox-app.com/r2_{uuid}.jpg)
-        // We would need to import the game_images metadata to use this source.
-        // For now, skip to libretro which works with title-based URLs.
-        tracing::info!("  [1/6] Skipping LaunchBox CDN (requires image metadata import)");
+        // 1. LaunchBox CDN (requires game_images table to be populated)
+        tracing::info!("  [1/6] Trying LaunchBox CDN...");
         let _ = launchbox_platform; // silence unused warning
+        if let Some(db_id) = launchbox_db_id {
+            // Query game_images for the UUID filename
+            let filename: Option<String> = sqlx::query_scalar(
+                "SELECT filename FROM game_images WHERE launchbox_db_id = ? AND image_type = ? LIMIT 1"
+            )
+            .bind(db_id)
+            .bind(image_type)
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(filename) = filename {
+                let url = format!("{}/{}", LAUNCHBOX_CDN_URL, filename);
+                tracing::info!("  [1/6] Found image in game_images: {}", url);
+                match self.download_to_cache(&url, &game_id, ImageSource::LaunchBox, image_type).await {
+                    Ok(path) => {
+                        tracing::info!("  [1/6] SUCCESS from LaunchBox CDN: {}", path);
+                        return Ok(path);
+                    }
+                    Err(e) => {
+                        tracing::info!("  [1/6] LaunchBox CDN download failed: {}", e);
+                    }
+                }
+            } else {
+                tracing::info!("  [1/6] LaunchBox CDN: no image found in game_images table for db_id={}, type='{}'", db_id, image_type);
+            }
+        } else {
+            tracing::info!("  [1/6] LaunchBox CDN: no launchbox_db_id available");
+        }
 
         // 2. Try libretro-thumbnails (free, no account needed)
         tracing::info!("  [2/6] Trying libretro-thumbnails...");

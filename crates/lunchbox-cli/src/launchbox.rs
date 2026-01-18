@@ -232,6 +232,98 @@ pub fn parse_alternate_names(path: &Path) -> Result<Vec<GameAlternateName>> {
     Ok(alt_names)
 }
 
+/// Image metadata from LaunchBox
+#[derive(Debug, Clone, Default)]
+pub struct GameImage {
+    pub database_id: i64,
+    pub filename: String,  // UUID filename like "3c4cc1f6-051a-43f5-b904-b60eed55b074.jpg"
+    pub image_type: String,  // "Box - Front", "Screenshot - Gameplay", etc.
+    pub region: Option<String>,
+    pub crc32: Option<String>,
+}
+
+/// Parse GameImage entries from LaunchBox Metadata.xml
+pub fn parse_game_images(path: &Path) -> Result<Vec<GameImage>> {
+    let file = File::open(path).context("Failed to open Metadata.xml")?;
+    let file_size = file.metadata()?.len();
+    let reader = BufReader::new(file);
+
+    let mut xml_reader = Reader::from_reader(reader);
+    xml_reader.config_mut().trim_text(true);
+
+    let mut images = Vec::new();
+    let mut current_image: Option<GameImage> = None;
+    let mut current_field: Option<String> = None;
+    let mut buf = Vec::new();
+
+    let pb = ProgressBar::new(file_size);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}) {msg}")
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    pb.set_message("Parsing game images");
+
+    loop {
+        match xml_reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+
+                if tag_name == "GameImage" {
+                    current_image = Some(GameImage::default());
+                } else if current_image.is_some() {
+                    current_field = Some(tag_name);
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+
+                if tag_name == "GameImage" {
+                    if let Some(img) = current_image.take() {
+                        // Only keep entries with valid data
+                        if img.database_id > 0 && !img.filename.is_empty() && !img.image_type.is_empty() {
+                            images.push(img);
+                        }
+                    }
+                }
+                current_field = None;
+            }
+            Ok(Event::Text(ref e)) => {
+                if let (Some(ref mut img), Some(ref field)) = (&mut current_image, &current_field) {
+                    let text = e.unescape().unwrap_or_default().to_string();
+                    if !text.is_empty() {
+                        match field.as_str() {
+                            "DatabaseID" => img.database_id = text.parse().unwrap_or(0),
+                            "FileName" => img.filename = text,
+                            "Type" => img.image_type = text,
+                            "Region" => img.region = Some(text),
+                            "CRC32" => img.crc32 = Some(text),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => {
+                tracing::warn!("XML parse error at position {}: {}", xml_reader.buffer_position(), e);
+            }
+            _ => {}
+        }
+
+        // Update progress periodically
+        if images.len() % 50000 == 0 {
+            pb.set_position(xml_reader.buffer_position() as u64);
+        }
+
+        buf.clear();
+    }
+
+    pb.finish_with_message(format!("Parsed {} game images", images.len()));
+
+    Ok(images)
+}
+
 /// Build lookup indexes for LaunchBox games
 pub struct LaunchBoxIndex {
     /// Normalized title + platform -> game index
