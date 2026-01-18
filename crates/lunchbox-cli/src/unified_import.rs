@@ -1783,8 +1783,12 @@ fn create_progress_bar(len: u64, msg: &str) -> ProgressBar {
 
 /// Build unified database from multiple sources
 /// Import order: LaunchBox (best) -> LibRetro (checksums) -> OpenVGDB (enrichment)
+///
+/// - `output`: Where to build the database (typically db/ in the source tree)
+/// - `data_dir`: Where to copy uncompressed databases for runtime use (~/.local/share/lunchbox)
 pub async fn build_unified_database(
     output: &Path,
+    data_dir: &Path,
     launchbox_xml: Option<&Path>,
     libretro_path: Option<&Path>,
     openvgdb_path: Option<&Path>,
@@ -1965,8 +1969,8 @@ pub async fn build_unified_database(
             println!("  Games:           {}", games);
             println!("  Alternate names: {}", alt_names);
 
-            // Compress the database
-            compress_database(output)?;
+            // Compress, check sizes, and copy to runtime directory
+            finalize_databases(output, data_dir)?;
 
             return Ok(());
         }
@@ -1981,21 +1985,80 @@ pub async fn build_unified_database(
     println!("  Alternate names: {}", alt_names);
     println!("  Output:          {}", output.display());
 
-    // Compress the database
-    compress_database(output)?;
+    // Compress, check sizes, and copy to runtime directory
+    finalize_databases(output, data_dir)?;
+
+    Ok(())
+}
+
+const MAX_COMPRESSED_SIZE: u64 = 100 * 1024 * 1024; // 100 MB (GitHub file size limit)
+
+/// Finalize databases: compress, check sizes, and copy to runtime directory
+fn finalize_databases(output: &Path, data_dir: &Path) -> Result<()> {
+    let images_db_path = output.with_file_name("game_images.db");
+
+    // Compress both databases
+    let games_compressed_size = compress_database(output)?;
+    let images_compressed_size = if images_db_path.exists() {
+        compress_database(&images_db_path)?
+    } else {
+        0
+    };
+
+    // Check compressed sizes against GitHub's 100MB limit
+    let mut too_large = Vec::new();
+    if games_compressed_size > MAX_COMPRESSED_SIZE {
+        too_large.push((output.with_extension("db.zst"), games_compressed_size));
+    }
+    if images_compressed_size > MAX_COMPRESSED_SIZE {
+        too_large.push((images_db_path.with_extension("db.zst"), images_compressed_size));
+    }
+
+    if !too_large.is_empty() {
+        eprintln!();
+        eprintln!("╔═══════════════════════════════════════════════════════════════════════╗");
+        eprintln!("║  ⚠️  ERROR: COMPRESSED DATABASE(S) EXCEED 100 MB GITHUB LIMIT  ⚠️     ║");
+        eprintln!("╠═══════════════════════════════════════════════════════════════════════╣");
+        for (path, size) in &too_large {
+            eprintln!("║  {} ({} MB)", path.file_name().unwrap().to_string_lossy(), size / 1024 / 1024);
+        }
+        eprintln!("║                                                                       ║");
+        eprintln!("║  These files are too large to commit to GitHub!                       ║");
+        eprintln!("║  Consider reducing database size or using Git LFS.                    ║");
+        eprintln!("╚═══════════════════════════════════════════════════════════════════════╝");
+        eprintln!();
+        anyhow::bail!("Compressed database(s) exceed 100 MB GitHub file size limit");
+    }
+
+    // Copy uncompressed databases to runtime directory
+    std::fs::create_dir_all(data_dir)?;
+
+    println!();
+    println!("Copying databases to runtime directory...");
+
+    let games_dest = data_dir.join("games.db");
+    std::fs::copy(output, &games_dest)?;
+    println!("  Copied: {} -> {}", output.display(), games_dest.display());
+
+    if images_db_path.exists() {
+        let images_dest = data_dir.join("game_images.db");
+        std::fs::copy(&images_db_path, &images_dest)?;
+        println!("  Copied: {} -> {}", images_db_path.display(), images_dest.display());
+    }
 
     Ok(())
 }
 
 /// Compress the database with zstd ultra compression
-fn compress_database(db_path: &Path) -> Result<()> {
+/// Returns the compressed file size in bytes
+fn compress_database(db_path: &Path) -> Result<u64> {
     use std::fs::File;
     use std::io::{BufReader, BufWriter};
 
     let compressed_path = db_path.with_extension("db.zst");
 
     println!();
-    println!("Compressing database...");
+    println!("Compressing {}...", db_path.file_name().unwrap().to_string_lossy());
 
     let input_file = File::open(db_path)?;
     let input_size = input_file.metadata()?.len();
@@ -2017,5 +2080,5 @@ fn compress_database(db_path: &Path) -> Result<()> {
     println!("  Compressed: {} MB ({:.1}%)", compressed_size / 1024 / 1024, ratio);
     println!("  Output:     {}", compressed_path.display());
 
-    Ok(())
+    Ok(compressed_size)
 }

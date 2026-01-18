@@ -1383,11 +1383,14 @@ async fn cmd_unified_build(
     download: bool,
     data_dir: Option<PathBuf>,
 ) -> Result<()> {
-    // Determine output path - default to data directory
+    // Runtime data directory (for uncompressed DBs and downloaded sources)
     let data_dir = data_dir.unwrap_or_else(download::default_data_dir);
-    let output = output.unwrap_or_else(|| data_dir.join("games.db"));
 
-    // Create data directory if needed
+    // Build output defaults to db/ in current directory (source tree)
+    // Compressed DBs go here for git commit; uncompressed are copied to data_dir
+    let output = output.unwrap_or_else(|| PathBuf::from("db/games.db"));
+
+    // Create output directory if needed
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -1411,6 +1414,7 @@ async fn cmd_unified_build(
 
     unified_import::build_unified_database(
         &output,
+        &data_dir,
         launchbox_xml.as_deref(),
         libretro_path.as_deref(),
         openvgdb.as_deref(),

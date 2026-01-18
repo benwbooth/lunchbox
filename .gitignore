@@ -19,13 +19,11 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
-# Database
+# Database (uncompressed - compressed .db.zst files in db/ are committed)
 *.db
 *.db-shm
 *.db-wal
-*.db.zst
 *.sqlite
-/db/
 
 # LaunchBox data (large)
 /launchbox-data/

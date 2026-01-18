@@ -1,0 +1,2 @@
+# Uncompressed databases are ignored by root .gitignore (*.db)
+# Only compressed .db.zst files should be committed
