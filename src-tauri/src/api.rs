@@ -960,13 +960,14 @@ async fn rspc_check_cached_media(
 
     // Check cache
     if let Some((path, source)) = crate::images::find_cached_media(&cache_dir, &game_id, &input.image_type) {
-        tracing::debug!("Cache hit for {}: {:?}", game_id, path);
+        tracing::info!("check_cached_media: HIT game_id={}, path={:?}", game_id, path);
         return rspc_ok(Some(CachedMediaResult {
             path: path.to_string_lossy().to_string(),
             source: source.abbreviation().to_string(),
         })).into_response();
     }
 
+    tracing::info!("check_cached_media: MISS game_id={}, cache_dir={:?}", game_id, cache_dir);
     rspc_ok::<Option<CachedMediaResult>>(None).into_response()
 }
 

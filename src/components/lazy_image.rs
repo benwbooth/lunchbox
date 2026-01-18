@@ -186,9 +186,11 @@ pub fn LazyImage(
                 }
                 Ok(None) => {
                     // Cache miss - need to download
+                    log_to_backend("debug", &format!("Cache miss for {}", title));
                 }
-                Err(_e) => {
-                    // Error checking cache - try downloading anyway
+                Err(e) => {
+                    // Error checking cache - log and try downloading anyway
+                    log_to_backend("warn", &format!("Cache check error for {}: {}", title, e));
                 }
             }
 
