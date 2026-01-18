@@ -136,8 +136,14 @@ pub fn get_media_path(
         .join(format!("{}.png", normalize_image_type(image_type)))
 }
 
+/// Common image extensions to check for cached files
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
+
 /// Find cached media for a game by checking all source folders
 /// Returns the path and source of the first found image
+///
+/// Optimized: first checks if game_dir exists, then uses directory listing
+/// to find matching files instead of checking each extension individually.
 pub fn find_cached_media(
     cache_dir: &Path,
     game_id: &str,
@@ -146,13 +152,35 @@ pub fn find_cached_media(
     let normalized_type = normalize_image_type(image_type);
     let game_dir = cache_dir.join(game_id);
 
+    // Fast path: if game directory doesn't exist, no cache hit possible
+    if !game_dir.exists() {
+        return None;
+    }
+
     for source in ImageSource::all_sources() {
-        let path = game_dir
-            .join(source.folder_name())
-            .join(format!("{}.png", normalized_type));
-        if path.exists() {
-            tracing::debug!("Cache hit: {} from {:?}", path.display(), source);
-            return Some((path, *source));
+        let source_dir = game_dir.join(source.folder_name());
+
+        // Fast path: skip if source directory doesn't exist
+        if !source_dir.exists() {
+            continue;
+        }
+
+        // Look for any file matching the normalized type with any extension
+        if let Ok(entries) = std::fs::read_dir(&source_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if stem == normalized_type {
+                        // Check it's an image file
+                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                            if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                                tracing::debug!("Cache hit: {} from {:?}", path.display(), source);
+                                return Some((path, *source));
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     None
