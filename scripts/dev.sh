@@ -19,7 +19,9 @@ sleep 1
 cleanup() {
     echo ""
     echo "Shutting down..."
-    jobs -p | xargs -r kill 2>/dev/null || true
+    pkill -f "trunk serve.*1420" 2>/dev/null || true
+    pkill -f "dev_server" 2>/dev/null || true
+    pkill -f "cargo watch.*dev_server" 2>/dev/null || true
     exit 0
 }
 
@@ -34,16 +36,18 @@ elif [ "$MODE" = "browser" ]; then
     echo ""
 
     # Start trunk (frontend) with hot reload
+    # Use setsid to detach from this script's process group so it survives if script is killed
     echo "Starting frontend (trunk) on http://127.0.0.1:1420..."
-    trunk serve --port 1420 &
+    setsid trunk serve --port 1420 &
 
     # Give trunk a moment to start
     sleep 2
 
     # Start backend with cargo-watch for auto-restart on changes
+    # Use setsid to detach from this script's process group
     echo "Starting backend API server on http://127.0.0.1:3001..."
     echo "(Backend will auto-restart on changes to src-tauri/)"
-    cargo watch -w src-tauri -x "run -p lunchbox --bin dev_server" &
+    setsid cargo watch -w src-tauri -x "run -p lunchbox --bin dev_server" &
 
     # Wait for backend to compile and start
     sleep 5
