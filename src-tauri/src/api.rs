@@ -832,7 +832,7 @@ enum RspcResult<T: serde::Serialize> {
     #[serde(rename = "response")]
     Response(T),
     #[serde(rename = "error")]
-    Error { message: String },
+    Error { code: i32, message: String },
 }
 
 fn rspc_ok<T: serde::Serialize>(data: T) -> Json<RspcResponse<T>> {
@@ -843,7 +843,7 @@ fn rspc_ok<T: serde::Serialize>(data: T) -> Json<RspcResponse<T>> {
 
 fn rspc_err<T: serde::Serialize>(message: String) -> (StatusCode, Json<RspcResponse<T>>) {
     (StatusCode::OK, Json(RspcResponse {
-        result: RspcResult::Error { message },
+        result: RspcResult::Error { code: -1, message },
     }))
 }
 
