@@ -6,12 +6,9 @@
 //! - SteamGridDB (requires API key)
 
 use leptos::prelude::*;
-use leptos::html::Div;
 use leptos::task::spawn_local;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 
 /// Maximum concurrent image operations (cache checks + downloads)
@@ -121,104 +118,65 @@ pub fn record_download_failed(source: &str, time_ms: u64) {
     });
 }
 
-/// Request queue for throttling image loads with viewport priority
+/// Request queue for throttling image loads, ordered by render_index (top-left first)
 struct RequestQueue {
     active: usize,
-    /// High priority: items currently in viewport (process first, ordered by render_index)
+    /// Pending requests ordered by render_index (lower = processed first)
     /// Key is render_index, value is (cache_key, task)
-    viewport: BTreeMap<usize, (String, Box<dyn FnOnce()>)>,
-    /// Low priority: buffer items (process if viewport is empty)
-    buffer: VecDeque<(String, Box<dyn FnOnce()>)>,
+    pending: BTreeMap<usize, (String, Box<dyn FnOnce()>)>,
     /// Keys that have been cancelled - skip these when popping
     cancelled: HashSet<String>,
-    /// Map from cache_key to render_index for items in viewport queue
-    viewport_keys: HashMap<String, usize>,
+    /// Map from cache_key to render_index for quick lookup
+    key_to_index: HashMap<String, usize>,
 }
 
 impl RequestQueue {
     fn new() -> Self {
         Self {
             active: 0,
-            viewport: BTreeMap::new(),
-            buffer: VecDeque::new(),
+            pending: BTreeMap::new(),
             cancelled: HashSet::new(),
-            viewport_keys: HashMap::new(),
+            key_to_index: HashMap::new(),
         }
     }
 
     /// Cancel a pending request by key
     fn cancel(&mut self, key: &str) {
         self.cancelled.insert(key.to_string());
-        // Also remove from viewport_keys if present
-        if let Some(idx) = self.viewport_keys.remove(key) {
-            self.viewport.remove(&idx);
+        // Also remove from pending queue
+        if let Some(idx) = self.key_to_index.remove(key) {
+            self.pending.remove(&idx);
         }
     }
 
     /// Get total pending count (for stats)
     fn pending_count(&self) -> usize {
-        self.viewport.len() + self.buffer.len()
+        self.pending.len()
     }
 
-    /// Pop the next non-cancelled request
-    /// Priority: viewport items first (by render_index, ascending = top-left first), then buffer
+    /// Pop the next non-cancelled request (lowest render_index first = top-left)
     fn pop_next(&mut self) -> Option<Box<dyn FnOnce()>> {
-        // First try viewport queue (ordered by render_index, ascending)
-        while let Some((&idx, _)) = self.viewport.first_key_value() {
-            if let Some((key, task)) = self.viewport.remove(&idx) {
-                self.viewport_keys.remove(&key);
+        while let Some((&idx, _)) = self.pending.first_key_value() {
+            if let Some((key, task)) = self.pending.remove(&idx) {
+                self.key_to_index.remove(&key);
                 if !self.cancelled.remove(&key) {
-                    // Not cancelled, return it
                     return Some(task);
                 }
                 // Cancelled, skip and try next
             }
         }
 
-        // Then try buffer queue
-        while let Some((key, task)) = self.buffer.pop_front() {
-            if !self.cancelled.remove(&key) {
-                // Not cancelled, return it
-                return Some(task);
-            }
-            // Cancelled, skip and try next
-        }
-
         // Clean up cancelled set periodically
-        if self.cancelled.len() > 100 && self.viewport.is_empty() && self.buffer.is_empty() {
+        if self.cancelled.len() > 100 && self.pending.is_empty() {
             self.cancelled.clear();
         }
         None
     }
 
-    /// Promote a request from buffer to viewport (when item enters viewport)
-    fn promote_to_viewport(&mut self, key: &str, render_index: usize) {
-        // Find and extract item from buffer
-        let mut found_task = None;
-        let mut new_buffer = VecDeque::new();
-        while let Some((k, task)) = self.buffer.pop_front() {
-            if k == key && found_task.is_none() {
-                found_task = Some((k, task));
-            } else {
-                new_buffer.push_back((k, task));
-            }
-        }
-        self.buffer = new_buffer;
-
-        if let Some((cache_key, task)) = found_task {
-            self.viewport.insert(render_index, (cache_key.clone(), task));
-            self.viewport_keys.insert(cache_key, render_index);
-        }
-    }
-
-    /// Demote a request from viewport to buffer (when item exits viewport)
-    fn demote_to_buffer(&mut self, key: &str) {
-        if let Some(idx) = self.viewport_keys.remove(key) {
-            if let Some((cache_key, task)) = self.viewport.remove(&idx) {
-                // Add to back of buffer (low priority)
-                self.buffer.push_back((cache_key, task));
-            }
-        }
+    /// Add a request to the queue
+    fn enqueue(&mut self, key: String, task: Box<dyn FnOnce()>, render_index: usize) {
+        self.pending.insert(render_index, (key.clone(), task));
+        self.key_to_index.insert(key, render_index);
     }
 }
 
@@ -322,32 +280,29 @@ fn cancel_pending_request(key: &str) {
     });
 }
 
-/// Track if we've already scheduled queue processing
+// Track if we've already scheduled queue processing
 thread_local! {
     static PROCESS_SCHEDULED: RefCell<bool> = RefCell::new(false);
 }
 
-/// Queue a request to run when a slot is available
-/// The key is used to allow cancellation of pending requests
-/// If in_viewport is true, the request is added to the high-priority viewport queue
-/// render_index determines processing order for viewport items (lower = processed first)
-fn queue_request<F: FnOnce() + 'static>(key: String, f: F, in_viewport: bool, render_index: usize) {
+/// Queue a request to run when a slot is available.
+/// The key is used to allow cancellation of pending requests.
+/// render_index determines processing order (lower = processed first = top-left items).
+fn queue_request<F: FnOnce() + 'static>(key: String, f: F, render_index: usize) {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
 
-        // Drop oldest buffer requests if queue is too long (they're likely off-screen now)
-        while queue.buffer.len() >= MAX_PENDING_REQUESTS {
-            queue.buffer.pop_back(); // Remove oldest (back)
+        // Drop oldest requests if queue is too long
+        while queue.pending.len() >= MAX_PENDING_REQUESTS {
+            // Remove highest render_index (furthest from top-left)
+            if let Some((&idx, _)) = queue.pending.last_key_value() {
+                if let Some((k, _)) = queue.pending.remove(&idx) {
+                    queue.key_to_index.remove(&k);
+                }
+            }
         }
 
-        if in_viewport {
-            // Add to viewport queue (ordered by render_index)
-            queue.viewport.insert(render_index, (key.clone(), Box::new(f)));
-            queue.viewport_keys.insert(key, render_index);
-        } else {
-            // Add to buffer queue (FIFO)
-            queue.buffer.push_back((key, Box::new(f)));
-        }
+        queue.enqueue(key, Box::new(f), render_index);
     });
 
     update_queue_stats();
@@ -355,23 +310,6 @@ fn queue_request<F: FnOnce() + 'static>(key: String, f: F, in_viewport: bool, re
     // Schedule deferred processing so all items in this render batch
     // get queued before we start processing (ensures correct ordering)
     schedule_process_queue();
-}
-
-/// Promote a pending request from buffer to viewport queue
-fn promote_request(key: &str, render_index: usize) {
-    REQUEST_QUEUE.with(|q| {
-        q.borrow_mut().promote_to_viewport(key, render_index);
-    });
-    update_queue_stats();
-    schedule_process_queue();
-}
-
-/// Demote a pending request from viewport to buffer queue
-fn demote_request(key: &str) {
-    REQUEST_QUEUE.with(|q| {
-        q.borrow_mut().demote_to_buffer(key);
-    });
-    update_queue_stats();
 }
 
 /// Schedule queue processing for next microtask
@@ -497,12 +435,6 @@ pub fn LazyImage(
 ) -> impl IntoView {
     let (state, set_state) = signal(ImageState::Loading);
 
-    // Track whether this component is in the viewport
-    let (in_viewport, set_in_viewport) = signal(false);
-
-    // Container ref for IntersectionObserver
-    let container_ref = NodeRef::<Div>::new();
-
     // Create a signal to track the game identity - this makes the Effect re-run when props change
     // This is critical for virtual scrolling where components may be reused with different props
     let (game_key, set_game_key) = signal((launchbox_db_id, game_title.clone(), platform.clone(), image_type.clone()));
@@ -533,59 +465,10 @@ pub fn LazyImage(
     let queue_key_for_cleanup = queue_key_store.clone();
     let queue_key_for_effect = queue_key_store.clone();
 
-    // Set up IntersectionObserver to detect viewport visibility
-    let queue_key_for_observer = queue_key_store.clone();
-    Effect::new(move || {
-        // Wait for container to be mounted
-        let Some(element) = container_ref.get() else {
-            return;
-        };
-
-        let element: web_sys::Element = element.into();
-        let queue_key_store = queue_key_for_observer.clone();
-
-        // Create callback for IntersectionObserver
-        let callback = Closure::wrap(Box::new(move |entries: js_sys::Array, _observer: web_sys::IntersectionObserver| {
-            for entry in entries.iter() {
-                let entry: web_sys::IntersectionObserverEntry = entry.unchecked_into();
-                let is_intersecting = entry.is_intersecting();
-                set_in_viewport.set(is_intersecting);
-
-                // Promote/demote pending request based on viewport status
-                if let Some(key) = queue_key_store.lock().unwrap().as_ref() {
-                    if is_intersecting {
-                        promote_request(key, render_index);
-                    } else {
-                        demote_request(key);
-                    }
-                }
-            }
-        }) as Box<dyn Fn(js_sys::Array, web_sys::IntersectionObserver)>);
-
-        // Create observer with threshold of 0 (fires when any part is visible)
-        let options = web_sys::IntersectionObserverInit::new();
-        options.set_threshold(&wasm_bindgen::JsValue::from_f64(0.0));
-
-        let observer = web_sys::IntersectionObserver::new_with_options(
-            callback.as_ref().unchecked_ref(),
-            &options,
-        ).unwrap();
-
-        observer.observe(&element);
-
-        // Leak callback and observer - they'll be garbage collected when the element is removed
-        // We can't use on_cleanup here because IntersectionObserver is not Send+Sync
-        callback.forget();
-        std::mem::forget(observer);
-    });
-
     // Main effect for loading images
     Effect::new(move || {
         // Track game_key so this effect re-runs when the game changes
         let (db_id, title, plat, img_type) = game_key.get();
-        // Use get_untracked to avoid re-running effect when viewport changes
-        // The IntersectionObserver callback handles promote/demote separately
-        let is_in_viewport = in_viewport.get_untracked();
         let mounted = mounted.clone();
         let abort_handle = abort_handle_for_effect.clone();
         let queue_key_store = queue_key_for_effect.clone();
@@ -641,7 +524,7 @@ pub fn LazyImage(
 
         // Queue the entire operation (cache check + download) to prevent
         // overwhelming the backend with parallel cache checks
-        // If in viewport, use high priority queue; otherwise use buffer
+        // Lower render_index = processed first (top-left items)
         queue_request(queue_key, move || {
             use futures::future::{Abortable, AbortHandle};
             let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
@@ -737,17 +620,7 @@ pub fn LazyImage(
                 let _ = abortable.await;
                 release_slot();
             });
-        }, is_in_viewport, render_index);
-
-        // Fix race condition: IntersectionObserver may have fired before we queued,
-        // setting in_viewport=true. If current value differs from what we used,
-        // promote the request now.
-        let current_in_viewport = in_viewport.get_untracked();
-        if current_in_viewport && !is_in_viewport {
-            if let Some(key) = queue_key_store.lock().unwrap().as_ref() {
-                promote_request(key, render_index);
-            }
-        }
+        }, render_index);
     });
 
     // Cleanup on unmount - cancel pending and abort in-flight requests
@@ -770,7 +643,7 @@ pub fn LazyImage(
     let search_platform = StoredValue::new(platform.clone());
 
     view! {
-        <div node_ref=container_ref class="lazy-image-observer-wrapper">
+        <div class="lazy-image-observer-wrapper">
             {move || {
                 let current_state = state.get();
                 let class_str = class.clone();
