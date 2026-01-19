@@ -353,13 +353,27 @@ pub fn LazyImage(
     // Use Arc<AtomicBool> for mounted flag - survives after component disposal and is thread-safe
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
+    use futures::future::AbortHandle;
+    use std::sync::Mutex;
+
     let mounted = Arc::new(AtomicBool::new(true));
     let mounted_for_cleanup = mounted.clone();
+
+    // Store abort handle for cancelling in-flight requests (Arc<Mutex> for thread safety)
+    let abort_handle: Arc<Mutex<Option<AbortHandle>>> = Arc::new(Mutex::new(None));
+    let abort_handle_for_cleanup = abort_handle.clone();
+    let abort_handle_for_effect = abort_handle.clone();
 
     Effect::new(move || {
         // Track game_key so this effect re-runs when the game changes
         let (db_id, title, plat, img_type) = game_key.get();
         let mounted = mounted.clone();
+        let abort_handle = abort_handle_for_effect.clone();
+
+        // Abort any previous in-flight request for this component
+        if let Some(handle) = abort_handle.lock().unwrap().take() {
+            handle.abort();
+        }
 
         // Skip if no title
         if title.is_empty() {
@@ -437,11 +451,18 @@ pub fn LazyImage(
             let img_type2 = img_type.clone();
             let mounted2 = mounted.clone();
             let cache_key2 = cache_key.clone();
+            let abort_handle2 = abort_handle.clone();
 
             queue_request(move || {
-                spawn_local(async move {
+                // Create abortable future for the download
+                use futures::future::{Abortable, AbortHandle};
+                let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
+
+                // Store the abort handle so it can be cancelled
+                *abort_handle2.lock().unwrap() = Some(abort_handle_new);
+
+                let download_future = async move {
                     if !mounted2.load(std::sync::atomic::Ordering::Relaxed) {
-                        release_slot();
                         return;
                     }
 
@@ -490,15 +511,26 @@ pub fn LazyImage(
                             }
                         }
                     }
+                };
+
+                // Wrap in Abortable and spawn
+                let abortable = Abortable::new(download_future, abort_registration);
+                spawn_local(async move {
+                    let _ = abortable.await;
+                    // Always release slot when done (whether completed or aborted)
                     release_slot();
                 });
             });
         });
     });
 
-    // Cleanup on unmount
+    // Cleanup on unmount - abort any in-flight request
     on_cleanup(move || {
         mounted_for_cleanup.store(false, std::sync::atomic::Ordering::Relaxed);
+        // Abort any pending download
+        if let Some(handle) = abort_handle_for_cleanup.lock().unwrap().take() {
+            handle.abort();
+        }
     });
 
     let placeholder = placeholder.clone();
