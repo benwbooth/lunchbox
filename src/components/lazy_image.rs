@@ -32,10 +32,18 @@ impl RequestQueue {
     }
 }
 
+/// Cached result - either a URL or a "not found" marker
+#[derive(Clone)]
+enum CachedResult {
+    Found { url: String, source: String },
+    NotFound,
+}
+
 /// LRU cache for image URLs - avoids HTTP roundtrip for recently viewed images
+/// Also caches negative results to avoid repeated searches
 struct ImageUrlCache {
-    /// Map from cache key to (url, source, access_order)
-    entries: HashMap<String, (String, String, u64)>,
+    /// Map from cache key to (result, access_order)
+    entries: HashMap<String, (CachedResult, u64)>,
     /// Counter for LRU ordering
     access_counter: u64,
 }
@@ -57,15 +65,14 @@ impl ImageUrlCache {
         }
     }
 
-    /// Get cached URL if available, updating access time
-    fn get(&mut self, key: &str) -> Option<(String, String)> {
-        if let Some((url, source, _)) = self.entries.get_mut(key) {
+    /// Get cached result if available, updating access time
+    fn get(&mut self, key: &str) -> Option<CachedResult> {
+        if let Some((result, _)) = self.entries.get_mut(key) {
             self.access_counter += 1;
-            let url = url.clone();
-            let source = source.clone();
+            let result = result.clone();
             // Update access time
-            self.entries.get_mut(key).unwrap().2 = self.access_counter;
-            Some((url, source))
+            self.entries.get_mut(key).unwrap().1 = self.access_counter;
+            Some(result)
         } else {
             None
         }
@@ -73,12 +80,22 @@ impl ImageUrlCache {
 
     /// Insert URL into cache, evicting oldest if at capacity
     fn insert(&mut self, key: String, url: String, source: String) {
+        self.insert_result(key, CachedResult::Found { url, source });
+    }
+
+    /// Insert a "not found" result into cache
+    fn insert_not_found(&mut self, key: String) {
+        self.insert_result(key, CachedResult::NotFound);
+    }
+
+    /// Internal: insert any result into cache
+    fn insert_result(&mut self, key: String, result: CachedResult) {
         // Evict oldest entries if at capacity
         while self.entries.len() >= IMAGE_CACHE_MAX_SIZE {
             // Find oldest entry
             let oldest_key = self.entries
                 .iter()
-                .min_by_key(|(_, (_, _, access))| access)
+                .min_by_key(|(_, (_, access))| access)
                 .map(|(k, _)| k.clone());
 
             if let Some(k) = oldest_key {
@@ -89,7 +106,7 @@ impl ImageUrlCache {
         }
 
         self.access_counter += 1;
-        self.entries.insert(key, (url, source, self.access_counter));
+        self.entries.insert(key, (result, self.access_counter));
     }
 }
 
@@ -239,12 +256,21 @@ pub fn LazyImage(
         let cache_key = ImageUrlCache::make_key(db_id, &title, &plat, &img_type);
         let frontend_cached = IMAGE_URL_CACHE.with(|c| c.borrow_mut().get(&cache_key));
 
-        if let Some((url, source)) = frontend_cached {
-            let _ = set_state.try_set(ImageState::Ready {
-                url,
-                source: Some(source),
-            });
-            return;
+        if let Some(cached_result) = frontend_cached {
+            match cached_result {
+                CachedResult::Found { url, source } => {
+                    let _ = set_state.try_set(ImageState::Ready {
+                        url,
+                        source: Some(source),
+                    });
+                    return;
+                }
+                CachedResult::NotFound => {
+                    // Negative result cached - don't search again
+                    let _ = set_state.try_set(ImageState::NoImage);
+                    return;
+                }
+            }
         }
 
         // Step 1: Backend cache check - NOT queued, runs immediately
@@ -329,6 +355,10 @@ pub fn LazyImage(
                         }
                         Err(_e) => {
                             if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
+                                // Cache the negative result so we don't search again
+                                IMAGE_URL_CACHE.with(|c| {
+                                    c.borrow_mut().insert_not_found(cache_key2.clone())
+                                });
                                 let _ = set_state.try_set(ImageState::NoImage);
                             }
                         }
@@ -346,6 +376,9 @@ pub fn LazyImage(
 
     let placeholder = placeholder.clone();
     let class = class.clone();
+    // Store title/platform for search link in NoImage state
+    let search_title = StoredValue::new(game_title.clone());
+    let search_platform = StoredValue::new(platform.clone());
 
     view! {
         {move || {
@@ -403,9 +436,25 @@ pub fn LazyImage(
                 }
                 ImageState::NoImage => {
                     let char = placeholder.unwrap_or_else(|| "?".to_string());
+                    // Generate Google Images search URL
+                    let title = search_title.get_value();
+                    let plat = search_platform.get_value();
+                    let search_query = format!("{} {} box art", title, plat);
+                    let search_url = format!(
+                        "https://www.google.com/search?tbm=isch&q={}",
+                        urlencoding::encode(&search_query)
+                    );
                     view! {
                         <div class=format!("{} lazy-image-placeholder", class_str)>
-                            {char}
+                            <span class="placeholder-char">{char}</span>
+                            <a
+                                href=search_url
+                                target="_blank"
+                                class="search-online-link"
+                                title="Search for image online"
+                            >
+                                <span class="search-icon">"🔍"</span>
+                            </a>
                         </div>
                     }.into_any()
                 }
