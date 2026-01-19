@@ -241,24 +241,13 @@ thread_local! {
     static IMAGE_URL_CACHE: RefCell<ImageUrlCache> = RefCell::new(ImageUrlCache::new());
 }
 
-/// Release a slot and process next pending request (LIFO - newest batch first)
+/// Release a slot and process next pending request
 fn release_slot() {
     REQUEST_QUEUE.with(|q| {
-        let mut queue = q.borrow_mut();
-        queue.active = queue.active.saturating_sub(1);
-
-        // Process next non-cancelled request (LIFO)
-        if let Some(task) = queue.pop_next() {
-            queue.active += 1;
-            // Drop borrow before calling task
-            drop(queue);
-            update_queue_stats();
-            task();
-        } else {
-            drop(queue);
-            update_queue_stats();
-        }
+        q.borrow_mut().active = q.borrow().active.saturating_sub(1);
     });
+    update_queue_stats();
+    process_queue();
 }
 
 /// Cancel a pending request by its cache key
@@ -268,29 +257,70 @@ fn cancel_pending_request(key: &str) {
     });
 }
 
+/// Track if we've already scheduled queue processing
+thread_local! {
+    static PROCESS_SCHEDULED: RefCell<bool> = RefCell::new(false);
+}
+
 /// Queue a request to run when a slot is available
 /// The key is used to allow cancellation of pending requests
 fn queue_request<F: FnOnce() + 'static>(key: String, f: F) {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
-        if queue.active < MAX_CONCURRENT_REQUESTS {
-            queue.active += 1;
-            drop(queue);
-            update_queue_stats();
-            f();
-        } else {
-            // Drop oldest requests if queue is too long (they're likely off-screen now)
-            // Oldest are at back, newest at front
-            while queue.pending.len() >= MAX_PENDING_REQUESTS {
-                queue.pending.pop_back(); // Remove oldest (back)
+
+        // Drop oldest requests if queue is too long (they're likely off-screen now)
+        // Oldest are at back, newest at front
+        while queue.pending.len() >= MAX_PENDING_REQUESTS {
+            queue.pending.pop_back(); // Remove oldest (back)
+        }
+
+        // Always add to queue (newest at front for LIFO)
+        queue.pending.push_front((key, Box::new(f)));
+    });
+
+    update_queue_stats();
+
+    // Schedule deferred processing so all items in this render batch
+    // get queued before we start processing (ensures LIFO works correctly)
+    schedule_process_queue();
+}
+
+/// Schedule queue processing for next microtask
+/// This allows all items in a render batch to queue up before processing starts
+fn schedule_process_queue() {
+    PROCESS_SCHEDULED.with(|scheduled| {
+        if *scheduled.borrow() {
+            return; // Already scheduled
+        }
+        *scheduled.borrow_mut() = true;
+
+        // Use setTimeout(0) to defer to after current render batch completes
+        let _ = gloo_timers::callback::Timeout::new(0, || {
+            PROCESS_SCHEDULED.with(|s| *s.borrow_mut() = false);
+            process_queue();
+        });
+    });
+}
+
+/// Process pending requests if slots are available
+fn process_queue() {
+    REQUEST_QUEUE.with(|q| {
+        loop {
+            let mut queue = q.borrow_mut();
+            if queue.active >= MAX_CONCURRENT_REQUESTS {
+                break;
             }
-            // Push to front (newest first). Pop from front for LIFO.
-            // New batches get processed before old batches.
-            queue.pending.push_front((key, Box::new(f)));
-            drop(queue);
-            update_queue_stats();
+            if let Some(task) = queue.pop_next() {
+                queue.active += 1;
+                drop(queue);
+                update_queue_stats();
+                task();
+            } else {
+                break;
+            }
         }
     });
+    update_queue_stats();
 }
 
 /// Log to backend for debugging
