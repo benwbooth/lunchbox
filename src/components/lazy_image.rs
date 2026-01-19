@@ -193,18 +193,8 @@ impl RequestQueue {
 
     /// Promote a request from buffer to viewport (when item enters viewport)
     fn promote_to_viewport(&mut self, key: &str, render_index: usize) {
-        // Find and remove from buffer
+        // Find and extract item from buffer
         let mut found_task = None;
-        self.buffer.retain(|(k, _)| {
-            if k == key && found_task.is_none() {
-                false // Will be removed, but we need the task
-            } else {
-                true
-            }
-        });
-
-        // We need to actually extract the task - can't do it in retain
-        // So let's rebuild buffer without the matching item
         let mut new_buffer = VecDeque::new();
         while let Some((k, task)) = self.buffer.pop_front() {
             if k == key && found_task.is_none() {
@@ -748,6 +738,16 @@ pub fn LazyImage(
                 release_slot();
             });
         }, is_in_viewport, render_index);
+
+        // Fix race condition: IntersectionObserver may have fired before we queued,
+        // setting in_viewport=true. If current value differs from what we used,
+        // promote the request now.
+        let current_in_viewport = in_viewport.get_untracked();
+        if current_in_viewport && !is_in_viewport {
+            if let Some(key) = queue_key_store.lock().unwrap().as_ref() {
+                promote_request(key, render_index);
+            }
+        }
     });
 
     // Cleanup on unmount - cancel pending and abort in-flight requests
