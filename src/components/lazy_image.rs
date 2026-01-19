@@ -15,9 +15,10 @@ use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 /// Increased to 30 to handle slow multi-source fallback (each request can take 2-5 seconds)
 const MAX_CONCURRENT_REQUESTS: usize = 30;
 
-/// Maximum pending requests in queue - older ones get dropped when exceeded
-/// Reduced to 30 to prioritize visible items and avoid long waits
-const MAX_PENDING_REQUESTS: usize = 30;
+/// Maximum pending requests in queue
+/// Set high because we use LIFO (newest first) and components check mounted flag on execution
+/// Stale requests exit early when their component has scrolled away
+const MAX_PENDING_REQUESTS: usize = 500;
 
 /// Maximum entries in the frontend image URL cache
 const IMAGE_CACHE_MAX_SIZE: usize = 500;
