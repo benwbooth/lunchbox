@@ -16,9 +16,8 @@ use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 const MAX_CONCURRENT_REQUESTS: usize = 30;
 
 /// Maximum pending requests in queue
-/// Set high because we use LIFO (newest first) and components check mounted flag on execution
-/// Stale requests exit early when their component has scrolled away
-const MAX_PENDING_REQUESTS: usize = 500;
+/// Can be lower now that we properly cancel requests when components unmount
+const MAX_PENDING_REQUESTS: usize = 200;
 
 /// Maximum entries in the frontend image URL cache
 const IMAGE_CACHE_MAX_SIZE: usize = 500;
@@ -122,7 +121,10 @@ pub fn record_download_failed(source: &str, time_ms: u64) {
 /// Request queue for throttling image loads
 struct RequestQueue {
     active: usize,
-    pending: VecDeque<Box<dyn FnOnce()>>,
+    /// Pending requests with their cache keys for cancellation
+    pending: VecDeque<(String, Box<dyn FnOnce()>)>,
+    /// Keys that have been cancelled - skip these when popping
+    cancelled: std::collections::HashSet<String>,
 }
 
 impl RequestQueue {
@@ -130,7 +132,29 @@ impl RequestQueue {
         Self {
             active: 0,
             pending: VecDeque::new(),
+            cancelled: std::collections::HashSet::new(),
         }
+    }
+
+    /// Cancel a pending request by key
+    fn cancel(&mut self, key: &str) {
+        self.cancelled.insert(key.to_string());
+    }
+
+    /// Pop the next non-cancelled request (LIFO from back)
+    fn pop_next(&mut self) -> Option<Box<dyn FnOnce()>> {
+        while let Some((key, task)) = self.pending.pop_back() {
+            if !self.cancelled.remove(&key) {
+                // Not cancelled, return it
+                return Some(task);
+            }
+            // Cancelled, skip and try next
+        }
+        // Clean up cancelled set periodically
+        if self.cancelled.len() > 100 && self.pending.is_empty() {
+            self.cancelled.clear();
+        }
+        None
     }
 }
 
@@ -223,8 +247,8 @@ fn release_slot() {
         let mut queue = q.borrow_mut();
         queue.active = queue.active.saturating_sub(1);
 
-        // Process from back (LIFO) - newest batch is at back, top-left of batch is at back
-        if let Some(task) = queue.pending.pop_back() {
+        // Process next non-cancelled request (LIFO)
+        if let Some(task) = queue.pop_next() {
             queue.active += 1;
             // Drop borrow before calling task
             drop(queue);
@@ -237,8 +261,16 @@ fn release_slot() {
     });
 }
 
+/// Cancel a pending request by its cache key
+fn cancel_pending_request(key: &str) {
+    REQUEST_QUEUE.with(|q| {
+        q.borrow_mut().cancel(key);
+    });
+}
+
 /// Queue a request to run when a slot is available
-fn queue_request<F: FnOnce() + 'static>(f: F) {
+/// The key is used to allow cancellation of pending requests
+fn queue_request<F: FnOnce() + 'static>(key: String, f: F) {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
         if queue.active < MAX_CONCURRENT_REQUESTS {
@@ -254,7 +286,7 @@ fn queue_request<F: FnOnce() + 'static>(f: F) {
             // Push to front so that within a batch, first-rendered (top-left) ends up at back
             // where pop_back will get it first. New batches push their items to front,
             // shifting older batches toward the back, maintaining LIFO for batches.
-            queue.pending.push_front(Box::new(f));
+            queue.pending.push_front((key, Box::new(f)));
             drop(queue);
             update_queue_stats();
         }
@@ -367,11 +399,22 @@ pub fn LazyImage(
     let abort_handle_for_cleanup = abort_handle.clone();
     let abort_handle_for_effect = abort_handle.clone();
 
+    // Store queue key for cancelling pending (not yet started) requests
+    let queue_key_store: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let queue_key_for_cleanup = queue_key_store.clone();
+    let queue_key_for_effect = queue_key_store.clone();
+
     Effect::new(move || {
         // Track game_key so this effect re-runs when the game changes
         let (db_id, title, plat, img_type) = game_key.get();
         let mounted = mounted.clone();
         let abort_handle = abort_handle_for_effect.clone();
+        let queue_key_store = queue_key_for_effect.clone();
+
+        // Cancel any previous pending request for this component
+        if let Some(old_key) = queue_key_store.lock().unwrap().take() {
+            cancel_pending_request(&old_key);
+        }
 
         // Abort any previous in-flight request for this component
         if let Some(handle) = abort_handle.lock().unwrap().take() {
@@ -412,10 +455,14 @@ pub fn LazyImage(
         });
 
         let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
+        let queue_key = cache_key.clone();
+
+        // Store queue key for cancellation on unmount or game change
+        *queue_key_store.lock().unwrap() = Some(queue_key.clone());
 
         // Queue the entire operation (cache check + download) to prevent
         // overwhelming the backend with parallel cache checks
-        queue_request(move || {
+        queue_request(queue_key, move || {
             use futures::future::{Abortable, AbortHandle};
             let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
 
@@ -513,10 +560,14 @@ pub fn LazyImage(
         });
     });
 
-    // Cleanup on unmount - abort any in-flight request
+    // Cleanup on unmount - cancel pending and abort in-flight requests
     on_cleanup(move || {
         mounted_for_cleanup.store(false, std::sync::atomic::Ordering::Relaxed);
-        // Abort any pending download
+        // Cancel any pending (not yet started) request
+        if let Some(key) = queue_key_for_cleanup.lock().unwrap().take() {
+            cancel_pending_request(&key);
+        }
+        // Abort any in-flight download
         if let Some(handle) = abort_handle_for_cleanup.lock().unwrap().take() {
             handle.abort();
         }
