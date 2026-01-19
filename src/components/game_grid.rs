@@ -568,7 +568,7 @@ pub fn GameGrid(
                                                     style:width=format!("{}px", ITEM_WIDTH)
                                                     style:height=format!("{}px", ITEM_HEIGHT)
                                                 >
-                                                    <GameCard game=game on_select=selected_game />
+                                                    <GameCard game=game on_select=selected_game render_index=index />
                                                 </div>
                                             }
                                         }).collect::<Vec<_>>()}
@@ -956,7 +956,13 @@ pub fn GameGrid(
 }
 
 #[component]
-fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
+fn GameCard(
+    game: Game,
+    on_select: WriteSignal<Option<Game>>,
+    /// Render index for image queue priority ordering
+    #[prop(default = 0)]
+    render_index: usize,
+) -> impl IntoView {
     use crate::components::LazyImage;
 
     let display_title = game.display_title.clone();
@@ -983,6 +989,7 @@ fn GameCard(game: Game, on_select: WriteSignal<Option<Game>>) -> impl IntoView {
                     alt=display_title.clone()
                     class="cover-image".to_string()
                     placeholder=first_char.clone()
+                    render_index=render_index
                 />
                 {(variant_count > 1).then(|| view! {
                     <span class="variant-badge">{variant_count}</span>

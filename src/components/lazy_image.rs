@@ -6,9 +6,12 @@
 //! - SteamGridDB (requires API key)
 
 use leptos::prelude::*;
+use leptos::html::Div;
 use leptos::task::spawn_local;
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 
 /// Maximum concurrent image operations (cache checks + downloads)
@@ -83,7 +86,7 @@ fn update_queue_stats() {
         let (_, set_stats) = queue_stats_signal();
         set_stats.update(|stats| {
             stats.active = queue.active;
-            stats.pending = queue.pending.len();
+            stats.pending = queue.pending_count();
         });
     });
 }
@@ -118,43 +121,114 @@ pub fn record_download_failed(source: &str, time_ms: u64) {
     });
 }
 
-/// Request queue for throttling image loads
+/// Request queue for throttling image loads with viewport priority
 struct RequestQueue {
     active: usize,
-    /// Pending requests with their cache keys for cancellation
-    pending: VecDeque<(String, Box<dyn FnOnce()>)>,
+    /// High priority: items currently in viewport (process first, ordered by render_index)
+    /// Key is render_index, value is (cache_key, task)
+    viewport: BTreeMap<usize, (String, Box<dyn FnOnce()>)>,
+    /// Low priority: buffer items (process if viewport is empty)
+    buffer: VecDeque<(String, Box<dyn FnOnce()>)>,
     /// Keys that have been cancelled - skip these when popping
-    cancelled: std::collections::HashSet<String>,
+    cancelled: HashSet<String>,
+    /// Map from cache_key to render_index for items in viewport queue
+    viewport_keys: HashMap<String, usize>,
 }
 
 impl RequestQueue {
     fn new() -> Self {
         Self {
             active: 0,
-            pending: VecDeque::new(),
-            cancelled: std::collections::HashSet::new(),
+            viewport: BTreeMap::new(),
+            buffer: VecDeque::new(),
+            cancelled: HashSet::new(),
+            viewport_keys: HashMap::new(),
         }
     }
 
     /// Cancel a pending request by key
     fn cancel(&mut self, key: &str) {
         self.cancelled.insert(key.to_string());
+        // Also remove from viewport_keys if present
+        if let Some(idx) = self.viewport_keys.remove(key) {
+            self.viewport.remove(&idx);
+        }
     }
 
-    /// Pop the next non-cancelled request (LIFO from front - newest first)
+    /// Get total pending count (for stats)
+    fn pending_count(&self) -> usize {
+        self.viewport.len() + self.buffer.len()
+    }
+
+    /// Pop the next non-cancelled request
+    /// Priority: viewport items first (by render_index, ascending = top-left first), then buffer
     fn pop_next(&mut self) -> Option<Box<dyn FnOnce()>> {
-        while let Some((key, task)) = self.pending.pop_front() {
+        // First try viewport queue (ordered by render_index, ascending)
+        while let Some((&idx, _)) = self.viewport.first_key_value() {
+            if let Some((key, task)) = self.viewport.remove(&idx) {
+                self.viewport_keys.remove(&key);
+                if !self.cancelled.remove(&key) {
+                    // Not cancelled, return it
+                    return Some(task);
+                }
+                // Cancelled, skip and try next
+            }
+        }
+
+        // Then try buffer queue
+        while let Some((key, task)) = self.buffer.pop_front() {
             if !self.cancelled.remove(&key) {
                 // Not cancelled, return it
                 return Some(task);
             }
             // Cancelled, skip and try next
         }
+
         // Clean up cancelled set periodically
-        if self.cancelled.len() > 100 && self.pending.is_empty() {
+        if self.cancelled.len() > 100 && self.viewport.is_empty() && self.buffer.is_empty() {
             self.cancelled.clear();
         }
         None
+    }
+
+    /// Promote a request from buffer to viewport (when item enters viewport)
+    fn promote_to_viewport(&mut self, key: &str, render_index: usize) {
+        // Find and remove from buffer
+        let mut found_task = None;
+        self.buffer.retain(|(k, _)| {
+            if k == key && found_task.is_none() {
+                false // Will be removed, but we need the task
+            } else {
+                true
+            }
+        });
+
+        // We need to actually extract the task - can't do it in retain
+        // So let's rebuild buffer without the matching item
+        let mut new_buffer = VecDeque::new();
+        while let Some((k, task)) = self.buffer.pop_front() {
+            if k == key && found_task.is_none() {
+                found_task = Some((k, task));
+            } else {
+                new_buffer.push_back((k, task));
+            }
+        }
+        self.buffer = new_buffer;
+
+        if let Some((cache_key, task)) = found_task {
+            self.viewport.insert(render_index, (cache_key.clone(), task));
+            self.viewport_keys.insert(cache_key, render_index);
+        }
+    }
+
+    /// Demote a request from viewport to buffer (when item exits viewport)
+    fn demote_to_buffer(&mut self, key: &str) {
+        if let Some(idx) = self.viewport_keys.remove(key) {
+            if let Some((cache_key, task)) = self.viewport.remove(&idx) {
+                // Add to back of buffer (low priority)
+                self.buffer.push_back((cache_key, task));
+            }
+        }
     }
 }
 
@@ -265,25 +339,49 @@ thread_local! {
 
 /// Queue a request to run when a slot is available
 /// The key is used to allow cancellation of pending requests
-fn queue_request<F: FnOnce() + 'static>(key: String, f: F) {
+/// If in_viewport is true, the request is added to the high-priority viewport queue
+/// render_index determines processing order for viewport items (lower = processed first)
+fn queue_request<F: FnOnce() + 'static>(key: String, f: F, in_viewport: bool, render_index: usize) {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
 
-        // Drop oldest requests if queue is too long (they're likely off-screen now)
-        // Oldest are at back, newest at front
-        while queue.pending.len() >= MAX_PENDING_REQUESTS {
-            queue.pending.pop_back(); // Remove oldest (back)
+        // Drop oldest buffer requests if queue is too long (they're likely off-screen now)
+        while queue.buffer.len() >= MAX_PENDING_REQUESTS {
+            queue.buffer.pop_back(); // Remove oldest (back)
         }
 
-        // Always add to queue (newest at front for LIFO)
-        queue.pending.push_front((key, Box::new(f)));
+        if in_viewport {
+            // Add to viewport queue (ordered by render_index)
+            queue.viewport.insert(render_index, (key.clone(), Box::new(f)));
+            queue.viewport_keys.insert(key, render_index);
+        } else {
+            // Add to buffer queue (FIFO)
+            queue.buffer.push_back((key, Box::new(f)));
+        }
     });
 
     update_queue_stats();
 
     // Schedule deferred processing so all items in this render batch
-    // get queued before we start processing (ensures LIFO works correctly)
+    // get queued before we start processing (ensures correct ordering)
     schedule_process_queue();
+}
+
+/// Promote a pending request from buffer to viewport queue
+fn promote_request(key: &str, render_index: usize) {
+    REQUEST_QUEUE.with(|q| {
+        q.borrow_mut().promote_to_viewport(key, render_index);
+    });
+    update_queue_stats();
+    schedule_process_queue();
+}
+
+/// Demote a pending request from viewport to buffer queue
+fn demote_request(key: &str) {
+    REQUEST_QUEUE.with(|q| {
+        q.borrow_mut().demote_to_buffer(key);
+    });
+    update_queue_stats();
 }
 
 /// Schedule queue processing for next microtask
@@ -403,8 +501,17 @@ pub fn LazyImage(
     /// Single character placeholder to show if no image
     #[prop(optional)]
     placeholder: Option<String>,
+    /// Render index for ordering (passed from grid) - lower = processed first
+    #[prop(default = 0)]
+    render_index: usize,
 ) -> impl IntoView {
     let (state, set_state) = signal(ImageState::Loading);
+
+    // Track whether this component is in the viewport
+    let (in_viewport, set_in_viewport) = signal(false);
+
+    // Container ref for IntersectionObserver
+    let container_ref = NodeRef::<Div>::new();
 
     // Create a signal to track the game identity - this makes the Effect re-run when props change
     // This is critical for virtual scrolling where components may be reused with different props
@@ -436,9 +543,57 @@ pub fn LazyImage(
     let queue_key_for_cleanup = queue_key_store.clone();
     let queue_key_for_effect = queue_key_store.clone();
 
+    // Set up IntersectionObserver to detect viewport visibility
+    let queue_key_for_observer = queue_key_store.clone();
+    Effect::new(move || {
+        // Wait for container to be mounted
+        let Some(element) = container_ref.get() else {
+            return;
+        };
+
+        let element: web_sys::Element = element.into();
+        let queue_key_store = queue_key_for_observer.clone();
+
+        // Create callback for IntersectionObserver
+        let callback = Closure::wrap(Box::new(move |entries: js_sys::Array, _observer: web_sys::IntersectionObserver| {
+            for entry in entries.iter() {
+                let entry: web_sys::IntersectionObserverEntry = entry.unchecked_into();
+                let is_intersecting = entry.is_intersecting();
+                set_in_viewport.set(is_intersecting);
+
+                // Promote/demote pending request based on viewport status
+                if let Some(key) = queue_key_store.lock().unwrap().as_ref() {
+                    if is_intersecting {
+                        promote_request(key, render_index);
+                    } else {
+                        demote_request(key);
+                    }
+                }
+            }
+        }) as Box<dyn Fn(js_sys::Array, web_sys::IntersectionObserver)>);
+
+        // Create observer with threshold of 0 (fires when any part is visible)
+        let options = web_sys::IntersectionObserverInit::new();
+        options.set_threshold(&wasm_bindgen::JsValue::from_f64(0.0));
+
+        let observer = web_sys::IntersectionObserver::new_with_options(
+            callback.as_ref().unchecked_ref(),
+            &options,
+        ).unwrap();
+
+        observer.observe(&element);
+
+        // Leak callback and observer - they'll be garbage collected when the element is removed
+        // We can't use on_cleanup here because IntersectionObserver is not Send+Sync
+        callback.forget();
+        std::mem::forget(observer);
+    });
+
+    // Main effect for loading images
     Effect::new(move || {
         // Track game_key so this effect re-runs when the game changes
         let (db_id, title, plat, img_type) = game_key.get();
+        let is_in_viewport = in_viewport.get();
         let mounted = mounted.clone();
         let abort_handle = abort_handle_for_effect.clone();
         let queue_key_store = queue_key_for_effect.clone();
@@ -494,6 +649,7 @@ pub fn LazyImage(
 
         // Queue the entire operation (cache check + download) to prevent
         // overwhelming the backend with parallel cache checks
+        // If in viewport, use high priority queue; otherwise use buffer
         queue_request(queue_key, move || {
             use futures::future::{Abortable, AbortHandle};
             let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
@@ -589,7 +745,7 @@ pub fn LazyImage(
                 let _ = abortable.await;
                 release_slot();
             });
-        });
+        }, is_in_viewport, render_index);
     });
 
     // Cleanup on unmount - cancel pending and abort in-flight requests
@@ -612,93 +768,95 @@ pub fn LazyImage(
     let search_platform = StoredValue::new(platform.clone());
 
     view! {
-        {move || {
-            let current_state = state.get();
-            let class_str = class.clone();
-            let placeholder = placeholder.clone();
-            let alt_text = alt.clone();
+        <div node_ref=container_ref class="lazy-image-observer-wrapper">
+            {move || {
+                let current_state = state.get();
+                let class_str = class.clone();
+                let placeholder = placeholder.clone();
+                let alt_text = alt.clone();
 
-            match current_state {
-                ImageState::Loading => {
-                    let char = placeholder.clone().unwrap_or_else(|| "?".to_string());
-                    view! {
-                        <div class=format!("{} lazy-image-loading", class_str)>
-                            <span class="placeholder-char">{char}</span>
-                            <div class="download-status-bottom">
-                                <div class="download-progress">
-                                    <div class="progress-bar indeterminate"></div>
+                match current_state {
+                    ImageState::Loading => {
+                        let char = placeholder.clone().unwrap_or_else(|| "?".to_string());
+                        view! {
+                            <div class=format!("{} lazy-image-loading", class_str)>
+                                <span class="placeholder-char">{char}</span>
+                                <div class="download-status-bottom">
+                                    <div class="download-progress">
+                                        <div class="progress-bar indeterminate"></div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    }.into_any()
-                }
-                ImageState::Downloading { progress, source } => {
-                    let char = placeholder.clone().unwrap_or_else(|| "?".to_string());
-                    // progress -1.0 means indeterminate (searching), 0.0-1.0 means actual progress
-                    let is_indeterminate = progress < 0.0;
-                    let progress_pct = if is_indeterminate { 100 } else { (progress * 100.0) as i32 };
-                    let bar_class = if is_indeterminate { "progress-bar indeterminate" } else { "progress-bar" };
-                    view! {
-                        <div class=format!("{} lazy-image-downloading", class_str)>
-                            <span class="placeholder-char">{char}</span>
-                            <div class="download-status-bottom">
-                                <div class="download-progress">
-                                    <div class=bar_class style:width=format!("{}%", progress_pct)></div>
+                        }.into_any()
+                    }
+                    ImageState::Downloading { progress, source } => {
+                        let char = placeholder.clone().unwrap_or_else(|| "?".to_string());
+                        // progress -1.0 means indeterminate (searching), 0.0-1.0 means actual progress
+                        let is_indeterminate = progress < 0.0;
+                        let progress_pct = if is_indeterminate { 100 } else { (progress * 100.0) as i32 };
+                        let bar_class = if is_indeterminate { "progress-bar indeterminate" } else { "progress-bar" };
+                        view! {
+                            <div class=format!("{} lazy-image-downloading", class_str)>
+                                <span class="placeholder-char">{char}</span>
+                                <div class="download-status-bottom">
+                                    <div class="download-progress">
+                                        <div class=bar_class style:width=format!("{}%", progress_pct)></div>
+                                    </div>
+                                    <div class="download-source">{source}</div>
                                 </div>
-                                <div class="download-source">{source}</div>
                             </div>
-                        </div>
-                    }.into_any()
+                        }.into_any()
+                    }
+                    ImageState::Ready { url, source } => {
+                        view! {
+                            <div class=format!("{} lazy-image-container", class_str)>
+                                <img
+                                    src=url
+                                    alt=alt_text
+                                    class="lazy-image-ready"
+                                    loading="lazy"
+                                />
+                                {source.map(|s| view! {
+                                    <span class="image-source-badge">{s}</span>
+                                })}
+                            </div>
+                        }.into_any()
+                    }
+                    ImageState::NoImage => {
+                        let char = placeholder.unwrap_or_else(|| "?".to_string());
+                        // Generate Google Images search URL
+                        let title = search_title.get_value();
+                        let plat = search_platform.get_value();
+                        let search_query = format!("{} {} box art", title, plat);
+                        let search_url = format!(
+                            "https://www.google.com/search?tbm=isch&q={}",
+                            urlencoding::encode(&search_query)
+                        );
+                        view! {
+                            <div class=format!("{} lazy-image-placeholder", class_str)>
+                                <span class="placeholder-char">{char}</span>
+                                <a
+                                    href=search_url
+                                    target="_blank"
+                                    class="search-online-link"
+                                    title="Search for image online"
+                                >
+                                    "search"
+                                </a>
+                            </div>
+                        }.into_any()
+                    }
+                    ImageState::Error(_e) => {
+                        let char = placeholder.unwrap_or_else(|| "!".to_string());
+                        view! {
+                            <div class=format!("{} lazy-image-error", class_str)>
+                                {char}
+                            </div>
+                        }.into_any()
+                    }
                 }
-                ImageState::Ready { url, source } => {
-                    view! {
-                        <div class=format!("{} lazy-image-container", class_str)>
-                            <img
-                                src=url
-                                alt=alt_text
-                                class="lazy-image-ready"
-                                loading="lazy"
-                            />
-                            {source.map(|s| view! {
-                                <span class="image-source-badge">{s}</span>
-                            })}
-                        </div>
-                    }.into_any()
-                }
-                ImageState::NoImage => {
-                    let char = placeholder.unwrap_or_else(|| "?".to_string());
-                    // Generate Google Images search URL
-                    let title = search_title.get_value();
-                    let plat = search_platform.get_value();
-                    let search_query = format!("{} {} box art", title, plat);
-                    let search_url = format!(
-                        "https://www.google.com/search?tbm=isch&q={}",
-                        urlencoding::encode(&search_query)
-                    );
-                    view! {
-                        <div class=format!("{} lazy-image-placeholder", class_str)>
-                            <span class="placeholder-char">{char}</span>
-                            <a
-                                href=search_url
-                                target="_blank"
-                                class="search-online-link"
-                                title="Search for image online"
-                            >
-                                "search"
-                            </a>
-                        </div>
-                    }.into_any()
-                }
-                ImageState::Error(_e) => {
-                    let char = placeholder.unwrap_or_else(|| "!".to_string());
-                    view! {
-                        <div class=format!("{} lazy-image-error", class_str)>
-                            {char}
-                        </div>
-                    }.into_any()
-                }
-            }
-        }}
+            }}
+        </div>
     }
 }
 
