@@ -244,7 +244,8 @@ thread_local! {
 /// Release a slot and process next pending request
 fn release_slot() {
     REQUEST_QUEUE.with(|q| {
-        q.borrow_mut().active = q.borrow().active.saturating_sub(1);
+        let mut queue = q.borrow_mut();
+        queue.active = queue.active.saturating_sub(1);
     });
     update_queue_stats();
     process_queue();
