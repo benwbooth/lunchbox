@@ -10,7 +10,8 @@ pub type DbPool = SqlitePool;
 // ============================================================================
 
 /// User database (settings, favorites, collections, play sessions)
-pub const USER_DB_NAME: &str = "user.db";
+/// Named "lunchbox.db" for backward compatibility with existing installations
+pub const USER_DB_NAME: &str = "lunchbox.db";
 
 /// Games database (game metadata, platforms)
 pub const GAMES_DB_NAME: &str = "games";
