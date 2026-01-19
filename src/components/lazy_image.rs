@@ -12,10 +12,12 @@ use std::collections::{HashMap, VecDeque};
 use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 
 /// Maximum concurrent image operations (cache checks + downloads)
-const MAX_CONCURRENT_REQUESTS: usize = 8;
+/// Increased to 30 to handle slow multi-source fallback (each request can take 2-5 seconds)
+const MAX_CONCURRENT_REQUESTS: usize = 30;
 
 /// Maximum pending requests in queue - older ones get dropped when exceeded
-const MAX_PENDING_REQUESTS: usize = 50;
+/// Reduced to 30 to prioritize visible items and avoid long waits
+const MAX_PENDING_REQUESTS: usize = 30;
 
 /// Maximum entries in the frontend image URL cache
 const IMAGE_CACHE_MAX_SIZE: usize = 500;
@@ -122,14 +124,21 @@ thread_local! {
 fn release_slot() {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
+        let old_active = queue.active;
         queue.active = queue.active.saturating_sub(1);
+        let pending_count = queue.pending.len();
 
         // Process newest pending request first (LIFO) - prioritizes currently visible items
         if let Some(task) = queue.pending.pop_back() {
             queue.active += 1;
+            log(&format!("[QUEUE] release_slot: active {}->{}, pending {}->{}",
+                old_active, queue.active, pending_count, queue.pending.len()));
             // Drop borrow before calling task
             drop(queue);
             task();
+        } else {
+            log(&format!("[QUEUE] release_slot: active {}->{}, no pending tasks",
+                old_active, queue.active));
         }
     });
 }
@@ -140,14 +149,26 @@ fn queue_request<F: FnOnce() + 'static>(f: F) {
         let mut queue = q.borrow_mut();
         if queue.active < MAX_CONCURRENT_REQUESTS {
             queue.active += 1;
+            log(&format!("[QUEUE] queue_request: running immediately, active={}", queue.active));
             drop(queue);
             f();
         } else {
             // Drop oldest requests if queue is too long (they're likely off-screen now)
-            while queue.pending.len() >= MAX_PENDING_REQUESTS {
-                queue.pending.pop_front(); // Remove oldest (front) since we use LIFO
-            }
+            let dropped = if queue.pending.len() >= MAX_PENDING_REQUESTS {
+                let mut count = 0;
+                while queue.pending.len() >= MAX_PENDING_REQUESTS {
+                    queue.pending.pop_front(); // Remove oldest (front) since we use LIFO
+                    count += 1;
+                }
+                count
+            } else {
+                0
+            };
             queue.pending.push_back(Box::new(f));
+            if dropped > 0 {
+                log(&format!("[QUEUE] queue_request: queued (dropped {} old), active={}, pending={}",
+                    dropped, queue.active, queue.pending.len()));
+            }
         }
     });
 }
