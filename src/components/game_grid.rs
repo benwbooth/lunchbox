@@ -455,6 +455,41 @@ pub fn GameGrid(
         }
     };
 
+    // Find the index of the first game starting with a given character
+    let find_first_game_index = move |ch: char| -> Option<usize> {
+        let games_list = games.get();
+        let ch_lower = ch.to_ascii_lowercase();
+
+        games_list.iter().position(|game| {
+            game.display_title
+                .chars()
+                .next()
+                .map(|c| c.to_ascii_lowercase() == ch_lower)
+                .unwrap_or(false)
+        })
+    };
+
+    // Scroll to a specific game index
+    let scroll_to_index = move |index: usize| {
+        let mode = view_mode.get();
+        let width = container_width.get();
+
+        let scroll_pos = match mode {
+            ViewMode::Grid => {
+                let cols = (width / ITEM_WIDTH).max(1);
+                let row = index as i32 / cols;
+                row * ITEM_HEIGHT
+            }
+            ViewMode::List => {
+                (index as i32 + 1) * LIST_ITEM_HEIGHT // +1 for header
+            }
+        };
+
+        if let Some(container) = container_ref.get() {
+            container.set_scroll_top(scroll_pos);
+        }
+    };
+
     view! {
         <main
             class="game-content virtual-scroll"
@@ -880,6 +915,38 @@ pub fn GameGrid(
                                     }
                                 }}
                             </div>
+                        </div>
+                        // Alphabet navigation bar
+                        <div class="alphabet-nav">
+                            {['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+                              'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+                                .into_iter()
+                                .map(|ch| {
+                                    let display = if ch == '#' { "#".to_string() } else { ch.to_string() };
+                                    let title = format!("Jump to {}", display);
+                                    view! {
+                                        <button
+                                            class="alphabet-btn"
+                                            title=title
+                                            on:click=move |_| {
+                                                if ch == '#' {
+                                                    // Find first game starting with a digit
+                                                    let games_list = games.get();
+                                                    if let Some(idx) = games_list.iter().position(|g| {
+                                                        g.display_title.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+                                                    }) {
+                                                        scroll_to_index(idx);
+                                                    }
+                                                } else if let Some(idx) = find_first_game_index(ch) {
+                                                    scroll_to_index(idx);
+                                                }
+                                            }
+                                        >
+                                            {display}
+                                        </button>
+                                    }
+                                })
+                                .collect::<Vec<_>>()}
                         </div>
                     }.into_any()
                 }
