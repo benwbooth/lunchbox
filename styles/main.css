@@ -392,22 +392,28 @@ body {
 
 .search-online-link {
     position: absolute;
-    bottom: 8px;
-    right: 8px;
-    padding: 4px 6px;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 4px;
+    bottom: 6px;
+    right: 6px;
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 3px;
     text-decoration: none;
-    opacity: 0.6;
+    opacity: 0;
     transition: opacity 0.2s ease;
+    pointer-events: none;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Only show search link on hover of the placeholder */
+.lazy-image-placeholder:hover .search-online-link {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .search-online-link:hover {
-    opacity: 1;
-}
-
-.search-online-link .search-icon {
-    font-size: 14px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
 }
 
 /* Image container for source badge positioning */

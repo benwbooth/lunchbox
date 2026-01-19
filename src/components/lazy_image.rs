@@ -453,7 +453,7 @@ pub fn LazyImage(
                                 class="search-online-link"
                                 title="Search for image online"
                             >
-                                <span class="search-icon">"🔍"</span>
+                                "search"
                             </a>
                         </div>
                     }.into_any()
