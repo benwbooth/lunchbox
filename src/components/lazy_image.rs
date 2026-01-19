@@ -405,124 +405,110 @@ pub fn LazyImage(
             }
         }
 
-        // Step 1: Backend cache check - NOT queued, runs immediately
-        spawn_local(async move {
-            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
+        // Show queued state immediately
+        let _ = set_state.try_set(ImageState::Downloading {
+            progress: -1.0,
+            source: "Queued...".to_string(),
+        });
 
-            let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
-            match tauri::check_cached_media(
-                title.clone(),
-                plat.clone(),
-                img_type.clone(),
-                db_id_opt,
-            ).await {
-                Ok(Some(cached)) => {
-                    if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                        let url = file_to_asset_url(&cached.path);
-                        // Store in frontend cache for instant access next time
-                        IMAGE_URL_CACHE.with(|c| {
-                            c.borrow_mut().insert(cache_key.clone(), url.clone(), cached.source.clone())
-                        });
-                        let _ = set_state.try_set(ImageState::Ready {
-                            url,
-                            source: Some(cached.source),
-                        });
-                    }
-                    return; // Cache hit - done!
+        let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
+
+        // Queue the entire operation (cache check + download) to prevent
+        // overwhelming the backend with parallel cache checks
+        queue_request(move || {
+            use futures::future::{Abortable, AbortHandle};
+            let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
+
+            // Store the abort handle so it can be cancelled
+            *abort_handle.lock().unwrap() = Some(abort_handle_new);
+
+            let cache_and_download = async move {
+                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
                 }
-                Ok(None) => {
-                    // Cache miss - need to download
-                }
-                Err(_e) => {
-                    // Error checking cache - try downloading anyway
-                }
-            }
 
-            // Step 2: Queue download (only downloads are rate-limited)
-            if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
-            let _ = set_state.try_set(ImageState::Downloading {
-                progress: -1.0,
-                source: "Queued...".to_string(),
-            });
-
-            let title2 = title.clone();
-            let plat2 = plat.clone();
-            let img_type2 = img_type.clone();
-            let mounted2 = mounted.clone();
-            let cache_key2 = cache_key.clone();
-            let abort_handle2 = abort_handle.clone();
-
-            queue_request(move || {
-                // Create abortable future for the download
-                use futures::future::{Abortable, AbortHandle};
-                let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
-
-                // Store the abort handle so it can be cancelled
-                *abort_handle2.lock().unwrap() = Some(abort_handle_new);
-
-                let download_future = async move {
-                    if !mounted2.load(std::sync::atomic::Ordering::Relaxed) {
-                        return;
-                    }
-
-                    let _ = set_state.try_set(ImageState::Downloading {
-                        progress: -1.0,
-                        source: "Searching...".to_string(),
-                    });
-
-                    // Track timing for stats
-                    let start_time = js_sys::Date::now();
-
-                    match tauri::download_image_with_fallback(
-                        title2.clone(),
-                        plat2.clone(),
-                        img_type2.clone(),
-                        db_id_opt,
-                    ).await {
-                        Ok(local_path) => {
-                            let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
-                            let source = source_from_path(&local_path);
-                            let source_str = source.clone().unwrap_or_else(|| "??".to_string());
-
-                            // Record successful download (estimate ~50KB per image)
-                            record_download_complete(&source_str, elapsed_ms, 50_000);
-
-                            if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
-                                let url = file_to_asset_url(&local_path);
-                                // Store in frontend cache
-                                IMAGE_URL_CACHE.with(|c| {
-                                    c.borrow_mut().insert(cache_key2, url.clone(), source_str)
-                                });
-                                let _ = set_state.try_set(ImageState::Ready { url, source });
-                            }
-                        }
-                        Err(_e) => {
-                            let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
-                            // Record failed download
-                            record_download_failed("--", elapsed_ms);
-
-                            if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
-                                // Cache the negative result so we don't search again
-                                IMAGE_URL_CACHE.with(|c| {
-                                    c.borrow_mut().insert_not_found(cache_key2.clone())
-                                });
-                                let _ = set_state.try_set(ImageState::NoImage);
-                            }
-                        }
-                    }
-                };
-
-                // Wrap in Abortable and spawn
-                let abortable = Abortable::new(download_future, abort_registration);
-                spawn_local(async move {
-                    let _ = abortable.await;
-                    // Always release slot when done (whether completed or aborted)
-                    release_slot();
+                // Step 1: Check backend cache first
+                let _ = set_state.try_set(ImageState::Downloading {
+                    progress: -1.0,
+                    source: "Checking...".to_string(),
                 });
+
+                match tauri::check_cached_media(
+                    title.clone(),
+                    plat.clone(),
+                    img_type.clone(),
+                    db_id_opt,
+                ).await {
+                    Ok(Some(cached)) => {
+                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                            let url = file_to_asset_url(&cached.path);
+                            IMAGE_URL_CACHE.with(|c| {
+                                c.borrow_mut().insert(cache_key.clone(), url.clone(), cached.source.clone())
+                            });
+                            let _ = set_state.try_set(ImageState::Ready {
+                                url,
+                                source: Some(cached.source),
+                            });
+                        }
+                        return; // Cache hit - done!
+                    }
+                    Ok(None) | Err(_) => {
+                        // Cache miss or error - continue to download
+                    }
+                }
+
+                // Step 2: Download
+                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+
+                let _ = set_state.try_set(ImageState::Downloading {
+                    progress: -1.0,
+                    source: "Searching...".to_string(),
+                });
+
+                let start_time = js_sys::Date::now();
+
+                match tauri::download_image_with_fallback(
+                    title.clone(),
+                    plat.clone(),
+                    img_type.clone(),
+                    db_id_opt,
+                ).await {
+                    Ok(local_path) => {
+                        let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
+                        let source = source_from_path(&local_path);
+                        let source_str = source.clone().unwrap_or_else(|| "??".to_string());
+
+                        record_download_complete(&source_str, elapsed_ms, 50_000);
+
+                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                            let url = file_to_asset_url(&local_path);
+                            IMAGE_URL_CACHE.with(|c| {
+                                c.borrow_mut().insert(cache_key.clone(), url.clone(), source_str)
+                            });
+                            let _ = set_state.try_set(ImageState::Ready { url, source });
+                        }
+                    }
+                    Err(_e) => {
+                        let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
+                        record_download_failed("--", elapsed_ms);
+
+                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                            IMAGE_URL_CACHE.with(|c| {
+                                c.borrow_mut().insert_not_found(cache_key.clone())
+                            });
+                            let _ = set_state.try_set(ImageState::NoImage);
+                        }
+                    }
+                }
+            };
+
+            // Wrap in Abortable and spawn
+            let abortable = Abortable::new(cache_and_download, abort_registration);
+            spawn_local(async move {
+                let _ = abortable.await;
+                release_slot();
             });
         });
     });
