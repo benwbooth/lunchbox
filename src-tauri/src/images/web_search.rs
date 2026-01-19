@@ -30,9 +30,11 @@ struct DdgResponse {
 
 impl WebImageSearch {
     pub fn new() -> Self {
+        // Build client with cookie store to maintain session
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .timeout(std::time::Duration::from_secs(15))
+            .cookie_store(true)  // Enable cookie jar to persist cookies between requests
             .build()
             .expect("Failed to create HTTP client");
 
@@ -41,14 +43,27 @@ impl WebImageSearch {
 
     /// Search for an image and return the first result's URL
     pub async fn search_image(&self, query: &str) -> Result<Option<String>> {
+        tracing::debug!("WebImageSearch: searching for '{}'", query);
+
         // Step 1: Get the vqd token from DuckDuckGo
         let search_url = format!(
             "https://duckduckgo.com/?q={}&iax=images&ia=images",
             urlencoding::encode(query)
         );
+        tracing::debug!("WebImageSearch: fetching {}", search_url);
 
         let html = self.client
             .get(&search_url)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.5")
+            .header("Accept-Encoding", "gzip, deflate, br")
+            .header("DNT", "1")
+            .header("Connection", "keep-alive")
+            .header("Upgrade-Insecure-Requests", "1")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Sec-Fetch-User", "?1")
             .send()
             .await
             .context("Failed to fetch DuckDuckGo search page")?
@@ -56,9 +71,18 @@ impl WebImageSearch {
             .await
             .context("Failed to read search page response")?;
 
+        tracing::debug!("WebImageSearch: got {} bytes of HTML", html.len());
+
         // Extract vqd token from the HTML
         let vqd = extract_vqd(&html)
-            .ok_or_else(|| anyhow::anyhow!("Failed to extract vqd token from DuckDuckGo"))?;
+            .ok_or_else(|| {
+                // Safely truncate for logging (handle UTF-8 boundaries)
+                let preview: String = html.chars().take(500).collect();
+                tracing::warn!("WebImageSearch: failed to extract vqd token, HTML preview: {}", preview);
+                anyhow::anyhow!("Failed to extract vqd token from DuckDuckGo")
+            })?;
+
+        tracing::debug!("WebImageSearch: got vqd token: {}", vqd);
 
         // Step 2: Fetch image results using the token
         let images_url = format!(
@@ -66,10 +90,20 @@ impl WebImageSearch {
             urlencoding::encode(query),
             vqd
         );
+        tracing::debug!("WebImageSearch: fetching images from {}", images_url);
+
+        // Small delay to appear more human-like
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let response = self.client
             .get(&images_url)
-            .header("Referer", "https://duckduckgo.com/")
+            .header("Accept", "application/json, text/javascript, */*; q=0.01")
+            .header("Accept-Language", "en-US,en;q=0.5")
+            .header("Referer", &search_url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Sec-Fetch-Dest", "empty")
+            .header("Sec-Fetch-Mode", "cors")
+            .header("Sec-Fetch-Site", "same-origin")
             .send()
             .await
             .context("Failed to fetch image results")?;
@@ -79,16 +113,21 @@ impl WebImageSearch {
         }
 
         let text = response.text().await?;
+        tracing::debug!("WebImageSearch: got {} bytes of JSON", text.len());
 
         // Parse the JSON response
         let data: DdgResponse = serde_json::from_str(&text)
             .context("Failed to parse DuckDuckGo response")?;
 
+        tracing::debug!("WebImageSearch: got {} results", data.results.len());
+
         // Return the first thumbnail URL
         if let Some(first) = data.results.first() {
+            tracing::info!("WebImageSearch: found thumbnail: {}", first.thumbnail);
             // Prefer thumbnail as it's smaller and faster to download
             Ok(Some(first.thumbnail.clone()))
         } else {
+            tracing::warn!("WebImageSearch: no results found for '{}'", query);
             Ok(None)
         }
     }
