@@ -125,7 +125,7 @@ impl AppSettings {
     /// - Windows: %APPDATA%\lunchbox
     pub fn get_data_directory(&self) -> PathBuf {
         self.data_directory.clone().unwrap_or_else(|| {
-            directories::ProjectDirs::from("", "", "lunchbox")
+            directories::ProjectDirs::from("", "", db::APP_DATA_DIR)
                 .map(|dirs| dirs.data_dir().to_path_buf())
                 .unwrap_or_else(|| PathBuf::from("."))
         })
@@ -200,7 +200,7 @@ fn find_or_decompress_database(
         resource_dir.map(|p| p.join(&zst_file)),
         Some(PathBuf::from(format!("../db/{}", zst_file))),  // Dev mode (from src-tauri)
         Some(PathBuf::from(format!("./db/{}", zst_file))),   // Dev mode (from root)
-        Some(PathBuf::from(format!("/usr/share/lunchbox/{}", zst_file))),
+        Some(PathBuf::from(format!("/usr/share/{}/{}", db::APP_DATA_DIR, zst_file))),
     ]
     .into_iter()
     .flatten()
@@ -211,7 +211,7 @@ fn find_or_decompress_database(
         resource_dir.map(|p| p.join(&db_file)),
         Some(PathBuf::from(format!("../db/{}", db_file))),  // Dev mode (from src-tauri)
         Some(PathBuf::from(format!("./db/{}", db_file))),   // Dev mode (from root)
-        Some(PathBuf::from(format!("/usr/share/lunchbox/{}", db_file))),
+        Some(PathBuf::from(format!("/usr/share/{}/{}", db::APP_DATA_DIR, db_file))),
     ]
     .into_iter()
     .flatten()
@@ -262,7 +262,7 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
     let resource_dir = app.path().resource_dir().ok();
 
     // User database path - only created when needed (first write operation)
-    let user_db_path = app_data_dir.join("user.db");
+    let user_db_path = app_data_dir.join(db::USER_DB_NAME);
 
     // Initialize user database only if it already exists
     // This avoids creating empty database files
@@ -284,7 +284,7 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
     // Find or decompress games database, then connect
     let games_db_pool = {
         let games_db_path = find_or_decompress_database(
-            "games",
+            db::GAMES_DB_NAME,
             &app_data_dir,
             resource_dir.as_deref(),
         );
@@ -319,7 +319,7 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
     // Find or decompress game_images database, then connect
     let images_db_pool = {
         let images_db_path = find_or_decompress_database(
-            "game_images",
+            db::IMAGES_DB_NAME,
             &app_data_dir,
             resource_dir.as_deref(),
         );

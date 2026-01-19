@@ -5,7 +5,7 @@
 //!
 //! This allows hot-reloading the backend while keeping the browser open.
 
-use lunchbox_lib::{api, db, router, state::AppState};
+use lunchbox_lib::{api, db::{self, USER_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, APP_DATA_DIR}, router, state::AppState};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -104,13 +104,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Get the app data directory
     let data_dir = directories::BaseDirs::new()
-        .map(|dirs| dirs.data_dir().join("lunchbox"))
+        .map(|dirs| dirs.data_dir().join(APP_DATA_DIR))
         .unwrap_or_else(|| PathBuf::from("."));
 
     std::fs::create_dir_all(&data_dir)?;
 
     // User database path - only open if it exists
-    let user_db_path = data_dir.join("user.db");
+    let user_db_path = data_dir.join(USER_DB_NAME);
     let db_pool = if user_db_path.exists() {
         tracing::info!("Found user database at: {}", user_db_path.display());
         Some(db::init_pool(&user_db_path).await?)
@@ -146,7 +146,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Find or decompress games database, then connect
     let games_db_pool = {
-        match find_or_decompress_database("games", &data_dir) {
+        match find_or_decompress_database(GAMES_DB_NAME, &data_dir) {
             Some(path) => {
                 tracing::info!("Found games database at: {}", path.display());
                 let db_url = format!("sqlite:{}?mode=ro", path.display());
@@ -174,7 +174,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Find or decompress game_images database, then connect
     let images_db_pool = {
-        match find_or_decompress_database("game_images", &data_dir) {
+        match find_or_decompress_database(IMAGES_DB_NAME, &data_dir) {
             Some(path) => {
                 tracing::info!("Found images database at: {}", path.display());
                 let db_url = format!("sqlite:{}?mode=ro", path.display());
