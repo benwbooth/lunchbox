@@ -829,8 +829,10 @@ impl ImageService {
             return Ok(path.to_string_lossy().to_string());
         }
         tracing::info!("  No cached image found, trying sources...");
+        let total_start = std::time::Instant::now();
 
         // 1. LaunchBox CDN (requires game_images database)
+        let source_start = std::time::Instant::now();
         tracing::info!("  [1/7] Trying LaunchBox CDN...");
         let _ = launchbox_platform; // silence unused warning
         if let (Some(db_id), Some(images_pool)) = (launchbox_db_id, &self.images_pool) {
@@ -850,23 +852,24 @@ impl ImageService {
                 tracing::info!("  [1/7] Found image in game_images: {}", url);
                 match self.download_to_cache(&url, &game_id, ImageSource::LaunchBox, image_type).await {
                     Ok(path) => {
-                        tracing::info!("  [1/7] SUCCESS from LaunchBox CDN: {}", path);
+                        tracing::info!("  [1/7] SUCCESS from LaunchBox CDN in {:?}: {}", source_start.elapsed(), path);
                         return Ok(path);
                     }
                     Err(e) => {
-                        tracing::info!("  [1/7] LaunchBox CDN download failed: {}", e);
+                        tracing::info!("  [1/7] LaunchBox CDN download failed in {:?}: {}", source_start.elapsed(), e);
                     }
                 }
             } else {
-                tracing::info!("  [1/7] LaunchBox CDN: no image found in game_images table for db_id={}, type='{}'", db_id, image_type);
+                tracing::info!("  [1/7] LaunchBox CDN: no image found in {:?}", source_start.elapsed());
             }
         } else if launchbox_db_id.is_none() {
-            tracing::info!("  [1/7] LaunchBox CDN: no launchbox_db_id available");
+            tracing::info!("  [1/7] LaunchBox CDN: skipped (no db_id)");
         } else {
-            tracing::info!("  [1/7] LaunchBox CDN: no images database available");
+            tracing::info!("  [1/7] LaunchBox CDN: skipped (no images db)");
         }
 
         // 2. Try libretro-thumbnails (free, no account needed)
+        let source_start = std::time::Instant::now();
         tracing::info!("  [2/7] Trying libretro-thumbnails...");
         let libretro_type = libretro::LibRetroImageType::from_launchbox_type(image_type);
         if let Some(lt) = libretro_type {
@@ -902,7 +905,7 @@ impl ImageService {
                     tracing::info!("  [2/7] Trying URL: {}", url);
                     match self.download_to_cache(&url, &game_id, ImageSource::LibRetro, image_type).await {
                         Ok(path) => {
-                            tracing::info!("  [2/7] SUCCESS from libretro-thumbnails: {}", path);
+                            tracing::info!("  [2/7] SUCCESS from libretro-thumbnails in {:?}: {}", source_start.elapsed(), path);
                             return Ok(path);
                         }
                         Err(_) => {
@@ -912,12 +915,13 @@ impl ImageService {
                     }
                 }
             }
-            tracing::info!("  [2/7] libretro-thumbnails: no image found after trying {} titles", titles_to_try.len());
+            tracing::info!("  [2/7] libretro-thumbnails: no image found in {:?} after trying {} titles", source_start.elapsed(), titles_to_try.len());
         } else {
             tracing::info!("  [2/7] Skipping libretro (unsupported image type)");
         }
 
         // 3. Try SteamGridDB (requires API key)
+        let source_start = std::time::Instant::now();
         tracing::info!("  [3/7] Trying SteamGridDB...");
         if let Some(client) = steamgriddb_client {
             if client.has_credentials() {
@@ -935,30 +939,31 @@ impl ImageService {
                         if let Some(url) = url {
                             match self.download_to_cache(&url, &game_id, ImageSource::SteamGridDB, image_type).await {
                                 Ok(path) => {
-                                    tracing::info!("  [3/7] SUCCESS from SteamGridDB: {}", path);
+                                    tracing::info!("  [3/7] SUCCESS from SteamGridDB in {:?}: {}", source_start.elapsed(), path);
                                     return Ok(path);
                                 }
                                 Err(e) => {
-                                    tracing::info!("  [3/7] SteamGridDB download failed: {}", e);
+                                    tracing::info!("  [3/7] SteamGridDB download failed in {:?}: {}", source_start.elapsed(), e);
                                 }
                             }
                         } else {
-                            tracing::info!("  [3/7] SteamGridDB: no matching artwork type");
+                            tracing::info!("  [3/7] SteamGridDB: no matching artwork type in {:?}", source_start.elapsed());
                         }
                     } else {
-                        tracing::info!("  [3/7] SteamGridDB: no results found");
+                        tracing::info!("  [3/7] SteamGridDB: no results found in {:?}", source_start.elapsed());
                     }
                 } else {
-                    tracing::info!("  [3/7] SteamGridDB: search failed");
+                    tracing::info!("  [3/7] SteamGridDB: search failed in {:?}", source_start.elapsed());
                 }
             } else {
-                tracing::info!("  [3/7] SteamGridDB: no credentials configured");
+                tracing::info!("  [3/7] SteamGridDB: skipped (no credentials)");
             }
         } else {
-            tracing::info!("  [3/7] SteamGridDB: client not available");
+            tracing::info!("  [3/7] SteamGridDB: skipped (no client)");
         }
 
         // 4. Try IGDB (requires Twitch OAuth credentials)
+        let source_start = std::time::Instant::now();
         tracing::info!("  [4/7] Trying IGDB...");
         if let Some(client) = igdb_client {
             if client.has_credentials() {
@@ -982,30 +987,31 @@ impl ImageService {
                             let url = img.url("720p");
                             match self.download_to_cache(&url, &game_id, ImageSource::IGDB, image_type).await {
                                 Ok(path) => {
-                                    tracing::info!("  [4/7] SUCCESS from IGDB: {}", path);
+                                    tracing::info!("  [4/7] SUCCESS from IGDB in {:?}: {}", source_start.elapsed(), path);
                                     return Ok(path);
                                 }
                                 Err(e) => {
-                                    tracing::info!("  [4/7] IGDB download failed: {}", e);
+                                    tracing::info!("  [4/7] IGDB download failed in {:?}: {}", source_start.elapsed(), e);
                                 }
                             }
                         } else {
-                            tracing::info!("  [4/7] IGDB: no matching image type");
+                            tracing::info!("  [4/7] IGDB: no matching image type in {:?}", source_start.elapsed());
                         }
                     } else {
-                        tracing::info!("  [4/7] IGDB: no results found");
+                        tracing::info!("  [4/7] IGDB: no results found in {:?}", source_start.elapsed());
                     }
                 } else {
-                    tracing::info!("  [4/7] IGDB: search failed");
+                    tracing::info!("  [4/7] IGDB: search failed in {:?}", source_start.elapsed());
                 }
             } else {
-                tracing::info!("  [4/7] IGDB: no credentials configured");
+                tracing::info!("  [4/7] IGDB: skipped (no credentials)");
             }
         } else {
-            tracing::info!("  [4/7] IGDB: client not available");
+            tracing::info!("  [4/7] IGDB: skipped (no client)");
         }
 
         // 5. Try EmuMovies (requires account, uses FTP - blocking)
+        let source_start = std::time::Instant::now();
         tracing::info!("  [5/7] Trying EmuMovies...");
         if let Some(client) = emumovies_client {
             if client.has_credentials() {
@@ -1021,21 +1027,22 @@ impl ImageService {
                         client.download_to_path(&platform, media_type, &game_title, &cache_dir, &game_id_clone, &image_type_str)
                     }).await;
                     if let Ok(Ok(path)) = result {
-                        tracing::info!("  [5/7] SUCCESS from EmuMovies: {}", path);
+                        tracing::info!("  [5/7] SUCCESS from EmuMovies in {:?}: {}", source_start.elapsed(), path);
                         return Ok(path);
                     }
-                    tracing::info!("  [5/7] EmuMovies: not found");
+                    tracing::info!("  [5/7] EmuMovies: not found in {:?}", source_start.elapsed());
                 } else {
-                    tracing::info!("  [5/7] EmuMovies: unsupported media type");
+                    tracing::info!("  [5/7] EmuMovies: skipped (unsupported media type)");
                 }
             } else {
-                tracing::info!("  [5/7] EmuMovies: no credentials configured");
+                tracing::info!("  [5/7] EmuMovies: skipped (no credentials)");
             }
         } else {
-            tracing::info!("  [5/7] EmuMovies: client not available");
+            tracing::info!("  [5/7] EmuMovies: skipped (no client)");
         }
 
         // 6. Try ScreenScraper (requires account)
+        let source_start = std::time::Instant::now();
         tracing::info!("  [6/7] Trying ScreenScraper...");
         if let Some(client) = screenscraper_client {
             if client.has_credentials() {
@@ -1062,41 +1069,42 @@ impl ImageService {
                     if let Some(url) = url {
                         match self.download_to_cache(&url, &game_id, ImageSource::ScreenScraper, image_type).await {
                             Ok(path) => {
-                                tracing::info!("  [6/7] SUCCESS from ScreenScraper: {}", path);
+                                tracing::info!("  [6/7] SUCCESS from ScreenScraper in {:?}: {}", source_start.elapsed(), path);
                                 return Ok(path);
                             }
                             Err(e) => {
-                                tracing::info!("  [6/7] ScreenScraper download failed: {}", e);
+                                tracing::info!("  [6/7] ScreenScraper download failed in {:?}: {}", source_start.elapsed(), e);
                             }
                         }
                     } else {
-                        tracing::info!("  [6/7] ScreenScraper: no matching image type");
+                        tracing::info!("  [6/7] ScreenScraper: no matching image type in {:?}", source_start.elapsed());
                     }
                 } else {
-                    tracing::info!("  [6/7] ScreenScraper: no results found");
+                    tracing::info!("  [6/7] ScreenScraper: no results found in {:?}", source_start.elapsed());
                 }
             } else {
-                tracing::info!("  [6/7] ScreenScraper: no credentials configured");
+                tracing::info!("  [6/7] ScreenScraper: skipped (no credentials)");
             }
         } else {
-            tracing::info!("  [6/7] ScreenScraper: client not available");
+            tracing::info!("  [6/7] ScreenScraper: skipped (no client)");
         }
 
         // 7. Try web search (DuckDuckGo image search as final fallback)
+        let source_start = std::time::Instant::now();
         tracing::info!("  [7/7] Trying web search (DuckDuckGo)...");
         let web_search = web_search::WebImageSearch::new();
         let cache_path = get_media_path(&self.cache_dir, &game_id, ImageSource::WebSearch, image_type);
         match web_search.search_and_download(game_title, platform, image_type, &cache_path).await {
             Ok(path) => {
-                tracing::info!("  [7/7] SUCCESS from web search: {}", path);
+                tracing::info!("  [7/7] SUCCESS from web search in {:?}: {}", source_start.elapsed(), path);
                 return Ok(path);
             }
             Err(e) => {
-                tracing::info!("  [7/7] Web search failed: {}", e);
+                tracing::info!("  [7/7] Web search failed in {:?}: {}", source_start.elapsed(), e);
             }
         }
 
-        tracing::info!("  FAILED: No image found from any source for: {} - {} - {}", game_title, platform, image_type);
+        tracing::info!("  FAILED: No image found from any source for: {} - {} - {} (total time: {:?})", game_title, platform, image_type, total_start.elapsed());
         anyhow::bail!("No image found from any source for: {} - {} - {}", game_title, platform, image_type)
     }
 
