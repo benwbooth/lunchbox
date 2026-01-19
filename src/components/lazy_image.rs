@@ -295,10 +295,11 @@ fn schedule_process_queue() {
         *scheduled.borrow_mut() = true;
 
         // Use setTimeout(0) to defer to after current render batch completes
-        let _ = gloo_timers::callback::Timeout::new(0, || {
+        // .forget() prevents the Timeout from being cancelled when dropped
+        gloo_timers::callback::Timeout::new(0, || {
             PROCESS_SCHEDULED.with(|s| *s.borrow_mut() = false);
             process_queue();
-        });
+        }).forget();
     });
 }
 
