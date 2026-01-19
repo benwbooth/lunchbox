@@ -24,12 +24,13 @@ Description=Lunchbox Frontend (trunk)
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
-ExecStart=$(which trunk) serve --port 1420
+ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command trunk serve --port 1420
 Restart=on-failure
 RestartSec=2
 EOF
 
-    # Backend unit
+    # Backend unit - run dev_server directly, systemd handles restarts
+    # For code changes, restart with: systemctl --user restart lunchbox-backend
     cat > "$UNIT_DIR/lunchbox-backend.service" << EOF
 [Unit]
 Description=Lunchbox Backend (dev_server)
@@ -37,7 +38,7 @@ Description=Lunchbox Backend (dev_server)
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
-ExecStart=$(which cargo) watch -w src-tauri -x "run -p lunchbox --bin dev_server"
+ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command cargo run -p lunchbox --bin dev_server
 Restart=on-failure
 RestartSec=2
 EOF
