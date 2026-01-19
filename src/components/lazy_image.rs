@@ -22,6 +22,102 @@ const MAX_PENDING_REQUESTS: usize = 30;
 /// Maximum entries in the frontend image URL cache
 const IMAGE_CACHE_MAX_SIZE: usize = 500;
 
+/// Per-source statistics
+#[derive(Clone, Default, Debug)]
+pub struct SourceStats {
+    pub completed: u32,
+    pub failed: u32,
+    pub total_time_ms: u64,
+    pub total_bytes: u64,
+}
+
+impl SourceStats {
+    pub fn avg_time_ms(&self) -> u64 {
+        if self.completed > 0 {
+            self.total_time_ms / self.completed as u64
+        } else {
+            0
+        }
+    }
+}
+
+/// Download queue statistics for UI display
+#[derive(Clone, Default, Debug)]
+pub struct QueueStats {
+    pub active: usize,
+    pub pending: usize,
+    pub total_completed: u32,
+    pub total_failed: u32,
+    pub total_bytes: u64,
+    pub start_time_ms: Option<f64>,
+    /// Per-source stats: LB, LR, SG, IG, EM, SS, WS
+    pub by_source: HashMap<String, SourceStats>,
+}
+
+impl QueueStats {
+    /// Calculate download speed in bytes per second
+    pub fn bytes_per_sec(&self) -> f64 {
+        if let Some(start) = self.start_time_ms {
+            let now = js_sys::Date::now();
+            let elapsed_sec = (now - start) / 1000.0;
+            if elapsed_sec > 0.0 {
+                return self.total_bytes as f64 / elapsed_sec;
+            }
+        }
+        0.0
+    }
+}
+
+/// Global signal for queue stats - can be read by other components
+static QUEUE_STATS_SIGNAL: std::sync::OnceLock<(ReadSignal<QueueStats>, WriteSignal<QueueStats>)> = std::sync::OnceLock::new();
+
+/// Get the queue stats signal (creates it on first call)
+pub fn queue_stats_signal() -> (ReadSignal<QueueStats>, WriteSignal<QueueStats>) {
+    *QUEUE_STATS_SIGNAL.get_or_init(|| signal(QueueStats::default()))
+}
+
+/// Update queue stats from the request queue
+fn update_queue_stats() {
+    REQUEST_QUEUE.with(|q| {
+        let queue = q.borrow();
+        let (_, set_stats) = queue_stats_signal();
+        set_stats.update(|stats| {
+            stats.active = queue.active;
+            stats.pending = queue.pending.len();
+        });
+    });
+}
+
+/// Record a completed download with source and timing info
+pub fn record_download_complete(source: &str, time_ms: u64, bytes: u64) {
+    let (_, set_stats) = queue_stats_signal();
+    set_stats.update(|stats| {
+        stats.total_completed += 1;
+        stats.total_bytes += bytes;
+        if stats.start_time_ms.is_none() {
+            stats.start_time_ms = Some(js_sys::Date::now());
+        }
+        let source_stats = stats.by_source.entry(source.to_string()).or_default();
+        source_stats.completed += 1;
+        source_stats.total_time_ms += time_ms;
+        source_stats.total_bytes += bytes;
+    });
+}
+
+/// Record a failed download
+pub fn record_download_failed(source: &str, time_ms: u64) {
+    let (_, set_stats) = queue_stats_signal();
+    set_stats.update(|stats| {
+        stats.total_failed += 1;
+        if stats.start_time_ms.is_none() {
+            stats.start_time_ms = Some(js_sys::Date::now());
+        }
+        let source_stats = stats.by_source.entry(source.to_string()).or_default();
+        source_stats.failed += 1;
+        source_stats.total_time_ms += time_ms;
+    });
+}
+
 /// Request queue for throttling image loads
 struct RequestQueue {
     active: usize,
@@ -124,21 +220,18 @@ thread_local! {
 fn release_slot() {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
-        let old_active = queue.active;
         queue.active = queue.active.saturating_sub(1);
-        let pending_count = queue.pending.len();
 
         // Process newest pending request first (LIFO) - prioritizes currently visible items
         if let Some(task) = queue.pending.pop_back() {
             queue.active += 1;
-            log(&format!("[QUEUE] release_slot: active {}->{}, pending {}->{}",
-                old_active, queue.active, pending_count, queue.pending.len()));
             // Drop borrow before calling task
             drop(queue);
+            update_queue_stats();
             task();
         } else {
-            log(&format!("[QUEUE] release_slot: active {}->{}, no pending tasks",
-                old_active, queue.active));
+            drop(queue);
+            update_queue_stats();
         }
     });
 }
@@ -149,26 +242,17 @@ fn queue_request<F: FnOnce() + 'static>(f: F) {
         let mut queue = q.borrow_mut();
         if queue.active < MAX_CONCURRENT_REQUESTS {
             queue.active += 1;
-            log(&format!("[QUEUE] queue_request: running immediately, active={}", queue.active));
             drop(queue);
+            update_queue_stats();
             f();
         } else {
             // Drop oldest requests if queue is too long (they're likely off-screen now)
-            let dropped = if queue.pending.len() >= MAX_PENDING_REQUESTS {
-                let mut count = 0;
-                while queue.pending.len() >= MAX_PENDING_REQUESTS {
-                    queue.pending.pop_front(); // Remove oldest (front) since we use LIFO
-                    count += 1;
-                }
-                count
-            } else {
-                0
-            };
-            queue.pending.push_back(Box::new(f));
-            if dropped > 0 {
-                log(&format!("[QUEUE] queue_request: queued (dropped {} old), active={}, pending={}",
-                    dropped, queue.active, queue.pending.len()));
+            while queue.pending.len() >= MAX_PENDING_REQUESTS {
+                queue.pending.pop_front(); // Remove oldest (front) since we use LIFO
             }
+            queue.pending.push_back(Box::new(f));
+            drop(queue);
+            update_queue_stats();
         }
     });
 }
@@ -365,6 +449,9 @@ pub fn LazyImage(
                         source: "Searching...".to_string(),
                     });
 
+                    // Track timing for stats
+                    let start_time = js_sys::Date::now();
+
                     match tauri::download_image_with_fallback(
                         title2.clone(),
                         plat2.clone(),
@@ -372,11 +459,16 @@ pub fn LazyImage(
                         db_id_opt,
                     ).await {
                         Ok(local_path) => {
+                            let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
+                            let source = source_from_path(&local_path);
+                            let source_str = source.clone().unwrap_or_else(|| "??".to_string());
+
+                            // Record successful download (estimate ~50KB per image)
+                            record_download_complete(&source_str, elapsed_ms, 50_000);
+
                             if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
-                                let source = source_from_path(&local_path);
                                 let url = file_to_asset_url(&local_path);
                                 // Store in frontend cache
-                                let source_str = source.clone().unwrap_or_default();
                                 IMAGE_URL_CACHE.with(|c| {
                                     c.borrow_mut().insert(cache_key2, url.clone(), source_str)
                                 });
@@ -384,6 +476,10 @@ pub fn LazyImage(
                             }
                         }
                         Err(_e) => {
+                            let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
+                            // Record failed download
+                            record_download_failed("--", elapsed_ms);
+
                             if mounted2.load(std::sync::atomic::Ordering::Relaxed) {
                                 // Cache the negative result so we don't search again
                                 IMAGE_URL_CACHE.with(|c| {

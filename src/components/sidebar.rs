@@ -3,6 +3,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use crate::tauri::{self, Platform, Collection};
+use crate::components::QueueStatus;
 use web_sys::console;
 
 #[component]
@@ -181,6 +182,9 @@ pub fn Sidebar(
                     <div class="empty-collections">"No collections yet"</div>
                 })}
             </nav>
+
+            // Download queue status
+            <QueueStatus />
 
             // Create collection dialog
             <Show when=move || show_create_dialog.get()>
