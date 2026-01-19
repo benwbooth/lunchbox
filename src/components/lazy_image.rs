@@ -175,6 +175,9 @@ impl RequestQueue {
 
     /// Add a request to the queue
     fn enqueue(&mut self, key: String, task: Box<dyn FnOnce()>, render_index: usize) {
+        // Clear any previous cancellation for this key - important when re-queueing
+        // after scrolling away and back
+        self.cancelled.remove(&key);
         self.pending.insert(render_index, (key.clone(), task));
         self.key_to_index.insert(key, render_index);
     }
