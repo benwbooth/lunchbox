@@ -7,6 +7,10 @@ use crate::db::schema::{
     extract_region_from_title, normalize_title_for_dedup, normalize_title_for_display,
     Game, GameVariant, Platform,
 };
+use crate::handlers::{
+    self as handlers, Collection, CollectionIdInput, CollectionGameInput,
+    CreateCollectionInput,
+};
 use crate::state::AppState;
 use axum::{
     extract::State,
@@ -119,6 +123,13 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/favorites", get(get_favorites))
         .route("/api/favorites/check/:db_id", get(check_is_favorite))
         .route("/api/favorites/:game_id", post(add_favorite).delete(remove_favorite))
+        // Collection endpoints
+        .route("/rspc/get_collections", get(rspc_get_collections))
+        .route("/rspc/create_collection", get(rspc_create_collection))
+        .route("/rspc/delete_collection", get(rspc_delete_collection))
+        .route("/rspc/get_collection_games", get(rspc_get_collection_games))
+        .route("/rspc/add_game_to_collection", get(rspc_add_game_to_collection))
+        .route("/rspc/remove_game_from_collection", get(rspc_remove_game_from_collection))
         // rspc-style endpoints for image handling
         .route("/rspc/get_game_image", get(rspc_get_game_image))
         .route("/rspc/check_cached_media", get(rspc_check_cached_media))
@@ -814,6 +825,125 @@ async fn remove_favorite(
     }
 
     Ok(Json(false))
+}
+
+// ============================================================================
+// Collections - Using shared handlers from handlers.rs
+// ============================================================================
+
+async fn rspc_get_collections(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::get_collections(&state_guard).await {
+        Ok(collections) => rspc_ok(collections).into_response(),
+        Err(e) => rspc_err::<Vec<Collection>>(e).into_response(),
+    }
+}
+
+async fn rspc_create_collection(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Collection>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: CreateCollectionInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<Collection>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::create_collection(&state_guard, input).await {
+        Ok(collection) => rspc_ok(collection).into_response(),
+        Err(e) => rspc_err::<Collection>(e).into_response(),
+    }
+}
+
+async fn rspc_delete_collection(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<bool>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: CollectionIdInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<bool>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::delete_collection(&state_guard, input).await {
+        Ok(result) => rspc_ok(result).into_response(),
+        Err(e) => rspc_err::<bool>(e).into_response(),
+    }
+}
+
+async fn rspc_get_collection_games(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Vec<Game>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: CollectionIdInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<Vec<Game>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_collection_games(&state_guard, input).await {
+        Ok(games) => rspc_ok(games).into_response(),
+        Err(e) => rspc_err::<Vec<Game>>(e).into_response(),
+    }
+}
+
+async fn rspc_add_game_to_collection(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<bool>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: CollectionGameInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<bool>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::add_game_to_collection(&state_guard, input).await {
+        Ok(result) => rspc_ok(result).into_response(),
+        Err(e) => rspc_err::<bool>(e).into_response(),
+    }
+}
+
+async fn rspc_remove_game_from_collection(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<bool>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: CollectionGameInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<bool>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::remove_game_from_collection(&state_guard, input).await {
+        Ok(result) => rspc_ok(result).into_response(),
+        Err(e) => rspc_err::<bool>(e).into_response(),
+    }
 }
 
 // ============================================================================

@@ -1,6 +1,8 @@
 pub mod api;
 mod commands;
 pub mod db;
+pub mod endpoints;
+pub mod handlers;
 pub mod images;
 pub mod import;
 pub mod keyring_store;

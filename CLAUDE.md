@@ -6,6 +6,7 @@
 - Refactor to maintain clean code standards when it makes sense
 - Never put stubs in to be done later - just do the thing
 - No TODOs, no "coming in a future update", no "not yet implemented" - implement it now or break it into smaller steps
+- Never add a TODO and leave it - if something needs to be done, do it immediately
 - Never bail out with "not implemented" errors - if you add a code path, implement it fully
 - Keep main.rs thin - modularize command implementations into separate files
 - CLI commands should call into module functions, not contain all the logic inline
@@ -26,12 +27,43 @@
 
 ## API Endpoints
 
-- All backend endpoints must be added to BOTH:
-  - `src-tauri/src/commands.rs` (Tauri IPC for native mode)
-  - `src-tauri/src/api.rs` (HTTP API for browser dev mode)
-  - `src-tauri/src/lib.rs` (register the command)
-- Never add an endpoint to only one place - both must stay in sync
-- Frontend uses rspc-style calls that work with both backends
+Backend endpoints must work in both Tauri native mode and HTTP dev mode. To ensure consistency:
+
+1. **Define shared types and logic in `handlers.rs`**
+   - Input structs (e.g., `CreateCollectionInput`)
+   - Output structs (e.g., `Collection`)
+   - Handler functions that take `&AppState` and return `Result<T, String>`
+
+2. **Create thin wrappers in both:**
+   - `commands.rs` - Tauri commands that extract state and call handlers
+   - `api.rs` - HTTP handlers that parse JSON input and call handlers
+
+3. **Register in `lib.rs`** - Add the command to `invoke_handler`
+4. **Register in `api.rs`** - Add the route to `create_router`
+
+Example pattern:
+```rust
+// handlers.rs - THE SOURCE OF TRUTH
+pub async fn get_collections(state: &AppState) -> Result<Vec<Collection>, String> { ... }
+
+// commands.rs - thin wrapper
+#[tauri::command]
+pub async fn get_collections(state: tauri::State<'_, AppStateHandle>) -> Result<Vec<Collection>, String> {
+    let state_guard = state.read().await;
+    handlers::get_collections(&state_guard).await
+}
+
+// api.rs - thin wrapper with JSON handling
+async fn rspc_get_collections(State(state): State<SharedState>) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::get_collections(&state_guard).await {
+        Ok(collections) => rspc_ok(collections).into_response(),
+        Err(e) => rspc_err::<Vec<Collection>>(e).into_response(),
+    }
+}
+```
+
+This ensures business logic is defined once in `handlers.rs`, preventing Tauri/HTTP drift.
 
 ## Database
 

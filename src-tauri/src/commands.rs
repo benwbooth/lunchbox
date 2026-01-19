@@ -4,6 +4,10 @@ use crate::db::schema::{
     extract_region_from_title, normalize_title_for_display,
     Game, GameVariant, Platform,
 };
+use crate::handlers::{
+    self, Collection, CollectionIdInput, CollectionGameInput,
+    CreateCollectionInput, UpdateCollectionInput,
+};
 use crate::images::{CacheStats, ImageInfo, ImageService};
 use crate::scraper::{get_screenscraper_platform_id, ScreenScraperClient, ScreenScraperConfig};
 use crate::state::{AppSettings, AppState};
@@ -766,16 +770,7 @@ pub struct ScrapeResult {
     pub error: Option<String>,
 }
 
-/// Collection for display
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Collection {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub is_smart: bool,
-    pub filter_rules: Option<String>,
-    pub game_count: i64,
-}
+// Collection type is imported from handlers module
 
 #[tauri::command]
 pub async fn scrape_rom(
@@ -880,40 +875,14 @@ pub async fn scrape_rom(
 }
 
 // ============ Collection Commands ============
+// These call shared handlers from handlers.rs to ensure logic is defined once.
 
 #[tauri::command]
 pub async fn get_collections(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Vec<Collection>, String> {
     let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    let collections: Vec<(String, String, Option<String>, i64, Option<String>, i64)> = sqlx::query_as(
-        r#"
-        SELECT c.id, c.name, c.description, c.is_smart, c.filter_rules,
-               COUNT(cg.game_id) as game_count
-        FROM collections c
-        LEFT JOIN collection_games cg ON c.id = cg.collection_id
-        GROUP BY c.id
-        ORDER BY c.name
-        "#
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(collections.into_iter().map(|(id, name, description, is_smart, filter_rules, game_count)| {
-        Collection {
-            id,
-            name,
-            description,
-            is_smart: is_smart != 0,
-            filter_rules,
-            game_count,
-        }
-    }).collect())
+    handlers::get_collections(&state_guard).await
 }
 
 #[tauri::command]
@@ -923,30 +892,7 @@ pub async fn create_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Collection, String> {
     let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    let id = uuid::Uuid::new_v4().to_string();
-
-    sqlx::query(
-        "INSERT INTO collections (id, name, description, is_smart, filter_rules) VALUES (?, ?, ?, 0, NULL)"
-    )
-    .bind(&id)
-    .bind(&name)
-    .bind(&description)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(Collection {
-        id,
-        name,
-        description,
-        is_smart: false,
-        filter_rules: None,
-        game_count: 0,
-    })
+    handlers::create_collection(&state_guard, CreateCollectionInput { name, description }).await
 }
 
 #[tauri::command]
@@ -957,19 +903,7 @@ pub async fn update_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    sqlx::query("UPDATE collections SET name = ?, description = ? WHERE id = ?")
-        .bind(&name)
-        .bind(&description)
-        .bind(&id)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
+    handlers::update_collection(&state_guard, UpdateCollectionInput { id, name, description }).await
 }
 
 #[tauri::command]
@@ -978,24 +912,7 @@ pub async fn delete_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    // Delete games from collection first (foreign key)
-    sqlx::query("DELETE FROM collection_games WHERE collection_id = ?")
-        .bind(&id)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Delete the collection
-    sqlx::query("DELETE FROM collections WHERE id = ?")
-        .bind(&id)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
+    handlers::delete_collection(&state_guard, CollectionIdInput { collection_id: id }).await?;
     Ok(())
 }
 
@@ -1005,81 +922,7 @@ pub async fn get_collection_games(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Vec<Game>, String> {
     let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    // Get game_ids from the collection_games table
-    let game_ids: Vec<(String,)> = sqlx::query_as(
-        "SELECT game_id FROM collection_games WHERE collection_id = ? ORDER BY sort_order"
-    )
-    .bind(&collection_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // Look up each game from the games database
-    let mut games = Vec::new();
-    if let Some(ref games_pool) = state_guard.games_db_pool {
-        use sqlx::Row;
-        for (game_id,) in game_ids {
-            let row_opt = sqlx::query(
-                r#"
-                SELECT g.id, g.title, g.platform_id, p.name as platform,
-                       g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
-                       g.players, g.rating, g.launchbox_db_id
-                FROM games g
-                JOIN platforms p ON g.platform_id = p.id
-                WHERE g.id = ?
-                LIMIT 1
-                "#
-            )
-            .bind(&game_id)
-            .fetch_optional(games_pool)
-            .await
-            .map_err(|e| e.to_string())?;
-
-            if let Some(row) = row_opt {
-                let title: String = row.get("title");
-                let display_title = normalize_title_for_display(&title);
-                games.push(Game {
-                    id: game_id,
-                    database_id: row.get("launchbox_db_id"),
-                    title,
-                    display_title,
-                    platform: row.get("platform"),
-                    platform_id: row.get("platform_id"),
-                    description: row.get("description"),
-                    release_date: row.get("release_date"),
-                    release_year: row.get("release_year"),
-                    developer: row.get("developer"),
-                    publisher: row.get("publisher"),
-                    genres: row.get("genre"),
-                    players: row.get("players"),
-                    rating: row.get("rating"),
-                    rating_count: None,
-                    esrb: None,
-                    cooperative: None,
-                    video_url: None,
-                    wikipedia_url: None,
-                    release_type: None,
-                    notes: None,
-                    sort_title: None,
-                    series: None,
-                    region: None,
-                    play_mode: None,
-                    version: None,
-                    status: None,
-                    steam_app_id: None,
-                    box_front_path: None,
-                    screenshot_path: None,
-                    variant_count: 1,
-                });
-            }
-        }
-    }
-
-    Ok(games)
+    handlers::get_collection_games(&state_guard, CollectionIdInput { collection_id }).await
 }
 
 #[tauri::command]
@@ -1089,31 +932,7 @@ pub async fn add_game_to_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    // Get the max sort order for this collection
-    let max_order: Option<(i64,)> = sqlx::query_as(
-        "SELECT MAX(sort_order) FROM collection_games WHERE collection_id = ?"
-    )
-    .bind(&collection_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let next_order = max_order.and_then(|o| o.0.checked_add(1)).unwrap_or(0);
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO collection_games (collection_id, game_id, sort_order) VALUES (?, ?, ?)"
-    )
-    .bind(&collection_id)
-    .bind(&game_id)
-    .bind(next_order)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
+    handlers::add_game_to_collection(&state_guard, CollectionGameInput { collection_id, game_id }).await?;
     Ok(())
 }
 
@@ -1124,17 +943,7 @@ pub async fn remove_game_from_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-
-    let pool = state_guard.db_pool.as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
-
-    sqlx::query("DELETE FROM collection_games WHERE collection_id = ? AND game_id = ?")
-        .bind(&collection_id)
-        .bind(&game_id)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
+    handlers::remove_game_from_collection(&state_guard, CollectionGameInput { collection_id, game_id }).await?;
     Ok(())
 }
 
