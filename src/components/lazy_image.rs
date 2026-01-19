@@ -141,9 +141,9 @@ impl RequestQueue {
         self.cancelled.insert(key.to_string());
     }
 
-    /// Pop the next non-cancelled request (LIFO from back)
+    /// Pop the next non-cancelled request (LIFO from front - newest first)
     fn pop_next(&mut self) -> Option<Box<dyn FnOnce()>> {
-        while let Some((key, task)) = self.pending.pop_back() {
+        while let Some((key, task)) = self.pending.pop_front() {
             if !self.cancelled.remove(&key) {
                 // Not cancelled, return it
                 return Some(task);
@@ -280,12 +280,12 @@ fn queue_request<F: FnOnce() + 'static>(key: String, f: F) {
             f();
         } else {
             // Drop oldest requests if queue is too long (they're likely off-screen now)
+            // Oldest are at back, newest at front
             while queue.pending.len() >= MAX_PENDING_REQUESTS {
-                queue.pending.pop_front(); // Remove oldest (front)
+                queue.pending.pop_back(); // Remove oldest (back)
             }
-            // Push to front so that within a batch, first-rendered (top-left) ends up at back
-            // where pop_back will get it first. New batches push their items to front,
-            // shifting older batches toward the back, maintaining LIFO for batches.
+            // Push to front (newest first). Pop from front for LIFO.
+            // New batches get processed before old batches.
             queue.pending.push_front((key, Box::new(f)));
             drop(queue);
             update_queue_stats();
