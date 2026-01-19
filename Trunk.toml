@@ -1,11 +1,17 @@
 [build]
 target = "index.html"
 dist = "dist"
+# Disable minification in dev for faster builds
+minify = "never"
 
 [watch]
-ignore = ["src-tauri"]
+ignore = ["src-tauri", "target", ".git"]
+# Watch these file types for changes
+watch = ["src", "styles", "index.html", "Cargo.toml"]
 
 [serve]
 address = "127.0.0.1"
 port = 1420
 open = false
+# Ensure no caching in dev
+headers = { "Cache-Control" = "no-cache, no-store, must-revalidate" }
