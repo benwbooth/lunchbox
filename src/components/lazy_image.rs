@@ -593,7 +593,9 @@ pub fn LazyImage(
     Effect::new(move || {
         // Track game_key so this effect re-runs when the game changes
         let (db_id, title, plat, img_type) = game_key.get();
-        let is_in_viewport = in_viewport.get();
+        // Use get_untracked to avoid re-running effect when viewport changes
+        // The IntersectionObserver callback handles promote/demote separately
+        let is_in_viewport = in_viewport.get_untracked();
         let mounted = mounted.clone();
         let abort_handle = abort_handle_for_effect.clone();
         let queue_key_store = queue_key_for_effect.clone();

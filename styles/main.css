@@ -307,6 +307,12 @@ body {
     text-transform: uppercase;
 }
 
+/* Lazy Image Observer Wrapper - must fill parent for IntersectionObserver */
+.lazy-image-observer-wrapper {
+    width: 100%;
+    height: 100%;
+}
+
 /* Lazy Image States */
 .lazy-image-loading,
 .lazy-image-downloading,
