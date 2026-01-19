@@ -8,24 +8,61 @@
 set -e
 
 MODE="${1:-browser}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
-# Kill any existing dev processes first
-echo "Cleaning up old processes..."
-pkill -f "trunk serve.*1420" 2>/dev/null || true
-pkill -f "dev_server" 2>/dev/null || true
-pkill -f "cargo watch.*dev_server" 2>/dev/null || true
-sleep 1
+# Install systemd user units
+install_units() {
+    mkdir -p "$UNIT_DIR"
 
-cleanup() {
+    # Trunk (frontend) unit
+    cat > "$UNIT_DIR/lunchbox-trunk.service" << EOF
+[Unit]
+Description=Lunchbox Frontend (trunk)
+
+[Service]
+Type=simple
+WorkingDirectory=$PROJECT_DIR
+ExecStart=$(which trunk) serve --port 1420
+Restart=on-failure
+RestartSec=2
+EOF
+
+    # Backend unit
+    cat > "$UNIT_DIR/lunchbox-backend.service" << EOF
+[Unit]
+Description=Lunchbox Backend (dev_server)
+
+[Service]
+Type=simple
+WorkingDirectory=$PROJECT_DIR
+ExecStart=$(which cargo) watch -w src-tauri -x "run -p lunchbox --bin dev_server"
+Restart=on-failure
+RestartSec=2
+EOF
+
+    systemctl --user daemon-reload
+}
+
+start_units() {
+    systemctl --user start lunchbox-trunk.service
+    systemctl --user start lunchbox-backend.service
+}
+
+stop_units() {
     echo ""
     echo "Shutting down..."
-    pkill -f "trunk serve.*1420" 2>/dev/null || true
-    pkill -f "dev_server" 2>/dev/null || true
-    pkill -f "cargo watch.*dev_server" 2>/dev/null || true
+    systemctl --user stop lunchbox-trunk.service 2>/dev/null || true
+    systemctl --user stop lunchbox-backend.service 2>/dev/null || true
+}
+
+cleanup() {
+    stop_units
     exit 0
 }
 
-trap cleanup SIGINT SIGTERM
+trap cleanup SIGINT SIGTERM SIGPIPE EXIT
 
 if [ "$MODE" = "tauri" ]; then
     echo "Starting Tauri development mode..."
@@ -35,22 +72,20 @@ elif [ "$MODE" = "browser" ]; then
     echo "Starting browser development mode..."
     echo ""
 
-    # Start trunk (frontend) with hot reload
-    # Use setsid to detach from this script's process group so it survives if script is killed
+    # Install/update systemd units
+    install_units
+
+    # Stop any existing instances
+    systemctl --user stop lunchbox-trunk.service 2>/dev/null || true
+    systemctl --user stop lunchbox-backend.service 2>/dev/null || true
+
+    # Start the services
     echo "Starting frontend (trunk) on http://127.0.0.1:1420..."
-    setsid trunk serve --port 1420 &
-
-    # Give trunk a moment to start
-    sleep 2
-
-    # Start backend with cargo-watch for auto-restart on changes
-    # Use setsid to detach from this script's process group
     echo "Starting backend API server on http://127.0.0.1:3001..."
-    echo "(Backend will auto-restart on changes to src-tauri/)"
-    setsid cargo watch -w src-tauri -x "run -p lunchbox --bin dev_server" &
+    start_units
 
-    # Wait for backend to compile and start
-    sleep 5
+    # Wait a moment for services to start
+    sleep 3
 
     # Open browser
     echo ""
@@ -64,9 +99,10 @@ elif [ "$MODE" = "browser" ]; then
     echo ""
     echo "  Press Ctrl+C to stop"
     echo "═══════════════════════════════════════════════════════"
+    echo ""
 
-    # Wait for background jobs
-    wait
+    # Follow the logs until interrupted
+    journalctl --user -f -u lunchbox-trunk.service -u lunchbox-backend.service
 
 else
     echo "Unknown mode: $MODE"
