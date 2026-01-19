@@ -217,13 +217,13 @@ thread_local! {
     static IMAGE_URL_CACHE: RefCell<ImageUrlCache> = RefCell::new(ImageUrlCache::new());
 }
 
-/// Release a slot and process next pending request (LIFO - newest first)
+/// Release a slot and process next pending request (LIFO - newest batch first)
 fn release_slot() {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
         queue.active = queue.active.saturating_sub(1);
 
-        // Process newest pending request first (LIFO) - prioritizes currently visible items
+        // Process from back (LIFO) - newest batch is at back, top-left of batch is at back
         if let Some(task) = queue.pending.pop_back() {
             queue.active += 1;
             // Drop borrow before calling task
@@ -249,9 +249,12 @@ fn queue_request<F: FnOnce() + 'static>(f: F) {
         } else {
             // Drop oldest requests if queue is too long (they're likely off-screen now)
             while queue.pending.len() >= MAX_PENDING_REQUESTS {
-                queue.pending.pop_front(); // Remove oldest (front) since we use LIFO
+                queue.pending.pop_front(); // Remove oldest (front)
             }
-            queue.pending.push_back(Box::new(f));
+            // Push to front so that within a batch, first-rendered (top-left) ends up at back
+            // where pop_back will get it first. New batches push their items to front,
+            // shifting older batches toward the back, maintaining LIFO for batches.
+            queue.pending.push_front(Box::new(f));
             drop(queue);
             update_queue_stats();
         }
