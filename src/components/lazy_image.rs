@@ -188,6 +188,8 @@ fn source_from_path(path: &str) -> Option<String> {
         Some("EM".to_string())
     } else if path.contains("/screenscraper/") {
         Some("SS".to_string())
+    } else if path.contains("/websearch/") {
+        Some("WS".to_string())
     } else {
         None
     }
