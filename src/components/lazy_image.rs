@@ -115,14 +115,14 @@ thread_local! {
     static IMAGE_URL_CACHE: RefCell<ImageUrlCache> = RefCell::new(ImageUrlCache::new());
 }
 
-/// Release a slot and process next pending request
+/// Release a slot and process next pending request (LIFO - newest first)
 fn release_slot() {
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
         queue.active = queue.active.saturating_sub(1);
 
-        // Process next pending request if any
-        if let Some(task) = queue.pending.pop_front() {
+        // Process newest pending request first (LIFO) - prioritizes currently visible items
+        if let Some(task) = queue.pending.pop_back() {
             queue.active += 1;
             // Drop borrow before calling task
             drop(queue);
