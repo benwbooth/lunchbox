@@ -144,14 +144,11 @@ pub fn get_media_path(
         .join(format!("{}.png", normalize_image_type(image_type)))
 }
 
-/// Common image extensions to check for cached files
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
-
 /// Find cached media for a game by checking all source folders
 /// Returns the path and source of the first found image
 ///
-/// Optimized: first checks if game_dir exists, then uses directory listing
-/// to find matching files instead of checking each extension individually.
+/// Optimized: checks for specific filenames rather than listing directories.
+/// We standardize on .png when saving, so we check that first.
 pub fn find_cached_media(
     cache_dir: &Path,
     game_id: &str,
@@ -167,29 +164,17 @@ pub fn find_cached_media(
     }
     tracing::trace!("find_cached_media: checking game_dir={:?}, type={}", game_dir, normalized_type);
 
+    // Check common image extensions. PNG first (most common), then others.
+    let extensions = ["png", "jpg", "webp", "gif"];
+
     for source in ImageSource::all_sources() {
         let source_dir = game_dir.join(source.folder_name());
 
-        // Fast path: skip if source directory doesn't exist
-        if !source_dir.exists() {
-            continue;
-        }
-
-        // Look for any file matching the normalized type with any extension
-        if let Ok(entries) = std::fs::read_dir(&source_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    if stem == normalized_type {
-                        // Check it's an image file
-                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                            if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
-                                tracing::debug!("Cache hit: {} from {:?}", path.display(), source);
-                                return Some((path, *source));
-                            }
-                        }
-                    }
-                }
+        for ext in &extensions {
+            let path = source_dir.join(format!("{}.{}", normalized_type, ext));
+            if path.exists() {
+                tracing::debug!("Cache hit: {} from {:?}", path.display(), source);
+                return Some((path, *source));
             }
         }
     }
