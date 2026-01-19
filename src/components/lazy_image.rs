@@ -12,7 +12,10 @@ use std::collections::{HashMap, VecDeque};
 use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 
 /// Maximum concurrent image operations (cache checks + downloads)
-const MAX_CONCURRENT_REQUESTS: usize = 6;
+const MAX_CONCURRENT_REQUESTS: usize = 8;
+
+/// Maximum pending requests in queue - older ones get dropped when exceeded
+const MAX_PENDING_REQUESTS: usize = 50;
 
 /// Maximum entries in the frontend image URL cache
 const IMAGE_CACHE_MAX_SIZE: usize = 500;
@@ -140,6 +143,10 @@ fn queue_request<F: FnOnce() + 'static>(f: F) {
             drop(queue);
             f();
         } else {
+            // Drop oldest requests if queue is too long (they're likely off-screen now)
+            while queue.pending.len() >= MAX_PENDING_REQUESTS {
+                queue.pending.pop_front(); // Remove oldest (front) since we use LIFO
+            }
             queue.pending.push_back(Box::new(f));
         }
     });
