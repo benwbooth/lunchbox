@@ -1064,7 +1064,7 @@ body {
 
 .carousel-label {
     position: absolute;
-    bottom: 8px;
+    bottom: 32px;
     left: 50%;
     transform: translateX(-50%);
     background-color: rgba(0, 0, 0, 0.7);
@@ -1073,6 +1073,7 @@ body {
     padding: 4px 12px;
     border-radius: 12px;
     white-space: nowrap;
+    z-index: 5;
 }
 
 /* Scrollbar Styling */
