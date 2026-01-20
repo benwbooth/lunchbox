@@ -31,12 +31,18 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
 
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
-        console.error(`Canvas element not found: ${canvasId}`);
+        console.error(`Box3D: Canvas element not found: ${canvasId}`);
         return null;
     }
 
-    const width = canvas.clientWidth || 400;
-    const height = canvas.clientHeight || 400;
+    // Get dimensions from parent if canvas has no size yet
+    const parent = canvas.parentElement;
+    const width = canvas.clientWidth || parent?.clientWidth || 400;
+    const height = canvas.clientHeight || parent?.clientHeight || 350;
+
+    console.log(`Box3D: Initializing viewer ${canvasId} at ${width}x${height}`);
+    console.log(`Box3D: Front URL: ${frontUrl}`);
+    console.log(`Box3D: Back URL: ${backUrl}`);
 
     // Create scene
     const scene = new THREE.Scene();
@@ -77,18 +83,24 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
 
     // Load front texture
     const frontTexture = textureLoader.load(frontUrl,
-        () => renderer.render(scene, camera),
+        () => {
+            console.log('Box3D: Front texture loaded successfully');
+            renderer.render(scene, camera);
+        },
         undefined,
-        (err) => console.warn('Failed to load front texture:', err)
+        (err) => console.error('Box3D: Failed to load front texture:', frontUrl, err)
     );
 
     // Load back texture if provided
     let backTexture = null;
     if (backUrl) {
         backTexture = textureLoader.load(backUrl,
-            () => renderer.render(scene, camera),
+            () => {
+                console.log('Box3D: Back texture loaded successfully');
+                renderer.render(scene, camera);
+            },
             undefined,
-            (err) => console.warn('Failed to load back texture:', err)
+            (err) => console.error('Box3D: Failed to load back texture:', backUrl, err)
         );
     }
 

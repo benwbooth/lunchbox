@@ -2479,7 +2479,7 @@ body {
 
 .box-3d-controls {
     position: absolute;
-    bottom: 12px;
+    bottom: 40px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 1;
@@ -2491,6 +2491,11 @@ body {
     padding: 4px 12px;
     border-radius: 12px;
     font-size: 11px;
+}
+
+/* Hide hint when inside carousel (carousel has its own label) */
+.carousel-3d-container .box-3d-controls {
+    display: none;
 }
 
 /* ============ Media Gallery Tabs ============ */
