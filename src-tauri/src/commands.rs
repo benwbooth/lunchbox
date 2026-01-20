@@ -630,7 +630,20 @@ pub async fn get_game_by_uuid(
 const DEFAULT_REGION_PRIORITY: &[&str] = &[
     "",       // No region (unspecified/plain version)
     "USA",
+    "World",
+    "Europe",
     "Japan",
+    "Australia",
+    "Canada",
+    "Brazil",
+    "Korea",
+    "Asia",
+    "China",
+    "France",
+    "Germany",
+    "Italy",
+    "Spain",
+    "United Kingdom",
 ];
 
 /// Calculate region priority for sorting (lower = better)

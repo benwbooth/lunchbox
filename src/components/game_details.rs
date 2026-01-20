@@ -477,10 +477,6 @@ fn MediaCarousel(
 
     view! {
         <div class="media-carousel">
-            <button class="carousel-arrow carousel-prev" on:click=prev title="Previous">
-                "‹"
-            </button>
-
             <div class="carousel-content">
                 {move || {
                     let types = available_types.get();
@@ -528,6 +524,18 @@ fn MediaCarousel(
                     }
                 }}
 
+                // Overlay arrows
+                <button class="carousel-arrow carousel-prev" on:click=prev title="Previous">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                    </svg>
+                </button>
+                <button class="carousel-arrow carousel-next" on:click=next title="Next">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+                    </svg>
+                </button>
+
                 // Media type label
                 <div class="carousel-label">
                     {move || {
@@ -539,10 +547,6 @@ fn MediaCarousel(
                     }}
                 </div>
             </div>
-
-            <button class="carousel-arrow carousel-next" on:click=next title="Next">
-                "›"
-            </button>
         </div>
     }
 }
