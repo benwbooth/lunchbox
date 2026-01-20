@@ -598,6 +598,9 @@ pub fn GameGrid(
                         .map(|(i, g)| (i, g.clone()))
                         .collect();
 
+                    // Get current artwork type (accessing signal here ensures re-render when it changes)
+                    let current_artwork_type = artwork_type.get();
+
                     view! {
                         <div
                             class="virtual-container"
@@ -622,7 +625,7 @@ pub fn GameGrid(
                                                     style:width=format!("{}px", ITEM_WIDTH)
                                                     style:height=format!("{}px", ITEM_HEIGHT)
                                                 >
-                                                    <GameCard game=game on_select=selected_game search_query=current_search.get() artwork_type=artwork_type.get() render_index=index in_viewport=in_viewport />
+                                                    <GameCard game=game on_select=selected_game search_query=current_search.get() artwork_type=current_artwork_type render_index=index in_viewport=in_viewport />
                                                 </div>
                                             }
                                         }).collect::<Vec<_>>()}
