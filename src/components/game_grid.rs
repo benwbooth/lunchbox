@@ -1053,11 +1053,29 @@ fn GameCard(
     let platform = game.platform.clone();
     let title_for_img = game.title.clone();
 
+    // Build tooltip with game info
+    let mut tooltip_parts = vec![display_title.clone()];
+    tooltip_parts.push(format!("Platform: {}", game.platform));
+    if let Some(ref dev) = game.developer {
+        tooltip_parts.push(format!("Developer: {}", dev));
+    }
+    if let Some(ref pub_) = game.publisher {
+        tooltip_parts.push(format!("Publisher: {}", pub_));
+    }
+    if let Some(year) = game.release_year {
+        tooltip_parts.push(format!("Year: {}", year));
+    }
+    if let Some(ref genres) = game.genres {
+        tooltip_parts.push(format!("Genre: {}", genres));
+    }
+    let tooltip = tooltip_parts.join("\n");
+
     let game_for_click = game.clone();
 
     view! {
         <div
             class="game-card"
+            title=tooltip
             on:click=move |_| on_select.set(Some(game_for_click.clone()))
         >
             <div class="game-cover">
@@ -1077,7 +1095,9 @@ fn GameCard(
                 })}
             </div>
             <div class="game-info">
-                <h3 class="game-title">{highlight_matches(&display_title, &search_query)}</h3>
+                <h3 class="game-title">
+                    <span class="game-title-text">{highlight_matches(&display_title, &search_query)}</span>
+                </h3>
                 {developer.map(|d| view! { <p class="game-developer">{d}</p> })}
             </div>
         </div>
