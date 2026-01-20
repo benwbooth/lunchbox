@@ -775,6 +775,7 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     aliases.insert("pico8", "PICO-8");
     aliases.insert("uzebox", "Uzebox");
     aliases.insert("arduboy", "Arduboy");
+    aliases.insert("arduboy inc - arduboy", "Arduboy");
     aliases.insert("wasm-4", "WASM-4");
     aliases.insert("wasm4", "WASM-4");
 
@@ -784,6 +785,94 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     aliases.insert("windows", "Windows");
     aliases.insert("pc", "Windows");
     aliases.insert("linux", "Linux");
+
+    // =========================================================================
+    // Libretro-style aliases (prevent duplicates from different sources)
+    // =========================================================================
+    // 3DO
+    aliases.insert("the 3do company - 3do", "3DO Interactive Multiplayer");
+    aliases.insert("panasonic - 3do interactive multiplayer", "3DO Interactive Multiplayer");
+
+    // Nintendo
+    aliases.insert("nintendo - nintendo 64dd", "Nintendo 64DD");
+    aliases.insert("nintendo - family computer disk system", "Nintendo Famicom Disk System");
+    aliases.insert("nintendo - satellaview", "Nintendo Satellaview");
+    aliases.insert("nintendo - e-reader", "Nintendo e-Reader");
+    aliases.insert("nintendo - game & watch", "Nintendo Game & Watch");
+    aliases.insert("nintendo - sufami turbo", "Nintendo Sufami Turbo");
+
+    // Sega
+    aliases.insert("sega - naomi", "Sega Naomi");
+    aliases.insert("sega - naomi 2", "Sega Naomi 2");
+    aliases.insert("sega - mega-cd - sega cd", "Sega CD");
+    aliases.insert("sega - beena", "Sega Beena");
+    aliases.insert("sega - pico", "Sega Pico");
+
+    // Commodore
+    aliases.insert("commodore - cd32", "Commodore Amiga CD32");
+    aliases.insert("commodore - cdtv", "Commodore CDTV");
+    aliases.insert("commodore - plus-4", "Commodore Plus 4");
+
+    // NEC
+    aliases.insert("nec - pc engine supergrafx", "PC Engine SuperGrafx");
+    aliases.insert("nec - pc-98", "NEC PC-9801");
+
+    // Magnavox
+    aliases.insert("magnavox - odyssey2", "Magnavox Odyssey 2");
+
+    // Sinclair
+    aliases.insert("sinclair - zx spectrum +3", "Sinclair ZX Spectrum");
+
+    // Philips
+    aliases.insert("philips - videopac+", "Philips Videopac+");
+
+    // VTech
+    aliases.insert("vtech - v.smile", "VTech V.Smile");
+
+    // Funtech
+    aliases.insert("funtech - super acan", "Funtech Super Acan");
+
+    // Benesse
+    aliases.insert("benesse - pocket challenge v2", "Benesse Pocket Challenge V2");
+
+    // Konami
+    aliases.insert("konami - picno", "Konami Picno");
+
+    // LeapFrog
+    aliases.insert("leapfrog - leappad", "LeapFrog LeapPad");
+    aliases.insert("leapfrog - leapster learning game system", "LeapFrog Leapster");
+
+    // Mobile
+    aliases.insert("mobile - j2me", "Mobile J2ME");
+    aliases.insert("mobile - palm os", "Mobile Palm OS");
+    aliases.insert("mobile - symbian", "Mobile Symbian");
+    aliases.insert("mobile - zeebo", "Zeebo");
+
+    // Microsoft Xbox variants
+    aliases.insert("microsoft - xbox 360 (digital)", "Microsoft Xbox 360");
+    aliases.insert("microsoft - xbox 360 (games on demand)", "Microsoft Xbox 360");
+    aliases.insert("microsoft - xbox 360 (title updates)", "Microsoft Xbox 360");
+
+    // Sony PSP variants
+    aliases.insert("sony - playstation portable (psn)", "Sony PSP");
+    aliases.insert("sony - playstation portable (psx2psp)", "Sony PSP");
+    aliases.insert("sony - playstation portable (umd music)", "Sony PSP");
+    aliases.insert("sony - playstation portable (umd video)", "Sony PSP");
+
+    // Sony PS3 variants
+    aliases.insert("sony - playstation 3 (psn)", "Sony Playstation 3");
+
+    // Sony Vita variants
+    aliases.insert("sony - playstation vita (psn)", "Sony Playstation Vita");
+
+    // Nintendo Wii/3DS variants
+    aliases.insert("nintendo - wii (digital)", "Nintendo Wii");
+    aliases.insert("nintendo - wii u (digital)", "Nintendo Wii U");
+    aliases.insert("nintendo - new nintendo 3ds", "Nintendo 3DS");
+    aliases.insert("nintendo - new nintendo 3ds (digital)", "Nintendo 3DS");
+    aliases.insert("nintendo - nintendo 3ds (digital)", "Nintendo 3DS");
+    aliases.insert("nintendo - nintendo ds (download play)", "Nintendo DS");
+    aliases.insert("nintendo - nintendo dsi", "Nintendo DSi");
 
     aliases
 }
