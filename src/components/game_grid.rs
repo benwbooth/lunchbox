@@ -11,6 +11,19 @@ use crate::tauri::{self, Game};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
+/// Format a number with comma separators (e.g., 1234567 -> "1,234,567")
+fn format_number(n: i64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
 // Virtual scroll configuration
 const ITEM_HEIGHT: i32 = 280; // Height of each game card in grid
 
@@ -960,7 +973,7 @@ pub fn GameGrid(
                                     let total = total_count.get();
                                     let filters = column_filters.get();
                                     if filters.is_empty() {
-                                        format!("{} games", total)
+                                        format!("{} games", format_number(total))
                                     } else {
                                         // Count how many pass the filters
                                         let all_games = games.get();
@@ -969,7 +982,7 @@ pub fn GameGrid(
                                                 col.passes_filter(game, allowed)
                                             })
                                         }).count();
-                                        format!("{} of {} games", filtered, total)
+                                        format!("{} of {} games", format_number(filtered as i64), format_number(total))
                                     }
                                 }}
                             </div>

@@ -6,6 +6,19 @@ use crate::tauri::{self, Platform, Collection};
 use crate::components::QueueStatus;
 use web_sys::console;
 
+/// Format a number with comma separators (e.g., 1234567 -> "1,234,567")
+fn format_number(n: i64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
 #[component]
 pub fn Sidebar(
     selected_platform: ReadSignal<Option<String>>,
@@ -135,7 +148,7 @@ pub fn Sidebar(
                     <span class="platform-count">
                         {move || {
                             let total: i64 = platforms.get().iter().map(|p| p.game_count).sum();
-                            total.to_string()
+                            format_number(total)
                         }}
                     </span>
                 </button>
@@ -282,7 +295,7 @@ fn PlatformItem(
                 {move || highlight_matches(&name_for_display, &search_query.get())}
             </span>
             {(game_count > 0).then(|| view! {
-                <span class="platform-count">{game_count}</span>
+                <span class="platform-count">{format_number(game_count)}</span>
             })}
         </button>
     }
@@ -319,7 +332,7 @@ fn CollectionItem(
             on:click=move |_| on_click(id_for_click.clone())
         >
             <span class="collection-name">{name}</span>
-            <span class="collection-count">{game_count}</span>
+            <span class="collection-count">{format_number(game_count)}</span>
             <button
                 class="delete-collection-btn"
                 title="Delete Collection"
