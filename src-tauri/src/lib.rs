@@ -42,6 +42,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::greet,
             commands::get_platforms,
+            commands::get_all_regions,
             commands::get_game_count,
             commands::get_games,
             commands::get_game_by_id,

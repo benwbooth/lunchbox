@@ -1204,6 +1204,87 @@ body {
     font-size: 12px;
 }
 
+/* Region Priority List */
+.region-priority-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--bg-tertiary);
+    padding: 8px;
+}
+
+.region-priority-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    user-select: none;
+}
+
+.region-priority-item:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--accent-color);
+}
+
+.region-position {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 24px;
+    font-weight: 600;
+}
+
+.region-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.region-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.region-move-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.region-move-btn:hover:not(:disabled) {
+    background-color: var(--bg-hover);
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.region-move-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.settings-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
 /* Collections Section */
 .collections-header {
     display: flex;
@@ -1668,68 +1749,10 @@ body {
     margin-left: 12px;
 }
 
-/* Video Player Section */
+/* Video Player Section - now at top of details, full width, auto-playing */
 .video-player-section {
-    border-top: 1px solid var(--border-color);
-}
-
-.video-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 16px 24px;
-    cursor: pointer;
-    user-select: none;
-}
-
-.video-header:hover {
-    background: var(--bg-hover);
-}
-
-.video-toggle {
-    font-size: 12px;
-    color: var(--text-secondary);
-    width: 12px;
-}
-
-.video-header h3 {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-highlight);
-    margin: 0;
-    flex: 1;
-}
-
-.video-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-}
-
-.video-badge.ready {
-    background: var(--success-color);
-    color: var(--bg-primary);
-}
-
-.video-badge.downloading {
-    background: var(--accent-color);
-    color: white;
-}
-
-.video-badge.no-video {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-}
-
-.video-badge.error {
-    background: var(--danger-color);
-    color: white;
-}
-
-.video-content {
-    padding: 0 24px 24px;
+    width: 100%;
+    margin-bottom: 16px;
 }
 
 .video-loading,
@@ -1794,8 +1817,6 @@ body {
 .video-container {
     position: relative;
     width: 100%;
-    max-width: 640px;
-    margin: 0 auto;
     border-radius: 8px;
     overflow: hidden;
     background: #000;
@@ -1804,23 +1825,19 @@ body {
 .game-video {
     width: 100%;
     height: auto;
+    max-height: 400px;
     display: block;
+    object-fit: contain;
 }
 
 .game-video:focus {
     outline: none;
 }
 
+/* Hide empty video states - we show nothing if no video */
 .video-not-available,
 .video-error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 32px;
-    gap: 8px;
-    text-align: center;
-    color: var(--text-secondary);
+    display: none;
 }
 
 .video-hint {

@@ -50,6 +50,11 @@ pub struct AppSettings {
     #[serde(default)]
     pub saves_directory: Option<PathBuf>,
 
+    /// User-defined region priority order (first = highest priority)
+    /// Empty means use default order
+    #[serde(default)]
+    pub region_priority: Vec<String>,
+
     // Image source API credentials (stored in keyring when available)
     #[serde(default)]
     pub screenscraper: ScreenScraperSettings,
@@ -110,6 +115,7 @@ impl Default for AppSettings {
             media_directory: None,
             programs_directory: None,
             saves_directory: None,
+            region_priority: Vec::new(),
             screenscraper: ScreenScraperSettings::default(),
             steamgriddb: SteamGridDBSettings::default(),
             igdb: IGDBSettings::default(),

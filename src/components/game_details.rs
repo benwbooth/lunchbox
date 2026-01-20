@@ -163,6 +163,13 @@ pub fn GameDetails(
                             <div class="game-details-panel" on:click=|e| e.stop_propagation()>
                                 <button class="close-btn" on:click=move |_| on_close.set(None)>"×"</button>
 
+                                // Video player at top, full width, auto-plays
+                                <VideoPlayer
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    launchbox_db_id=db_id
+                                />
+
                                 <div class="game-details-header">
                                     <div class="game-details-cover">
                                         {match box_front {
@@ -305,13 +312,6 @@ pub fn GameDetails(
                                     <h2>"Description"</h2>
                                     <p>{description}</p>
                                 </div>
-
-                                // Video player section
-                                <VideoPlayer
-                                    game_title=g.title.clone()
-                                    platform=g.platform.clone()
-                                    launchbox_db_id=db_id
-                                />
 
                                 // Variants section
                                 <VariantsSection

@@ -626,51 +626,133 @@ pub async fn get_game_by_uuid(
     Ok(None)
 }
 
-/// Calculate region priority for sorting (lower = better, USA/English first)
-fn region_priority(title: &str) -> i32 {
+/// Default region priority order
+const DEFAULT_REGION_PRIORITY: &[&str] = &[
+    "",       // No region (plain version)
+    "USA",
+    "Japan",
+    "Europe",
+    "World",
+    "Australia",
+    "Brazil",
+    "Canada",
+    "China",
+    "France",
+    "Germany",
+    "Hong Kong",
+    "Italy",
+    "Korea",
+    "Netherlands",
+    "Spain",
+    "Sweden",
+    "Taiwan",
+    "UK",
+];
+
+/// Calculate region priority for sorting (lower = better)
+/// Uses custom region order if provided, falls back to default
+fn region_priority(title: &str, custom_order: &[String]) -> i32 {
     let title_lower = title.to_lowercase();
 
-    // USA is highest priority
-    if title_lower.contains("(usa)") || title_lower.contains("(usa,") || title_lower.contains(", usa)") {
-        return 0;
-    }
-
-    // Check for English language indicator
-    let has_english = title_lower.contains("(en)") || title_lower.contains("(en,")
-        || title_lower.contains(", en)") || title_lower.contains(", en,");
-
-    // World with English
-    if title_lower.contains("(world)") {
-        return if has_english { 1 } else { 2 };
-    }
-
-    // English language versions (any region)
-    if has_english {
-        return 3;
-    }
-
-    // Europe (often has English)
-    if title_lower.contains("(europe)") || title_lower.contains("(europe,") {
-        return 4;
-    }
-
-    // Other English-speaking regions
-    if title_lower.contains("(australia)") || title_lower.contains("(uk)") || title_lower.contains("(canada)") {
-        return 5;
-    }
-
-    // Japan
-    if title_lower.contains("(japan)") || title_lower.contains("(ja)") {
-        return 6;
-    }
-
-    // No region info - could be anything, put before non-English
+    // No region info (plain version) - check first
     if !title_lower.contains("(") {
-        return 7;
+        // If custom order includes "" (empty/plain), use its position
+        if let Some(pos) = custom_order.iter().position(|r| r.is_empty()) {
+            return pos as i32;
+        }
+        return 0; // Default: plain versions first
     }
 
-    // Everything else (other languages/regions)
-    8
+    // Check each region in custom order (or default)
+    let regions: Vec<&str> = if custom_order.is_empty() {
+        DEFAULT_REGION_PRIORITY.to_vec()
+    } else {
+        custom_order.iter().map(|s| s.as_str()).collect()
+    };
+
+    for (priority, region) in regions.iter().enumerate() {
+        if region.is_empty() {
+            continue; // Already handled plain versions above
+        }
+        let region_lower = region.to_lowercase();
+        // Match patterns like (USA), (USA, Europe), (Europe, USA)
+        let pattern1 = format!("({})", region_lower);
+        let pattern2 = format!("({},", region_lower);
+        let pattern3 = format!(", {})", region_lower);
+
+        if title_lower.contains(&pattern1)
+            || title_lower.contains(&pattern2)
+            || title_lower.contains(&pattern3)
+        {
+            return priority as i32;
+        }
+    }
+
+    // Everything else
+    regions.len() as i32
+}
+
+/// Get all unique regions from the games database
+#[tauri::command]
+pub async fn get_all_regions(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<String>, String> {
+    let state_guard = state.read().await;
+
+    if let Some(ref games_pool) = state_guard.games_db_pool {
+        // Get unique regions from the region column
+        let explicit_regions: Vec<(Option<String>,)> = sqlx::query_as(
+            "SELECT DISTINCT region FROM games WHERE region IS NOT NULL AND region != ''"
+        )
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut regions: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        // Add explicit regions from region column
+        for (region,) in explicit_regions {
+            if let Some(r) = region {
+                regions.insert(r);
+            }
+        }
+
+        // Also extract regions from title parentheses (e.g., "Game (USA)")
+        let titles: Vec<(String,)> = sqlx::query_as(
+            "SELECT DISTINCT title FROM games WHERE title LIKE '%(%'"
+        )
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        for (title,) in titles {
+            if let Some(extracted) = extract_region_from_title(&title) {
+                regions.insert(extracted);
+            }
+        }
+
+        // Sort by default priority order first, then alphabetically for unknown regions
+        let mut result: Vec<String> = regions.into_iter().collect();
+        result.sort_by(|a, b| {
+            let pos_a = DEFAULT_REGION_PRIORITY.iter().position(|&r| r == a.as_str());
+            let pos_b = DEFAULT_REGION_PRIORITY.iter().position(|&r| r == b.as_str());
+            match (pos_a, pos_b) {
+                (Some(pa), Some(pb)) => pa.cmp(&pb),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => a.cmp(b),
+            }
+        });
+
+        // Add empty string for "plain/no region" at the start if not present
+        if !result.iter().any(|r| r.is_empty()) {
+            result.insert(0, String::new());
+        }
+
+        return Ok(result);
+    }
+
+    Ok(Vec::new())
 }
 
 /// Get all variants (regions/versions) for a given game by display title
@@ -681,6 +763,9 @@ pub async fn get_game_variants(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Vec<GameVariant>, String> {
     let state_guard = state.read().await;
+
+    // Get custom region priority from settings
+    let custom_region_order = state_guard.settings.region_priority.clone();
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
         // Search for all games that normalize to this display title
@@ -718,11 +803,11 @@ pub async fn get_game_variants(
             }
         }
 
-        // Convert to vec and sort by region priority (USA/English first)
+        // Convert to vec and sort by region priority (uses user's preference if set)
         let mut variants: Vec<GameVariant> = seen_titles.into_values().collect();
         variants.sort_by(|a, b| {
-            let priority_a = region_priority(&a.title);
-            let priority_b = region_priority(&b.title);
+            let priority_a = region_priority(&a.title, &custom_region_order);
+            let priority_b = region_priority(&b.title, &custom_region_order);
             priority_a.cmp(&priority_b).then_with(|| a.title.cmp(&b.title))
         });
 

@@ -7,7 +7,7 @@ use std::rc::Rc;
 use crate::tauri::{
     get_settings, save_settings, get_credential_storage_name,
     test_screenscraper_connection, test_steamgriddb_connection,
-    test_igdb_connection, AppSettings,
+    test_igdb_connection, get_all_regions, AppSettings,
 };
 use super::ImageSourcesWizard;
 
@@ -39,17 +39,28 @@ pub fn Settings(
     // Image sources wizard state
     let (show_wizard, set_show_wizard) = signal(false);
 
+    // Region priority state
+    let (all_regions, set_all_regions) = signal::<Vec<String>>(Vec::new());
+    let (regions_loading, set_regions_loading) = signal(false);
+
     // Load settings when shown
     let user_modified_for_load = user_modified.clone();
     Effect::new(move || {
         if show.get() && !loaded.get() {
             user_modified_for_load.set(false);
             set_loading.set(true);
+            set_regions_loading.set(true);
             let user_modified_inner = user_modified_for_load.clone();
             spawn_local(async move {
                 if let Ok(name) = get_credential_storage_name().await {
                     set_storage_name.set(name);
                 }
+
+                // Load all available regions
+                if let Ok(regions) = get_all_regions().await {
+                    set_all_regions.set(regions);
+                }
+                set_regions_loading.set(false);
 
                 match get_settings().await {
                     Ok(s) => {
@@ -139,6 +150,23 @@ pub fn Settings(
                                 >
                                     "Setup Image Sources..."
                                 </button>
+                            </div>
+
+                            // Region Priority Section
+                            <div class="settings-section">
+                                <h3>"Region Priority"</h3>
+                                <p class="settings-hint">
+                                    "Set which regions appear first when a game has multiple versions. Use the arrows to reorder. The top region is preferred."
+                                </p>
+                                <Show
+                                    when=move || !regions_loading.get()
+                                    fallback=|| view! { <div class="settings-loading">"Loading regions..."</div> }
+                                >
+                                    <RegionPriorityList
+                                        all_regions=all_regions
+                                        settings=settings
+                                    />
+                                </Show>
                             </div>
 
                             // ScreenScraper Section
@@ -449,5 +477,113 @@ pub fn Settings(
                 on_close=set_show_wizard
             />
         </Show>
+    }
+}
+
+/// Display name for a region (empty string = "No Region / Plain")
+fn region_display_name(region: &str) -> String {
+    if region.is_empty() {
+        "No Region (Plain)".to_string()
+    } else {
+        region.to_string()
+    }
+}
+
+/// Indexed region for list display
+#[derive(Clone)]
+struct IndexedRegion {
+    index: usize,
+    region: String,
+}
+
+/// Reorderable list for region priority using up/down buttons
+#[component]
+fn RegionPriorityList(
+    all_regions: ReadSignal<Vec<String>>,
+    settings: RwSignal<AppSettings>,
+) -> impl IntoView {
+    // Compute the display order: user's saved priority first, then remaining regions
+    let display_order = move || -> Vec<IndexedRegion> {
+        let saved_priority = settings.get().region_priority;
+        let all = all_regions.get();
+
+        let regions = if !saved_priority.is_empty() {
+            let mut result = saved_priority.clone();
+            for region in all {
+                if !result.contains(&region) {
+                    result.push(region);
+                }
+            }
+            result
+        } else {
+            all
+        };
+
+        regions
+            .into_iter()
+            .enumerate()
+            .map(|(index, region)| IndexedRegion { index, region })
+            .collect()
+    };
+
+    let total_count = move || display_order().len();
+
+    let move_region = move |from: usize, to: usize| {
+        settings.update(|s| {
+            let regions: Vec<String> = display_order().into_iter().map(|r| r.region).collect();
+            let mut order = regions;
+            if from < order.len() && to < order.len() {
+                let item = order.remove(from);
+                order.insert(to, item);
+                s.region_priority = order;
+            }
+        });
+    };
+
+    view! {
+        <div class="region-priority-list">
+            <For
+                each=display_order
+                key=|item| item.region.clone()
+                let:item
+            >
+                {
+                    let idx = item.index;
+                    let display_name = region_display_name(&item.region);
+                    view! {
+                        <div class="region-priority-item">
+                            <span class="region-position">{idx + 1}</span>
+                            <span class="region-name">{display_name}</span>
+                            <div class="region-controls">
+                                <button
+                                    class="region-move-btn"
+                                    on:click=move |_| {
+                                        if idx > 0 {
+                                            move_region(idx, idx - 1);
+                                        }
+                                    }
+                                    disabled=move || idx == 0
+                                    title="Move up"
+                                >
+                                    "↑"
+                                </button>
+                                <button
+                                    class="region-move-btn"
+                                    on:click=move |_| {
+                                        if idx < total_count() - 1 {
+                                            move_region(idx, idx + 1);
+                                        }
+                                    }
+                                    disabled=move || idx >= total_count() - 1
+                                    title="Move down"
+                                >
+                                    "↓"
+                                </button>
+                            </div>
+                        </div>
+                    }
+                }
+            </For>
+        </div>
     }
 }

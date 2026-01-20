@@ -113,6 +113,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/health", get(health))
         .route("/api/log", post(frontend_log))
         .route("/api/platforms", get(get_platforms))
+        .route("/api/regions", get(get_all_regions))
         .route("/api/games", get(get_games))
         .route("/api/games/count", get(get_game_count))
         .route("/api/games/:uuid", get(get_game_by_uuid))
@@ -145,6 +146,62 @@ pub fn create_router(state: SharedState) -> Router {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+// ============================================================================
+// Regions
+// ============================================================================
+
+async fn get_all_regions(
+    State(state): State<SharedState>,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    use crate::db::schema::extract_region_from_title;
+
+    let state_guard = state.read().await;
+
+    if let Some(ref games_pool) = state_guard.games_db_pool {
+        // Get unique regions from the region column
+        let explicit_regions: Vec<(Option<String>,)> = sqlx::query_as(
+            "SELECT DISTINCT region FROM games WHERE region IS NOT NULL AND region != ''"
+        )
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        let mut regions: HashSet<String> = HashSet::new();
+
+        // Add explicit regions from region column
+        for (region,) in explicit_regions {
+            if let Some(r) = region {
+                regions.insert(r);
+            }
+        }
+
+        // Also extract regions from title parentheses (e.g., "Game (USA)")
+        let titles: Vec<(String,)> = sqlx::query_as(
+            "SELECT DISTINCT title FROM games WHERE title LIKE '%(%'"
+        )
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        for (title,) in titles {
+            if let Some(extracted) = extract_region_from_title(&title) {
+                regions.insert(extracted);
+            }
+        }
+
+        // Sort alphabetically
+        let mut result: Vec<String> = regions.into_iter().collect();
+        result.sort();
+
+        // Add empty string for "plain/no region" at the start
+        result.insert(0, String::new());
+
+        return Ok(Json(result));
+    }
+
+    Ok(Json(Vec::new()))
 }
 
 #[derive(Debug, Deserialize)]

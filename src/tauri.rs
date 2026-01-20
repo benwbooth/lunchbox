@@ -362,6 +362,9 @@ pub struct AppSettings {
     pub programs_directory: Option<String>,
     #[serde(default)]
     pub saves_directory: Option<String>,
+    /// User-defined region priority order (first = highest priority)
+    #[serde(default)]
+    pub region_priority: Vec<String>,
     #[serde(default)]
     pub screenscraper: ScreenScraperSettings,
     #[serde(default)]
@@ -434,6 +437,15 @@ pub async fn get_platforms() -> Result<Vec<Platform>, String> {
         invoke_no_args("get_platforms").await
     } else {
         http_get("/api/platforms").await
+    }
+}
+
+/// Get all unique regions from the games database
+pub async fn get_all_regions() -> Result<Vec<String>, String> {
+    if is_tauri() {
+        invoke_no_args("get_all_regions").await
+    } else {
+        http_get("/api/regions").await
     }
 }
 
