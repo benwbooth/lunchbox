@@ -403,32 +403,15 @@ fn MediaCarousel(
     let plat = StoredValue::new(platform.clone());
     let db_id = launchbox_db_id;
 
-    // Load available image types on mount
+    // Set all media types - LazyImage will download on demand
+    set_available_types.set(MEDIA_TYPES.iter().map(|&s| s.to_string()).collect());
+
+    // Pre-load box URLs for 3D viewer in background
     Effect::new(move || {
         let title = title.get_value();
         let plat = plat.get_value();
 
         spawn_local(async move {
-            // Get available types from backend
-            if let Ok(types) = tauri::get_available_image_types(db_id).await {
-                // Filter to types we support and add "Box - 3D" if we have Box - Front
-                let mut display_types: Vec<String> = MEDIA_TYPES
-                    .iter()
-                    .filter(|&&t| t == "Box - 3D" || types.contains(&t.to_string()))
-                    .map(|&s| s.to_string())
-                    .collect();
-
-                // Only include Box - 3D if we have Box - Front
-                if !types.contains(&"Box - Front".to_string()) {
-                    display_types.retain(|t| t != "Box - 3D");
-                }
-
-                if display_types.is_empty() {
-                    display_types.push("Box - Front".to_string());
-                }
-                set_available_types.set(display_types);
-            }
-
             // Pre-load box front URL for 3D viewer
             if let Ok(path) = tauri::download_image_with_fallback(
                 title.clone(),
