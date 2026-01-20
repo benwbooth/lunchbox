@@ -5,7 +5,7 @@
  */
 
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from './three/OrbitControls.js';
 
 console.log('Box3D: Three.js loaded successfully, version:', THREE.REVISION);
 

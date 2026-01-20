@@ -5,13 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lunchbox</title>
     <link data-trunk rel="css" href="styles/main.css">
-    <!-- Three.js for 3D box viewer - es-module-shims must load before modules -->
-    <script src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <!-- Three.js import map for local modules -->
     <script type="importmap">
     {
         "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            "three": "/three/three.module.js"
         }
     }
     </script>
@@ -19,6 +17,7 @@
 <body>
     <div id="app"></div>
     <link data-trunk rel="rust" />
+    <link data-trunk rel="copy-dir" href="js/three" />
     <script data-trunk type="module" src="js/box3d.js"></script>
 </body>
 </html>
