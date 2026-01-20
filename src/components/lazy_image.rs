@@ -290,14 +290,23 @@ thread_local! {
 
 /// Queue a request to run when a slot is available.
 /// The key is used to allow cancellation of pending requests.
-/// render_index determines processing order (lower = processed first = top-left items).
-fn queue_request<F: FnOnce() + 'static>(key: String, f: F, render_index: usize) {
+/// in_viewport items get priority over buffer items.
+/// render_index determines order within each priority level (lower = first).
+fn queue_request<F: FnOnce() + 'static>(key: String, f: F, render_index: usize, in_viewport: bool) {
+    // Viewport items get priority 0-999999, buffer items get 1000000+
+    // This ensures viewport items always process before buffer items
+    let priority = if in_viewport {
+        render_index
+    } else {
+        render_index.saturating_add(1_000_000)
+    };
+
     REQUEST_QUEUE.with(|q| {
         let mut queue = q.borrow_mut();
 
-        // Drop oldest requests if queue is too long
+        // Drop lowest priority requests if queue is too long
         while queue.pending.len() >= MAX_PENDING_REQUESTS {
-            // Remove highest render_index (furthest from top-left)
+            // Remove highest priority value (lowest priority = buffer items far from viewport)
             if let Some((&idx, _)) = queue.pending.last_key_value() {
                 if let Some((k, _)) = queue.pending.remove(&idx) {
                     queue.key_to_index.remove(&k);
@@ -305,7 +314,7 @@ fn queue_request<F: FnOnce() + 'static>(key: String, f: F, render_index: usize) 
             }
         }
 
-        queue.enqueue(key, Box::new(f), render_index);
+        queue.enqueue(key, Box::new(f), priority);
     });
 
     update_queue_stats();
@@ -435,6 +444,9 @@ pub fn LazyImage(
     /// Render index for ordering (passed from grid) - lower = processed first
     #[prop(default = 0)]
     render_index: usize,
+    /// Whether this item is in the actual viewport (not just buffer) - viewport items get priority
+    #[prop(default = false)]
+    in_viewport: bool,
 ) -> impl IntoView {
     let (state, set_state) = signal(ImageState::Loading);
 
@@ -623,7 +635,7 @@ pub fn LazyImage(
                 let _ = abortable.await;
                 release_slot();
             });
-        }, render_index);
+        }, render_index, in_viewport);
     });
 
     // Cleanup on unmount - cancel pending and abort in-flight requests

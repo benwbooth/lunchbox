@@ -533,6 +533,25 @@ pub fn GameGrid(
                     let height = total_height();
                     let (start, end, cols) = visible_range();
 
+                    // Calculate actual viewport range (without buffer) for priority
+                    let scroll = scroll_top.get();
+                    let ch = container_height.get();
+                    let (viewport_start, viewport_end) = match mode {
+                        ViewMode::Grid => {
+                            let rows_before = scroll / ITEM_HEIGHT;
+                            let visible_rows = (ch / ITEM_HEIGHT) + 2;
+                            let vs = (rows_before * cols as i32) as usize;
+                            let ve = ((rows_before + visible_rows) * cols as i32) as usize;
+                            (vs, ve)
+                        }
+                        ViewMode::List => {
+                            let vs = (scroll / LIST_ITEM_HEIGHT) as usize;
+                            let visible = ch / LIST_ITEM_HEIGHT;
+                            let ve = ((scroll / LIST_ITEM_HEIGHT) + visible) as usize;
+                            (vs, ve)
+                        }
+                    };
+
                     // Ensure we have enough data loaded
                     ensure_loaded(end as i64);
 
@@ -558,6 +577,7 @@ pub fn GameGrid(
                                             let col = index % cols;
                                             let top = row as i32 * ITEM_HEIGHT;
                                             let left = col as i32 * ITEM_WIDTH;
+                                            let in_viewport = index >= viewport_start && index < viewport_end;
 
                                             view! {
                                                 <div
@@ -568,7 +588,7 @@ pub fn GameGrid(
                                                     style:width=format!("{}px", ITEM_WIDTH)
                                                     style:height=format!("{}px", ITEM_HEIGHT)
                                                 >
-                                                    <GameCard game=game on_select=selected_game render_index=index />
+                                                    <GameCard game=game on_select=selected_game render_index=index in_viewport=in_viewport />
                                                 </div>
                                             }
                                         }).collect::<Vec<_>>()}
@@ -962,6 +982,9 @@ fn GameCard(
     /// Render index for image queue priority ordering
     #[prop(default = 0)]
     render_index: usize,
+    /// Whether this item is in the actual viewport (not just buffer)
+    #[prop(default = false)]
+    in_viewport: bool,
 ) -> impl IntoView {
     use crate::components::LazyImage;
 
@@ -990,6 +1013,7 @@ fn GameCard(
                     class="cover-image".to_string()
                     placeholder=first_char.clone()
                     render_index=render_index
+                    in_viewport=in_viewport
                 />
                 {(variant_count > 1).then(|| view! {
                     <span class="variant-badge">{variant_count}</span>
