@@ -1,61 +1,91 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
-    <!-- Classic 80s lunchbox red -->
-    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#ff3333"/>
-      <stop offset="50%" style="stop-color:#cc0000"/>
-      <stop offset="100%" style="stop-color:#990000"/>
+    <!-- Metal body gradient -->
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e8e8e8"/>
+      <stop offset="25%" style="stop-color:#c0c0c0"/>
+      <stop offset="50%" style="stop-color:#a8a8a8"/>
+      <stop offset="75%" style="stop-color:#c0c0c0"/>
+      <stop offset="100%" style="stop-color:#909090"/>
     </linearGradient>
-    <!-- Blue lid like He-Man lunchbox -->
+    <!-- Red lid -->
     <linearGradient id="lidGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#4488ff"/>
-      <stop offset="50%" style="stop-color:#2266dd"/>
-      <stop offset="100%" style="stop-color:#1144aa"/>
+      <stop offset="0%" style="stop-color:#ff4444"/>
+      <stop offset="50%" style="stop-color:#dd2222"/>
+      <stop offset="100%" style="stop-color:#aa0000"/>
     </linearGradient>
-    <!-- Chrome/silver handle -->
+    <!-- Blue trim -->
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4488ff"/>
+      <stop offset="100%" style="stop-color:#2255cc"/>
+    </linearGradient>
+    <!-- Chrome handle -->
     <linearGradient id="handleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#ffffff"/>
-      <stop offset="30%" style="stop-color:#cccccc"/>
-      <stop offset="70%" style="stop-color:#888888"/>
-      <stop offset="100%" style="stop-color:#666666"/>
+      <stop offset="30%" style="stop-color:#d0d0d0"/>
+      <stop offset="50%" style="stop-color:#a0a0a0"/>
+      <stop offset="70%" style="stop-color:#d0d0d0"/>
+      <stop offset="100%" style="stop-color:#888888"/>
     </linearGradient>
-    <!-- Metal shine -->
-    <linearGradient id="shineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0"/>
-      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0.4"/>
-      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0"/>
+    <!-- Yellow lightning -->
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffee00"/>
+      <stop offset="50%" style="stop-color:#ffcc00"/>
+      <stop offset="100%" style="stop-color:#ff9900"/>
     </linearGradient>
   </defs>
 
-  <!-- Main body (red metal box) -->
-  <rect x="16" y="48" width="96" height="65" rx="4" fill="url(#bodyGrad)" stroke="#660000" stroke-width="2"/>
+  <!-- Main metal body -->
+  <rect x="16" y="45" width="96" height="68" rx="3" fill="url(#metalGrad)" stroke="#707070" stroke-width="2"/>
 
-  <!-- Body metal ridges -->
-  <rect x="16" y="70" width="96" height="3" fill="#ff6666" opacity="0.5"/>
-  <rect x="16" y="90" width="96" height="3" fill="#ff6666" opacity="0.5"/>
+  <!-- Blue trim - top -->
+  <rect x="16" y="45" width="96" height="8" rx="3" fill="url(#blueGrad)"/>
+  <rect x="16" y="51" width="96" height="2" fill="url(#blueGrad)"/>
 
-  <!-- Body shine -->
-  <rect x="20" y="52" width="40" height="58" fill="url(#shineGrad)" opacity="0.3"/>
+  <!-- Blue trim - bottom -->
+  <rect x="16" y="105" width="96" height="8" rx="3" fill="url(#blueGrad)"/>
+  <rect x="16" y="103" width="96" height="2" fill="url(#blueGrad)"/>
 
-  <!-- Domed lid (blue) -->
-  <path d="M14 48 Q14 28 64 22 Q114 28 114 48 Z" fill="url(#lidGrad)" stroke="#0033aa" stroke-width="2"/>
+  <!-- Metal shine on body -->
+  <rect x="20" y="55" width="8" height="45" fill="#ffffff" opacity="0.3"/>
+  <rect x="30" y="55" width="3" height="45" fill="#ffffff" opacity="0.15"/>
 
-  <!-- Lid rim -->
-  <ellipse cx="64" cy="48" rx="50" ry="6" fill="#1155cc" stroke="#0033aa" stroke-width="1"/>
+  <!-- Yellow Lightning Bolt -->
+  <polygon
+    points="72,58 52,78 62,78 56,100 76,75 66,75"
+    fill="url(#boltGrad)"
+    stroke="#cc8800"
+    stroke-width="2"
+    stroke-linejoin="round"
+  />
+  <!-- Lightning shine -->
+  <polygon
+    points="70,62 56,76 63,76 58,92 72,76 66,76"
+    fill="#ffff88"
+    opacity="0.4"
+  />
 
-  <!-- Lid shine highlight -->
-  <path d="M30 38 Q64 30 98 38" fill="none" stroke="#88bbff" stroke-width="3" opacity="0.5"/>
-  <path d="M40 32 Q64 26 88 32" fill="none" stroke="#aaddff" stroke-width="2" opacity="0.4"/>
+  <!-- Red domed lid -->
+  <path d="M14 45 Q14 25 64 18 Q114 25 114 45 Z" fill="url(#lidGrad)" stroke="#880000" stroke-width="2"/>
 
-  <!-- Handle (chrome) -->
-  <path d="M42 28 L42 18 Q42 8 64 8 Q86 8 86 18 L86 28" fill="none" stroke="url(#handleGrad)" stroke-width="8" stroke-linecap="round"/>
-  <path d="M42 28 L42 18 Q42 10 64 10 Q86 10 86 18 L86 28" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <!-- Lid highlight -->
+  <path d="M28 35 Q64 26 100 35" fill="none" stroke="#ff8888" stroke-width="3" opacity="0.5"/>
+  <path d="M38 28 Q64 22 90 28" fill="none" stroke="#ffaaaa" stroke-width="2" opacity="0.4"/>
 
-  <!-- Latch (chrome rectangle) -->
-  <rect x="54" y="105" width="20" height="8" rx="2" fill="#cccccc" stroke="#888888" stroke-width="1"/>
-  <rect x="56" y="106" width="16" height="3" fill="#ffffff" opacity="0.5"/>
-  <circle cx="64" cy="109" r="2" fill="#666666"/>
+  <!-- Blue rim on lid -->
+  <ellipse cx="64" cy="45" rx="50" ry="5" fill="url(#blueGrad)" stroke="#1144aa" stroke-width="1"/>
 
-  <!-- Bottom edge detail -->
-  <rect x="16" y="110" width="96" height="3" fill="#880000"/>
+  <!-- Metal Handle -->
+  <path d="M40 24 L40 14 Q40 4 64 4 Q88 4 88 14 L88 24" fill="none" stroke="url(#handleGrad)" stroke-width="7" stroke-linecap="round"/>
+  <path d="M40 24 L40 14 Q40 6 64 6 Q88 6 88 14 L88 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <!-- Handle attachment rivets -->
+  <circle cx="40" cy="24" r="4" fill="#a0a0a0" stroke="#707070" stroke-width="1"/>
+  <circle cx="88" cy="24" r="4" fill="#a0a0a0" stroke="#707070" stroke-width="1"/>
+  <circle cx="40" cy="24" r="2" fill="#d0d0d0"/>
+  <circle cx="88" cy="24" r="2" fill="#d0d0d0"/>
+
+  <!-- Metal buckle/latch -->
+  <rect x="52" y="42" width="24" height="10" rx="2" fill="url(#handleGrad)" stroke="#606060" stroke-width="1"/>
+  <rect x="54" y="44" width="20" height="3" fill="#ffffff" opacity="0.5"/>
+  <rect x="60" y="48" width="8" height="3" rx="1" fill="#808080"/>
 </svg>
