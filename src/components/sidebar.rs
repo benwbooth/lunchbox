@@ -131,7 +131,13 @@ pub fn Sidebar(
                     class:selected=move || selected_platform.get().is_none() && selected_collection.get().is_none()
                     on:click=move |_| on_platform_click(None)
                 >
-                    "All Games"
+                    <span class="platform-name">"All Games"</span>
+                    <span class="platform-count">
+                        {move || {
+                            let total: i64 = platforms.get().iter().map(|p| p.game_count).sum();
+                            total.to_string()
+                        }}
+                    </span>
                 </button>
                 {move || if platforms_loading.get() {
                     view! { <div class="loading">"Loading platforms..."</div> }.into_any()
