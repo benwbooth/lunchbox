@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <!-- Classic 80s lunchbox red -->
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff3333"/>
+      <stop offset="50%" style="stop-color:#cc0000"/>
+      <stop offset="100%" style="stop-color:#990000"/>
+    </linearGradient>
+    <!-- Blue lid like He-Man lunchbox -->
+    <linearGradient id="lidGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4488ff"/>
+      <stop offset="50%" style="stop-color:#2266dd"/>
+      <stop offset="100%" style="stop-color:#1144aa"/>
+    </linearGradient>
+    <!-- Chrome/silver handle -->
+    <linearGradient id="handleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="30%" style="stop-color:#cccccc"/>
+      <stop offset="70%" style="stop-color:#888888"/>
+      <stop offset="100%" style="stop-color:#666666"/>
+    </linearGradient>
+    <!-- Metal shine -->
+    <linearGradient id="shineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0"/>
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0.4"/>
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Main body (red metal box) -->
+  <rect x="16" y="48" width="96" height="65" rx="4" fill="url(#bodyGrad)" stroke="#660000" stroke-width="2"/>
+
+  <!-- Body metal ridges -->
+  <rect x="16" y="70" width="96" height="3" fill="#ff6666" opacity="0.5"/>
+  <rect x="16" y="90" width="96" height="3" fill="#ff6666" opacity="0.5"/>
+
+  <!-- Body shine -->
+  <rect x="20" y="52" width="40" height="58" fill="url(#shineGrad)" opacity="0.3"/>
+
+  <!-- Domed lid (blue) -->
+  <path d="M14 48 Q14 28 64 22 Q114 28 114 48 Z" fill="url(#lidGrad)" stroke="#0033aa" stroke-width="2"/>
+
+  <!-- Lid rim -->
+  <ellipse cx="64" cy="48" rx="50" ry="6" fill="#1155cc" stroke="#0033aa" stroke-width="1"/>
+
+  <!-- Lid shine highlight -->
+  <path d="M30 38 Q64 30 98 38" fill="none" stroke="#88bbff" stroke-width="3" opacity="0.5"/>
+  <path d="M40 32 Q64 26 88 32" fill="none" stroke="#aaddff" stroke-width="2" opacity="0.4"/>
+
+  <!-- Handle (chrome) -->
+  <path d="M42 28 L42 18 Q42 8 64 8 Q86 8 86 18 L86 28" fill="none" stroke="url(#handleGrad)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M42 28 L42 18 Q42 10 64 10 Q86 10 86 18 L86 28" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- Latch (chrome rectangle) -->
+  <rect x="54" y="105" width="20" height="8" rx="2" fill="#cccccc" stroke="#888888" stroke-width="1"/>
+  <rect x="56" y="106" width="16" height="3" fill="#ffffff" opacity="0.5"/>
+  <circle cx="64" cy="109" r="2" fill="#666666"/>
+
+  <!-- Bottom edge detail -->
+  <rect x="16" y="110" width="96" height="3" fill="#880000"/>
+</svg>
