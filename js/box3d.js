@@ -7,6 +7,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+console.log('Box3D: Three.js loaded successfully, version:', THREE.REVISION);
+
 // DVD case proportions (width : height : depth)
 const BOX_WIDTH = 1.35;
 const BOX_HEIGHT = 1.9;
@@ -24,25 +26,30 @@ const viewers = new Map();
  * @returns {object} - Viewer control object with destroy() method
  */
 export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
-    // Clean up existing viewer if any
-    if (viewers.has(canvasId)) {
-        viewers.get(canvasId).destroy();
-    }
+    console.log(`Box3D: initBox3DViewer called with canvasId=${canvasId}`);
 
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) {
-        console.error(`Box3D: Canvas element not found: ${canvasId}`);
-        return null;
-    }
+    try {
+        // Clean up existing viewer if any
+        if (viewers.has(canvasId)) {
+            viewers.get(canvasId).destroy();
+        }
 
-    // Get dimensions from parent if canvas has no size yet
-    const parent = canvas.parentElement;
-    const width = canvas.clientWidth || parent?.clientWidth || 400;
-    const height = canvas.clientHeight || parent?.clientHeight || 350;
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) {
+            console.error(`Box3D: Canvas element not found: ${canvasId}`);
+            return null;
+        }
 
-    console.log(`Box3D: Initializing viewer ${canvasId} at ${width}x${height}`);
-    console.log(`Box3D: Front URL: ${frontUrl}`);
-    console.log(`Box3D: Back URL: ${backUrl}`);
+        // Get dimensions from parent if canvas has no size yet
+        const parent = canvas.parentElement;
+        const grandparent = parent?.parentElement;
+        const width = canvas.clientWidth || parent?.clientWidth || grandparent?.clientWidth || 400;
+        const height = canvas.clientHeight || parent?.clientHeight || grandparent?.clientHeight || 350;
+
+        console.log(`Box3D: Canvas found, dimensions: canvas=${canvas.clientWidth}x${canvas.clientHeight}, parent=${parent?.clientWidth}x${parent?.clientHeight}`);
+        console.log(`Box3D: Initializing viewer ${canvasId} at ${width}x${height}`);
+        console.log(`Box3D: Front URL: ${frontUrl}`);
+        console.log(`Box3D: Back URL: ${backUrl}`);
 
     // Create scene
     const scene = new THREE.Scene();
@@ -215,7 +222,12 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
     };
 
     viewers.set(canvasId, viewer);
+    console.log(`Box3D: Viewer created successfully for ${canvasId}`);
     return viewer;
+    } catch (error) {
+        console.error(`Box3D: Error initializing viewer:`, error);
+        return null;
+    }
 }
 
 /**
@@ -234,3 +246,5 @@ window.Box3DViewer = {
     init: initBox3DViewer,
     destroy: destroyBox3DViewer,
 };
+
+console.log('Box3D: Module loaded, window.Box3DViewer available');

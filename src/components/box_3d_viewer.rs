@@ -7,6 +7,9 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+
     #[wasm_bindgen(js_namespace = ["window", "Box3DViewer"])]
     fn init(canvas_id: &str, front_url: &str, back_url: Option<&str>) -> JsValue;
 
@@ -31,15 +34,21 @@ pub fn Box3DViewer(
     let front_url_clone = front_url.clone();
     let back_url_clone = back_url.clone();
 
+    log(&format!("Box3DViewer: Mounting component with canvas_id={}", canvas_id));
+
     // Initialize the viewer when component mounts
     Effect::new(move || {
         let id = canvas_id_clone.clone();
         let front = front_url_clone.clone();
         let back = back_url_clone.clone();
 
+        log(&format!("Box3DViewer: Effect running, scheduling init for {}", id));
+
         // Small delay to ensure canvas is in DOM
-        let _ = gloo_timers::callback::Timeout::new(100, move || {
-            init(&id, &front, back.as_deref());
+        let _ = gloo_timers::callback::Timeout::new(200, move || {
+            log(&format!("Box3DViewer: Calling init({}, {}, {:?})", id, front, back));
+            let result = init(&id, &front, back.as_deref());
+            log(&format!("Box3DViewer: init returned {:?}", result));
         });
     });
 
