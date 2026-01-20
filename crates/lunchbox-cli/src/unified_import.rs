@@ -943,6 +943,44 @@ fn get_libretro_name_mapping() -> HashMap<&'static str, &'static str> {
     map.insert("Entex Adventure Vision", "Entex - Adventure Vision");
     map.insert("GamePark GP32", "GamePark - GP32");
 
+    // Additional mappings
+    map.insert("Coleco ADAM", "Coleco - ColecoVision ADAM");
+    map.insert("Nintendo 64DD", "Nintendo - Nintendo 64DD");
+    map.insert("Nintendo Satellaview", "Nintendo - Satellaview");
+    map.insert("Nintendo Game & Watch", "Nintendo - Game & Watch");
+    map.insert("PC Engine SuperGrafx", "NEC - PC Engine SuperGrafx");
+    map.insert("Sega Dreamcast VMU", "Sega - Dreamcast (Visual Memory Unit)");
+    map.insert("Sega Pico", "Sega - PICO");
+    map.insert("Sony PocketStation", "Sony - PlayStation (PocketStation)");
+    map.insert("Nuon", "VM-Labs - NUON");
+    map.insert("Philips Videopac+", "Philips - Videopac+");
+    map.insert("Windows", "IBM - PC and Compatibles");
+    map.insert("Windows 3.X", "IBM - PC and Compatibles");
+    map.insert("Game Wave Family Entertainment System", "Non Redump - ZAPiT Games - Game Wave Family Entertainment System");
+    map.insert("GameWave", "Non Redump - ZAPiT Games - Game Wave Family Entertainment System");
+    map.insert("Sega Triforce", "Namco, Sega, Nintendo - TriForce (Cartridges)");
+    map.insert("Sharp MZ-2500", "Sharp - MZ-2200");
+    map.insert("Capcom CPS1", "Capcom - CP System I");
+    map.insert("Capcom CPS2", "Capcom - CP System II");
+    map.insert("Capcom CPS3", "Capcom - CP System III");
+    map.insert("Sega Beena", "Sega - Beena");
+    map.insert("Bit Corporation Gamate", "Bit Corporation - Gamate");
+    map.insert("Benesse Pocket Challenge V2", "Benesse - Pocket Challenge V2");
+    map.insert("LeapFrog LeapPad", "LeapFrog - LeapPad");
+    map.insert("LeapFrog Leapster", "LeapFrog - Leapster Learning Game System");
+    map.insert("Mobile J2ME", "Mobile - J2ME");
+    map.insert("Mobile Palm OS", "Mobile - Palm OS");
+    map.insert("Mobile Symbian", "Mobile - Symbian");
+    map.insert("Zeebo", "Mobile - Zeebo");
+    map.insert("Amazon Fire TV", "Amazon - Fire TV");
+    map.insert("Amazon Luna", "Amazon - Luna");
+    map.insert("Analogue Pocket", "Analogue - Analogue Pocket");
+    map.insert("Fujitsu FM Towns Marty", "Fujitsu - FM Towns");
+    map.insert("Sony Playstation 4", "Sony - PlayStation 4");
+    map.insert("Sony Playstation 5", "Sony - PlayStation 4");  // Use PS4 icon for PS5
+    map.insert("PICO-8", "TIC-80");  // Similar fantasy console
+    map.insert("WASM-4", "TIC-80");  // Similar fantasy console
+
     map
 }
 
