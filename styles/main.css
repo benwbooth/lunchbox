@@ -49,6 +49,11 @@
     box-sizing: border-box;
 }
 
+/* Ensure form elements inherit fonts */
+button, input, select, textarea {
+    font-family: inherit;
+}
+
 body {
     font-family: 'Oxanium', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 14px;
