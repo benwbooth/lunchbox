@@ -307,6 +307,7 @@ pub struct Platform {
     pub name: String,
     pub game_count: i64,
     pub aliases: Option<String>,
+    pub icon_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

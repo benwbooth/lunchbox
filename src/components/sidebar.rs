@@ -144,6 +144,7 @@ pub fn Sidebar(
                     class:selected=move || selected_platform.get().is_none() && selected_collection.get().is_none()
                     on:click=move |_| on_platform_click(None)
                 >
+                    <span class="platform-icon-placeholder"></span>
                     <span class="platform-name">"All Games"</span>
                     <span class="platform-count">
                         {move || {
@@ -284,6 +285,7 @@ fn PlatformItem(
     let name_for_click = name.clone();
     let name_for_display = name.clone();
     let game_count = platform.game_count;
+    let icon_url = platform.icon_url.clone();
 
     view! {
         <button
@@ -291,6 +293,12 @@ fn PlatformItem(
             class:selected=move || selected_platform.get().as_ref() == Some(&name)
             on:click=move |_| on_click(Some(name_for_click.clone()))
         >
+            {icon_url.clone().map(|url| view! {
+                <img class="platform-icon" src=url alt="" />
+            })}
+            {icon_url.is_none().then(|| view! {
+                <span class="platform-icon-placeholder"></span>
+            })}
             <span class="platform-name">
                 {move || highlight_matches(&name_for_display, &search_query.get())}
             </span>

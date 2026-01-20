@@ -230,15 +230,15 @@ async fn get_platforms(
     let state_guard = state.read().await;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let platforms: Vec<(i64, String, Option<String>)> = sqlx::query_as(
-            "SELECT id, name, aliases FROM platforms ORDER BY name"
+        let platforms: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT id, name, aliases, libretro_name FROM platforms ORDER BY name"
         )
         .fetch_all(games_pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let mut result = Vec::new();
-        for (id, name, aliases) in platforms {
+        for (id, name, aliases, libretro_name) in platforms {
             let all_titles: Vec<(String,)> = sqlx::query_as(
                 "SELECT title FROM games WHERE platform_id = ?"
             )
@@ -254,7 +254,12 @@ async fn get_platforms(
             }
             // Use database aliases or generate them if not present
             let aliases = aliases.or_else(|| get_platform_search_aliases(&name));
-            result.push(Platform { id, name, game_count: seen.len() as i64, aliases });
+            // Build icon URL from libretro_name (local bundled icons)
+            let icon_url = libretro_name.map(|lr_name| {
+                let filename = lr_name.replace(" ", "_").replace("/", "_");
+                format!("/assets/platforms/{}.png", filename)
+            });
+            result.push(Platform { id, name, game_count: seen.len() as i64, aliases, icon_url });
         }
         return Ok(Json(result));
     }

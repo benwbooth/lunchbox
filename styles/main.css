@@ -263,7 +263,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .platform-item {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     width: 100%;
     padding: 8px 16px;
     background: none;
@@ -272,6 +274,26 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--text-primary);
     cursor: pointer;
     font-size: 13px;
+}
+
+.platform-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.platform-icon-placeholder {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.platform-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .platform-item:hover {
