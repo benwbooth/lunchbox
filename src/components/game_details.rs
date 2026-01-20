@@ -2,8 +2,8 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats};
-use super::VideoPlayer;
+use crate::tauri::{self, Game, GameVariant, PlayStats};
+use super::{VideoPlayer, LazyImage};
 
 #[component]
 pub fn GameDetails(
@@ -126,7 +126,6 @@ pub fn GameDetails(
                     let cooperative = g.cooperative;
                     let video_url = g.video_url.clone();
                     let wikipedia_url = g.wikipedia_url.clone();
-                    let box_front = g.box_front_path.clone();
                     let db_id = g.database_id;
 
                     let title_for_fav = g.title.clone();
@@ -172,23 +171,17 @@ pub fn GameDetails(
 
                                 <div class="game-details-header">
                                     <div class="game-details-cover">
-                                        {match box_front {
-                                            Some(path) => {
-                                                let url = file_to_asset_url(&path);
-                                                view! {
-                                                    <img
-                                                        src=url
-                                                        alt=display_title.clone()
-                                                        class="cover-image-large"
-                                                    />
-                                                }.into_any()
-                                            }
-                                            None => view! {
-                                                <div class="cover-placeholder-large">
-                                                    {first_char}
-                                                </div>
-                                            }.into_any()
-                                        }}
+                                        <LazyImage
+                                            launchbox_db_id=db_id
+                                            game_title=g.title.clone()
+                                            platform=g.platform.clone()
+                                            image_type="Box - Front".to_string()
+                                            alt=display_title.clone()
+                                            class="cover-image-large".to_string()
+                                            placeholder=first_char.clone()
+                                            render_index=0
+                                            in_viewport=true
+                                        />
                                     </div>
                                     <div class="game-details-info">
                                         <h1 class="game-details-title">{display_title}</h1>
