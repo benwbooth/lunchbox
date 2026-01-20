@@ -166,25 +166,11 @@ pub fn GameDetails(
                                     <button class="titlebar-close" on:click=move |_| on_close.set(None)>"×"</button>
                                 </div>
 
-                                // Video player at top, full width, auto-plays
-                                <VideoPlayer
-                                    game_title=g.title.clone()
-                                    platform=g.platform.clone()
-                                    launchbox_db_id=db_id
-                                />
+                                // Info area on its own row
+                                <div class="game-details-info">
+                                    <p class="game-details-platform">{platform}</p>
 
-                                <div class="game-details-header">
-                                    // Media carousel with arrows
-                                    <MediaCarousel
-                                        launchbox_db_id=db_id
-                                        game_title=g.title.clone()
-                                        platform=g.platform.clone()
-                                        placeholder=first_char.clone()
-                                    />
-                                    <div class="game-details-info">
-                                        <p class="game-details-platform">{platform}</p>
-
-                                        <div class="game-details-meta">
+                                    <div class="game-details-meta">
                                             {developer.map(|d| view! {
                                                 <div class="meta-item">
                                                     <span class="meta-label">"Developer"</span>
@@ -296,7 +282,21 @@ pub fn GameDetails(
                                             </button>
                                         </div>
                                     </div>
-                                </div>
+
+                                // Video player, full width
+                                <VideoPlayer
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    launchbox_db_id=db_id
+                                />
+
+                                // Media carousel with arrows, full width
+                                <MediaCarousel
+                                    launchbox_db_id=db_id
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    placeholder=first_char.clone()
+                                />
 
                                 <div class="game-details-description">
                                     <h2>"Description"</h2>

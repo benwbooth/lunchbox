@@ -631,8 +631,8 @@ const DEFAULT_REGION_PRIORITY: &[&str] = &[
     "",       // No region (unspecified/plain version)
     "USA",
     "World",
-    "Europe",
     "Japan",
+    "Europe",
     "Australia",
     "Canada",
     "Brazil",
