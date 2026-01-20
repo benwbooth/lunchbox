@@ -25,6 +25,17 @@ impl ArtworkDisplayType {
         }
     }
 
+    /// Get LaunchBox image type string (used by LazyImage component)
+    pub fn to_image_type(&self) -> &'static str {
+        match self {
+            ArtworkDisplayType::BoxFront => "Box - Front",
+            ArtworkDisplayType::Screenshot => "Screenshot - Gameplay",
+            ArtworkDisplayType::TitleScreen => "Screenshot - Game Title",
+            ArtworkDisplayType::Fanart => "Fanart - Background",
+            ArtworkDisplayType::ClearLogo => "Clear Logo",
+        }
+    }
+
     /// Get display label
     pub fn label(&self) -> &'static str {
         match self {

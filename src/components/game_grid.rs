@@ -622,7 +622,7 @@ pub fn GameGrid(
                                                     style:width=format!("{}px", ITEM_WIDTH)
                                                     style:height=format!("{}px", ITEM_HEIGHT)
                                                 >
-                                                    <GameCard game=game on_select=selected_game search_query=current_search.get() render_index=index in_viewport=in_viewport />
+                                                    <GameCard game=game on_select=selected_game search_query=current_search.get() artwork_type=artwork_type.get() render_index=index in_viewport=in_viewport />
                                                 </div>
                                             }
                                         }).collect::<Vec<_>>()}
@@ -1017,6 +1017,9 @@ fn GameCard(
     /// Search query for highlighting matches
     #[prop(default = String::new())]
     search_query: String,
+    /// Artwork type to display
+    #[prop(default = ArtworkDisplayType::BoxFront)]
+    artwork_type: ArtworkDisplayType,
     /// Render index for image queue priority ordering
     #[prop(default = 0)]
     render_index: usize,
@@ -1046,7 +1049,7 @@ fn GameCard(
                     launchbox_db_id=launchbox_db_id
                     game_title=title_for_img
                     platform=platform
-                    image_type="Box - Front".to_string()
+                    image_type=artwork_type.to_image_type().to_string()
                     alt=display_title.clone()
                     class="cover-image".to_string()
                     placeholder=first_char.clone()
