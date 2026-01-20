@@ -648,6 +648,13 @@ const DEFAULT_REGION_PRIORITY: &[&str] = &[
 
 /// Calculate region priority for sorting (lower = better)
 /// Uses custom region order if provided, falls back to default
+/// Public wrapper for use from api.rs
+pub fn region_priority_for_title(title: &str, custom_order: &[String]) -> i32 {
+    region_priority(title, custom_order)
+}
+
+/// Calculate region priority for sorting (lower = better)
+/// Uses custom region order if provided, falls back to default
 fn region_priority(title: &str, custom_order: &[String]) -> i32 {
     let title_lower = title.to_lowercase();
 

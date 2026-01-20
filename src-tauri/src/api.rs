@@ -626,6 +626,9 @@ async fn get_game_variants(
 ) -> Result<Json<Vec<GameVariant>>, (StatusCode, String)> {
     let state_guard = state.read().await;
 
+    // Get custom region priority from settings
+    let custom_region_order = state_guard.settings.region_priority.clone();
+
     if let Some(ref games_pool) = state_guard.games_db_pool {
         // First get the game to find its normalized title and platform
         let game_row = sqlx::query("SELECT title, platform_id FROM games WHERE id = ?")
@@ -650,7 +653,7 @@ async fn get_game_variants(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            let result: Vec<GameVariant> = variants
+            let mut result: Vec<GameVariant> = variants
                 .into_iter()
                 .filter(|(_, t)| normalize_title_for_dedup(t) == normalized)
                 .map(|(id, title)| GameVariant {
@@ -659,6 +662,13 @@ async fn get_game_variants(
                     title,
                 })
                 .collect();
+
+            // Sort by region priority (uses user's preference if set)
+            result.sort_by(|a, b| {
+                let priority_a = crate::commands::region_priority_for_title(&a.title, &custom_region_order);
+                let priority_b = crate::commands::region_priority_for_title(&b.title, &custom_region_order);
+                priority_a.cmp(&priority_b).then_with(|| a.title.cmp(&b.title))
+            });
 
             return Ok(Json(result));
         }
