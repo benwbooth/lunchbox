@@ -13,6 +13,40 @@ use std::collections::{HashMap, HashSet};
 
 // Virtual scroll configuration
 const ITEM_HEIGHT: i32 = 280; // Height of each game card in grid
+
+/// Highlight matching text in a string with yellow background
+fn highlight_matches(text: &str, query: &str) -> AnyView {
+    if query.is_empty() {
+        return view! { <>{text.to_string()}</> }.into_any();
+    }
+
+    let text_lower = text.to_lowercase();
+    let query_lower = query.to_lowercase();
+
+    // Find all match positions
+    let mut parts: Vec<AnyView> = Vec::new();
+    let mut last_end = 0;
+
+    for (start, _) in text_lower.match_indices(&query_lower) {
+        // Add non-matching text before this match
+        if start > last_end {
+            let before = &text[last_end..start];
+            parts.push(view! { <>{before.to_string()}</> }.into_any());
+        }
+        // Add the matching text with highlight
+        let matched = &text[start..start + query.len()];
+        parts.push(view! { <span class="search-highlight">{matched.to_string()}</span> }.into_any());
+        last_end = start + query.len();
+    }
+
+    // Add remaining text after last match
+    if last_end < text.len() {
+        let after = &text[last_end..];
+        parts.push(view! { <>{after.to_string()}</> }.into_any());
+    }
+
+    view! { <>{parts}</> }.into_any()
+}
 const ITEM_WIDTH: i32 = 180;  // Width of each game card
 const LIST_ITEM_HEIGHT: i32 = 40; // Height in list view
 const BUFFER_ITEMS: i32 = 10; // Extra items to render above/below viewport
@@ -588,7 +622,7 @@ pub fn GameGrid(
                                                     style:width=format!("{}px", ITEM_WIDTH)
                                                     style:height=format!("{}px", ITEM_HEIGHT)
                                                 >
-                                                    <GameCard game=game on_select=selected_game render_index=index in_viewport=in_viewport />
+                                                    <GameCard game=game on_select=selected_game search_query=current_search.get() render_index=index in_viewport=in_viewport />
                                                 </div>
                                             }
                                         }).collect::<Vec<_>>()}
@@ -764,6 +798,7 @@ pub fn GameGrid(
                                                             game=game
                                                             on_select=selected_game
                                                             columns=columns
+                                                            search_query=current_search.get()
                                                         />
                                                     </div>
                                                 }
@@ -979,6 +1014,9 @@ pub fn GameGrid(
 fn GameCard(
     game: Game,
     on_select: WriteSignal<Option<Game>>,
+    /// Search query for highlighting matches
+    #[prop(default = String::new())]
+    search_query: String,
     /// Render index for image queue priority ordering
     #[prop(default = 0)]
     render_index: usize,
@@ -1020,7 +1058,7 @@ fn GameCard(
                 })}
             </div>
             <div class="game-info">
-                <h3 class="game-title">{display_title}</h3>
+                <h3 class="game-title">{highlight_matches(&display_title, &search_query)}</h3>
                 {developer.map(|d| view! { <p class="game-developer">{d}</p> })}
             </div>
         </div>
@@ -1032,6 +1070,9 @@ fn GameListItem(
     game: Game,
     on_select: WriteSignal<Option<Game>>,
     columns: Vec<Column>,
+    /// Search query for highlighting matches
+    #[prop(default = String::new())]
+    search_query: String,
 ) -> impl IntoView {
     let game_for_click = game.clone();
     let col_count = columns.len();
@@ -1046,10 +1087,15 @@ fn GameListItem(
                 let value = col.value(&game);
                 let is_title = *col == Column::Title;
                 let variant_count = game.variant_count;
+                let search = search_query.clone();
 
                 view! {
                     <span class=format!("game-col game-col-{}", col.label().to_lowercase().replace(" ", "-"))>
-                        {value}
+                        {if is_title {
+                            highlight_matches(&value, &search)
+                        } else {
+                            view! { <>{value}</> }.into_any()
+                        }}
                         {(is_title && variant_count > 1).then(|| view! {
                             <span class="variant-count">{format!(" ({})", variant_count)}</span>
                         })}
