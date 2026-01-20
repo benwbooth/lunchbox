@@ -914,11 +914,13 @@ impl ImageService {
                 if let Ok(result) = client.search_and_get_artwork(game_title).await {
                     if let Some((_, artwork)) = result {
                         // Map image type to SteamGridDB artwork type
+                        // SteamGridDB only supports: grids (box art), heroes (banner), logos (clear logo)
+                        // It does NOT support: screenshots, fanart, title screens, etc.
                         let url = match image_type {
                             "Box - Front" => artwork.grids.first().map(|a| a.url.clone()),
                             "Banner" => artwork.heroes.first().map(|a| a.url.clone()),
                             "Clear Logo" => artwork.logos.first().map(|a| a.url.clone()),
-                            _ => artwork.grids.first().map(|a| a.url.clone()),
+                            _ => None, // Don't fall back to grids for unsupported types
                         };
 
                         if let Some(url) = url {
@@ -956,6 +958,8 @@ impl ImageService {
                 if let Ok(games) = client.search_games(game_title, 1).await {
                     if let Some(game) = games.first() {
                         // Map image type to IGDB image
+                        // IGDB supports: cover, screenshots, artworks (fanart)
+                        // It does NOT support: clear logo, banner, title screen, etc.
                         let image = match image_type {
                             "Box - Front" => game.cover.as_ref(),
                             "Screenshot - Gameplay" | "Screenshot" => {
@@ -964,7 +968,7 @@ impl ImageService {
                             "Fanart - Background" => {
                                 game.artworks.as_ref().and_then(|a| a.first())
                             }
-                            _ => game.cover.as_ref(),
+                            _ => None, // Don't fall back to cover for unsupported types
                         };
 
                         if let Some(img) = image {
@@ -1042,13 +1046,14 @@ impl ImageService {
                     game_title,
                     platform_id,
                 ).await {
+                    // ScreenScraper supports: box_front, box_back, screenshot, fanart, wheel
                     let url = match image_type {
                         "Box - Front" => game.media.box_front,
                         "Box - Back" => game.media.box_back,
                         "Screenshot - Gameplay" | "Screenshot" => game.media.screenshot,
                         "Fanart - Background" => game.media.fanart,
                         "Clear Logo" => game.media.wheel,
-                        _ => game.media.box_front,
+                        _ => None, // Don't fall back to box front for unsupported types
                     };
 
                     if let Some(url) = url {
