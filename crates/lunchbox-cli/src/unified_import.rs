@@ -788,6 +788,170 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     aliases
 }
 
+/// Maps canonical platform names to libretro icon names
+/// These are used to display platform icons in the UI
+fn get_libretro_name_mapping() -> HashMap<&'static str, &'static str> {
+    let mut map = HashMap::new();
+
+    // Nintendo
+    map.insert("Nintendo Entertainment System", "Nintendo - Nintendo Entertainment System");
+    map.insert("Super Nintendo Entertainment System", "Nintendo - Super Nintendo Entertainment System");
+    map.insert("Nintendo 64", "Nintendo - Nintendo 64");
+    map.insert("Nintendo 64DD", "Nintendo - Nintendo 64DD");
+    map.insert("Nintendo GameCube", "Nintendo - GameCube");
+    map.insert("Nintendo Wii", "Nintendo - Wii");
+    map.insert("Nintendo Wii U", "Nintendo - Wii U");
+    map.insert("Nintendo Switch", "Nintendo - Switch");
+    map.insert("Nintendo Game Boy", "Nintendo - Game Boy");
+    map.insert("Nintendo Game Boy Color", "Nintendo - Game Boy Color");
+    map.insert("Nintendo Game Boy Advance", "Nintendo - Game Boy Advance");
+    map.insert("Nintendo DS", "Nintendo - Nintendo DS");
+    map.insert("Nintendo DSi", "Nintendo - Nintendo DSi");
+    map.insert("Nintendo 3DS", "Nintendo - Nintendo 3DS");
+    map.insert("Nintendo Virtual Boy", "Nintendo - Virtual Boy");
+    map.insert("Nintendo Famicom Disk System", "Nintendo - Family Computer Disk System");
+    map.insert("Nintendo Pokemon Mini", "Nintendo - Pokemon Mini");
+    map.insert("Nintendo Satellaview", "Nintendo - Satellaview");
+    map.insert("Nintendo Game & Watch", "Nintendo - Game & Watch");
+    map.insert("Nintendo e-Reader", "Nintendo - e-Reader");
+    map.insert("Nintendo Sufami Turbo", "Nintendo - Sufami Turbo");
+
+    // Sega
+    map.insert("Sega Master System", "Sega - Master System - Mark III");
+    map.insert("Sega Genesis", "Sega - Mega Drive - Genesis");
+    map.insert("Sega CD", "Sega - Mega-CD - Sega CD");
+    map.insert("Sega 32X", "Sega - 32X");
+    map.insert("Sega Saturn", "Sega - Saturn");
+    map.insert("Sega Dreamcast", "Sega - Dreamcast");
+    map.insert("Sega Game Gear", "Sega - Game Gear");
+    map.insert("Sega SG-1000", "Sega - SG-1000");
+    map.insert("Sega Pico", "Sega - PICO");
+    map.insert("Sega Naomi", "Sega - Naomi");
+    map.insert("Sega Naomi 2", "Sega - Naomi 2");
+
+    // Sony
+    map.insert("Sony PlayStation", "Sony - PlayStation");
+    map.insert("Sony PlayStation 2", "Sony - PlayStation 2");
+    map.insert("Sony PlayStation 3", "Sony - PlayStation 3");
+    map.insert("Sony PlayStation 4", "Sony - PlayStation 4");
+    map.insert("Sony PlayStation Portable", "Sony - PlayStation Portable");
+    map.insert("Sony PlayStation Vita", "Sony - PlayStation Vita");
+
+    // Microsoft
+    map.insert("Microsoft Xbox", "Microsoft - Xbox");
+    map.insert("Microsoft Xbox 360", "Microsoft - Xbox 360");
+    map.insert("Microsoft Xbox One", "Microsoft - Xbox One");
+    map.insert("Microsoft MSX", "Microsoft - MSX");
+    map.insert("Microsoft MSX2", "Microsoft - MSX2");
+    map.insert("Microsoft MSX2+", "Microsoft - MSX2");
+
+    // Atari
+    map.insert("Atari 2600", "Atari - 2600");
+    map.insert("Atari 5200", "Atari - 5200");
+    map.insert("Atari 7800", "Atari - 7800");
+    map.insert("Atari 800", "Atari - 8-bit Family");
+    map.insert("Atari XEGS", "Atari - XEGS");
+    map.insert("Atari Lynx", "Atari - Lynx");
+    map.insert("Atari Jaguar", "Atari - Jaguar");
+    map.insert("Atari Jaguar CD", "Atari - Jaguar CD");
+    map.insert("Atari ST", "Atari - ST");
+
+    // NEC
+    map.insert("TurboGrafx-16", "NEC - PC Engine - TurboGrafx 16");
+    map.insert("TurboGrafx-CD", "NEC - PC Engine CD - TurboGrafx-CD");
+    map.insert("NEC SuperGrafx", "NEC - PC Engine SuperGrafx");
+    map.insert("PC Engine SuperGrafx", "NEC - PC Engine SuperGrafx");
+    map.insert("NEC PC-FX", "NEC - PC-FX");
+    map.insert("NEC PC-9801", "NEC - PC-98");
+    map.insert("NEC PC-8801", "NEC - PC-8001 - PC-8801");
+
+    // SNK
+    map.insert("SNK Neo Geo AES", "SNK - Neo Geo");
+    map.insert("SNK Neo Geo MVS", "SNK - Neo Geo");
+    map.insert("SNK Neo Geo CD", "SNK - Neo Geo CD");
+    map.insert("SNK Neo Geo Pocket", "SNK - Neo Geo Pocket");
+    map.insert("SNK Neo Geo Pocket Color", "SNK - Neo Geo Pocket Color");
+
+    // Commodore
+    map.insert("Commodore 64", "Commodore - 64");
+    map.insert("Commodore 128", "Commodore - 128");
+    map.insert("Commodore Amiga", "Commodore - Amiga");
+    map.insert("Commodore Amiga CD32", "Commodore - CD32");
+    map.insert("Commodore CDTV", "Commodore - CDTV");
+    map.insert("Commodore VIC-20", "Commodore - VIC-20");
+    map.insert("Commodore PET", "Commodore - PET");
+    map.insert("Commodore Plus 4", "Commodore - Plus-4");
+
+    // 3DO
+    map.insert("3DO Interactive Multiplayer", "The 3DO Company - 3DO");
+    map.insert("Panasonic 3DO", "The 3DO Company - 3DO");
+
+    // Bandai
+    map.insert("WonderSwan", "Bandai - WonderSwan");
+    map.insert("WonderSwan Color", "Bandai - WonderSwan Color");
+    map.insert("Bandai Super Vision 8000", "Bandai - Super Vision 8000");
+
+    // Other
+    map.insert("Arcade", "MAME");
+    map.insert("MS-DOS", "DOS");
+    map.insert("Apple II", "Apple - II");
+    map.insert("Apple IIGS", "Apple - IIGS");
+    map.insert("Apple Mac OS", "Apple - Macintosh");
+    map.insert("Amstrad CPC", "Amstrad - CPC");
+    map.insert("Amstrad GX4000", "Amstrad - GX4000");
+    map.insert("Sinclair ZX Spectrum", "Sinclair - ZX Spectrum");
+    map.insert("Sinclair ZX-81", "Sinclair - ZX 81");
+    map.insert("Coleco ColecoVision", "Coleco - ColecoVision");
+    map.insert("GCE Vectrex", "GCE - Vectrex");
+    map.insert("Mattel Intellivision", "Mattel - Intellivision");
+    map.insert("Magnavox Odyssey 2", "Magnavox - Odyssey2");
+    map.insert("Magnavox Odyssey", "Magnavox - Odyssey");
+    map.insert("Fairchild Channel F", "Fairchild - Channel F");
+    map.insert("Philips CD-i", "Philips - CD-i");
+    map.insert("Philips Videopac+", "Philips - Videopac+");
+    map.insert("Sharp X68000", "Sharp - X68000");
+    map.insert("Sharp X1", "Sharp - X1");
+    map.insert("Fujitsu FM-7", "Fujitsu - FM-7");
+    map.insert("Fujitsu FM Towns", "Fujitsu - FM Towns");
+    map.insert("BBC Microcomputer System", "Acorn - BBC Micro");
+    map.insert("Acorn Archimedes", "Acorn - Archimedes");
+    map.insert("Acorn Atom", "Acorn - Atom");
+    map.insert("Bally Astrocade", "Bally - Astrocade");
+    map.insert("APF Imagination Machine", "APF - Imagination Machine");
+    map.insert("Arduboy", "Arduboy Inc - Arduboy");
+    map.insert("Uzebox", "Uzebox");
+    map.insert("ScummVM", "ScummVM");
+    map.insert("Android", "Google - Android (Misc)");
+    map.insert("Nokia N-Gage", "Nokia - N-Gage");
+    map.insert("Ouya", "Ouya - Ouya");
+    map.insert("Epoch Game Pocket Computer", "Epoch - Game Pocket Computer");
+    map.insert("Funtech Super Acan", "Funtech - Super Acan");
+    map.insert("Interton VC 4000", "Interton - VC 4000");
+    map.insert("Mega Duck", "Welback - Mega-Duck");
+    map.insert("Watara Supervision", "Watara - Supervision");
+    map.insert("Emerson Arcadia 2001", "Emerson - Arcadia 2001");
+    map.insert("RCA Studio II", "RCA - Studio II");
+    map.insert("Texas Instruments TI 99/4A", "Texas Instruments - TI 99 4A");
+    map.insert("Spectravideo", "Spectravideo - SVI-318 - SVI-328");
+    map.insert("Oric Atmos", "Tangerine Computer Systems - Oric");
+    map.insert("VTech V.Smile", "VTech - V.Smile");
+    map.insert("VTech CreatiVision", "VTech - CreatiVision");
+    map.insert("Tiger Game.com", "Tiger - Game.com");
+    map.insert("Casio Loopy", "Casio - Loopy");
+    map.insert("Casio PV-1000", "Casio - PV-1000");
+    map.insert("Hartung Game Master", "Hartung - Game Master");
+    map.insert("Entex Adventure Vision", "Entex - Adventure Vision");
+    map.insert("GamePark GP32", "GamePark - GP32");
+
+    map
+}
+
+/// Get the libretro name for a canonical platform name
+pub fn get_libretro_name(canonical_name: &str) -> Option<&'static str> {
+    let mapping = get_libretro_name_mapping();
+    mapping.get(canonical_name).copied()
+}
+
 /// Normalize a platform name to canonical form
 pub fn normalize_platform_name(name: &str) -> String {
     let aliases = get_platform_aliases();
@@ -1433,22 +1597,25 @@ impl UnifiedImporter {
             for game in chunk {
                 // Get or create platform
                 let platform_canonical = normalize_platform_name(&game.platform);
+                let libretro_name = get_libretro_name(&platform_canonical);
                 let platform_id = if let Some(&id) = self.platform_cache.get(&platform_canonical) {
-                    // Update launchbox_name if not already set (in case platform was created by another source)
+                    // Update launchbox_name and libretro_name if not already set
                     sqlx::query(
-                        "UPDATE platforms SET launchbox_name = COALESCE(launchbox_name, ?) WHERE id = ?"
+                        "UPDATE platforms SET launchbox_name = COALESCE(launchbox_name, ?), libretro_name = COALESCE(libretro_name, ?) WHERE id = ?"
                     )
                     .bind(&game.platform)
+                    .bind(libretro_name)
                     .bind(id)
                     .execute(&mut *tx)
                     .await?;
                     id
                 } else {
                     let id: i64 = sqlx::query_scalar(
-                        "INSERT INTO platforms (name, launchbox_name) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET launchbox_name = COALESCE(platforms.launchbox_name, excluded.launchbox_name) RETURNING id"
+                        "INSERT INTO platforms (name, launchbox_name, libretro_name) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET launchbox_name = COALESCE(platforms.launchbox_name, excluded.launchbox_name), libretro_name = COALESCE(platforms.libretro_name, excluded.libretro_name) RETURNING id"
                     )
                     .bind(&platform_canonical)
                     .bind(&game.platform)
+                    .bind(libretro_name)
                     .fetch_one(&mut *tx)
                     .await?;
                     self.platform_cache.insert(platform_canonical.clone(), id);
