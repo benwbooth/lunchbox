@@ -24,7 +24,7 @@
 - Don't use sed for normal reading/writing files - use Read/Write/Edit tools instead
 - Never run `cargo clean` or similar destructive clean commands - they waste time rebuilding
 - Use `uv run python` instead of `python` or `python3`
-- Always use `./scripts/dev.sh` to start the dev server - never run cargo commands directly for the backend
+- **IMPORTANT**: Always use `./scripts/dev.sh` to run the app - never run `cargo run` or `dev_server` directly. The dev.sh script manages both frontend (trunk) and backend (dev_server) processes together.
 
 ## API Endpoints
 
