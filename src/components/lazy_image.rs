@@ -84,6 +84,10 @@ fn update_queue_stats() {
         set_stats.update(|stats| {
             stats.active = queue.active;
             stats.pending = queue.pending_count();
+            // Reset timing when queue is empty so speed shows 0
+            if stats.active == 0 && stats.pending == 0 {
+                stats.start_time_ms = None;
+            }
         });
     });
 }
