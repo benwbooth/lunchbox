@@ -21,8 +21,7 @@ extern "C" {
 pub fn Box3DViewer(
     /// URL for the front cover image
     front_url: String,
-    /// URL for the back cover image (optional)
-    #[prop(optional)]
+    /// URL for the back cover image (None = use front as back)
     back_url: Option<String>,
     /// Unique ID for this viewer instance
     #[prop(default = "box3d-canvas".to_string())]

@@ -2,8 +2,8 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::tauri::{self, Game, GameVariant, PlayStats};
-use super::{VideoPlayer, LazyImage};
+use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats};
+use super::{VideoPlayer, LazyImage, Box3DViewer};
 
 #[component]
 pub fn GameDetails(
@@ -160,7 +160,11 @@ pub fn GameDetails(
                     view! {
                         <div class="game-details-overlay" on:click=move |_| on_close.set(None)>
                             <div class="game-details-panel" on:click=|e| e.stop_propagation()>
-                                <button class="close-btn" on:click=move |_| on_close.set(None)>"×"</button>
+                                // Title bar with game name and close button
+                                <div class="game-details-titlebar">
+                                    <h1 class="titlebar-title">{display_title.clone()}</h1>
+                                    <button class="titlebar-close" on:click=move |_| on_close.set(None)>"×"</button>
+                                </div>
 
                                 // Video player at top, full width, auto-plays
                                 <VideoPlayer
@@ -170,21 +174,14 @@ pub fn GameDetails(
                                 />
 
                                 <div class="game-details-header">
-                                    <div class="game-details-cover">
-                                        <LazyImage
-                                            launchbox_db_id=db_id
-                                            game_title=g.title.clone()
-                                            platform=g.platform.clone()
-                                            image_type="Box - Front".to_string()
-                                            alt=display_title.clone()
-                                            class="cover-image-large".to_string()
-                                            placeholder=first_char.clone()
-                                            render_index=0
-                                            in_viewport=true
-                                        />
-                                    </div>
+                                    // Media carousel with arrows
+                                    <MediaCarousel
+                                        launchbox_db_id=db_id
+                                        game_title=g.title.clone()
+                                        platform=g.platform.clone()
+                                        placeholder=first_char.clone()
+                                    />
                                     <div class="game-details-info">
-                                        <h1 class="game-details-title">{display_title}</h1>
                                         <p class="game-details-platform">{platform}</p>
 
                                         <div class="game-details-meta">
@@ -374,6 +371,179 @@ fn VariantItem(
                 <span class="variant-region">{r}</span>
             })}
         </button>
+    }
+}
+
+/// Media types available in the carousel
+const MEDIA_TYPES: &[&str] = &[
+    "Box - Front",
+    "Box - 3D",
+    "Box - Back",
+    "Screenshot - Gameplay",
+    "Screenshot - Game Title",
+    "Clear Logo",
+    "Fanart - Background",
+];
+
+/// Media carousel with left/right navigation including 3D box view
+#[component]
+fn MediaCarousel(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+    placeholder: String,
+) -> impl IntoView {
+    let (current_index, set_current_index) = signal(0usize);
+    let (available_types, set_available_types) = signal::<Vec<String>>(vec!["Box - Front".to_string()]);
+    let (box_front_url, set_box_front_url) = signal::<Option<String>>(None);
+    let (box_back_url, set_box_back_url) = signal::<Option<String>>(None);
+
+    // Store props for async use
+    let title = StoredValue::new(game_title.clone());
+    let plat = StoredValue::new(platform.clone());
+    let db_id = launchbox_db_id;
+
+    // Load available image types on mount
+    Effect::new(move || {
+        let title = title.get_value();
+        let plat = plat.get_value();
+
+        spawn_local(async move {
+            // Get available types from backend
+            if let Ok(types) = tauri::get_available_image_types(db_id).await {
+                // Filter to types we support and add "Box - 3D" if we have Box - Front
+                let mut display_types: Vec<String> = MEDIA_TYPES
+                    .iter()
+                    .filter(|&&t| t == "Box - 3D" || types.contains(&t.to_string()))
+                    .map(|&s| s.to_string())
+                    .collect();
+
+                // Only include Box - 3D if we have Box - Front
+                if !types.contains(&"Box - Front".to_string()) {
+                    display_types.retain(|t| t != "Box - 3D");
+                }
+
+                if display_types.is_empty() {
+                    display_types.push("Box - Front".to_string());
+                }
+                set_available_types.set(display_types);
+            }
+
+            // Pre-load box front URL for 3D viewer
+            if let Ok(path) = tauri::download_image_with_fallback(
+                title.clone(),
+                plat.clone(),
+                "Box - Front".to_string(),
+                Some(db_id),
+            ).await {
+                set_box_front_url.set(Some(file_to_asset_url(&path)));
+            }
+
+            // Pre-load box back URL for 3D viewer
+            if let Ok(path) = tauri::download_image_with_fallback(
+                title.clone(),
+                plat.clone(),
+                "Box - Back".to_string(),
+                Some(db_id),
+            ).await {
+                set_box_back_url.set(Some(file_to_asset_url(&path)));
+            }
+        });
+    });
+
+    let prev = move |_| {
+        let types = available_types.get();
+        let current = current_index.get();
+        if current > 0 {
+            set_current_index.set(current - 1);
+        } else {
+            set_current_index.set(types.len().saturating_sub(1));
+        }
+    };
+
+    let next = move |_| {
+        let types = available_types.get();
+        let current = current_index.get();
+        if current < types.len() - 1 {
+            set_current_index.set(current + 1);
+        } else {
+            set_current_index.set(0);
+        }
+    };
+
+    let game_title_for_render = game_title.clone();
+    let platform_for_render = platform.clone();
+    let placeholder_for_render = placeholder.clone();
+
+    view! {
+        <div class="media-carousel">
+            <button class="carousel-arrow carousel-prev" on:click=prev title="Previous">
+                "‹"
+            </button>
+
+            <div class="carousel-content">
+                {move || {
+                    let types = available_types.get();
+                    let idx = current_index.get().min(types.len().saturating_sub(1));
+                    let current_type = types.get(idx).cloned().unwrap_or_else(|| "Box - Front".to_string());
+
+                    if current_type == "Box - 3D" {
+                        // Show 3D box viewer
+                        let front = box_front_url.get();
+                        let back = box_back_url.get();
+
+                        if let Some(front_url) = front {
+                            view! {
+                                <div class="carousel-3d-container">
+                                    <Box3DViewer
+                                        front_url=front_url.clone()
+                                        back_url=back.clone()
+                                        canvas_id=format!("box3d-{}", db_id)
+                                    />
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <div class="carousel-loading">
+                                    <div class="loading-spinner"></div>
+                                    <span>"Loading 3D view..."</span>
+                                </div>
+                            }.into_any()
+                        }
+                    } else {
+                        // Show 2D image with LazyImage
+                        view! {
+                            <LazyImage
+                                launchbox_db_id=db_id
+                                game_title=game_title_for_render.clone()
+                                platform=platform_for_render.clone()
+                                image_type=current_type.clone()
+                                alt=current_type.clone()
+                                class="carousel-image".to_string()
+                                placeholder=placeholder_for_render.clone()
+                                render_index=0
+                                in_viewport=true
+                            />
+                        }.into_any()
+                    }
+                }}
+
+                // Media type label
+                <div class="carousel-label">
+                    {move || {
+                        let types = available_types.get();
+                        let idx = current_index.get().min(types.len().saturating_sub(1));
+                        let current_type = types.get(idx).cloned().unwrap_or_default();
+                        let total = types.len();
+                        format!("{} ({}/{})", current_type, idx + 1, total)
+                    }}
+                </div>
+            </div>
+
+            <button class="carousel-arrow carousel-next" on:click=next title="Next">
+                "›"
+            </button>
+        </div>
     }
 }
 

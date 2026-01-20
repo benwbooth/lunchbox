@@ -552,8 +552,6 @@ fn RegionPriorityList(
                     let display_name = region_display_name(&item.region);
                     view! {
                         <div class="region-priority-item">
-                            <span class="region-position">{idx + 1}</span>
-                            <span class="region-name">{display_name}</span>
                             <div class="region-controls">
                                 <button
                                     class="region-move-btn"
@@ -565,7 +563,9 @@ fn RegionPriorityList(
                                     disabled=move || idx == 0
                                     title="Move up"
                                 >
-                                    "↑"
+                                    <svg width="12" height="12" viewBox="0 0 12 12">
+                                        <path d="M6 2L2 7h8L6 2z" fill="currentColor"/>
+                                    </svg>
                                 </button>
                                 <button
                                     class="region-move-btn"
@@ -577,9 +577,12 @@ fn RegionPriorityList(
                                     disabled=move || idx >= total_count() - 1
                                     title="Move down"
                                 >
-                                    "↓"
+                                    <svg width="12" height="12" viewBox="0 0 12 12">
+                                        <path d="M6 10L2 5h8L6 10z" fill="currentColor"/>
+                                    </svg>
                                 </button>
                             </div>
+                            <span class="region-name">{display_name}</span>
                         </div>
                     }
                 }
