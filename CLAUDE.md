@@ -75,3 +75,4 @@ This ensures business logic is defined once in `handlers.rs`, preventing Tauri/H
   - Contains: settings, favorites, collections, play_sessions
   - Only created when user saves data (no empty files)
 - **IMPORTANT**: Never rebuild the games database without asking first - it takes a long time
+- **IMPORTANT**: Never run direct SQL updates on the database. All schema changes and data updates must be done via migrations in `src-tauri/migrations/`. This ensures changes are reproducible and tracked in version control.
