@@ -531,7 +531,6 @@ h1, h2, h3, h4, h5, h6 {
 
 .game-card:hover .game-title-text {
     animation: marquee 3s linear infinite;
-    animation-delay: 0.5s;
     text-overflow: clip;
     max-width: none;
 }
