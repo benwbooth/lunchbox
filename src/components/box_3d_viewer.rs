@@ -45,11 +45,12 @@ pub fn Box3DViewer(
         log(&format!("Box3DViewer: Effect running, scheduling init for {}", id));
 
         // Small delay to ensure canvas is in DOM
-        let _ = gloo_timers::callback::Timeout::new(200, move || {
+        // Use forget() to prevent the timeout from being cancelled when handle is dropped
+        gloo_timers::callback::Timeout::new(200, move || {
             log(&format!("Box3DViewer: Calling init({}, {}, {:?})", id, front, back));
             let result = init(&id, &front, back.as_deref());
             log(&format!("Box3DViewer: init returned {:?}", result));
-        });
+        }).forget();
     });
 
     // Clean up when component unmounts
