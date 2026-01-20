@@ -1072,6 +1072,29 @@ fn GameCard(
 
     let game_for_click = game.clone();
 
+    // Track overflow for marquee
+    let title_ref = NodeRef::<html::Span>::new();
+    let (overflow_style, set_overflow_style) = signal(String::new());
+    let (is_truncated, set_is_truncated) = signal(false);
+
+    // Measure overflow after mount
+    Effect::new(move || {
+        if let Some(el) = title_ref.get() {
+            let scroll_width = el.scroll_width();
+            let client_width = el.client_width();
+            let overflow = scroll_width - client_width;
+            if overflow > 0 {
+                set_is_truncated.set(true);
+                // Calculate duration based on overflow (50px/s)
+                let duration = (overflow as f64 / 50.0).max(1.0);
+                set_overflow_style.set(format!(
+                    "--marquee-offset: -{}px; --marquee-duration: {}s;",
+                    overflow, duration
+                ));
+            }
+        }
+    });
+
     view! {
         <div
             class="game-card"
@@ -1096,7 +1119,14 @@ fn GameCard(
             </div>
             <div class="game-info">
                 <h3 class="game-title">
-                    <span class="game-title-text">{highlight_matches(&display_title, &search_query)}</span>
+                    <span
+                        class="game-title-text"
+                        class:truncated=move || is_truncated.get()
+                        style=move || overflow_style.get()
+                        node_ref=title_ref
+                    >
+                        {highlight_matches(&display_title, &search_query)}
+                    </span>
                 </h3>
                 {developer.map(|d| view! { <p class="game-developer">{d}</p> })}
             </div>
