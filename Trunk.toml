@@ -3,6 +3,8 @@ target = "index.html"
 dist = "dist"
 # Disable minification in dev for faster builds
 minify = "never"
+# Disable subresource integrity to avoid hash mismatch issues
+no_sri = true
 
 [watch]
 ignore = ["src-tauri", "target", ".git"]
