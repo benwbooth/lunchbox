@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Mobile - J2ME,FreeJ2ME-Plus,Windows;Linux;macOS,https://github.com/TASEmulators/freej2me-plus,,,freej2me,./rms,,"Excellent for 2D games with 94.93% compatibility; preliminary M3G (3D) support; libretro core requires freej2me-lr.jar in system folder"
+Mobile - J2ME,J2ME Loader,Android,https://github.com/nikita36078/J2ME-Loader,,,,/storage/emulated/0/Android/data/ru.playsoftware.j2meloader/files,,"Highest compatibility J2ME emulator; supports 2D and 3D including Mascot Capsule 3D; Android-only"
+Mobile - J2ME,JL-Mod,Android,https://github.com/woesss/JL-Mod,,,,/storage/emulated/0/Android/data/ru.playsoftware.j2meloader/files,,"Fork of J2ME Loader with more frequent updates; improved soundfont support; better external storage access"
+Mobile - J2ME,KEmulator nnmod,Windows;Linux;macOS,https://github.com/shinovon/KEmulator,,,,./RMS,,"High compatibility with advanced homebrew development features; Windows XP-11; Linux GTK3; macOS 10.13+"
