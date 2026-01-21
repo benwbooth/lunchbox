@@ -1,0 +1,7 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Magnavox Odyssey,Magnavody,Windows;Linux;macOS,https://classyk.itch.io/magnavody,,,,,,,Open source GPLv3 emulator/simulator. Also available on Steam. Paid ($3 USD). Active development.
+Magnavox Odyssey,Odyssey Now: HAL,Windows;macOS,https://pathealy.itch.io/odyssey-now-hal,,,,,,,Pseudo-emulation by University of Pittsburgh Vibrant Media Lab. Free. In development.
+Magnavox Odyssey,OdyWeb,Windows;Linux;macOS,https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/,,,,,,,HTML/JavaScript browser-based simulator. Runs in any modern web browser. Free.
+Magnavox Odyssey,OdySim,Windows;Linux;macOS,https://archive.org/details/OdySim,,,,,,,Built on LÖVE framework. Games as separate executables. Free. Inactive.
+Magnavox Odyssey,Odyemu,Windows,https://archive.org/details/odyemu,,,,,,,MS-DOS emulator; requires DOSBox on modern systems. Created 1999. Free. Inactive.
+Magnavox Odyssey,Magnavox Odyssey DS,Nintendo DS,https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS,,,,,,,Nintendo DS homebrew only. Created by Bobbyloujo (2010). Free. Inactive.
