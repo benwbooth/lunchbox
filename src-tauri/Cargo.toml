@@ -25,6 +25,7 @@ path = "src/bin/test_image_sources.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+chrono = "0.4"
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }

@@ -244,16 +244,21 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 0 4px #f44336;
 }
 
+.status-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.status-label {
+    font-size: 10px;
+    opacity: 0.6;
+}
+
 .status-hash {
     font-family: 'Oxanium', monospace;
     font-size: 10px;
     opacity: 0.8;
-}
-
-.status-updated {
-    font-size: 9px;
-    opacity: 0.6;
-    margin-left: 2px;
 }
 
 /* Main Content Area */

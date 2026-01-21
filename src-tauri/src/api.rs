@@ -150,12 +150,14 @@ pub fn create_router(state: SharedState) -> Router {
 pub struct HealthResponse {
     pub status: String,
     pub build_hash: String,
+    pub build_timestamp: String,
 }
 
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
         build_hash: env!("BUILD_HASH").to_string(),
+        build_timestamp: env!("BUILD_TIMESTAMP").to_string(),
     })
 }
 

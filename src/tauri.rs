@@ -209,6 +209,7 @@ async fn http_delete(path: &str) -> Result<(), String> {
 pub struct HealthResponse {
     pub status: String,
     pub build_hash: String,
+    pub build_timestamp: String,
 }
 
 /// Check backend health and get build info

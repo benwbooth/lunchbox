@@ -3,25 +3,16 @@ use leptos::task::spawn_local;
 use crate::app::{ViewMode, ArtworkDisplayType};
 use crate::tauri;
 
-/// Format seconds ago as human readable string
-fn format_time_ago(seconds: u32) -> String {
-    if seconds < 5 {
-        "now".to_string()
-    } else if seconds < 60 {
-        format!("{}s ago", seconds)
-    } else if seconds < 3600 {
-        format!("{}m ago", seconds / 60)
-    } else {
-        format!("{}h ago", seconds / 3600)
-    }
-}
+/// Frontend build info (embedded at compile time)
+const FRONTEND_BUILD_HASH: &str = env!("BUILD_HASH");
+const FRONTEND_BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
 
-/// Status indicator showing backend connectivity
+/// Status indicator showing backend connectivity and build info
 #[component]
 fn StatusIndicator() -> impl IntoView {
     let (is_connected, set_is_connected) = signal(false);
     let (backend_hash, set_backend_hash) = signal::<Option<String>>(None);
-    let (last_check_secs, set_last_check_secs) = signal(0u32);
+    let (backend_timestamp, set_backend_timestamp) = signal::<Option<String>>(None);
 
     // Initial health check
     spawn_local(async move {
@@ -29,6 +20,7 @@ fn StatusIndicator() -> impl IntoView {
             Ok(health) => {
                 set_is_connected.set(true);
                 set_backend_hash.set(Some(health.build_hash));
+                set_backend_timestamp.set(Some(health.build_timestamp));
             }
             Err(_) => {
                 set_is_connected.set(false);
@@ -38,23 +30,17 @@ fn StatusIndicator() -> impl IntoView {
 
     // Set up polling interval (runs once on mount)
     use gloo_timers::callback::Interval;
-    let interval = Interval::new(1000, move || {
-        set_last_check_secs.update(|s| {
-            *s += 1;
-            // Check health every 10 seconds
-            if *s >= 10 {
-                *s = 0;
-                spawn_local(async move {
-                    match tauri::check_health().await {
-                        Ok(health) => {
-                            set_is_connected.set(true);
-                            set_backend_hash.set(Some(health.build_hash));
-                        }
-                        Err(_) => {
-                            set_is_connected.set(false);
-                        }
-                    }
-                });
+    let interval = Interval::new(10000, move || {
+        spawn_local(async move {
+            match tauri::check_health().await {
+                Ok(health) => {
+                    set_is_connected.set(true);
+                    set_backend_hash.set(Some(health.build_hash));
+                    set_backend_timestamp.set(Some(health.build_timestamp));
+                }
+                Err(_) => {
+                    set_is_connected.set(false);
+                }
             }
         });
     });
@@ -63,8 +49,12 @@ fn StatusIndicator() -> impl IntoView {
     // Build tooltip text
     let tooltip = move || {
         let status = if is_connected.get() { "Connected" } else { "Disconnected" };
-        let hash = backend_hash.get().unwrap_or_else(|| "unknown".to_string());
-        format!("Backend: {}\nBuild: {}", status, hash)
+        let be_hash = backend_hash.get().unwrap_or_else(|| "unknown".to_string());
+        let be_time = backend_timestamp.get().unwrap_or_else(|| "unknown".to_string());
+        format!(
+            "Backend: {}\nBackend build: {} ({})\nFrontend build: {} ({})",
+            status, be_hash, be_time, FRONTEND_BUILD_HASH, FRONTEND_BUILD_TIMESTAMP
+        )
     };
 
     view! {
@@ -74,11 +64,11 @@ fn StatusIndicator() -> impl IntoView {
                 class:connected=move || is_connected.get()
                 class:disconnected=move || !is_connected.get()
             />
-            <span class="status-hash">
-                {move || backend_hash.get().unwrap_or_else(|| "...".to_string())}
-            </span>
-            <span class="status-updated">
-                {move || format_time_ago(last_check_secs.get())}
+            <span class="status-info">
+                <span class="status-label">"BE:"</span>
+                <span class="status-hash">{move || backend_hash.get().unwrap_or_else(|| "...".to_string())}</span>
+                <span class="status-label">"FE:"</span>
+                <span class="status-hash">{FRONTEND_BUILD_HASH}</span>
             </span>
         </div>
     }
@@ -98,8 +88,8 @@ pub fn Toolbar(
         <header class="toolbar">
             <div class="toolbar-left">
                 <img src="/assets/logo.svg" alt="Lunchbox" class="app-logo" />
-                <StatusIndicator />
                 <h1 class="app-title">"Lunchbox"</h1>
+                <StatusIndicator />
             </div>
             <div class="toolbar-center">
                 <div class="search-box">
