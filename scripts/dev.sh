@@ -37,7 +37,7 @@ Description=Lunchbox Backend (dev_server)
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
-ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command cargo watch -x "run -p lunchbox --bin dev_server"
+ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command cargo watch -i "*.md" -i "src/" -i "styles/" -i "dist/" -i "assets/" -x "run -p lunchbox --bin dev_server"
 Restart=on-failure
 RestartSec=2
 EOF
