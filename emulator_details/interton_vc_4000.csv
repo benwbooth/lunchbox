@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Interton VC 4000,WinArcadia,Windows,https://amigan.1emu.net/releases/,,,,,,.cos,Recommended for Interton VC 4000; multi-emulator for Arcadia 2001 and VC 4000 families; by James Jacobs
+Interton VC 4000,AmiArcadia,AmigaOS;MorphOS,https://amigan.1emu.net/releases/,,,,,,.cos,Recommended; original Amiga port; same developer as WinArcadia
+Interton VC 4000,DroidArcadia,Android,https://amigan.1emu.net/releases/,,,,,,.cos,Recommended; Android port of WinArcadia; requires Android 8.0+
+Interton VC 4000,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,sta,.sta,Partial support via MAME/MESS; requires hash file for softlist; mid-level accuracy
