@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft - Xbox 360 (Digital),Xenia,Windows;Linux,https://xenia.jp,Xenia.Xenia,,,,"~/Documents/xenia/content","","Primary Xbox 360 emulator; macOS experimental via CrossOver/Wine; Canary build available (Xenia.XeniaCanary); saves stored in content subfolder by title ID; no traditional file extensions for saves"
