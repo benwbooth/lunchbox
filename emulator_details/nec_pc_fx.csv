@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+NEC PC-FX,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,mednafen_pcfx,~/.mednafen/sav,.sav,Mid-High accuracy; primary recommended emulator; Flatpak provides Mednaffe GUI frontend which includes Mednafen
+NEC PC-FX,Provenance,iOS;tvOS,https://provenance-emu.com/,,,,,,"Recommended for iOS/tvOS; uses Mednafen core internally; available on App Store or via sideloading"
