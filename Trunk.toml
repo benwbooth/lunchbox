@@ -12,10 +12,12 @@ ignore = ["src-tauri", "target", ".git"]
 watch = ["src", "styles", "index.html", "Cargo.toml"]
 
 [serve]
-address = "127.0.0.1"
+# Listen on all interfaces so WebSocket works
+addresses = ["127.0.0.1"]
 port = 1420
 open = false
 # Enable auto-reload on file changes
 no_autoreload = false
+ws_protocol = "ws"
 # Ensure no caching in dev
 headers = { "Cache-Control" = "no-cache, no-store, must-revalidate" }
