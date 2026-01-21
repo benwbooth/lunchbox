@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Commodore VIC-20,VICE (xvic),Windows;Linux;macOS;FreeBSD,https://vice-emu.sourceforge.io/,,vice,net.sf.VICE,vice_xvic,~/.config/vice/,.vsf;.nvr,Open source GPLv2; High accuracy; Part of VICE emulator collection
+Commodore VIC-20,Z64K,Windows;Linux;macOS,http://www.z64k.com/,,,,,,.z64k,Java-based; Requires JRE 8+; Proprietary; Also emulates C64/C128/ZX Spectrum/Atari 2600
