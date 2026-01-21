@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari 2600,Stella,Windows;Linux;macOS;FreeBSD,https://stella-emu.github.io/,,stella,io.github.stella_emu.Stella,,~/.config/stella,.state,The go-to emulator for Atari 2600; cycle-accurate with extensive debugging capabilities; Time Machine feature for rewinding gameplay
+Atari 2600,Stella (libretro),Windows;Linux;macOS;Android;iOS,https://docs.libretro.com/library/stella/,,,,stella,RetroArch saves directory,.state#,RetroArch/libretro core; states saved as 'content-name'.state#; no traditional saves (Atari 2600 had no battery save)
+Atari 2600,Z64K,Windows;Linux;macOS,https://z64k.com/,,,,,./,.z64k,Java-based (requires JRE 8+); cycle-accurate; also emulates C64/C128/VIC-20/ZX Spectrum; saves snapshots in working directory
