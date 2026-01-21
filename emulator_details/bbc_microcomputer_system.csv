@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+BBC Microcomputer System,BeebEm,Windows;Linux;macOS;FreeBSD,https://github.com/stardot/beebem-windows,,,,,~/Documents/BeebEm/BeebState,.uefstate,Supports B/B+/Master 128 models; config in ~/Documents/BeebEm/Preferences.cfg; quicksave via keypad //*
+BBC Microcomputer System,B-em,Windows;Linux;macOS;FreeBSD,https://github.com/stardot/b-em,,,,,~/.config/b-em,.snp,Comprehensive model support including Master Turbo/512; Linux config at ~/.config/b-em/b-em.cfg
+BBC Microcomputer System,b2,Windows;Linux;macOS,https://github.com/tom-seddon/b2,,,snap:b2,b2,~/.local/share/b2,,Supports BBC B/B+/Master 128/Master Compact; available as snap on Linux; libretro core has no save support
