@@ -101,7 +101,10 @@ pub fn greet(name: &str) -> String {
 
 /// Sanitize a platform name for use as a filename
 fn platform_name_to_filename(name: &str) -> String {
-    name.replace("/", "-").replace(":", "-").replace("&", "and")
+    name.replace("/", "-")
+        .replace(":", "-")
+        .replace("&", "and")
+        .replace(" ", "_")
 }
 
 #[tauri::command]
