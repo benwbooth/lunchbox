@@ -2810,8 +2810,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .game-card[data-tooltip]::after {
-    bottom: auto;
-    top: calc(100% + 8px);
+    max-width: 400px;
     z-index: 9999;
 }
 
