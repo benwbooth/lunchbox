@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft MSX2+,openMSX,Windows;Linux;macOS;FreeBSD,https://openmsx.org/,,openmsx,org.openmsx.openMSX,,~/.openMSX/savestates;~/.openMSX/persistent,.oms;.sram;.pac,Most accurate MSX emulator; surpassed blueMSX in accuracy; supports Palcom LaserDisc games
+Microsoft MSX2+,blueMSX,Windows,http://bluemsx.msxblue.com/,,,,,~/.bluemsx,.sta,Inactive project since 2009; cycle-accurate with very high compatibility
+Microsoft MSX2+,blueMSX (libretro),Windows;Linux;macOS;Android;iOS,http://bluemsx.msxblue.com/,,,,bluemsx,RetroArch saves directory,.sram,RetroArch core; requires Databases and Machines folders from full blueMSX installation
+Microsoft MSX2+,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv,Multi-system emulator with MSX2+ support via software lists
+Microsoft MSX2+,MSX.emu,Android;iOS;Linux,https://www.explusalpha.com/contents/msx-emu,,,,,,~/.config/MSX.emu,.sta,Based on blueMSX; paid app on Google Play; supports SCC and FM sound
