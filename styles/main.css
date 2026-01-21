@@ -276,7 +276,7 @@ h1, h2, h3, h4, h5, h6 {
     -webkit-box-flex: 1;
     -webkit-flex: 1;
     flex: 1;
-    overflow: hidden;
+    overflow: visible;
 }
 
 /* Sidebar */
