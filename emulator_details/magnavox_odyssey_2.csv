@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Magnavox Odyssey 2,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta;.nv,"Active development; high accuracy; also emulates arcade and many other systems"
+Magnavox Odyssey 2,O2EM,Windows;Linux,http://o2em.sourceforge.net/,,,,o2em,~/.o2em,.state,"Primary Odyssey 2/Videopac+ emulator; not actively maintained but highly compatible"
