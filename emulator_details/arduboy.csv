@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Arduboy,Ardens,Windows;Linux;macOS;Web,https://github.com/tiberiusbrown/Ardens,,,,ardens,~/.config/retroarch/saves,.srm;.state,Recommended. Arduboy FX simulator with profiling/debugging. Also has web player at tiberiusbrown.github.io/Ardens/. RetroArch core supports saves/states. Accepts .hex and .arduboy files.
