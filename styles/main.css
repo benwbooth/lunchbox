@@ -107,8 +107,7 @@ h1, h2, h3, h4, h5, h6 {
     padding: 8px 16px;
     background-color: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    border-top: 3px solid;
-    border-image: linear-gradient(90deg, var(--logo-red), var(--logo-yellow), var(--logo-blue)) 1;
+    border-top: 3px solid var(--logo-blue);
     height: 51px;
     -webkit-flex-shrink: 0;
     flex-shrink: 0;
@@ -937,8 +936,7 @@ h1, h2, h3, h4, h5, h6 {
     overflow-y: auto;
     position: relative;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    border-top: 3px solid;
-    border-image: linear-gradient(90deg, var(--logo-blue), var(--logo-yellow), var(--logo-red)) 1;
+    border-top: 3px solid var(--logo-red);
 }
 
 .close-btn {
