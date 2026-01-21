@@ -147,11 +147,12 @@ h1, h2, h3, h4, h5, h6 {
 .search-box input {
     width: 100%;
     padding: 6px 30px 6px 12px;
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
+    background: linear-gradient(180deg, #2a2a2a 0%, #333333 50%, #3a3a3a 100%);
+    border: 1px solid #222;
     border-radius: 4px;
     color: var(--text-primary);
     font-size: 13px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .search-box input:focus {
@@ -2178,11 +2179,12 @@ h1, h2, h3, h4, h5, h6 {
 .platform-search-box input {
     width: 100%;
     padding: 6px 28px 6px 10px;
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
+    background: linear-gradient(180deg, #2a2a2a 0%, #333333 50%, #3a3a3a 100%);
+    border: 1px solid #222;
     border-radius: 4px;
     color: var(--text-primary);
     font-size: 12px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .platform-search-box input:focus {
