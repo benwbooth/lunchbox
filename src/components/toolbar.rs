@@ -43,6 +43,7 @@ pub fn Toolbar(
                 <Show when=move || view_mode.get() == ViewMode::Grid>
                     <select
                         class="artwork-dropdown"
+                        prop:value=move || artwork_type.get().media_type_id()
                         on:change=move |ev| {
                             let value = event_target_value(&ev);
                             let art_type = match value.as_str() {
@@ -56,19 +57,11 @@ pub fn Toolbar(
                             set_artwork_type.set(art_type);
                         }
                     >
-                        {ArtworkDisplayType::all().iter().map(|at| {
-                            let id = at.media_type_id();
-                            let label = at.label();
-                            let current = artwork_type.get();
-                            view! {
-                                <option
-                                    value=id
-                                    selected=move || current == *at
-                                >
-                                    {label}
-                                </option>
-                            }
-                        }).collect::<Vec<_>>()}
+                        <option value="box-front">"Box Art"</option>
+                        <option value="screenshot">"Screenshot"</option>
+                        <option value="title-screen">"Title Screen"</option>
+                        <option value="fanart">"Fanart"</option>
+                        <option value="clear-logo">"Clear Logo"</option>
                     </select>
                 </Show>
                 <div class="view-toggle">
