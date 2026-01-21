@@ -105,7 +105,7 @@ h1, h2, h3, h4, h5, h6 {
     -webkit-justify-content: space-between;
     justify-content: space-between;
     padding: 8px 16px;
-    background: linear-gradient(180deg, #4a4a4a 0%, #3a3a3a 25%, #2d2d2d 50%, #3a3a3a 75%, #252525 100%);
+    background: linear-gradient(180deg, #707070 0%, #606060 25%, #505050 50%, #606060 75%, #4a4a4a 100%);
     border-bottom: 1px solid #505050;
     border-top: 3px solid var(--logo-blue);
     height: 51px;
