@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft Xbox,xemu,Windows;Linux;macOS,https://xemu.app/,xemu-project.xemu,xemu,app.xemu.xemu,,~/.local/share/xemu/xemu/xbox_hdd.qcow2,.qcow2,Saves stored in HDD image; 87.6% game compatibility; supports save states (snapshots)
+Microsoft Xbox,Cxbx-Reloaded,Windows,https://cxbx-reloaded.co.uk/,,,,,%APPDATA%\Cxbx-Reloaded\EmuDisk\Partition1\UDATA\,,Windows only; runs via Wine on Linux; 16% game compatibility; HLE-based emulator
