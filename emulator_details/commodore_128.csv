@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Commodore 128,VICE,Windows;Linux;macOS;FreeBSD;Android;iOS,https://vice-emu.sourceforge.io/,,vice,net.sf.VICE,vice_x128,~/.config/vice,.vsf;.nvr;.d64;.d71;.d81,Versatile Commodore Emulator supporting C64/C128/VIC20/PET/PLUS4/CBM-II
