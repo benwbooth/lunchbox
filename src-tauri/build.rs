@@ -15,6 +15,8 @@ fn main() {
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", timestamp);
 
-    // Rerun if git HEAD changes
-    println!("cargo:rerun-if-changed=.git/HEAD");
+    // Rerun if git state changes
+    println!("cargo:rerun-if-changed=../.git/HEAD");
+    println!("cargo:rerun-if-changed=../.git/index");
+    println!("cargo:rerun-if-changed=../.git/refs/heads");
 }
