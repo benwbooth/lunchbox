@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft Xbox One,,,,,,,,,,"No recommended emulators found. Xbox One emulation is still in early experimental stages. WinDurango (https://github.com/WinDurango/WinDurango) is the only publicly available project but is not recommended - only Minecraft: Xbox One Edition runs successfully."
