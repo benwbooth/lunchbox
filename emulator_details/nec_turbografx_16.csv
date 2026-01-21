@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+NEC TurboGrafx-16,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,beetle_pce_fast;beetle_supergrafx,~/.mednafen/sav,.sav;.mca,Command-line emulator; Flatpak is for Mednaffe frontend which includes Mednafen; RetroArch cores are Beetle PCE Fast and Beetle SuperGrafx
+NEC TurboGrafx-16,ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/Emulation/ares/Saves,.sav,Cycle-accurate multi-system emulator; save path configurable in Settings > Paths
+NEC TurboGrafx-16,Mesen,Windows;Linux;macOS,https://www.mesen.ca/,SourMesen.Mesen2,,,mesen,~/.config/Mesen2/Saves,.sav,Multi-system emulator supporting PC Engine/SuperGrafx/CD-ROM²; Mesen2 is the current version
