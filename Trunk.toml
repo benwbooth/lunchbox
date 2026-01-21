@@ -15,5 +15,7 @@ watch = ["src", "styles", "index.html", "Cargo.toml"]
 address = "127.0.0.1"
 port = 1420
 open = false
+# Enable auto-reload on file changes
+no_autoreload = false
 # Ensure no caching in dev
 headers = { "Cache-Control" = "no-cache, no-store, must-revalidate" }
