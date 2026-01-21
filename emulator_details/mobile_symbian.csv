@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Mobile - Symbian,EKA2L1,Windows;Linux;macOS;Android,https://eka2l1.github.io/,EKA2L1.EKA2L1,,,,./data/drivers/private/,,Experimental Symbian OS and N-Gage emulator; supports S60v1/S60v2/S60v3/S60v5/S^3 and S80; saves stored within emulated device filesystem; GPLv3 license; development is part-time hobby since 2022
