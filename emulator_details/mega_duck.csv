@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Mega Duck,SameDuck,Windows;Linux;macOS;FreeBSD;Android;iOS,https://github.com/libretro/sameduck,,,,,sameduck,~/.config/retroarch/saves,.srm;.rtc,RetroArch core only; adaptation of SameBoy for Mega Duck; no BIOS required; supports RetroAchievements
+Mega Duck,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.sta,Multi-system emulator; Duck Adventures incompatible; use .md1/.md2/.bin ROM extensions
