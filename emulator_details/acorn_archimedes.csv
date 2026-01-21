@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Acorn Archimedes,Arculator,Windows;Linux,https://b-em.bbcmicro.com/arculator/,,,,,./cmos;./configs,.cfg,Portable app - config stored in executable directory; saves within emulated disk images (.hdf); macOS port available via github.com/richstokes/arculator-mac
