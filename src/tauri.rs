@@ -201,6 +201,21 @@ async fn http_delete(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ============ Health Check ============
+
+/// Health check response from backend
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthResponse {
+    pub status: String,
+    pub build_hash: String,
+}
+
+/// Check backend health and get build info
+pub async fn check_health() -> Result<HealthResponse, String> {
+    http_get("/api/health").await
+}
+
 // ============ rspc HTTP Client ============
 
 /// JSON-RPC response wrapper from rspc

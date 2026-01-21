@@ -144,8 +144,19 @@ pub fn create_router(state: SharedState) -> Router {
         .with_state(state)
 }
 
-async fn health() -> &'static str {
-    "ok"
+/// Health check response with build info
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthResponse {
+    pub status: String,
+    pub build_hash: String,
+}
+
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok".to_string(),
+        build_hash: env!("BUILD_HASH").to_string(),
+    })
 }
 
 // ============================================================================
