@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft MSX,openMSX,Windows;Linux;macOS;Android,https://openmsx.org/,,openmsx-emulator,org.openmsx.openMSX,,~/.openMSX/savestates,.oms;.sram,Most accurate MSX emulator; includes C-BIOS for cartridge games without original firmware; supports MSX TurboR and Palcom LaserDisc games
+Microsoft MSX,blueMSX,Windows,http://bluemsx.msxblue.com/,,,,bluemsx_libretro,~/.config/retroarch/saves,.sav;.sta,Cycle-accurate emulator; inactive but still functional; standalone only runs on Windows; libretro core available cross-platform via RetroArch
+Microsoft MSX,fMSX,Windows;Linux;macOS;Android,https://fms.komkon.org/fMSX/,,,,fmsx_libretro,~/.config/retroarch/saves;~/.config/retroarch/states,.sav;.state,One of the earliest MSX emulators; highly portable; libretro core available; non-commercial license
+Microsoft MSX,MSX.emu,Android;iOS;Linux,https://www.explusalpha.com/contents/msx-emu/,,,,,,~/.sta,Mobile-focused emulator based on blueMSX; supports save states in blueMSX .sta format
