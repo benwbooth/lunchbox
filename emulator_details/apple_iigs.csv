@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Apple IIGS,KEGS,Windows;Linux;macOS,https://kegs.sourceforge.net/,,,,,~/Library/KEGS;~,.kegs,Kent's Emulated GS; BRAM stored within config.kegs file; requires ROM image from real hardware; v1.38 current; no package manager distributions available
