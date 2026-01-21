@@ -299,7 +299,7 @@ pub async fn get_games(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
-            let launchbox_db_id: Option<i64> = row.get("launchbox_db_id");
+            let launchbox_db_id: i64 = row.get("launchbox_db_id");
             let description: Option<String> = row.get("description");
             let release_date: Option<String> = row.get("release_date");
             let release_year: Option<i32> = row.get("release_year");
@@ -328,10 +328,6 @@ pub async fn get_games(
             grouped.entry(key)
                 .and_modify(|(existing, variant_titles)| {
                     variant_titles.insert(title.clone());
-                    // Prefer entries with launchbox_db_id for cache lookups
-                    if existing.database_id == 0 && launchbox_db_id.is_some() {
-                        existing.database_id = launchbox_db_id.unwrap_or(0);
-                    }
                     // Prefer entries with more metadata
                     if existing.description.is_none() && description.is_some() {
                         existing.description = description.clone();
@@ -405,7 +401,7 @@ pub async fn get_games(
                     variant_titles.insert(title.clone());
                     (Game {
                         id,
-                        database_id: launchbox_db_id.unwrap_or(0),
+                        database_id: launchbox_db_id,
                         title: title.clone(),
                         display_title: display_title.clone(),
                         platform,
@@ -561,7 +557,7 @@ pub async fn get_game_by_uuid(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
-            let launchbox_db_id: Option<i64> = row.get("launchbox_db_id");
+            let launchbox_db_id: i64 = row.get("launchbox_db_id");
             let description: Option<String> = row.get("description");
             let release_date: Option<String> = row.get("release_date");
             let release_year: Option<i32> = row.get("release_year");
@@ -604,7 +600,7 @@ pub async fn get_game_by_uuid(
 
             return Ok(Some(Game {
                 id,
-                database_id: launchbox_db_id.unwrap_or(0),
+                database_id: launchbox_db_id,
                 title,
                 display_title,
                 platform,
@@ -1998,11 +1994,25 @@ pub async fn check_cached_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            crate::images::GameMediaId::compute_hash(&platform, &game_title)
+            let games_pool = state_guard.games_db_pool.as_ref()
+                .ok_or_else(|| "Games database not initialized".to_string())?;
+
+            // Get platform_id
+            let platform_id: Option<(i64,)> = sqlx::query_as(
+                "SELECT id FROM platforms WHERE name = ?"
+            )
+            .bind(&platform)
+            .fetch_optional(games_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &game_title)
         }
     };
 
     let video_path = cache_dir
+        .join("media")
         .join(game_id.directory_name())
         .join("emumovies")
         .join("video.mp4");
@@ -2038,11 +2048,25 @@ pub async fn download_game_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            crate::images::GameMediaId::compute_hash(&platform, &game_title)
+            let games_pool = state_guard.games_db_pool.as_ref()
+                .ok_or_else(|| "Games database not initialized".to_string())?;
+
+            // Get platform_id
+            let platform_id: Option<(i64,)> = sqlx::query_as(
+                "SELECT id FROM platforms WHERE name = ?"
+            )
+            .bind(&platform)
+            .fetch_optional(games_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &game_title)
         }
     };
 
     let game_cache_dir = cache_dir
+        .join("media")
         .join(game_id.directory_name());
 
     // Create EmuMovies client
