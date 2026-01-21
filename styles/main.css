@@ -250,6 +250,12 @@ h1, h2, h3, h4, h5, h6 {
     opacity: 0.8;
 }
 
+.status-updated {
+    font-size: 9px;
+    opacity: 0.6;
+    margin-left: 2px;
+}
+
 /* Main Content Area */
 .main-content {
     display: -webkit-box;

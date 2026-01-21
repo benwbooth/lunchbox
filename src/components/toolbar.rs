@@ -58,12 +58,11 @@ fn StatusIndicator() -> impl IntoView {
     let tooltip = move || {
         let status = if is_connected.get() { "Connected" } else { "Disconnected" };
         let hash = backend_hash.get().unwrap_or_else(|| "unknown".to_string());
-        let ago = format_time_ago(last_check_secs.get());
-        format!("Backend: {}\nBuild: {}\nChecked: {}", status, hash, ago)
+        format!("Backend: {}\nBuild: {}", status, hash)
     };
 
     view! {
-        <div class="status-indicator" data-tooltip=tooltip>
+        <div class="status-indicator" title=tooltip>
             <span
                 class="status-dot"
                 class:connected=move || is_connected.get()
@@ -71,6 +70,9 @@ fn StatusIndicator() -> impl IntoView {
             />
             <span class="status-hash">
                 {move || backend_hash.get().unwrap_or_else(|| "...".to_string())}
+            </span>
+            <span class="status-updated">
+                {move || format_time_ago(last_check_secs.get())}
             </span>
         </div>
     }
