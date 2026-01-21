@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Apple iOS,touchHLE,Windows;macOS;Linux;Android,https://touchhle.org/,,,,,touchHLE_sandbox,,High-level emulator for iPhone OS 2.x/3.x apps; Linux requires self-build; Apple Silicon macOS works via Rosetta; no firmware required
