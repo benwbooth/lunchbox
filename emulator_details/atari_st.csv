@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari ST,Hatari,Windows;Linux;macOS;FreeBSD,https://www.hatari-emu.org/,,hatari,org.tuxfamily.hatari,hatari,~/.hatari,.sav;.nvram,Requires TOS ROM image or EmuTOS; supports ST/STE/TT/Falcon
+Atari ST,Steem SSE,Windows;Linux,https://sourceforge.net/projects/steemsse/,,,,"steemsse (beta, Windows only)",Documents/steem or AppData/steem,.sts,Highly accurate ST emulation; libretro core is Windows-only beta
+Atari ST,ARAnyM,Windows;Linux;macOS;FreeBSD,https://aranym.github.io/,,,,,~/.aranym,.config,68040 VM rather than strict emulator; supports TT/Falcon; requires TOS 4.04 or EmuTOS
