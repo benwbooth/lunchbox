@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+GCE Vectrex,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta,.nv,Multi-purpose emulation framework with perfect Vectrex emulation
+GCE Vectrex,vecx,Windows;Linux;macOS,https://github.com/jhawthorn/vecx,,,,vecx,~/.config/retroarch/saves,.srm;.state,Standalone requires building from source; primarily used as RetroArch/libretro core
