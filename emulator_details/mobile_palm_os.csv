@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Mobile - Palm OS,Mu,Windows;Linux;macOS;Android,https://github.com/meepingsnesroms/Mu,,,,mu,~/.config/retroarch/states,.state,Libretro core focusing on Palm m515 with OS 4.1; also available as Qt standalone build
+Mobile - Palm OS,CloudpilotEmu,Web;iOS;Linux;macOS;Windows,https://cloudpilot-emu.github.io/,,,,,,.prc;.pdb,Web-based emulator with iOS App Store native app; supports OS 1-4 (Dragonball) and OS5 (Tungsten E2); browser localStorage for saves
+Mobile - Palm OS,PHEM,Android,https://github.com/Florin9doi/PHEM,,,,,/sdcard/phem/,,Palm Hardware Emulator M68k; available on Google Play Store; supports up to Palm OS 4.2; sessions stored in phem directory
