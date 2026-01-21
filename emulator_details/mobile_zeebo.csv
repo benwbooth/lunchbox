@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Mobile - Zeebo,Infuse,Windows;Linux;macOS,https://github.com/Tuxality/Infuse,,,,,~/.Tuxality/Infuse,,Early development; only Crash Nitro Kart 3D and Double Dragon and Zeebo Family Pack fully playable; WIP recommended on Emulation General Wiki
