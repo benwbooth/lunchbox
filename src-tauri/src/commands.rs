@@ -1994,20 +1994,7 @@ pub async fn check_cached_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            let games_pool = state_guard.games_db_pool.as_ref()
-                .ok_or_else(|| "Games database not initialized".to_string())?;
-
-            // Get platform_id
-            let platform_id: Option<(i64,)> = sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&platform)
-            .fetch_optional(games_pool)
-            .await
-            .map_err(|e| e.to_string())?;
-
-            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
-            crate::images::GameMediaId::compute_hash(platform_id, &game_title)
+            crate::images::GameMediaId::compute_hash(&platform, &game_title)
         }
     };
 
@@ -2048,20 +2035,7 @@ pub async fn download_game_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            let games_pool = state_guard.games_db_pool.as_ref()
-                .ok_or_else(|| "Games database not initialized".to_string())?;
-
-            // Get platform_id
-            let platform_id: Option<(i64,)> = sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&platform)
-            .fetch_optional(games_pool)
-            .await
-            .map_err(|e| e.to_string())?;
-
-            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
-            crate::images::GameMediaId::compute_hash(platform_id, &game_title)
+            crate::images::GameMediaId::compute_hash(&platform, &game_title)
         }
     };
 

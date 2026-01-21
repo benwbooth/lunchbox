@@ -1408,24 +1408,7 @@ async fn rspc_check_cached_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            let games_pool = match state_guard.games_db_pool.as_ref() {
-                Some(p) => p,
-                None => return rspc_err::<Option<String>>("Games database not initialized".to_string()).into_response(),
-            };
-
-            // Get platform_id
-            let platform_id: Option<(i64,)> = match sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&input.platform)
-            .fetch_optional(games_pool)
-            .await {
-                Ok(r) => r,
-                Err(e) => return rspc_err::<Option<String>>(e.to_string()).into_response(),
-            };
-
-            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
-            crate::images::GameMediaId::compute_hash(platform_id, &input.game_title)
+            crate::images::GameMediaId::compute_hash(&input.platform, &input.game_title)
         }
     };
 
@@ -1484,24 +1467,7 @@ async fn rspc_download_game_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            let games_pool = match state_guard.games_db_pool.as_ref() {
-                Some(p) => p,
-                None => return rspc_err::<String>("Games database not initialized".to_string()).into_response(),
-            };
-
-            // Get platform_id
-            let platform_id: Option<(i64,)> = match sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&input.platform)
-            .fetch_optional(games_pool)
-            .await {
-                Ok(r) => r,
-                Err(e) => return rspc_err::<String>(e.to_string()).into_response(),
-            };
-
-            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
-            crate::images::GameMediaId::compute_hash(platform_id, &input.game_title)
+            crate::images::GameMediaId::compute_hash(&input.platform, &input.game_title)
         }
     };
 

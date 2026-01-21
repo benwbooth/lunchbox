@@ -3,8 +3,9 @@
 //! Provides a unified abstraction over different image sources' naming conventions.
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use std::collections::hash_map::DefaultHasher;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 /// Normalized media types that map to different source-specific names
@@ -191,12 +192,12 @@ impl GameMediaId {
         GameMediaId::LaunchBoxId(id)
     }
 
-    /// Compute hash identifier from platform and title
-    pub fn compute_hash(platform_id: i64, title: &str) -> Self {
-        let normalized = normalize_title(title);
-        let input = format!("{}:{}", platform_id, normalized);
-        let hash = Sha256::digest(input.as_bytes());
-        GameMediaId::Hash(hex::encode(hash))
+    /// Compute hash identifier from platform name and title (matches original cache format)
+    pub fn compute_hash(platform: &str, title: &str) -> Self {
+        let mut hasher = DefaultHasher::new();
+        platform.to_lowercase().hash(&mut hasher);
+        title.to_lowercase().hash(&mut hasher);
+        GameMediaId::Hash(format!("{:x}", hasher.finish()))
     }
 
     /// Get the directory name for this identifier
@@ -348,7 +349,7 @@ mod tests {
         let lb_id = GameMediaId::LaunchBoxId(12345);
         assert_eq!(lb_id.directory_name(), "lb-12345");
 
-        let hash_id = GameMediaId::compute_hash(1, "Super Mario Bros.");
+        let hash_id = GameMediaId::compute_hash("Nintendo Entertainment System", "Super Mario Bros.");
         assert!(hash_id.directory_name().starts_with("hash-"));
     }
 
