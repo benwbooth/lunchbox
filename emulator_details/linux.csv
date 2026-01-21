@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Linux,Wine,Linux;macOS;FreeBSD;Android,https://www.winehq.org/,,wine-stable,org.winehq.Wine,,~/.wine/drive_c/users/steamuser,.sav;.srm,"Wine Is Not an Emulator. Compatibility layer for running Windows applications. Default WINEPREFIX is ~/.wine. Includes Winetricks for dependency management."
+Linux,Proton,Linux,https://github.com/ValveSoftware/Proton,,,,,,~/.steam/steam/steamapps/compatdata/<appid>/pfx/drive_c/users/steamuser,.sav;.srm,"Valve's Steam Play compatibility tool based on Wine. Integrated into Steam Linux client. Creates per-game prefixes in compatdata folder. About 90% of Steam games playable."
