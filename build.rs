@@ -9,8 +9,8 @@ fn main() {
         .unwrap_or_else(|_| "unknown".to_string());
     println!("cargo:rustc-env=BUILD_HASH={}", hash);
 
-    // Generate build timestamp (ISO 8601 format)
-    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    // Generate build timestamp (local timezone, space-separated)
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", timestamp);
 
     // Rerun if git HEAD changes

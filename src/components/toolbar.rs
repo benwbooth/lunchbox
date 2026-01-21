@@ -67,8 +67,10 @@ fn StatusIndicator() -> impl IntoView {
             <span class="status-info">
                 <span class="status-label">"BE:"</span>
                 <span class="status-hash">{move || backend_hash.get().unwrap_or_else(|| "...".to_string())}</span>
+                <span class="status-time">{move || backend_timestamp.get().unwrap_or_else(|| "".to_string())}</span>
                 <span class="status-label">"FE:"</span>
                 <span class="status-hash">{FRONTEND_BUILD_HASH}</span>
+                <span class="status-time">{FRONTEND_BUILD_TIMESTAMP}</span>
             </span>
         </div>
     }

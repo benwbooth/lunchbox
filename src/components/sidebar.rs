@@ -367,7 +367,8 @@ fn PlatformItem(
     });
 
     // Build tooltip
-    let tooltip = format!("{}\n{} games", name_for_tooltip, format_number(game_count));
+    let label = if game_count == 1 { "game" } else { "games" };
+    let tooltip = format!("{}\n{} {}", name_for_tooltip, format_number(game_count), label);
 
     view! {
         <button

@@ -973,7 +973,8 @@ pub fn GameGrid(
                                     let total = total_count.get();
                                     let filters = column_filters.get();
                                     if filters.is_empty() {
-                                        format!("{} games", format_number(total))
+                                        let label = if total == 1 { "game" } else { "games" };
+                                        format!("{} {}", format_number(total), label)
                                     } else {
                                         // Count how many pass the filters
                                         let all_games = games.get();
@@ -982,7 +983,8 @@ pub fn GameGrid(
                                                 col.passes_filter(game, allowed)
                                             })
                                         }).count();
-                                        format!("{} of {} games", format_number(filtered as i64), format_number(total))
+                                        let label = if total == 1 { "game" } else { "games" };
+                                        format!("{} of {} {}", format_number(filtered as i64), format_number(total), label)
                                     }
                                 }}
                             </div>

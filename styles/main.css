@@ -261,6 +261,13 @@ h1, h2, h3, h4, h5, h6 {
     opacity: 0.8;
 }
 
+.status-time {
+    font-family: 'Oxanium', monospace;
+    font-size: 9px;
+    opacity: 0.6;
+    margin-right: 8px;
+}
+
 /* Main Content Area */
 .main-content {
     display: -webkit-box;
@@ -395,7 +402,7 @@ h1, h2, h3, h4, h5, h6 {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    overflow: hidden;
+    overflow: visible;
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     /* Add margin for black spacing between cards (absolute positioned grid) */
