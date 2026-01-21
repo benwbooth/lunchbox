@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Game Wave Family Entertainment System,,,,,,,,,,"No recommended emulators found. The Game Wave is not listed on the Emulation General Wiki. Only a fan research project exists (github.com/gamewavefans/GameWaveFans) which has developed file unpacking tools but no playable emulator. The console uses DVD-based media with Lua scripting and has a small 13-game library of trivia/puzzle games."
