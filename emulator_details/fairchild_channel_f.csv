@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Fairchild Channel F,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.sta;.cfg,Multi-system emulator with accurate Fairchild Channel F emulation; multiple RetroArch cores available (mame_2003, mame_2010, mame_2016, mame)
+Fairchild Channel F,FreeChaF,Windows;Linux;macOS;FreeBSD;Android;iOS,https://github.com/libretro/FreeChaF,,,,freechaf,~/.config/retroarch/saves,.srm;.state,Libretro-only core designed for low-power devices; requires BIOS files (sl31253.bin, sl31254.bin); all known games reported working
