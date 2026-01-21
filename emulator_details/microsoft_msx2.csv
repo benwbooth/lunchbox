@@ -1,0 +1,7 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft MSX2,openMSX,Windows;Linux;macOS;FreeBSD,https://openmsx.org/,,openmsx,org.openmsx.openMSX,,~/.openMSX/savestates,.oms,Most accurate MSX emulator; supports Palcom LaserDisc games; GPLv2 license
+Microsoft MSX2,blueMSX,Windows,http://bluemsx.com/,,,,,~/.bluemsx,.sta,Inactive project; cycle-accurate with very high compatibility; BSD-3-Clause/GPLv2 license
+Microsoft MSX2,blueMSX (libretro),Windows;Linux;macOS;FreeBSD;Android;iOS;Xbox,http://bluemsx.com/,,,,bluemsx_libretro,RetroArch saves directory,,RetroArch core does not support save states; requires Databases and Machines folders from blueMSX
+Microsoft MSX2,fMSX (libretro),Windows;Linux;macOS;Android;iOS,http://fms.komkon.org/fMSX/,,,,fmsx_libretro,RetroArch saves directory,.srm;.state,Supports MSX/MSX2/MSX2+; based on fMSX 6.0 by Marat Fayzullin
+Microsoft MSX2,MSX.emu,Android;iOS;Linux,https://www.explusalpha.com/contents/msx-emu,,,,,"App-specific directory (Android: /sdcard/MSX.emu)",.sta,Based on blueMSX; paid app on Google Play ($7.99); supports SCC and FM sound
+Microsoft MSX2,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,MAMEdev.MAME,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram;~/.mame/sta,.sta;.hi,Multi-system emulator; also emulates MSX1/MSX2/MSX2+/TurboR; GPLv2/BSD-3-Clause license
