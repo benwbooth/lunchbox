@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Epoch Super Cassette Vision,eSCV,Windows,http://takeda-toshiya.my.coocan.jp/scv/index.html,,,,,,,Standalone Windows emulator; basis for EmuSCV libretro core
+Epoch Super Cassette Vision,EmuSCV,Windows;Linux;macOS,https://gitlab.com/MaaaX-EmuSCV/libretro-emuscv/,,,,emuscv,~/.config/retroarch/saves,.srm,RetroArch/libretro core based on eSCV; saves not supported by core itself
+Epoch Super Cassette Vision,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.sta,Multi-system emulator; .nv for NVRAM; .sta for save states
