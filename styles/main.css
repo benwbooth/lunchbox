@@ -415,6 +415,7 @@ h1, h2, h3, h4, h5, h6 {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     border-color: var(--accent-color);
+    z-index: 100;
 }
 
 .game-cover {
@@ -2811,6 +2812,7 @@ h1, h2, h3, h4, h5, h6 {
 .game-card[data-tooltip]::after {
     bottom: auto;
     top: calc(100% + 8px);
+    z-index: 9999;
 }
 
 /* ============================================================================
