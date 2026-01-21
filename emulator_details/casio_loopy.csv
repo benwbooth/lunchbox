@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Casio Loopy,LoopyMSE,Windows,https://github.com/PSI-Rockin/LoopyMSE,,,,,same directory as ROM,.sav,Dedicated Casio Loopy emulator; runs all games; requires BIOS files; command-line only
+Casio Loopy,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.cfg;.sta,Casio Loopy support added in MAME 0.260; requires casloopy.zip BIOS; use shortname 'casloopy'
