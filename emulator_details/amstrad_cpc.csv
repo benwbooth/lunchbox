@@ -1,0 +1,8 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Amstrad CPC,Caprice32,Windows;Linux;macOS,https://github.com/ColinPitrat/caprice32,,,,,~/.config/cap32,.sna;.dsk,Highly accurate emulator; available as snap (caprice32); also has libretro core (cap32)
+Amstrad CPC,Caprice32 (libretro),Windows;Linux;macOS;Android;iOS,https://github.com/libretro/libretro-cap32,,,,cap32,RetroArch saves directory,.sna,RetroArch/libretro core; saves as 'content-name#.SNA' in content directory
+Amstrad CPC,CaPriCe Forever,Windows,https://www.cpc-power.com/cpcarchives/index.php?page=articles&num=445,,,,,,%APPDATA%/CaPriCe Forever,.sna;.dsk,Windows-only fork of Caprice32 with DirectX/OpenGL rendering
+Amstrad CPC,Arnold,Windows;Linux;macOS;FreeBSD,https://cpctech.cpcwiki.de/download.html,,,,,,./snapshots,.sna,Cycle-accurate emulator by Kevin Thacker; uses SNA v3 format
+Amstrad CPC,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.sta;.cfg,Multi-system emulator; winget package not yet available but ID reserved; emulates cpc464/cpc664/cpc6128/gx4000
+Amstrad CPC,Retro Virtual Machine,Windows;Linux;macOS,https://www.retrovirtualmachine.org/,,,,,~/Library/Application Support/Retro Virtual Machine,.sna;.z80,Proprietary; also emulates ZX Spectrum/MSX/SMS; available as snap (mmartinortiz-retro-virtual-machine)
+Amstrad CPC,Azimuth,Android,https://play.google.com/store/apps/details?id=johnidis.azimuth,,,,,,,.dsk;.cdt,Android-only; supports CPC 464/664/6128; freeware
