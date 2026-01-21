@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari XEGS,Altirra,Windows,https://www.virtualdub.org/altirra.html,,,,,~/.config/Altirra,.altstate,Windows-only; highly accurate cycle-exact emulation; excellent debugger; internal kernel available
+Atari XEGS,Atari800,Windows;Linux;macOS;Android,https://atari800.github.io/,,atari800,,atari800,~/.atari800,.a8s,Cross-platform; config at ~/.atari800.cfg; also emulates Atari 5200
+Atari XEGS,Atari++,Windows;Linux,http://www.xl-project.com/,,,,,~/.atari++,.state,Cycle-precise; built-in ROM fallback; config at ~/.atari++.conf
