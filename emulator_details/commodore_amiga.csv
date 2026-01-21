@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Commodore Amiga,FS-UAE,Windows;Linux;macOS,https://fs-uae.net/,,fs-uae-launcher,net.fsuae.FS-UAE,,~/Documents/FS-UAE/Save States,.uss,Cross-platform with focus on gaming; based on WinUAE; built-in WHDLoad support
+Commodore Amiga,WinUAE,Windows,https://www.winuae.net/,,,,,~/Documents/WinUAE/SaveStates,.uss,Most accurate and fully-featured Amiga emulator; Windows-only
+Commodore Amiga,Amiberry,Linux;macOS,https://blitterstudio.com/amiberry/,,amiberry,com.blitterstudio.amiberry,,~/.local/share/amiberry/savestates,.uss,Optimized for ARM and Linux; based on WinUAE; supports WHDLoad
+Commodore Amiga,vAmiga,macOS,https://dirkwhoffmann.github.io/vAmiga/,,vamiga,,,~/Library/Containers/de.dirkwhoffmann.vAmiga,.vAmiga,Native macOS app for Amiga 500/1000/2000; document-based save system
+Commodore Amiga,PUAE,Windows;Linux;macOS;Android;iOS,https://github.com/libretro/libretro-uae,,,,puae,RetroArch saves directory,.nvr;.state;.hdf,RetroArch/libretro core; continuation of E-UAE; supports CD32 and CDTV
