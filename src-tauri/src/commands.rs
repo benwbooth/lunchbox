@@ -299,7 +299,7 @@ pub async fn get_games(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
-            let launchbox_db_id: i64 = row.get("launchbox_db_id");
+            let launchbox_db_id: Option<i64> = row.get("launchbox_db_id");
             let description: Option<String> = row.get("description");
             let release_date: Option<String> = row.get("release_date");
             let release_year: Option<i32> = row.get("release_year");
@@ -328,6 +328,10 @@ pub async fn get_games(
             grouped.entry(key)
                 .and_modify(|(existing, variant_titles)| {
                     variant_titles.insert(title.clone());
+                    // Prefer entries with launchbox_db_id for cache lookups
+                    if existing.database_id == 0 && launchbox_db_id.is_some() {
+                        existing.database_id = launchbox_db_id.unwrap_or(0);
+                    }
                     // Prefer entries with more metadata
                     if existing.description.is_none() && description.is_some() {
                         existing.description = description.clone();
@@ -401,7 +405,7 @@ pub async fn get_games(
                     variant_titles.insert(title.clone());
                     (Game {
                         id,
-                        database_id: launchbox_db_id,
+                        database_id: launchbox_db_id.unwrap_or(0),
                         title: title.clone(),
                         display_title: display_title.clone(),
                         platform,
@@ -557,7 +561,7 @@ pub async fn get_game_by_uuid(
             let title: String = row.get("title");
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
-            let launchbox_db_id: i64 = row.get("launchbox_db_id");
+            let launchbox_db_id: Option<i64> = row.get("launchbox_db_id");
             let description: Option<String> = row.get("description");
             let release_date: Option<String> = row.get("release_date");
             let release_year: Option<i32> = row.get("release_year");
@@ -600,7 +604,7 @@ pub async fn get_game_by_uuid(
 
             return Ok(Some(Game {
                 id,
-                database_id: launchbox_db_id,
+                database_id: launchbox_db_id.unwrap_or(0),
                 title,
                 display_title,
                 platform,
