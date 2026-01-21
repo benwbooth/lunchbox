@@ -25,6 +25,7 @@
 - Never run `cargo clean` or similar destructive clean commands - they waste time rebuilding
 - Use `uv run python` instead of `python` or `python3`
 - **IMPORTANT**: Always use `./scripts/dev.sh` to run the app - never run `cargo run` or `dev_server` directly. The dev.sh script manages both frontend (trunk) and backend (dev_server) processes together.
+- **NEVER manually run `trunk build`** - the dev server (trunk serve) automatically rebuilds when files change. Just save files and the frontend will hot-reload.
 
 ## API Endpoints
 
