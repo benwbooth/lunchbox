@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari Jaguar CD,BigPEmu,Windows;Linux;iOS,https://www.richwhitehouse.com/jaguar/,,,,,%APPDATA%\BigPEmu\UserData,.bigpcfg,RECOMMENDED; first and only emulator with full Jaguar CD compatibility; closed source; supports Memory Track and VLM
+Atari Jaguar CD,BizHawk,Windows;Linux,https://tasvideos.org/BizHawk,,,,,[BizHawk]\Jaguar\SaveRAM,.SaveRAM;.state,Uses Virtual Jaguar core internally; only a few Jaguar CD games work; primarily for TAS/speedrunning
