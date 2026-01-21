@@ -1999,7 +1999,6 @@ pub async fn check_cached_video(
     };
 
     let video_path = cache_dir
-        .join("media")
         .join(game_id.directory_name())
         .join("emumovies")
         .join("video.mp4");
@@ -2040,7 +2039,6 @@ pub async fn download_game_video(
     };
 
     let game_cache_dir = cache_dir
-        .join("media")
         .join(game_id.directory_name());
 
     // Create EmuMovies client
