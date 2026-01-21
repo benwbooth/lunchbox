@@ -2794,8 +2794,8 @@ h1, h2, h3, h4, h5, h6 {
     font-family: 'Oxanium', sans-serif;
     font-size: 12px;
     line-height: 1.4;
-    white-space: pre-line;
-    max-width: 500px;
+    white-space: pre;
+    width: max-content;
     z-index: 1000;
     pointer-events: none;
     opacity: 0;
@@ -2812,7 +2812,6 @@ h1, h2, h3, h4, h5, h6 {
 .game-card[data-tooltip]::after {
     bottom: auto;
     top: calc(100% + 8px);
-    max-width: 500px;
     z-index: 9999;
 }
 
