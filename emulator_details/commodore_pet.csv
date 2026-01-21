@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Commodore PET,VICE (xpet),Windows;Linux;macOS;FreeBSD,https://vice-emu.sourceforge.io/,,vice,net.sf.VICE,vice_xpet,~/.config/vice,.vsf,Part of VICE emulator suite; emulates 2001/3032/4032/8032/8096/8296 and SuperPET models; run via 'xpet' binary
