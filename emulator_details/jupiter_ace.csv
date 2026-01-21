@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Jupiter Ace,ZEsarUX,Windows;Linux;macOS,https://github.com/chernandezba/zesarux,,zesarux,,,~/.zesaruxrc,.zsf;.ace;.tap;.tzx,"Excellent Jupiter Ace support; described as perfect emulation; supports RAM packs up to 51KB; Speaker and Soundbox sound"
+Jupiter Ace,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta,.sta,"MAME machine name: jupace; emulation status rated GOOD; save states supported"
+Jupiter Ace,EightyOne,Windows,https://github.com/charlierobson/EightyOne,,,,,,%APPDATA%\EightyOne,.p;.tzx;.z81;.ace,"Windows-only; also emulates ZX80/ZX81/ZX Spectrum; includes WAV loader; libretro core (81-libretro) exists but Jupiter Ace not yet implemented in it"
