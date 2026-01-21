@@ -135,7 +135,7 @@ h1, h2, h3, h4, h5, h6 {
 .app-title {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-highlight);
+    color: var(--logo-yellow);
 }
 
 .search-box {
@@ -321,6 +321,8 @@ h1, h2, h3, h4, h5, h6 {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 8px 0;
+    border-left: 3px solid var(--logo-blue);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--logo-blue) 8%, transparent), transparent 50%);
 }
 
 .platform-item {
@@ -2158,6 +2160,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Platform Search */
 .platform-search-header {
     padding: 8px 12px;
+    background-color: color-mix(in srgb, var(--logo-red) 20%, var(--bg-secondary));
 }
 
 .platform-search-box {
