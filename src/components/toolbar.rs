@@ -57,11 +57,17 @@ pub fn Toolbar(
                             set_artwork_type.set(art_type);
                         }
                     >
-                        <option value="box-front">"Box Art"</option>
-                        <option value="screenshot">"Screenshot"</option>
-                        <option value="title-screen">"Title Screen"</option>
-                        <option value="fanart">"Fanart"</option>
-                        <option value="clear-logo">"Clear Logo"</option>
+                        <For
+                            each=move || ArtworkDisplayType::all().iter().copied()
+                            key=|at| at.media_type_id()
+                            children=move |at| {
+                                view! {
+                                    <option value=at.media_type_id()>
+                                        {at.label()}
+                                    </option>
+                                }
+                            }
+                        />
                     </select>
                 </Show>
                 <div class="view-toggle">
