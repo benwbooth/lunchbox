@@ -99,6 +99,11 @@ pub fn greet(name: &str) -> String {
     format!("Hello, {}! Welcome to Lunchbox.", name)
 }
 
+/// Sanitize a platform name for use as a filename
+fn platform_name_to_filename(name: &str) -> String {
+    name.replace("/", "-").replace(":", "-").replace("&", "and")
+}
+
 #[tauri::command]
 pub async fn get_platforms(
     state: tauri::State<'_, AppStateHandle>,
@@ -107,9 +112,9 @@ pub async fn get_platforms(
 
     // Try shipped games database first (browse-first mode)
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        // Get all platforms with aliases and libretro_name for icons
-        let platforms: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT id, name, aliases, libretro_name FROM platforms ORDER BY name"
+        // Get all platforms with aliases
+        let platforms: Vec<(i64, String, Option<String>)> = sqlx::query_as(
+            "SELECT id, name, aliases FROM platforms ORDER BY name"
         )
         .fetch_all(games_pool)
         .await
@@ -117,7 +122,7 @@ pub async fn get_platforms(
 
         // For each platform, count deduplicated games (by normalized title)
         let mut result = Vec::new();
-        for (id, name, aliases, libretro_name) in platforms {
+        for (id, name, aliases) in platforms {
             let all_titles: Vec<(String,)> = sqlx::query_as(
                 "SELECT title FROM games WHERE platform_id = ?"
             )
@@ -134,11 +139,9 @@ pub async fn get_platforms(
             }
             // Use database aliases or generate them if not present
             let aliases = aliases.or_else(|| get_platform_search_aliases(&name));
-            // Build icon URL from libretro_name (local bundled icons)
-            let icon_url = libretro_name.map(|lr_name| {
-                let filename = lr_name.replace(" ", "_").replace("/", "_");
-                format!("/assets/platforms/{}.png", filename)
-            });
+            // Build icon URL from platform name (icons are named after canonical platform names)
+            let filename = platform_name_to_filename(&name);
+            let icon_url = Some(format!("/assets/platforms/{}.png", filename));
             result.push(Platform { id, name, game_count: seen.len() as i64, aliases, icon_url });
         }
         return Ok(result);
