@@ -1338,7 +1338,14 @@ async fn serve_asset(
     let decoded_path = urlencoding::decode(&path)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid path encoding: {}", e)))?;
 
-    let file_path = std::path::Path::new(decoded_path.as_ref());
+    // Axum's wildcard strips the leading slash, so we need to add it back for absolute paths
+    let full_path = if decoded_path.starts_with('/') {
+        decoded_path.to_string()
+    } else {
+        format!("/{}", decoded_path)
+    };
+
+    let file_path = std::path::Path::new(&full_path);
 
     // Check that the path exists and is a file
     if !file_path.exists() {
