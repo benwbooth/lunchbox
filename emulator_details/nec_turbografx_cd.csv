@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+NEC TurboGrafx-CD,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,,com.github.AmatCoder.mednaffe,beetle_pce_fast,~/.mednafen/sav,.mcr;.sav,Beetle PCE FAST and Beetle PCE (accurate) cores available for RetroArch. Flatpak is for Mednaffe GUI frontend which includes Mednafen.
+NEC TurboGrafx-CD,Ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav,Multi-system emulator focused on accuracy and preservation. Successor to higan/bsnes.
+NEC TurboGrafx-CD,Mesen,Windows;Linux;macOS,https://mesen.ca/,SourMesen.Mesen2,,,mesen,~/Documents/Mesen/Saves,.sav,Mesen 2.x supports PC Engine/TurboGrafx-CD. Libretro core is NES-only (based on older 0.x branch).
+NEC TurboGrafx-CD,BizHawk,Windows;Linux,https://tasvideos.org/BizHawk,,,,,BizHawk/PCE/SaveRAM,.SaveRAM,TAS-focused emulator with cycle-accurate PCE core. Uses Mednafen's PCE core internally.
