@@ -22,37 +22,43 @@ fn StatusIndicator() -> impl IntoView {
     let (is_connected, set_is_connected) = signal(false);
     let (backend_hash, set_backend_hash) = signal::<Option<String>>(None);
     let (last_check_secs, set_last_check_secs) = signal(0u32);
-    let (check_count, set_check_count) = signal(0u32);
 
-    // Poll health every 10 seconds
-    Effect::new(move || {
-        let _ = check_count.get(); // Subscribe to trigger re-checks
-        spawn_local(async move {
-            match tauri::check_health().await {
-                Ok(health) => {
-                    set_is_connected.set(true);
-                    set_backend_hash.set(Some(health.build_hash));
-                    set_last_check_secs.set(0);
-                }
-                Err(_) => {
-                    set_is_connected.set(false);
-                }
+    // Initial health check
+    spawn_local(async move {
+        match tauri::check_health().await {
+            Ok(health) => {
+                set_is_connected.set(true);
+                set_backend_hash.set(Some(health.build_hash));
+            }
+            Err(_) => {
+                set_is_connected.set(false);
+            }
+        }
+    });
+
+    // Set up polling interval (runs once on mount)
+    use gloo_timers::callback::Interval;
+    let interval = Interval::new(1000, move || {
+        set_last_check_secs.update(|s| {
+            *s += 1;
+            // Check health every 10 seconds
+            if *s >= 10 {
+                *s = 0;
+                spawn_local(async move {
+                    match tauri::check_health().await {
+                        Ok(health) => {
+                            set_is_connected.set(true);
+                            set_backend_hash.set(Some(health.build_hash));
+                        }
+                        Err(_) => {
+                            set_is_connected.set(false);
+                        }
+                    }
+                });
             }
         });
     });
-
-    // Increment timer every second
-    Effect::new(move || {
-        use gloo_timers::callback::Interval;
-        let interval = Interval::new(1000, move || {
-            set_last_check_secs.update(|s| *s += 1);
-            // Trigger health check every 10 seconds
-            if last_check_secs.get_untracked() >= 10 {
-                set_check_count.update(|c| *c += 1);
-            }
-        });
-        interval.forget();
-    });
+    interval.forget();
 
     // Build tooltip text
     let tooltip = move || {
