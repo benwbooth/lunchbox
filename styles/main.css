@@ -155,7 +155,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .search-box input:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--logo-yellow);
 }
 
 .search-box input::placeholder {
@@ -303,7 +303,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .sidebar-header {
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 2px solid var(--logo-red);
 }
 
 .sidebar-header h2 {
@@ -423,7 +423,7 @@ h1, h2, h3, h4, h5, h6 {
 .game-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    border-color: var(--accent-color);
+    border-color: var(--logo-yellow);
     z-index: 100;
 }
 
