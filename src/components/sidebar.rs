@@ -2,6 +2,8 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos::html;
+use wasm_bindgen::JsCast;
 use crate::tauri::{self, Platform, Collection};
 use crate::components::QueueStatus;
 use web_sys::console;
@@ -115,8 +117,55 @@ pub fn Sidebar(
         set_selected_platform.set(None);
     };
 
+    // Sidebar resize state
+    let (sidebar_width, set_sidebar_width) = signal(240i32);
+    let (is_resizing, set_is_resizing) = signal(false);
+    let sidebar_ref = NodeRef::<html::Aside>::new();
+
+    // Handle resize drag
+    let on_resize_start = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        set_is_resizing.set(true);
+        // Add class to body to prevent text selection
+        if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+            let _ = body.class_list().add_1("sidebar-resizing");
+        }
+    };
+
+    // Global mouse move handler for resize
+    Effect::new(move || {
+        if !is_resizing.get() {
+            return;
+        }
+
+        let mousemove = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
+            if is_resizing.get() {
+                let new_width = ev.client_x().max(180).min(400);
+                set_sidebar_width.set(new_width);
+            }
+        });
+
+        let mouseup = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(move |_: web_sys::MouseEvent| {
+            set_is_resizing.set(false);
+            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+                let _ = body.class_list().remove_1("sidebar-resizing");
+            }
+        });
+
+        if let Some(window) = web_sys::window() {
+            let _ = window.add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref());
+            let _ = window.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref());
+            mousemove.forget();
+            mouseup.forget();
+        }
+    });
+
     view! {
-        <aside class="sidebar">
+        <aside
+            class="sidebar"
+            node_ref=sidebar_ref
+            style=move || format!("width: {}px;", sidebar_width.get())
+        >
             <div class="sidebar-header platform-search-header">
                 <div class="platform-search-box">
                     <input
@@ -236,6 +285,13 @@ pub fn Sidebar(
                     </div>
                 </div>
             </Show>
+
+            // Resize handle
+            <div
+                class="sidebar-resize-handle"
+                class:dragging=move || is_resizing.get()
+                on:mousedown=on_resize_start
+            />
         </aside>
     }
 }
@@ -284,14 +340,41 @@ fn PlatformItem(
     let name = platform.name.clone();
     let name_for_click = name.clone();
     let name_for_display = name.clone();
+    let name_for_tooltip = name.clone();
     let game_count = platform.game_count;
     let icon_url = platform.icon_url.clone();
+
+    // Track overflow for marquee
+    let name_ref = NodeRef::<html::Span>::new();
+    let (overflow_style, set_overflow_style) = signal(String::new());
+    let (is_truncated, set_is_truncated) = signal(false);
+
+    // Measure overflow after mount
+    Effect::new(move || {
+        if let Some(el) = name_ref.get() {
+            let scroll_width = el.scroll_width();
+            let client_width = el.client_width();
+            let overflow = scroll_width - client_width;
+            if overflow > 0 {
+                set_is_truncated.set(true);
+                let duration = (overflow as f64 / 50.0).max(1.0);
+                set_overflow_style.set(format!(
+                    "--marquee-offset: -{}px; --marquee-duration: {}s;",
+                    overflow, duration
+                ));
+            }
+        }
+    });
+
+    // Build tooltip
+    let tooltip = format!("{}\n{} games", name_for_tooltip, format_number(game_count));
 
     view! {
         <button
             class="platform-item"
             class:selected=move || selected_platform.get().as_ref() == Some(&name)
             on:click=move |_| on_click(Some(name_for_click.clone()))
+            data-tooltip=tooltip
         >
             {icon_url.clone().map(|url| view! {
                 <img class="platform-icon" src=url alt="" />
@@ -299,8 +382,15 @@ fn PlatformItem(
             {icon_url.is_none().then(|| view! {
                 <span class="platform-icon-placeholder"></span>
             })}
-            <span class="platform-name">
-                {move || highlight_matches(&name_for_display, &search_query.get())}
+            <span class="platform-name-wrapper">
+                <span
+                    class="platform-name-text"
+                    class:truncated=move || is_truncated.get()
+                    style=move || overflow_style.get()
+                    node_ref=name_ref
+                >
+                    {move || highlight_matches(&name_for_display, &search_query.get())}
+                </span>
             </span>
             {(game_count > 0).then(|| view! {
                 <span class="platform-count">{format_number(game_count)}</span>

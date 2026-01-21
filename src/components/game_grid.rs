@@ -1098,7 +1098,7 @@ fn GameCard(
     view! {
         <div
             class="game-card"
-            title=tooltip
+            data-tooltip=tooltip
             on:click=move |_| on_select.set(Some(game_for_click.clone()))
         >
             <div class="game-cover">

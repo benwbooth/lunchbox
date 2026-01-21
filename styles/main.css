@@ -2716,3 +2716,105 @@ h1, h2, h3, h4, h5, h6 {
     background: var(--accent-color);
     color: white;
 }
+
+/* ============================================================================
+   Custom Tooltips
+   ============================================================================ */
+
+[data-tooltip] {
+    position: relative;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: 'Oxanium', sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre-line;
+    max-width: 300px;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+.game-card[data-tooltip]::after {
+    bottom: auto;
+    top: calc(100% + 8px);
+}
+
+/* ============================================================================
+   Platform Marquee Effect
+   ============================================================================ */
+
+.platform-name-wrapper {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.platform-name-text {
+    display: inline-block;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.platform-item:hover .platform-name-text.truncated {
+    animation: marquee var(--marquee-duration, 3s) linear infinite;
+    text-overflow: clip;
+    max-width: none;
+}
+
+/* ============================================================================
+   Resizable Sidebar
+   ============================================================================ */
+
+.sidebar {
+    position: relative;
+    min-width: 180px;
+    max-width: 400px;
+}
+
+.sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 10;
+    transition: background 0.15s ease;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.dragging {
+    background: var(--accent-color);
+}
+
+body.sidebar-resizing {
+    cursor: col-resize !important;
+    user-select: none;
+}
+
+body.sidebar-resizing * {
+    cursor: col-resize !important;
+}
