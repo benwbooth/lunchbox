@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari 7800,BupSystem,Windows,http://tailchao.com/BupSystem,,,,,./saves,.sav;.state,Proprietary; high accuracy; only emulator officially supporting Rikki & Vikki
+Atari 7800,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta,Multi-system emulator with high accuracy
+Atari 7800,A7800,Windows;Linux;macOS;FreeBSD,https://github.com/7800-devtools/a7800,,,,,~/.a7800/sta,.sta,Fork of MAME Atari 7800 driver with enhancements; GPLv2
+Atari 7800,ProSystem,Windows,https://github.com/gstanton/ProSystem1_3,,,,prosystem,~/.config/retroarch/saves,.state,Development ceased in 2008; RetroArch core still maintained; no SRAM saves only save states
