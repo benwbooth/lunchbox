@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Apple II,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta,.sta;.nv;.cfg,Multi-system emulator; winget package not available; emulates apple2/apple2p/apple2e/apple2ee/apple2gs; nvram in ~/.mame/nvram
+Apple II,AppleWin,Windows,https://github.com/AppleWin/AppleWin,AppleWin.AppleWin,,,,AppleWin directory,.aws.yaml,Most popular Windows Apple II emulator; supports II/II+/IIe/Enhanced IIe; legacy .aws format deprecated
+Apple II,LinApple,Linux,https://github.com/linappleii/linapple,,,,,~/.config/linapple,.aws,Linux port of AppleWin; supports II/II+/IIe/Enhanced IIe; available in AUR as linapple-git; save states via F11/F12
+Apple II,CLK (Clock Signal),Linux;macOS,https://github.com/TomHarte/CLK,,clock-signal,,,,,Cycle-accurate emulator; available as snap (clock-signal); supports II/II+/IIe; no documented save state support
