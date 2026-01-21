@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+LeapFrog - Leapster Learning Game System,,,,,,,,,,"No recommended emulators found. MAME has a preliminary driver but is marked NOT recommended - the driver is a skeleton that does not work (GAME_NOT_WORKING | GAME_NO_SOUND | GAME_IS_SKELETON)."
