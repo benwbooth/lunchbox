@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft - XBOX 360 (Games on Demand),Xenia,Windows;Linux,https://xenia.jp,,,,,~/Documents/Xenia/content,,"Recommended Xbox 360 emulator; Linux support experimental via native builds or Proton; saves use Xbox 360 STFS format (CON containers) without traditional file extensions; macOS support very experimental via unofficial xenia-mac port"
