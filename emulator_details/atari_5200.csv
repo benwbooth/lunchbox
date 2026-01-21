@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari 5200,Atari800,Windows;Linux;macOS;FreeBSD;Android,https://atari800.github.io/,,atari800,,atari800,~/.atari800,.a8s,Also emulates Atari 8-bit computers (400/800/XL/XE)
