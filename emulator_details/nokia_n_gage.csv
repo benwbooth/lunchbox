@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nokia N-Gage,EKA2L1,Windows;Linux;macOS;Android,https://github.com/EKA2L1/EKA2L1,EKA2L1.EKA2L1,,,,"./data/drives/c/private;./data/drives/e",,Symbian OS and N-Gage emulator. Saves stored in emulated drive structure under data/drives/. Development significantly reduced as of March 2023.
