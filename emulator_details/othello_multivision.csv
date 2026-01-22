@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Othello Multivision,Gearsystem,Windows;Linux;macOS;BSD,https://github.com/drhelius/Gearsystem,,,io.github.drhelius.Gearsystem,gearsystem,Same directory as ROM,.sav;.srm;.state,Very accurate SG-1000/SMS/GG emulator with debugger. Also available via RetroArch.
+Othello Multivision,Genesis Plus GX,Windows;Linux;macOS;Android;iOS,https://github.com/ekeeke/Genesis-Plus-GX,Libretro.RetroArch,retroarch,org.libretro.RetroArch,genesis_plus_gx,RetroArch saves directory,.srm;.state,100% SG-1000 compatibility. Only available as RetroArch core on desktop platforms.
+Othello Multivision,MEKA,Windows;Linux;macOS,https://www.smspower.org/meka/,,,,,,95-100% Othello Multivision compatibility. Supports special OMV keyboard. Includes debugging tools.
+Othello Multivision,MasterGear,Windows;Linux;Android,https://fms.komkon.org/MG/,,,,,,.Lightweight emulator supporting SG-1000 variants including Othello Multivision.
