@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Game & Watch,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram;~/.mame/sta,.nv;.sta;.cfg,First emulator to support Game & Watch with high accuracy using SVG graphics for LCD display
+Nintendo Game & Watch,GW (MADrigal's Simulators),Windows;Linux;macOS;Android;iOS,https://www.madrigaldesign.it/sim/,,,gw,,,.mgw,Simulators rather than true emulators; RetroArch core only; games downloadable from RetroArch Content Downloader
