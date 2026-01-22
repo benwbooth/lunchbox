@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Philips Videopac+,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,,~/.mame/nvram;~/.mame/sta,.nv;.sta,Recommended; High accuracy; Also emulates Odyssey²
+Philips Videopac+,O2EM,Windows;Linux,https://o2em.sourceforge.net/,,,,,~/.o2em,.sta,Recommended but inactive; Has libretro core o2em; Requires o2rom.bin or g7400.bin BIOS
