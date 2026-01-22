@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+SNK Neo Geo Pocket Color,ares,Windows;Linux;macOS,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav;.bsz,Most accurate Neo Geo Pocket emulator; configurable save path via Settings > Paths
+SNK Neo Geo Pocket Color,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,beetle_ngp,~/.mednafen/sav,.flash;.mcq;.nc0,Flatpak is for Mednaffe GUI frontend which bundles Mednafen
+SNK Neo Geo Pocket Color,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nvram;.sta,General-purpose arcade/system emulator; not optimized for NGP accuracy
