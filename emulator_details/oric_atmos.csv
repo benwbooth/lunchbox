@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Oric Atmos,CLK (Clock Signal),macOS;Linux,https://github.com/TomHarte/CLK,,clock-signal,,,,.sna,Recommended for Oric on macOS/Linux. Save states not yet fully implemented. Available via Snap on Linux (clock-signal).
+Oric Atmos,Oricutron,Windows;Linux;macOS;Android,https://github.com/pete-gordon/oricutron,,,,,./snapshots,.sna,Portable emulator for Oric-1/Atmos/Telestrat/Pravetz 8D. GPL-2.0 licensed. Includes bundled ROMs.
+Oric Atmos,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,,mame,~/.mame/sta,.sta,Multi-system emulator supporting Oric Atmos via orica driver. Use with libretro:mame core in RetroArch.
