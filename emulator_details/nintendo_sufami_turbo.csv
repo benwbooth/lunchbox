@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo - Sufami Turbo,ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares,.srm;.ram,Recommended; multi-system emulator focusing on accuracy and preservation
+Nintendo - Sufami Turbo,bsnes,Windows;Linux;macOS;FreeBSD,https://bsnes.org,,,,bsnes,~/.bsnes,.srm,Recommended; cycle-accurate SNES emulator with 100% compatibility
+Nintendo - Sufami Turbo,Snes9x,Windows;Linux;macOS;FreeBSD,https://www.snes9x.com,,snes9x,com.snes9x.Snes9x,snes9x,./Saves,.srm,Highly accurate SNES emulator; not marked as recommended for Sufami Turbo but has support
