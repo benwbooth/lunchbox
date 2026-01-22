@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+RCA Studio II,Emma 02,Windows;Linux;macOS,https://www.emma02.hobby-site.com/,,,,,~/emma_02_data,.st2;.bin,Recommended; specialized RCA CDP1802 multi-system emulator supporting Studio II/III/IV. Cartridge format is .st2. Has built-in games including Doodle Patterns Bowling Freeway Additions.
+RCA Studio II,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram;~/.mame/sta,.nv;.sta,Driver studio2; sound emulation imperfect. Requires studio2 BIOS. All official ROMs have been dumped.
