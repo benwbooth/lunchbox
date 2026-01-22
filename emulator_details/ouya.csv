@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Ouya,,,,,,,,,,"No recommended emulators found; OUYA runs Android 4.1 (Jelly Bean) so general Android emulators (BlueStacks, NoxPlayer) can be used with the OUYA Framework APK installed; wiki does not mark any specific emulator as recommended"
