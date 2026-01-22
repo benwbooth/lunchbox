@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Game Boy Advance,mGBA,Windows;Linux;macOS;FreeBSD,https://mgba.io/,JeffreyPfau.mGBA,mgba-app,io.mgba.mGBA,mgba,Same directory as ROM,.sav;.ss0,Most complete GBA emulator; also supports GB/GBC; MPL 2.0 license
+Nintendo Game Boy Advance,NanoBoyAdvance,Windows;Linux;macOS,https://github.com/nba-emu/NanoBoyAdvance,,,,,Same directory as ROM,.sav,Cycle-accurate; passed all AGS aging cartridge tests; GPL 3.0 license; unofficial libretro port exists (nba_libretro)
+Nintendo Game Boy Advance,SkyEmu,Windows;Linux;macOS;Android;iOS,https://github.com/skylersaleh/SkyEmu,,,,skyemu,Same directory as ROM,.sav,Also supports GB/GBC/NDS; MIT license; has web app version at web.skyemu.app
