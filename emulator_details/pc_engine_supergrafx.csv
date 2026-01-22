@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+PC Engine SuperGrafx,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,mednafen_supergrafx,~/.mednafen/sav,.sav;.mcr,Multi-system emulator with highly accurate PC Engine/SuperGrafx emulation. Flatpak available via Mednaffe frontend which includes Mednafen.
