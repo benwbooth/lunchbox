@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sammy Atomiswave,Flycast,Windows;Linux;macOS;Android,https://github.com/flyinghead/flycast,,flycast,org.flycast.Flycast,flycast_libretro,~/.local/share/flycast/data,.bin;.state,Multi-platform Dreamcast/NAOMI/Atomiswave emulator. Standalone save files are vmu_save_A1.bin etc in data directory. RetroArch core saves to system/dc/vmu_save_*.bin
+Sammy Atomiswave,DEmul,Windows,http://demul.emulation64.com/,,,,,./nvram;./vms,.bin,Windows-only closed-source emulator. VMU saves as vms00.bin in emulator directory. NVRAM files in nvram subfolder. Requires Atomiswave BIOS.
