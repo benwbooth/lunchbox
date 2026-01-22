@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Game Boy Color,SameBoy,Windows;Linux;macOS;FreeBSD;Android;iOS,https://sameboy.github.io/,,sameboy,io.github.sameboy.SameBoy,sameboy,ROM directory,.sav;.srm;.rtc,Most accurate GB/GBC emulator; Game Boy Camera and Printer support; debugging features
+Nintendo Game Boy Color,BGB,Windows,http://bgb.bircd.org/,,,,,ROM directory,.sav,Highly accurate; excellent link cable support; advanced debugger; runs on Linux/macOS via Wine
+Nintendo Game Boy Color,Emulicious,Windows;Linux;macOS;FreeBSD,https://emulicious.net/,,,,,ROM directory,.sav,Java-based cross-platform emulator; debugging features; also emulates Game Gear and Master System
+Nintendo Game Boy Color,Gambatte,Windows;Linux;macOS,https://github.com/libretro/gambatte-libretro,,,,gambatte,~/.config/gambatte/saves (standalone) or RetroArch saves directory,.sav;.srm;.gqs,Accuracy-focused; upstream development stopped but libretro core maintained
