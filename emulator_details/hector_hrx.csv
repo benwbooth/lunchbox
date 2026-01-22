@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Hector HRX,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta;~/.mame/nvram,.sta;.nv,Emulation status imperfect (sound); supports hec2hrx and hec2mdhrx ROM sets
+Hector HRX,VB Hector,Windows,http://hectorvictor.free.fr/,,,,,,"VB.NET emulator by Yo_fr; supports HR+/HRX/MX40c/MX80c; cassette and floppy disk support; v4.1 latest"
+Hector HRX,DCHector,Windows,http://dchector.free.fr/,,,,,,"Freeware by Daniel Coulom; v0.1 from 2005; supports Interact/Victor/Hector computers; no longer maintained"
