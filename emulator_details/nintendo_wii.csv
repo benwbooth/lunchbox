@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Wii,Dolphin,Windows;Linux;macOS;Android;iOS,https://dolphin-emu.org/,DolphinEmulator.Dolphin,dolphin,org.DolphinEmu.dolphin-emu,dolphin,~/.local/share/dolphin-emu/Wii;~/.local/share/dolphin-emu/GC,.raw;.gci;.bin;.sav,97% compatibility; also emulates GameCube; near-daily updates; recommended to sync Wii remote for motion controls
