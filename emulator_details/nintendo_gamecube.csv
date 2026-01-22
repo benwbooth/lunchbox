@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo GameCube,Dolphin,Windows;Linux;macOS;FreeBSD;Android;iOS,https://dolphin-emu.org/,DolphinEmulator.Dolphin,dolphin,org.DolphinEmu.dolphin-emu,dolphin,~/.local/share/dolphin-emu/GC,.gci;.raw,Primary recommended emulator with 97% compatibility; also emulates Wii
