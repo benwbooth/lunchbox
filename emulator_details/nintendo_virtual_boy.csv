@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Virtual Boy,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,beetle_vb,~/.mednafen/sav,.sav;.mcr,100% compatibility with commercial games; supports anaglyph 3D color output; Flatpak installs via Mednaffe frontend
+Nintendo Virtual Boy,RetroArch (Beetle VB),Windows;Linux;macOS;Android;iOS;Web,https://www.retroarch.com/,Libretro.RetroArch,retroarch,org.libretro.RetroArch,beetle_vb,~/.config/retroarch/saves,.srm;.state,Beetle VB is a libretro port of Mednafen VB; supports save states and rewind
