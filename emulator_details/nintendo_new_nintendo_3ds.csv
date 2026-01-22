@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo - New Nintendo 3DS,Azahar,Windows;Linux;macOS;Android,https://azahar-emu.org/,AzaharEmu.Azahar,,org.azahar_emu.Azahar,citra_libretro,~/.local/share/azahar/sdmc/Nintendo 3DS,main;.cst,Primary recommended Citra fork. Merger of PabloMK7's Citra fork and Lime3DS. 63% game compatibility. Saves stored as 'main' file (no extension) in NAND structure; savestates use .cst extension.
+Nintendo - New Nintendo 3DS,Panda3DS,Windows;Linux;macOS;Android,https://panda3ds.com/,,,,,~/.local/share/Panda3DS,main,HLE-based emulator. 40% compatibility. iOS port in development. Active development with Lua scripting support.
