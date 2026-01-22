@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Philips CD-i,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv,Easiest and most stable method for CD-i emulation; lacks Digital Video Cartridge (DVC) support
+Philips CD-i,SAME_CDI,Windows;Linux;macOS;FreeBSD;Android;iOS,https://docs.libretro.com/library/same_cdi/,,,,same_cdi,~/.config/retroarch/saves/same_cdi,.nv;.nvram,Libretro core forked from MAME; simplified CD loading; game-specific NVRAM directories
