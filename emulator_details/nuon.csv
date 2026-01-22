@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nuon,,,,,,,,,,"No recommended emulators found. Nuance Resurrection (Windows;Linux) at https://github.com/andkrau/NuanceResurrection is the only serious NUON emulator capable of running commercial games but is not marked as recommended. MAME also has NUON support but is explicitly not recommended for this system."
