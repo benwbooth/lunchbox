@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+ScummVM,ScummVM,Windows;Linux;macOS;Android;iOS,https://www.scummvm.org,ScummVM.ScummVM,scummvm,org.scummvm.ScummVM,scummvm,~/.local/share/scummvm/saves,.s00;.s01;.s02,Game engine recreation for classic adventure games; supports 280+ games; not a traditional emulator but runs game data files directly
