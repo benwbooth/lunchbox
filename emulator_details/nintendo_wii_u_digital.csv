@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo - Wii U (Digital),Cemu,Windows;Linux;macOS;Android,https://cemu.info/,Cemu.Cemu,,info.cemu.Cemu,,~/.local/share/Cemu/mlc01/usr/save,.dat;.sav,Open-source Wii U emulator; saves stored in mlc01/usr/save/[title_id] structure
