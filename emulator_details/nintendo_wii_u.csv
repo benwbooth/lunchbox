@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Wii U,Cemu,Windows;Linux;macOS;Android,https://cemu.info/,Cemu.Cemu,,info.cemu.Cemu,,~/.var/app/info.cemu.Cemu/data/Cemu/mlc01/usr/save,.sav,Open source since 2022; Android version is experimental beta; macOS uses MoltenVK for Vulkan
