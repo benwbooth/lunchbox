@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo 3DS,Azahar,Windows;Linux;macOS;Android;iOS,https://azahar-emu.org/,AzaharEmu.Azahar,,org.azahar_emu.Azahar,citra_libretro,~/.local/share/azahar-emu/sdmc/Nintendo 3DS,main,Citra successor formed from Lime3DS and PabloMK7 fork merger. Uses folder-based saves with main file.
+Nintendo 3DS,Panda3DS,Windows;Linux;macOS;Android,https://panda3ds.com/,,,,,~/.local/share/Panda3DS/sdmc/Nintendo 3DS,main,HLE emulator with libretro core available via experimental cores. Uses config.toml for settings.
+Nintendo 3DS,Tanuki3DS,Windows;Linux;macOS,https://github.com/burhanr13/Tanuki3DS,,,,,~/.local/share/tanuki3ds,main,HLE emulator written in C. Has libretro-tanuki3ds WIP core. Uses ctremu.ini for config.
