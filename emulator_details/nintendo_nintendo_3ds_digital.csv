@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo - Nintendo 3DS (Digital),Azahar,Windows;Linux;macOS;Android,https://azahar-emu.org/,,,org.azahar_emu.Azahar,,~/.local/share/azahar-emu/sdmc/Nintendo 3DS,main,Active Citra fork; merger of PabloMK7 Citra and Lime3DS; recommended over discontinued Citra
+Nintendo - Nintendo 3DS (Digital),Panda3DS,Windows;Linux;macOS;Android,https://panda3ds.com/,,,,panda3ds,~/.local/share/Panda3DS/sdmc/Nintendo 3DS,main,HLE emulator; experimental libretro core available
+Nintendo - Nintendo 3DS (Digital),Tanuki3DS,Windows;Linux;macOS,https://tanuki3ds.com/,,,,,~/.local/share/Tanuki3DS,main,Written in C; not based on Citra; experimental libretro core in development
