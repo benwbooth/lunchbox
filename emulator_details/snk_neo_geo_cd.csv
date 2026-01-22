@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+SNK Neo Geo CD,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta;~/.mame/nvram,.sta;.nv,Full Neo Geo CD support; requires CHD format for CD images; requires neocdz.zip BIOS
+SNK Neo Geo CD,FinalBurn Neo,Windows;Linux;macOS;Android;iOS,https://github.com/finalburnneo/FBNeo,,,org.libretro.RetroArch,fbneo,savestates/,.fs;.fr,Excellent Neo Geo CD support; requires neocdz.zip and neogeo.zip BIOS; available via RetroArch on mobile
+SNK Neo Geo CD,NeoCD,Windows;Linux;macOS;Android;iOS,https://github.com/libretro/neocd_libretro,,,org.libretro.RetroArch,neocd_libretro,~/.config/retroarch/saves,.srm;.state,Dedicated Neo Geo CD emulator; libretro core only; requires BIOS in neocd subfolder; supports CUE/BIN and CHD formats
