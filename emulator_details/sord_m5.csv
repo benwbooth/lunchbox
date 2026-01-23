@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sord M5,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta/m5,.sta,Primary recommended emulator; driver name is m5 (Japan) or m5p (Europe); RetroArch saves to saves/mame/STATES
+Sord M5,Emu5 (Common Source Code Project),Windows,http://takeda-toshiya.my.coocan.jp/common/index.html,,,,,,.sta,Takeda Toshiya's emulator; part of multi-system archive; requires BIOS ROM
