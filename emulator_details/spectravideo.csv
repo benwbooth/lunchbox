@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Spectravideo,openMSX,Windows;Linux;macOS;FreeBSD,https://openmsx.org/,,openmsx,org.openmsx.openMSX,,~/.openMSX/savestates;~/.openMSX/persistent,.oms,Recommended MSX emulator with full Spectravideo SVI-318/SVI-328 support; requires SVI BIOS ROMs for full emulation
+Spectravideo,blueMSX,Windows,http://bluemsx.msxblue.com/,,,,bluemsx,~/.bluemsx,.sta,Inactive but cycle-accurate; supports SVI-318/SVI-328/SVI-328 MK2; standalone version Windows only; also available as RetroArch core
