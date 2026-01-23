@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony Playstation 3,RPCS3,Windows;Linux;macOS;FreeBSD,https://rpcs3.net/,,,,~/.config/rpcs3/dev_hdd0/home/00000001/savedata,.sfo;.bin,Open-source PS3 emulator with ~70% game compatibility. Save data uses PS3 folder structure with PARAM.SFO metadata files. Save states stored in savestates folder.
