@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Satellaview,ares,Windows;Linux;macOS,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav,Cycle-accurate multi-system emulator with full Satellaview support
+Nintendo Satellaview,bsnes,Windows;Linux;macOS;FreeBSD,https://github.com/bsnes-emu/bsnes,,,dev.bsnes.bsnes,bsnes,~/.bsnes,.srm,Highly accurate SNES emulator with full Satellaview support; recommended for BS-X and Data Pack emulation
+Nintendo Satellaview,Snes9x,Windows;Linux;macOS;FreeBSD,https://www.snes9x.com/,,snes9x,com.snes9x.Snes9x,snes9x,~/.snes9x/sram,.srm;.rtc,Popular SNES emulator; requires BS-X.bin BIOS in BIOS folder; load Satellaview Memory Pack dumps via Load Game
+Nintendo Satellaview,Mesen,Windows;Linux;macOS,https://www.mesen.ca/,SourMesen.Mesen2,,ca.mesen.Mesen2,mesen-s,~/Documents/Mesen/Saves,.sav;.srm,Multi-system emulator with cycle-accurate SNES emulation including Satellaview
