@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony Playstation Vita,Vita3K,Windows;Linux;macOS;Android,https://vita3k.org/,Vita3K.Vita3K,,,,"~/.local/share/Vita3K/Vita3K/ux0/user/00/savedata",".bin;.dat",Only recommended Vita emulator; saves stored by Title ID; no save states supported
