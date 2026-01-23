@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony Playstation 4,shadPS4,Windows;Linux;macOS,https://shadps4.net/,,,net.shadps4.shadPS4,,~/.local/share/shadps4/user/savedata,,.sav;param.sfo,Best PS4 emulator compatibility (13.44%); first to boot Bloodborne in-game; requires macOS 15.4+ on Mac
