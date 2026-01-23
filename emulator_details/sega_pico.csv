@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Pico,PicoDrive,Windows;Linux;macOS;Android,https://github.com/irixxxx/picodrive,,,org.libretro.RetroArch,picodrive,~/.config/retroarch/saves,.srm,One of the few emulators supporting Sega Pico; standalone builds outdated - use RetroArch core instead; fork by irixxxx is actively maintained
