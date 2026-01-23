@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Naomi,Flycast,Windows;Linux;macOS;Android,https://github.com/flyinghead/flycast,,flycast,org.flycast.Flycast,flycast,~/.var/app/org.flycast.Flycast/data/flycast,.bin;.nvmem,Fork of reicast; supports Dreamcast/NAOMI/NAOMI 2/Atomiswave; GPLv2 licensed; HLE BIOS available
+Sega Naomi,DEmul,Windows,http://demul.emulation64.com/,,,,,nvram/,.bin;.nvram,Closed-source; supports NAOMI/NAOMI 2/Hikaru/Atomiswave/System SP; requires BIOS; last updated April 2018
