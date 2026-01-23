@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sharp X1,eX1,Windows,http://takeda-toshiya.my.coocan.jp/common/index.html,,,,,,.sta,Part of Common Source Code Project; best emulator for X1 Twin support; receives frequent updates
+Sharp X1,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/release.html,,mame,org.mamedev.MAME,mame,sta;nvram,.sta;.nv,X1 and X1 Turbo support; X1 Turbo Z and X1 Twin cores non-functional as of Nov 2019
