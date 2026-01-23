@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony - PlayStation Portable (UMD Music),PPSSPP,Windows;Linux;macOS;Android;iOS,https://www.ppsspp.org/,PPSSPPTeam.PPSSPP,ppsspp,org.ppsspp.PPSSPP,ppsspp,~/.config/ppsspp/PSP/SAVEDATA,.ppst,No UMD Music support - PPSSPP is the recommended PSP emulator but explicitly lacks UMD Video/Music playback
