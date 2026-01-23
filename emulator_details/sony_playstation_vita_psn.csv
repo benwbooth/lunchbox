@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony - PlayStation Vita (PSN),Vita3K,Windows;Linux;macOS;Android,https://vita3k.org/,Vita3K.Vita3K,,,,"~/.local/share/Vita3K/Vita3K/ux0/user/00/savedata/[TITLE_ID]",,"PS Vita uses directory-based saves per game Title ID; approximately 57.5% game compatibility"
