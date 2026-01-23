@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony PocketStation,PK201,Windows;Android,http://drhell.web.fc2.com/pocket/index.html,,,,,STAT,.stat,Requires KROM (kernel ROM) file; uses STAT file for saves; Android app ID: com.dokutajigokusai.pk201
+Sony PocketStation,MAME,Windows;Linux;macOS;FreeBSD;Android;iOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta,High accuracy; requires PocketStation BIOS; some games have compatibility issues
