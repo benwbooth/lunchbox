@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega CD 32X,ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav;.bsN,Best option for Sega CD 32X accuracy; v132 brought 86% Mega CD compatibility and 95% 32X compatibility
+Sega CD 32X,PicoDrive,Windows;Linux;macOS;Android;iOS,http://notaz.gp2x.de/pico.php,,,org.gnome.Games.LibretroPlugin.PicoDrive,picodrive,~/retroarch/saves,.srm,Only RetroArch core with 32X support; designed for weak devices; standalone releases outdated - libretro port recommended
