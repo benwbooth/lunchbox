@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega System 16,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.cfg;.sta,Primary arcade emulator with highest compatibility; focuses on accuracy over performance
+Sega System 16,FinalBurn Neo,Windows;Linux;macOS,https://github.com/finalburnneo/FBNeo,,,fbneo_libretro,~/.config/fbneo/savestates,.fs;.nvram,Better performance than MAME on lower-end hardware; explicitly supports System 16/18/24
