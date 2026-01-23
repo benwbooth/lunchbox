@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+TRS-80 Color Computer,XRoar,Windows;Linux;macOS,https://www.6809.org.uk/xroar/,,xroar,,,~/.xroar,.sna;.ram,Emulates CoCo 1/2/3 and MC-10; most accurate standalone emulator
+TRS-80 Color Computer,VCC,Windows,https://github.com/VCCE/VCC,,,,,"%AppData%\\VCC",.dsk;.vhd,CoCo 3 emulator; Windows only; supports MPI and FD-502
+TRS-80 Color Computer,OVCC,Windows;Linux;macOS,https://github.com/WallyZambotti/OVCC,,,,,,.dsk;.vhd,Cross-platform port of VCC; CoCo 3 emulator
+TRS-80 Color Computer,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta;~/.mame/nvram,.sta,Supports coco/coco2/coco2b/coco3/coco3p; requires BIOS files
