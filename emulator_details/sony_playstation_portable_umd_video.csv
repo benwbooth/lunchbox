@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony - PlayStation Portable (UMD Video),JPCSP,Windows;Linux;macOS,https://jpcsp.org/,,,,,ms0/PSP/SAVEDATA,.SFO;.BIN;.VMP,Partial UMD Video support (not UMD-PG games). Java-based emulator requiring JRE 8. Not marked as recommended on wiki but only emulator with UMD Video support. PPSSPP (recommended for PSP games) explicitly lacks UMD Video support.
