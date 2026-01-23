@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Dreamcast VMU,DreamPotato,Windows;Linux;macOS,https://github.com/RikkiGibson/DreamPotato,,,,,,.vmu;.bin;.vms,Modifies .vmu and .bin files in-place; supports Flycast connectivity and VMU-to-VMU serial connections
+Sega Dreamcast VMU,VeMUlator,Windows;Linux;macOS;Android;iOS,https://github.com/libretro/vemulator-libretro,Libretro.RetroArch,retroarch,org.libretro.RetroArch,vemulator_libretro,~/.config/retroarch/saves/VeMUlator,.vms;.dci;.bin,RetroArch/libretro core only; sound slightly buggy; restart content causes crash
