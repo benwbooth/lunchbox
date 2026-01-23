@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony - PlayStation Portable (PSX2PSP),DuckStation,Windows;Linux;macOS;Android,https://www.duckstation.org/,Stenzek.DuckStation,,org.duckstation.DuckStation,,~/.local/share/duckstation/memcards,.mcd,PSX2PSP creates PS1 EBOOT.PBP files; DuckStation plays unencrypted PBP format; official PSN eboots not supported
+Sony - PlayStation Portable (PSX2PSP),Beetle PSX,Windows;Linux;macOS,https://docs.libretro.com/library/beetle_psx/,,,,beetle_psx,~/.config/retroarch/saves,.srm;.mcr,RetroArch core with PBP support; .srm and .mcr formats are internally identical and interchangeable
