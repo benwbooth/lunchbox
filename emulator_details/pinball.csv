@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Pinball,Visual Pinball,Windows;Linux;macOS;Android;iOS,https://www.vpforums.org/,,,,,~/.vpinball/VPinMAME/nvram,.nv;.vpx;.pov;.directb2s,"Freeware pinball table editor and simulator. Uses VPinMAME for ROM emulation. Config at ~/.vpinball/VPinballX.ini (Linux/macOS) or %APPDATA%/VPinballX/ (Windows). Tables use .vpx format. NVRAM stores high scores and settings. Available as Snap package (visual-pinball) on Linux."
