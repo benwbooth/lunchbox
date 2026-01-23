@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Taito Type X,TeknoParrot,Windows,https://teknoparrot.com/,,,,,%APPDATA%\TeknoParrot,.bin;.xml;.txt,Out-of-the-box solution for Type X/X+/X2/X3/X4 games; closed-source; can run on Linux via Wine/Lutris with limited success
+Taito Type X,JConfig,Windows,https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig),,,,,game_directory/SV,.sav,Bundled with JVSEmu; Save Patch feature moves saves to SV folder in game directory; no official download site
