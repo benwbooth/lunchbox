@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Saturn,Mednafen,Windows;Linux;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,mednafen_saturn,~/.mednafen/sav,.bcr;.bkr;.smpc,High accuracy Saturn emulation; Beetle Saturn is the libretro port
+Sega Saturn,Ymir,Windows;Linux;macOS;FreeBSD,https://github.com/StrikerX3/Ymir,,,io.github.strikerx3.ymir,,~/.local/share/Ymir,.bin,91.88% compatibility; supports ARM; integrated backup memory manager
+Sega Saturn,Yaba Sanshiro 2,Windows;Linux;Android;iOS;Switch,https://www.uoyabause.org/,,,snap:yabasanshiro,yabasanshiro,~/.local/share/yabause,bkram.bin,Good out-of-box experience; libretro core is outdated/unmaintained
