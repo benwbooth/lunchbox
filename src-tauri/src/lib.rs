@@ -1,6 +1,7 @@
 pub mod api;
 mod commands;
 pub mod db;
+pub mod emulator;
 pub mod endpoints;
 pub mod handlers;
 pub mod images;
@@ -100,6 +101,11 @@ pub fn run() {
             commands::clear_platform_emulator_preference,
             commands::get_all_emulator_preferences,
             commands::clear_all_emulator_preferences,
+            // Emulator installation and launch commands
+            commands::get_emulators_with_status,
+            commands::install_emulator,
+            commands::launch_game,
+            commands::get_current_os,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

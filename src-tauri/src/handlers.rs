@@ -11,6 +11,7 @@
 //! 4. Register in lib.rs invoke_handler and api.rs create_router
 
 use crate::db::schema::EmulatorInfo;
+use crate::emulator::{self, EmulatorWithStatus, LaunchResult};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 
@@ -610,4 +611,93 @@ pub async fn clear_all_emulator_preferences(
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// ============================================================================
+// Emulator Installation & Launch Handlers
+// ============================================================================
+
+/// Get all emulators for a platform with installation status
+pub async fn get_emulators_with_status(
+    state: &AppState,
+    platform_name: &str,
+) -> Result<Vec<EmulatorWithStatus>, String> {
+    let pool = state.emulators_db_pool.as_ref()
+        .ok_or_else(|| "Emulators database not initialized".to_string())?;
+
+    let os = current_os();
+
+    // Query emulators for this platform, filtered by OS, with RetroArch cores first
+    let emulators: Vec<EmulatorInfo> = sqlx::query_as(
+        r#"
+        SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
+               e.homebrew_formula, e.flatpak_id, e.retroarch_core,
+               e.save_directory, e.save_extensions, e.notes
+        FROM emulators e
+        JOIN platform_emulators pe ON e.id = pe.emulator_id
+        WHERE pe.platform_name = ?
+          AND (e.supported_os IS NULL OR e.supported_os LIKE '%' || ? || '%')
+          AND (
+              e.retroarch_core IS NOT NULL
+              OR (? = 'Linux' AND e.flatpak_id IS NOT NULL)
+              OR (? = 'Windows' AND e.winget_id IS NOT NULL)
+              OR (? = 'macOS' AND e.homebrew_formula IS NOT NULL)
+          )
+        ORDER BY
+            CASE WHEN e.retroarch_core IS NOT NULL THEN 0 ELSE 1 END,
+            pe.is_recommended DESC,
+            e.name
+        "#,
+    )
+    .bind(platform_name)
+    .bind(os)
+    .bind(os)
+    .bind(os)
+    .bind(os)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Add installation status to each emulator
+    let emulators_with_status: Vec<EmulatorWithStatus> = emulators
+        .into_iter()
+        .map(emulator::add_status)
+        .collect();
+
+    Ok(emulators_with_status)
+}
+
+/// Check if a specific emulator is installed
+pub fn check_emulator_installed(emulator: &EmulatorInfo) -> bool {
+    emulator::check_installation(emulator).is_some()
+}
+
+/// Install an emulator
+pub async fn install_emulator(emulator: &EmulatorInfo) -> Result<String, String> {
+    let path = emulator::install_emulator(emulator).await?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// Launch a game with the specified emulator
+pub fn launch_game_with_emulator(
+    emulator: &EmulatorInfo,
+    rom_path: &str,
+) -> Result<LaunchResult, String> {
+    match emulator::launch_game(emulator, rom_path) {
+        Ok(pid) => Ok(LaunchResult {
+            success: true,
+            pid: Some(pid),
+            error: None,
+        }),
+        Err(e) => Ok(LaunchResult {
+            success: false,
+            pid: None,
+            error: Some(e),
+        }),
+    }
+}
+
+/// Get the current operating system name
+pub fn get_current_os() -> String {
+    emulator::current_os().to_string()
 }

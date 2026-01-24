@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats, EmulatorInfo};
+use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats, EmulatorWithStatus};
 use super::{VideoPlayer, LazyImage, Box3DViewer};
 
 #[component]
@@ -20,7 +20,7 @@ pub fn GameDetails(
     let (pending_variant_load, set_pending_variant_load) = signal::<Option<String>>(None);
     // Emulator picker state
     let (show_emulator_picker, set_show_emulator_picker) = signal(false);
-    let (emulators, set_emulators) = signal::<Vec<EmulatorInfo>>(Vec::new());
+    let (emulators, set_emulators) = signal::<Vec<EmulatorWithStatus>>(Vec::new());
     let (emulators_loading, set_emulators_loading) = signal(false);
 
     // Initialize display_game from prop when game changes
@@ -141,8 +141,8 @@ pub fn GameDetails(
                         set_emulators_loading.set(true);
                         set_show_emulator_picker.set(true);
                         spawn_local(async move {
-                            // Fetch emulators for this platform
-                            match tauri::get_emulators_for_platform(platform).await {
+                            // Fetch emulators for this platform with installation status
+                            match tauri::get_emulators_with_status(platform).await {
                                 Ok(emu_list) => {
                                     set_emulators.set(emu_list);
                                 }
@@ -590,7 +590,7 @@ fn format_date(date_str: &str) -> String {
 
 #[component]
 fn EmulatorPickerModal(
-    emulators: ReadSignal<Vec<EmulatorInfo>>,
+    emulators: ReadSignal<Vec<EmulatorWithStatus>>,
     emulators_loading: ReadSignal<bool>,
     stored_title: StoredValue<String>,
     stored_platform: StoredValue<String>,
@@ -599,8 +599,10 @@ fn EmulatorPickerModal(
 ) -> impl IntoView {
     // Track the current emulator preference
     let (current_pref, set_current_pref) = signal::<Option<String>>(None);
-    // Track launching state
-    let (launching_emulator, set_launching_emulator) = signal::<Option<String>>(None);
+    // Track launching/installing state with progress message
+    let (progress_state, set_progress_state) = signal::<Option<String>>(None);
+    // Track error state
+    let (error_state, set_error_state) = signal::<Option<String>>(None);
 
     // Load current preference when modal opens
     Effect::new(move || {
@@ -613,9 +615,12 @@ fn EmulatorPickerModal(
         });
     });
 
+    // Can close modal only when not in progress
+    let can_close = move || progress_state.get().is_none();
+
     view! {
         <div class="emulator-picker-overlay" on:click=move |_| {
-            if launching_emulator.get().is_none() {
+            if can_close() {
                 set_show_emulator_picker.set(false);
             }
         }>
@@ -625,26 +630,37 @@ fn EmulatorPickerModal(
                     <button
                         class="emulator-picker-close"
                         on:click=move |_| {
-                            if launching_emulator.get().is_none() {
+                            if can_close() {
                                 set_show_emulator_picker.set(false);
                             }
                         }
-                        disabled=move || launching_emulator.get().is_some()
+                        disabled=move || !can_close()
                     >"×"</button>
                 </div>
                 <div class="emulator-picker-content">
-                    // Show launching state
-                    <Show when=move || launching_emulator.get().is_some()>
-                        {move || launching_emulator.get().map(|name| view! {
-                            <div class="emulator-launching">
+                    // Show progress state (installing/launching)
+                    <Show when=move || progress_state.get().is_some()>
+                        {move || progress_state.get().map(|msg| view! {
+                            <div class="emulator-progress">
                                 <div class="loading-spinner"></div>
-                                <span>"Launching with " {name} "..."</span>
+                                <span>{msg}</span>
                             </div>
                         })}
                     </Show>
 
-                    // Show current preference indicator (when not launching)
-                    <Show when=move || current_pref.get().is_some() && launching_emulator.get().is_none()>
+                    // Show error state
+                    <Show when=move || error_state.get().is_some()>
+                        {move || error_state.get().map(|err| view! {
+                            <div class="emulator-error">
+                                <span class="error-icon">"!"</span>
+                                <span>{err}</span>
+                                <button class="error-dismiss" on:click=move |_| set_error_state.set(None)>"Dismiss"</button>
+                            </div>
+                        })}
+                    </Show>
+
+                    // Show current preference indicator (when not in progress)
+                    <Show when=move || current_pref.get().is_some() && progress_state.get().is_none()>
                         {move || current_pref.get().map(|pref| view! {
                             <div class="emulator-pref-indicator">
                                 "Default: " {pref}
@@ -653,7 +669,7 @@ fn EmulatorPickerModal(
                     </Show>
 
                     <Show
-                        when=move || !emulators_loading.get() && launching_emulator.get().is_none()
+                        when=move || !emulators_loading.get() && progress_state.get().is_none()
                         fallback=move || {
                             if emulators_loading.get() {
                                 view! { <div class="emulator-loading"><div class="loading-spinner"></div>"Loading emulators..."</div> }.into_any()
@@ -670,33 +686,60 @@ fn EmulatorPickerModal(
                                 <For
                                     each=move || emulators.get()
                                     key=|emu| emu.id
-                                    children=move |emu| {
+                                    children=move |emu: EmulatorWithStatus| {
                                         let name = emu.name.clone();
-                                        let name_display = emu.name.clone();
+                                        let display_name = emu.display_name.clone();
+                                        let is_installed = emu.is_installed;
+                                        let is_retroarch_core = emu.is_retroarch_core;
+                                        let install_method = emu.install_method.clone();
                                         let name_for_click = emu.name.clone();
                                         let name_for_game_pref = emu.name.clone();
                                         let name_for_platform_pref = emu.name.clone();
                                         let homepage = emu.homepage.clone();
                                         let notes = emu.notes.clone();
-                                        let retroarch_core = emu.retroarch_core.clone();
 
+                                        // Handler for launch/install+launch
                                         let on_launch = move |_| {
                                             let emulator_name = name_for_click.clone();
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
-                                            set_launching_emulator.set(Some(emulator_name.clone()));
-                                            spawn_local(async move {
-                                                // Record the play session
-                                                let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                // TODO: Actually launch the emulator here
-                                                web_sys::console::log_1(&format!("Would launch with emulator: {}", emulator_name).into());
-                                            });
-                                            // Close after a brief delay to show feedback
-                                            gloo_timers::callback::Timeout::new(1500, move || {
-                                                set_launching_emulator.set(None);
-                                                set_show_emulator_picker.set(false);
-                                            }).forget();
+
+                                            if is_installed {
+                                                // Just launch
+                                                set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
+                                                spawn_local(async move {
+                                                    // Record play session
+                                                    let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                    web_sys::console::log_1(&format!("Would launch: {}", emulator_name).into());
+                                                });
+                                                gloo_timers::callback::Timeout::new(1500, move || {
+                                                    set_progress_state.set(None);
+                                                    set_show_emulator_picker.set(false);
+                                                }).forget();
+                                            } else {
+                                                // Install then launch
+                                                set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
+                                                let emulator_for_install = emulator_name.clone();
+                                                spawn_local(async move {
+                                                    match tauri::install_emulator(emulator_for_install.clone()).await {
+                                                        Ok(_path) => {
+                                                            set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
+                                                            // Record play session
+                                                            let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                            web_sys::console::log_1(&format!("Installed and would launch: {}", emulator_for_install).into());
+                                                            gloo_timers::callback::Timeout::new(1000, move || {
+                                                                set_progress_state.set(None);
+                                                                set_show_emulator_picker.set(false);
+                                                            }).forget();
+                                                        }
+                                                        Err(e) => {
+                                                            set_progress_state.set(None);
+                                                            set_error_state.set(Some(format!("Install failed: {}", e)));
+                                                        }
+                                                    }
+                                                });
+                                            }
                                         };
 
                                         let on_set_game_pref = move |e: web_sys::MouseEvent| {
@@ -705,20 +748,39 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
-                                            set_launching_emulator.set(Some(emulator_name.clone()));
-                                            spawn_local(async move {
-                                                // Set the game preference
-                                                let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
-                                                // Record the play session
-                                                let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                // TODO: Actually launch the emulator here
-                                                web_sys::console::log_1(&format!("Set game preference and would launch with: {}", emulator_name).into());
-                                            });
-                                            // Close after a brief delay to show feedback
-                                            gloo_timers::callback::Timeout::new(1500, move || {
-                                                set_launching_emulator.set(None);
-                                                set_show_emulator_picker.set(false);
-                                            }).forget();
+
+                                            if is_installed {
+                                                set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
+                                                spawn_local(async move {
+                                                    let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
+                                                    let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                    web_sys::console::log_1(&format!("Set game pref, would launch: {}", emulator_name).into());
+                                                });
+                                                gloo_timers::callback::Timeout::new(1500, move || {
+                                                    set_progress_state.set(None);
+                                                    set_show_emulator_picker.set(false);
+                                                }).forget();
+                                            } else {
+                                                set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
+                                                let emu_for_install = emulator_name.clone();
+                                                spawn_local(async move {
+                                                    match tauri::install_emulator(emu_for_install.clone()).await {
+                                                        Ok(_) => {
+                                                            let _ = tauri::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
+                                                            set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
+                                                            let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                            gloo_timers::callback::Timeout::new(1000, move || {
+                                                                set_progress_state.set(None);
+                                                                set_show_emulator_picker.set(false);
+                                                            }).forget();
+                                                        }
+                                                        Err(e) => {
+                                                            set_progress_state.set(None);
+                                                            set_error_state.set(Some(format!("Install failed: {}", e)));
+                                                        }
+                                                    }
+                                                });
+                                            }
                                         };
 
                                         let on_set_platform_pref = move |e: web_sys::MouseEvent| {
@@ -727,20 +789,39 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
-                                            set_launching_emulator.set(Some(emulator_name.clone()));
-                                            spawn_local(async move {
-                                                // Set the platform preference
-                                                let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
-                                                // Record the play session
-                                                let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                // TODO: Actually launch the emulator here
-                                                web_sys::console::log_1(&format!("Set platform preference and would launch with: {}", emulator_name).into());
-                                            });
-                                            // Close after a brief delay to show feedback
-                                            gloo_timers::callback::Timeout::new(1500, move || {
-                                                set_launching_emulator.set(None);
-                                                set_show_emulator_picker.set(false);
-                                            }).forget();
+
+                                            if is_installed {
+                                                set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
+                                                spawn_local(async move {
+                                                    let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
+                                                    let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                    web_sys::console::log_1(&format!("Set platform pref, would launch: {}", emulator_name).into());
+                                                });
+                                                gloo_timers::callback::Timeout::new(1500, move || {
+                                                    set_progress_state.set(None);
+                                                    set_show_emulator_picker.set(false);
+                                                }).forget();
+                                            } else {
+                                                set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
+                                                let emu_for_install = emulator_name.clone();
+                                                spawn_local(async move {
+                                                    match tauri::install_emulator(emu_for_install.clone()).await {
+                                                        Ok(_) => {
+                                                            let _ = tauri::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
+                                                            set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
+                                                            let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                            gloo_timers::callback::Timeout::new(1000, move || {
+                                                                set_progress_state.set(None);
+                                                                set_show_emulator_picker.set(false);
+                                                            }).forget();
+                                                        }
+                                                        Err(e) => {
+                                                            set_progress_state.set(None);
+                                                            set_error_state.set(Some(format!("Install failed: {}", e)));
+                                                        }
+                                                    }
+                                                });
+                                            }
                                         };
 
                                         let is_preferred = {
@@ -748,26 +829,38 @@ fn EmulatorPickerModal(
                                             move || current_pref.get().as_ref() == Some(&name_check)
                                         };
 
+                                        // Determine the action button text
+                                        let action_text = if is_installed { "Play" } else { "Install & Play" };
+
                                         view! {
-                                            <li class="emulator-item">
+                                            <li class="emulator-item" class:is-installed=is_installed>
                                                 <div class="emulator-item-header">
-                                                    <span class="emulator-name">{name_display}</span>
-                                                    {homepage.map(|url| view! {
-                                                        <a class="emulator-homepage" href={url.clone()} target="_blank">"Website"</a>
+                                                    <span class="emulator-name">{display_name}</span>
+                                                    <span class="emulator-status" class:installed=is_installed>
+                                                        {if is_installed { "Installed" } else { "Not Installed" }}
+                                                    </span>
+                                                </div>
+                                                <div class="emulator-item-meta">
+                                                    {is_retroarch_core.then(|| view! {
+                                                        <span class="emulator-badge retroarch">"RetroArch Core"</span>
+                                                    })}
+                                                    {install_method.clone().map(|method| view! {
+                                                        <span class="emulator-badge install-method">{method}</span>
+                                                    })}
+                                                    {homepage.clone().map(|url| view! {
+                                                        <a class="emulator-homepage" href={url} target="_blank">"Website"</a>
                                                     })}
                                                 </div>
-                                                {retroarch_core.map(|core| view! {
-                                                    <div class="emulator-core">"RetroArch: " {core}</div>
-                                                })}
-                                                {notes.map(|n| view! {
+                                                {notes.clone().map(|n| view! {
                                                     <div class="emulator-notes">{n}</div>
                                                 })}
                                                 <div class="emulator-pref-buttons">
                                                     <button
                                                         class="emulator-pref-btn emulator-play-btn"
+                                                        class:install=!is_installed
                                                         on:click=on_launch
                                                     >
-                                                        "Just this time"
+                                                        {action_text}
                                                     </button>
                                                     <button
                                                         class="emulator-pref-btn"

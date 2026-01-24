@@ -3103,6 +3103,125 @@ body.sidebar-resizing * {
     border-radius: 4px;
 }
 
+/* Emulator installation status */
+.emulator-status {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(255, 100, 100, 0.2);
+    color: #ff6b6b;
+    font-weight: 500;
+}
+
+.emulator-status.installed {
+    background: rgba(78, 201, 176, 0.2);
+    color: var(--success-color);
+}
+
+/* Emulator item metadata */
+.emulator-item-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+/* Emulator badges */
+.emulator-badge {
+    font-size: 9px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.emulator-badge.retroarch {
+    background: rgba(255, 215, 0, 0.2);
+    color: #ffd700;
+}
+
+.emulator-badge.install-method {
+    background: rgba(100, 180, 255, 0.2);
+    color: #64b4ff;
+}
+
+/* Emulator progress state */
+.emulator-progress {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 12px;
+    text-align: center;
+}
+
+.emulator-progress .loading-spinner {
+    width: 32px;
+    height: 32px;
+}
+
+/* Emulator error state */
+.emulator-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255, 100, 100, 0.15);
+    border: 1px solid rgba(255, 100, 100, 0.3);
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.emulator-error .error-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ff6b6b;
+    color: #fff;
+    font-weight: bold;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.emulator-error span {
+    flex: 1;
+    font-size: 12px;
+    color: #ff6b6b;
+}
+
+.error-dismiss {
+    padding: 4px 8px;
+    font-size: 10px;
+    background: transparent;
+    border: 1px solid rgba(255, 100, 100, 0.5);
+    border-radius: 4px;
+    color: #ff6b6b;
+    cursor: pointer;
+}
+
+.error-dismiss:hover {
+    background: rgba(255, 100, 100, 0.2);
+}
+
+/* Install button style */
+.emulator-play-btn.install {
+    background: linear-gradient(135deg, var(--accent-color), #5a9fd4);
+}
+
+.emulator-play-btn.install:hover {
+    background: linear-gradient(135deg, var(--accent-hover), #4a8fc4);
+}
+
+/* Installed emulator item highlight */
+.emulator-item.is-installed {
+    border-left: 3px solid var(--success-color);
+}
+
 /* ============================================================================
    Emulator Preferences Settings Section
    ============================================================================ */

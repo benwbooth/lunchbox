@@ -72,6 +72,11 @@ rspc-axum = "0.2"
 specta = "2.0.0-rc.20"
 suppaftp = { version = "7.1.0", features = ["tokio", "native-tls"] }
 
+# Emulator detection and path handling
+which = "7"
+shellexpand = "3"
+dirs = "5"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

@@ -2122,6 +2122,7 @@ pub async fn get_all_emulators(
 // ============ Emulator Preference Commands ============
 
 use crate::handlers::EmulatorPreferences;
+use crate::emulator::{EmulatorWithStatus, LaunchResult};
 
 /// Get emulator preference for a game (checks game-specific, then platform)
 #[tauri::command]
@@ -2192,4 +2193,55 @@ pub async fn clear_all_emulator_preferences(
 ) -> Result<(), String> {
     let state_guard = state.read().await;
     handlers::clear_all_emulator_preferences(&state_guard).await
+}
+
+// ============ Emulator Installation & Launch Commands ============
+
+/// Get all emulators for a platform with installation status
+#[tauri::command]
+pub async fn get_emulators_with_status(
+    platform_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<EmulatorWithStatus>, String> {
+    let state_guard = state.read().await;
+    handlers::get_emulators_with_status(&state_guard, &platform_name).await
+}
+
+/// Install an emulator using the appropriate package manager
+#[tauri::command]
+pub async fn install_emulator(
+    emulator_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<String, String> {
+    let state_guard = state.read().await;
+
+    // Look up the emulator by name
+    let emulator = handlers::get_emulator(&state_guard, &emulator_name)
+        .await?
+        .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
+
+    handlers::install_emulator(&emulator).await
+}
+
+/// Launch a game with the specified emulator
+#[tauri::command]
+pub async fn launch_game(
+    emulator_name: String,
+    rom_path: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<LaunchResult, String> {
+    let state_guard = state.read().await;
+
+    // Look up the emulator by name
+    let emulator = handlers::get_emulator(&state_guard, &emulator_name)
+        .await?
+        .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
+
+    handlers::launch_game_with_emulator(&emulator, &rom_path)
+}
+
+/// Get the current operating system
+#[tauri::command]
+pub fn get_current_os() -> String {
+    handlers::get_current_os()
 }

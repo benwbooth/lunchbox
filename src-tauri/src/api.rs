@@ -152,6 +152,11 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/clear_platform_emulator_preference", get(rspc_clear_platform_emulator_preference))
         .route("/rspc/get_all_emulator_preferences", get(rspc_get_all_emulator_preferences))
         .route("/rspc/clear_all_emulator_preferences", get(rspc_clear_all_emulator_preferences))
+        // Emulator installation and launch endpoints
+        .route("/rspc/get_emulators_with_status", get(rspc_get_emulators_with_status))
+        .route("/rspc/install_emulator", get(rspc_install_emulator))
+        .route("/rspc/launch_game", get(rspc_launch_game))
+        .route("/rspc/get_current_os", get(rspc_get_current_os))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
         .layer(cors)
@@ -1570,6 +1575,7 @@ async fn rspc_download_game_video(
 // ============================================================================
 
 use crate::db::schema::EmulatorInfo;
+use crate::emulator::{EmulatorWithStatus, LaunchResult};
 
 async fn rspc_get_emulators_for_platform(
     State(state): State<SharedState>,
@@ -1871,4 +1877,104 @@ async fn rspc_clear_all_emulator_preferences(
         Ok(()) => rspc_ok(()).into_response(),
         Err(e) => rspc_err::<()>(e).into_response(),
     }
+}
+
+// ============================================================================
+// Emulator Installation & Launch Handlers
+// ============================================================================
+
+async fn rspc_get_emulators_with_status(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Vec<EmulatorWithStatus>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let platform_name: String = match serde_json::from_str(input_str) {
+        Ok(s) => s,
+        Err(e) => return rspc_err::<Vec<EmulatorWithStatus>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_emulators_with_status(&state_guard, &platform_name).await {
+        Ok(emulators) => rspc_ok(emulators).into_response(),
+        Err(e) => rspc_err::<Vec<EmulatorWithStatus>>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallEmulatorInput {
+    emulator_name: String,
+}
+
+async fn rspc_install_emulator(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<String>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: InstallEmulatorInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+
+    // Look up the emulator by name
+    let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+        Ok(Some(e)) => e,
+        Ok(None) => return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name)).into_response(),
+        Err(e) => return rspc_err::<String>(e).into_response(),
+    };
+
+    match handlers::install_emulator(&emulator).await {
+        Ok(path) => rspc_ok(path).into_response(),
+        Err(e) => rspc_err::<String>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchGameInput {
+    emulator_name: String,
+    rom_path: String,
+}
+
+async fn rspc_launch_game(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: LaunchGameInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<LaunchResult>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+
+    // Look up the emulator by name
+    let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+        Ok(Some(e)) => e,
+        Ok(None) => return rspc_err::<LaunchResult>(format!("Emulator '{}' not found", input.emulator_name)).into_response(),
+        Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
+    };
+
+    match handlers::launch_game_with_emulator(&emulator, &input.rom_path) {
+        Ok(result) => rspc_ok(result).into_response(),
+        Err(e) => rspc_err::<LaunchResult>(e).into_response(),
+    }
+}
+
+async fn rspc_get_current_os() -> impl IntoResponse {
+    rspc_ok(handlers::get_current_os())
 }

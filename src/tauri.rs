@@ -1327,3 +1327,69 @@ pub async fn get_all_emulator_preferences() -> Result<EmulatorPreferences, Strin
 pub async fn clear_all_emulator_preferences() -> Result<(), String> {
     invoke_no_args("clear_all_emulator_preferences").await
 }
+
+// ============ Emulator Installation & Launch ============
+
+/// Emulator with installation status for the UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorWithStatus {
+    // Flatten the base EmulatorInfo fields
+    pub id: i64,
+    pub name: String,
+    pub homepage: Option<String>,
+    pub supported_os: Option<String>,
+    pub winget_id: Option<String>,
+    pub homebrew_formula: Option<String>,
+    pub flatpak_id: Option<String>,
+    pub retroarch_core: Option<String>,
+    pub save_directory: Option<String>,
+    pub save_extensions: Option<String>,
+    pub notes: Option<String>,
+    // Additional status fields
+    pub is_installed: bool,
+    pub install_method: Option<String>,
+    pub is_retroarch_core: bool,
+    pub display_name: String,
+    pub executable_path: Option<String>,
+}
+
+/// Result of launching a game
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchResult {
+    pub success: bool,
+    pub pid: Option<u32>,
+    pub error: Option<String>,
+}
+
+/// Get all emulators for a platform with installation status
+pub async fn get_emulators_with_status(platform_name: String) -> Result<Vec<EmulatorWithStatus>, String> {
+    invoke("get_emulators_with_status", platform_name).await
+}
+
+/// Install an emulator using the appropriate package manager
+pub async fn install_emulator(emulator_name: String) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+    }
+    invoke("install_emulator", Args { emulator_name }).await
+}
+
+/// Launch a game with the specified emulator
+pub async fn launch_game(emulator_name: String, rom_path: String) -> Result<LaunchResult, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        rom_path: String,
+    }
+    invoke("launch_game", Args { emulator_name, rom_path }).await
+}
+
+/// Get the current operating system
+pub async fn get_current_os() -> Result<String, String> {
+    invoke_no_args("get_current_os").await
+}
