@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sharp MZ-2500,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta/%g,.sta,Imperfect emulation status; driver is sharp/mz2500.cpp; savestate support listed as unsupported in MAME
+Sharp MZ-2500,EmuZ-2500,Windows,http://takeda-toshiya.my.coocan.jp/common/index.html,,,,,,,Part of Common Source Code Project by Takeda Toshiya; also known as SuperMZ and HINOTORI
