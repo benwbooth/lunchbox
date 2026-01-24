@@ -599,6 +599,8 @@ fn EmulatorPickerModal(
 ) -> impl IntoView {
     // Track the current emulator preference
     let (current_pref, set_current_pref) = signal::<Option<String>>(None);
+    // Track launching state
+    let (launching_emulator, set_launching_emulator) = signal::<Option<String>>(None);
 
     // Load current preference when modal opens
     Effect::new(move || {
@@ -612,15 +614,37 @@ fn EmulatorPickerModal(
     });
 
     view! {
-        <div class="emulator-picker-overlay" on:click=move |_| set_show_emulator_picker.set(false)>
+        <div class="emulator-picker-overlay" on:click=move |_| {
+            if launching_emulator.get().is_none() {
+                set_show_emulator_picker.set(false);
+            }
+        }>
             <div class="emulator-picker-modal" on:click=|e| e.stop_propagation()>
                 <div class="emulator-picker-header">
                     <h3>"Select Emulator"</h3>
-                    <button class="emulator-picker-close" on:click=move |_| set_show_emulator_picker.set(false)>"×"</button>
+                    <button
+                        class="emulator-picker-close"
+                        on:click=move |_| {
+                            if launching_emulator.get().is_none() {
+                                set_show_emulator_picker.set(false);
+                            }
+                        }
+                        disabled=move || launching_emulator.get().is_some()
+                    >"×"</button>
                 </div>
                 <div class="emulator-picker-content">
-                    // Show current preference indicator
-                    <Show when=move || current_pref.get().is_some()>
+                    // Show launching state
+                    <Show when=move || launching_emulator.get().is_some()>
+                        {move || launching_emulator.get().map(|name| view! {
+                            <div class="emulator-launching">
+                                <div class="loading-spinner"></div>
+                                <span>"Launching with " {name} "..."</span>
+                            </div>
+                        })}
+                    </Show>
+
+                    // Show current preference indicator (when not launching)
+                    <Show when=move || current_pref.get().is_some() && launching_emulator.get().is_none()>
                         {move || current_pref.get().map(|pref| view! {
                             <div class="emulator-pref-indicator">
                                 "Default: " {pref}
@@ -629,8 +653,14 @@ fn EmulatorPickerModal(
                     </Show>
 
                     <Show
-                        when=move || !emulators_loading.get()
-                        fallback=|| view! { <div class="emulator-loading"><div class="loading-spinner"></div>"Loading emulators..."</div> }
+                        when=move || !emulators_loading.get() && launching_emulator.get().is_none()
+                        fallback=move || {
+                            if emulators_loading.get() {
+                                view! { <div class="emulator-loading"><div class="loading-spinner"></div>"Loading emulators..."</div> }.into_any()
+                            } else {
+                                view! {}.into_any()
+                            }
+                        }
                     >
                         <Show
                             when=move || !emulators.get().is_empty()
@@ -655,12 +685,18 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
-                                            set_show_emulator_picker.set(false);
+                                            set_launching_emulator.set(Some(emulator_name.clone()));
                                             spawn_local(async move {
                                                 // Record the play session
                                                 let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                // TODO: Actually launch the emulator here
                                                 web_sys::console::log_1(&format!("Would launch with emulator: {}", emulator_name).into());
                                             });
+                                            // Close after a brief delay to show feedback
+                                            gloo_timers::callback::Timeout::new(1500, move || {
+                                                set_launching_emulator.set(None);
+                                                set_show_emulator_picker.set(false);
+                                            }).forget();
                                         };
 
                                         let on_set_game_pref = move |e: web_sys::MouseEvent| {
@@ -669,14 +705,20 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
-                                            set_show_emulator_picker.set(false);
+                                            set_launching_emulator.set(Some(emulator_name.clone()));
                                             spawn_local(async move {
                                                 // Set the game preference
                                                 let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
                                                 // Record the play session
                                                 let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                // TODO: Actually launch the emulator here
                                                 web_sys::console::log_1(&format!("Set game preference and would launch with: {}", emulator_name).into());
                                             });
+                                            // Close after a brief delay to show feedback
+                                            gloo_timers::callback::Timeout::new(1500, move || {
+                                                set_launching_emulator.set(None);
+                                                set_show_emulator_picker.set(false);
+                                            }).forget();
                                         };
 
                                         let on_set_platform_pref = move |e: web_sys::MouseEvent| {
@@ -685,14 +727,20 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
+                                            set_launching_emulator.set(Some(emulator_name.clone()));
                                             spawn_local(async move {
                                                 // Set the platform preference
                                                 let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
                                                 // Record the play session
                                                 let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                // TODO: Actually launch the emulator here
                                                 web_sys::console::log_1(&format!("Set platform preference and would launch with: {}", emulator_name).into());
                                             });
-                                            set_show_emulator_picker.set(false);
+                                            // Close after a brief delay to show feedback
+                                            gloo_timers::callback::Timeout::new(1500, move || {
+                                                set_launching_emulator.set(None);
+                                                set_show_emulator_picker.set(false);
+                                            }).forget();
                                         };
 
                                         let is_preferred = {
