@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+WonderSwan,Mesen,Windows;Linux;macOS,https://www.mesen.ca/,SourMesen.Mesen2,,,mednafen_wswan,~/.config/Mesen2/Saves,.sav,High accuracy multi-system emulator; WonderSwan support in Mesen 2; GPLv3 license; standalone Mesen does not have a libretro core for WonderSwan but Beetle WonderSwan (mednafen_wswan) is available
+WonderSwan,ares,Windows;Linux;macOS,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav,High accuracy multi-system emulator; descendant of higan/bsnes; ISC license; no libretro core available
