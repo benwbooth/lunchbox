@@ -711,12 +711,23 @@ fn EmulatorPickerModal(
                                                 spawn_local(async move {
                                                     // Record play session
                                                     let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                    web_sys::console::log_1(&format!("Would launch: {}", emulator_name).into());
+                                                    // Launch the emulator
+                                                    match tauri::launch_emulator(emulator_name.clone()).await {
+                                                        Ok(result) => {
+                                                            if result.success {
+                                                                set_progress_state.set(None);
+                                                                set_show_emulator_picker.set(false);
+                                                            } else {
+                                                                set_progress_state.set(None);
+                                                                set_error_state.set(result.error);
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            set_progress_state.set(None);
+                                                            set_error_state.set(Some(format!("Launch failed: {}", e)));
+                                                        }
+                                                    }
                                                 });
-                                                gloo_timers::callback::Timeout::new(1500, move || {
-                                                    set_progress_state.set(None);
-                                                    set_show_emulator_picker.set(false);
-                                                }).forget();
                                             } else {
                                                 // Install then launch
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
@@ -727,11 +738,22 @@ fn EmulatorPickerModal(
                                                             set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
                                                             // Record play session
                                                             let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                            web_sys::console::log_1(&format!("Installed and would launch: {}", emulator_for_install).into());
-                                                            gloo_timers::callback::Timeout::new(1000, move || {
-                                                                set_progress_state.set(None);
-                                                                set_show_emulator_picker.set(false);
-                                                            }).forget();
+                                                            // Launch the emulator
+                                                            match tauri::launch_emulator(emulator_for_install.clone()).await {
+                                                                Ok(result) => {
+                                                                    if result.success {
+                                                                        set_progress_state.set(None);
+                                                                        set_show_emulator_picker.set(false);
+                                                                    } else {
+                                                                        set_progress_state.set(None);
+                                                                        set_error_state.set(result.error);
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    set_progress_state.set(None);
+                                                                    set_error_state.set(Some(format!("Launch failed: {}", e)));
+                                                                }
+                                                            }
                                                         }
                                                         Err(e) => {
                                                             set_progress_state.set(None);
@@ -754,12 +776,22 @@ fn EmulatorPickerModal(
                                                 spawn_local(async move {
                                                     let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
                                                     let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                    web_sys::console::log_1(&format!("Set game pref, would launch: {}", emulator_name).into());
+                                                    match tauri::launch_emulator(emulator_name.clone()).await {
+                                                        Ok(result) => {
+                                                            if result.success {
+                                                                set_progress_state.set(None);
+                                                                set_show_emulator_picker.set(false);
+                                                            } else {
+                                                                set_progress_state.set(None);
+                                                                set_error_state.set(result.error);
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            set_progress_state.set(None);
+                                                            set_error_state.set(Some(format!("Launch failed: {}", e)));
+                                                        }
+                                                    }
                                                 });
-                                                gloo_timers::callback::Timeout::new(1500, move || {
-                                                    set_progress_state.set(None);
-                                                    set_show_emulator_picker.set(false);
-                                                }).forget();
                                             } else {
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
@@ -769,10 +801,21 @@ fn EmulatorPickerModal(
                                                             let _ = tauri::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
                                                             let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                            gloo_timers::callback::Timeout::new(1000, move || {
-                                                                set_progress_state.set(None);
-                                                                set_show_emulator_picker.set(false);
-                                                            }).forget();
+                                                            match tauri::launch_emulator(emu_for_install.clone()).await {
+                                                                Ok(result) => {
+                                                                    if result.success {
+                                                                        set_progress_state.set(None);
+                                                                        set_show_emulator_picker.set(false);
+                                                                    } else {
+                                                                        set_progress_state.set(None);
+                                                                        set_error_state.set(result.error);
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    set_progress_state.set(None);
+                                                                    set_error_state.set(Some(format!("Launch failed: {}", e)));
+                                                                }
+                                                            }
                                                         }
                                                         Err(e) => {
                                                             set_progress_state.set(None);
@@ -795,12 +838,22 @@ fn EmulatorPickerModal(
                                                 spawn_local(async move {
                                                     let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
                                                     let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                    web_sys::console::log_1(&format!("Set platform pref, would launch: {}", emulator_name).into());
+                                                    match tauri::launch_emulator(emulator_name.clone()).await {
+                                                        Ok(result) => {
+                                                            if result.success {
+                                                                set_progress_state.set(None);
+                                                                set_show_emulator_picker.set(false);
+                                                            } else {
+                                                                set_progress_state.set(None);
+                                                                set_error_state.set(result.error);
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            set_progress_state.set(None);
+                                                            set_error_state.set(Some(format!("Launch failed: {}", e)));
+                                                        }
+                                                    }
                                                 });
-                                                gloo_timers::callback::Timeout::new(1500, move || {
-                                                    set_progress_state.set(None);
-                                                    set_show_emulator_picker.set(false);
-                                                }).forget();
                                             } else {
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
@@ -810,10 +863,21 @@ fn EmulatorPickerModal(
                                                             let _ = tauri::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
                                                             let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                            gloo_timers::callback::Timeout::new(1000, move || {
-                                                                set_progress_state.set(None);
-                                                                set_show_emulator_picker.set(false);
-                                                            }).forget();
+                                                            match tauri::launch_emulator(emu_for_install.clone()).await {
+                                                                Ok(result) => {
+                                                                    if result.success {
+                                                                        set_progress_state.set(None);
+                                                                        set_show_emulator_picker.set(false);
+                                                                    } else {
+                                                                        set_progress_state.set(None);
+                                                                        set_error_state.set(result.error);
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    set_progress_state.set(None);
+                                                                    set_error_state.set(Some(format!("Launch failed: {}", e)));
+                                                                }
+                                                            }
                                                         }
                                                         Err(e) => {
                                                             set_progress_state.set(None);

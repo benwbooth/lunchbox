@@ -697,6 +697,24 @@ pub fn launch_game_with_emulator(
     }
 }
 
+/// Launch an emulator (without a ROM)
+pub fn launch_emulator_only(
+    emulator: &EmulatorInfo,
+) -> Result<LaunchResult, String> {
+    match emulator::launch_emulator(emulator, None) {
+        Ok(pid) => Ok(LaunchResult {
+            success: true,
+            pid: Some(pid),
+            error: None,
+        }),
+        Err(e) => Ok(LaunchResult {
+            success: false,
+            pid: None,
+            error: Some(e),
+        }),
+    }
+}
+
 /// Get the current operating system name
 pub fn get_current_os() -> String {
     emulator::current_os().to_string()

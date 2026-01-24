@@ -2240,6 +2240,22 @@ pub async fn launch_game(
     handlers::launch_game_with_emulator(&emulator, &rom_path)
 }
 
+/// Launch an emulator (without a ROM)
+#[tauri::command]
+pub async fn launch_emulator(
+    emulator_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<LaunchResult, String> {
+    let state_guard = state.read().await;
+
+    // Look up the emulator by name
+    let emulator = handlers::get_emulator(&state_guard, &emulator_name)
+        .await?
+        .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
+
+    handlers::launch_emulator_only(&emulator)
+}
+
 /// Get the current operating system
 #[tauri::command]
 pub fn get_current_os() -> String {

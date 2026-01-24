@@ -104,6 +104,7 @@ pub fn run() {
             // Emulator installation and launch commands
             commands::get_emulators_with_status,
             commands::install_emulator,
+            commands::launch_emulator,
             commands::launch_game,
             commands::get_current_os,
         ])

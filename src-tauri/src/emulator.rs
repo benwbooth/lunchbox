@@ -552,8 +552,8 @@ fn get_libretro_core_url(core_name: &str) -> String {
 // Launching
 // ============================================================================
 
-/// Launch a game with an emulator
-pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, String> {
+/// Launch an emulator (optionally with a ROM)
+pub fn launch_emulator(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<u32, String> {
     if let Some(ref core_name) = emulator.retroarch_core {
         launch_retroarch(core_name, rom_path)
     } else {
@@ -561,29 +561,42 @@ pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, Strin
     }
 }
 
-/// Launch RetroArch with a specific core
-fn launch_retroarch(core_name: &str, rom_path: &str) -> Result<u32, String> {
-    let core_path = check_retroarch_core_installed(core_name)
-        .ok_or_else(|| format!("Core {} is not installed", core_name))?;
+/// Launch a game with an emulator (legacy wrapper)
+pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, String> {
+    launch_emulator(emulator, Some(rom_path))
+}
+
+/// Launch RetroArch with a specific core (optionally with a ROM)
+fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, String> {
+    let core_path = check_retroarch_core_installed(core_name);
+    let core_arg = core_path
+        .as_ref()
+        .and_then(|p| p.to_str())
+        .unwrap_or(core_name);
 
     let child = match current_os() {
         "Linux" => {
             // Try flatpak first
             if is_flatpak_installed("org.libretro.RetroArch") {
-                Command::new("flatpak")
-                    .args([
-                        "run",
-                        "org.libretro.RetroArch",
-                        "-L",
-                        core_path.to_str().unwrap_or(core_name),
-                        rom_path,
-                    ])
-                    .spawn()
+                let mut cmd = Command::new("flatpak");
+                cmd.arg("run").arg("org.libretro.RetroArch");
+                if core_path.is_some() {
+                    cmd.arg("-L").arg(core_arg);
+                }
+                if let Some(rom) = rom_path {
+                    cmd.arg(rom);
+                }
+                cmd.spawn()
                     .map_err(|e| format!("Failed to launch RetroArch via flatpak: {}", e))?
             } else {
-                Command::new("retroarch")
-                    .args(["-L", core_path.to_str().unwrap_or(core_name), rom_path])
-                    .spawn()
+                let mut cmd = Command::new("retroarch");
+                if core_path.is_some() {
+                    cmd.arg("-L").arg(core_arg);
+                }
+                if let Some(rom) = rom_path {
+                    cmd.arg(rom);
+                }
+                cmd.spawn()
                     .map_err(|e| format!("Failed to launch RetroArch: {}", e))?
             }
         }
@@ -591,22 +604,29 @@ fn launch_retroarch(core_name: &str, rom_path: &str) -> Result<u32, String> {
             let retroarch_path = which::which("retroarch")
                 .or_else(|_| which::which("retroarch.exe"))
                 .map_err(|_| "Could not find RetroArch executable")?;
-            Command::new(retroarch_path)
-                .args(["-L", core_path.to_str().unwrap_or(core_name), rom_path])
-                .spawn()
+            let mut cmd = Command::new(retroarch_path);
+            if core_path.is_some() {
+                cmd.arg("-L").arg(core_arg);
+            }
+            if let Some(rom) = rom_path {
+                cmd.arg(rom);
+            }
+            cmd.spawn()
                 .map_err(|e| format!("Failed to launch RetroArch: {}", e))?
         }
         "macOS" => {
-            Command::new("open")
-                .args([
-                    "-a",
-                    "RetroArch",
-                    "--args",
-                    "-L",
-                    core_path.to_str().unwrap_or(core_name),
-                    rom_path,
-                ])
-                .spawn()
+            let mut cmd = Command::new("open");
+            cmd.arg("-a").arg("RetroArch");
+            if core_path.is_some() || rom_path.is_some() {
+                cmd.arg("--args");
+                if core_path.is_some() {
+                    cmd.arg("-L").arg(core_arg);
+                }
+                if let Some(rom) = rom_path {
+                    cmd.arg(rom);
+                }
+            }
+            cmd.spawn()
                 .map_err(|e| format!("Failed to launch RetroArch: {}", e))?
         }
         _ => return Err("Unsupported operating system".to_string()),
@@ -615,29 +635,37 @@ fn launch_retroarch(core_name: &str, rom_path: &str) -> Result<u32, String> {
     Ok(child.id())
 }
 
-/// Launch a standalone emulator
-fn launch_standalone(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, String> {
+/// Launch a standalone emulator (optionally with a ROM)
+fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<u32, String> {
     let exe_path = check_installation(emulator)
         .ok_or_else(|| format!("{} is not installed", emulator.name))?;
 
     let child = if exe_path.to_string_lossy().starts_with("flatpak::") {
         // Flatpak app
         let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
-        Command::new("flatpak")
-            .args(["run", &app_id, rom_path])
-            .spawn()
+        let mut cmd = Command::new("flatpak");
+        cmd.arg("run").arg(&app_id);
+        if let Some(rom) = rom_path {
+            cmd.arg(rom);
+        }
+        cmd.spawn()
             .map_err(|e| format!("Failed to launch via flatpak: {}", e))?
     } else if current_os() == "macOS" && exe_path.extension().map(|e| e == "app").unwrap_or(false) {
         // macOS .app bundle
-        Command::new("open")
-            .args(["-a", exe_path.to_str().unwrap_or_default(), rom_path])
-            .spawn()
+        let mut cmd = Command::new("open");
+        cmd.arg("-a").arg(exe_path.to_str().unwrap_or_default());
+        if let Some(rom) = rom_path {
+            cmd.arg(rom);
+        }
+        cmd.spawn()
             .map_err(|e| format!("Failed to launch {}: {}", emulator.name, e))?
     } else {
         // Regular executable
-        Command::new(&exe_path)
-            .arg(rom_path)
-            .spawn()
+        let mut cmd = Command::new(&exe_path);
+        if let Some(rom) = rom_path {
+            cmd.arg(rom);
+        }
+        cmd.spawn()
             .map_err(|e| format!("Failed to launch {}: {}", emulator.name, e))?
     };
 

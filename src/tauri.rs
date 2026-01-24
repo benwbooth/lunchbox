@@ -1378,6 +1378,16 @@ pub async fn install_emulator(emulator_name: String) -> Result<String, String> {
     invoke("install_emulator", Args { emulator_name }).await
 }
 
+/// Launch an emulator (without a ROM)
+pub async fn launch_emulator(emulator_name: String) -> Result<LaunchResult, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+    }
+    invoke("launch_emulator", Args { emulator_name }).await
+}
+
 /// Launch a game with the specified emulator
 pub async fn launch_game(emulator_name: String, rom_path: String) -> Result<LaunchResult, String> {
     #[derive(Serialize)]

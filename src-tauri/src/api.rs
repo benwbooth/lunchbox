@@ -155,6 +155,7 @@ pub fn create_router(state: SharedState) -> Router {
         // Emulator installation and launch endpoints
         .route("/rspc/get_emulators_with_status", get(rspc_get_emulators_with_status))
         .route("/rspc/install_emulator", get(rspc_install_emulator))
+        .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
         .route("/rspc/get_current_os", get(rspc_get_current_os))
         // Asset serving for browser dev mode
@@ -1936,6 +1937,41 @@ async fn rspc_install_emulator(
     match handlers::install_emulator(&emulator).await {
         Ok(path) => rspc_ok(path).into_response(),
         Err(e) => rspc_err::<String>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchEmulatorInput {
+    emulator_name: String,
+}
+
+async fn rspc_launch_emulator(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: LaunchEmulatorInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<LaunchResult>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+
+    // Look up the emulator by name
+    let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+        Ok(Some(e)) => e,
+        Ok(None) => return rspc_err::<LaunchResult>(format!("Emulator '{}' not found", input.emulator_name)).into_response(),
+        Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
+    };
+
+    match handlers::launch_emulator_only(&emulator) {
+        Ok(result) => rspc_ok(result).into_response(),
+        Err(e) => rspc_err::<LaunchResult>(e).into_response(),
     }
 }
 

@@ -1,0 +1,5449 @@
+{
+  "3DO": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/3DO_emulators",
+    "emulators": [
+      {
+        "name": "Opera",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Amiga": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators",
+    "emulators": [
+      {
+        "name": "FS-UAE",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "WinUAE",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "PUAE_libretro",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Janus-UAE",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "vAmiga",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "Amiberry",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Petunia",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BlackBox",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Uae4arm",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Uae4all2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "UAE4ALL",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "WinUAEX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Amiga360(based on P-UAE 2.3.3)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Amstrad CPC": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC_emulators",
+    "emulators": [
+      {
+        "name": "ACE",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Arnold",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "CaPriCe32",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "CaPriCe Forever",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Retro Virtual Machine",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Azimuth",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "CaPriCeRPI",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      }
+    ]
+  },
+  "Apple I": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Apple_I_emulators",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "HoneyCrisp",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Apple IIGS": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Apple_IIGS_emulators",
+    "emulators": [
+      {
+        "name": "KEGS",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Apple Lisa": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Apple_Lisa_emulators",
+    "emulators": [
+      {
+        "name": "LisaEm",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Arcade#Discrete circuitry-based": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators#Discrete_circuitry-based",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "FinalBurn Neo",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Hypseus Singe",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TeknoParrot",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Supermodel",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Visual Pinball",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Flycast",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME4droid Current (0.280)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MAME4All",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pFBN",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "NJEMU",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Unofficial Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "FBA4PSP",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Arcade#Home console-based hardware": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators#Home_console-based_hardware",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "FinalBurn Neo",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Hypseus Singe",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TeknoParrot",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Supermodel",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Visual Pinball",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Flycast",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME4droid Current (0.280)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MAME4All",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pFBN",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "NJEMU",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Unofficial Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "FBA4PSP",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Arcade#Original hardware": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators#Original_hardware",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "FinalBurn Neo",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Hypseus Singe",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TeknoParrot",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Supermodel",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Visual Pinball",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Flycast",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME4droid Current (0.280)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MAME4All",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pFBN",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "NJEMU",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Unofficial Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "FBA4PSP",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Arcade#PC-based hardware": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators#PC-based_hardware",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "FinalBurn Neo",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Hypseus Singe",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TeknoParrot",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Supermodel",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Visual Pinball",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Flycast",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME4droid Current (0.280)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MAME4All",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pFBN",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "NJEMU",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Unofficial Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "FBA4PSP",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Atari 2600": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Atari_2600_emulators",
+    "emulators": [
+      {
+        "name": "Stella",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Z64K",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "stella_libretro",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Stella - Pyra",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "2600.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "StellaDS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Wii2600",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PSP2600",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Stella GC",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PVCS Reloaded",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Stella DC",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Atari 5200": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Atari_5200_emulators",
+    "emulators": [
+      {
+        "name": "Altirra",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Atari800",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "atari800_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "A5200DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Jum's A5200 Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Atari 7800": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Atari_7800_emulators",
+    "emulators": [
+      {
+        "name": "BupSystem",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "A7800",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ProSystem",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "PSP7800",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Wii7800",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "A7800DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Atari Jaguar": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Atari_Jaguar_emulators",
+    "emulators": [
+      {
+        "name": "BigPEmu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "virtualjaguar_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Atari Lynx": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Atari_Lynx_emulators",
+    "emulators": [
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Felix",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "OpenEmu",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "Handy_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Lynx.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "BBC Micro": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/BBC_Micro_emulators",
+    "emulators": [
+      {
+        "name": "BeebEM",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "B-em",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Model B",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "jsbeeb",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BeebIt",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "The Beeb (BBC Micro Emulator)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Beebdroid(B-em based)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PSPBEEB",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BeebEM PS2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PocketBeeb",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Pantheon",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Calculator": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Calculator_emulators",
+    "emulators": [
+      {
+        "name": "Wabbitemu",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "[M 1]",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "CEmu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TI-SmartView",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TI-SmartView CE",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TI-84 Mode",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "jsTIfied",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "TiEmu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "[N 1]",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "TI-89 Online Simulator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Firebird",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TI-Nspire\u2122 (CX) (CAS) Student Software",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "TI-Nspire App",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "TI-Nspire CAS App",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "TI-Nspire\u2122 CX II Online Calculator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Emu48",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Emu28",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Droid48",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "iHP48",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "HP Prime Virtual Calculator Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "HP Prime Graphing Calculator App",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Plus42",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Emu42",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Free42",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "HP SmartCalc 300s Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "WP-34s emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "HP 12C Emulator (Offical)",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "awp34s",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "fx-7500G Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Calculators 3000",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "MK-90 Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "MK-85 Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "MK-87 Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "eMKatic",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "MK 61/54",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Cellphone": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Cellphone_emulators",
+    "emulators": [
+      {
+        "name": "Mu",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "webOS SDK emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK simulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK Emulator Images",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Tizen Studio",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Nofun",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun Games Launcher",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Ruffle",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Adobe Flash Player",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "iDKDoJa",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "jDKDoJa (Overseas Edition)",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "J2ME Loader",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "JL-Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "AROMA WIPI Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "KTF WIPI",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "vmrp",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mythras",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Mrpoid2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "KaiOS RunTime Simulator (Kaiosrt)",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Melange",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Windows Phone SDK",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Firefox OS Simulator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pmb887x-emu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Cellphone#Binary Runtime Environment for Wireless .28BREW.29": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Cellphone_emulators#Binary_Runtime_Environment_for_Wireless_.28BREW.29",
+    "emulators": [
+      {
+        "name": "Mu",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "webOS SDK emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK simulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK Emulator Images",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Tizen Studio",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Nofun",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun Games Launcher",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Ruffle",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Adobe Flash Player",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "iDKDoJa",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "jDKDoJa (Overseas Edition)",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "J2ME Loader",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "JL-Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "AROMA WIPI Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "KTF WIPI",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "vmrp",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mythras",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Mrpoid2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "KaiOS RunTime Simulator (Kaiosrt)",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Melange",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Windows Phone SDK",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Firefox OS Simulator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pmb887x-emu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Cellphone#BlackBerry OS": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Cellphone_emulators#BlackBerry_OS",
+    "emulators": [
+      {
+        "name": "Mu",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "webOS SDK emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK simulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK Emulator Images",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Tizen Studio",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Nofun",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun Games Launcher",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Ruffle",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Adobe Flash Player",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "iDKDoJa",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "jDKDoJa (Overseas Edition)",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "J2ME Loader",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "JL-Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "AROMA WIPI Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "KTF WIPI",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "vmrp",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mythras",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Mrpoid2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "KaiOS RunTime Simulator (Kaiosrt)",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Melange",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Windows Phone SDK",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Firefox OS Simulator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pmb887x-emu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Cellphone#Java 2 Micro Edition .28J2ME.29": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Cellphone_emulators#Java_2_Micro_Edition_.28J2ME.29",
+    "emulators": [
+      {
+        "name": "Mu",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "webOS SDK emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK simulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK Emulator Images",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Tizen Studio",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Nofun",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun Games Launcher",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Ruffle",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Adobe Flash Player",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "iDKDoJa",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "jDKDoJa (Overseas Edition)",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "J2ME Loader",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "JL-Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "AROMA WIPI Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "KTF WIPI",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "vmrp",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mythras",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Mrpoid2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "KaiOS RunTime Simulator (Kaiosrt)",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Melange",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Windows Phone SDK",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Firefox OS Simulator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pmb887x-emu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Cellphone#Symbian and N-Gage": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Cellphone_emulators#Symbian_and_N-Gage",
+    "emulators": [
+      {
+        "name": "Mu",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "webOS SDK emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK simulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK Emulator Images",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Tizen Studio",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Nofun",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mophun Games Launcher",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Ruffle",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Adobe Flash Player",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "iDKDoJa",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "jDKDoJa (Overseas Edition)",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "J2ME Loader",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "JL-Mod",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "AROMA WIPI Emulator",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "KTF WIPI",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "vmrp",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Mythras",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Mrpoid2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "KaiOS RunTime Simulator (Kaiosrt)",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Melange",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Windows Phone SDK",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Firefox OS Simulator",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "pmb887x-emu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Classic Mac OS": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Classic_Mac_OS_emulators",
+    "emulators": [
+      {
+        "name": "Basilisk II",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Classic Environment",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "QEMU",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "DingusPPC",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "UTM",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      }
+    ]
+  },
+  "ColecoVision": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/ColecoVision_emulators",
+    "emulators": [
+      {
+        "name": "FinalBurn Neo",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "JollyCV",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "BizHawk",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "ColEm",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ADAMEm SDL",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "DSP",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "CoolCV",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mugrat",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "ColEm+",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "fbneo_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MSX.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "WiiColEm",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "ColemPS2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "AdamX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "(D)ColEm",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "CollisionGC",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "ColecoDS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Color TV-Game": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Color_TV-Game_emulators",
+    "emulators": [
+      {
+        "name": "Pong Consoles Simulation",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Commodore 64": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Commodore_64_emulators",
+    "emulators": [
+      {
+        "name": "Denise",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "VICE",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Hoxs64",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Z64K",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "VirtualC64",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "Kernal64",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "8-Bit Wonders",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "C64.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "VICE PSP",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Dreamcast": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Dreamcast_emulators",
+    "emulators": [
+      {
+        "name": "Flycast",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "redream",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Emerson Arcadia 2001": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Emerson_Arcadia_2001_emulators",
+    "emulators": [
+      {
+        "name": "WinArcadia",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "AmiArcadia",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "DroidArcadia",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Super Bug Advance\u2020",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "FM Towns": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/FM_Towns_emulators",
+    "emulators": [
+      {
+        "name": "Tsugaru (\u6d25\u8efd)",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Fairchild Channel F": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Fairchild_Channel_F_emulators",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "FreeChaF",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Fantasy system#Computers": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Fantasy_system_emulators#Computers",
+    "emulators": [
+      {
+        "name": "Beep8",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BrainFuckConsole74",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "cel7",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "DRAK-0",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "DreamBox",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "ESP LGE",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Kate",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "Leikr",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "LowRes NX",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MegaZeux",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MicroW8",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PICO-8",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Vircon32",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "3BC",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "atto",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BASIC8",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Continuum 93",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "C-Toy",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "imeight",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "LIKO-12",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Micro16",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "TIC-80",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Fantasy system#Consoles": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Fantasy_system_emulators#Consoles",
+    "emulators": [
+      {
+        "name": "Beep8",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BrainFuckConsole74",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "cel7",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "DRAK-0",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "DreamBox",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "ESP LGE",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Kate",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "Leikr",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "LowRes NX",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MegaZeux",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MicroW8",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PICO-8",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Vircon32",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "3BC",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "atto",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BASIC8",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Continuum 93",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "C-Toy",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "imeight",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "LIKO-12",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Micro16",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "TIC-80",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Fujitsu FM-7": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Fujitsu_FM-7_emulators",
+    "emulators": [
+      {
+        "name": "XM7XM7 TypeR",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Game Boy (Color)": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators",
+    "emulators": [
+      {
+        "name": "SameBoy",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "BGB",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Emulicious",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Gambatte_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "GBC.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Game Play Color",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Nintendo Switch Online",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Super Game Boy",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Game Boy Interface",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "GameYob DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "GameYob 3DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "VBA GX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PlutoBoy",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "RIN",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "GBEmu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Game Boy Advance": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_Advance_emulators",
+    "emulators": [
+      {
+        "name": "mGBA",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "GBA.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Nintendo Classics",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "VBA Next",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "open_agb_firm",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Game Boy Interface",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "GameCube": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/GameCube_emulators",
+    "emulators": [
+      {
+        "name": "Dolphin",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "DolphiniOS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Nintendo Classics",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Hagi",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Nintendont",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Wii Backwards Compatibility",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "IOS": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/IOS_emulators",
+    "emulators": [
+      {
+        "name": "macOS",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Intellivision": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Intellivision_emulators",
+    "emulators": [
+      {
+        "name": "jzIntvImGui",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "FreeIntv_libretro",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "NINTV-DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PSPInt",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "MSX": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators",
+    "emulators": [
+      {
+        "name": "openMSX",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "blueMSX",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "blueMSX_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "fMSX_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MSX.emu",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "fMSX PSP",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PSPMSX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MiiSX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "BlueMSXbox",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "msxDS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "MacOS": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/MacOS_emulators",
+    "emulators": [
+      {
+        "name": "Rosetta",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "Hyper-V",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "KVM",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Rosetta 2",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "VirtualBuddy",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Magnavox Odyssey": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey_emulators",
+    "emulators": [
+      {
+        "name": "Odyemu",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "Odyssey Now",
+        "recommended": true,
+        "platforms": [
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Magnavody",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Magnavox Odyssey DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "OdySim",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "OdyWeb",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Magnavox Odyssey%C2%B2": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey%C2%B2_emulators",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "O2EM",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "o2em2(O2EM fork)",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "O2em",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Odd-DC",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Master System/Game Gear": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators",
+    "emulators": [
+      {
+        "name": "Genesis Plus GX",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Snepulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Emulicious",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Snepulator MS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "SMS Plus GX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PSMS alt+",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "MasterBoy",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "ApprenticeminusDS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "SMS Plus DC",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "UltraSMS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Multi-system": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Multi-system_emulators",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mesen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "OpenEmu",
+        "recommended": true,
+        "platforms": [
+          "macos"
+        ]
+      },
+      {
+        "name": "BizHawk",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Dolphin",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "mGBA",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Genesis Plus GX",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "EightyOne",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "VICE",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Neo Geo Pocket": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_Pocket_emulators",
+    "emulators": [
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "mednafen_ngp_libretro",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "NGPDS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Nintendo 3DS": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators",
+    "emulators": [
+      {
+        "name": "Citra",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Nintendo 64": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators",
+    "emulators": [
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Gopher64",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mupen64Plus-Next",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "RMG",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "Not64",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Nintendo DS": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators",
+    "emulators": [
+      {
+        "name": "melonDS",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "melonDS DS",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "DeSmuME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "DraStic",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "DeSmuME_libretro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "DS Mode",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Nintendo Entertainment System": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators",
+    "emulators": [
+      {
+        "name": "Nestopia UE",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "puNES",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "NintendulatorNRS",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "NES.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Mesen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "FCE Ultra GX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "VirtuaNES for 3DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "NES_MiSTer",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Nintendo Switch": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Switch_emulators",
+    "emulators": [
+      {
+        "name": "Ryujinx",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "yuzu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "nnCompat",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "PC Engine (TurboGrafx-16)": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PC_Engine_(TurboGrafx-16)_emulators",
+    "emulators": [
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mesen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "PCE.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "WonderDroid Ultra",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "TemperPCE 3DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "HuGo! GX Unofficial",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PCECast",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "PC-FX": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PC-FX_emulators",
+    "emulators": [
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Philips CD-i": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Philips_CD-i_emulators",
+    "emulators": [
+      {
+        "name": "CDi_MiSTer",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Philips P2000": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Philips_P2000_emulators",
+    "emulators": [
+      {
+        "name": "M2000",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "PlayStation": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PlayStation_emulators",
+    "emulators": [
+      {
+        "name": "DuckStation",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Official Sony emulators",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "WiiSXRX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "PlayStation 2": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PlayStation_2_emulators",
+    "emulators": [
+      {
+        "name": "PCSX2",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "NetherSX2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "XBSX2",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Official Sony emulators",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "PlayStation 3": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PlayStation_3_emulators",
+    "emulators": [
+      {
+        "name": "RPCS3",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "PlayStation 4": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PlayStation_4_emulators",
+    "emulators": [
+      {
+        "name": "PlayStation 5",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "PlayStation Portable": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Portable_emulators",
+    "emulators": [
+      {
+        "name": "PPSSPP",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Adrenaline",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "PlayStation Vita": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Vita_emulators",
+    "emulators": [
+      {
+        "name": "Vita3K",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "PocketStation": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/PocketStation_emulators",
+    "emulators": [
+      {
+        "name": "PK201",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "PocketStation for PlayStation Vita",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Pok%C3%A9mon mini": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Pok%C3%A9mon_mini_emulators",
+    "emulators": [
+      {
+        "name": "GBE+",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "pokemini_libretro",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "[N 2]",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PokeMini",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "[N 3]",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PokeMini 3DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Pok\u00e9mon Channel",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "SG-1000": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/SG-1000_emulators",
+    "emulators": [
+      {
+        "name": "MasterGear",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "BizHawk",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "S8DS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Sega Genesis": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators",
+    "emulators": [
+      {
+        "name": "Genesis Plus GX",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "PicoDrive",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "BlastEm",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "MD.emu",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Nintendo Switch Online",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Sega 3D Classics",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "NeoGenesis",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "jEnesisDS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PGEN",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Sega Saturn": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Sega_Saturn_emulators",
+    "emulators": [
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "Ymir",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Yaba Sanshiro",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Sega VMU": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Sega_VMU_emulators",
+    "emulators": [
+      {
+        "name": "DreamPotato",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Set-top box": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Set-top_box_emulators",
+    "emulators": [
+      {
+        "name": "QiTV",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Sharp X1": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Sharp_X1_emulators",
+    "emulators": [
+      {
+        "name": "eX1",
+        "recommended": true,
+        "platforms": [
+          "windows"
+        ]
+      },
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "Sharp X68000": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Sharp_X68000_emulators",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "px68k-libretro",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "px68k (ptitSeb)",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Smart TV": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Smart_TV_emulators",
+    "emulators": [
+      {
+        "name": "Android Studio",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Brightscript Emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Tizen Studio",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK emulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "webOS SDK simulator",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Samsung Legacy Platform SDK",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "LG NetCast SDK",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Yahoo Connected TV SDK",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      }
+    ]
+  },
+  "Super Nintendo Entertainment System": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators",
+    "emulators": [
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "bsnes",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Snes9x",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mesen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Snes9x EX+",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Snes9x GX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Virtual Console",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Nintendo Classics",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Vectrex": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Vectrex_emulators",
+    "emulators": [
+      {
+        "name": "MAME",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "vecx",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "VecX",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "PSPVE",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "VectxDS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Virtual Boy": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Virtual_Boy_emulators",
+    "emulators": [
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Beetle VB",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "Red Viper",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Wii": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Wii_emulators",
+    "emulators": [
+      {
+        "name": "Dolphin",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "DolphiniOS",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Hagi",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "FrisbiiU",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Wii U": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Wii_U_emulators",
+    "emulators": [
+      {
+        "name": "Cemu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    ]
+  },
+  "WonderSwan": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/WonderSwan_emulators",
+    "emulators": [
+      {
+        "name": "Mesen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "ares",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Mednafen",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "BizHawk",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "Beetle Cygne",
+        "recommended": true,
+        "platforms": [
+          "linux"
+        ]
+      },
+      {
+        "name": "NitroSwan",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "e[mulator] for PSP",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "WiiMednafen",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Xbox": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Xbox_emulators",
+    "emulators": [
+      {
+        "name": "xemu",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      },
+      {
+        "name": "Xenon Fusion",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Xbox 360": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Xbox_360_emulators",
+    "emulators": [
+      {
+        "name": "Xenia",
+        "recommended": true,
+        "platforms": [
+          "linux",
+          "windows"
+        ]
+      },
+      {
+        "name": "Fission",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  },
+  "Xbox One": {
+    "wiki_url": "https://emulation.gametechwiki.com/index.php/Xbox_One_emulators",
+    "emulators": [
+      {
+        "name": "Xbox Series X/S",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      },
+      {
+        "name": "Xbox One X/S",
+        "recommended": true,
+        "platforms": [
+          "windows",
+          "linux",
+          "macos"
+        ]
+      }
+    ]
+  }
+}
