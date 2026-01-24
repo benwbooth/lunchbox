@@ -142,6 +142,8 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/get_emulators_for_platform", get(rspc_get_emulators_for_platform))
         .route("/rspc/get_emulator", get(rspc_get_emulator))
         .route("/rspc/get_all_emulators", get(rspc_get_all_emulators))
+        // rspc-style endpoints for play session
+        .route("/rspc/record_play_session", get(rspc_record_play_session))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
         .layer(cors)
@@ -1636,5 +1638,66 @@ async fn rspc_get_all_emulators(
     match handlers::get_all_emulators(&state_guard, filter_os).await {
         Ok(emulators) => rspc_ok(emulators).into_response(),
         Err(e) => rspc_err::<Vec<EmulatorInfo>>(e).into_response(),
+    }
+}
+
+// ============================================================================
+// Play Session Handlers
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordPlaySessionInput {
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+}
+
+async fn rspc_record_play_session(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    // Parse the input parameter (JSON-encoded)
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: RecordPlaySessionInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+
+    let pool = match state_guard.db_pool.as_ref() {
+        Some(p) => p,
+        None => return rspc_err::<()>("User database not initialized".to_string()).into_response(),
+    };
+
+    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    // Insert or update play stats
+    match sqlx::query(
+        r#"
+        INSERT INTO play_stats (launchbox_db_id, game_title, platform, play_count, last_played, first_played)
+        VALUES (?, ?, ?, 1, ?, ?)
+        ON CONFLICT(launchbox_db_id) DO UPDATE SET
+            play_count = play_count + 1,
+            last_played = excluded.last_played
+        "#
+    )
+    .bind(input.launchbox_db_id)
+    .bind(&input.game_title)
+    .bind(&input.platform)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await {
+        Ok(_) => {
+            tracing::info!("Recorded play session for: {} ({})", input.game_title, input.launchbox_db_id);
+            rspc_ok(()).into_response()
+        }
+        Err(e) => rspc_err::<()>(e.to_string()).into_response(),
     }
 }
