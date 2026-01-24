@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Windows 3.X,86Box,Windows;Linux;macOS,https://86box.net/,86Box.86Box,86box,net._86box._86Box,,~/.local/share/86Box,.cfg,Full x86 PC emulator; requires BIOS ROMs; excellent Windows 3.x compatibility
+Windows 3.X,DOSBox-X,Windows;Linux;macOS;FreeBSD,https://dosbox-x.com/,joncampbell123.DOSBox-X,dosbox-x,com.dosbox_x.DOSBox-X,,~/.config/dosbox-x,.conf,Complete DOS/Windows 3.x/9x emulation package; built-in DOS implementation
+Windows 3.X,DOSBox Staging,Windows;Linux;macOS;FreeBSD,https://www.dosbox-staging.org/,DOSBoxStaging.DOSBoxStaging,dosbox-staging,io.github.dosbox-staging,,~/.config/dosbox,.conf,Modern DOSBox continuation; requires Windows 3.x install for Windows software
+Windows 3.X,DOSBox Pure,Windows;Linux;macOS,https://github.com/schellingb/dosbox-pure,,,,dosbox_pure,RetroArch saves directory,.sav;.state,RetroArch/libretro core only; supports save states and ZIP loading
+Windows 3.X,PCem,Windows;Linux;macOS,https://pcem-emulator.co.uk/,,,co.uk.pcemulator.PCem,,~/.pcem,.cfg,Low-level x86 emulator; requires BIOS ROMs; original project that 86Box forked from
