@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Watara Supervision,Potator,Windows;Linux;macOS,https://github.com/libretro/potator,Libretro.RetroArch,retroarch,org.libretro.RetroArch,potator,~/retroarch/saves,.srm;.state,Primary recommended emulator; available as libretro core via RetroArch; standalone SDL2 version also exists; supports RetroAchievements and Magnum hardware variant
+Watara Supervision,Wataroo,Windows,http://tailchao.com/Wataroo/,,,,,,.state,Closed-source Windows-only emulator; spot-on emulation accuracy; supports save states and custom palettes; may struggle on less powerful systems
