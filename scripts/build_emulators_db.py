@@ -79,6 +79,17 @@ def import_csv(conn: sqlite3.Connection, csv_path: Path) -> tuple[int, int]:
             if not name:
                 continue
 
+            # Get values from this row
+            homepage = row.get("homepage", "").strip() or None
+            supported_os = row.get("supported_os", "").strip() or None
+            winget_id = row.get("winget_id", "").strip() or None
+            homebrew_formula = row.get("homebrew_formula", "").strip() or None
+            flatpak_id = row.get("flatpak_id", "").strip() or None
+            retroarch_core = row.get("retroarch_core", "").strip() or None
+            save_directory = row.get("save_directory", "").strip() or None
+            save_extensions = row.get("save_extensions", "").strip() or None
+            notes = row.get("notes", "").strip() or None
+
             # Insert or get emulator ID
             if name not in emulator_ids:
                 # Insert new emulator
@@ -91,18 +102,43 @@ def import_csv(conn: sqlite3.Connection, csv_path: Path) -> tuple[int, int]:
                     """,
                     (
                         name,
-                        row.get("homepage", "").strip() or None,
-                        row.get("supported_os", "").strip() or None,
-                        row.get("winget_id", "").strip() or None,
-                        row.get("homebrew_formula", "").strip() or None,
-                        row.get("flatpak_id", "").strip() or None,
-                        row.get("retroarch_core", "").strip() or None,
-                        row.get("save_directory", "").strip() or None,
-                        row.get("save_extensions", "").strip() or None,
-                        row.get("notes", "").strip() or None,
+                        homepage,
+                        supported_os,
+                        winget_id,
+                        homebrew_formula,
+                        flatpak_id,
+                        retroarch_core,
+                        save_directory,
+                        save_extensions,
+                        notes,
                     ),
                 )
                 emulator_ids[name] = cursor.lastrowid
+            else:
+                # Update missing package manager fields if this row has them
+                # This handles cases where an emulator appears on multiple platforms
+                # and only some entries have package manager IDs
+                emulator_id = emulator_ids[name]
+                if winget_id:
+                    cursor.execute(
+                        "UPDATE emulators SET winget_id = ? WHERE id = ? AND winget_id IS NULL",
+                        (winget_id, emulator_id),
+                    )
+                if homebrew_formula:
+                    cursor.execute(
+                        "UPDATE emulators SET homebrew_formula = ? WHERE id = ? AND homebrew_formula IS NULL",
+                        (homebrew_formula, emulator_id),
+                    )
+                if flatpak_id:
+                    cursor.execute(
+                        "UPDATE emulators SET flatpak_id = ? WHERE id = ? AND flatpak_id IS NULL",
+                        (flatpak_id, emulator_id),
+                    )
+                if retroarch_core:
+                    cursor.execute(
+                        "UPDATE emulators SET retroarch_core = ? WHERE id = ? AND retroarch_core IS NULL",
+                        (retroarch_core, emulator_id),
+                    )
 
             # Record platform mapping
             emulator_id = emulator_ids[name]
