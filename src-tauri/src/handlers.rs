@@ -627,7 +627,8 @@ pub async fn get_emulators_with_status(
 
     let os = current_os();
 
-    // Query emulators for this platform, filtered by OS, with RetroArch cores first
+    // Query emulators for this platform, filtered by OS
+    // We get all emulators that have either a RetroArch core OR a standalone installer
     let emulators: Vec<EmulatorInfo> = sqlx::query_as(
         r#"
         SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
@@ -644,7 +645,6 @@ pub async fn get_emulators_with_status(
               OR (? = 'macOS' AND e.homebrew_formula IS NOT NULL)
           )
         ORDER BY
-            CASE WHEN e.retroarch_core IS NOT NULL THEN 0 ELSE 1 END,
             pe.is_recommended DESC,
             e.name
         "#,
@@ -658,13 +658,37 @@ pub async fn get_emulators_with_status(
     .await
     .map_err(|e| e.to_string())?;
 
-    // Add installation status to each emulator
-    let emulators_with_status: Vec<EmulatorWithStatus> = emulators
-        .into_iter()
-        .map(emulator::add_status)
-        .collect();
+    // Create separate entries for RetroArch cores and standalone emulators
+    // An emulator with both will appear twice in the list
+    let mut results: Vec<EmulatorWithStatus> = Vec::new();
+    let mut retroarch_entries: Vec<EmulatorWithStatus> = Vec::new();
+    let mut standalone_entries: Vec<EmulatorWithStatus> = Vec::new();
 
-    Ok(emulators_with_status)
+    for emulator in emulators {
+        let has_retroarch = emulator.retroarch_core.is_some();
+        let has_standalone = match os {
+            "Linux" => emulator.flatpak_id.is_some(),
+            "Windows" => emulator.winget_id.is_some(),
+            "macOS" => emulator.homebrew_formula.is_some(),
+            _ => false,
+        };
+
+        // Add RetroArch core entry if available
+        if has_retroarch {
+            retroarch_entries.push(emulator::add_status_as_retroarch(emulator.clone()));
+        }
+
+        // Add standalone entry if available
+        if has_standalone {
+            standalone_entries.push(emulator::add_status_as_standalone(emulator));
+        }
+    }
+
+    // RetroArch cores first, then standalone emulators
+    results.extend(retroarch_entries);
+    results.extend(standalone_entries);
+
+    Ok(results)
 }
 
 /// Check if a specific emulator is installed

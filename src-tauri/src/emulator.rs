@@ -699,6 +699,103 @@ pub fn add_status(emulator: EmulatorInfo) -> EmulatorWithStatus {
     }
 }
 
+/// Add status for an emulator as a RetroArch core entry
+pub fn add_status_as_retroarch(emulator: EmulatorInfo) -> EmulatorWithStatus {
+    let core_name = emulator.retroarch_core.as_ref()
+        .expect("add_status_as_retroarch called on emulator without retroarch_core");
+
+    let display_name = format!("RetroArch: {}", core_name);
+    let core_path = check_retroarch_core_installed(core_name);
+    let is_installed = core_path.is_some();
+
+    EmulatorWithStatus {
+        info: emulator,
+        is_installed,
+        install_method: Some("retroarch".to_string()),
+        is_retroarch_core: true,
+        display_name,
+        executable_path: if is_installed {
+            find_retroarch_executable().map(|p| p.to_string_lossy().to_string())
+        } else {
+            None
+        },
+    }
+}
+
+/// Add status for an emulator as a standalone entry (ignoring RetroArch core)
+pub fn add_status_as_standalone(emulator: EmulatorInfo) -> EmulatorWithStatus {
+    let install_method = get_install_method(&emulator);
+    let install_path = check_standalone_installation(&emulator);
+    let is_installed = install_path.is_some();
+    let display_name = emulator.name.clone();
+
+    EmulatorWithStatus {
+        info: emulator,
+        is_installed,
+        install_method,
+        is_retroarch_core: false,
+        display_name,
+        executable_path: install_path.map(|p| p.to_string_lossy().to_string()),
+    }
+}
+
+/// Find the RetroArch executable
+fn find_retroarch_executable() -> Option<PathBuf> {
+    // Check flatpak first
+    if Command::new("flatpak")
+        .args(["info", "org.libretro.RetroArch"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return Some(PathBuf::from("flatpak run org.libretro.RetroArch"));
+    }
+
+    // Check PATH
+    if let Ok(path) = which::which("retroarch") {
+        return Some(path);
+    }
+
+    None
+}
+
+/// Check if standalone emulator is installed (not via RetroArch)
+fn check_standalone_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
+    match current_os() {
+        "Linux" => {
+            if let Some(ref flatpak_id) = emulator.flatpak_id {
+                // Check if flatpak app is installed
+                if Command::new("flatpak")
+                    .args(["info", flatpak_id])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+                {
+                    return Some(PathBuf::from(format!("flatpak run {}", flatpak_id)));
+                }
+            }
+        }
+        "Windows" => {
+            if emulator.winget_id.is_some() {
+                // Check common install locations or PATH
+                if let Ok(path) = which::which(&emulator.name.to_lowercase()) {
+                    return Some(path);
+                }
+            }
+        }
+        "macOS" => {
+            if emulator.homebrew_formula.is_some() {
+                // Check PATH or /Applications
+                if let Ok(path) = which::which(&emulator.name.to_lowercase()) {
+                    return Some(path);
+                }
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
 /// Filter emulators to only those that can be installed on this OS
 pub fn filter_installable(emulators: Vec<EmulatorInfo>) -> Vec<EmulatorInfo> {
     let os = current_os();
