@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Tapwave Zodiac,,,,,,,,,,No recommended emulators found. The Emulation General Wiki lists Tapwave Zodiac under 'Strange and forgotten consoles' with emulator status 'None'. The Zodiac uses ARM9 hardware with Palm OS 5.x which is difficult to emulate. Projects like rePalm have reverse-engineering work but no fully functional emulator exists.
