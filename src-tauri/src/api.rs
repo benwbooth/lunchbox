@@ -1646,7 +1646,6 @@ async fn rspc_get_all_emulators(
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct RecordPlaySessionInput {
     launchbox_db_id: i64,
     game_title: String,
