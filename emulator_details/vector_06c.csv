@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Vector-06C,Devector,Windows;Linux,https://github.com/parallelno/Devector,,,,,,.state,Modern actively-developed emulator with debugging features; FDD support; up to 8 RAM-disk support; AY sound; playback recording
+Vector-06C,vector06sdl,Windows;Linux;macOS;Android,https://github.com/svofski/vector06sdl,,,,,,,"Open-source C++ emulator; command-line interface; ChaiScript scripting; GDB integration; BASIC program support"
+Vector-06C,MAME,Windows;Linux;macOS,https://www.mamedev.org,,mame,org.mamedev.MAME,mame,~/.mame/sta,.sta,Multi-system emulator with Vector-06C support via software lists; requires vector06c ROM set
