@@ -138,6 +138,10 @@ pub fn create_router(state: SharedState) -> Router {
         // rspc-style endpoints for video handling
         .route("/rspc/check_cached_video", get(rspc_check_cached_video))
         .route("/rspc/download_game_video", get(rspc_download_game_video))
+        // rspc-style endpoints for emulator handling
+        .route("/rspc/get_emulators_for_platform", get(rspc_get_emulators_for_platform))
+        .route("/rspc/get_emulator", get(rspc_get_emulator))
+        .route("/rspc/get_all_emulators", get(rspc_get_all_emulators))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
         .layer(cors)
@@ -1548,5 +1552,89 @@ async fn rspc_download_game_video(
             tracing::warn!("  Video download failed: {}", e);
             rspc_err::<String>(e.to_string()).into_response()
         }
+    }
+}
+
+// ============================================================================
+// Emulator Handlers
+// ============================================================================
+
+use crate::db::schema::EmulatorInfo;
+
+async fn rspc_get_emulators_for_platform(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    // Parse the input parameter (JSON-encoded platform name string)
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Vec<EmulatorInfo>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    // Input is a JSON-encoded string (e.g., "\"Nintendo Entertainment System\"")
+    let platform_name: String = match serde_json::from_str(input_str) {
+        Ok(s) => s,
+        Err(e) => return rspc_err::<Vec<EmulatorInfo>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_emulators_for_platform(&state_guard, &platform_name).await {
+        Ok(emulators) => rspc_ok(emulators).into_response(),
+        Err(e) => rspc_err::<Vec<EmulatorInfo>>(e).into_response(),
+    }
+}
+
+async fn rspc_get_emulator(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    // Parse the input parameter (JSON-encoded emulator name string)
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Option<EmulatorInfo>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let name: String = match serde_json::from_str(input_str) {
+        Ok(s) => s,
+        Err(e) => return rspc_err::<Option<EmulatorInfo>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_emulator(&state_guard, &name).await {
+        Ok(emulator) => rspc_ok(emulator).into_response(),
+        Err(e) => rspc_err::<Option<EmulatorInfo>>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetAllEmulatorsInput {
+    #[serde(default = "default_true")]
+    filter_os: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+async fn rspc_get_all_emulators(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    // Parse the optional input parameter
+    let filter_os = if let Some(input_str) = params.get("input") {
+        let input: GetAllEmulatorsInput = match serde_json::from_str(input_str) {
+            Ok(i) => i,
+            Err(_) => GetAllEmulatorsInput { filter_os: true },
+        };
+        input.filter_os
+    } else {
+        true // Default to filtering by OS
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_all_emulators(&state_guard, filter_os).await {
+        Ok(emulators) => rspc_ok(emulators).into_response(),
+        Err(e) => rspc_err::<Vec<EmulatorInfo>>(e).into_response(),
     }
 }
