@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Tomy Tutor,MAME,Windows;Linux;macOS,https://www.mamedev.org/,MAMEdev.MAME,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta;.nv,Default recommended emulator; requires tutor.zip BIOS; supports cartridges and all graphics modes
