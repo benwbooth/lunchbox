@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+XaviXPORT,MAME,Windows;Linux;macOS;BSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta;~/.mame/nvram,.sta;.nv;.cfg,Preliminary XaviXPORT support since v0.206. Graphics and sound marked as imperfect. Some later XaviXPORT games using XaviX 2 CPU are not emulated.
