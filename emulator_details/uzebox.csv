@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Uzebox,CUzeBox,Windows;Linux;macOS;Haiku,https://github.com/Jubatian/cuzebox,,,,,same directory as game,.eep,Official recommended Uzebox emulator with cycle-perfect AVR emulation; EEPROM saves stored alongside game file; experimental Android port available
+Uzebox,Uzem,Windows;Linux;macOS,https://github.com/Uzebox/uzebox/tree/master/tools/uzem,,,,uzem,~/.config/retroarch/saves,.state,Original Uzebox emulator; part of main Uzebox repository; has remote debugging and mouse support not in CUzeBox; available as RetroArch/libretro core
+Uzebox,MAME,Windows;Linux;macOS,https://www.mamedev.org/,MAME.MAME,mame,org.mamedev.MAME,,~/.mame/nvram,.bin,Uzebox support via MESS sub-project; accepts .bin and .uze files; sound emulation has occasional issues
