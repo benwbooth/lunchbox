@@ -1199,3 +1199,131 @@ pub async fn download_game_video(
         launchbox_db_id,
     }).await
 }
+
+// ============ Emulator Commands ============
+
+/// Emulator information from the emulators database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorInfo {
+    pub id: i64,
+    pub name: String,
+    pub homepage: Option<String>,
+    pub supported_os: Option<String>,
+    pub winget_id: Option<String>,
+    pub homebrew_formula: Option<String>,
+    pub flatpak_id: Option<String>,
+    pub retroarch_core: Option<String>,
+    pub save_directory: Option<String>,
+    pub save_extensions: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// Get all emulators for a platform, filtered by current OS
+pub async fn get_emulators_for_platform(platform_name: String) -> Result<Vec<EmulatorInfo>, String> {
+    invoke("get_emulators_for_platform", platform_name).await
+}
+
+/// Get a specific emulator by name
+pub async fn get_emulator(name: String) -> Result<Option<EmulatorInfo>, String> {
+    invoke("get_emulator", name).await
+}
+
+/// Get all emulators (optionally filtered by current OS)
+pub async fn get_all_emulators(filter_os: Option<bool>) -> Result<Vec<EmulatorInfo>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        filter_os: Option<bool>,
+    }
+    invoke("get_all_emulators", Args { filter_os }).await
+}
+
+// ============ Emulator Preference Commands ============
+
+/// Per-game emulator preference
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameEmulatorPref {
+    pub launchbox_db_id: i64,
+    pub emulator_name: String,
+    pub game_title: Option<String>,
+}
+
+/// Per-platform emulator preference
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformEmulatorPref {
+    pub platform_name: String,
+    pub emulator_name: String,
+}
+
+/// All emulator preferences
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorPreferences {
+    pub game_preferences: Vec<GameEmulatorPref>,
+    pub platform_preferences: Vec<PlatformEmulatorPref>,
+}
+
+/// Get emulator preference for a game (checks game-specific, then platform)
+pub async fn get_emulator_preference(launchbox_db_id: i64, platform_name: String) -> Result<Option<String>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        platform_name: String,
+    }
+    invoke("get_emulator_preference", Args { launchbox_db_id, platform_name }).await
+}
+
+/// Set emulator preference for a specific game
+pub async fn set_game_emulator_preference(launchbox_db_id: i64, emulator_name: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        emulator_name: String,
+    }
+    invoke("set_game_emulator_preference", Args { launchbox_db_id, emulator_name }).await
+}
+
+/// Set emulator preference for a platform (all games on that platform)
+pub async fn set_platform_emulator_preference(platform_name: String, emulator_name: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        platform_name: String,
+        emulator_name: String,
+    }
+    invoke("set_platform_emulator_preference", Args { platform_name, emulator_name }).await
+}
+
+/// Clear a game-specific preference
+pub async fn clear_game_emulator_preference(launchbox_db_id: i64) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+    }
+    invoke("clear_game_emulator_preference", Args { launchbox_db_id }).await
+}
+
+/// Clear a platform preference
+pub async fn clear_platform_emulator_preference(platform_name: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        platform_name: String,
+    }
+    invoke("clear_platform_emulator_preference", Args { platform_name }).await
+}
+
+/// Get all emulator preferences (for settings UI)
+pub async fn get_all_emulator_preferences() -> Result<EmulatorPreferences, String> {
+    invoke_no_args("get_all_emulator_preferences").await
+}
+
+/// Clear all emulator preferences
+pub async fn clear_all_emulator_preferences() -> Result<(), String> {
+    invoke_no_args("clear_all_emulator_preferences").await
+}

@@ -92,6 +92,14 @@ pub fn run() {
             commands::get_emulators_for_platform,
             commands::get_emulator,
             commands::get_all_emulators,
+            // Emulator preference commands
+            commands::get_emulator_preference,
+            commands::set_game_emulator_preference,
+            commands::set_platform_emulator_preference,
+            commands::clear_game_emulator_preference,
+            commands::clear_platform_emulator_preference,
+            commands::get_all_emulator_preferences,
+            commands::clear_all_emulator_preferences,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

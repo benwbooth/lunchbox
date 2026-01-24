@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats};
+use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats, EmulatorInfo};
 use super::{VideoPlayer, LazyImage, Box3DViewer};
 
 #[component]
@@ -18,6 +18,10 @@ pub fn GameDetails(
     let (selected_variant, set_selected_variant) = signal::<Option<String>>(None);
     // Track pending variant load separately from selected (to avoid infinite loops)
     let (pending_variant_load, set_pending_variant_load) = signal::<Option<String>>(None);
+    // Emulator picker state
+    let (show_emulator_picker, set_show_emulator_picker) = signal(false);
+    let (emulators, set_emulators) = signal::<Vec<EmulatorInfo>>(Vec::new());
+    let (emulators_loading, set_emulators_loading) = signal(false);
 
     // Initialize display_game from prop when game changes
     Effect::new(move || {
@@ -109,7 +113,6 @@ pub fn GameDetails(
             {move || {
                 display_game.get().map(|g| {
                     let display_title = g.display_title.clone();
-                    let title_for_play = g.title.clone();
                     let first_char = display_title.chars().next().unwrap_or('?').to_string();
                     let platform = g.platform.clone();
                     let platform_for_play = g.platform.clone();
@@ -130,15 +133,32 @@ pub fn GameDetails(
 
                     let title_for_fav = g.title.clone();
                     let platform_for_fav = g.platform.clone();
+                    let title_for_select = g.title.clone();
+                    let platform_for_select = g.platform.clone();
 
                     let on_play = move |_| {
-                        let title = title_for_play.clone();
                         let platform = platform_for_play.clone();
+                        set_emulators_loading.set(true);
+                        set_show_emulator_picker.set(true);
                         spawn_local(async move {
-                            // Record the play session
-                            let _ = tauri::record_play_session(db_id, title, platform).await;
+                            // Fetch emulators for this platform
+                            match tauri::get_emulators_for_platform(platform).await {
+                                Ok(emu_list) => {
+                                    set_emulators.set(emu_list);
+                                }
+                                Err(e) => {
+                                    web_sys::console::error_1(&format!("Failed to fetch emulators: {}", e).into());
+                                    set_emulators.set(Vec::new());
+                                }
+                            }
+                            set_emulators_loading.set(false);
                         });
                     };
+
+                    // Store game info for emulator selection
+                    let stored_title = StoredValue::new(title_for_select);
+                    let stored_platform = StoredValue::new(platform_for_select);
+                    let stored_db_id = StoredValue::new(db_id);
 
                     let on_toggle_favorite = move |_| {
                         let title = title_for_fav.clone();
@@ -281,6 +301,18 @@ pub fn GameDetails(
                                                 {move || if is_fav.get() { "Unfavorite" } else { "Favorite" }}
                                             </button>
                                         </div>
+
+                                        // Emulator picker modal
+                                        <Show when=move || show_emulator_picker.get()>
+                                            <EmulatorPickerModal
+                                                emulators=emulators
+                                                emulators_loading=emulators_loading
+                                                stored_title=stored_title
+                                                stored_platform=stored_platform
+                                                stored_db_id=stored_db_id
+                                                set_show_emulator_picker=set_show_emulator_picker
+                                            />
+                                        </Show>
                                     </div>
 
                                 // Video player, full width
@@ -554,4 +586,158 @@ fn format_date(date_str: &str) -> String {
 
     // Fallback to original string if parsing fails
     date_str.to_string()
+}
+
+#[component]
+fn EmulatorPickerModal(
+    emulators: ReadSignal<Vec<EmulatorInfo>>,
+    emulators_loading: ReadSignal<bool>,
+    stored_title: StoredValue<String>,
+    stored_platform: StoredValue<String>,
+    stored_db_id: StoredValue<i64>,
+    set_show_emulator_picker: WriteSignal<bool>,
+) -> impl IntoView {
+    // Track the current emulator preference
+    let (current_pref, set_current_pref) = signal::<Option<String>>(None);
+
+    // Load current preference when modal opens
+    Effect::new(move || {
+        let db_id = stored_db_id.get_value();
+        let platform = stored_platform.get_value();
+        spawn_local(async move {
+            if let Ok(pref) = tauri::get_emulator_preference(db_id, platform).await {
+                set_current_pref.set(pref);
+            }
+        });
+    });
+
+    view! {
+        <div class="emulator-picker-overlay" on:click=move |_| set_show_emulator_picker.set(false)>
+            <div class="emulator-picker-modal" on:click=|e| e.stop_propagation()>
+                <div class="emulator-picker-header">
+                    <h3>"Select Emulator"</h3>
+                    <button class="emulator-picker-close" on:click=move |_| set_show_emulator_picker.set(false)>"×"</button>
+                </div>
+                <div class="emulator-picker-content">
+                    // Show current preference indicator
+                    <Show when=move || current_pref.get().is_some()>
+                        {move || current_pref.get().map(|pref| view! {
+                            <div class="emulator-pref-indicator">
+                                "Default: " {pref}
+                            </div>
+                        })}
+                    </Show>
+
+                    <Show
+                        when=move || !emulators_loading.get()
+                        fallback=|| view! { <div class="emulator-loading"><div class="loading-spinner"></div>"Loading emulators..."</div> }
+                    >
+                        <Show
+                            when=move || !emulators.get().is_empty()
+                            fallback=|| view! { <div class="emulator-empty">"No emulators found for this platform."</div> }
+                        >
+                            <ul class="emulator-list">
+                                <For
+                                    each=move || emulators.get()
+                                    key=|emu| emu.id
+                                    children=move |emu| {
+                                        let name = emu.name.clone();
+                                        let name_display = emu.name.clone();
+                                        let name_for_click = emu.name.clone();
+                                        let name_for_game_pref = emu.name.clone();
+                                        let name_for_platform_pref = emu.name.clone();
+                                        let homepage = emu.homepage.clone();
+                                        let notes = emu.notes.clone();
+                                        let retroarch_core = emu.retroarch_core.clone();
+
+                                        let on_launch = move |_| {
+                                            let emulator_name = name_for_click.clone();
+                                            let title = stored_title.get_value();
+                                            let platform = stored_platform.get_value();
+                                            let db_id = stored_db_id.get_value();
+                                            set_show_emulator_picker.set(false);
+                                            spawn_local(async move {
+                                                // Record the play session
+                                                let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                web_sys::console::log_1(&format!("Would launch with emulator: {}", emulator_name).into());
+                                            });
+                                        };
+
+                                        let on_set_game_pref = move |e: web_sys::MouseEvent| {
+                                            e.stop_propagation();
+                                            let emulator_name = name_for_game_pref.clone();
+                                            let title = stored_title.get_value();
+                                            let platform = stored_platform.get_value();
+                                            let db_id = stored_db_id.get_value();
+                                            set_show_emulator_picker.set(false);
+                                            spawn_local(async move {
+                                                // Set the game preference
+                                                let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
+                                                // Record the play session
+                                                let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                web_sys::console::log_1(&format!("Set game preference and would launch with: {}", emulator_name).into());
+                                            });
+                                        };
+
+                                        let on_set_platform_pref = move |e: web_sys::MouseEvent| {
+                                            e.stop_propagation();
+                                            let emulator_name = name_for_platform_pref.clone();
+                                            let title = stored_title.get_value();
+                                            let platform = stored_platform.get_value();
+                                            let db_id = stored_db_id.get_value();
+                                            spawn_local(async move {
+                                                // Set the platform preference
+                                                let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
+                                                // Record the play session
+                                                let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                web_sys::console::log_1(&format!("Set platform preference and would launch with: {}", emulator_name).into());
+                                            });
+                                            set_show_emulator_picker.set(false);
+                                        };
+
+                                        let is_preferred = {
+                                            let name_check = name.clone();
+                                            move || current_pref.get().as_ref() == Some(&name_check)
+                                        };
+
+                                        view! {
+                                            <li class="emulator-item">
+                                                <div class="emulator-item-header" on:click=on_launch.clone()>
+                                                    <span class="emulator-name">{name_display}</span>
+                                                    {homepage.map(|url| view! {
+                                                        <a class="emulator-homepage" href={url.clone()} target="_blank" on:click=|e| e.stop_propagation()>"Website"</a>
+                                                    })}
+                                                </div>
+                                                {retroarch_core.map(|core| view! {
+                                                    <div class="emulator-core" on:click=on_launch.clone()>"RetroArch: " {core}</div>
+                                                })}
+                                                {notes.map(|n| view! {
+                                                    <div class="emulator-notes" on:click=on_launch.clone()>{n}</div>
+                                                })}
+                                                <div class="emulator-pref-buttons">
+                                                    <button
+                                                        class="emulator-pref-btn"
+                                                        class:active=is_preferred
+                                                        on:click=on_set_game_pref
+                                                    >
+                                                        "Always for this game"
+                                                    </button>
+                                                    <button
+                                                        class="emulator-pref-btn"
+                                                        on:click=on_set_platform_pref
+                                                    >
+                                                        "Always for platform"
+                                                    </button>
+                                                </div>
+                                            </li>
+                                        }
+                                    }
+                                />
+                            </ul>
+                        </Show>
+                    </Show>
+                </div>
+            </div>
+        </div>
+    }
 }

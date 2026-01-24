@@ -2118,3 +2118,78 @@ pub async fn get_all_emulators(
     let state_guard = state.read().await;
     handlers::get_all_emulators(&state_guard, filter_os.unwrap_or(true)).await
 }
+
+// ============ Emulator Preference Commands ============
+
+use crate::handlers::EmulatorPreferences;
+
+/// Get emulator preference for a game (checks game-specific, then platform)
+#[tauri::command]
+pub async fn get_emulator_preference(
+    launchbox_db_id: i64,
+    platform_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<String>, String> {
+    let state_guard = state.read().await;
+    handlers::get_emulator_preference(&state_guard, launchbox_db_id, &platform_name).await
+}
+
+/// Set emulator preference for a specific game
+#[tauri::command]
+pub async fn set_game_emulator_preference(
+    launchbox_db_id: i64,
+    emulator_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::set_game_emulator_preference(&state_guard, launchbox_db_id, &emulator_name).await
+}
+
+/// Set emulator preference for a platform (all games on that platform)
+#[tauri::command]
+pub async fn set_platform_emulator_preference(
+    platform_name: String,
+    emulator_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::set_platform_emulator_preference(&state_guard, &platform_name, &emulator_name).await
+}
+
+/// Clear a game-specific preference
+#[tauri::command]
+pub async fn clear_game_emulator_preference(
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::clear_game_emulator_preference(&state_guard, launchbox_db_id).await
+}
+
+/// Clear a platform preference
+#[tauri::command]
+pub async fn clear_platform_emulator_preference(
+    platform_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::clear_platform_emulator_preference(&state_guard, &platform_name).await
+}
+
+/// Get all emulator preferences (for settings UI)
+#[tauri::command]
+pub async fn get_all_emulator_preferences(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<EmulatorPreferences, String> {
+    let state_guard = state.read().await;
+    handlers::get_all_emulator_preferences(&state_guard).await
+}
+
+/// Clear all emulator preferences
+#[tauri::command]
+pub async fn clear_all_emulator_preferences(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::clear_all_emulator_preferences(&state_guard).await
+}

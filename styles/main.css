@@ -2901,3 +2901,284 @@ body.sidebar-resizing {
 body.sidebar-resizing * {
     cursor: col-resize !important;
 }
+
+/* ============================================================================
+   Emulator Picker Modal
+   ============================================================================ */
+
+.emulator-picker-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.emulator-picker-modal {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    width: 500px;
+    max-width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.emulator-picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-tertiary);
+    border-radius: 8px 8px 0 0;
+}
+
+.emulator-picker-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-highlight);
+}
+
+.emulator-picker-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.15s ease;
+}
+
+.emulator-picker-close:hover {
+    color: var(--text-highlight);
+}
+
+.emulator-picker-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.emulator-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.emulator-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.emulator-item:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-color);
+}
+
+.emulator-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.emulator-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-highlight);
+}
+
+.emulator-core {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.emulator-notes {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.emulator-homepage {
+    font-size: 12px;
+    color: var(--accent-color);
+    text-decoration: none;
+    align-self: flex-start;
+}
+
+.emulator-homepage:hover {
+    text-decoration: underline;
+}
+
+.emulator-loading,
+.emulator-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.emulator-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Emulator preference buttons */
+.emulator-pref-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.emulator-pref-btn {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 11px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.emulator-pref-btn:hover {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--text-highlight);
+}
+
+.emulator-pref-btn.active {
+    background: var(--success-color);
+    border-color: var(--success-color);
+    color: #000;
+}
+
+/* Emulator preference indicator */
+.emulator-pref-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--success-color);
+    background: rgba(78, 201, 176, 0.1);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+/* ============================================================================
+   Emulator Preferences Settings Section
+   ============================================================================ */
+
+.emulator-prefs-section {
+    margin-top: 24px;
+}
+
+.emulator-prefs-subsection {
+    margin-bottom: 20px;
+}
+
+.emulator-prefs-subsection h4 {
+    font-size: 12px;
+    font-weight: normal;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.emulator-prefs-empty {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 8px 0;
+}
+
+.emulator-pref-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.emulator-pref-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.emulator-pref-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.emulator-pref-game,
+.emulator-pref-platform {
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.emulator-pref-emulator {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.emulator-pref-clear-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.emulator-pref-clear-btn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: var(--text-highlight);
+}
+
+.emulator-prefs-clear-all {
+    margin-top: 16px;
+}
+
+.emulator-prefs-clear-all-btn {
+    padding: 8px 16px;
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--danger-color);
+    border-radius: 4px;
+    color: var(--danger-color);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.emulator-prefs-clear-all-btn:hover {
+    background: var(--danger-color);
+    color: var(--text-highlight);
+}

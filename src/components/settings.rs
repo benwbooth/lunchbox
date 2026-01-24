@@ -8,6 +8,9 @@ use crate::tauri::{
     get_settings, save_settings, get_credential_storage_name,
     test_screenscraper_connection, test_steamgriddb_connection,
     test_igdb_connection, get_all_regions, AppSettings,
+    get_all_emulator_preferences, clear_game_emulator_preference,
+    clear_platform_emulator_preference, clear_all_emulator_preferences,
+    EmulatorPreferences,
 };
 use super::ImageSourcesWizard;
 
@@ -454,6 +457,15 @@ pub fn Settings(
                                 </label>
                             </div>
 
+                            // Emulator Preferences Section
+                            <div class="settings-section">
+                                <h3>"Emulator Preferences"</h3>
+                                <p class="settings-hint">
+                                    "Manage your default emulator preferences for games and platforms."
+                                </p>
+                                <EmulatorPreferencesSection />
+                            </div>
+
                             <Show when=move || save_error.get().is_some()>
                                 <div class="settings-error">
                                     {move || save_error.get().unwrap_or_default()}
@@ -587,6 +599,167 @@ fn RegionPriorityList(
                     }
                 }
             </For>
+        </div>
+    }
+}
+
+/// Emulator preferences management section
+#[component]
+fn EmulatorPreferencesSection() -> impl IntoView {
+    let (prefs, set_prefs) = signal::<Option<EmulatorPreferences>>(None);
+    let (loading, set_loading) = signal(true);
+
+    // Load preferences on mount
+    Effect::new(move || {
+        spawn_local(async move {
+            match get_all_emulator_preferences().await {
+                Ok(p) => set_prefs.set(Some(p)),
+                Err(e) => {
+                    web_sys::console::error_1(&format!("Failed to load emulator preferences: {}", e).into());
+                    set_prefs.set(Some(EmulatorPreferences {
+                        game_preferences: Vec::new(),
+                        platform_preferences: Vec::new(),
+                    }));
+                }
+            }
+            set_loading.set(false);
+        });
+    });
+
+    let reload_prefs = move || {
+        set_loading.set(true);
+        spawn_local(async move {
+            if let Ok(p) = get_all_emulator_preferences().await {
+                set_prefs.set(Some(p));
+            }
+            set_loading.set(false);
+        });
+    };
+
+    let on_clear_all = move |_| {
+        spawn_local(async move {
+            if let Ok(()) = clear_all_emulator_preferences().await {
+                set_prefs.set(Some(EmulatorPreferences {
+                    game_preferences: Vec::new(),
+                    platform_preferences: Vec::new(),
+                }));
+            }
+        });
+    };
+
+    view! {
+        <div class="emulator-prefs-section">
+            <Show
+                when=move || !loading.get()
+                fallback=|| view! { <div class="emulator-loading">"Loading preferences..."</div> }
+            >
+                {move || prefs.get().map(|p| {
+                    let game_prefs = p.game_preferences.clone();
+                    let platform_prefs = p.platform_preferences.clone();
+                    let has_game_prefs = !game_prefs.is_empty();
+                    let has_platform_prefs = !platform_prefs.is_empty();
+                    let has_any = has_game_prefs || has_platform_prefs;
+
+                    view! {
+                        // Per-Game Preferences
+                        <div class="emulator-prefs-subsection">
+                            <h4>"Per-Game Preferences"</h4>
+                            {if has_game_prefs {
+                                view! {
+                                    <div class="emulator-pref-list">
+                                        {game_prefs.iter().map(|pref| {
+                                            let db_id = pref.launchbox_db_id;
+                                            let game_title = pref.game_title.clone().unwrap_or_else(|| format!("Game #{}", db_id));
+                                            let emulator_name = pref.emulator_name.clone();
+                                            let reload = reload_prefs.clone();
+
+                                            view! {
+                                                <div class="emulator-pref-item">
+                                                    <div class="emulator-pref-info">
+                                                        <span class="emulator-pref-game">{game_title}</span>
+                                                        <span class="emulator-pref-emulator">{emulator_name}</span>
+                                                    </div>
+                                                    <button
+                                                        class="emulator-pref-clear-btn"
+                                                        on:click=move |_| {
+                                                            spawn_local(async move {
+                                                                if let Ok(()) = clear_game_emulator_preference(db_id).await {
+                                                                    reload();
+                                                                }
+                                                            });
+                                                        }
+                                                    >
+                                                        "Clear"
+                                                    </button>
+                                                </div>
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! { <p class="emulator-prefs-empty">"No game-specific preferences set."</p> }.into_any()
+                            }}
+                        </div>
+
+                        // Per-Platform Preferences
+                        <div class="emulator-prefs-subsection">
+                            <h4>"Per-Platform Preferences"</h4>
+                            {if has_platform_prefs {
+                                view! {
+                                    <div class="emulator-pref-list">
+                                        {platform_prefs.iter().map(|pref| {
+                                            let platform_name = pref.platform_name.clone();
+                                            let platform_name_display = pref.platform_name.clone();
+                                            let emulator_name = pref.emulator_name.clone();
+                                            let reload = reload_prefs.clone();
+
+                                            view! {
+                                                <div class="emulator-pref-item">
+                                                    <div class="emulator-pref-info">
+                                                        <span class="emulator-pref-platform">{platform_name_display}</span>
+                                                        <span class="emulator-pref-emulator">{emulator_name}</span>
+                                                    </div>
+                                                    <button
+                                                        class="emulator-pref-clear-btn"
+                                                        on:click=move |_| {
+                                                            let platform = platform_name.clone();
+                                                            spawn_local(async move {
+                                                                if let Ok(()) = clear_platform_emulator_preference(platform).await {
+                                                                    reload();
+                                                                }
+                                                            });
+                                                        }
+                                                    >
+                                                        "Clear"
+                                                    </button>
+                                                </div>
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! { <p class="emulator-prefs-empty">"No platform preferences set."</p> }.into_any()
+                            }}
+                        </div>
+
+                        // Clear All Button
+                        {if has_any {
+                            view! {
+                                <div class="emulator-prefs-clear-all">
+                                    <button
+                                        class="emulator-prefs-clear-all-btn"
+                                        on:click=on_clear_all
+                                    >
+                                        "Clear All Preferences"
+                                    </button>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! {}.into_any()
+                        }}
+                    }
+                })}
+            </Show>
         </div>
     }
 }

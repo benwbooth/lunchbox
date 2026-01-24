@@ -386,3 +386,228 @@ pub async fn get_all_emulators(
 
     Ok(emulators)
 }
+
+// ============================================================================
+// Emulator Preference Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameEmulatorPref {
+    pub launchbox_db_id: i64,
+    pub emulator_name: String,
+    pub game_title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformEmulatorPref {
+    pub platform_name: String,
+    pub emulator_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorPreferences {
+    pub game_preferences: Vec<GameEmulatorPref>,
+    pub platform_preferences: Vec<PlatformEmulatorPref>,
+}
+
+// ============================================================================
+// Emulator Preference Handlers
+// ============================================================================
+
+/// Get emulator preference for a game (checks game-specific, then platform)
+pub async fn get_emulator_preference(
+    state: &AppState,
+    launchbox_db_id: i64,
+    platform_name: &str,
+) -> Result<Option<String>, String> {
+    let db_pool = state.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    // First check for game-specific preference
+    let game_pref: Option<(String,)> = sqlx::query_as(
+        "SELECT emulator_name FROM emulator_preferences WHERE launchbox_db_id = ?"
+    )
+    .bind(launchbox_db_id)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some((emulator_name,)) = game_pref {
+        return Ok(Some(emulator_name));
+    }
+
+    // Fall back to platform preference
+    let platform_pref: Option<(String,)> = sqlx::query_as(
+        "SELECT emulator_name FROM emulator_preferences WHERE platform_name = ?"
+    )
+    .bind(platform_name)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(platform_pref.map(|(name,)| name))
+}
+
+/// Set emulator preference for a specific game
+pub async fn set_game_emulator_preference(
+    state: &AppState,
+    launchbox_db_id: i64,
+    emulator_name: &str,
+) -> Result<(), String> {
+    let db_pool = state.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO emulator_preferences (launchbox_db_id, emulator_name, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(launchbox_db_id) DO UPDATE SET
+            emulator_name = excluded.emulator_name,
+            updated_at = CURRENT_TIMESTAMP
+        "#
+    )
+    .bind(launchbox_db_id)
+    .bind(emulator_name)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Set emulator preference for a platform (all games on that platform)
+pub async fn set_platform_emulator_preference(
+    state: &AppState,
+    platform_name: &str,
+    emulator_name: &str,
+) -> Result<(), String> {
+    let db_pool = state.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO emulator_preferences (platform_name, emulator_name, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(platform_name) DO UPDATE SET
+            emulator_name = excluded.emulator_name,
+            updated_at = CURRENT_TIMESTAMP
+        "#
+    )
+    .bind(platform_name)
+    .bind(emulator_name)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Clear a game-specific preference
+pub async fn clear_game_emulator_preference(
+    state: &AppState,
+    launchbox_db_id: i64,
+) -> Result<(), String> {
+    let db_pool = state.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    sqlx::query("DELETE FROM emulator_preferences WHERE launchbox_db_id = ?")
+        .bind(launchbox_db_id)
+        .execute(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Clear a platform preference
+pub async fn clear_platform_emulator_preference(
+    state: &AppState,
+    platform_name: &str,
+) -> Result<(), String> {
+    let db_pool = state.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    sqlx::query("DELETE FROM emulator_preferences WHERE platform_name = ?")
+        .bind(platform_name)
+        .execute(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Get all emulator preferences (for settings UI)
+pub async fn get_all_emulator_preferences(
+    state: &AppState,
+) -> Result<EmulatorPreferences, String> {
+    let db_pool = state.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    // Get game preferences
+    let game_prefs: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT launchbox_db_id, emulator_name FROM emulator_preferences WHERE launchbox_db_id IS NOT NULL ORDER BY updated_at DESC"
+    )
+    .fetch_all(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Look up game titles from games database
+    let mut game_preferences = Vec::new();
+    if let Some(games_pool) = state.games_db_pool.as_ref() {
+        for (db_id, emulator_name) in game_prefs {
+            let title: Option<(String,)> = sqlx::query_as(
+                "SELECT title FROM games WHERE launchbox_db_id = ? LIMIT 1"
+            )
+            .bind(db_id)
+            .fetch_optional(games_pool)
+            .await
+            .ok()
+            .flatten();
+
+            game_preferences.push(GameEmulatorPref {
+                launchbox_db_id: db_id,
+                emulator_name,
+                game_title: title.map(|(t,)| t),
+            });
+        }
+    }
+
+    // Get platform preferences
+    let platform_prefs: Vec<(String, String)> = sqlx::query_as(
+        "SELECT platform_name, emulator_name FROM emulator_preferences WHERE platform_name IS NOT NULL ORDER BY platform_name"
+    )
+    .fetch_all(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let platform_preferences = platform_prefs
+        .into_iter()
+        .map(|(platform_name, emulator_name)| PlatformEmulatorPref {
+            platform_name,
+            emulator_name,
+        })
+        .collect();
+
+    Ok(EmulatorPreferences {
+        game_preferences,
+        platform_preferences,
+    })
+}
+
+/// Clear all emulator preferences
+pub async fn clear_all_emulator_preferences(
+    state: &AppState,
+) -> Result<(), String> {
+    let db_pool = state.db_pool.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    sqlx::query("DELETE FROM emulator_preferences")
+        .execute(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}

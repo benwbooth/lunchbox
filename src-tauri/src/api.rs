@@ -144,6 +144,14 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/get_all_emulators", get(rspc_get_all_emulators))
         // rspc-style endpoints for play session
         .route("/rspc/record_play_session", get(rspc_record_play_session))
+        // rspc-style endpoints for emulator preferences
+        .route("/rspc/get_emulator_preference", get(rspc_get_emulator_preference))
+        .route("/rspc/set_game_emulator_preference", get(rspc_set_game_emulator_preference))
+        .route("/rspc/set_platform_emulator_preference", get(rspc_set_platform_emulator_preference))
+        .route("/rspc/clear_game_emulator_preference", get(rspc_clear_game_emulator_preference))
+        .route("/rspc/clear_platform_emulator_preference", get(rspc_clear_platform_emulator_preference))
+        .route("/rspc/get_all_emulator_preferences", get(rspc_get_all_emulator_preferences))
+        .route("/rspc/clear_all_emulator_preferences", get(rspc_clear_all_emulator_preferences))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
         .layer(cors)
@@ -1698,5 +1706,169 @@ async fn rspc_record_play_session(
             rspc_ok(()).into_response()
         }
         Err(e) => rspc_err::<()>(e.to_string()).into_response(),
+    }
+}
+
+// ============================================================================
+// Emulator Preference Handlers
+// ============================================================================
+
+use crate::handlers::EmulatorPreferences;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetEmulatorPreferenceInput {
+    launchbox_db_id: i64,
+    platform_name: String,
+}
+
+async fn rspc_get_emulator_preference(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Option<String>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: GetEmulatorPreferenceInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_emulator_preference(&state_guard, input.launchbox_db_id, &input.platform_name).await {
+        Ok(pref) => rspc_ok(pref).into_response(),
+        Err(e) => rspc_err::<Option<String>>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetGameEmulatorPreferenceInput {
+    launchbox_db_id: i64,
+    emulator_name: String,
+}
+
+async fn rspc_set_game_emulator_preference(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: SetGameEmulatorPreferenceInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::set_game_emulator_preference(&state_guard, input.launchbox_db_id, &input.emulator_name).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetPlatformEmulatorPreferenceInput {
+    platform_name: String,
+    emulator_name: String,
+}
+
+async fn rspc_set_platform_emulator_preference(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: SetPlatformEmulatorPreferenceInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::set_platform_emulator_preference(&state_guard, &input.platform_name, &input.emulator_name).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClearGameEmulatorPreferenceInput {
+    launchbox_db_id: i64,
+}
+
+async fn rspc_clear_game_emulator_preference(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: ClearGameEmulatorPreferenceInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::clear_game_emulator_preference(&state_guard, input.launchbox_db_id).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClearPlatformEmulatorPreferenceInput {
+    platform_name: String,
+}
+
+async fn rspc_clear_platform_emulator_preference(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: ClearPlatformEmulatorPreferenceInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::clear_platform_emulator_preference(&state_guard, &input.platform_name).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+async fn rspc_get_all_emulator_preferences(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::get_all_emulator_preferences(&state_guard).await {
+        Ok(prefs) => rspc_ok(prefs).into_response(),
+        Err(e) => rspc_err::<EmulatorPreferences>(e).into_response(),
+    }
+}
+
+async fn rspc_clear_all_emulator_preferences(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::clear_all_emulator_preferences(&state_guard).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
     }
 }
