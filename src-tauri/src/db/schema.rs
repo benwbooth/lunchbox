@@ -135,6 +135,7 @@ pub struct Media {
     pub height: Option<i64>,
 }
 
+/// User-configured emulator (for user database)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Emulator {
     pub id: String,
@@ -143,6 +144,23 @@ pub struct Emulator {
     pub emulator_type: String,
     pub version: Option<String>,
     pub installed: bool,
+}
+
+/// Emulator from shipped emulators.db (read-only reference data)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorInfo {
+    pub id: i64,
+    pub name: String,
+    pub homepage: Option<String>,
+    pub supported_os: Option<String>,
+    pub winget_id: Option<String>,
+    pub homebrew_formula: Option<String>,
+    pub flatpak_id: Option<String>,
+    pub retroarch_core: Option<String>,
+    pub save_directory: Option<String>,
+    pub save_extensions: Option<String>,
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

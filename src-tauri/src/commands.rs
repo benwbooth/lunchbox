@@ -2084,3 +2084,37 @@ pub async fn download_game_video(
 
     Ok(video_path.to_string_lossy().to_string())
 }
+
+// ============ Emulator Commands ============
+
+use crate::db::schema::EmulatorInfo;
+
+/// Get all emulators for a platform, filtered by current OS
+#[tauri::command]
+pub async fn get_emulators_for_platform(
+    platform_name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<EmulatorInfo>, String> {
+    let state_guard = state.read().await;
+    handlers::get_emulators_for_platform(&state_guard, &platform_name).await
+}
+
+/// Get a specific emulator by name
+#[tauri::command]
+pub async fn get_emulator(
+    name: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<EmulatorInfo>, String> {
+    let state_guard = state.read().await;
+    handlers::get_emulator(&state_guard, &name).await
+}
+
+/// Get all emulators (optionally filtered by current OS)
+#[tauri::command]
+pub async fn get_all_emulators(
+    filter_os: Option<bool>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<EmulatorInfo>, String> {
+    let state_guard = state.read().await;
+    handlers::get_all_emulators(&state_guard, filter_os.unwrap_or(true)).await
+}

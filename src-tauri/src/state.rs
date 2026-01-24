@@ -19,6 +19,8 @@ pub struct AppState {
     pub games_db_pool: Option<SqlitePool>,
     /// Separate game images database (LaunchBox CDN metadata, read-only)
     pub images_db_pool: Option<SqlitePool>,
+    /// Emulators database (emulator metadata and platform mappings, read-only)
+    pub emulators_db_pool: Option<SqlitePool>,
     pub settings: AppSettings,
 }
 
@@ -29,6 +31,7 @@ impl Default for AppState {
             user_db_path: None,
             games_db_pool: None,
             images_db_pool: None,
+            emulators_db_pool: None,
             settings: AppSettings::default(),
         }
     }
@@ -356,11 +359,46 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
         }
     };
 
+    // Find or decompress emulators database, then connect
+    let emulators_db_pool = {
+        let emulators_db_path = find_or_decompress_database(
+            db::EMULATORS_DB_NAME,
+            &app_data_dir,
+            resource_dir.as_deref(),
+        );
+
+        match emulators_db_path {
+            Some(path) => {
+                tracing::info!("Found emulators database at: {}", path.display());
+                let db_url = format!("sqlite:{}?mode=ro", path.display());
+                match SqlitePoolOptions::new()
+                    .max_connections(4)
+                    .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
+                    .await
+                {
+                    Ok(pool) => {
+                        tracing::info!("Connected to emulators database (read-only)");
+                        Some(pool)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to connect to emulators database: {}", e);
+                        None
+                    }
+                }
+            }
+            None => {
+                tracing::info!("No emulators database found");
+                None
+            }
+        }
+    };
+
     // Update state
     let mut state_guard = state.write().await;
     state_guard.db_pool = user_pool;
     state_guard.games_db_pool = games_db_pool;
     state_guard.images_db_pool = images_db_pool;
+    state_guard.emulators_db_pool = emulators_db_pool;
     state_guard.settings = settings;
     state_guard.user_db_path = Some(user_db_path);
 

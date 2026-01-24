@@ -88,6 +88,10 @@ pub fn run() {
             // Video download commands
             commands::check_cached_video,
             commands::download_game_video,
+            // Emulator commands
+            commands::get_emulators_for_platform,
+            commands::get_emulator,
+            commands::get_all_emulators,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

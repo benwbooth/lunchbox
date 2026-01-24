@@ -5,7 +5,7 @@
 //!
 //! This allows hot-reloading the backend while keeping the browser open.
 
-use lunchbox_lib::{api, db::{self, USER_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, APP_DATA_DIR}, router, state::AppState};
+use lunchbox_lib::{api, db::{self, USER_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, EMULATORS_DB_NAME, APP_DATA_DIR}, router, state::AppState};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -200,12 +200,41 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Find or decompress emulators database, then connect
+    let emulators_db_pool = {
+        match find_or_decompress_database(EMULATORS_DB_NAME, &data_dir) {
+            Some(path) => {
+                tracing::info!("Found emulators database at: {}", path.display());
+                let db_url = format!("sqlite:{}?mode=ro", path.display());
+                match SqlitePoolOptions::new()
+                    .max_connections(4)
+                    .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
+                    .await
+                {
+                    Ok(pool) => {
+                        tracing::info!("Connected to emulators database");
+                        Some(pool)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to connect to emulators database: {}", e);
+                        None
+                    }
+                }
+            }
+            None => {
+                tracing::info!("No emulators database found");
+                None
+            }
+        }
+    };
+
     // Create app state
     let state = Arc::new(RwLock::new(AppState {
         db_pool,
         user_db_path: Some(user_db_path),
         games_db_pool,
         images_db_pool,
+        emulators_db_pool,
         settings,
     }));
 

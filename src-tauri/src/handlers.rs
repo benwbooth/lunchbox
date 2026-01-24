@@ -10,6 +10,7 @@
 //! 3. Add wrapper in api.rs using the define_http_handler! macro
 //! 4. Register in lib.rs invoke_handler and api.rs create_router
 
+use crate::db::schema::EmulatorInfo;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 
@@ -270,4 +271,118 @@ pub async fn get_collection_games(state: &AppState, input: CollectionIdInput) ->
     }
 
     Ok(games)
+}
+
+// ============================================================================
+// Emulator handlers
+// ============================================================================
+
+/// Get current OS identifier for filtering emulators
+fn current_os() -> &'static str {
+    #[cfg(target_os = "windows")]
+    { "Windows" }
+    #[cfg(target_os = "macos")]
+    { "macOS" }
+    #[cfg(target_os = "linux")]
+    { "Linux" }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    { "Unknown" }
+}
+
+/// Get all emulators for a platform, filtered by current OS
+pub async fn get_emulators_for_platform(
+    state: &AppState,
+    platform_name: &str,
+) -> Result<Vec<EmulatorInfo>, String> {
+    let pool = state.emulators_db_pool.as_ref()
+        .ok_or_else(|| "Emulators database not initialized".to_string())?;
+
+    let os = current_os();
+
+    let emulators: Vec<EmulatorInfo> = sqlx::query_as(
+        r#"
+        SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
+               e.homebrew_formula, e.flatpak_id, e.retroarch_core,
+               e.save_directory, e.save_extensions, e.notes
+        FROM emulators e
+        JOIN platform_emulators pe ON e.id = pe.emulator_id
+        WHERE pe.platform_name = ?
+          AND (e.supported_os IS NULL OR e.supported_os LIKE '%' || ? || '%')
+        ORDER BY pe.is_recommended DESC, e.name
+        "#,
+    )
+    .bind(platform_name)
+    .bind(os)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(emulators)
+}
+
+/// Get a specific emulator by name
+pub async fn get_emulator(
+    state: &AppState,
+    name: &str,
+) -> Result<Option<EmulatorInfo>, String> {
+    let pool = state.emulators_db_pool.as_ref()
+        .ok_or_else(|| "Emulators database not initialized".to_string())?;
+
+    let emulator: Option<EmulatorInfo> = sqlx::query_as(
+        r#"
+        SELECT id, name, homepage, supported_os, winget_id,
+               homebrew_formula, flatpak_id, retroarch_core,
+               save_directory, save_extensions, notes
+        FROM emulators
+        WHERE name = ?
+        "#,
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(emulator)
+}
+
+/// Get all emulators (optionally filtered by current OS)
+pub async fn get_all_emulators(
+    state: &AppState,
+    filter_os: bool,
+) -> Result<Vec<EmulatorInfo>, String> {
+    let pool = state.emulators_db_pool.as_ref()
+        .ok_or_else(|| "Emulators database not initialized".to_string())?;
+
+    let emulators: Vec<EmulatorInfo> = if filter_os {
+        let os = current_os();
+        sqlx::query_as(
+            r#"
+            SELECT id, name, homepage, supported_os, winget_id,
+                   homebrew_formula, flatpak_id, retroarch_core,
+                   save_directory, save_extensions, notes
+            FROM emulators
+            WHERE supported_os IS NULL OR supported_os LIKE '%' || ? || '%'
+            ORDER BY name
+            "#,
+        )
+        .bind(os)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as(
+            r#"
+            SELECT id, name, homepage, supported_os, winget_id,
+                   homebrew_formula, flatpak_id, retroarch_core,
+                   save_directory, save_extensions, notes
+            FROM emulators
+            ORDER BY name
+            "#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    };
+
+    Ok(emulators)
 }

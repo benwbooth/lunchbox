@@ -19,6 +19,9 @@ pub const GAMES_DB_NAME: &str = "games";
 /// Game images database (LaunchBox CDN image URLs)
 pub const IMAGES_DB_NAME: &str = "game_images";
 
+/// Emulators database (emulator metadata and platform mappings)
+pub const EMULATORS_DB_NAME: &str = "emulators";
+
 /// App data directory name
 pub const APP_DATA_DIR: &str = "lunchbox";
 
