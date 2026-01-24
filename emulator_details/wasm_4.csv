@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+WASM-4,WASM-4 (w4),Windows;Linux;macOS,https://wasm4.org/,,,,,same directory as game,.disk,Official runtime; install via npm (npm install -g wasm4) or download from GitHub releases; also bundleable as standalone native executable
+WASM-4,RetroArch,Windows;Linux;macOS;Android;iOS,https://www.retroarch.com/,Libretro.RetroArch,retroarch,org.libretro.RetroArch,wasm4,~/.config/retroarch/saves,.srm;.state,Multi-system frontend; WASM-4 core available through Online Updater; supports save states and netplay

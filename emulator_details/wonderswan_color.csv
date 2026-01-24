@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+WonderSwan Color,Mesen,Windows;Linux;macOS,https://www.mesen.ca/,SourMesen.Mesen2,,,,"~/Documents/Mesen/Saves (Linux/macOS); %USERPROFILE%\Documents\Mesen\Saves (Windows)",.sav,High accuracy; on par with ares; built-in debugger and profiler
+WonderSwan Color,ares,Windows;Linux;macOS,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,Same directory as ROM or user-configured path,.sav,High accuracy; descendant of higan/bsnes; supports 40+ systems
+WonderSwan Color,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,beetle_cygne,~/.mednafen/sav (Linux/macOS); same as executable (Windows),.sav,Mid accuracy; command-line driven; Beetle Cygne is the libretro core name

@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Camputers Lynx,Jynx,Windows;Linux,https://github.com/jonathan-markland/Jynx,,,,,~/.local/share/jynx,.lynxsnapshot,Open-source emulator for Lynx 48K/96K. Linux support via Raspberry Pi ARM build. Settings stored in non-roaming app data folder on Windows.
+Camputers Lynx,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame,.sta;.nv;.cfg,Camputers Lynx support since v0.167. Improved tape support in v0.200. Save states in sta/ dir. NVRAM in nvram/ dir.

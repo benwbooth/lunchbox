@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari Jaguar,BigPEmu,Windows;Linux;iOS;Android,https://www.richwhitehouse.com/jaguar/,,,com.richwhitehouse.BigPEmu,,~/.var/app/com.richwhitehouse.BigPEmu/data/UserData,.bigpcfg,First emulator with 100% retail compatibility; supports Jaguar CD; proprietary license; also available on App Store
+Atari Jaguar,Virtual Jaguar,Windows;Linux;macOS,https://icculus.org/virtualjaguar/,,,,virtual_jaguar,~/.local/share/data/virtualjaguar/eeproms,.srm,Open source GPLv3; libretro core still actively maintained; standalone development inactive

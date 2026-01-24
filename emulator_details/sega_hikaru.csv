@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Hikaru,DEmul,Windows,http://demul.emulation64.com/,,,,,./nvram/,.eeprom;.sram,Best Hikaru compatibility; closed-source; requires BIOS files
+Sega Hikaru,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram/,.nv;.cfg;.sta,Preliminary Hikaru support; games marked as not working; open-source

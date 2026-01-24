@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega SC-3000,MasterGear,Windows;Linux;Android,http://fms.komkon.org/MG/,,,,,,.sav;.srm,Recommended for PC/x86 platforms; proprietary license; netplay support
+Sega SC-3000,MAME,Windows;Linux;macOS,https://www.mamedev.org/release.html,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta;.nv,Recommended for comprehensive hardware/peripheral support; GPLv2/BSD-3-Clause license

@@ -1,0 +1,7 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+ColecoVision,FinalBurn Neo,Windows;Linux;macOS;FreeBSD,https://neo-source.com,,,,fbneo,~/.config/retroarch/saves/fbneo,.nv;.hi,Recommended for ColecoVision; better compatibility than MAME/MESS. Requires coleco BIOS romset.
+ColecoVision,JollyCV,Windows;Linux;macOS;FreeBSD,https://jgemu.gitlab.io/,,,,jollycv,~/.config/retroarch/saves,.state,BSD-3-Clause license; also emulates CreatiVision and My Vision.
+ColecoVision,ColEm,Windows;Linux;macOS;Android;iOS,http://fms.komkon.org/ColEm/,,,,,~/.config/colem,.sav;.sta,Long-standing emulator with mobile versions. Supports Super Game Module and EEPROM saves.
+ColecoVision,BizHawk,Windows;Linux,https://tasvideos.org/BizHawk,,,,,BizHawk/ColecoVision/SaveRAM,.SaveRAM;.State,Tool-assisted speedrun emulator with full rerecording and Lua scripting support. Supports RetroAchievements.
+ColecoVision,ares,Windows;Linux;macOS;BSD,https://ares-emu.net,,ares-emulator,dev.ares.ares,,~/.local/share/ares/saves,.sav;.bsN,Multi-system emulator focused on accuracy and preservation. Descendant of higan/bsnes.
+ColecoVision,Gearcoleco,Windows;Linux;macOS;BSD,https://github.com/drhelius/Gearcoleco,,,,gearcoleco,~/.config/retroarch/saves,.sav;.state,Accurate Z80 and TMS9918 emulation. Supports Super Game Module (SGM) and MegaCart ROMs.

@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Triforce,Dolphin Triforce,Windows;Linux;macOS;Android,https://dolphin-emu.org/download/list/Triforce/1/,,,,,~/.dolphin-emu/StateSaves,.gci;.raw;.s01,Unmaintained branch of Dolphin (last updated 2014). Requires gecko codes for many games. GitHub mirrors available at github.com/EIGHTFINITE/dolphin-triforce
+Sega Triforce,TeknoParrot,Windows,https://teknoparrot.com/,,,,,~/.config/TeknoParrot,.bin;.sav,Closed-source arcade emulator. Premium subscription required for some games. Supports Mario Kart Arcade GP series

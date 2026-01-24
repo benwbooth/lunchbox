@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo - e-Reader,mGBA,Windows;Linux;macOS;FreeBSD,https://mgba.io/,JeffreyPfau.mGBA,mgba,io.mgba.mGBA,mgba,same directory as ROM,.sav;.ss0;.ss1,Full e-Reader hardware emulation with link functionality; best emulator for e-Reader support; requires matching BIOS region
+Nintendo - e-Reader,No$GBA,Windows,https://www.nogba.com/,,,,,[No$GBA directory]/Battery,.sav,Full e-Reader standalone emulation only; Windows-only; no link functionality
+Nintendo - e-Reader,VBA-M,Windows;Linux;macOS,https://visualboyadvance-m.org/,VisualBoyAdvance-M.VisualBoyAdvance-M,visualboyadvance-m,com.vba_m.visualboyadvance-m,vbam,same directory as ROM,.sav;.sgm,Partial e-Reader support in standalone; incomplete support for all e-Reader connectivity modes

@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Android,Waydroid,Linux,https://waydro.id/,,,,,~/.local/share/waydroid/data/media/0,,"Linux-only container-based emulator running LineageOS; runs Android 13; requires Wayland"
+Android,Genymotion,Windows;Linux;macOS,https://www.genymotion.com/,Genymobile.Genymotion,genymotion,,,"%localappdata%\Genymobile\Genymotion\deployed",,"Proprietary; free for personal use; requires VirtualBox on Windows; uses QEMU on Linux/macOS"
+Android,Google Play Games,Windows,https://play.google.com/googleplaygames/,,,,,"%localappdata%\Google\Play Games\userdata_*\avd\userdata.img",,"Official Google emulator; limited to supported titles; Windows only; cloud saves via Google Drive"
+Android,Trinity,Windows,https://trinityemulator.github.io/,,,,,./hda.img,,"GPLv2; high performance; requires Intel VT; Hyper-V or HAXM; includes OpenGApps"

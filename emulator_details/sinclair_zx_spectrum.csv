@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sinclair ZX Spectrum,FUSE,Windows;Linux;macOS;FreeBSD,https://fuse-emulator.sourceforge.net/,,fredm-fuse,net.sf.fuse_emulator,fuse,~/.fuse,.szx;.z80;.sna,Free Unix Spectrum Emulator; supports 16K/48K/128K/+2/+2A/+3 and clones; GPLv2
+Sinclair ZX Spectrum,Spectral,Windows;Linux;macOS,https://github.com/r-lyeh/Spectral,,,,,,.z80;.sna;.szx,Portable emulator with embedded ZXDB database; internal savestates; public domain
+Sinclair ZX Spectrum,ZEsarUX,Windows;Linux;macOS;FreeBSD,https://github.com/chernandezba/zesarux,,zesarux,,,"~/.zesaruxrc (config), user-selected save location",.z80;.zx,Supports ZX80/81/Spectrum/128K/+2/+3/Pentagon/ZX-Uno/ZX-Next; GPLv3
+Sinclair ZX Spectrum,Speccy,Windows;Linux;macOS;FreeBSD;Android,https://fms.komkon.org/Speccy/,,,,,,"user-selected location",.z80;.sna;.scr,Proprietary; by Marat Fayzullin; supports 16K/48K/128K/+2/+2A/+3 and Timex models
+Sinclair ZX Spectrum,EightyOne,Windows,https://sourceforge.net/projects/eightyone-sinclair-emulator/,,,,,,".z81;.tzx;.p",Windows-only; primarily ZX80/ZX81 emulator but also supports ZX Spectrum; GPLv2

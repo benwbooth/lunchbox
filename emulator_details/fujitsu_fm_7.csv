@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Fujitsu FM-7,XM7,Windows;Linux;macOS;FreeBSD,https://web.archive.org/web/20210722152017/http://retropc.net/ryu/xm7/xm7.shtml,,,,,,.xm7,Recommended; No longer maintained; Latest version (3.4L77SX+z09) Windows only; earlier versions for other platforms
+Fujitsu FM-7,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta/fm7,.sta,Active development; FM-7 driver experimental; Supports fm7 and fm77av models

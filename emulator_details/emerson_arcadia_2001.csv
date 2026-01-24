@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Emerson Arcadia 2001,WinArcadia,Windows,https://amigan.1emu.net/releases/,,,,,./States,.cos,Recommended. High accuracy emulator by James Jacobs. Also emulates Interton VC 4000 family and other Signetics 2650-based systems. Portable application stores saves alongside executable.
+Emerson Arcadia 2001,DroidArcadia,Android,https://amigan.1emu.net/releases/,,,,,/storage/emulated/0/DroidArcadia,.cos,Recommended Android port of WinArcadia subset. Requires Android 8.0+. COS save states not cross-compatible with WinArcadia.
+Emerson Arcadia 2001,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta,.sta,Multi-system emulator. Arcadia 2001 support via MESS integration. Requires ar_bios.zip and arcadia.xml hash file.

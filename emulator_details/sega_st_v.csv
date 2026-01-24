@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega ST-V,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram,.nv;.cfg,Most compatible ST-V emulator; requires stvbios.zip
+Sega ST-V,Mednafen,Windows;Linux;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,mednafen_saturn_libretro,~/.mednafen/sav,.bkr;.bcr;.smpc,Experimental ST-V support since v1.31.0; highly accurate
+Sega ST-V,Kronos,Windows;Linux,https://fcare.github.io/,,,,kronos_libretro,~/.local/share/kronos,.bin;.bcr;.bkr;.smpc,Fork of Yaba Sanshiro; requires OpenGL 4.3; standalone saves in bkram.bin

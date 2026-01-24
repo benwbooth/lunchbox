@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Mattel Intellivision,jzIntv,Windows;Linux;macOS;Android,http://spatula-city.org/~im14u2c/intv/,,,,,~/.jzintv,.jlp,Most complete and accurate Intellivision emulator; JLP save game support via --jlp-savegame flag; jzIntvImGui provides GUI frontend
+Mattel Intellivision,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.cfg,Multi-system emulator with good ECS and Intellivoice support
+Mattel Intellivision,FreeIntv,Windows;Linux;macOS;Android;iOS,http://neocomputer.org/projects/freeintv/,,,,freeintv,~/.config/retroarch/saves,.state,Libretro core designed for SNES-era joypads; does not support ECS or Intellivoice

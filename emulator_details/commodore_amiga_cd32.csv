@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Commodore Amiga CD32,FS-UAE,Windows;Linux;macOS,https://fs-uae.net/,,fs-uae,net.fsuae.FS-UAE,,~/Documents/FS-UAE/Save States,.uss,Cross-platform Amiga emulator based on WinUAE with focus on gaming; supports CD32/CDTV; has built-in WHDLoad support
+Commodore Amiga CD32,WinUAE,Windows,https://www.winuae.net/,WinUAE.WinUAE,,,,%PUBLIC%\Documents\WinUAE\StateFiles,.uss,Most accurate and fully-featured Amiga emulator; Windows only; supports CD32 through configuration
+Commodore Amiga CD32,PUAE (RetroArch),Windows;Linux;macOS;Android;iOS,https://docs.libretro.com/library/puae/,Libretro.RetroArch,retroarch,org.libretro.RetroArch,puae,~/.config/retroarch/saves,.nvr;.state;.hdf,LibRetro core based on P-UAE/WinUAE; auto-detects CD32 when loading CD images; requires CD32 kickstart ROMs

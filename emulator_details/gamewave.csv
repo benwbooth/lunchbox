@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+GameWave,,,,,,,,,,"No recommended emulators found. The GameWave (ZAPiT Games, 2005) remains unemulated. GameWaveFans project on GitHub provides file extraction tools but no working emulator."

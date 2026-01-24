@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega 32X,ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/,save.ram,95% 32X compatibility as of v131; most accurate 32X emulation available
+Sega 32X,PicoDrive,Windows;Linux;macOS;Android,http://notaz.gp2x.de/pico.php,,,org.libretro.RetroArch,picodrive,~/.config/retroarch/saves,.srm,Only RetroArch core with 32X and Pico support; prioritizes speed over accuracy
+Sega 32X,BizHawk,Windows;Linux,https://tasvideos.org/Bizhawk,,,,,BizHawk/Sega32X/SaveRAM,.SaveRAM;.state,Uses bundled PicoDrive core; designed for TAS and rerecording

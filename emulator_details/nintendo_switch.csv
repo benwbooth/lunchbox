@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Switch,Ryubing (Ryujinx fork),Windows;Linux;macOS;Android;iOS,https://ryubing.com/,,,,io.github.ryubing.Ryujinx,~/.config/Ryujinx/bis/user/save,,Active community fork of Ryujinx after original project ceased October 2024
+Nintendo Switch,Torzu (yuzu fork),Windows;Linux;Android,https://github.com/litucks/torzu,,,onion.torzu_emu.torzu,,~/.local/share/yuzu/nand/user/save,,Active yuzu fork focused on long-term maintenance; Flatpak not on Flathub (manual install from GitHub)
+Nintendo Switch,Eden,Windows;Linux;macOS;Android,https://eden-emulator.github.io/,,,,,~/.local/share/yuzu/nand/user/save,,Active yuzu fork in pre-alpha; distributed via AppImage and .deb for Linux

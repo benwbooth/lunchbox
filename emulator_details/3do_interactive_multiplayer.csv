@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+3DO Interactive Multiplayer,Opera,Windows;Linux;macOS;Android;iOS,https://github.com/libretro/opera-libretro,Libretro.RetroArch,retroarch,org.libretro.RetroArch,opera,~/.config/retroarch/saves,.srm;.state,libretro core only - requires RetroArch; per-game NVRAM as .srm or shared 3DO.nvram file

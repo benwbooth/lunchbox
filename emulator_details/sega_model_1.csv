@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Model 1,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.sta;.cfg,Only emulator capable of running Sega Model 1 games; NVRAM stores high scores and settings

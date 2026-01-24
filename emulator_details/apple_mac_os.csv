@@ -1,0 +1,9 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Apple Mac OS,Basilisk II,Windows;Linux;macOS,https://basilisk.cebix.net/,,,net.cebix.basilisk,,~/.basilisk_ii_prefs,.dsk;.img,68k Mac emulator for System 6.0.7 to Mac OS 8.1. Disk images stored in configured paths.
+Apple Mac OS,SheepShaver,Windows;Linux;macOS,https://sheepshaver.cebix.net/,,,net.cebix.sheepshaver,,~/.sheepshaver_prefs,.dsk;.img,PowerPC Mac emulator for Mac OS 7.5.2 to 9.0.4. No JIT on ARM hosts.
+Apple Mac OS,Mini vMac,Windows;Linux;macOS;Android;iOS,https://www.gryphel.com/c/minivmac/,,mini-vmac,,minivmac,./out,.dsk;.img;.hvf,Early Mac emulator (128K to Classic). RetroArch core available. Saves to 'out' folder on Linux.
+Apple Mac OS,Clock Signal,Linux;macOS;FreeBSD,https://github.com/TomHarte/CLK,,clock-signal,,,,.dsk;.img,Cycle-accurate Mac 512ke/Plus emulator. Snap package on Linux. Document-based app on macOS.
+Apple Mac OS,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram;~/.mame/sta,.sta;.nv,Multi-system emulator supporting all 68k Macs. Various RetroArch core versions available.
+Apple Mac OS,OSX-KVM,Linux,https://github.com/kholia/OSX-KVM,,,,,,,"KVM-based virtualization for running macOS on Linux. Supports Monterey, Ventura, Sonoma."
+Apple Mac OS,VirtualBuddy,macOS,https://github.com/insidegui/VirtualBuddy,,virtualbuddy,,,,.bundle,Apple Silicon native virtualizer for macOS 12+. Requires macOS 13 or later on host.
+Apple Mac OS,macOS on Hyper-V,Windows,https://github.com/balopez83/macOS_On_Hyper-V,,,,,,.vhdx,Hyper-V based virtualization for macOS on Windows. Requires OpenCore.

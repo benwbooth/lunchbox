@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo 64,ares,Windows;Linux;macOS,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Nintendo 64,.eeprom;.flash;.pak,High accuracy multi-system emulator; uses .eeprom and .flash instead of common .eep and .fla extensions
+Nintendo 64,Gopher64,Windows;Linux,https://github.com/gopher64/gopher64,,,io.github.gopher64.gopher64,,~/.local/share/gopher64,.sra;.eep;.fla;.mpk,More accurate than simple64; built-in netplay; successor to Simple64
+Nintendo 64,RMG,Windows;Linux,https://github.com/Rosalie241/RMG,,,com.github.Rosalie241.RMG,,~/.local/share/RMG/Save/Game,.eep;.sra;.fla;.mpk,Mupen64Plus frontend; superior to simple64 with GLideN64 plugin
+Nintendo 64,Mupen64Plus-Next,Windows;Linux;macOS;FreeBSD,,,,mupen64plus_next,~/.config/retroarch/saves,.srm;.eep;.sra;.fla;.mpk,RetroArch core; more compatible than ParaLLEl-N64; combines multiple save types into single .srm file

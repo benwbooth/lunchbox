@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Hartung Game Master,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram;~/.mame/sta,.nv;.sta;.cfg,Multi-system emulator; Game Master support added in version 0.139; also known as Systema 2000 and Super Game

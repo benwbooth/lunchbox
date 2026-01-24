@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+ZiNc,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta,.sta,Recommended for ZN-1/ZN-2/Namco System 11 arcade hardware. MAME developers state it does everything the original ZiNc emulator did but better.

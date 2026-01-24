@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Entex Adventure Vision,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram;~/.mame/sta,.nv;.sta;.cfg,Multi-purpose emulation framework; primary recommended emulator for Adventure Vision; requires advision.zip BIOS
+Entex Adventure Vision,AdViEmulator,Windows;Linux;BSD,https://sourceforge.net/projects/adviemulator/,,,,,,,Dedicated Adventure Vision emulator with Qt interface and debugging capabilities; v1.1 available from MEGA

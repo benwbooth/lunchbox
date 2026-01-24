@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Apogee BK-01,Emu80,Windows;Linux,http://emu80.org,,,,,~/emu80,.rka;.rkr;.gam,Open multiplatform emulator for Soviet computers including Radio-86RK and Apogee. Web version at http://online.emu80.org
+Apogee BK-01,MAME,Windows;Linux;macOS,https://www.mamedev.org,,mame,org.mamedev.MAME,mame_libretro,~/.mame/sta;~/.mame/nvram,.sta,Emulates Apogee via Radio-86RK driver. MAME driver name is 'apogee'. Good emulation status.

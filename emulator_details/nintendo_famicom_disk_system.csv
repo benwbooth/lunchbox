@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo Famicom Disk System,Mesen,Windows;Linux;macOS,https://www.mesen.ca/,SourMesen.Mesen2,,,mesen,~/Documents/Mesen/Saves,.sav;.srm,Cycle-accurate multi-system emulator; most compatible NES/FDS emulator
+Nintendo Famicom Disk System,Nestopia UE,Windows;Linux;macOS;FreeBSD,http://0ldsk00l.ca/nestopia/,,homebrew/cask/nestopia-ue,ca._0ldsk00l.Nestopia,nestopia,Same directory as ROMs,.sav,Cycle-accurate; saves written on quit
+Nintendo Famicom Disk System,FCEUX,Windows;Linux;macOS;FreeBSD,https://fceux.com/,FCEUX.FCEUX,fceux,,,~/.fceux/sav,.sav;.fcs,Highly-accurate; excellent debugging tools; .fcs for savestates
+Nintendo Famicom Disk System,puNES,Windows;Linux;FreeBSD,https://github.com/punesemu/puNES,,,io.github.punesemu.puNES,,$XDG_DATA_HOME/puNES,.sav,Second most accurate NES/FDS emulator; 98.08% accuracy
+Nintendo Famicom Disk System,ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net/,,,dev.ares.ares,,User-configurable saves path,.sav;.eeprom;.flash;.ram,Multi-system emulator; cycle-accurate NES core

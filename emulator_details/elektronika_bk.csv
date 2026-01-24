@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Elektronika BK,BKBTL,Windows;Linux;macOS,https://github.com/nzeemin/bkbtl,,,,bk,~/.config/bkbtl,.wav,BK Back to Life emulator; Qt version (bkbtl-qt) for cross-platform; uses WAV files for tape save/load; AppImage available for Linux
+Elektronika BK,bk-emulator,Linux;macOS,https://github.com/emestee/bk-emulator,,,,,~/.config/bk-emulator,.bin,SDL-based emulator; also supports Terak 8510/a; requires building from source
+Elektronika BK,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,,~/.mame/nvram,.nv;.sta,BK-0010 has Good status; BK-0011M has Preliminary status; requires BIOS ROMs
+Elektronika BK,RetroArch (bk core),Windows;Linux;macOS;Android;iOS,https://www.retroarch.com/,,,org.libretro.RetroArch,bk,~/.config/retroarch/states,.state,Libretro port; no native saves; supports save states and rewind; requires BIOS ROMs in system/bk folder

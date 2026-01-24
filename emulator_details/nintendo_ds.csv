@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo DS,melonDS,Windows;Linux;macOS;FreeBSD,https://melonds.kuribo64.net/,melonDS.melonDS,melonds,net.kuribo64.melonDS,,~/.config/melonDS,.sav,Standalone DS/DSi emulator with OpenGL renderer and upscaling support
+Nintendo DS,melonDS DS,Windows;Linux;macOS;Android;iOS,https://github.com/JesseTG/melonds-ds,,,,,melonds_ds,~/.config/retroarch/saves,.srm,RetroArch core with full Wi-Fi support and RetroAchievements; requires RetroArch
+Nintendo DS,DeSmuME,Windows;Linux;macOS,https://desmume.org/,DeSmuMETeam.DeSmuME,desmume,org.desmume.DeSmuME,desmume,~/.config/desmume,.dsv,Mature emulator with TAS tools and GDB debugging support
+Nintendo DS,BizHawk,Windows;Linux,https://github.com/TASEmulators/BizHawk,,,,,~/.config/BizHawk/NDS/SaveRAM,.SaveRAM,Multi-system emulator for TAS; uses melonDS core internally; limited macOS support

@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+SNK Neo Geo AES,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,".nv;.cfg",Comprehensive multi-system emulator; AES mode via Universe BIOS
+SNK Neo Geo AES,FinalBurn Neo,Windows;Linux;macOS,https://github.com/finalburnneo/FBNeo,,,,fbneo,~/.config/fbneo/nvram,".nv;.hi",Active development; full AES compatibility; libretro core recommended for Linux/macOS
+SNK Neo Geo AES,Geolith,Windows;Linux;macOS;FreeBSD,https://gitlab.com/jgemu/geolith,,,,geolith,~/.config/geolith,".nv;.mcr;.srm",Highly accurate AES/MVS emulator; uses .NEO ROM format only
+SNK Neo Geo AES,ares,Windows;Linux;macOS,https://ares-emu.net/,,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav,Multi-system emulator; Neo Geo AES support; active development

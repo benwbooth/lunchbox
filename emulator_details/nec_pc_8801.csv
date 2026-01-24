@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+NEC PC-8801,QUASI88,Windows;Linux;macOS;FreeBSD;Android;iOS,https://www.eonet.ne.jp/~showtime/quasi88/,,,org.libretro.RetroArch,quasi88,~/.var/app/org.libretro.RetroArch/config/retroarch/saves,.srm,Recommended; RetroArch core supports RetroAchievements; standalone version 0.7.3; uses SDL2
+NEC PC-8801,XM8,Windows;Linux;macOS;Android,http://retropc.net/pi/xm8/,,,,,~/.local/share/retro_pc_pi/xm8,.d88,Recommended; version 1.70; based on ePC-8801MA; macOS port by bubio at github.com/bubio/xm8mac
+NEC PC-8801,M88kai,Windows,http://nenecchi.kirara.st/,,,,,./,.d88;.sta,Recommended; version 2.21a; saves states in emulator directory; requires BIOS ROMs
+NEC PC-8801,ePC-8801MA,Windows,http://takeda-toshiya.my.coocan.jp/pc9801/index.html,,,,,./,.d88,Recommended; part of Common Source Code Project; GPLv2 licensed; basis for XM8
+NEC PC-8801,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,,~/.mame/nvram;~/.mame/sta,.nv;.sta,PC-8801MA/MH/mkIISR promoted to working status in v0.251; emulation still incomplete

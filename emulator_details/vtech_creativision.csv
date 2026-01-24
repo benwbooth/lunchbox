@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+VTech CreatiVision,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta,Multi-purpose emulation framework; CreatiVision driver since v0.135
+VTech CreatiVision,JollyCV,Windows;Linux;macOS;FreeBSD,https://gitlab.com/jgemu/jollycv,,,,jollycv,~/.config/retroarch/saves,.srm,100% compatibility with CreatiVision library; BSD-3-Clause license; no standalone packages available

@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Genesis,Genesis Plus GX,Windows;Linux;macOS;FreeBSD;Web,https://github.com/ekeeke/Genesis-Plus-GX,Libretro.RetroArch,,,genesis_plus_gx,~/.config/retroarch/saves,.srm;.brm;.state,Highly accurate; available only through RetroArch/libretro on desktop platforms; native versions for Wii/GameCube
+Sega Genesis,ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav;.state,Multi-system emulator; no libretro core available; cycle-accurate emulation
+Sega Genesis,PicoDrive,Windows;Linux;macOS;Android,https://github.com/notaz/picodrive,Libretro.RetroArch,,,picodrive,~/.config/retroarch/saves,.srm;.state,Supports 32X; designed for ARM devices; available through RetroArch
+Sega Genesis,BlastEm,Windows;Linux;macOS,https://www.retrodev.com/blastem/,,blastem,com.retrodev.blastem,blastem,~/.local/share/blastem,.srm;.state,Fast and highly accurate; standalone available on all platforms

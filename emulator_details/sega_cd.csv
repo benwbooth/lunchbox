@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega CD,Genesis Plus GX,Windows;Linux;macOS;FreeBSD;Android;iOS,https://github.com/ekeeke/Genesis-Plus-GX,,,,genesis_plus_gx,~/.config/retroarch/saves,.srm;.brm,100% Sega CD compatibility; available only through RetroArch on most platforms
+Sega CD,ares,Windows;Linux;macOS;FreeBSD,https://ares-emu.net,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares,.sav,86% of Mega CD library playable to completion as of v132; standalone multi-system emulator
+Sega CD,PicoDrive,Windows;Linux;macOS;Android,http://notaz.gp2x.de/pico.php,,,,picodrive,~/.config/retroarch/saves,.srm,Supports Sega CD and 32X; primarily available through RetroArch; originally designed for ARM handhelds
+Sega CD,BlastEm,Windows;Linux;macOS,https://www.retrodev.com/blastem/,,blastem,com.retrodev.blastem,blastem,~/.config/blastem,.sav;.state;.gst,Sega CD support is experimental in nightly builds only; very high Genesis/Mega Drive accuracy

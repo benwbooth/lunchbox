@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Microsoft Xbox 360,Xenia,Windows;Linux,https://xenia.jp,Xenia.Xenia,,,,~/Documents/xenia/content,,"Primary recommended Xbox 360 emulator; ~55% game compatibility; Linux support via Xenia Canary/Edge builds; saves organized in content/[ProfileXUID]/[GameID]/[ContentType] structure"

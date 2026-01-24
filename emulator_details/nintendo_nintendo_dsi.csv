@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo - Nintendo DSi,melonDS,Windows;Linux;macOS;Android;iOS,https://melonds.kuribo64.net/,melonDS.melonDS,melonds,net.kuribo64.melonDS,melonDS DS,~/.config/melonDS,.sav,Recommended; DSi support with DSiWare; JIT recompiler; OpenGL renderer with 3D upscaling; Wi-Fi multiplayer support
+Nintendo - Nintendo DSi,No$GBA,Windows;MS-DOS,https://problemkaputt.de/gba.htm,,,,,Battery folder in No$GBA directory,.sav,Partial recommendation; DSi-exclusive game support but compatibility is iffy; camera not functional; useful when other emulators fail specific titles

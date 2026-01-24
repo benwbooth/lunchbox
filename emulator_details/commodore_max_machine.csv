@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Commodore MAX Machine,VICE,Windows;Linux;macOS;FreeBSD,https://vice-emu.sourceforge.io/,,vice,net.sf.VICE,vice_x64,~/.config/vice,.nvr;.d64;.vsf,Primary recommended emulator; use x64sc with Ultimax mode for MAX Machine cartridges; very high accuracy
+Commodore MAX Machine,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.cfg,Use driver "max" for dedicated MAX Machine emulation; comprehensive documentation

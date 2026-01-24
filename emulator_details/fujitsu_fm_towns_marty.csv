@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Fujitsu FM Towns Marty,Tsugaru,Windows;Linux;macOS,https://github.com/captainys/TOWNSEMU,,,,,./CMOS.BIN,.BIN,Primary recommendation; 97%+ compatibility; actively developed; CMOS file stores BIOS settings; specify location with -CMOS parameter
+Fujitsu FM Towns Marty,UNZ,Windows,http://members.at.infoseek.co.jp/townsemu/,,,,,[emulator_dir]/cmos.dat,.dat;.bin,High compatibility; last updated 2010; saves to floppy disk images; Japanese documentation but English interface
+Fujitsu FM Towns Marty,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram;~/.mame/sta,.nv;.sta,FM Towns driver improving; use fmtowns fmtownsux or fmtmarty drivers; experimental status

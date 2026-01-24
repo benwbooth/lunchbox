@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Model 3,Supermodel,Windows;Linux;macOS,https://github.com/trzy/Supermodel,,supermodel,com.supermodel3.Supermodel,,~/.config/supermodel,.st0;.nv,Open-source Model 3 emulator with good compatibility; libretro core in development but not yet available

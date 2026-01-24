@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Acorn Atom,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,MAMEdev.MAME,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta,Multi-system emulator; NVRAM stores game settings/high scores; save states in sta directory

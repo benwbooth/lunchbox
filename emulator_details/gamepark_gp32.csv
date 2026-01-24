@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+GamePark GP32,GeePee32,Windows,https://www.schuerewegen.tk/gp32,,,,,~/.geepee32,.smc,Proprietary; inactive since 2004; requires BIOS; saves stored in virtual SMC files; not marked as recommended
+GamePark GP32,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta,GP32 driver status is Preliminary; requires gp32.zip BIOS files; not marked as recommended; libretro core available via mame core

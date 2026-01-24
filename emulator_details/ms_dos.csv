@@ -1,0 +1,5 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+MS-DOS,DOSBox-X,Windows;Linux;macOS;FreeBSD,https://dosbox-x.com,joncampbell123.DOSBox-X,dosbox-x,com.dosbox_x.DOSBox-X,,~/.config/dosbox-x,.dss,Complete DOS emulation package with Windows 3.x/9x support; extensive configuration options
+MS-DOS,DOSBox Pure,Windows;Linux;macOS;FreeBSD;Android;iOS,https://github.com/schellingb/dosbox-pure,,,org.libretro.RetroArch,dosbox_pure_libretro,~/.config/retroarch/saves,.save.zip,RetroArch/libretro core with save states and rewind support; loads games directly from ZIP files
+MS-DOS,86Box,Windows;Linux;macOS,https://86box.net,86Box.86Box,86box,net._86box._86Box,,~/.local/share/86Box,.cfg,Low-level x86 PC emulator; requires BIOS ROMs; excellent hardware/peripheral support for DOS
+MS-DOS,DREAMM,Windows;Linux;macOS,https://dreamm.aarongiles.com,,,,,~/.local/share/Aaron Giles/DREAMM,,Specialized emulator for LucasArts games only; supports 45+ titles; created by former LucasArts programmer

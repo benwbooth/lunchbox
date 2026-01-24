@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Model 2,Model 2 Emulator,Windows,http://nebula.emulatronia.com/,,,,,NVDATA,.DAT,Closed-source; abandoned since 2014; best compatibility for Model 2 games; requires DirectX 9.0; Windows-only
+Sega Model 2,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.sta;.nv,Active development; cross-platform; fewer Model 2 games fully working; requires fast CPU

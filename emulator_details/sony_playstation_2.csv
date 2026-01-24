@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony Playstation 2,PCSX2,Windows;Linux;macOS,https://pcsx2.net/,PCSX2Team.PCSX2,pcsx2,net.pcsx2.PCSX2,pcsx2_libretro,~/.config/PCSX2/memcards,.ps2;.p2s,Primary recommended emulator with 99.67% compatibility. Memory cards use .ps2 extension; save states use .p2s extension.
+Sony Playstation 2,NetherSX2,Android,https://github.com/Trixarian/NetherSX2-classic,,,,,Android/data/xyz.aethersx2.android/files/memcards,.ps2,Quality-of-life patch for AetherSX2. Recommended for Android. Removes ads and adds features.

@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Atari Lynx,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,,com.github.AmatCoder.mednaffe,beetle_lynx,~/.mednafen/sav,.sav,Flatpak is via Mednaffe frontend which bundles Mednafen
+Atari Lynx,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv,Multi-system emulator; Lynx support via MAME softlist
+Atari Lynx,Felix,Windows,https://github.com/laoo/Felix,,,,,,.eeprom,Cycle-exact emulator; EEPROM save support; Windows only but works in Wine

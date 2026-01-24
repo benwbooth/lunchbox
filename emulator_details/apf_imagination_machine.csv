@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+APF Imagination Machine,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram;~/.mame/sta,.nv;.sta;.cfg,Actively maintained; recommended emulator; absorbed MESS project
+APF Imagination Machine,Virtual APF,Windows,https://orphanedgames.com/APF/apf_emulation/apf_emulation.html,,,,,,.sav,Accurate emulation with debugging capabilities; version 20100803; inactive
+APF Imagination Machine,APF_EMUW,Windows,https://orphanedgames.com/APF/apf_emulation/apf_emulation.html,,,,,,,Easy to setup; no debugging; version 080418; inactive; author: Enrique Collado

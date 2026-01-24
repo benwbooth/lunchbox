@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sinclair ZX-81,Clock Signal (CLK),Linux;macOS,https://github.com/TomHarte/CLK,,clock-signal,,,.p;.81;.o,Cycle-accurate emulator; MIT licensed; Snap available on Linux (clock-signal)
+Sinclair ZX-81,ZEsarUX,Windows;Linux;macOS;FreeBSD,https://github.com/chernandezba/zesarux,,zesarux,,,~/.zesaruxrc,.zsf;.z80;.sna;.p;.o;.z81,Multi-system emulator; GPLv3 licensed; supports ZX80/81/Spectrum and more
+Sinclair ZX-81,EightyOne,Windows,https://sourceforge.net/projects/eightyone-sinclair-emulator/,,,,81_libretro,./,.p;.tzx;.z81;.wav,Portable Windows app; also works via Wine on Linux/macOS; GPLv2 licensed

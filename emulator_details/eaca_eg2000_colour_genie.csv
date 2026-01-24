@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+EACA EG2000 Colour Genie,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta;.nv,Recommended; driver name cgenie; emulation status GOOD; save states not supported for this driver but nvram works
+EACA EG2000 Colour Genie,Genieous,Windows,http://gaia.atilia.eu/,,,,,,.cas;.wav,Windows-only emulator by Attila Grosz; supports CAS tape format and WAV tape format; latest version 1.1.0

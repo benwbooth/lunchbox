@@ -1,0 +1,7 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Arcade,MAME,Windows;Linux;macOS;FreeBSD;Android;iOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.hi;.cfg;.sta,Most comprehensive arcade emulator; multiple RetroArch cores available (mame_2003, mame_2010, mame_2016, mame)
+Arcade,FinalBurn Neo,Windows;macOS;Linux;Android;iOS,https://github.com/finalburnneo/FBNeo,,,org.libretro.FBNeo,fbneo,~/.config/fbneo/saves,.nv;.hi;.fs,macOS/Linux standalone ports not actively maintained; libretro core recommended for cross-platform
+Arcade,Hypseus Singe,Windows;Linux;macOS,https://github.com/DirtBagXon/hypseus-singe,,,,,~/.hypseus/ram,.cfg,Laserdisc arcade emulator; fork of Daphne with Singe support; Singe games save to game directory
+Arcade,TeknoParrot,Windows,https://teknoparrot.com/,,,,,TeknoParrot/UserProfiles,.xml;.txt,Modern PC-based arcade hardware emulator; closed-source; runs via Wine on Linux with limited success
+Arcade,Supermodel,Windows;Linux;macOS,https://www.supermodel3.com/,,supermodel,com.supermodel3.Supermodel,,~/.local/share/supermodel/NVRAM,.nv,Sega Model 3 arcade emulator; no GUI - command line only
+Arcade,Flycast,Windows;Linux;macOS;Android,https://github.com/flyinghead/flycast,,flycast,org.flycast.Flycast,flycast,~/.local/share/flycast,.bin;.vmu;.vms,Naomi/Naomi 2/Atomiswave arcade boards; also emulates Dreamcast; iOS support dropped

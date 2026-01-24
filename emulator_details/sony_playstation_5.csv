@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sony Playstation 5,,,,,,,,,,No recommended emulators found. PS5 emulation is in very early stages. RPCSX (Linux) and Kyty (Windows) exist but cannot run commercial games.

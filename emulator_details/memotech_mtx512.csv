@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Memotech MTX512,MEMU,Windows;Linux,https://memotech-bill.github.io/MEMU/,,,,,~/.memu/tapes;~/.memu/disks,.mtx;.wav;.cfg,Dedicated Memotech MTX emulator. Recommended. Command-line based. Also supports Raspberry Pi and Linux framebuffer. Original by Andy Key.
+Memotech MTX512,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,,~/.mame/nvram;~/.mame/cfg,.nv;.cfg,Multi-system emulator with MTX512 support (driver: memotech/mtx.cpp). Use romset mtx512.

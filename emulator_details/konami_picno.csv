@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Konami - Picno,,,,,,,,,,No recommended emulators found. MAME has a skeleton driver (non-functional) for Picno. The system is categorized as "not yet emulated" on the Emulation General Wiki.

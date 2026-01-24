@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Namco System 22,MAME,Windows;Linux;macOS,https://www.mamedev.org/,MAMEdev.MAME,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram,.nv;.hi;.cfg;.sta,Recommended multi-system arcade emulator with extensive Namco System 22 support including Ridge Racer games

@@ -1,0 +1,8 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Commodore 64,VICE,Windows;Linux;macOS;FreeBSD,https://vice-emu.sourceforge.io/,,vice,net.sf.VICE,vice_x64sc,~/.config/vice,.vsf,Cycle-accurate emulation with x64sc; also available as vice_x64 core for faster but less accurate emulation
+Commodore 64,Hoxs64,Windows,https://www.hoxs64.net/,,,,,~/.config/Hoxs64,.ini,Windows-only cycle-exact emulator; settings stored in Windows registry or hoxs64.ini
+Commodore 64,VirtualC64,macOS,https://dirkwhoffmann.github.io/virtualc64/,,virtualc64,,,~/Library/Application Support/VirtualC64,.vc64,Cycle-accurate macOS-native emulator; uses workspace bundles for save states
+Commodore 64,Z64K,Windows;Linux;macOS,https://www.z64k.com/,,,,,,,Java-based cross-platform emulator; requires JRE 8+
+Commodore 64,Kernal64,Windows;Linux;macOS,https://github.com/abbruzze/kernal64,,,,,,,Scala-based emulator; also emulates C128 VIC20 CBM2 and SuperCPU
+Commodore 64,C64.emu,Android,https://www.explusalpha.com/contents/c64-emu,,,,,,,Based on VICE; supports save states; available on Google Play
+Commodore 64,8-Bit Wonders,Android,https://eightbitwonders.gitlab.io/,,,,,,,Based on VICE; available on F-Droid; includes built-in games and time-machine feature

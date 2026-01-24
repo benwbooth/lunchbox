@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sinclair - ZX Spectrum +3,FUSE,Windows;Linux;macOS;FreeBSD,https://fuse-emulator.sourceforge.net/,,fredm-fuse,net.sourceforge.fuse_emulator.Fuse,fuse,~/.fuse,.szx;.z80;.sna,Free Unix Spectrum Emulator; GPLv2 license; supports all Spectrum models including +3
+Sinclair - ZX Spectrum +3,Speccy,Windows;Linux;Android,https://fms.komkon.org/Speccy/,,,,,,.z80;.sna,Proprietary license; Android version available on Play Store; supports 16kB/48kB/128kB and +2/+2A/+3 models
+Sinclair - ZX Spectrum +3,ZEsarUX,Windows;Linux;macOS;FreeBSD,https://github.com/chernandezba/zesarux,,zesarux,,,~/.zesaruxrc,.zsf;.zx;.z80;.sp;.sna,GPLv3 license; multi-system emulator supporting 40+ vintage machines; Intel-only on macOS (requires Rosetta 2)

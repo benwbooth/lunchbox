@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+SNK Neo Geo MVS,MAME,Windows;Linux;macOS;Android;iOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram,.nv;.cfg;.sta,Multi-purpose emulation framework; highly accurate; also emulates AES and Neo Geo CD
+SNK Neo Geo MVS,FinalBurn Neo,Windows;Linux;macOS;Android;iOS,https://github.com/finalburnneo/FBNeo,,,fbneo_libretro,savestates;config;nvram,.fs;.nv,Arcade-focused emulator; supports CPS-1/2/3 and Neo Geo; active development; also emulates AES and Neo Geo CD
+SNK Neo Geo MVS,Geolith,Windows;Linux;macOS;FreeBSD,https://jgemu.gitlab.io/,,,geolith,~/.config/jgemu/geolith,.nv;.mcr;.srm;.state,Highly accurate Neo Geo emulator; uses .NEO file format only; also emulates AES; no Neo Geo CD support

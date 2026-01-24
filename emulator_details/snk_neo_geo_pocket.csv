@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+SNK Neo Geo Pocket,ares,Windows;Linux;macOS;BSD,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/Saves,.sav,Most accurate Neo Geo Pocket emulation
+SNK Neo Geo Pocket,Mednafen,Windows;Linux;macOS;FreeBSD,https://mednafen.github.io/,,mednafen,com.github.AmatCoder.mednaffe,mednafen_ngp_libretro,~/.mednafen/sav,.sav;.flash;.mc0,Beetle NeoPop is the libretro core name
+SNK Neo Geo Pocket,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame_libretro,~/.mame/nvram,.nv,General arcade/console emulator with NGP support

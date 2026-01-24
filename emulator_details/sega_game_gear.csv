@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Game Gear,Genesis Plus GX,Windows;Linux;macOS;FreeBSD,https://github.com/ekeeke/Genesis-Plus-GX,,,org.libretro.RetroArch,genesis_plus_gx,~/.config/retroarch/saves,.srm,Very high accuracy; libretro core only - no standalone version; also supports Master System and Mega Drive
+Sega Game Gear,ares,Windows;Linux;macOS,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/saves,.sav;.ram,High accuracy; multi-system emulator descended from higan/bsnes; focuses on preservation
+Sega Game Gear,Emulicious,Windows;Linux;macOS,https://emulicious.net/,,,,gearsystem,~/.emulicious,.sav;.state,Very high accuracy; requires Java; excellent debugging tools; also supports Game Boy and Master System
+Sega Game Gear,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv,Universal arcade/console emulator; high compatibility but complex setup for console games
+Sega Game Gear,Snepulator,Linux,https://snepulator.net/,,,,,~/.config/snepulator,.sav,Active development; MIT licensed; also supports Master System and SG-1000; Linux only

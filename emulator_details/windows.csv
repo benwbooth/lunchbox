@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Windows,86Box,Windows;Linux;macOS,https://86box.net,86Box.86Box,86box,net._86box._86Box,,~/.local/share/86Box,.cfg;.nvr,Actively maintained fork of PCem with optimized performance; requires BIOS ROMs
+Windows,PCem,Windows;Linux;macOS,http://pcem-emulator.co.uk,,,,,~/.pcem,.cfg;.nvr,Original x86 PC emulator; 86Box is the recommended fork
+Windows,DOSBox-X,Windows;Linux;macOS;FreeBSD,https://dosbox-x.com,joncampbell123.DOSBox-X,dosbox-x-app,com.dosbox_x.DOSBox-X,,~/.config/dosbox-x,.conf,Comprehensive DOS/Windows 9x emulation; significantly different from other DOSBox forks
+Windows,DOSBox Pure,Windows;Linux;macOS;Android;iOS,https://github.com/schellingb/dosbox-pure,,,org.libretro.RetroArch,dosbox_pure,RetroArch saves directory,.pure.zip;.save.zip,Optimized for RetroArch/Libretro with shader support; loads games directly from ZIP files
+Windows,DREAMM,Windows;Linux;macOS,https://aarongiles.com/dreamm,,,,,"~/.local/share/Aaron Giles/DREAMM",.json,Bespoke emulator for curated LucasArts games; no separate OS installation required

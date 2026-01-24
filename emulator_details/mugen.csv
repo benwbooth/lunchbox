@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+MUGEN,Ikemen GO,Windows;Linux;macOS,https://ikemen-engine.github.io/,IkemenGO.IkemenGO,,,,"./save",".json","Recommended open-source MUGEN engine rewrite in Go; active development; config at save/config.json and stats at save/stats.json"
+MUGEN,MUGEN,Windows;Linux;macOS,https://www.elecbyte.com/mugendocs-11b1/mugen.html,,,,,,"Proprietary engine by Elecbyte; inactive since 2013 (v1.1 beta 1); official site down but documentation accessible"

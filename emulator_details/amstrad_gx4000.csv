@@ -1,0 +1,7 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Amstrad GX4000,Arnold,Windows;Linux;macOS;FreeBSD,http://arnold.emuunlim.com/,,,,,,.sna,Cycle-accurate emulator; also emulates CPC464/664/6128/Plus and KC Compact
+Amstrad GX4000,Caprice32,Windows;Linux;macOS;FreeBSD,https://github.com/ColinPitrat/caprice32,,,snap: caprice32,cap32,~/.config/caprice32,.sna,Available as Snap package on Linux; also has libretro core
+Amstrad GX4000,Caprice Forever,Windows,https://www.cpc-power.com/cpcarchives/index.php?page=articles&num=445,,,,,,.sna,Windows-only fork with DirectX/OpenGL rendering
+Amstrad GX4000,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta;~/.mame/nvram,.sta;.nv,Multi-system emulator; GX4000 driver name is gx4000
+Amstrad GX4000,Retro Virtual Machine,Windows;Linux;macOS,https://www.retrovirtualmachine.org/,,,snap: mmartinortiz-retro-virtual-machine,,.rvmstate,.rvmstate,Multi-system emulator; also supports ZX Spectrum and MSX
+Amstrad GX4000,CrocoDS,Linux;Android;iOS,https://github.com/libretro/libretro-crocods,,,,crocods,RetroArch states directory,.state,RetroArch core only; originally a Nintendo DS emulator

@@ -1,0 +1,6 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Coleco ADAM,ADAM+,Windows;Linux,https://github.com/dvdh1961/ADAMP,,,,,,.sta,Recommended; active development; Qt6-based; includes debugger and T-DOS support
+Coleco ADAM,FinalBurn Neo,Windows;Linux;macOS,https://github.com/finalburnneo/FBNeo,,,,fbneo,~/.config/retroarch/saves/fbneo,.fs;.nv;.srm,Recommended; better ColecoVision compatibility than MAME; standalone uses savestates folder
+Coleco ADAM,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.sta;.cfg,Requires BIOS files: adam.zip adam_ddp.zip adam_fdc.zip adam_kb.zip adam_prn.zip
+Coleco ADAM,ColEm,Windows;Linux;macOS;Android,https://fms.komkon.org/ColEm/,,,,,,.sta,Complete ADAM emulation since v5.0; supports keyboard disk and tape drives
+Coleco ADAM,ADAMEm SDL,Windows;Linux;macOS,https://github.com/geoffdaddy/adamem_sdl,,,,,,.sta,SDL2 port; includes Super Game Module support and composite video filter

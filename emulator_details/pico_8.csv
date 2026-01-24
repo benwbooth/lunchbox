@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+PICO-8,PICO-8,Windows;Linux;macOS,https://www.lexaloffle.com/pico-8.php,,,,,"~/.lexaloffle/pico-8/cdata",".p8d.txt","Official implementation (proprietary); purchase required; recommended"
+PICO-8,Retro8,Windows;Linux;macOS,https://github.com/libretro/retro8,,,org.libretro.RetroArch,retro8,"~/.config/retroarch/saves",".srm","Open-source reimplementation; GPLv3; lower compatibility than official"
+PICO-8,fake-08,3DS;Switch;Vita;WiiU;Android,https://github.com/jtothebell/fake-08,,,,fake08,"Platform-dependent (p8carts/cdata)",".p8d.txt","MIT license; homebrew platforms only; no desktop builds; best open-source compatibility"

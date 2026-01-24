@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo 64DD,ares,Windows;Linux;macOS,https://ares-emu.net/,AresEmulator.Ares,ares-emulator,dev.ares.ares,,~/.local/share/ares/saves,.eeprom;.flash;.pak;.sram,Most accurate 64DD emulation; supports disc-swapping as of v134
+Nintendo 64DD,Mupen64Plus-Next (RetroArch),Windows;Linux;macOS;Android;iOS,https://www.retroarch.com/,Libretro.RetroArch,retroarch,org.libretro.RetroArch,mupen64plus_next,~/.config/retroarch/saves/Mupen64Plus-Next,.srm,Requires IPL.n64 BIOS in system folder; use subsystems menu for 64DD
+Nintendo 64DD,RMG,Windows;Linux,https://github.com/Rosalie241/RMG,,,com.github.Rosalie241.RMG,,~/.local/share/RMG/Save/Game,.eep;.sra;.fla;.mpk,Mupen64Plus frontend with Project64-style interface for 64DD games

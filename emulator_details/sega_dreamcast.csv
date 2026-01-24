@@ -1,0 +1,3 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Sega Dreamcast,Flycast,Windows;Linux;macOS;Android;iOS,https://github.com/flyinghead/flycast,,flycast,org.flycast.Flycast,flycast,~/.var/app/org.flycast.Flycast/data/flycast,.bin,Fork of reicast with 99% compatibility; supports NAOMI/Atomiswave; GPLv2 licensed
+Sega Dreamcast,redream,Windows;Linux;macOS;Android,https://redream.io,,redream,,redream,~/Library/Application Support/redream,.bin,Closed-source; no BIOS required; premium version available for HD rendering

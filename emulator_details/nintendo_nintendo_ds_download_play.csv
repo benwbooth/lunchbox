@@ -1,0 +1,2 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Nintendo - Nintendo DS (Download Play),melonDS,Windows;Linux;macOS;FreeBSD,https://melonds.kuribo64.net/,melonDS.melonDS,melonds,net.kuribo64.melonDS,melonDS DS,~/.config/melonDS,.sav,Download Play support is hit-or-miss; unlocking framerate helps. Only emulator with Download Play support.

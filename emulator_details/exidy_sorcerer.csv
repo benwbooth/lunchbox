@@ -1,0 +1,4 @@
+platform,emulator_name,supported_os,homepage,winget_id,homebrew_formula,flatpak_id,retroarch_core,save_directory,save_extensions,notes
+Exidy Sorcerer,MAME,Windows;Linux;macOS,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/sta/sorcerer,.sta,Listed as Good support on Emulation General Wiki; requires sorcerer.zip and sorcererd.zip BIOS files
+Exidy Sorcerer,JSorcerer,Windows;Linux;macOS,http://www.liaquay.co.uk/sorcerer/,,,,,,.tape,Java-based browser emulator; uses TAPE format for cassette images
+Exidy Sorcerer,Windows Sorcerer,Windows,http://www.geocities.ws/emucompboy/,,,,,,,"Freeware; last updated 2002; runs WSorcer.exe; no BIOS required"
