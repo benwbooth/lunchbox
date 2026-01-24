@@ -702,25 +702,31 @@ fn EmulatorPickerModal(
 
                                         view! {
                                             <li class="emulator-item">
-                                                <div class="emulator-item-header" on:click=on_launch.clone()>
+                                                <div class="emulator-item-header">
                                                     <span class="emulator-name">{name_display}</span>
                                                     {homepage.map(|url| view! {
-                                                        <a class="emulator-homepage" href={url.clone()} target="_blank" on:click=|e| e.stop_propagation()>"Website"</a>
+                                                        <a class="emulator-homepage" href={url.clone()} target="_blank">"Website"</a>
                                                     })}
                                                 </div>
                                                 {retroarch_core.map(|core| view! {
-                                                    <div class="emulator-core" on:click=on_launch.clone()>"RetroArch: " {core}</div>
+                                                    <div class="emulator-core">"RetroArch: " {core}</div>
                                                 })}
                                                 {notes.map(|n| view! {
-                                                    <div class="emulator-notes" on:click=on_launch.clone()>{n}</div>
+                                                    <div class="emulator-notes">{n}</div>
                                                 })}
                                                 <div class="emulator-pref-buttons">
+                                                    <button
+                                                        class="emulator-pref-btn emulator-play-btn"
+                                                        on:click=on_launch
+                                                    >
+                                                        "Just this time"
+                                                    </button>
                                                     <button
                                                         class="emulator-pref-btn"
                                                         class:active=is_preferred
                                                         on:click=on_set_game_pref
                                                     >
-                                                        "Always for this game"
+                                                        "Always for game"
                                                     </button>
                                                     <button
                                                         class="emulator-pref-btn"

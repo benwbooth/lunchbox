@@ -2985,13 +2985,11 @@ body.sidebar-resizing * {
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .emulator-item:hover {
     background: var(--bg-hover);
-    border-color: var(--accent-color);
 }
 
 .emulator-item-header {
@@ -3073,6 +3071,17 @@ body.sidebar-resizing * {
     background: var(--success-color);
     border-color: var(--success-color);
     color: #000;
+}
+
+.emulator-play-btn {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--text-highlight);
+}
+
+.emulator-play-btn:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
 }
 
 /* Emulator preference indicator */
