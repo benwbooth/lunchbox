@@ -369,7 +369,7 @@ pub struct GameVariant {
     pub region: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
     pub data_directory: Option<String>,
@@ -392,7 +392,7 @@ pub struct AppSettings {
     pub emumovies: EmuMoviesSettings,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScreenScraperSettings {
     #[serde(default)]
     pub dev_id: String,
@@ -404,13 +404,13 @@ pub struct ScreenScraperSettings {
     pub user_password: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SteamGridDBSettings {
     #[serde(default)]
     pub api_key: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct IGDBSettings {
     #[serde(default)]
     pub client_id: String,
@@ -418,7 +418,7 @@ pub struct IGDBSettings {
     pub client_secret: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EmuMoviesSettings {
     #[serde(default)]
     pub username: String,

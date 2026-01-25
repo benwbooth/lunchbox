@@ -96,10 +96,15 @@ pub fn Settings(
             return;
         }
 
+        let current = settings.get();
+        // Only save if settings actually changed
+        if current == saved_settings.get() {
+            return;
+        }
+
         set_saving.set(true);
         set_save_error.set(None);
 
-        let current = settings.get();
         spawn_local(async move {
             match save_settings(current.clone()).await {
                 Ok(()) => {
@@ -582,11 +587,14 @@ fn RegionPriorityList(
                             }
                             on:dragover=move |e| {
                                 e.prevent_default();
-                                set_drop_target_idx.set(Some(idx));
+                                // Only update if changed to avoid constant re-renders
+                                if drop_target_idx.get_untracked() != Some(idx) {
+                                    set_drop_target_idx.set(Some(idx));
+                                }
                             }
                             on:dragleave=move |_| {
                                 // Only clear if we're leaving this specific target
-                                if drop_target_idx.get() == Some(idx) {
+                                if drop_target_idx.get_untracked() == Some(idx) {
                                     set_drop_target_idx.set(None);
                                 }
                             }
