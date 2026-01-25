@@ -579,16 +579,23 @@ fn get_libretro_core_url(core_name: &str) -> String {
 // ============================================================================
 
 /// Launch an emulator (optionally with a ROM)
-pub fn launch_emulator(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<u32, String> {
+/// If `as_retroarch_core` is true, launch via RetroArch; otherwise launch standalone
+pub fn launch_emulator(emulator: &EmulatorInfo, rom_path: Option<&str>, as_retroarch_core: bool) -> Result<u32, String> {
     tracing::info!(
         emulator = %emulator.name,
         rom = ?rom_path,
-        has_retroarch_core = emulator.retroarch_core.is_some(),
+        as_retroarch_core = as_retroarch_core,
         "Launching emulator"
     );
 
-    let result = if let Some(ref core_name) = emulator.retroarch_core {
-        launch_retroarch(core_name, rom_path)
+    let result = if as_retroarch_core {
+        if let Some(ref core_name) = emulator.retroarch_core {
+            launch_retroarch(core_name, rom_path)
+        } else {
+            let err = format!("{} does not have a RetroArch core", emulator.name);
+            tracing::error!(error = %err);
+            return Err(err);
+        }
     } else {
         launch_standalone(emulator, rom_path)
     };
@@ -602,8 +609,10 @@ pub fn launch_emulator(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Resul
 }
 
 /// Launch a game with an emulator (legacy wrapper)
+/// Defaults to using RetroArch core if available
 pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, String> {
-    launch_emulator(emulator, Some(rom_path))
+    let as_retroarch_core = emulator.retroarch_core.is_some();
+    launch_emulator(emulator, Some(rom_path), as_retroarch_core)
 }
 
 /// Launch RetroArch with a specific core (optionally with a ROM)

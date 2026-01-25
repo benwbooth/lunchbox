@@ -1380,13 +1380,14 @@ pub async fn install_emulator(emulator_name: String, is_retroarch_core: bool) ->
 }
 
 /// Launch an emulator (without a ROM)
-pub async fn launch_emulator(emulator_name: String) -> Result<LaunchResult, String> {
+pub async fn launch_emulator(emulator_name: String, is_retroarch_core: bool) -> Result<LaunchResult, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
+        is_retroarch_core: bool,
     }
-    invoke("launch_emulator", Args { emulator_name }).await
+    invoke("launch_emulator", Args { emulator_name, is_retroarch_core }).await
 }
 
 /// Launch a game with the specified emulator

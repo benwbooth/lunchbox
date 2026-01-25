@@ -723,10 +723,12 @@ pub fn launch_game_with_emulator(
 }
 
 /// Launch an emulator (without a ROM)
+/// If `is_retroarch_core` is true, launch via RetroArch; otherwise launch standalone
 pub fn launch_emulator_only(
     emulator: &EmulatorInfo,
+    is_retroarch_core: bool,
 ) -> Result<LaunchResult, String> {
-    match emulator::launch_emulator(emulator, None) {
+    match emulator::launch_emulator(emulator, None, is_retroarch_core) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),

@@ -1946,6 +1946,8 @@ async fn rspc_install_emulator(
 #[serde(rename_all = "camelCase")]
 struct LaunchEmulatorInput {
     emulator_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
 }
 
 async fn rspc_launch_emulator(
@@ -1971,7 +1973,7 @@ async fn rspc_launch_emulator(
         Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
     };
 
-    match handlers::launch_emulator_only(&emulator) {
+    match handlers::launch_emulator_only(&emulator, input.is_retroarch_core) {
         Ok(result) => rspc_ok(result).into_response(),
         Err(e) => rspc_err::<LaunchResult>(e).into_response(),
     }

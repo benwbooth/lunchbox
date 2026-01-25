@@ -2245,6 +2245,7 @@ pub async fn launch_game(
 #[tauri::command]
 pub async fn launch_emulator(
     emulator_name: String,
+    is_retroarch_core: bool,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<LaunchResult, String> {
     let state_guard = state.read().await;
@@ -2254,7 +2255,7 @@ pub async fn launch_emulator(
         .await?
         .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
 
-    handlers::launch_emulator_only(&emulator)
+    handlers::launch_emulator_only(&emulator, is_retroarch_core)
 }
 
 /// Get the current operating system
