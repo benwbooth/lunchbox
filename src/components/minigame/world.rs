@@ -1,8 +1,9 @@
 //! Procedural world generation for the Mario mini-game
 
-use super::entities::{GameWorld, Mario, Goomba, Platform};
+use super::entities::{GameWorld, Mario, Goomba, Platform, Block, BlockType};
+use super::physics::GOOMBA_SPEED;
 
-/// Generate a new game world with platforms, Marios, and Goombas
+/// Generate a new game world with platforms, blocks, Marios, and Goombas
 pub fn generate_world(width: i32, height: i32, tile_size: i32) -> GameWorld {
     let mut world = GameWorld::new(width, height);
     world.tile_size = tile_size;
@@ -13,16 +14,16 @@ pub fn generate_world(width: i32, height: i32, tile_size: i32) -> GameWorld {
     // Ground level is near the bottom
     let ground_y = tiles_high - 2;
 
-    // Generate ground with gaps
+    // Generate ground platforms
     generate_ground(&mut world, tiles_wide, ground_y);
 
-    // Generate floating platforms at various heights
-    generate_floating_platforms(&mut world, tiles_wide, ground_y);
+    // Generate floating platforms with bricks and question blocks
+    generate_floating_platforms(&mut world, tiles_wide, ground_y, tile_size);
 
-    // Spawn Marios
+    // Spawn more Marios (8-15 based on screen width)
     spawn_marios(&mut world, tiles_wide, tile_size);
 
-    // Spawn initial Goombas
+    // Spawn more Goombas
     spawn_goombas(&mut world, tile_size);
 
     world
@@ -33,11 +34,11 @@ fn generate_ground(world: &mut GameWorld, tiles_wide: i32, ground_y: i32) {
     let mut x = 0;
 
     while x < tiles_wide {
-        // Decide platform length (60-80% chance of long platform)
-        let length = if js_sys::Math::random() < 0.7 {
-            (js_sys::Math::random() * 8.0 + 6.0) as i32 // 6-14 tiles
+        // Platform length
+        let length = if js_sys::Math::random() < 0.8 {
+            (js_sys::Math::random() * 10.0 + 8.0) as i32 // 8-18 tiles
         } else {
-            (js_sys::Math::random() * 4.0 + 3.0) as i32 // 3-7 tiles
+            (js_sys::Math::random() * 5.0 + 4.0) as i32 // 4-9 tiles
         };
 
         let actual_length = length.min(tiles_wide - x);
@@ -47,61 +48,93 @@ fn generate_ground(world: &mut GameWorld, tiles_wide: i32, ground_y: i32) {
 
         x += actual_length;
 
-        // Gap (20% chance, 2-4 tiles wide)
-        if x < tiles_wide && js_sys::Math::random() < 0.2 {
-            let gap = (js_sys::Math::random() * 3.0 + 2.0) as i32;
+        // Gap (15% chance, 2-3 tiles wide)
+        if x < tiles_wide && js_sys::Math::random() < 0.15 {
+            let gap = (js_sys::Math::random() * 2.0 + 2.0) as i32;
             x += gap;
         }
     }
 }
 
-/// Generate floating brick platforms at various heights
-fn generate_floating_platforms(world: &mut GameWorld, tiles_wide: i32, ground_y: i32) {
-    // Define height levels for floating platforms
+/// Generate floating platforms with bricks and question blocks
+fn generate_floating_platforms(world: &mut GameWorld, tiles_wide: i32, ground_y: i32, _tile_size: i32) {
+    // Height levels for floating platforms
     let levels = [
-        ground_y - 4,  // Low platforms
-        ground_y - 7,  // Medium platforms
-        ground_y - 10, // High platforms
-        ground_y - 13, // Very high platforms
+        ground_y - 4,
+        ground_y - 7,
+        ground_y - 10,
+        ground_y - 13,
+        ground_y - 16,
     ];
 
     for &level_y in &levels {
-        if level_y < 2 {
-            continue; // Too close to top
+        if level_y < 3 {
+            continue;
         }
 
-        let mut x = (js_sys::Math::random() * 5.0) as i32;
+        let mut x = (js_sys::Math::random() * 4.0) as i32;
 
         while x < tiles_wide - 3 {
-            // 40% chance to place a platform at this position
-            if js_sys::Math::random() < 0.4 {
-                let length = (js_sys::Math::random() * 4.0 + 3.0) as i32; // 3-7 tiles
+            // 50% chance to place a platform at this position
+            if js_sys::Math::random() < 0.5 {
+                let length = (js_sys::Math::random() * 5.0 + 3.0) as i32; // 3-8 tiles
                 let actual_length = length.min(tiles_wide - x);
 
                 // Slight vertical variation
                 let y_offset = (js_sys::Math::random() * 2.0 - 1.0) as i32;
-                let platform_y = (level_y + y_offset).max(2);
+                let platform_y = (level_y + y_offset).max(3);
 
+                // Add platform for collision
                 world.platforms.push(Platform::new(x, platform_y, actual_length, false));
 
-                x += actual_length + 3; // Gap between platforms
+                // Add blocks for this platform
+                for tx in 0..actual_length {
+                    let block_x = x + tx;
+                    let block_type = if js_sys::Math::random() < 0.2 {
+                        // 20% chance for question block
+                        BlockType::Question
+                    } else {
+                        BlockType::Brick
+                    };
+                    world.blocks.push(Block::new(block_x, platform_y, block_type));
+                }
+
+                x += actual_length + (js_sys::Math::random() * 3.0 + 2.0) as i32;
             } else {
                 x += 2;
             }
         }
     }
+
+    // Add some standalone question blocks in the air
+    for _ in 0..((tiles_wide / 8) as usize) {
+        let qx = (js_sys::Math::random() * (tiles_wide - 2) as f64) as i32 + 1;
+        let qy = (js_sys::Math::random() * ((ground_y - 6) as f64) + 4.0) as i32;
+
+        // Check if position is free
+        let has_block = world.blocks.iter().any(|b| b.x == qx && b.y == qy);
+        let has_platform = world.platforms.iter().any(|p| {
+            qx >= p.x && qx < p.x + p.width && qy == p.y
+        });
+
+        if !has_block && !has_platform {
+            world.blocks.push(Block::new(qx, qy, BlockType::Question));
+            // Add invisible platform for standing
+            world.platforms.push(Platform::new(qx, qy, 1, false));
+        }
+    }
 }
 
-/// Spawn Mario characters
+/// Spawn more Mario characters
 fn spawn_marios(world: &mut GameWorld, tiles_wide: i32, tile_size: i32) {
-    // Number of Marios based on screen width (3-8)
-    let count = ((tiles_wide as f64 / 15.0).ceil() as i32).clamp(3, 8);
+    // More Marios: 8-15 based on screen width
+    let count = ((tiles_wide as f64 / 10.0).ceil() as i32).clamp(8, 15);
 
     for i in 0..count {
         // Spread Marios across the level
         let x_segment = (tiles_wide * tile_size) / count;
         let base_x = i * x_segment + x_segment / 2;
-        let x = (base_x as f64 + js_sys::Math::random() * 50.0 - 25.0).max(16.0);
+        let x = (base_x as f64 + js_sys::Math::random() * 40.0 - 20.0).max(16.0);
 
         // Spawn above a random platform
         let platform_idx = (js_sys::Math::random() * world.platforms.len() as f64) as usize;
@@ -114,42 +147,48 @@ fn spawn_marios(world: &mut GameWorld, tiles_wide: i32, tile_size: i32) {
         let id = world.next_id();
         let mut mario = Mario::new(x, y, id);
         mario.facing_right = js_sys::Math::random() > 0.5;
+
+        // 20% chance to start as big Mario
+        if js_sys::Math::random() < 0.2 {
+            mario.is_big = true;
+        }
+
         world.marios.push(mario);
     }
 }
 
-/// Spawn Goombas on platforms
+/// Spawn more Goombas on platforms
 fn spawn_goombas(world: &mut GameWorld, tile_size: i32) {
-    let platform_indices: Vec<usize> = (0..world.platforms.len()).collect();
+    let platform_count = world.platforms.len();
 
-    for idx in platform_indices {
+    for idx in 0..platform_count {
         let platform = &world.platforms[idx];
 
-        // 35% chance to spawn a Goomba on this platform
-        if js_sys::Math::random() < 0.35 && platform.width >= 3 {
-            let goomba_x = ((platform.x + 1) * tile_size) as f64
-                + js_sys::Math::random() * ((platform.width - 2) * tile_size) as f64;
-            let goomba_y = ((platform.y - 1) * tile_size) as f64;
+        // 50% chance to spawn Goombas on this platform
+        if js_sys::Math::random() < 0.5 && platform.width >= 3 {
+            // Spawn 1-2 Goombas per platform
+            let goomba_count = if js_sys::Math::random() < 0.3 { 2 } else { 1 };
 
-            let mut goomba = Goomba::new(goomba_x, goomba_y);
-            goomba.facing_right = js_sys::Math::random() > 0.5;
-            if goomba.facing_right {
-                goomba.vel.x = super::physics::GOOMBA_SPEED;
-            } else {
-                goomba.vel.x = -super::physics::GOOMBA_SPEED;
+            for _ in 0..goomba_count {
+                let goomba_x = ((platform.x + 1) * tile_size) as f64
+                    + js_sys::Math::random() * ((platform.width - 2) * tile_size) as f64;
+                let goomba_y = ((platform.y - 1) * tile_size) as f64;
+
+                let mut goomba = Goomba::new(goomba_x, goomba_y);
+                goomba.facing_right = js_sys::Math::random() > 0.5;
+                goomba.vel.x = if goomba.facing_right { GOOMBA_SPEED } else { -GOOMBA_SPEED };
+                world.goombas.push(goomba);
             }
-            world.goombas.push(goomba);
         }
     }
 }
 
-/// Spawn a new Goomba at a random location (called periodically to replenish)
+/// Spawn a new Goomba at a random location
 pub fn spawn_random_goomba(world: &mut GameWorld) {
     if world.platforms.is_empty() {
         return;
     }
 
-    // Pick a random platform (prefer higher ones for variety)
     let idx = (js_sys::Math::random() * world.platforms.len() as f64) as usize;
     let platform = &world.platforms[idx];
 
@@ -164,10 +203,25 @@ pub fn spawn_random_goomba(world: &mut GameWorld) {
 
     let mut goomba = Goomba::new(goomba_x, goomba_y);
     goomba.facing_right = js_sys::Math::random() > 0.5;
-    if goomba.facing_right {
-        goomba.vel.x = super::physics::GOOMBA_SPEED;
-    } else {
-        goomba.vel.x = -super::physics::GOOMBA_SPEED;
-    }
+    goomba.vel.x = if goomba.facing_right { GOOMBA_SPEED } else { -GOOMBA_SPEED };
     world.goombas.push(goomba);
+}
+
+/// Spawn a new Mario at a random location
+pub fn spawn_random_mario(world: &mut GameWorld) {
+    if world.platforms.is_empty() {
+        return;
+    }
+
+    let idx = (js_sys::Math::random() * world.platforms.len() as f64) as usize;
+    let platform = &world.platforms[idx];
+
+    let tile_size = world.tile_size;
+    let x = (platform.x * tile_size) as f64 + (platform.width * tile_size / 2) as f64;
+    let y = ((platform.y - 2) * tile_size) as f64;
+
+    let id = world.next_id();
+    let mut mario = Mario::new(x, y, id);
+    mario.facing_right = js_sys::Math::random() > 0.5;
+    world.marios.push(mario);
 }

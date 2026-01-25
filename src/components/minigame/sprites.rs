@@ -1,116 +1,242 @@
-//! 8x8 pixel sprite definitions for the Mario mini-game
+//! 8x8 pixel sprite definitions using NES-style 4-color palettes
 #![allow(dead_code)]
 
-/// Each sprite is an 8x8 bitmap where each bit represents one pixel
-/// The array has 8 bytes, each byte representing one row (top to bottom)
-/// Within each byte, bit 7 is leftmost pixel, bit 0 is rightmost
+/// Each sprite is an 8x8 bitmap with 2 bits per pixel (4 colors: 0=transparent, 1-3=palette colors)
+/// Stored as 16 bytes: 2 bytes per row (low bits first, then high bits)
+/// This mimics NES PPU tile format
 
-// Mario standing - simple recognizable shape
-pub const MARIO_STANDING: [u8; 8] = [
-    0b00011100, // Hat
-    0b00111110, // Hat brim
-    0b00011010, // Face with eye
-    0b00011110, // Face
-    0b01111111, // Body with arms
-    0b00111110, // Body
-    0b00110110, // Legs
-    0b01110111, // Feet
-];
+/// Sprite data: 8 rows, each row has 8 pixels with 2 bits each
+/// Format: [row0_lo, row0_hi, row1_lo, row1_hi, ...]
+pub type Sprite = [u8; 16];
 
-// Mario jumping - arms up
-pub const MARIO_JUMP: [u8; 8] = [
-    0b00011100, // Hat
-    0b00111110, // Hat brim
-    0b00011010, // Face with eye
-    0b00011110, // Face
-    0b11111111, // Arms up wide
-    0b00111110, // Body
-    0b00011100, // Legs together
-    0b00110110, // Feet apart
-];
+/// Color palette: [transparent, color1, color2, color3]
+pub type Palette = [u32; 4];
+
+// NES Color palette (subset of actual NES colors)
+pub const NES_BLACK: u32 = 0x000000;
+pub const NES_WHITE: u32 = 0xFCFCFC;
+pub const NES_RED: u32 = 0xE45C10;      // Mario red/orange
+pub const NES_BROWN: u32 = 0x8C4B14;    // Skin/brick
+pub const NES_TAN: u32 = 0xFCBCA0;      // Light skin
+pub const NES_DARK_BROWN: u32 = 0x503000; // Dark brown
+pub const NES_GREEN: u32 = 0x00A800;    // Luigi green
+pub const NES_YELLOW: u32 = 0xFCE4A0;   // Question block
+pub const NES_ORANGE: u32 = 0xFC9838;   // Brick highlight
+pub const NES_BLUE: u32 = 0x0058F8;     // Overalls
+
+// Palettes
+pub const PALETTE_MARIO: Palette = [0, NES_RED, NES_TAN, NES_BROWN];
+pub const PALETTE_MARIO_BIG: Palette = [0, NES_RED, NES_TAN, NES_BROWN];
+pub const PALETTE_LUIGI: Palette = [0, NES_GREEN, NES_TAN, NES_BROWN];
+pub const PALETTE_GOOMBA: Palette = [0, NES_BROWN, NES_TAN, NES_BLACK];
+pub const PALETTE_BRICK: Palette = [0, NES_ORANGE, NES_BROWN, NES_DARK_BROWN];
+pub const PALETTE_QUESTION: Palette = [0, NES_YELLOW, NES_ORANGE, NES_BLACK];
+pub const PALETTE_GROUND: Palette = [0, NES_ORANGE, NES_BROWN, NES_DARK_BROWN];
+pub const PALETTE_MUSHROOM: Palette = [0, NES_RED, NES_WHITE, NES_TAN];
+pub const PALETTE_PLAYER: Palette = [0, NES_WHITE, NES_TAN, NES_RED]; // Highlighted player
+
+/// Helper to create sprite from visual representation
+/// Each char: '.' = 0 (transparent), '1' = color 1, '2' = color 2, '3' = color 3
+pub const fn sprite_from_str(s: &[u8; 64]) -> Sprite {
+    let mut result = [0u8; 16];
+    let mut row = 0;
+    while row < 8 {
+        let mut lo = 0u8;
+        let mut hi = 0u8;
+        let mut col = 0;
+        while col < 8 {
+            let ch = s[row * 8 + col];
+            let val = match ch {
+                b'.' | b'0' => 0,
+                b'1' => 1,
+                b'2' => 2,
+                b'3' => 3,
+                _ => 0,
+            };
+            let bit = 7 - col;
+            if val & 1 != 0 { lo |= 1 << bit; }
+            if val & 2 != 0 { hi |= 1 << bit; }
+            col += 1;
+        }
+        result[row * 2] = lo;
+        result[row * 2 + 1] = hi;
+        row += 1;
+    }
+    result
+}
+
+// Mario standing (small)
+pub const MARIO_STAND: Sprite = sprite_from_str(b"\
+...111..\
+..1111..\
+..3221..\
+.32123..\
+.332233.\
+..1111..\
+..1331..\
+..33.33.");
 
 // Mario walking frame 1
-pub const MARIO_WALK1: [u8; 8] = [
-    0b00011100, // Hat
-    0b00111110, // Hat brim
-    0b00011010, // Face with eye
-    0b00011110, // Face
-    0b01111110, // Body with arm
-    0b00111110, // Body
-    0b00110100, // One leg forward
-    0b01100110, // Feet
-];
+pub const MARIO_WALK1: Sprite = sprite_from_str(b"\
+...111..\
+..1111..\
+..3221..\
+.32123..\
+.332233.\
+..1111..\
+.13..31.\
+.33..33.");
 
 // Mario walking frame 2
-pub const MARIO_WALK2: [u8; 8] = [
-    0b00011100, // Hat
-    0b00111110, // Hat brim
-    0b00011010, // Face with eye
-    0b00011110, // Face
-    0b01111110, // Body with arm
-    0b00111110, // Body
-    0b00010110, // Other leg forward
-    0b01100110, // Feet
-];
+pub const MARIO_WALK2: Sprite = sprite_from_str(b"\
+...111..\
+..1111..\
+..3221..\
+.32123..\
+.332233.\
+..1111..\
+..3113..\
+.33..33.");
 
-// Goomba enemy
-pub const GOOMBA: [u8; 8] = [
-    0b00111100, // Top of head
-    0b01111110, // Head
-    0b11011011, // Eyes (angry)
-    0b11111111, // Face
-    0b01111110, // Body top
-    0b00111100, // Body
-    0b01100110, // Feet
-    0b11100111, // Feet wide
-];
+// Mario jumping
+pub const MARIO_JUMP: Sprite = sprite_from_str(b"\
+...111..\
+..1111..\
+..3221..\
+.32123..\
+1332233.\
+.111111.\
+..3113..\
+.33..33.");
+
+// Big Mario standing (top half)
+pub const MARIO_BIG_STAND_TOP: Sprite = sprite_from_str(b"\
+...111..\
+..11111.\
+..3322..\
+.322122.\
+.3221222\
+..3223..\
+...111..\
+..11111.");
+
+// Big Mario standing (bottom half)
+pub const MARIO_BIG_STAND_BOT: Sprite = sprite_from_str(b"\
+..11111.\
+.111111.\
+.1133311\
+..3333..\
+..3333..\
+..33.33.\
+..33.33.\
+.333.333");
+
+// Big Mario walking top
+pub const MARIO_BIG_WALK_TOP: Sprite = sprite_from_str(b"\
+...111..\
+..11111.\
+..3322..\
+.322122.\
+.3221222\
+..3223..\
+...111..\
+..11111.");
+
+// Big Mario walking bottom
+pub const MARIO_BIG_WALK_BOT: Sprite = sprite_from_str(b"\
+..11111.\
+.1111111\
+.1133311\
+..3333..\
+..3.33..\
+..33.33.\
+.33...33\
+333...33");
+
+// Goomba
+pub const GOOMBA: Sprite = sprite_from_str(b"\
+..1111..\
+.111111.\
+12211221\
+11111111\
+.111111.\
+..2222..\
+.22..22.\
+22....22");
 
 // Brick block
-pub const BRICK: [u8; 8] = [
-    0b11111111,
-    0b10010010,
-    0b11111111,
-    0b01001001,
-    0b11111111,
-    0b10010010,
-    0b11111111,
-    0b01001001,
-];
+pub const BRICK: Sprite = sprite_from_str(b"\
+11111111\
+12321232\
+11111111\
+32123212\
+11111111\
+12321232\
+11111111\
+33333333");
 
-// Question block
-pub const QUESTION_BLOCK: [u8; 8] = [
-    0b11111111,
-    0b10000001,
-    0b10011001,
-    0b10000101,
-    0b10001001,
-    0b10000001,
-    0b10001001,
-    0b11111111,
-];
+// Question block (frame 1)
+pub const QUESTION: Sprite = sprite_from_str(b"\
+11111111\
+13333331\
+13112131\
+13331131\
+13311131\
+13333131\
+13311131\
+11111111");
 
-// Ground/floor tile
-pub const GROUND: [u8; 8] = [
-    0b11111111,
-    0b11111111,
-    0b11101110,
-    0b11111111,
-    0b11111111,
-    0b01110111,
-    0b11111111,
-    0b11111111,
-];
+// Question block (hit/empty)
+pub const QUESTION_EMPTY: Sprite = sprite_from_str(b"\
+33333333\
+31111113\
+31333313\
+31333313\
+31333313\
+31333313\
+31111113\
+33333333");
 
-// Colors (RGB as u32: 0x00RRGGBB)
-pub const MARIO_RED: u32 = 0x00E52521;       // Classic Mario red
-pub const MARIO_SKIN: u32 = 0x00FFB27F;      // Skin tone
-pub const MARIO_BROWN: u32 = 0x00723A22;     // Hair/shoes
-pub const GOOMBA_BROWN: u32 = 0x008B4513;    // Goomba body
-pub const GOOMBA_TAN: u32 = 0x00D2B48C;      // Goomba face
-pub const BRICK_COLOR: u32 = 0x00B86B3F;     // Brick orange-brown
-pub const BRICK_DARK: u32 = 0x00804020;      // Brick mortar
-pub const GROUND_COLOR: u32 = 0x00D87B40;    // Ground orange
-pub const GROUND_DARK: u32 = 0x00A05820;     // Ground shadow
-pub const SKY_BLUE: u32 = 0x005C94FC;        // Classic SMB sky blue
-pub const QUESTION_YELLOW: u32 = 0x00FFB800; // Question block
-pub const HIGHLIGHT_RED: u32 = 0x00FF4444;   // Player-controlled Mario highlight
+// Ground block
+pub const GROUND: Sprite = sprite_from_str(b"\
+11111111\
+11121112\
+11111111\
+21112111\
+11111111\
+11121112\
+11111111\
+33333333");
+
+// Mushroom
+pub const MUSHROOM: Sprite = sprite_from_str(b"\
+..1111..\
+.111111.\
+11211211\
+12222221\
+11111111\
+..3333..\
+.322223.\
+.333333.");
+
+// Brick debris (small piece)
+pub const BRICK_DEBRIS: Sprite = sprite_from_str(b"\
+........\
+........\
+..12....\
+.1231...\
+.1211...\
+..11....\
+........\
+........");
+
+// Death sprite (Mario falling)
+pub const MARIO_DEAD: Sprite = sprite_from_str(b"\
+..3223..\
+.322223.\
+..1111..\
+.111111.\
+..1111..\
+...11...\
+..1111..\
+..3..3..");
