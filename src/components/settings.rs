@@ -641,24 +641,27 @@ fn RegionPriorityList(
                     let region_for_class = region.clone();
                     let len = display_order.get().len();
 
+                    // Clone region for use in closures
+                    let region_clone = region.clone();
+
                     view! {
                         // Drop indicator before this item
                         <div
                             class=move || {
-                                let from_idx = dragging_region.get().as_ref().and_then(|r| {
-                                    display_order.get().iter().position(|x| x == r)
-                                });
                                 let target = drop_target_idx.get();
-                                let is_dragging = dragging_region.get().is_some();
-                                let is_target = target == Some(idx);
-                                // Don't show at positions that wouldn't move the item
-                                let would_be_noop = from_idx == Some(idx) || from_idx.map(|i| i + 1) == Some(idx);
+                                let dragging = dragging_region.get();
 
-                                if is_dragging && is_target && !would_be_noop {
-                                    "drop-indicator visible"
-                                } else {
-                                    "drop-indicator"
+                                if dragging.is_none() || target != Some(idx) {
+                                    return "drop-indicator";
                                 }
+
+                                // Check if this would be a no-op (same position or adjacent)
+                                let dominated_region = dragging.as_ref().unwrap();
+                                if dominated_region == &region_clone {
+                                    return "drop-indicator"; // Can't drop on self
+                                }
+
+                                "drop-indicator visible"
                             }
                         />
                         <div
@@ -698,15 +701,10 @@ fn RegionPriorityList(
                             view! {
                                 <div
                                     class=move || {
-                                        let len = display_order.get().len();
-                                        let dragging_from_idx = dragging_region.get().as_ref().and_then(|r| {
-                                            display_order.get().iter().position(|x| x == r)
-                                        });
-                                        // Show at end if drop target is len and not dragging from last position
-                                        if drop_target_idx.get() == Some(len)
-                                            && dragging_region.get().is_some()
-                                            && dragging_from_idx != Some(len - 1)
-                                        {
+                                        let target = drop_target_idx.get();
+                                        let dragging = dragging_region.get();
+
+                                        if dragging.is_some() && target == Some(len) {
                                             "drop-indicator drop-indicator-end visible"
                                         } else {
                                             "drop-indicator drop-indicator-end"
