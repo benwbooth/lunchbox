@@ -1,334 +1,31 @@
-//! Main Mario mini-game component with canvas rendering
-//! Uses ImageData for efficient batched pixel rendering
+//! WebGPU-powered Mario mini-game
+//! All game logic runs in WGSL shaders - Rust only bootstraps WebGPU
+//!
+//! This code is compiled to WASM and runs in Tauri's webview or browser.
+//! WebGPU is available in modern webviews (WebKit, WebView2, Chromium).
 
 use leptos::prelude::*;
 use leptos::html;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, ImageData, KeyboardEvent};
+use web_sys::{HtmlCanvasElement, KeyboardEvent};
 use std::cell::RefCell;
 use std::rc::Rc;
+use wgpu::util::DeviceExt;
 
-use super::sprites::*;
-use super::entities::{GameWorld, MarioState, BlockType, KoopaState, CharacterType};
-use super::physics;
-use super::world;
-use super::ai;
+use super::gpu::{pack_sprite_atlas, pack_palettes, Uniforms};
 
-/// Tile size in pixels (matches 8x8 sprites)
-const TILE_SIZE: i32 = 8;
-
-/// Target FPS
-const TARGET_FPS: f64 = 60.0;
-const FRAME_TIME: f64 = 1000.0 / TARGET_FPS;
-
-/// Spawn intervals
-const GOOMBA_RESPAWN_INTERVAL: u32 = 240;
-const MAX_GOOMBAS: usize = 20;
-
-/// Input state for player controls
-#[derive(Clone, Default)]
-struct InputState {
-    left: bool,
-    right: bool,
-    jump: bool,
-}
-
-/// Pixel buffer for efficient rendering
-struct PixelBuffer {
-    data: Vec<u8>,
-    width: u32,
-    height: u32,
-}
-
-impl PixelBuffer {
-    fn new(width: u32, height: u32) -> Self {
-        let size = (width * height * 4) as usize;
-        Self {
-            data: vec![0; size],
-            width,
-            height,
-        }
-    }
-
-    fn clear(&mut self) {
-        self.data.fill(0);
-    }
-
-    #[inline]
-    fn set_pixel(&mut self, x: i32, y: i32, r: u8, g: u8, b: u8) {
-        if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
-            return;
-        }
-        let idx = ((y as u32 * self.width + x as u32) * 4) as usize;
-        self.data[idx] = r;
-        self.data[idx + 1] = g;
-        self.data[idx + 2] = b;
-        self.data[idx + 3] = 255;
-    }
-
-    fn to_image_data(&self) -> Result<ImageData, JsValue> {
-        let clamped = wasm_bindgen::Clamped(&self.data[..]);
-        ImageData::new_with_u8_clamped_array_and_sh(clamped, self.width, self.height)
-    }
-}
-
-/// Draw a 4-color sprite to the pixel buffer
-#[inline]
-fn draw_sprite_to_buffer(
-    buffer: &mut PixelBuffer,
-    sprite: &Sprite,
-    x: i32,
-    y: i32,
-    palette: &Palette,
-    flip_x: bool,
-) {
-    for row in 0..8 {
-        let lo = sprite[row * 2];
-        let hi = sprite[row * 2 + 1];
-
-        for col in 0..8 {
-            let bit = 7 - col;
-            let color_idx = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
-
-            if color_idx == 0 {
-                continue; // Transparent
-            }
-
-            let color = palette[color_idx as usize];
-            let r = ((color >> 16) & 0xFF) as u8;
-            let g = ((color >> 8) & 0xFF) as u8;
-            let b = (color & 0xFF) as u8;
-
-            let px = if flip_x {
-                x + (7 - col) as i32
-            } else {
-                x + col as i32
-            };
-            let py = y + row as i32;
-            buffer.set_pixel(px, py, r, g, b);
-        }
-    }
-}
-
-/// Draw the game world to the pixel buffer and render to canvas
-fn render(ctx: &CanvasRenderingContext2d, buffer: &mut PixelBuffer, world: &GameWorld, width: u32, height: u32) {
-    // Clear buffer (black background, alpha = 255)
-    for i in 0..buffer.data.len() / 4 {
-        let idx = i * 4;
-        buffer.data[idx] = 0;     // R
-        buffer.data[idx + 1] = 0; // G
-        buffer.data[idx + 2] = 0; // B
-        buffer.data[idx + 3] = 255; // A
-    }
-
-    let tile_size = world.tile_size;
-
-    // Draw ground platforms
-    for platform in &world.platforms {
-        if platform.is_ground {
-            for tx in 0..platform.width {
-                let px = (platform.x + tx) * tile_size;
-                let py = platform.y * tile_size;
-                draw_sprite_to_buffer(buffer, &GROUND, px, py, &PALETTE_GROUND, false);
-            }
-        }
-    }
-
-    // Draw blocks (bricks and question blocks)
-    for block in &world.blocks {
-        let bx = block.x * tile_size;
-        let by = block.y * tile_size;
-        let (sprite, palette) = match block.block_type {
-            BlockType::Brick => (&BRICK, &PALETTE_BRICK),
-            BlockType::Question => (&QUESTION, &PALETTE_QUESTION),
-            BlockType::QuestionEmpty => (&QUESTION_EMPTY, &PALETTE_BRICK),
-            BlockType::Ground => (&GROUND, &PALETTE_GROUND),
-        };
-        draw_sprite_to_buffer(buffer, sprite, bx, by, palette, false);
-    }
-
-    // Draw debris (no rotation in buffer mode, just position)
-    for debris in &world.debris {
-        if debris.alive {
-            draw_sprite_to_buffer(buffer, &BRICK_DEBRIS, debris.pos.x as i32, debris.pos.y as i32, &PALETTE_BRICK, false);
-        }
-    }
-
-    // Draw mushrooms
-    for mushroom in &world.mushrooms {
-        if mushroom.active {
-            draw_sprite_to_buffer(buffer, &MUSHROOM, mushroom.pos.x as i32, mushroom.pos.y as i32, &PALETTE_MUSHROOM, false);
-        }
-    }
-
-    // Draw Goombas
-    for goomba in &world.goombas {
-        if goomba.alive {
-            draw_sprite_to_buffer(buffer, &GOOMBA, goomba.pos.x as i32, goomba.pos.y as i32, &PALETTE_GOOMBA, !goomba.facing_right);
-        } else if goomba.squish_timer > 0 {
-            // Draw squished Goomba as a flat rectangle
-            let x = goomba.pos.x as i32;
-            let y = goomba.pos.y as i32 + 6;
-            let r = ((NES_BROWN >> 16) & 0xFF) as u8;
-            let g = ((NES_BROWN >> 8) & 0xFF) as u8;
-            let b = (NES_BROWN & 0xFF) as u8;
-            for dx in 0..8 {
-                for dy in 0..2 {
-                    buffer.set_pixel(x + dx, y + dy, r, g, b);
-                }
-            }
-        }
-    }
-
-    // Draw Koopas
-    for koopa in &world.koopas {
-        if koopa.alive {
-            let kx = koopa.pos.x as i32;
-            let ky = koopa.pos.y as i32;
-
-            match koopa.state {
-                KoopaState::Walking => {
-                    // Koopa is taller when walking (12px), draw head above body
-                    draw_sprite_to_buffer(buffer, &KOOPA_WALK, kx, ky + 4, &PALETTE_KOOPA, !koopa.facing_right);
-                }
-                KoopaState::Shell | KoopaState::ShellMoving => {
-                    draw_sprite_to_buffer(buffer, &KOOPA_SHELL, kx, ky, &PALETTE_KOOPA, false);
-                }
-            }
-        }
-    }
-
-    // Draw Coins
-    for coin in &world.coins {
-        if !coin.collected {
-            draw_sprite_to_buffer(buffer, &COIN, coin.pos.x as i32, coin.pos.y as i32, &PALETTE_COIN, false);
-        }
-    }
-
-    // Draw Marios (and other characters)
-    for mario in &world.marios {
-        // Skip if dead and off screen
-        if mario.state == MarioState::Dead && mario.pos.y > height as f64 {
-            continue;
-        }
-
-        // Blink when invincible
-        if mario.invincible_timer > 0 && (mario.invincible_timer / 4) % 2 == 0 {
-            continue;
-        }
-
-        // Get palette based on character type and player status
-        let palette = if mario.is_player {
-            match mario.character_type {
-                CharacterType::Mario => &PALETTE_PLAYER,
-                CharacterType::Luigi => &PALETTE_PLAYER_LUIGI,
-                CharacterType::Toad => &PALETTE_PLAYER_TOAD,
-                CharacterType::Princess => &PALETTE_PLAYER_PRINCESS,
-            }
-        } else {
-            match mario.character_type {
-                CharacterType::Mario => &PALETTE_MARIO,
-                CharacterType::Luigi => &PALETTE_LUIGI,
-                CharacterType::Toad => &PALETTE_TOAD,
-                CharacterType::Princess => &PALETTE_PRINCESS,
-            }
-        };
-
-        let mx = mario.pos.x as i32;
-        let my = mario.pos.y as i32;
-
-        if mario.state == MarioState::Dead {
-            draw_sprite_to_buffer(buffer, &MARIO_DEAD, mx, my, palette, false);
-        } else if mario.is_big {
-            // Draw big character (2 sprites stacked)
-            let (top, bot) = match mario.character_type {
-                CharacterType::Mario | CharacterType::Luigi => {
-                    match mario.state {
-                        MarioState::Standing => (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT),
-                        MarioState::Walking => {
-                            if mario.walk_frame == 0 {
-                                (&MARIO_BIG_WALK_TOP, &MARIO_BIG_WALK_BOT)
-                            } else {
-                                (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT)
-                            }
-                        }
-                        MarioState::Jumping => (&MARIO_BIG_WALK_TOP, &MARIO_BIG_WALK_BOT),
-                        MarioState::Dead => (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT),
-                    }
-                }
-                CharacterType::Toad => (&TOAD_BIG_STAND_TOP, &TOAD_BIG_STAND_BOT),
-                CharacterType::Princess => (&PRINCESS_BIG_STAND_TOP, &PRINCESS_BIG_STAND_BOT),
-            };
-            draw_sprite_to_buffer(buffer, top, mx, my, palette, !mario.facing_right);
-            draw_sprite_to_buffer(buffer, bot, mx, my + 8, palette, !mario.facing_right);
-        } else {
-            // Draw small character
-            let sprite = match mario.character_type {
-                CharacterType::Mario | CharacterType::Luigi => {
-                    match mario.state {
-                        MarioState::Standing => &MARIO_STAND,
-                        MarioState::Walking => {
-                            if mario.walk_frame == 0 { &MARIO_WALK1 } else { &MARIO_WALK2 }
-                        }
-                        MarioState::Jumping => &MARIO_JUMP,
-                        MarioState::Dead => &MARIO_DEAD,
-                    }
-                }
-                CharacterType::Toad => {
-                    match mario.state {
-                        MarioState::Standing => &TOAD_STAND,
-                        MarioState::Walking => &TOAD_WALK1,
-                        MarioState::Jumping => &TOAD_JUMP,
-                        MarioState::Dead => &MARIO_DEAD,
-                    }
-                }
-                CharacterType::Princess => {
-                    match mario.state {
-                        MarioState::Standing => &PRINCESS_STAND,
-                        MarioState::Walking => &PRINCESS_WALK1,
-                        MarioState::Jumping => &PRINCESS_JUMP,
-                        MarioState::Dead => &MARIO_DEAD,
-                    }
-                }
-            };
-            draw_sprite_to_buffer(buffer, sprite, mx, my, palette, !mario.facing_right);
-        }
-
-        // Draw player indicator
-        if mario.is_player && mario.alive {
-            for dx in 0..2 {
-                for dy in 0..2 {
-                    buffer.set_pixel(mx + 3 + dx, my - 4 + dy, 255, 255, 255);
-                }
-            }
-        }
-    }
-
-    // Put the image data to canvas
-    if let Ok(image_data) = buffer.to_image_data() {
-        ctx.put_image_data(&image_data, 0.0, 0.0).ok();
-    }
-}
-
-/// The Mario Mini-Game component
+/// The Mario Mini-Game component (WebGPU)
 #[component]
 pub fn MarioMinigame() -> impl IntoView {
     let canvas_ref = NodeRef::<html::Canvas>::new();
-    let game_world: Rc<RefCell<Option<GameWorld>>> = Rc::new(RefCell::new(None));
-    let input_state: Rc<RefCell<InputState>> = Rc::new(RefCell::new(InputState::default()));
-    let animation_frame_id: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
-    let last_frame_time: Rc<RefCell<f64>> = Rc::new(RefCell::new(0.0));
-    let initialized: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
+    let initialized = Rc::new(RefCell::new(false));
+    let gpu_state: Rc<RefCell<Option<GpuState>>> = Rc::new(RefCell::new(None));
 
-    let game_world_init = game_world.clone();
-    let animation_frame_id_init = animation_frame_id.clone();
-    let last_frame_time_init = last_frame_time.clone();
-    let input_state_loop = input_state.clone();
     let initialized_clone = initialized.clone();
+    let gpu_state_init = gpu_state.clone();
 
     Effect::new(move || {
-        // Prevent double initialization
         if *initialized_clone.borrow() {
             return;
         }
@@ -341,191 +38,60 @@ pub fn MarioMinigame() -> impl IntoView {
             None => return,
         };
 
-        // Clone references for the delayed initialization closure
-        let canvas_clone = canvas.clone();
-        let game_world_init_clone = game_world_init.clone();
-        let animation_frame_id_init_clone = animation_frame_id_init.clone();
-        let last_frame_time_init_clone = last_frame_time_init.clone();
-        let input_state_loop_clone = input_state_loop.clone();
         let initialized_inner = initialized_clone.clone();
+        let gpu_state_inner = gpu_state_init.clone();
+        let canvas_clone = canvas.clone();
 
         // Use requestAnimationFrame to ensure layout is computed
         let init_closure = Closure::once(move || {
             if *initialized_inner.borrow() {
                 return;
             }
-
-            let window = match web_sys::window() {
-                Some(w) => w,
-                None => return,
-            };
-
-            // Use window dimensions directly - most reliable approach
-            // Subtract sidebar width (~240px) and toolbar height (~52px)
-            let window_width = window.inner_width().ok()
-                .and_then(|v| v.as_f64())
-                .unwrap_or(1200.0);
-            let window_height = window.inner_height().ok()
-                .and_then(|v| v.as_f64())
-                .unwrap_or(800.0);
-
-            // Calculate available space (window minus sidebar and toolbar)
-            let sidebar_width = 240.0;
-            let toolbar_height = 52.0;
-
-            let width = ((window_width - sidebar_width).max(400.0)) as u32;
-            let height = ((window_height - toolbar_height).max(300.0)) as u32;
-
-            canvas_clone.set_width(width);
-            canvas_clone.set_height(height);
-
-            let ctx = canvas_clone
-                .get_context("2d")
-                .ok()
-                .flatten()
-                .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok());
-
-            let Some(ctx) = ctx else { return };
-
-            ctx.set_image_smoothing_enabled(false);
-
             *initialized_inner.borrow_mut() = true;
 
-            // Generate world with 8-pixel tiles (matches sprite size)
-            let world = world::generate_world(width as i32, height as i32, TILE_SIZE);
-            *game_world_init_clone.borrow_mut() = Some(world);
-
-            // Create pixel buffer for efficient rendering
-            let pixel_buffer: Rc<RefCell<PixelBuffer>> = Rc::new(RefCell::new(PixelBuffer::new(width, height)));
-
-            // Start game loop
-            let game_world_loop = game_world_init_clone.clone();
-            let animation_frame_id_loop = animation_frame_id_init_clone.clone();
-            let animation_frame_id_outer = animation_frame_id_init_clone.clone();
-            let last_frame_time_loop = last_frame_time_init_clone.clone();
-            let input_loop = input_state_loop_clone.clone();
-            let buffer_loop = pixel_buffer.clone();
-
-            let game_loop_ref: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
-            let game_loop_ref_inner = game_loop_ref.clone();
-
-            let closure = Closure::new(move |timestamp: f64| {
-                let mut last_time = last_frame_time_loop.borrow_mut();
-
-                let elapsed = timestamp - *last_time;
-                if elapsed < FRAME_TIME {
-                    if let Some(window) = web_sys::window() {
-                        if let Some(ref closure) = *game_loop_ref_inner.borrow() {
-                            let id = window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
-                            *animation_frame_id_loop.borrow_mut() = id;
-                        }
+            // Spawn async initialization
+            wasm_bindgen_futures::spawn_local(async move {
+                match GpuState::new(&canvas_clone).await {
+                    Ok(state) => {
+                        *gpu_state_inner.borrow_mut() = Some(state);
+                        start_game_loop(gpu_state_inner);
                     }
-                    return;
-                }
-                *last_time = timestamp;
-
-                if let Some(ref mut world) = *game_world_loop.borrow_mut() {
-                    let input = input_loop.borrow();
-                    physics::apply_player_input(world, input.left, input.right, input.jump);
-                    ai::update_ai(world);
-                    physics::update(world);
-
-                    world.spawn_timer += 1;
-                    if world.spawn_timer >= GOOMBA_RESPAWN_INTERVAL && world.goombas.len() < MAX_GOOMBAS {
-                        world::spawn_random_goomba(world);
-                        world.spawn_timer = 0;
-                    }
-
-                    render(&ctx, &mut buffer_loop.borrow_mut(), world, width, height);
-                }
-
-                if let Some(window) = web_sys::window() {
-                    if let Some(ref closure) = *game_loop_ref_inner.borrow() {
-                        let id = window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
-                        *animation_frame_id_loop.borrow_mut() = id;
+                    Err(e) => {
+                        web_sys::console::error_1(&format!("WebGPU init failed: {}", e).into());
                     }
                 }
             });
-
-            *game_loop_ref.borrow_mut() = Some(closure);
-
-            if let Some(window) = web_sys::window() {
-                let id = {
-                    let borrow = game_loop_ref.borrow();
-                    if let Some(ref closure) = *borrow {
-                        window.request_animation_frame(closure.as_ref().unchecked_ref()).ok()
-                    } else {
-                        None
-                    }
-                };
-                *animation_frame_id_outer.borrow_mut() = id;
-            }
-
-            std::mem::forget(game_loop_ref);
         });
 
-        // Schedule initialization after layout
         window.request_animation_frame(init_closure.as_ref().unchecked_ref()).ok();
         init_closure.forget();
     });
 
     // Keyboard input handlers
-    let input_keydown = input_state.clone();
-    let input_keyup = input_state.clone();
+    let gpu_state_keydown = gpu_state.clone();
+    let gpu_state_keyup = gpu_state.clone();
 
     let on_keydown = move |ev: KeyboardEvent| {
-        let key = ev.key();
-        let mut input = input_keydown.borrow_mut();
-
-        match key.as_str() {
-            "ArrowLeft" | "a" | "A" => {
-                input.left = true;
-                ev.prevent_default();
+        if let Some(ref mut state) = *gpu_state_keydown.borrow_mut() {
+            let key = ev.key();
+            match key.as_str() {
+                "ArrowLeft" | "a" | "A" => state.input_left = true,
+                "ArrowRight" | "d" | "D" => state.input_right = true,
+                "ArrowUp" | "w" | "W" | " " => state.input_jump = true,
+                _ => return,
             }
-            "ArrowRight" | "d" | "D" => {
-                input.right = true;
-                ev.prevent_default();
-            }
-            "ArrowUp" | "w" | "W" | " " => {
-                input.jump = true;
-                ev.prevent_default();
-            }
-            _ => {}
+            ev.prevent_default();
         }
     };
 
     let on_keyup = move |ev: KeyboardEvent| {
-        let key = ev.key();
-        let mut input = input_keyup.borrow_mut();
-
-        match key.as_str() {
-            "ArrowLeft" | "a" | "A" => input.left = false,
-            "ArrowRight" | "d" | "D" => input.right = false,
-            "ArrowUp" | "w" | "W" | " " => input.jump = false,
-            _ => {}
-        }
-    };
-
-    // Click to select Mario
-    let game_world_click = game_world.clone();
-    let on_click = move |ev: web_sys::MouseEvent| {
-        let target = ev.target().and_then(|t| t.dyn_into::<HtmlCanvasElement>().ok());
-        let Some(canvas) = target else { return };
-
-        let rect = canvas.get_bounding_client_rect();
-        let click_x = ev.client_x() as f64 - rect.left();
-        let click_y = ev.client_y() as f64 - rect.top();
-
-        if let Some(ref mut world) = *game_world_click.borrow_mut() {
-            for mario in &world.marios {
-                if !mario.alive {
-                    continue;
-                }
-                let (mx, my, mw, mh) = mario.hitbox();
-                if click_x >= mx && click_x <= mx + mw && click_y >= my && click_y <= my + mh {
-                    world.set_player(mario.id);
-                    break;
-                }
+        if let Some(ref mut state) = *gpu_state_keyup.borrow_mut() {
+            let key = ev.key();
+            match key.as_str() {
+                "ArrowLeft" | "a" | "A" => state.input_left = false,
+                "ArrowRight" | "d" | "D" => state.input_right = false,
+                "ArrowUp" | "w" | "W" | " " => state.input_jump = false,
+                _ => {}
             }
         }
     };
@@ -540,11 +106,549 @@ pub fn MarioMinigame() -> impl IntoView {
             <canvas
                 class="minigame-canvas"
                 node_ref=canvas_ref
-                on:click=on_click
             />
             <div class="minigame-overlay">
                 <p>"Select a platform to view games."</p>
             </div>
         </div>
     }
+}
+
+/// WebGPU state
+struct GpuState {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    surface: wgpu::Surface<'static>,
+    surface_config: wgpu::SurfaceConfiguration,
+    compute_pipeline: wgpu::ComputePipeline,
+    render_pipeline: wgpu::RenderPipeline,
+    uniform_buffer: wgpu::Buffer,
+    entity_buffer: wgpu::Buffer,
+    block_buffer: wgpu::Buffer,
+    platform_buffer: wgpu::Buffer,
+    sprite_buffer: wgpu::Buffer,
+    palette_buffer: wgpu::Buffer,
+    compute_bind_group: wgpu::BindGroup,
+    render_bind_group: wgpu::BindGroup,
+    uniforms: Uniforms,
+    frame: u32,
+    start_time: f64,
+    input_left: bool,
+    input_right: bool,
+    input_jump: bool,
+}
+
+impl GpuState {
+    async fn new(canvas: &HtmlCanvasElement) -> Result<Self, String> {
+        let window = web_sys::window().ok_or("No window")?;
+
+        // Set canvas size
+        let window_width = window.inner_width().ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1200.0);
+        let window_height = window.inner_height().ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(800.0);
+
+        let sidebar_width = 240.0;
+        let toolbar_height = 52.0;
+        let width = ((window_width - sidebar_width).max(400.0)) as u32;
+        let height = ((window_height - toolbar_height).max(300.0)) as u32;
+
+        canvas.set_width(width);
+        canvas.set_height(height);
+
+        // Create wgpu instance
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::BROWSER_WEBGPU,
+            ..Default::default()
+        });
+
+        // Create surface from canvas
+        let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+            .map_err(|e| format!("Failed to create surface: {}", e))?;
+
+        // Request adapter
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .ok_or("Failed to get adapter")?;
+
+        // Request device
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Mario Minigame Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                    memory_hints: Default::default(),
+                },
+                None,
+            )
+            .await
+            .map_err(|e| format!("Failed to get device: {}", e))?;
+
+        // Configure surface
+        let surface_caps = surface.get_capabilities(&adapter);
+        let surface_format = surface_caps.formats.iter()
+            .find(|f| f.is_srgb())
+            .copied()
+            .unwrap_or(surface_caps.formats[0]);
+
+        let surface_config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width,
+            height,
+            present_mode: wgpu::PresentMode::AutoVsync,
+            alpha_mode: surface_caps.alpha_modes[0],
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
+        surface.configure(&device, &surface_config);
+
+        // Load shaders
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Game Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/game.wgsl").into()),
+        });
+
+        // Create buffers
+        let uniforms = Uniforms {
+            resolution: [width as f32, height as f32],
+            time: 0.0,
+            delta_time: 1.0 / 60.0,
+            mouse: [0.0, 0.0],
+            mouse_click: 0,
+            frame: 0,
+        };
+
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Uniform Buffer"),
+            size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Entity buffer (128 entities * 32 bytes each)
+        let entity_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Entity Buffer"),
+            size: 128 * 32,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Block buffer (512 blocks * 16 bytes each)
+        let block_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Block Buffer"),
+            size: 512 * 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Platform buffer (64 platforms * 16 bytes each)
+        let platform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Platform Buffer"),
+            size: 64 * 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Sprite atlas buffer
+        let sprite_data = pack_sprite_atlas();
+        let sprite_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Sprite Buffer"),
+            contents: bytemuck::cast_slice(&sprite_data),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        // Palette buffer
+        let palette_data = pack_palettes();
+        let palette_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Palette Buffer"),
+            contents: bytemuck::cast_slice(&palette_data),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        // Bind group layout for compute
+        let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Compute Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Bind group layout for render
+        let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Render Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Create compute bind group
+        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Compute Bind Group"),
+            layout: &compute_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: entity_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: block_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: platform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: sprite_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: palette_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        // Create render bind group
+        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Render Bind Group"),
+            layout: &render_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: entity_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: block_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: platform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: sprite_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: palette_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        // Create compute pipeline
+        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Compute Pipeline Layout"),
+            bind_group_layouts: &[&compute_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Compute Pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &shader,
+            entry_point: Some("update"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        // Create render pipeline
+        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[&render_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
+        let start_time = js_sys::Date::now();
+
+        Ok(Self {
+            device,
+            queue,
+            surface,
+            surface_config,
+            compute_pipeline,
+            render_pipeline,
+            uniform_buffer,
+            entity_buffer,
+            block_buffer,
+            platform_buffer,
+            sprite_buffer,
+            palette_buffer,
+            compute_bind_group,
+            render_bind_group,
+            uniforms,
+            frame: 0,
+            start_time,
+            input_left: false,
+            input_right: false,
+            input_jump: false,
+        })
+    }
+
+    fn update(&mut self) {
+        // Update uniforms
+        let now = js_sys::Date::now();
+        let time = ((now - self.start_time) / 1000.0) as f32;
+        self.uniforms.time = time;
+        self.uniforms.delta_time = 1.0 / 60.0;
+        self.uniforms.frame = self.frame;
+
+        // Encode input state in mouse_click for now (player control)
+        let mut input_bits = 0u32;
+        if self.input_left { input_bits |= 1; }
+        if self.input_right { input_bits |= 2; }
+        if self.input_jump { input_bits |= 4; }
+        self.uniforms.mouse_click = input_bits;
+
+        self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniforms]));
+
+        // Get output texture
+        let output = match self.surface.get_current_texture() {
+            Ok(t) => t,
+            Err(_) => return,
+        };
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
+
+        // Compute pass
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Compute Pass"),
+                timestamp_writes: None,
+            });
+            compute_pass.set_pipeline(&self.compute_pipeline);
+            compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
+            // Dispatch enough workgroups for all entities (128 / 64 = 2)
+            compute_pass.dispatch_workgroups(2, 1, 1);
+        }
+
+        // Render pass
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.render_bind_group, &[]);
+            render_pass.draw(0..3, 0..1); // Full-screen triangle
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        self.frame += 1;
+    }
+}
+
+fn start_game_loop(gpu_state: Rc<RefCell<Option<GpuState>>>) {
+    let game_loop: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+    let game_loop_inner = game_loop.clone();
+
+    let closure = Closure::new(move |_timestamp: f64| {
+        if let Some(ref mut state) = *gpu_state.borrow_mut() {
+            state.update();
+        }
+
+        // Request next frame
+        if let Some(window) = web_sys::window() {
+            if let Some(ref closure) = *game_loop_inner.borrow() {
+                window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
+            }
+        }
+    });
+
+    // Start the loop
+    if let Some(window) = web_sys::window() {
+        window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
+    }
+
+    *game_loop.borrow_mut() = Some(closure);
+    std::mem::forget(game_loop);
 }
