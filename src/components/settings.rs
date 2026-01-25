@@ -512,9 +512,15 @@ fn RegionPriorityList(
     all_regions: ReadSignal<Vec<String>>,
     settings: RwSignal<AppSettings>,
 ) -> impl IntoView {
+    use leptos::prelude::NodeRef;
+    use wasm_bindgen::JsCast;
+
     // Track dragging state using signals
-    let (dragging_idx, set_dragging_idx) = signal::<Option<usize>>(None);
+    let (dragging_region, set_dragging_region) = signal::<Option<String>>(None);
     let (drop_target_idx, set_drop_target_idx) = signal::<Option<usize>>(None);
+
+    // Ref to the list container for position calculations
+    let list_ref: NodeRef<leptos::html::Div> = NodeRef::new();
 
     // Compute the display order as a memo
     let display_order = Memo::new(move |_| {
@@ -534,59 +540,153 @@ fn RegionPriorityList(
         }
     });
 
-    // Compute length as a separate memo to avoid borrowing issues
-    let list_len = Memo::new(move |_| display_order.get().len());
+    // Calculate drop target based on mouse Y position
+    let calculate_drop_target = move |client_y: i32| {
+        if let Some(list_el) = list_ref.get() {
+            let list_node: &web_sys::HtmlElement = &list_el;
+            let children = list_node.children();
+            let len = display_order.get().len();
+
+            // Get list's bounding rect for offset calculation
+            let list_rect = list_node.get_bounding_client_rect();
+            let list_top = list_rect.top();
+
+            // Collect midpoints of each item (skip drop indicators, only look at items)
+            let mut item_midpoints: Vec<(usize, f64)> = Vec::new();
+            let mut item_idx = 0;
+
+            for i in 0..children.length() {
+                if let Some(child) = children.item(i) {
+                    if let Some(el) = child.dyn_ref::<web_sys::HtmlElement>() {
+                        // Only process actual items, not drop indicators
+                        if el.class_list().contains("region-priority-item") {
+                            // Use offset_top relative to parent + convert to client coords
+                            let offset = el.offset_top() as f64;
+                            let height = el.offset_height() as f64;
+                            let midpoint = list_top + offset + height / 2.0;
+                            item_midpoints.push((item_idx, midpoint));
+                            item_idx += 1;
+                        }
+                    }
+                }
+            }
+
+            // Find which position the cursor is closest to
+            let y = client_y as f64;
+
+            // If above all items, drop at position 0
+            if let Some((_, first_mid)) = item_midpoints.first() {
+                if y < *first_mid {
+                    return Some(0);
+                }
+            }
+
+            // Find the gap between items where cursor is
+            for window in item_midpoints.windows(2) {
+                if let [(idx, mid1), (_, mid2)] = window {
+                    if y >= *mid1 && y < *mid2 {
+                        return Some(idx + 1);
+                    }
+                }
+            }
+
+            // If below all items, drop at end
+            if let Some((_, last_mid)) = item_midpoints.last() {
+                if y >= *last_mid {
+                    return Some(len);
+                }
+            }
+        }
+        None
+    };
+
+    // Perform the drop operation
+    let perform_drop = move || {
+        if let (Some(from_region), Some(to_idx)) =
+            (dragging_region.get_untracked(), drop_target_idx.get_untracked())
+        {
+            let mut order = display_order.get();
+            if let Some(from_idx) = order.iter().position(|r| r == &from_region) {
+                if from_idx != to_idx && from_idx + 1 != to_idx {
+                    let item = order.remove(from_idx);
+                    // Adjust target index after removal
+                    let insert_at = if from_idx < to_idx {
+                        to_idx - 1
+                    } else {
+                        to_idx
+                    };
+                    order.insert(insert_at.min(order.len()), item);
+                    settings.update(|s| s.region_priority = order);
+                }
+            }
+        }
+        set_dragging_region.set(None);
+        set_drop_target_idx.set(None);
+    };
 
     view! {
-        <div class="region-priority-list">
+        <div
+            class="region-priority-list"
+            node_ref=list_ref
+            on:dragover=move |e| {
+                e.prevent_default();
+                if dragging_region.get().is_some() {
+                    if let Some(target) = calculate_drop_target(e.client_y()) {
+                        set_drop_target_idx.set(Some(target));
+                    }
+                }
+            }
+            on:drop=move |e| {
+                e.prevent_default();
+                perform_drop();
+            }
+            on:dragleave=move |e| {
+                // Only clear if leaving the list entirely
+                if let Some(related) = e.related_target() {
+                    if let Some(list_el) = list_ref.get() {
+                        let list_el: &web_sys::Node = &list_el;
+                        if !list_el.contains(related.dyn_ref::<web_sys::Node>()) {
+                            set_drop_target_idx.set(None);
+                        }
+                    }
+                } else {
+                    set_drop_target_idx.set(None);
+                }
+            }
+        >
             <For
                 each=move || display_order.get().into_iter().enumerate()
                 key=|(_, region)| region.clone()
                 children=move |(idx, region)| {
                     let display_name = region_display_name(&region);
                     let region_for_drag = region.clone();
+                    let region_for_class = region.clone();
+                    let len = display_order.get().len();
 
                     view! {
                         // Drop indicator before this item
                         <div
                             class=move || {
+                                let dominated_region = dragging_region.get();
+                                let dominated_from_idx = dominated_region.as_ref().and_then(|r| {
+                                    display_order.get().iter().position(|x| x == r)
+                                });
+                                // Show if this is the drop target and we're dragging
+                                // Don't show indicator at the dragged item's current position or right after it
                                 if drop_target_idx.get() == Some(idx)
-                                    && dragging_idx.get().is_some()
-                                    && dragging_idx.get() != Some(idx)
+                                    && dragging_region.get().is_some()
+                                    && dominated_from_idx != Some(idx)
+                                    && dominated_from_idx != Some(idx.saturating_sub(1))
                                 {
                                     "drop-indicator visible"
                                 } else {
                                     "drop-indicator"
                                 }
                             }
-                            on:dragover=move |e| {
-                                e.prevent_default();
-                                set_drop_target_idx.set(Some(idx));
-                            }
-                            on:drop=move |e| {
-                                e.prevent_default();
-                                e.stop_propagation();
-
-                                if let Some(from) = dragging_idx.get_untracked() {
-                                    if from != idx {
-                                        let mut order = display_order.get();
-                                        if from < order.len() {
-                                            let item = order.remove(from);
-                                            // Insert at idx, adjusted for removal
-                                            let insert_at = if from < idx { idx - 1 } else { idx };
-                                            order.insert(insert_at.min(order.len()), item);
-                                            settings.update(|s| s.region_priority = order);
-                                        }
-                                    }
-                                }
-
-                                set_dragging_idx.set(None);
-                                set_drop_target_idx.set(None);
-                            }
                         />
                         <div
                             class=move || {
-                                if dragging_idx.get() == Some(idx) {
+                                if dragging_region.get().as_ref() == Some(&region_for_class) {
                                     "region-priority-item dragging"
                                 } else {
                                     "region-priority-item"
@@ -596,38 +696,11 @@ fn RegionPriorityList(
                             on:dragstart={
                                 let region = region_for_drag.clone();
                                 move |_| {
-                                    // Find current index of this region in the list
-                                    let current_idx = display_order.get().iter().position(|r| r == &region);
-                                    if let Some(idx) = current_idx {
-                                        set_dragging_idx.set(Some(idx));
-                                    }
+                                    set_dragging_region.set(Some(region.clone()));
                                 }
                             }
                             on:dragend=move |_| {
-                                set_dragging_idx.set(None);
-                                set_drop_target_idx.set(None);
-                            }
-                            on:dragover=move |e| {
-                                e.prevent_default();
-                                set_drop_target_idx.set(Some(idx));
-                            }
-                            on:drop=move |e| {
-                                e.prevent_default();
-                                e.stop_propagation();
-
-                                if let Some(from) = dragging_idx.get_untracked() {
-                                    if from != idx {
-                                        let mut order = display_order.get();
-                                        if from < order.len() && idx <= order.len() {
-                                            let item = order.remove(from);
-                                            let insert_at = if from < idx { idx - 1 } else { idx };
-                                            order.insert(insert_at.min(order.len()), item);
-                                            settings.update(|s| s.region_priority = order);
-                                        }
-                                    }
-                                }
-
-                                set_dragging_idx.set(None);
+                                set_dragging_region.set(None);
                                 set_drop_target_idx.set(None);
                             }
                         >
@@ -644,46 +717,27 @@ fn RegionPriorityList(
                             <span class="region-name">{display_name}</span>
                         </div>
                         // Drop indicator after last item
-                        {move || {
-                            let len = list_len.get();
-                            (idx == len - 1).then(|| view! {
+                        {(idx == len - 1).then(|| {
+                            view! {
                                 <div
                                     class=move || {
-                                        let len = list_len.get();
+                                        let len = display_order.get().len();
+                                        let dragging_from_idx = dragging_region.get().as_ref().and_then(|r| {
+                                            display_order.get().iter().position(|x| x == r)
+                                        });
+                                        // Show at end if drop target is len and not dragging from last position
                                         if drop_target_idx.get() == Some(len)
-                                            && dragging_idx.get().is_some()
+                                            && dragging_region.get().is_some()
+                                            && dragging_from_idx != Some(len - 1)
                                         {
                                             "drop-indicator drop-indicator-end visible"
                                         } else {
                                             "drop-indicator drop-indicator-end"
                                         }
                                     }
-                                    on:dragover={
-                                        let len = list_len.get();
-                                        move |e| {
-                                            e.prevent_default();
-                                            set_drop_target_idx.set(Some(len));
-                                        }
-                                    }
-                                    on:drop=move |e| {
-                                        e.prevent_default();
-                                        e.stop_propagation();
-
-                                        if let Some(from) = dragging_idx.get_untracked() {
-                                            let mut order = display_order.get();
-                                            if from < order.len() {
-                                                let item = order.remove(from);
-                                                order.push(item);
-                                                settings.update(|s| s.region_priority = order);
-                                            }
-                                        }
-
-                                        set_dragging_idx.set(None);
-                                        set_drop_target_idx.set(None);
-                                    }
                                 />
-                            })
-                        }}
+                            }
+                        })}
                     }
                 }
             />
