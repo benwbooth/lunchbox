@@ -8,6 +8,8 @@ crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
 chrono = "0.4"
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
 
 [dependencies]
 leptos = { version = "0.7", features = ["csr"] }
