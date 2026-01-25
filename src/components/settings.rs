@@ -516,53 +516,33 @@ fn RegionPriorityList(
     let (dragging_idx, set_dragging_idx) = signal::<Option<usize>>(None);
     let (drop_target_idx, set_drop_target_idx) = signal::<Option<usize>>(None);
 
-    // Compute the display order: user's saved priority first, then remaining regions
-    let get_display_order = {
-        let all_regions = all_regions.clone();
-        move || -> Vec<String> {
-            let saved_priority = settings.get().region_priority;
-            let all = all_regions.get();
+    // Compute the display order as a memo (only updates when settings or all_regions change)
+    let display_order = Memo::new(move |_| {
+        let saved_priority = settings.get().region_priority;
+        let all = all_regions.get();
 
-            if !saved_priority.is_empty() {
-                let mut result = saved_priority.clone();
-                for region in all {
-                    if !result.contains(&region) {
-                        result.push(region);
-                    }
-                }
-                result
-            } else {
-                all
-            }
-        }
-    };
-
-    // Move region from one position to another
-    let do_move = {
-        let get_display_order = get_display_order.clone();
-        move |from: usize, to: usize| {
-            if from != to {
-                let mut order = get_display_order();
-                if from < order.len() && to <= order.len() {
-                    let item = order.remove(from);
-                    let insert_at = if from < to { to - 1 } else { to };
-                    order.insert(insert_at.min(order.len()), item);
-                    settings.update(|s| s.region_priority = order);
+        if !saved_priority.is_empty() {
+            let mut result = saved_priority.clone();
+            for region in all {
+                if !result.contains(&region) {
+                    result.push(region);
                 }
             }
+            result
+        } else {
+            all
         }
-    };
+    });
 
     view! {
         <div class="region-priority-list">
             {move || {
-                let regions = get_display_order();
+                let regions = display_order.get();
                 let len = regions.len();
 
                 regions.into_iter().enumerate().map(|(idx, region)| {
                     let display_name = region_display_name(&region);
-                    let do_move = do_move.clone();
-                    let do_move_end = do_move.clone();
+                    let is_last = idx == len - 1;
 
                     view! {
                         // Drop indicator before this item
@@ -603,8 +583,16 @@ fn RegionPriorityList(
                                 e.stop_propagation();
 
                                 // Get source from signal (set during dragstart)
-                                if let Some(from) = dragging_idx.get() {
-                                    do_move(from, idx);
+                                if let Some(from) = dragging_idx.get_untracked() {
+                                    if from != idx {
+                                        let mut order = display_order.get();
+                                        if from < order.len() && idx <= order.len() {
+                                            let item = order.remove(from);
+                                            let insert_at = if from < idx { idx - 1 } else { idx };
+                                            order.insert(insert_at.min(order.len()), item);
+                                            settings.update(|s| s.region_priority = order);
+                                        }
+                                    }
                                 }
 
                                 set_dragging_idx.set(None);
@@ -624,7 +612,7 @@ fn RegionPriorityList(
                             <span class="region-name">{display_name}</span>
                         </div>
                         // Drop indicator after last item (for moving to end)
-                        {(idx == len - 1).then(|| view! {
+                        {is_last.then(|| view! {
                             <div
                                 class="drop-indicator drop-indicator-end"
                                 class:visible=move || {
@@ -634,14 +622,21 @@ fn RegionPriorityList(
                                 }
                                 on:dragover=move |e| {
                                     e.prevent_default();
-                                    set_drop_target_idx.set(Some(len));
+                                    if drop_target_idx.get_untracked() != Some(len) {
+                                        set_drop_target_idx.set(Some(len));
+                                    }
                                 }
                                 on:drop=move |e| {
                                     e.prevent_default();
                                     e.stop_propagation();
 
-                                    if let Some(from) = dragging_idx.get() {
-                                        do_move_end(from, len);
+                                    if let Some(from) = dragging_idx.get_untracked() {
+                                        let mut order = display_order.get();
+                                        if from < order.len() {
+                                            let item = order.remove(from);
+                                            order.push(item);
+                                            settings.update(|s| s.region_priority = order);
+                                        }
                                     }
 
                                     set_dragging_idx.set(None);
