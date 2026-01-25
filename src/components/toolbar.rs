@@ -63,7 +63,10 @@ fn StatusIndicator() -> impl IntoView {
                     set_is_connected.set(true);
                     set_backend_hash.set(Some(health.build_hash));
                     set_backend_timestamp.set(Some(health.build_timestamp));
-                    set_backend_last_updated.set(Some(now_minutes()));
+                    // Only set last_updated if not already set (first successful check)
+                    if backend_last_updated.get_untracked().is_none() {
+                        set_backend_last_updated.set(Some(now_minutes()));
+                    }
                 }
                 Err(_) => {
                     set_is_connected.set(false);
