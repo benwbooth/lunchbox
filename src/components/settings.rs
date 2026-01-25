@@ -509,7 +509,7 @@ fn RegionPriorityList(
 ) -> impl IntoView {
     // Track dragging state
     let (dragging_idx, set_dragging_idx) = signal::<Option<usize>>(None);
-    let (drag_over_idx, set_drag_over_idx) = signal::<Option<usize>>(None);
+    let (drop_target_idx, set_drop_target_idx) = signal::<Option<usize>>(None);
 
     // Compute the display order: user's saved priority first, then remaining regions
     let display_order = move || -> Vec<String> {
@@ -533,9 +533,11 @@ fn RegionPriorityList(
         if from != to {
             settings.update(|s| {
                 let mut order = display_order();
-                if from < order.len() && to < order.len() {
+                if from < order.len() && to <= order.len() {
                     let item = order.remove(from);
-                    order.insert(to, item);
+                    // Adjust target index if we removed before it
+                    let adjusted_to = if from < to { to - 1 } else { to };
+                    order.insert(adjusted_to.min(order.len()), item);
                     s.region_priority = order;
                 }
             });
@@ -543,49 +545,74 @@ fn RegionPriorityList(
     };
 
     view! {
-        <div class="region-priority-list">
+        <div
+            class="region-priority-list"
+            on:dragover=move |e| e.prevent_default()
+            on:drop=move |e| {
+                e.prevent_default();
+                if let (Some(from), Some(to)) = (dragging_idx.get(), drop_target_idx.get()) {
+                    move_region(from, to);
+                }
+                set_dragging_idx.set(None);
+                set_drop_target_idx.set(None);
+            }
+        >
             {move || {
                 let regions = display_order();
+                let len = regions.len();
                 regions.into_iter().enumerate().map(|(idx, region)| {
                     let display_name = region_display_name(&region);
                     let is_dragging = move || dragging_idx.get() == Some(idx);
-                    let is_drag_over = move || drag_over_idx.get() == Some(idx) && dragging_idx.get() != Some(idx);
+                    let show_drop_before = move || {
+                        drop_target_idx.get() == Some(idx) && dragging_idx.get() != Some(idx)
+                    };
+                    let show_drop_after = move || {
+                        idx == len - 1 && drop_target_idx.get() == Some(len) && dragging_idx.get() != Some(idx)
+                    };
 
                     view! {
+                        // Drop indicator line before this item
+                        <div
+                            class="drop-indicator"
+                            class:visible=show_drop_before
+                        />
                         <div
                             class="region-priority-item"
                             class:dragging=is_dragging
-                            class:drag-over=is_drag_over
                             draggable="true"
                             on:dragstart=move |_| {
                                 set_dragging_idx.set(Some(idx));
                             }
                             on:dragend=move |_| {
                                 set_dragging_idx.set(None);
-                                set_drag_over_idx.set(None);
+                                set_drop_target_idx.set(None);
                             }
                             on:dragover=move |e| {
                                 e.prevent_default();
-                                set_drag_over_idx.set(Some(idx));
-                            }
-                            on:dragleave=move |_| {
-                                // Only clear if leaving this specific item
-                                if drag_over_idx.get() == Some(idx) {
-                                    set_drag_over_idx.set(None);
-                                }
-                            }
-                            on:drop=move |e| {
-                                e.prevent_default();
-                                if let Some(from) = dragging_idx.get() {
-                                    move_region(from, idx);
-                                }
-                                set_dragging_idx.set(None);
-                                set_drag_over_idx.set(None);
+                                e.stop_propagation();
+                                // Show drop indicator before this item
+                                set_drop_target_idx.set(Some(idx));
                             }
                         >
-                            <span class="drag-handle" title="Drag to reorder">"⋮⋮"</span>
+                            <span class="drag-handle" title="Drag to reorder">
+                                <svg width="10" height="16" viewBox="0 0 10 16">
+                                    <circle cx="2" cy="2" r="1.5" fill="currentColor"/>
+                                    <circle cx="8" cy="2" r="1.5" fill="currentColor"/>
+                                    <circle cx="2" cy="8" r="1.5" fill="currentColor"/>
+                                    <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+                                    <circle cx="2" cy="14" r="1.5" fill="currentColor"/>
+                                    <circle cx="8" cy="14" r="1.5" fill="currentColor"/>
+                                </svg>
+                            </span>
                             <span class="region-name">{display_name}</span>
                         </div>
+                        // Drop indicator line after last item
+                        {(idx == len - 1).then(|| view! {
+                            <div
+                                class="drop-indicator"
+                                class:visible=show_drop_after
+                            />
+                        })}
                     }
                 }).collect_view()
             }}

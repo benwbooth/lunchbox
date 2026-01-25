@@ -1537,42 +1537,51 @@ h1, h2, h3, h4, h5, h6 {
 .region-priority-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     padding: 6px 12px;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     user-select: none;
     cursor: grab;
-    transition: all 0.15s ease;
+    transition: opacity 0.15s ease;
 }
 
 .region-priority-item:hover {
     background-color: var(--bg-hover);
-    border-color: var(--accent-color);
 }
 
 .region-priority-item.dragging {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: grabbing;
 }
 
-.region-priority-item.drag-over {
-    border-color: var(--accent-color);
-    background-color: var(--accent-color-20);
-    transform: translateY(-2px);
+.drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    cursor: grab;
+    padding: 2px;
 }
 
-.drag-handle {
+.drag-handle:hover {
     color: var(--text-secondary);
-    font-size: 14px;
-    letter-spacing: -2px;
-    cursor: grab;
-    padding: 0 4px;
 }
 
 .region-priority-item.dragging .drag-handle {
     cursor: grabbing;
+}
+
+.drop-indicator {
+    height: 2px;
+    background-color: transparent;
+    margin: 0;
+    transition: background-color 0.1s ease;
+}
+
+.drop-indicator.visible {
+    background-color: var(--accent-color);
 }
 
 .region-name {
