@@ -551,18 +551,22 @@ pub fn GameGrid(
                 if is_loading {
                     view! { <div class="loading">"Loading games..."</div> }.into_any()
                 } else if total == 0 && !loading.get() {
-                    let message = if collection.get().is_some() {
-                        "This collection is empty. Add games to see them here."
+                    if collection.get().is_some() {
+                        view! {
+                            <div class="empty-state">
+                                <p>"This collection is empty. Add games to see them here."</p>
+                            </div>
+                        }.into_any()
                     } else if platform.get().is_some() {
-                        "No games found for this platform."
+                        view! {
+                            <div class="empty-state">
+                                <p>"No games found for this platform."</p>
+                            </div>
+                        }.into_any()
                     } else {
-                        "Select a platform to view games."
-                    };
-                    view! {
-                        <div class="empty-state">
-                            <p>{message}</p>
-                        </div>
-                    }.into_any()
+                        // No platform selected - show minigame!
+                        view! { <crate::components::MarioMinigame /> }.into_any()
+                    }
                 } else {
                     // Measure container dimensions if not yet initialized
                     if let Some(container) = container_ref.get() {
