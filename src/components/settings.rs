@@ -9,8 +9,8 @@ use crate::tauri::{
     test_screenscraper_connection, test_steamgriddb_connection,
     test_igdb_connection, get_all_regions, AppSettings,
     get_all_emulator_preferences, clear_game_emulator_preference,
-    clear_platform_emulator_preference, clear_all_emulator_preferences,
-    EmulatorPreferences,
+    clear_platform_emulator_preference, set_platform_emulator_preference,
+    get_emulators_for_platform, get_platforms, EmulatorPreferences, EmulatorInfo,
 };
 use super::ImageSourcesWizard;
 
@@ -501,13 +501,6 @@ fn region_display_name(region: &str) -> String {
     }
 }
 
-/// Indexed region for list display
-#[derive(Clone)]
-struct IndexedRegion {
-    index: usize,
-    region: String,
-}
-
 /// Reorderable list for region priority using up/down buttons
 #[component]
 fn RegionPriorityList(
@@ -515,11 +508,11 @@ fn RegionPriorityList(
     settings: RwSignal<AppSettings>,
 ) -> impl IntoView {
     // Compute the display order: user's saved priority first, then remaining regions
-    let display_order = move || -> Vec<IndexedRegion> {
+    let display_order = move || -> Vec<String> {
         let saved_priority = settings.get().region_priority;
         let all = all_regions.get();
 
-        let regions = if !saved_priority.is_empty() {
+        if !saved_priority.is_empty() {
             let mut result = saved_priority.clone();
             for region in all {
                 if !result.contains(&region) {
@@ -529,21 +522,12 @@ fn RegionPriorityList(
             result
         } else {
             all
-        };
-
-        regions
-            .into_iter()
-            .enumerate()
-            .map(|(index, region)| IndexedRegion { index, region })
-            .collect()
+        }
     };
-
-    let total_count = move || display_order().len();
 
     let move_region = move |from: usize, to: usize| {
         settings.update(|s| {
-            let regions: Vec<String> = display_order().into_iter().map(|r| r.region).collect();
-            let mut order = regions;
+            let mut order = display_order();
             if from < order.len() && to < order.len() {
                 let item = order.remove(from);
                 order.insert(to, item);
@@ -554,14 +538,13 @@ fn RegionPriorityList(
 
     view! {
         <div class="region-priority-list">
-            <For
-                each=display_order
-                key=|item| item.region.clone()
-                let:item
-            >
-                {
-                    let idx = item.index;
-                    let display_name = region_display_name(&item.region);
+            {move || {
+                let regions = display_order();
+                let total = regions.len();
+                regions.into_iter().enumerate().map(|(idx, region)| {
+                    let display_name = region_display_name(&region);
+                    let is_first = idx == 0;
+                    let is_last = idx >= total.saturating_sub(1);
                     view! {
                         <div class="region-priority-item">
                             <div class="region-controls">
@@ -572,193 +555,193 @@ fn RegionPriorityList(
                                             move_region(idx, idx - 1);
                                         }
                                     }
-                                    disabled=move || idx == 0
+                                    disabled=is_first
                                     title="Move up"
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 12 12">
-                                        <path d="M6 2L2 7h8L6 2z" fill="currentColor"/>
-                                    </svg>
+                                    "▲"
                                 </button>
                                 <button
                                     class="region-move-btn"
                                     on:click=move |_| {
-                                        if idx < total_count() - 1 {
-                                            move_region(idx, idx + 1);
-                                        }
+                                        move_region(idx, idx + 1);
                                     }
-                                    disabled=move || idx >= total_count() - 1
+                                    disabled=is_last
                                     title="Move down"
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 12 12">
-                                        <path d="M6 10L2 5h8L6 10z" fill="currentColor"/>
-                                    </svg>
+                                    "▼"
                                 </button>
                             </div>
                             <span class="region-name">{display_name}</span>
                         </div>
                     }
-                }
-            </For>
+                }).collect_view()
+            }}
         </div>
     }
+}
+
+/// Data for a platform with its emulators and current preference
+#[derive(Clone)]
+struct PlatformEmulatorData {
+    platform_name: String,
+    emulators: Vec<EmulatorInfo>,
+    current_preference: Option<String>,
 }
 
 /// Emulator preferences management section
 #[component]
 fn EmulatorPreferencesSection() -> impl IntoView {
-    let (prefs, set_prefs) = signal::<Option<EmulatorPreferences>>(None);
+    let (platform_data, set_platform_data) = signal::<Vec<PlatformEmulatorData>>(Vec::new());
+    let (game_prefs, set_game_prefs) = signal::<Vec<crate::tauri::GameEmulatorPref>>(Vec::new());
     let (loading, set_loading) = signal(true);
 
-    // Load preferences on mount
-    Effect::new(move || {
-        spawn_local(async move {
-            match get_all_emulator_preferences().await {
-                Ok(p) => set_prefs.set(Some(p)),
-                Err(e) => {
-                    web_sys::console::error_1(&format!("Failed to load emulator preferences: {}", e).into());
-                    set_prefs.set(Some(EmulatorPreferences {
-                        game_preferences: Vec::new(),
-                        platform_preferences: Vec::new(),
-                    }));
-                }
-            }
-            set_loading.set(false);
-        });
-    });
-
-    let reload_prefs = move || {
+    // Load all data on mount
+    let load_data = move || {
         set_loading.set(true);
         spawn_local(async move {
-            if let Ok(p) = get_all_emulator_preferences().await {
-                set_prefs.set(Some(p));
+            // Load platforms, emulators, and preferences in parallel
+            let platforms_fut = get_platforms();
+            let prefs_fut = get_all_emulator_preferences();
+
+            let (platforms_res, prefs_res) = futures::join!(platforms_fut, prefs_fut);
+
+            let platforms = platforms_res.unwrap_or_default();
+            let prefs = prefs_res.unwrap_or(EmulatorPreferences {
+                game_preferences: Vec::new(),
+                platform_preferences: Vec::new(),
+            });
+
+            // Store game preferences
+            set_game_prefs.set(prefs.game_preferences);
+
+            // Build platform -> preference lookup
+            let pref_map: std::collections::HashMap<String, String> = prefs.platform_preferences
+                .into_iter()
+                .map(|p| (p.platform_name, p.emulator_name))
+                .collect();
+
+            // Load emulators for each platform
+            let mut data = Vec::new();
+            for platform in platforms {
+                if let Ok(emulators) = get_emulators_for_platform(platform.name.clone()).await {
+                    if !emulators.is_empty() {
+                        data.push(PlatformEmulatorData {
+                            platform_name: platform.name.clone(),
+                            emulators,
+                            current_preference: pref_map.get(&platform.name).cloned(),
+                        });
+                    }
+                }
             }
+
+            // Sort by platform name
+            data.sort_by(|a, b| a.platform_name.cmp(&b.platform_name));
+            set_platform_data.set(data);
             set_loading.set(false);
         });
     };
 
-    let on_clear_all = move |_| {
-        spawn_local(async move {
-            if let Ok(()) = clear_all_emulator_preferences().await {
-                set_prefs.set(Some(EmulatorPreferences {
-                    game_preferences: Vec::new(),
-                    platform_preferences: Vec::new(),
-                }));
-            }
-        });
-    };
+    // Initial load
+    Effect::new(move || {
+        load_data();
+    });
 
     view! {
         <div class="emulator-prefs-section">
             <Show
                 when=move || !loading.get()
-                fallback=|| view! { <div class="emulator-loading">"Loading preferences..."</div> }
+                fallback=|| view! { <div class="emulator-loading">"Loading..."</div> }
             >
-                {move || prefs.get().map(|p| {
-                    let game_prefs = p.game_preferences.clone();
-                    let platform_prefs = p.platform_preferences.clone();
-                    let has_game_prefs = !game_prefs.is_empty();
-                    let has_platform_prefs = !platform_prefs.is_empty();
-                    let has_any = has_game_prefs || has_platform_prefs;
+                // Per-Game Preferences (if any)
+                {move || {
+                    let gp = game_prefs.get();
+                    if gp.is_empty() {
+                        view! {}.into_any()
+                    } else {
+                        view! {
+                            <div class="emulator-prefs-subsection">
+                                <h4>"Per-Game Overrides"</h4>
+                                <div class="emulator-pref-list">
+                                    {gp.into_iter().map(|pref| {
+                                        let db_id = pref.launchbox_db_id;
+                                        let game_title = pref.game_title.clone().unwrap_or_else(|| format!("Game #{}", db_id));
+                                        let emulator_name = pref.emulator_name.clone();
 
-                    view! {
-                        // Per-Game Preferences
-                        <div class="emulator-prefs-subsection">
-                            <h4>"Per-Game Preferences"</h4>
-                            {if has_game_prefs {
-                                view! {
-                                    <div class="emulator-pref-list">
-                                        {game_prefs.iter().map(|pref| {
-                                            let db_id = pref.launchbox_db_id;
-                                            let game_title = pref.game_title.clone().unwrap_or_else(|| format!("Game #{}", db_id));
-                                            let emulator_name = pref.emulator_name.clone();
-                                            let reload = reload_prefs.clone();
-
-                                            view! {
-                                                <div class="emulator-pref-item">
-                                                    <div class="emulator-pref-info">
-                                                        <span class="emulator-pref-game">{game_title}</span>
-                                                        <span class="emulator-pref-emulator">{emulator_name}</span>
-                                                    </div>
-                                                    <button
-                                                        class="emulator-pref-clear-btn"
-                                                        on:click=move |_| {
-                                                            spawn_local(async move {
-                                                                if let Ok(()) = clear_game_emulator_preference(db_id).await {
-                                                                    reload();
-                                                                }
-                                                            });
-                                                        }
-                                                    >
-                                                        "Clear"
-                                                    </button>
-                                                </div>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! { <p class="emulator-prefs-empty">"No game-specific preferences set."</p> }.into_any()
-                            }}
-                        </div>
-
-                        // Per-Platform Preferences
-                        <div class="emulator-prefs-subsection">
-                            <h4>"Per-Platform Preferences"</h4>
-                            {if has_platform_prefs {
-                                view! {
-                                    <div class="emulator-pref-list">
-                                        {platform_prefs.iter().map(|pref| {
-                                            let platform_name = pref.platform_name.clone();
-                                            let platform_name_display = pref.platform_name.clone();
-                                            let emulator_name = pref.emulator_name.clone();
-                                            let reload = reload_prefs.clone();
-
-                                            view! {
-                                                <div class="emulator-pref-item">
-                                                    <div class="emulator-pref-info">
-                                                        <span class="emulator-pref-platform">{platform_name_display}</span>
-                                                        <span class="emulator-pref-emulator">{emulator_name}</span>
-                                                    </div>
-                                                    <button
-                                                        class="emulator-pref-clear-btn"
-                                                        on:click=move |_| {
-                                                            let platform = platform_name.clone();
-                                                            spawn_local(async move {
-                                                                if let Ok(()) = clear_platform_emulator_preference(platform).await {
-                                                                    reload();
-                                                                }
-                                                            });
-                                                        }
-                                                    >
-                                                        "Clear"
-                                                    </button>
-                                                </div>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! { <p class="emulator-prefs-empty">"No platform preferences set."</p> }.into_any()
-                            }}
-                        </div>
-
-                        // Clear All Button
-                        {if has_any {
-                            view! {
-                                <div class="emulator-prefs-clear-all">
-                                    <button
-                                        class="emulator-prefs-clear-all-btn"
-                                        on:click=on_clear_all
-                                    >
-                                        "Clear All Preferences"
-                                    </button>
+                                        view! {
+                                            <div class="emulator-pref-item">
+                                                <span class="emulator-pref-game">{game_title}</span>
+                                                <span class="emulator-pref-arrow">"→"</span>
+                                                <span class="emulator-pref-emulator">{emulator_name}</span>
+                                                <button
+                                                    class="emulator-pref-clear-btn"
+                                                    on:click=move |_| {
+                                                        spawn_local(async move {
+                                                            let _ = clear_game_emulator_preference(db_id).await;
+                                                            load_data();
+                                                        });
+                                                    }
+                                                >
+                                                    "×"
+                                                </button>
+                                            </div>
+                                        }
+                                    }).collect_view()}
                                 </div>
-                            }.into_any()
-                        } else {
-                            view! {}.into_any()
-                        }}
+                            </div>
+                        }.into_any()
                     }
-                })}
+                }}
+
+                // Platform Defaults Table
+                <div class="emulator-prefs-subsection">
+                    <h4>"Platform Defaults"</h4>
+                    <p class="emulator-prefs-hint">"Select default emulator for each platform, or leave as 'Ask every time'."</p>
+                    <div class="platform-emulator-table">
+                        {move || {
+                            platform_data.get().into_iter().map(|pd| {
+                                let platform_name = pd.platform_name.clone();
+                                let platform_name_for_change = pd.platform_name.clone();
+                                let emulators = pd.emulators.clone();
+                                let current = pd.current_preference.clone();
+
+                                view! {
+                                    <div class="platform-emulator-row">
+                                        <span class="platform-name">{platform_name}</span>
+                                        <select
+                                            class="emulator-select"
+                                            on:change=move |ev| {
+                                                let value = event_target_value(&ev);
+                                                let platform = platform_name_for_change.clone();
+                                                spawn_local(async move {
+                                                    if value.is_empty() {
+                                                        let _ = clear_platform_emulator_preference(platform).await;
+                                                    } else {
+                                                        let _ = set_platform_emulator_preference(platform, value).await;
+                                                    }
+                                                    load_data();
+                                                });
+                                            }
+                                        >
+                                            <option value="" selected=current.is_none()>"Ask every time"</option>
+                                            {emulators.iter().map(|emu| {
+                                                let name = emu.name.clone();
+                                                let display = if let Some(ref core) = emu.retroarch_core {
+                                                    format!("RetroArch: {}", core)
+                                                } else {
+                                                    emu.name.clone()
+                                                };
+                                                let is_selected = current.as_ref() == Some(&name);
+                                                view! {
+                                                    <option value=name.clone() selected=is_selected>{display}</option>
+                                                }
+                                            }).collect_view()}
+                                        </select>
+                                    </div>
+                                }
+                            }).collect_view()
+                        }}
+                    </div>
+                </div>
             </Show>
         </div>
     }

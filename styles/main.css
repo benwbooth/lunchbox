@@ -3327,3 +3327,63 @@ body.sidebar-resizing * {
     background: var(--danger-color);
     color: var(--text-highlight);
 }
+
+.emulator-prefs-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.emulator-pref-arrow {
+    color: var(--text-secondary);
+    margin: 0 8px;
+}
+
+.platform-emulator-table {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.platform-emulator-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.platform-emulator-row .platform-name {
+    font-size: 13px;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.emulator-select {
+    width: 200px;
+    padding: 6px 10px;
+    font-size: 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.emulator-select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.emulator-select option {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
