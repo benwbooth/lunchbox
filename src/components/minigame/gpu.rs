@@ -63,9 +63,9 @@ pub fn pack_palettes() -> Vec<u32> {
     palettes
 }
 
-/// Uniforms struct matching WGSL
+/// Uniforms struct matching WGSL layout (32 bytes)
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Default)]
 pub struct Uniforms {
     pub resolution: [f32; 2],
     pub time: f32,
@@ -75,15 +75,22 @@ pub struct Uniforms {
     pub frame: u32,
 }
 
-impl Default for Uniforms {
-    fn default() -> Self {
-        Self {
-            resolution: [800.0, 600.0],
-            time: 0.0,
-            delta_time: 1.0 / 60.0,
-            mouse: [0.0, 0.0],
-            mouse_click: 0,
-            frame: 0,
-        }
+impl Uniforms {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(32);
+        bytes.extend_from_slice(&self.resolution[0].to_le_bytes());
+        bytes.extend_from_slice(&self.resolution[1].to_le_bytes());
+        bytes.extend_from_slice(&self.time.to_le_bytes());
+        bytes.extend_from_slice(&self.delta_time.to_le_bytes());
+        bytes.extend_from_slice(&self.mouse[0].to_le_bytes());
+        bytes.extend_from_slice(&self.mouse[1].to_le_bytes());
+        bytes.extend_from_slice(&self.mouse_click.to_le_bytes());
+        bytes.extend_from_slice(&self.frame.to_le_bytes());
+        bytes
     }
+}
+
+/// Convert Vec<u32> to bytes
+pub fn u32_slice_to_bytes(data: &[u32]) -> Vec<u8> {
+    data.iter().flat_map(|v| v.to_le_bytes()).collect()
 }

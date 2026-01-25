@@ -1,19 +1,22 @@
-//! WebGPU-powered Mario mini-game
+//! WebGPU-powered Mario mini-game using raw web-sys APIs
 //! All game logic runs in WGSL shaders - Rust only bootstraps WebGPU
-//!
-//! This code is compiled to WASM and runs in Tauri's webview or browser.
-//! WebGPU is available in modern webviews (WebKit, WebView2, Chromium).
 
 use leptos::prelude::*;
 use leptos::html;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlCanvasElement, KeyboardEvent};
+use web_sys::{
+    HtmlCanvasElement, KeyboardEvent,
+    GpuDevice, GpuQueue, GpuCanvasContext,
+    GpuBuffer, GpuBindGroup, GpuComputePipeline, GpuRenderPipeline,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
-use wgpu::util::DeviceExt;
+use js_sys::{Object, Reflect, Uint8Array};
 
-use super::gpu::{pack_sprite_atlas, pack_palettes, Uniforms};
+use super::gpu::{pack_sprite_atlas, pack_palettes, Uniforms, u32_slice_to_bytes};
+
+const SHADER_SOURCE: &str = include_str!("shaders/game.wgsl");
 
 /// The Mario Mini-Game component (WebGPU)
 #[component]
@@ -114,25 +117,24 @@ pub fn MarioMinigame() -> impl IntoView {
     }
 }
 
-/// WebGPU state
+/// WebGPU state using raw web-sys types
 struct GpuState {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
-    compute_pipeline: wgpu::ComputePipeline,
-    render_pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
-    entity_buffer: wgpu::Buffer,
-    block_buffer: wgpu::Buffer,
-    platform_buffer: wgpu::Buffer,
-    sprite_buffer: wgpu::Buffer,
-    palette_buffer: wgpu::Buffer,
-    compute_bind_group: wgpu::BindGroup,
-    render_bind_group: wgpu::BindGroup,
+    device: GpuDevice,
+    queue: GpuQueue,
+    context: GpuCanvasContext,
+    compute_pipeline: GpuComputePipeline,
+    render_pipeline: GpuRenderPipeline,
+    uniform_buffer: GpuBuffer,
+    entity_buffer: GpuBuffer,
+    block_buffer: GpuBuffer,
+    platform_buffer: GpuBuffer,
+    compute_bind_group: GpuBindGroup,
+    render_bind_group: GpuBindGroup,
     uniforms: Uniforms,
     frame: u32,
     start_time: f64,
+    width: u32,
+    height: u32,
     input_left: bool,
     input_right: bool,
     input_jump: bool,
@@ -141,6 +143,10 @@ struct GpuState {
 impl GpuState {
     async fn new(canvas: &HtmlCanvasElement) -> Result<Self, String> {
         let window = web_sys::window().ok_or("No window")?;
+        let navigator = window.navigator();
+
+        // Check for WebGPU support
+        let gpu = navigator.gpu();
 
         // Set canvas size
         let window_width = window.inner_width().ok()
@@ -158,401 +164,108 @@ impl GpuState {
         canvas.set_width(width);
         canvas.set_height(height);
 
-        // Create wgpu instance
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::BROWSER_WEBGPU,
-            ..Default::default()
-        });
-
-        // Create surface from canvas
-        let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
-            .map_err(|e| format!("Failed to create surface: {}", e))?;
-
         // Request adapter
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
+        let adapter_options = web_sys::GpuRequestAdapterOptions::new();
+        adapter_options.set_power_preference(web_sys::GpuPowerPreference::HighPerformance);
+
+        let adapter_promise = gpu.request_adapter_with_options(&adapter_options);
+        let adapter = wasm_bindgen_futures::JsFuture::from(adapter_promise)
             .await
-            .ok_or("Failed to get adapter")?;
+            .map_err(|e| format!("Failed to get adapter: {:?}", e))?;
+
+        let adapter: web_sys::GpuAdapter = adapter.dyn_into()
+            .map_err(|_| "Failed to cast adapter")?;
 
         // Request device
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Mario Minigame Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
+        let device_promise = adapter.request_device();
+        let device = wasm_bindgen_futures::JsFuture::from(device_promise)
             .await
-            .map_err(|e| format!("Failed to get device: {}", e))?;
+            .map_err(|e| format!("Failed to get device: {:?}", e))?;
 
-        // Configure surface
-        let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter()
-            .find(|f| f.is_srgb())
-            .copied()
-            .unwrap_or(surface_caps.formats[0]);
+        let device: GpuDevice = device.dyn_into()
+            .map_err(|_| "Failed to cast device")?;
 
-        let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width,
-            height,
-            present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &surface_config);
+        let queue = device.queue();
 
-        // Load shaders
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Game Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/game.wgsl").into()),
-        });
+        // Get canvas context
+        let context = canvas.get_context("webgpu")
+            .map_err(|e| format!("Failed to get context: {:?}", e))?
+            .ok_or("No WebGPU context")?
+            .dyn_into::<GpuCanvasContext>()
+            .map_err(|_| "Failed to cast context")?;
+
+        // Configure canvas
+        let canvas_config = web_sys::GpuCanvasConfiguration::new(&device, web_sys::GpuTextureFormat::Bgra8unorm);
+        context.configure(&canvas_config);
+
+        // Create shader module
+        let shader_desc = web_sys::GpuShaderModuleDescriptor::new(SHADER_SOURCE);
+        let shader = device.create_shader_module(&shader_desc);
 
         // Create buffers
-        let uniforms = Uniforms {
-            resolution: [width as f32, height as f32],
-            time: 0.0,
-            delta_time: 1.0 / 60.0,
-            mouse: [0.0, 0.0],
-            mouse_click: 0,
-            frame: 0,
-        };
+        let uniform_buffer = create_buffer(&device, 32, gpu_buffer_usage_uniform() | gpu_buffer_usage_copy_dst());
+        let entity_buffer = create_buffer(&device, 128 * 32, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
+        let block_buffer = create_buffer(&device, 512 * 16, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
+        let platform_buffer = create_buffer(&device, 64 * 16, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
 
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Uniform Buffer"),
-            size: std::mem::size_of::<Uniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Entity buffer (128 entities * 32 bytes each)
-        let entity_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Entity Buffer"),
-            size: 128 * 32,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Block buffer (512 blocks * 16 bytes each)
-        let block_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Block Buffer"),
-            size: 512 * 16,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Platform buffer (64 platforms * 16 bytes each)
-        let platform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Platform Buffer"),
-            size: 64 * 16,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Sprite atlas buffer
+        // Create and upload sprite/palette buffers
         let sprite_data = pack_sprite_atlas();
-        let sprite_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Sprite Buffer"),
-            contents: bytemuck::cast_slice(&sprite_data),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let sprite_buffer = create_buffer_with_data(&device, &u32_slice_to_bytes(&sprite_data), gpu_buffer_usage_storage());
 
-        // Palette buffer
         let palette_data = pack_palettes();
-        let palette_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Palette Buffer"),
-            contents: bytemuck::cast_slice(&palette_data),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let palette_buffer = create_buffer_with_data(&device, &u32_slice_to_bytes(&palette_data), gpu_buffer_usage_storage());
 
-        // Bind group layout for compute
-        let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Compute Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
+        // Create bind group layouts
+        let compute_bgl = create_bind_group_layout(&device, true);
+        let render_bgl = create_bind_group_layout(&device, false);
 
-        // Bind group layout for render
-        let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Render Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
+        // Create bind groups
+        let compute_bind_group = create_bind_group(
+            &device, &compute_bgl,
+            &uniform_buffer, &entity_buffer, &block_buffer, &platform_buffer,
+            &sprite_buffer, &palette_buffer,
+        );
 
-        // Create compute bind group
-        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compute Bind Group"),
-            layout: &compute_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: entity_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: block_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: platform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: sprite_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: palette_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let render_bind_group = create_bind_group(
+            &device, &render_bgl,
+            &uniform_buffer, &entity_buffer, &block_buffer, &platform_buffer,
+            &sprite_buffer, &palette_buffer,
+        );
 
-        // Create render bind group
-        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Render Bind Group"),
-            layout: &render_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: entity_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: block_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: platform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: sprite_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: palette_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        // Create pipeline layouts
+        let compute_pipeline_layout = create_pipeline_layout(&device, &compute_bgl);
+        let render_pipeline_layout = create_pipeline_layout(&device, &render_bgl);
 
         // Create compute pipeline
-        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Compute Pipeline Layout"),
-            bind_group_layouts: &[&compute_bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Compute Pipeline"),
-            layout: Some(&compute_pipeline_layout),
-            module: &shader,
-            entry_point: Some("update"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
+        let compute_pipeline = create_compute_pipeline(&device, &shader, &compute_pipeline_layout);
 
         // Create render pipeline
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&render_bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
+        let render_pipeline = create_render_pipeline(&device, &shader, &render_pipeline_layout);
 
         let start_time = js_sys::Date::now();
+
+        let uniforms = Uniforms {
+            resolution: [width as f32, height as f32],
+            ..Default::default()
+        };
 
         Ok(Self {
             device,
             queue,
-            surface,
-            surface_config,
+            context,
             compute_pipeline,
             render_pipeline,
             uniform_buffer,
             entity_buffer,
             block_buffer,
             platform_buffer,
-            sprite_buffer,
-            palette_buffer,
             compute_bind_group,
             render_bind_group,
             uniforms,
             frame: 0,
             start_time,
+            width,
+            height,
             input_left: false,
             input_right: false,
             input_jump: false,
@@ -567,64 +280,209 @@ impl GpuState {
         self.uniforms.delta_time = 1.0 / 60.0;
         self.uniforms.frame = self.frame;
 
-        // Encode input state in mouse_click for now (player control)
+        // Encode input state
         let mut input_bits = 0u32;
         if self.input_left { input_bits |= 1; }
         if self.input_right { input_bits |= 2; }
         if self.input_jump { input_bits |= 4; }
         self.uniforms.mouse_click = input_bits;
 
-        self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniforms]));
+        // Write uniforms to buffer
+        let uniform_bytes = self.uniforms.to_bytes();
+        let uniform_array = Uint8Array::from(&uniform_bytes[..]);
+        self.queue.write_buffer_with_u32_and_buffer_source(&self.uniform_buffer, 0, &uniform_array);
 
-        // Get output texture
-        let output = match self.surface.get_current_texture() {
-            Ok(t) => t,
-            Err(_) => return,
-        };
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // Get current texture
+        let texture = self.context.get_current_texture().expect("get current texture");
+        let view = texture.create_view().expect("create texture view");
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+        // Create command encoder
+        let encoder = self.device.create_command_encoder();
 
         // Compute pass
         {
-            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Compute Pass"),
-                timestamp_writes: None,
-            });
+            let compute_pass = encoder.begin_compute_pass();
             compute_pass.set_pipeline(&self.compute_pipeline);
-            compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            // Dispatch enough workgroups for all entities (128 / 64 = 2)
-            compute_pass.dispatch_workgroups(2, 1, 1);
+            compute_pass.set_bind_group(0, Some(&self.compute_bind_group));
+            compute_pass.dispatch_workgroups(2); // 128 entities / 64 workgroup size
+            compute_pass.end();
         }
 
         // Render pass
         {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
+            let color_attachment = create_color_attachment(&view);
+            let render_pass_desc = create_render_pass_descriptor(&color_attachment);
+            let render_pass = encoder.begin_render_pass(&render_pass_desc).expect("begin render pass");
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.render_bind_group, &[]);
-            render_pass.draw(0..3, 0..1); // Full-screen triangle
+            render_pass.set_bind_group(0, Some(&self.render_bind_group));
+            render_pass.draw(3); // Full-screen triangle
+            render_pass.end();
         }
 
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
+        // Submit commands
+        let command_buffer = encoder.finish();
+        let commands = js_sys::Array::new();
+        commands.push(&command_buffer);
+        self.queue.submit(&commands);
 
         self.frame += 1;
     }
+}
+
+// Helper functions to create WebGPU objects
+
+fn gpu_buffer_usage_uniform() -> u32 { 0x0040 }
+fn gpu_buffer_usage_storage() -> u32 { 0x0080 }
+fn gpu_buffer_usage_copy_dst() -> u32 { 0x0008 }
+
+fn create_buffer(device: &GpuDevice, size: u32, usage: u32) -> GpuBuffer {
+    let desc = web_sys::GpuBufferDescriptor::new(size as f64, usage);
+    device.create_buffer(&desc).expect("Failed to create buffer")
+}
+
+fn create_buffer_with_data(device: &GpuDevice, data: &[u8], usage: u32) -> GpuBuffer {
+    let desc = web_sys::GpuBufferDescriptor::new(data.len() as f64, usage | gpu_buffer_usage_copy_dst());
+    desc.set_mapped_at_creation(true);
+    let buffer = device.create_buffer(&desc).expect("Failed to create buffer");
+
+    let mapped = buffer.get_mapped_range().expect("get mapped range");
+    let array = Uint8Array::new(&mapped);
+    array.copy_from(data);
+    buffer.unmap();
+
+    buffer
+}
+
+fn create_bind_group_layout(device: &GpuDevice, is_compute: bool) -> web_sys::GpuBindGroupLayout {
+    let entries = js_sys::Array::new();
+
+    // Binding 0: Uniforms
+    entries.push(&create_bgl_entry(0, if is_compute { 0x1 } else { 0x3 }, "uniform", false));
+
+    // Bindings 1-3: Storage buffers (read-write for compute, read-only for render)
+    for i in 1..=3 {
+        entries.push(&create_bgl_entry(i, if is_compute { 0x1 } else { 0x2 }, "storage", !is_compute));
+    }
+
+    // Bindings 4-5: Read-only storage (sprites, palettes)
+    for i in 4..=5 {
+        entries.push(&create_bgl_entry(i, if is_compute { 0x1 } else { 0x2 }, "read-only-storage", true));
+    }
+
+    let desc = web_sys::GpuBindGroupLayoutDescriptor::new(&entries);
+    device.create_bind_group_layout(&desc).expect("Failed to create BGL")
+}
+
+fn create_bgl_entry(binding: u32, visibility: u32, buffer_type: &str, read_only: bool) -> JsValue {
+    let entry = Object::new();
+    Reflect::set(&entry, &"binding".into(), &binding.into()).unwrap();
+    Reflect::set(&entry, &"visibility".into(), &visibility.into()).unwrap();
+
+    let buffer = Object::new();
+    Reflect::set(&buffer, &"type".into(), &buffer_type.into()).unwrap();
+    if buffer_type == "storage" && read_only {
+        Reflect::set(&buffer, &"type".into(), &"read-only-storage".into()).unwrap();
+    }
+    Reflect::set(&entry, &"buffer".into(), &buffer).unwrap();
+
+    entry.into()
+}
+
+fn create_bind_group(
+    device: &GpuDevice,
+    layout: &web_sys::GpuBindGroupLayout,
+    uniform: &GpuBuffer,
+    entity: &GpuBuffer,
+    block: &GpuBuffer,
+    platform: &GpuBuffer,
+    sprite: &GpuBuffer,
+    palette: &GpuBuffer,
+) -> GpuBindGroup {
+    let entries = js_sys::Array::new();
+
+    let buffers = [uniform, entity, block, platform, sprite, palette];
+    for (i, buffer) in buffers.iter().enumerate() {
+        let entry = Object::new();
+        Reflect::set(&entry, &"binding".into(), &(i as u32).into()).unwrap();
+
+        let resource = Object::new();
+        Reflect::set(&resource, &"buffer".into(), buffer).unwrap();
+        Reflect::set(&entry, &"resource".into(), &resource).unwrap();
+
+        entries.push(&entry);
+    }
+
+    let desc = web_sys::GpuBindGroupDescriptor::new(&entries, layout);
+    device.create_bind_group(&desc)
+}
+
+fn create_pipeline_layout(device: &GpuDevice, bgl: &web_sys::GpuBindGroupLayout) -> web_sys::GpuPipelineLayout {
+    let layouts = js_sys::Array::new();
+    layouts.push(bgl);
+    let desc = web_sys::GpuPipelineLayoutDescriptor::new(&layouts);
+    device.create_pipeline_layout(&desc)
+}
+
+fn create_compute_pipeline(
+    device: &GpuDevice,
+    shader: &web_sys::GpuShaderModule,
+    layout: &web_sys::GpuPipelineLayout,
+) -> GpuComputePipeline {
+    let compute_stage = web_sys::GpuProgrammableStage::new(shader);
+    compute_stage.set_entry_point("update");
+    let desc = web_sys::GpuComputePipelineDescriptor::new(layout, &compute_stage);
+    device.create_compute_pipeline(&desc)
+}
+
+fn create_render_pipeline(
+    device: &GpuDevice,
+    shader: &web_sys::GpuShaderModule,
+    layout: &web_sys::GpuPipelineLayout,
+) -> GpuRenderPipeline {
+    let vertex = web_sys::GpuVertexState::new(shader);
+    vertex.set_entry_point("vs_main");
+
+    // Fragment state
+    let target = Object::new();
+    Reflect::set(&target, &"format".into(), &"bgra8unorm".into()).unwrap();
+
+    let targets = js_sys::Array::new();
+    targets.push(&target);
+
+    let fragment = Object::new();
+    Reflect::set(&fragment, &"module".into(), shader).unwrap();
+    Reflect::set(&fragment, &"entryPoint".into(), &"fs_main".into()).unwrap();
+    Reflect::set(&fragment, &"targets".into(), &targets).unwrap();
+
+    let desc = Object::new();
+    Reflect::set(&desc, &"layout".into(), layout).unwrap();
+    Reflect::set(&desc, &"vertex".into(), &vertex).unwrap();
+    Reflect::set(&desc, &"fragment".into(), &fragment).unwrap();
+
+    let desc: web_sys::GpuRenderPipelineDescriptor = desc.unchecked_into();
+    device.create_render_pipeline(&desc).expect("create render pipeline")
+}
+
+fn create_color_attachment(view: &web_sys::GpuTextureView) -> JsValue {
+    let attachment = Object::new();
+    Reflect::set(&attachment, &"view".into(), view).unwrap();
+    Reflect::set(&attachment, &"loadOp".into(), &"clear".into()).unwrap();
+    Reflect::set(&attachment, &"storeOp".into(), &"store".into()).unwrap();
+
+    let clear_color = Object::new();
+    Reflect::set(&clear_color, &"r".into(), &0.0.into()).unwrap();
+    Reflect::set(&clear_color, &"g".into(), &0.0.into()).unwrap();
+    Reflect::set(&clear_color, &"b".into(), &0.0.into()).unwrap();
+    Reflect::set(&clear_color, &"a".into(), &1.0.into()).unwrap();
+    Reflect::set(&attachment, &"clearValue".into(), &clear_color).unwrap();
+
+    attachment.into()
+}
+
+fn create_render_pass_descriptor(color_attachment: &JsValue) -> web_sys::GpuRenderPassDescriptor {
+    let attachments = js_sys::Array::new();
+    attachments.push(color_attachment);
+    web_sys::GpuRenderPassDescriptor::new(&attachments)
 }
 
 fn start_game_loop(gpu_state: Rc<RefCell<Option<GpuState>>>) {
