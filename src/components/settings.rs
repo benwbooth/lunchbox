@@ -501,12 +501,16 @@ fn region_display_name(region: &str) -> String {
     }
 }
 
-/// Reorderable list for region priority using up/down buttons
+/// Reorderable list for region priority using drag and drop
 #[component]
 fn RegionPriorityList(
     all_regions: ReadSignal<Vec<String>>,
     settings: RwSignal<AppSettings>,
 ) -> impl IntoView {
+    // Track dragging state
+    let (dragging_idx, set_dragging_idx) = signal::<Option<usize>>(None);
+    let (drag_over_idx, set_drag_over_idx) = signal::<Option<usize>>(None);
+
     // Compute the display order: user's saved priority first, then remaining regions
     let display_order = move || -> Vec<String> {
         let saved_priority = settings.get().region_priority;
@@ -526,51 +530,60 @@ fn RegionPriorityList(
     };
 
     let move_region = move |from: usize, to: usize| {
-        settings.update(|s| {
-            let mut order = display_order();
-            if from < order.len() && to < order.len() {
-                let item = order.remove(from);
-                order.insert(to, item);
-                s.region_priority = order;
-            }
-        });
+        if from != to {
+            settings.update(|s| {
+                let mut order = display_order();
+                if from < order.len() && to < order.len() {
+                    let item = order.remove(from);
+                    order.insert(to, item);
+                    s.region_priority = order;
+                }
+            });
+        }
     };
 
     view! {
         <div class="region-priority-list">
             {move || {
                 let regions = display_order();
-                let total = regions.len();
                 regions.into_iter().enumerate().map(|(idx, region)| {
                     let display_name = region_display_name(&region);
-                    let is_first = idx == 0;
-                    let is_last = idx >= total.saturating_sub(1);
+                    let is_dragging = move || dragging_idx.get() == Some(idx);
+                    let is_drag_over = move || drag_over_idx.get() == Some(idx) && dragging_idx.get() != Some(idx);
+
                     view! {
-                        <div class="region-priority-item">
-                            <div class="region-controls">
-                                <button
-                                    class="region-move-btn"
-                                    on:click=move |_| {
-                                        if idx > 0 {
-                                            move_region(idx, idx - 1);
-                                        }
-                                    }
-                                    disabled=is_first
-                                    title="Move up"
-                                >
-                                    "▲"
-                                </button>
-                                <button
-                                    class="region-move-btn"
-                                    on:click=move |_| {
-                                        move_region(idx, idx + 1);
-                                    }
-                                    disabled=is_last
-                                    title="Move down"
-                                >
-                                    "▼"
-                                </button>
-                            </div>
+                        <div
+                            class="region-priority-item"
+                            class:dragging=is_dragging
+                            class:drag-over=is_drag_over
+                            draggable="true"
+                            on:dragstart=move |_| {
+                                set_dragging_idx.set(Some(idx));
+                            }
+                            on:dragend=move |_| {
+                                set_dragging_idx.set(None);
+                                set_drag_over_idx.set(None);
+                            }
+                            on:dragover=move |e| {
+                                e.prevent_default();
+                                set_drag_over_idx.set(Some(idx));
+                            }
+                            on:dragleave=move |_| {
+                                // Only clear if leaving this specific item
+                                if drag_over_idx.get() == Some(idx) {
+                                    set_drag_over_idx.set(None);
+                                }
+                            }
+                            on:drop=move |e| {
+                                e.prevent_default();
+                                if let Some(from) = dragging_idx.get() {
+                                    move_region(from, idx);
+                                }
+                                set_dragging_idx.set(None);
+                                set_drag_over_idx.set(None);
+                            }
+                        >
+                            <span class="drag-handle" title="Drag to reorder">"⋮⋮"</span>
                             <span class="region-name">{display_name}</span>
                         </div>
                     }
