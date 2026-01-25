@@ -22,9 +22,33 @@ fn format_relative_time(minutes_ago: i64) -> String {
     }
 }
 
-/// Get current time in minutes since epoch
-fn now_minutes() -> i64 {
-    (js_sys::Date::now() / 60000.0) as i64
+/// Get current time in milliseconds since epoch
+fn now_ms() -> f64 {
+    js_sys::Date::now()
+}
+
+/// Parse a build timestamp like "2026-01-24 20:56:32 PST" to milliseconds since epoch
+fn parse_build_timestamp(ts: &str) -> Option<f64> {
+    // Try to parse with JS Date - convert "2026-01-24 20:56:32 PST" to ISO-ish format
+    // JS Date can parse "2026-01-24T20:56:32" but timezone abbrevs are tricky
+    // Replace space with T for ISO format, strip timezone abbrev (assume local)
+    let parts: Vec<&str> = ts.split(' ').collect();
+    if parts.len() >= 2 {
+        let iso_str = format!("{}T{}", parts[0], parts[1]);
+        let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(&iso_str));
+        let time = date.get_time();
+        if !time.is_nan() {
+            return Some(time);
+        }
+    }
+    None
+}
+
+/// Calculate minutes since a build timestamp
+fn minutes_since_build(timestamp: &str) -> Option<i64> {
+    parse_build_timestamp(timestamp).map(|build_ms| {
+        ((now_ms() - build_ms) / 60000.0) as i64
+    })
 }
 
 /// Status indicator showing backend connectivity and build info
@@ -33,11 +57,7 @@ fn StatusIndicator() -> impl IntoView {
     let (is_connected, set_is_connected) = signal(false);
     let (backend_hash, set_backend_hash) = signal::<Option<String>>(None);
     let (backend_timestamp, set_backend_timestamp) = signal::<Option<String>>(None);
-    let (backend_last_updated, set_backend_last_updated) = signal::<Option<i64>>(None);
-    let (current_minute, set_current_minute) = signal(now_minutes());
-
-    // Frontend load time (constant for this session)
-    let frontend_loaded_at = now_minutes();
+    let (tick, set_tick) = signal(0u32); // Trigger for re-computing relative times
 
     // Initial health check
     spawn_local(async move {
@@ -46,7 +66,6 @@ fn StatusIndicator() -> impl IntoView {
                 set_is_connected.set(true);
                 set_backend_hash.set(Some(health.build_hash));
                 set_backend_timestamp.set(Some(health.build_timestamp));
-                set_backend_last_updated.set(Some(now_minutes()));
             }
             Err(_) => {
                 set_is_connected.set(false);
@@ -63,10 +82,6 @@ fn StatusIndicator() -> impl IntoView {
                     set_is_connected.set(true);
                     set_backend_hash.set(Some(health.build_hash));
                     set_backend_timestamp.set(Some(health.build_timestamp));
-                    // Only set last_updated if not already set (first successful check)
-                    if backend_last_updated.get_untracked().is_none() {
-                        set_backend_last_updated.set(Some(now_minutes()));
-                    }
                 }
                 Err(_) => {
                     set_is_connected.set(false);
@@ -76,25 +91,26 @@ fn StatusIndicator() -> impl IntoView {
     });
     health_interval.forget();
 
-    // Update current minute every 60 seconds for relative time display
+    // Update tick every 60 seconds for relative time display
     let minute_interval = Interval::new(60000, move || {
-        set_current_minute.set(now_minutes());
+        set_tick.update(|t| *t = t.wrapping_add(1));
     });
     minute_interval.forget();
 
-    // Compute relative times
+    // Compute relative times based on build timestamps
     let backend_relative = move || {
-        let _ = current_minute.get(); // Subscribe to updates
-        backend_last_updated.get().map(|updated_at| {
-            let minutes_ago = now_minutes() - updated_at;
-            format!(" ({})", format_relative_time(minutes_ago))
-        }).unwrap_or_default()
+        let _ = tick.get(); // Subscribe to updates
+        backend_timestamp.get()
+            .and_then(|ts| minutes_since_build(&ts))
+            .map(|mins| format!(" ({})", format_relative_time(mins)))
+            .unwrap_or_default()
     };
 
     let frontend_relative = move || {
-        let _ = current_minute.get(); // Subscribe to updates
-        let minutes_ago = now_minutes() - frontend_loaded_at;
-        format!(" ({})", format_relative_time(minutes_ago))
+        let _ = tick.get(); // Subscribe to updates
+        minutes_since_build(FRONTEND_BUILD_TIMESTAMP)
+            .map(|mins| format!(" ({})", format_relative_time(mins)))
+            .unwrap_or_default()
     };
 
     // Build tooltip text
