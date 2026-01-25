@@ -73,32 +73,32 @@ impl Mario {
         }
     }
 
-    /// Get sprite size based on big/small state
+    /// Get sprite size based on big/small state (8px sprites)
     pub fn sprite_height(&self) -> f64 {
-        if self.is_big { 32.0 } else { 16.0 }
+        if self.is_big { 16.0 } else { 8.0 }
     }
 
     /// Get the hitbox for collision detection
     pub fn hitbox(&self) -> (f64, f64, f64, f64) {
         let height = self.sprite_height();
-        (self.pos.x, self.pos.y, 16.0, height)
+        (self.pos.x, self.pos.y, 8.0, height)
     }
 
     /// Get the feet hitbox for stomp detection
     pub fn feet_hitbox(&self) -> (f64, f64, f64, f64) {
         let height = self.sprite_height();
-        (self.pos.x + 2.0, self.pos.y + height - 6.0, 12.0, 6.0)
+        (self.pos.x + 1.0, self.pos.y + height - 3.0, 6.0, 3.0)
     }
 
     /// Get the head hitbox for being stomped
     pub fn head_hitbox(&self) -> (f64, f64, f64, f64) {
-        (self.pos.x + 2.0, self.pos.y, 12.0, 8.0)
+        (self.pos.x + 1.0, self.pos.y, 6.0, 4.0)
     }
 
     /// Get body hitbox for side collisions (excludes head/feet)
     pub fn body_hitbox(&self) -> (f64, f64, f64, f64) {
         let height = self.sprite_height();
-        (self.pos.x, self.pos.y + 8.0, 16.0, height - 14.0)
+        (self.pos.x, self.pos.y + 4.0, 8.0, height - 7.0)
     }
 }
 
@@ -128,11 +128,11 @@ impl Goomba {
     }
 
     pub fn hitbox(&self) -> (f64, f64, f64, f64) {
-        (self.pos.x, self.pos.y, 16.0, 16.0)
+        (self.pos.x, self.pos.y, 8.0, 8.0)
     }
 
     pub fn head_hitbox(&self) -> (f64, f64, f64, f64) {
-        (self.pos.x + 2.0, self.pos.y, 12.0, 8.0)
+        (self.pos.x + 1.0, self.pos.y, 6.0, 4.0)
     }
 }
 
@@ -161,7 +161,7 @@ impl Mushroom {
     }
 
     pub fn hitbox(&self) -> (f64, f64, f64, f64) {
-        (self.pos.x, self.pos.y, 16.0, 16.0)
+        (self.pos.x, self.pos.y, 8.0, 8.0)
     }
 }
 

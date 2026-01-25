@@ -1,10 +1,11 @@
 //! Main Mario mini-game component with canvas rendering
+//! Uses ImageData for efficient batched pixel rendering
 
 use leptos::prelude::*;
 use leptos::html;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, KeyboardEvent};
+use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, ImageData, KeyboardEvent};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -14,8 +15,8 @@ use super::physics;
 use super::world;
 use super::ai;
 
-/// Render scale (1x pixel size for crisp small pixels)
-const SCALE: f64 = 1.0;
+/// Tile size in pixels (matches 8x8 sprites)
+const TILE_SIZE: i32 = 8;
 
 /// Target FPS
 const TARGET_FPS: f64 = 60.0;
@@ -33,15 +34,54 @@ struct InputState {
     jump: bool,
 }
 
-/// Draw a 4-color sprite (NES style) to the canvas
-fn draw_sprite_4color(
-    ctx: &CanvasRenderingContext2d,
+/// Pixel buffer for efficient rendering
+struct PixelBuffer {
+    data: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+impl PixelBuffer {
+    fn new(width: u32, height: u32) -> Self {
+        let size = (width * height * 4) as usize;
+        Self {
+            data: vec![0; size],
+            width,
+            height,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.data.fill(0);
+    }
+
+    #[inline]
+    fn set_pixel(&mut self, x: i32, y: i32, r: u8, g: u8, b: u8) {
+        if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
+            return;
+        }
+        let idx = ((y as u32 * self.width + x as u32) * 4) as usize;
+        self.data[idx] = r;
+        self.data[idx + 1] = g;
+        self.data[idx + 2] = b;
+        self.data[idx + 3] = 255;
+    }
+
+    fn to_image_data(&self) -> Result<ImageData, JsValue> {
+        let clamped = wasm_bindgen::Clamped(&self.data[..]);
+        ImageData::new_with_u8_clamped_array_and_sh(clamped, self.width, self.height)
+    }
+}
+
+/// Draw a 4-color sprite to the pixel buffer
+#[inline]
+fn draw_sprite_to_buffer(
+    buffer: &mut PixelBuffer,
     sprite: &Sprite,
-    x: f64,
-    y: f64,
+    x: i32,
+    y: i32,
     palette: &Palette,
     flip_x: bool,
-    scale: f64,
 ) {
     for row in 0..8 {
         let lo = sprite[row * 2];
@@ -60,104 +100,84 @@ fn draw_sprite_4color(
             let g = ((color >> 8) & 0xFF) as u8;
             let b = (color & 0xFF) as u8;
 
-            ctx.set_fill_style_str(&format!("rgb({},{},{})", r, g, b));
-
             let px = if flip_x {
-                x + (7 - col) as f64 * scale
+                x + (7 - col) as i32
             } else {
-                x + col as f64 * scale
+                x + col as i32
             };
-            let py = y + row as f64 * scale;
-            ctx.fill_rect(px, py, scale, scale);
+            let py = y + row as i32;
+            buffer.set_pixel(px, py, r, g, b);
         }
     }
 }
 
-/// Draw the game world to the canvas
-fn render(ctx: &CanvasRenderingContext2d, world: &GameWorld, width: u32, height: u32) {
-    // Clear with black background
-    ctx.set_fill_style_str("#000000");
-    ctx.fill_rect(0.0, 0.0, width as f64, height as f64);
+/// Draw the game world to the pixel buffer and render to canvas
+fn render(ctx: &CanvasRenderingContext2d, buffer: &mut PixelBuffer, world: &GameWorld, width: u32, height: u32) {
+    // Clear buffer (black background, alpha = 255)
+    for i in 0..buffer.data.len() / 4 {
+        let idx = i * 4;
+        buffer.data[idx] = 0;     // R
+        buffer.data[idx + 1] = 0; // G
+        buffer.data[idx + 2] = 0; // B
+        buffer.data[idx + 3] = 255; // A
+    }
 
-    let tile_size = world.tile_size as f64;
+    let tile_size = world.tile_size;
 
     // Draw ground platforms
     for platform in &world.platforms {
         if platform.is_ground {
-            let (px, py, pw, _) = platform.hitbox(world.tile_size);
             for tx in 0..platform.width {
-                draw_sprite_4color(
-                    ctx,
-                    &GROUND,
-                    px + tx as f64 * tile_size,
-                    py,
-                    &PALETTE_GROUND,
-                    false,
-                    SCALE,
-                );
+                let px = (platform.x + tx) * tile_size;
+                let py = platform.y * tile_size;
+                draw_sprite_to_buffer(buffer, &GROUND, px, py, &PALETTE_GROUND, false);
             }
         }
     }
 
     // Draw blocks (bricks and question blocks)
     for block in &world.blocks {
-        let (bx, by, _, _) = block.hitbox(world.tile_size);
+        let bx = block.x * tile_size;
+        let by = block.y * tile_size;
         let (sprite, palette) = match block.block_type {
             BlockType::Brick => (&BRICK, &PALETTE_BRICK),
             BlockType::Question => (&QUESTION, &PALETTE_QUESTION),
             BlockType::QuestionEmpty => (&QUESTION_EMPTY, &PALETTE_BRICK),
             BlockType::Ground => (&GROUND, &PALETTE_GROUND),
         };
-        draw_sprite_4color(ctx, sprite, bx, by, palette, false, SCALE);
+        draw_sprite_to_buffer(buffer, sprite, bx, by, palette, false);
     }
 
-    // Draw debris
+    // Draw debris (no rotation in buffer mode, just position)
     for debris in &world.debris {
         if debris.alive {
-            // Draw a small brick piece with rotation (simplified)
-            ctx.save();
-            ctx.translate(debris.pos.x + 4.0, debris.pos.y + 4.0).ok();
-            ctx.rotate(debris.rotation).ok();
-            draw_sprite_4color(ctx, &BRICK_DEBRIS, -4.0, -4.0, &PALETTE_BRICK, false, SCALE);
-            ctx.restore();
+            draw_sprite_to_buffer(buffer, &BRICK_DEBRIS, debris.pos.x as i32, debris.pos.y as i32, &PALETTE_BRICK, false);
         }
     }
 
     // Draw mushrooms
     for mushroom in &world.mushrooms {
         if mushroom.active {
-            draw_sprite_4color(
-                ctx,
-                &MUSHROOM,
-                mushroom.pos.x,
-                mushroom.pos.y,
-                &PALETTE_MUSHROOM,
-                false,
-                SCALE,
-            );
+            draw_sprite_to_buffer(buffer, &MUSHROOM, mushroom.pos.x as i32, mushroom.pos.y as i32, &PALETTE_MUSHROOM, false);
         }
     }
 
     // Draw Goombas
     for goomba in &world.goombas {
         if goomba.alive {
-            draw_sprite_4color(
-                ctx,
-                &GOOMBA,
-                goomba.pos.x,
-                goomba.pos.y,
-                &PALETTE_GOOMBA,
-                !goomba.facing_right,
-                SCALE,
-            );
+            draw_sprite_to_buffer(buffer, &GOOMBA, goomba.pos.x as i32, goomba.pos.y as i32, &PALETTE_GOOMBA, !goomba.facing_right);
         } else if goomba.squish_timer > 0 {
-            // Draw squished Goomba
-            ctx.set_fill_style_str(&format!("rgb({},{},{})",
-                ((NES_BROWN >> 16) & 0xFF) as u8,
-                ((NES_BROWN >> 8) & 0xFF) as u8,
-                (NES_BROWN & 0xFF) as u8
-            ));
-            ctx.fill_rect(goomba.pos.x, goomba.pos.y + 12.0, 16.0, 4.0);
+            // Draw squished Goomba as a flat rectangle
+            let x = goomba.pos.x as i32;
+            let y = goomba.pos.y as i32 + 6;
+            let r = ((NES_BROWN >> 16) & 0xFF) as u8;
+            let g = ((NES_BROWN >> 8) & 0xFF) as u8;
+            let b = (NES_BROWN & 0xFF) as u8;
+            for dx in 0..8 {
+                for dy in 0..2 {
+                    buffer.set_pixel(x + dx, y + dy, r, g, b);
+                }
+            }
         }
     }
 
@@ -179,8 +199,11 @@ fn render(ctx: &CanvasRenderingContext2d, world: &GameWorld, width: u32, height:
             &PALETTE_MARIO
         };
 
+        let mx = mario.pos.x as i32;
+        let my = mario.pos.y as i32;
+
         if mario.state == MarioState::Dead {
-            draw_sprite_4color(ctx, &MARIO_DEAD, mario.pos.x, mario.pos.y, palette, false, SCALE);
+            draw_sprite_to_buffer(buffer, &MARIO_DEAD, mx, my, palette, false);
         } else if mario.is_big {
             // Draw big Mario (2 sprites stacked)
             let (top, bot) = match mario.state {
@@ -195,8 +218,8 @@ fn render(ctx: &CanvasRenderingContext2d, world: &GameWorld, width: u32, height:
                 MarioState::Jumping => (&MARIO_BIG_WALK_TOP, &MARIO_BIG_WALK_BOT),
                 MarioState::Dead => (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT),
             };
-            draw_sprite_4color(ctx, top, mario.pos.x, mario.pos.y, palette, !mario.facing_right, SCALE);
-            draw_sprite_4color(ctx, bot, mario.pos.x, mario.pos.y + 16.0, palette, !mario.facing_right, SCALE);
+            draw_sprite_to_buffer(buffer, top, mx, my, palette, !mario.facing_right);
+            draw_sprite_to_buffer(buffer, bot, mx, my + 8, palette, !mario.facing_right);
         } else {
             // Draw small Mario
             let sprite = match mario.state {
@@ -207,14 +230,22 @@ fn render(ctx: &CanvasRenderingContext2d, world: &GameWorld, width: u32, height:
                 MarioState::Jumping => &MARIO_JUMP,
                 MarioState::Dead => &MARIO_DEAD,
             };
-            draw_sprite_4color(ctx, sprite, mario.pos.x, mario.pos.y, palette, !mario.facing_right, SCALE);
+            draw_sprite_to_buffer(buffer, sprite, mx, my, palette, !mario.facing_right);
         }
 
         // Draw player indicator
         if mario.is_player && mario.alive {
-            ctx.set_fill_style_str("#ffffff");
-            ctx.fill_rect(mario.pos.x + 6.0, mario.pos.y - 8.0, 4.0, 4.0);
+            for dx in 0..2 {
+                for dy in 0..2 {
+                    buffer.set_pixel(mx + 3 + dx, my - 4 + dy, 255, 255, 255);
+                }
+            }
         }
+    }
+
+    // Put the image data to canvas
+    if let Ok(image_data) = buffer.to_image_data() {
+        ctx.put_image_data(&image_data, 0.0, 0.0).ok();
     }
 }
 
@@ -298,10 +329,12 @@ pub fn MarioMinigame() -> impl IntoView {
 
             *initialized_inner.borrow_mut() = true;
 
-            // Generate world with 16-pixel tiles
-            let tile_size = 16;
-            let world = world::generate_world(width as i32, height as i32, tile_size);
+            // Generate world with 8-pixel tiles (matches sprite size)
+            let world = world::generate_world(width as i32, height as i32, TILE_SIZE);
             *game_world_init_clone.borrow_mut() = Some(world);
+
+            // Create pixel buffer for efficient rendering
+            let pixel_buffer: Rc<RefCell<PixelBuffer>> = Rc::new(RefCell::new(PixelBuffer::new(width, height)));
 
             // Start game loop
             let game_world_loop = game_world_init_clone.clone();
@@ -309,6 +342,7 @@ pub fn MarioMinigame() -> impl IntoView {
             let animation_frame_id_outer = animation_frame_id_init_clone.clone();
             let last_frame_time_loop = last_frame_time_init_clone.clone();
             let input_loop = input_state_loop_clone.clone();
+            let buffer_loop = pixel_buffer.clone();
 
             let game_loop_ref: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
             let game_loop_ref_inner = game_loop_ref.clone();
@@ -340,7 +374,7 @@ pub fn MarioMinigame() -> impl IntoView {
                         world.spawn_timer = 0;
                     }
 
-                    render(&ctx, world, width, height);
+                    render(&ctx, &mut buffer_loop.borrow_mut(), world, width, height);
                 }
 
                 if let Some(window) = web_sys::window() {

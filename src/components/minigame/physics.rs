@@ -124,10 +124,10 @@ fn update_mario_physics(mario: &mut Mario, world: &GameWorld, block_hits: &mut V
     }
 
     // World boundaries (wrap horizontally)
-    if mario.pos.x < -16.0 {
+    if mario.pos.x < -8.0 {
         mario.pos.x = world.width as f64;
     } else if mario.pos.x > world.width as f64 {
-        mario.pos.x = -16.0;
+        mario.pos.x = -8.0;
     }
 
     // Fall off bottom - die if small, respawn if big (lose power)
@@ -249,7 +249,7 @@ fn update_goomba_physics(goomba: &mut Goomba, world: &GameWorld) {
     if goomba.pos.x < 0.0 {
         goomba.vel.x = GOOMBA_SPEED;
         goomba.facing_right = true;
-    } else if goomba.pos.x > world.width as f64 - 16.0 {
+    } else if goomba.pos.x > world.width as f64 - 8.0 {
         goomba.vel.x = -GOOMBA_SPEED;
         goomba.facing_right = false;
     }
@@ -275,7 +275,7 @@ fn update_mushroom_physics(mushroom: &mut Mushroom, world: &GameWorld) {
     if mushroom.rising {
         mushroom.rise_progress += 0.5;
         mushroom.pos.y = mushroom.origin_y - mushroom.rise_progress;
-        if mushroom.rise_progress >= 16.0 {
+        if mushroom.rise_progress >= 8.0 {
             mushroom.rising = false;
         }
         return;
@@ -312,7 +312,7 @@ fn update_mushroom_physics(mushroom: &mut Mushroom, world: &GameWorld) {
         let (bx, by, bw, bh) = block.hitbox(tile_size);
         let (mx, my, mw, mh) = mushroom.hitbox();
 
-        if aabb_overlap(mx, my + 4.0, mw, mh - 8.0, bx, by, bw, bh) {
+        if aabb_overlap(mx, my + 2.0, mw, mh - 4.0, bx, by, bw, bh) {
             mushroom.vel.x = -mushroom.vel.x;
         }
 
@@ -330,10 +330,10 @@ fn update_mushroom_physics(mushroom: &mut Mushroom, world: &GameWorld) {
     }
 
     // World wrap
-    if mushroom.pos.x < -16.0 {
+    if mushroom.pos.x < -8.0 {
         mushroom.pos.x = world.width as f64;
     } else if mushroom.pos.x > world.width as f64 {
-        mushroom.pos.x = -16.0;
+        mushroom.pos.x = -8.0;
     }
 
     if mushroom.pos.y > world.height as f64 + 32.0 {
@@ -447,7 +447,7 @@ fn check_stomp_collisions(world: &mut GameWorld) {
             // Shrink to small
             stomped_mario.is_big = false;
             stomped_mario.invincible_timer = 90;
-            stomped_mario.pos.y += 16.0; // Adjust position for smaller hitbox
+            stomped_mario.pos.y += 8.0; // Adjust position for smaller hitbox
         } else {
             // Die
             stomped_mario.alive = false;
@@ -464,7 +464,7 @@ fn check_stomp_collisions(world: &mut GameWorld) {
         if mario.is_big {
             mario.is_big = false;
             mario.invincible_timer = 90;
-            mario.pos.y += 16.0;
+            mario.pos.y += 8.0;
         } else {
             mario.alive = false;
             mario.state = MarioState::Dead;
@@ -494,7 +494,7 @@ fn check_mushroom_collisions(world: &mut GameWorld) {
             if aabb_overlap(px, py, pw, ph, mx, my, mw, mh) {
                 if !mario.is_big {
                     mario.is_big = true;
-                    mario.pos.y -= 16.0; // Grow upward
+                    mario.pos.y -= 8.0; // Grow upward
                 }
                 collected.push(mi);
                 break;
@@ -526,26 +526,26 @@ fn process_block_hits(world: &mut GameWorld, block_hits: Vec<(usize, u32)>) {
                     let by = (block.y * world.tile_size) as f64;
 
                     // Spawn 4 debris pieces
-                    world.debris.push(Debris::new(bx, by, -2.0, -6.0));
-                    world.debris.push(Debris::new(bx + 8.0, by, 2.0, -6.0));
-                    world.debris.push(Debris::new(bx, by + 8.0, -2.0, -4.0));
-                    world.debris.push(Debris::new(bx + 8.0, by + 8.0, 2.0, -4.0));
+                    world.debris.push(Debris::new(bx, by, -1.5, -4.0));
+                    world.debris.push(Debris::new(bx + 4.0, by, 1.5, -4.0));
+                    world.debris.push(Debris::new(bx, by + 4.0, -1.5, -3.0));
+                    world.debris.push(Debris::new(bx + 4.0, by + 4.0, 1.5, -3.0));
 
                     blocks_to_remove.push(block_idx);
                 } else {
                     // Bump animation
-                    block.bump_offset = -4.0;
+                    block.bump_offset = -2.0;
                 }
             }
             BlockType::Question => {
                 if !block.hit {
                     block.hit = true;
                     block.block_type = BlockType::QuestionEmpty;
-                    block.bump_offset = -4.0;
+                    block.bump_offset = -2.0;
 
                     // Spawn mushroom
                     let mx = (block.x * world.tile_size) as f64;
-                    let my = (block.y * world.tile_size - 16) as f64;
+                    let my = (block.y * world.tile_size - 8) as f64;
                     mushrooms_to_spawn.push((mx, my));
                 }
             }
@@ -555,8 +555,8 @@ fn process_block_hits(world: &mut GameWorld, block_hits: Vec<(usize, u32)>) {
 
     // Spawn mushrooms
     for (x, y) in mushrooms_to_spawn {
-        let mut mushroom = Mushroom::new(x, y + 16.0);
-        mushroom.origin_y = y + 16.0;
+        let mut mushroom = Mushroom::new(x, y + 8.0);
+        mushroom.origin_y = y + 8.0;
         world.mushrooms.push(mushroom);
     }
 

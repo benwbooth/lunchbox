@@ -230,7 +230,7 @@ fn check_platform_edge(
 
     let has_ground_ahead = platforms.iter().any(|(px, py, pw)| {
         future_x >= *px && future_x <= *px + *pw
-            && *py >= mario_bottom - 4.0 && *py <= mario_bottom + 16.0
+            && *py >= mario_bottom - 4.0 && *py <= mario_bottom + 8.0
     });
 
     if !has_ground_ahead {
