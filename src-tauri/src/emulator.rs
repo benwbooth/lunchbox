@@ -677,16 +677,12 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             tracing::debug!(flatpak_installed = is_flatpak, "Checking RetroArch installation");
 
             if is_flatpak {
-                // For flatpak, use the sandbox-internal path (~/.config/retroarch/cores/)
-                // not the host path (~/.var/app/org.libretro.RetroArch/config/retroarch/cores/)
-                // Must expand ~ since Command doesn't do shell expansion
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/home".to_string());
-                let flatpak_core_path = format!("{}/.config/retroarch/cores/{}", home, core_filename);
-
+                // Inside the flatpak sandbox, XDG_CONFIG_HOME is set to the host path
+                // ~/.var/app/org.libretro.RetroArch/config, so we can use the host path directly
                 let mut cmd = Command::new("flatpak");
                 cmd.arg("run").arg("org.libretro.RetroArch");
-                if core_path.is_some() {
-                    cmd.arg("-L").arg(&flatpak_core_path);
+                if let Some(ref path) = core_path {
+                    cmd.arg("-L").arg(path);
                 }
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
