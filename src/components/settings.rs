@@ -547,50 +547,33 @@ fn RegionPriorityList(
             let children = list_node.children();
             let len = display_order.get().len();
 
-            // Collect midpoints of each item (skip drop indicators, only look at items)
-            let mut item_midpoints: Vec<(usize, f64)> = Vec::new();
-            let mut item_idx = 0;
+            // Collect midpoints of each item
+            let mut item_mids: Vec<f64> = Vec::new();
 
             for i in 0..children.length() {
                 if let Some(child) = children.item(i) {
                     if let Some(el) = child.dyn_ref::<web_sys::Element>() {
-                        // Only process actual items, not drop indicators
                         if el.class_list().contains("region-priority-item") {
-                            // Use getBoundingClientRect for accurate viewport-relative position
                             let rect = el.get_bounding_client_rect();
-                            let midpoint = rect.top() + rect.height() / 2.0;
-                            item_midpoints.push((item_idx, midpoint));
-                            item_idx += 1;
+                            let mid = rect.top() + rect.height() / 2.0;
+                            item_mids.push(mid);
                         }
                     }
                 }
             }
 
-            // Find which position the cursor is closest to
             let y = client_y as f64;
 
-            // If above all items, drop at position 0
-            if let Some((_, first_mid)) = item_midpoints.first() {
-                if y < *first_mid {
-                    return Some(0);
+            // Find insert position based on cursor Y vs item midpoints
+            // If cursor is above item's midpoint, insert before that item
+            for (i, mid) in item_mids.iter().enumerate() {
+                if y < *mid {
+                    return Some(i);
                 }
             }
 
-            // Find the gap between items where cursor is
-            for window in item_midpoints.windows(2) {
-                if let [(idx, mid1), (_, mid2)] = window {
-                    if y >= *mid1 && y < *mid2 {
-                        return Some(idx + 1);
-                    }
-                }
-            }
-
-            // If below all items, drop at end
-            if let Some((_, last_mid)) = item_midpoints.last() {
-                if y >= *last_mid {
-                    return Some(len);
-                }
-            }
+            // Below all midpoints = insert at end
+            return Some(len);
         }
         None
     };
@@ -602,11 +585,6 @@ fn RegionPriorityList(
         {
             let mut order = display_order.get();
             if let Some(from_idx) = order.iter().position(|r| r == &from_region) {
-                web_sys::console::log_1(&format!(
-                    "DROP: region={} from_idx={} to_idx={} order_before={:?}",
-                    from_region, from_idx, to_idx, order
-                ).into());
-
                 if from_idx != to_idx && from_idx + 1 != to_idx {
                     let item = order.remove(from_idx);
                     // Adjust target index after removal
@@ -616,13 +594,7 @@ fn RegionPriorityList(
                         to_idx
                     };
                     order.insert(insert_at.min(order.len()), item);
-                    web_sys::console::log_1(&format!(
-                        "DROP: insert_at={} order_after={:?}",
-                        insert_at, order
-                    ).into());
                     settings.update(|s| s.region_priority = order);
-                } else {
-                    web_sys::console::log_1(&"DROP: skipped (would be noop)".into());
                 }
             }
         }
@@ -637,12 +609,8 @@ fn RegionPriorityList(
             on:dragover=move |e| {
                 e.prevent_default();
                 if dragging_region.get().is_some() {
-                    let y = e.client_y();
-                    if let Some(target) = calculate_drop_target(y) {
-                        web_sys::console::log_1(&format!("dragover y={} target={}", y, target).into());
+                    if let Some(target) = calculate_drop_target(e.client_y()) {
                         set_drop_target_idx.set(Some(target));
-                    } else {
-                        web_sys::console::log_1(&format!("dragover y={} NO TARGET", y).into());
                     }
                 }
             }
@@ -677,32 +645,20 @@ fn RegionPriorityList(
                         // Drop indicator before this item
                         <div
                             class=move || {
-                                let dominated_region = dragging_region.get();
-                                let from_idx = dominated_region.as_ref().and_then(|r| {
+                                let from_idx = dragging_region.get().as_ref().and_then(|r| {
                                     display_order.get().iter().position(|x| x == r)
                                 });
                                 let target = drop_target_idx.get();
-
-                                // Show if this is the drop target and we're dragging
-                                // Don't show at positions that wouldn't move the item
                                 let is_dragging = dragging_region.get().is_some();
                                 let is_target = target == Some(idx);
+                                // Don't show at positions that wouldn't move the item
                                 let would_be_noop = from_idx == Some(idx) || from_idx.map(|i| i + 1) == Some(idx);
 
-                                let class = if is_dragging && is_target && !would_be_noop {
+                                if is_dragging && is_target && !would_be_noop {
                                     "drop-indicator visible"
                                 } else {
                                     "drop-indicator"
-                                };
-
-                                if is_dragging && is_target {
-                                    web_sys::console::log_1(&format!(
-                                        "indicator idx={} from={:?} target={:?} noop={} class={}",
-                                        idx, from_idx, target, would_be_noop, class
-                                    ).into());
                                 }
-
-                                class
                             }
                         />
                         <div
@@ -717,7 +673,6 @@ fn RegionPriorityList(
                             on:dragstart={
                                 let region = region_for_drag.clone();
                                 move |_| {
-                                    web_sys::console::log_1(&format!("dragstart: {}", region).into());
                                     set_dragging_region.set(Some(region.clone()));
                                 }
                             }
