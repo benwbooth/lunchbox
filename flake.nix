@@ -54,7 +54,7 @@
             sqlx-cli
             just
             nodePackages.tailwindcss
-            cargo-watch
+            watchexec
 
             # Credential storage (secret-tool CLI)
             libsecret

@@ -29,7 +29,7 @@ Restart=on-failure
 RestartSec=2
 EOF
 
-    # Backend unit - uses cargo watch to auto-reload on code changes
+    # Backend unit - uses watchexec to auto-reload on code changes
     cat > "$UNIT_DIR/lunchbox-backend.service" << EOF
 [Unit]
 Description=Lunchbox Backend (dev_server)
@@ -37,7 +37,7 @@ Description=Lunchbox Backend (dev_server)
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
-ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command cargo watch -i "*.md" -i "src/" -i "styles/" -i "dist/" -i "assets/" -x "run -p lunchbox --bin dev_server"
+ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command watchexec -r -w src-tauri/src -w src-tauri/Cargo.toml -- cargo run -p lunchbox --bin dev_server
 Restart=on-failure
 RestartSec=2
 EOF
