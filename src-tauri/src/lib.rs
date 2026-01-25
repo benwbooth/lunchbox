@@ -7,6 +7,7 @@ pub mod handlers;
 pub mod images;
 pub mod import;
 pub mod keyring_store;
+pub mod logging;
 pub mod router;
 pub mod scanner;
 pub mod scraper;
@@ -18,15 +19,12 @@ use state::AppState;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logging
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    // Initialize logging with rolling file appender
+    // Keep the guard alive for the duration of the app
+    let _log_guard = logging::init_logging();
 
     // Build rspc router (shared between Tauri IPC and HTTP)
     let rspc_router = router::build_router();

@@ -5,13 +5,12 @@
 //!
 //! This allows hot-reloading the backend while keeping the browser open.
 
-use lunchbox_lib::{api, db::{self, USER_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, EMULATORS_DB_NAME, APP_DATA_DIR}, router, state::AppState};
+use lunchbox_lib::{api, db::{self, USER_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, EMULATORS_DB_NAME, APP_DATA_DIR}, logging, router, state::AppState};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Decompress a zstd-compressed database file
 fn decompress_database(compressed_path: &Path, output_path: &Path) -> anyhow::Result<()> {
@@ -91,16 +90,11 @@ fn find_or_decompress_database(db_name: &str, data_dir: &Path) -> Option<PathBuf
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize logging
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,lunchbox=debug".into()),
-        )
-        .init();
+    // Initialize logging with rolling file appender
+    let _log_guard = logging::init_dev_logging();
 
     tracing::info!("Starting Lunchbox dev server...");
+    tracing::info!("Logs are being written to: {}", logging::logs_dir().display());
 
     // Get the app data directory
     let data_dir = directories::BaseDirs::new()

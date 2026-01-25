@@ -347,19 +347,30 @@ fn get_core_filename(core_name: &str) -> String {
 /// Install an emulator using the appropriate package manager
 /// If `as_retroarch_core` is true, install as a RetroArch core; otherwise install standalone
 pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) -> Result<PathBuf, String> {
+    tracing::info!(
+        emulator = %emulator.name,
+        as_retroarch_core = as_retroarch_core,
+        os = current_os(),
+        "Installing emulator"
+    );
+
     // If installing as RetroArch core, use that path
     if as_retroarch_core {
         if let Some(ref core_name) = emulator.retroarch_core {
+            tracing::info!(core_name = core_name, "Installing as RetroArch core");
             return install_retroarch_core(core_name).await;
         } else {
-            return Err(format!("{} does not have a RetroArch core", emulator.name));
+            let err = format!("{} does not have a RetroArch core", emulator.name);
+            tracing::error!(error = %err);
+            return Err(err);
         }
     }
 
     // Install standalone version
-    match current_os() {
+    let result = match current_os() {
         "Linux" => {
             if let Some(ref flatpak_id) = emulator.flatpak_id {
+                tracing::info!(flatpak_id = flatpak_id, "Installing via flatpak");
                 install_flatpak(flatpak_id).await?;
                 Ok(PathBuf::from(format!("flatpak::{}", flatpak_id)))
             } else {
@@ -368,6 +379,7 @@ pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) 
         }
         "Windows" => {
             if let Some(ref winget_id) = emulator.winget_id {
+                tracing::info!(winget_id = winget_id, "Installing via winget");
                 install_winget(winget_id).await?;
                 // Try to find the installed executable
                 check_windows_installation(emulator)
@@ -378,6 +390,7 @@ pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) 
         }
         "macOS" => {
             if let Some(ref formula) = emulator.homebrew_formula {
+                tracing::info!(formula = formula, "Installing via homebrew");
                 install_homebrew(formula).await?;
                 check_macos_installation(emulator)
                     .ok_or_else(|| format!("Installed {} but could not find application", emulator.name))
@@ -386,7 +399,14 @@ pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) 
             }
         }
         _ => Err("Unsupported operating system".to_string()),
+    };
+
+    match &result {
+        Ok(path) => tracing::info!(path = ?path, "Emulator installed successfully"),
+        Err(e) => tracing::error!(error = %e, "Failed to install emulator"),
     }
+
+    result
 }
 
 /// Install a flatpak package
@@ -560,11 +580,25 @@ fn get_libretro_core_url(core_name: &str) -> String {
 
 /// Launch an emulator (optionally with a ROM)
 pub fn launch_emulator(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<u32, String> {
-    if let Some(ref core_name) = emulator.retroarch_core {
+    tracing::info!(
+        emulator = %emulator.name,
+        rom = ?rom_path,
+        has_retroarch_core = emulator.retroarch_core.is_some(),
+        "Launching emulator"
+    );
+
+    let result = if let Some(ref core_name) = emulator.retroarch_core {
         launch_retroarch(core_name, rom_path)
     } else {
         launch_standalone(emulator, rom_path)
+    };
+
+    match &result {
+        Ok(pid) => tracing::info!(pid = pid, "Emulator launched successfully"),
+        Err(e) => tracing::error!(error = %e, "Failed to launch emulator"),
     }
+
+    result
 }
 
 /// Launch a game with an emulator (legacy wrapper)
@@ -574,7 +608,11 @@ pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, Strin
 
 /// Launch RetroArch with a specific core (optionally with a ROM)
 fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, String> {
+    tracing::debug!(core_name = core_name, rom = ?rom_path, "Launching RetroArch");
+
     let core_path = check_retroarch_core_installed(core_name);
+    tracing::debug!(core_path = ?core_path, "Core installation check");
+
     let core_arg = core_path
         .as_ref()
         .and_then(|p| p.to_str())
@@ -583,7 +621,10 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
     let child = match current_os() {
         "Linux" => {
             // Try flatpak first
-            if is_flatpak_installed("org.libretro.RetroArch") {
+            let is_flatpak = is_flatpak_installed("org.libretro.RetroArch");
+            tracing::debug!(flatpak_installed = is_flatpak, "Checking RetroArch installation");
+
+            if is_flatpak {
                 let mut cmd = Command::new("flatpak");
                 cmd.arg("run").arg("org.libretro.RetroArch");
                 if core_path.is_some() {
@@ -592,6 +633,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
                 }
+                tracing::info!(command = ?cmd, "Spawning RetroArch via flatpak");
                 cmd.spawn()
                     .map_err(|e| format!("Failed to launch RetroArch via flatpak: {}", e))?
             } else {
@@ -602,6 +644,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
                 }
+                tracing::info!(command = ?cmd, "Spawning RetroArch native");
                 cmd.spawn()
                     .map_err(|e| format!("Failed to launch RetroArch: {}", e))?
             }
@@ -643,8 +686,16 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
 
 /// Launch a standalone emulator (optionally with a ROM)
 fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<u32, String> {
+    tracing::debug!(emulator = %emulator.name, rom = ?rom_path, "Launching standalone emulator");
+
     let exe_path = check_installation(emulator)
-        .ok_or_else(|| format!("{} is not installed", emulator.name))?;
+        .ok_or_else(|| {
+            let err = format!("{} is not installed", emulator.name);
+            tracing::error!(error = %err, "Emulator not installed");
+            err
+        })?;
+
+    tracing::debug!(exe_path = ?exe_path, "Found emulator executable");
 
     let child = if exe_path.to_string_lossy().starts_with("flatpak::") {
         // Flatpak app
@@ -654,8 +705,13 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
         if let Some(rom) = rom_path {
             cmd.arg(rom);
         }
+        tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
         cmd.spawn()
-            .map_err(|e| format!("Failed to launch via flatpak: {}", e))?
+            .map_err(|e| {
+                let err = format!("Failed to launch via flatpak: {}", e);
+                tracing::error!(error = %err);
+                err
+            })?
     } else if current_os() == "macOS" && exe_path.extension().map(|e| e == "app").unwrap_or(false) {
         // macOS .app bundle
         let mut cmd = Command::new("open");
@@ -663,16 +719,26 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
         if let Some(rom) = rom_path {
             cmd.arg(rom);
         }
+        tracing::info!(command = ?cmd, "Spawning macOS app");
         cmd.spawn()
-            .map_err(|e| format!("Failed to launch {}: {}", emulator.name, e))?
+            .map_err(|e| {
+                let err = format!("Failed to launch {}: {}", emulator.name, e);
+                tracing::error!(error = %err);
+                err
+            })?
     } else {
         // Regular executable
         let mut cmd = Command::new(&exe_path);
         if let Some(rom) = rom_path {
             cmd.arg(rom);
         }
+        tracing::info!(command = ?cmd, "Spawning native executable");
         cmd.spawn()
-            .map_err(|e| format!("Failed to launch {}: {}", emulator.name, e))?
+            .map_err(|e| {
+                let err = format!("Failed to launch {}: {}", emulator.name, e);
+                tracing::error!(error = %err);
+                err
+            })?
     };
 
     Ok(child.id())
