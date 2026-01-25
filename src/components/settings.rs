@@ -657,7 +657,7 @@ fn RegionPriorityList(
                             dragging_region.get().is_some()
                                 && target_region.get().as_ref() == Some(&region_for_indicator)
                         }>
-                            <div class="drop-indicator" />
+                            <div class="drop-indicator">"Drop here"</div>
                         </Show>
                         <div
                             class=move || {
@@ -696,7 +696,7 @@ fn RegionPriorityList(
             />
             // Drop indicator at end (outside For, uses target_at_end memo)
             <Show when=move || dragging_region.get().is_some() && target_at_end.get()>
-                <div class="drop-indicator" />
+                <div class="drop-indicator">"Drop here"</div>
             </Show>
         </div>
     }
