@@ -547,23 +547,18 @@ fn RegionPriorityList(
             let children = list_node.children();
             let len = display_order.get().len();
 
-            // Get list's bounding rect for offset calculation
-            let list_rect = list_node.get_bounding_client_rect();
-            let list_top = list_rect.top();
-
             // Collect midpoints of each item (skip drop indicators, only look at items)
             let mut item_midpoints: Vec<(usize, f64)> = Vec::new();
             let mut item_idx = 0;
 
             for i in 0..children.length() {
                 if let Some(child) = children.item(i) {
-                    if let Some(el) = child.dyn_ref::<web_sys::HtmlElement>() {
+                    if let Some(el) = child.dyn_ref::<web_sys::Element>() {
                         // Only process actual items, not drop indicators
                         if el.class_list().contains("region-priority-item") {
-                            // Use offset_top relative to parent + convert to client coords
-                            let offset = el.offset_top() as f64;
-                            let height = el.offset_height() as f64;
-                            let midpoint = list_top + offset + height / 2.0;
+                            // Use getBoundingClientRect for accurate viewport-relative position
+                            let rect = el.get_bounding_client_rect();
+                            let midpoint = rect.top() + rect.height() / 2.0;
                             item_midpoints.push((item_idx, midpoint));
                             item_idx += 1;
                         }
