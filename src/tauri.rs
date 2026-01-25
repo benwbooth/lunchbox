@@ -1369,13 +1369,14 @@ pub async fn get_emulators_with_status(platform_name: String) -> Result<Vec<Emul
 }
 
 /// Install an emulator using the appropriate package manager
-pub async fn install_emulator(emulator_name: String) -> Result<String, String> {
+pub async fn install_emulator(emulator_name: String, is_retroarch_core: bool) -> Result<String, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
+        is_retroarch_core: bool,
     }
-    invoke("install_emulator", Args { emulator_name }).await
+    invoke("install_emulator", Args { emulator_name, is_retroarch_core }).await
 }
 
 /// Launch an emulator (without a ROM)

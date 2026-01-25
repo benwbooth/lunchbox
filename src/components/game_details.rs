@@ -704,6 +704,7 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
+                                            let is_ra = is_retroarch_core;
 
                                             if is_installed {
                                                 // Just launch
@@ -733,7 +734,7 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emulator_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match tauri::install_emulator(emulator_for_install.clone()).await {
+                                                    match tauri::install_emulator(emulator_for_install.clone(), is_ra).await {
                                                         Ok(_path) => {
                                                             set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
                                                             // Record play session
@@ -770,6 +771,7 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
+                                            let is_ra = is_retroarch_core;
 
                                             if is_installed {
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
@@ -796,7 +798,7 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match tauri::install_emulator(emu_for_install.clone()).await {
+                                                    match tauri::install_emulator(emu_for_install.clone(), is_ra).await {
                                                         Ok(_) => {
                                                             let _ = tauri::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
@@ -832,6 +834,7 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
+                                            let is_ra = is_retroarch_core;
 
                                             if is_installed {
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
@@ -858,7 +861,7 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match tauri::install_emulator(emu_for_install.clone()).await {
+                                                    match tauri::install_emulator(emu_for_install.clone(), is_ra).await {
                                                         Ok(_) => {
                                                             let _ = tauri::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));

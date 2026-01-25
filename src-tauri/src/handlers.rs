@@ -697,8 +697,9 @@ pub fn check_emulator_installed(emulator: &EmulatorInfo) -> bool {
 }
 
 /// Install an emulator
-pub async fn install_emulator(emulator: &EmulatorInfo) -> Result<String, String> {
-    let path = emulator::install_emulator(emulator).await?;
+/// If `is_retroarch_core` is true, install as RetroArch core; otherwise install standalone
+pub async fn install_emulator(emulator: &EmulatorInfo, is_retroarch_core: bool) -> Result<String, String> {
+    let path = emulator::install_emulator(emulator, is_retroarch_core).await?;
     Ok(path.to_string_lossy().to_string())
 }
 

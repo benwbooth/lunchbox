@@ -345,12 +345,18 @@ fn get_core_filename(core_name: &str) -> String {
 // ============================================================================
 
 /// Install an emulator using the appropriate package manager
-pub async fn install_emulator(emulator: &EmulatorInfo) -> Result<PathBuf, String> {
-    // If it's a RetroArch core, handle specially
-    if let Some(ref core_name) = emulator.retroarch_core {
-        return install_retroarch_core(core_name).await;
+/// If `as_retroarch_core` is true, install as a RetroArch core; otherwise install standalone
+pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) -> Result<PathBuf, String> {
+    // If installing as RetroArch core, use that path
+    if as_retroarch_core {
+        if let Some(ref core_name) = emulator.retroarch_core {
+            return install_retroarch_core(core_name).await;
+        } else {
+            return Err(format!("{} does not have a RetroArch core", emulator.name));
+        }
     }
 
+    // Install standalone version
     match current_os() {
         "Linux" => {
             if let Some(ref flatpak_id) = emulator.flatpak_id {
@@ -729,12 +735,8 @@ pub fn add_status_as_standalone(emulator: EmulatorInfo) -> EmulatorWithStatus {
     let is_installed = install_path.is_some();
     let display_name = emulator.name.clone();
 
-    // Clear retroarch_core so install_emulator uses the standalone path
-    let mut standalone_info = emulator;
-    standalone_info.retroarch_core = None;
-
     EmulatorWithStatus {
-        info: standalone_info,
+        info: emulator,
         is_installed,
         install_method,
         is_retroarch_core: false,

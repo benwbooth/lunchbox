@@ -2211,6 +2211,7 @@ pub async fn get_emulators_with_status(
 #[tauri::command]
 pub async fn install_emulator(
     emulator_name: String,
+    is_retroarch_core: bool,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<String, String> {
     let state_guard = state.read().await;
@@ -2220,7 +2221,7 @@ pub async fn install_emulator(
         .await?
         .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
 
-    handlers::install_emulator(&emulator).await
+    handlers::install_emulator(&emulator, is_retroarch_core).await
 }
 
 /// Launch a game with the specified emulator

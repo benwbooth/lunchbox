@@ -1909,6 +1909,8 @@ async fn rspc_get_emulators_with_status(
 #[serde(rename_all = "camelCase")]
 struct InstallEmulatorInput {
     emulator_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
 }
 
 async fn rspc_install_emulator(
@@ -1934,7 +1936,7 @@ async fn rspc_install_emulator(
         Err(e) => return rspc_err::<String>(e).into_response(),
     };
 
-    match handlers::install_emulator(&emulator).await {
+    match handlers::install_emulator(&emulator, input.is_retroarch_core).await {
         Ok(path) => rspc_ok(path).into_response(),
         Err(e) => rspc_err::<String>(e).into_response(),
     }
