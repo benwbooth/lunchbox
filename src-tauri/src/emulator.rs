@@ -679,7 +679,9 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             if is_flatpak {
                 // For flatpak, use the sandbox-internal path (~/.config/retroarch/cores/)
                 // not the host path (~/.var/app/org.libretro.RetroArch/config/retroarch/cores/)
-                let flatpak_core_path = format!("~/.config/retroarch/cores/{}", core_filename);
+                // Must expand ~ since Command doesn't do shell expansion
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/home".to_string());
+                let flatpak_core_path = format!("{}/.config/retroarch/cores/{}", home, core_filename);
 
                 let mut cmd = Command::new("flatpak");
                 cmd.arg("run").arg("org.libretro.RetroArch");
