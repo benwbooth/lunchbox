@@ -638,7 +638,8 @@ fn RegionPriorityList(
                 key=|(_, region, _)| region.clone()
                 children=move |(idx, region, len)| {
                     let display_name = region_display_name(&region);
-                    let region_for_drag = region.clone();
+                    let region_for_class = region.clone();
+                    let region_for_drag = region;
 
                     view! {
                         // Drop indicator before this item (at slot idx)
@@ -661,7 +662,7 @@ fn RegionPriorityList(
                         />
                         <div
                             class=move || {
-                                if dragging_region.get().as_ref() == Some(&region_for_drag) {
+                                if dragging_region.get().as_ref() == Some(&region_for_class) {
                                     "region-priority-item dragging"
                                 } else {
                                     "region-priority-item"
