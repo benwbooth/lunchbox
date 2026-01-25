@@ -3191,7 +3191,7 @@ body.sidebar-resizing * {
     flex-shrink: 0;
 }
 
-.emulator-error span {
+.emulator-error span:not(.error-icon) {
     flex: 1;
     font-size: 12px;
     color: #ff6b6b;
