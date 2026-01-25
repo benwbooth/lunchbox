@@ -631,7 +631,7 @@ fn RegionPriorityList(
                 key=|(_, region, _)| region.clone()
                 children=move |(idx, region, len)| {
                     let display_name = region_display_name(&region);
-                    let region_for_class = region.clone();
+                    let _ = region; // consumed for display_name
 
                     view! {
                         // Drop indicator before this item (at slot idx)
