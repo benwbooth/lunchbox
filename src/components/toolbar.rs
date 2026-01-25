@@ -7,12 +7,37 @@ use crate::tauri;
 const FRONTEND_BUILD_HASH: &str = env!("BUILD_HASH");
 const FRONTEND_BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
 
+/// Format relative time in minutes (e.g., "now", "1m ago", "5m ago", "1h ago")
+fn format_relative_time(minutes_ago: i64) -> String {
+    if minutes_ago < 1 {
+        "now".to_string()
+    } else if minutes_ago < 60 {
+        format!("{}m ago", minutes_ago)
+    } else if minutes_ago < 1440 {
+        let hours = minutes_ago / 60;
+        format!("{}h ago", hours)
+    } else {
+        let days = minutes_ago / 1440;
+        format!("{}d ago", days)
+    }
+}
+
+/// Get current time in minutes since epoch
+fn now_minutes() -> i64 {
+    (js_sys::Date::now() / 60000.0) as i64
+}
+
 /// Status indicator showing backend connectivity and build info
 #[component]
 fn StatusIndicator() -> impl IntoView {
     let (is_connected, set_is_connected) = signal(false);
     let (backend_hash, set_backend_hash) = signal::<Option<String>>(None);
     let (backend_timestamp, set_backend_timestamp) = signal::<Option<String>>(None);
+    let (backend_last_updated, set_backend_last_updated) = signal::<Option<i64>>(None);
+    let (current_minute, set_current_minute) = signal(now_minutes());
+
+    // Frontend load time (constant for this session)
+    let frontend_loaded_at = now_minutes();
 
     // Initial health check
     spawn_local(async move {
@@ -21,6 +46,7 @@ fn StatusIndicator() -> impl IntoView {
                 set_is_connected.set(true);
                 set_backend_hash.set(Some(health.build_hash));
                 set_backend_timestamp.set(Some(health.build_timestamp));
+                set_backend_last_updated.set(Some(now_minutes()));
             }
             Err(_) => {
                 set_is_connected.set(false);
@@ -28,15 +54,16 @@ fn StatusIndicator() -> impl IntoView {
         }
     });
 
-    // Set up polling interval (runs once on mount)
+    // Set up polling interval for health checks (every 10 seconds)
     use gloo_timers::callback::Interval;
-    let interval = Interval::new(10000, move || {
+    let health_interval = Interval::new(10000, move || {
         spawn_local(async move {
             match tauri::check_health().await {
                 Ok(health) => {
                     set_is_connected.set(true);
                     set_backend_hash.set(Some(health.build_hash));
                     set_backend_timestamp.set(Some(health.build_timestamp));
+                    set_backend_last_updated.set(Some(now_minutes()));
                 }
                 Err(_) => {
                     set_is_connected.set(false);
@@ -44,7 +71,28 @@ fn StatusIndicator() -> impl IntoView {
             }
         });
     });
-    interval.forget();
+    health_interval.forget();
+
+    // Update current minute every 60 seconds for relative time display
+    let minute_interval = Interval::new(60000, move || {
+        set_current_minute.set(now_minutes());
+    });
+    minute_interval.forget();
+
+    // Compute relative times
+    let backend_relative = move || {
+        let _ = current_minute.get(); // Subscribe to updates
+        backend_last_updated.get().map(|updated_at| {
+            let minutes_ago = now_minutes() - updated_at;
+            format!(" ({})", format_relative_time(minutes_ago))
+        }).unwrap_or_default()
+    };
+
+    let frontend_relative = move || {
+        let _ = current_minute.get(); // Subscribe to updates
+        let minutes_ago = now_minutes() - frontend_loaded_at;
+        format!(" ({})", format_relative_time(minutes_ago))
+    };
 
     // Build tooltip text
     let tooltip = move || {
@@ -67,10 +115,10 @@ fn StatusIndicator() -> impl IntoView {
             <span class="status-info">
                 <span class="status-label">"BE:"</span>
                 <span class="status-hash">{move || backend_hash.get().unwrap_or_else(|| "...".to_string())}</span>
-                <span class="status-time">{move || backend_timestamp.get().unwrap_or_else(|| "".to_string())}</span>
+                <span class="status-time">{move || backend_timestamp.get().unwrap_or_else(|| "".to_string())}{backend_relative}</span>
                 <span class="status-label">"FE:"</span>
                 <span class="status-hash">{FRONTEND_BUILD_HASH}</span>
-                <span class="status-time">{FRONTEND_BUILD_TIMESTAMP}</span>
+                <span class="status-time">{FRONTEND_BUILD_TIMESTAMP}{frontend_relative}</span>
             </span>
         </div>
     }
