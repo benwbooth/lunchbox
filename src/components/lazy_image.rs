@@ -396,31 +396,31 @@ pub enum ImageState {
     Error(String),
 }
 
-/// Image sources in round-robin order: (abbreviation, folder_name)
-const IMAGE_SOURCES: &[(&str, &str)] = &[
-    ("LB", "launchbox"),
-    ("LR", "libretro"),
-    ("SG", "steamgriddb"),
-    ("IG", "igdb"),
-    ("EM", "emumovies"),
-    ("SS", "screenscraper"),
-    ("WS", "websearch"),
+/// Image sources in round-robin order: (abbreviation, folder_name, display_name)
+const IMAGE_SOURCES: &[(&str, &str, &str)] = &[
+    ("LB", "launchbox", "LaunchBox"),
+    ("LR", "libretro", "LibRetro"),
+    ("SG", "steamgriddb", "SteamGridDB"),
+    ("IG", "igdb", "IGDB"),
+    ("EM", "emumovies", "EmuMovies"),
+    ("SS", "screenscraper", "ScreenScraper"),
+    ("WS", "websearch", "Web Search"),
 ];
 
-/// Get the next source abbreviation in the rotation
-fn next_source_abbrev(current: &str) -> &'static str {
-    for (i, (abbrev, _)) in IMAGE_SOURCES.iter().enumerate() {
+/// Get the next source display name in the rotation
+fn next_source_name(current: &str) -> &'static str {
+    for (i, (abbrev, _, _)) in IMAGE_SOURCES.iter().enumerate() {
         if *abbrev == current {
             let next_idx = (i + 1) % IMAGE_SOURCES.len();
-            return IMAGE_SOURCES[next_idx].0;
+            return IMAGE_SOURCES[next_idx].2;
         }
     }
-    IMAGE_SOURCES[0].0 // default to first
+    IMAGE_SOURCES[0].2 // default to first
 }
 
 /// Extract source abbreviation from a file path
 fn source_from_path(path: &str) -> Option<String> {
-    for (abbrev, folder) in IMAGE_SOURCES {
+    for (abbrev, folder, _) in IMAGE_SOURCES {
         if path.contains(&format!("/{}/", folder)) {
             return Some(abbrev.to_string());
         }
@@ -738,7 +738,7 @@ pub fn LazyImage(
 
                                 spawn_local(async move {
                                     // Show loading state with next source name
-                                    let next = next_source_abbrev(&current);
+                                    let next = next_source_name(&current);
                                     let _ = set_state.try_set(ImageState::Downloading {
                                         progress: -1.0,
                                         source: format!("Trying {}...", next),
@@ -775,11 +775,8 @@ pub fn LazyImage(
                                         }
                                         Err(e) => {
                                             log(&format!("Redownload failed: {}", e));
-                                            // Stay on current image but show error briefly
-                                            let _ = set_state.try_set(ImageState::Downloading {
-                                                progress: -1.0,
-                                                source: "No more sources".to_string(),
-                                            });
+                                            // Show no image state - user can click search link
+                                            let _ = set_state.try_set(ImageState::NoImage);
                                         }
                                     }
                                 });
