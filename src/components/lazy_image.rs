@@ -396,25 +396,40 @@ pub enum ImageState {
     Error(String),
 }
 
+/// Image sources in round-robin order: (abbreviation, folder_name)
+const IMAGE_SOURCES: &[(&str, &str)] = &[
+    ("LB", "launchbox"),
+    ("LR", "libretro"),
+    ("SG", "steamgriddb"),
+    ("IG", "igdb"),
+    ("EM", "emumovies"),
+    ("SS", "screenscraper"),
+    ("WS", "websearch"),
+];
+
+/// Get the next source abbreviation in the rotation
+fn next_source_abbrev(current: &str) -> &'static str {
+    for (i, (abbrev, _)) in IMAGE_SOURCES.iter().enumerate() {
+        if *abbrev == current {
+            let next_idx = (i + 1) % IMAGE_SOURCES.len();
+            return IMAGE_SOURCES[next_idx].0;
+        }
+    }
+    IMAGE_SOURCES[0].0 // default to first
+}
+
 /// Extract source abbreviation from a file path
 fn source_from_path(path: &str) -> Option<String> {
-    if path.contains("/steamgriddb/") {
-        Some("SG".to_string())
-    } else if path.contains("/libretro/") || path.contains("/libretro-thumbnails/") {
-        Some("LR".to_string())
-    } else if path.contains("/launchbox/") {
-        Some("LB".to_string())
-    } else if path.contains("/igdb/") {
-        Some("IG".to_string())
-    } else if path.contains("/emumovies/") {
-        Some("EM".to_string())
-    } else if path.contains("/screenscraper/") {
-        Some("SS".to_string())
-    } else if path.contains("/websearch/") {
-        Some("WS".to_string())
-    } else {
-        None
+    for (abbrev, folder) in IMAGE_SOURCES {
+        if path.contains(&format!("/{}/", folder)) {
+            return Some(abbrev.to_string());
+        }
     }
+    // Also check libretro-thumbnails variant
+    if path.contains("/libretro-thumbnails/") {
+        return Some("LR".to_string());
+    }
+    None
 }
 
 /// Lazy-loading image component
@@ -722,10 +737,11 @@ pub fn LazyImage(
                                 let set_state = set_state_for_click;
 
                                 spawn_local(async move {
-                                    // Show loading state
+                                    // Show loading state with next source name
+                                    let next = next_source_abbrev(&current);
                                     let _ = set_state.try_set(ImageState::Downloading {
                                         progress: -1.0,
-                                        source: format!("Trying next after {}...", current),
+                                        source: format!("Trying {}...", next),
                                     });
 
                                     // Clear the frontend LRU cache for this image
