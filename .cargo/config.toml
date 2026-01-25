@@ -1,0 +1,3 @@
+# Enable WebGPU unstable APIs in web-sys for WASM builds
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg=web_sys_unstable_apis"]

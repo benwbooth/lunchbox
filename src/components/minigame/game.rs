@@ -196,7 +196,7 @@ impl GpuState {
 
         // Configure canvas
         let canvas_config = web_sys::GpuCanvasConfiguration::new(&device, web_sys::GpuTextureFormat::Bgra8unorm);
-        context.configure(&canvas_config);
+        let _ = context.configure(&canvas_config);
 
         // Create shader module
         let shader_desc = web_sys::GpuShaderModuleDescriptor::new(SHADER_SOURCE);
@@ -290,7 +290,7 @@ impl GpuState {
         // Write uniforms to buffer
         let uniform_bytes = self.uniforms.to_bytes();
         let uniform_array = Uint8Array::from(&uniform_bytes[..]);
-        self.queue.write_buffer_with_u32_and_buffer_source(&self.uniform_buffer, 0, &uniform_array);
+        let _ = self.queue.write_buffer_with_u32_and_buffer_source(&self.uniform_buffer, 0, &uniform_array);
 
         // Get current texture
         let texture = self.context.get_current_texture().expect("get current texture");
