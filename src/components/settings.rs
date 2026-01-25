@@ -534,34 +534,31 @@ fn RegionPriorityList(
         }
     });
 
-    // Build items once from memo, keyed by region name
-    let items = move || display_order.get();
-
     view! {
         <div class="region-priority-list">
             // Render the list with drop indicators
             {move || {
-                let regions = items();
+                // ONLY read display_order here - NOT drag signals
+                let regions = display_order.get();
                 let len = regions.len();
-                let drag = dragging_idx.get();
-                let drop = drop_target_idx.get();
 
                 regions.into_iter().enumerate().map(|(idx, region)| {
                     let display_name = region_display_name(&region);
-                    let is_dragging = drag == Some(idx);
-                    let show_indicator = drop == Some(idx) && drag.is_some() && drag != Some(idx);
-                    let is_last = idx == len - 1;
-                    let show_end_indicator = is_last && drop == Some(len) && drag.is_some();
 
                     view! {
                         // Drop indicator before this item
+                        // class:visible is its own reactive context
                         <div
                             class="drop-indicator"
-                            class:visible=show_indicator
+                            class:visible=move || {
+                                drop_target_idx.get() == Some(idx)
+                                    && dragging_idx.get().is_some()
+                                    && dragging_idx.get() != Some(idx)
+                            }
                         />
                         <div
                             class="region-priority-item"
-                            class:dragging=is_dragging
+                            class:dragging=move || dragging_idx.get() == Some(idx)
                             draggable="true"
                             on:dragstart=move |_| {
                                 set_dragging_idx.set(Some(idx));
@@ -607,10 +604,13 @@ fn RegionPriorityList(
                             <span class="region-name">{display_name}</span>
                         </div>
                         // Drop indicator after last item
-                        {is_last.then(|| view! {
+                        {(idx == len - 1).then(|| view! {
                             <div
                                 class="drop-indicator drop-indicator-end"
-                                class:visible=show_end_indicator
+                                class:visible=move || {
+                                    drop_target_idx.get() == Some(len)
+                                        && dragging_idx.get().is_some()
+                                }
                                 on:dragover=move |e| {
                                     e.prevent_default();
                                     set_drop_target_idx.set(Some(len));
