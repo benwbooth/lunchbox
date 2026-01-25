@@ -26,7 +26,8 @@
 - Use `uv run python` instead of `python` or `python3`
 - **IMPORTANT**: Always use `./scripts/dev.sh` to run the app - never run `cargo run` or `dev_server` directly. The dev.sh script manages both frontend (trunk) and backend (dev_server) processes together.
 - **NEVER manually run `trunk build`** - the dev server (trunk serve) automatically rebuilds when files change. Just save files and the browser will hot-reload.
-- **NEVER kill cargo-watch, trunk, or dev_server processes unless explicitly asked.** Do not run pkill/kill on these processes. Do not restart dev.sh - the user manages it.
+- **NEVER RESTART THE DEV SERVER. NEVER RESTART THE DEV SERVER. NEVER RESTART THE DEV SERVER.**
+- **NEVER kill cargo-watch, watchexec, trunk, or dev_server processes.** Do not run pkill/kill on these processes. Do not restart dev.sh. The dev server auto-reloads on file changes - just save files and wait.
 
 ## API Endpoints
 
