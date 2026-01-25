@@ -515,8 +515,8 @@ fn RegionPriorityList(
     use leptos::prelude::NodeRef;
     use wasm_bindgen::JsCast;
 
-    // Track dragging state: store the index of the item being dragged
-    let (dragging_from_idx, set_dragging_from_idx) = signal::<Option<usize>>(None);
+    // Track dragging state by region name (stable across reorders)
+    let (dragging_region, set_dragging_region) = signal::<Option<String>>(None);
     let (drop_target_idx, set_drop_target_idx) = signal::<Option<usize>>(None);
 
     // Ref to the list container for position calculations
@@ -539,6 +539,12 @@ fn RegionPriorityList(
             all
         }
     });
+
+    // Get current index of dragging region
+    let get_dragging_idx = move || -> Option<usize> {
+        let region = dragging_region.get()?;
+        display_order.get().iter().position(|r| r == &region)
+    };
 
     // Calculate drop target based on mouse Y position
     let calculate_drop_target = move |client_y: i32| -> Option<usize> {
@@ -583,25 +589,26 @@ fn RegionPriorityList(
 
     // Perform the drop operation
     let perform_drop = move || {
-        if let (Some(from_idx), Some(to_idx)) =
-            (dragging_from_idx.get_untracked(), drop_target_idx.get_untracked())
-        {
-            if is_valid_drop(from_idx, to_idx) {
-                let mut order = display_order.get_untracked();
-                if from_idx < order.len() {
-                    let item = order.remove(from_idx);
-                    // Adjust target index after removal
+        let order = display_order.get_untracked();
+        let to_idx = drop_target_idx.get_untracked();
+        let region = dragging_region.get_untracked();
+
+        if let (Some(region), Some(to_idx)) = (region, to_idx) {
+            if let Some(from_idx) = order.iter().position(|r| r == &region) {
+                if is_valid_drop(from_idx, to_idx) {
+                    let mut new_order = order;
+                    let item = new_order.remove(from_idx);
                     let insert_at = if from_idx < to_idx {
                         to_idx - 1
                     } else {
                         to_idx
                     };
-                    order.insert(insert_at.min(order.len()), item);
-                    settings.update(|s| s.region_priority = order);
+                    new_order.insert(insert_at.min(new_order.len()), item);
+                    settings.update(|s| s.region_priority = new_order);
                 }
             }
         }
-        set_dragging_from_idx.set(None);
+        set_dragging_region.set(None);
         set_drop_target_idx.set(None);
     };
 
@@ -611,7 +618,7 @@ fn RegionPriorityList(
             node_ref=list_ref
             on:dragover=move |e| {
                 e.prevent_default();
-                if dragging_from_idx.get().is_some() {
+                if dragging_region.get().is_some() {
                     if let Some(target) = calculate_drop_target(e.client_y()) {
                         set_drop_target_idx.set(Some(target));
                     }
@@ -631,19 +638,18 @@ fn RegionPriorityList(
                 key=|(_, region, _)| region.clone()
                 children=move |(idx, region, len)| {
                     let display_name = region_display_name(&region);
-                    let _ = region; // consumed for display_name
+                    let region_for_drag = region.clone();
 
                     view! {
                         // Drop indicator before this item (at slot idx)
                         <div
                             class=move || {
                                 let target = drop_target_idx.get();
-                                let from = dragging_from_idx.get();
+                                let from_idx = get_dragging_idx();
 
-                                match (from, target) {
-                                    (Some(from_idx), Some(to_idx)) if to_idx == idx => {
-                                        // Show indicator only if this would be a valid drop
-                                        if from_idx != idx && from_idx + 1 != idx {
+                                match (from_idx, target) {
+                                    (Some(from), Some(to)) if to == idx => {
+                                        if is_valid_drop(from, to) {
                                             "drop-indicator visible"
                                         } else {
                                             "drop-indicator"
@@ -655,18 +661,21 @@ fn RegionPriorityList(
                         />
                         <div
                             class=move || {
-                                if dragging_from_idx.get() == Some(idx) {
+                                if dragging_region.get().as_ref() == Some(&region_for_drag) {
                                     "region-priority-item dragging"
                                 } else {
                                     "region-priority-item"
                                 }
                             }
                             draggable="true"
-                            on:dragstart=move |_| {
-                                set_dragging_from_idx.set(Some(idx));
+                            on:dragstart={
+                                let region = region_for_drag.clone();
+                                move |_| {
+                                    set_dragging_region.set(Some(region.clone()));
+                                }
                             }
                             on:dragend=move |_| {
-                                set_dragging_from_idx.set(None);
+                                set_dragging_region.set(None);
                                 set_drop_target_idx.set(None);
                             }
                         >
@@ -688,12 +697,11 @@ fn RegionPriorityList(
                                 <div
                                     class=move || {
                                         let target = drop_target_idx.get();
-                                        let from = dragging_from_idx.get();
+                                        let from_idx = get_dragging_idx();
 
-                                        match (from, target) {
-                                            (Some(from_idx), Some(to_idx)) if to_idx == len => {
-                                                // Show if not dragging from last position
-                                                if from_idx + 1 != len {
+                                        match (from_idx, target) {
+                                            (Some(from), Some(to)) if to == len => {
+                                                if is_valid_drop(from, to) {
                                                     "drop-indicator drop-indicator-end visible"
                                                 } else {
                                                     "drop-indicator drop-indicator-end"

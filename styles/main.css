@@ -1574,21 +1574,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drop-indicator {
-    height: 0;
+    height: 4px;
     width: 100%;
-    margin: 0;
-    border: none;
+    margin: 2px 0;
     border-radius: 2px;
+    background: transparent;
 }
 
 .drop-indicator.visible {
-    height: 0;
-    margin: 4px 0;
-    border-top: 4px solid #3b82f6;
+    background: #3b82f6;
 }
 
-.drop-indicator-end.visible {
-    margin: 6px 0;
+.drop-indicator-end {
+    height: 4px;
+    margin: 4px 0;
 }
 
 .region-name {
