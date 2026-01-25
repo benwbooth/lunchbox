@@ -633,15 +633,16 @@ fn RegionPriorityList(
             }
         >
             <For
-                each=move || display_order.get().into_iter().enumerate()
-                key=|(_, region)| region.clone()
-                children=move |(idx, region)| {
+                each=move || {
+                    let items: Vec<_> = display_order.get().into_iter().enumerate().collect();
+                    let len = items.len();
+                    items.into_iter().map(move |(idx, region)| (idx, region, len))
+                }
+                key=|(_, region, _)| region.clone()
+                children=move |(idx, region, len)| {
                     let display_name = region_display_name(&region);
                     let region_for_drag = region.clone();
                     let region_for_class = region.clone();
-                    let len = display_order.get().len();
-
-                    // Clone region for use in closures
                     let region_clone = region.clone();
 
                     view! {
@@ -656,8 +657,8 @@ fn RegionPriorityList(
                                 }
 
                                 // Check if this would be a no-op (same position or adjacent)
-                                let dominated_region = dragging.as_ref().unwrap();
-                                if dominated_region == &region_clone {
+                                let dragged = dragging.as_ref().unwrap();
+                                if dragged == &region_clone {
                                     return "drop-indicator"; // Can't drop on self
                                 }
 
