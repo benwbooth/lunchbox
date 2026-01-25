@@ -534,16 +534,17 @@ fn RegionPriorityList(
         }
     });
 
+    // Compute length as a separate memo to avoid borrowing issues
+    let list_len = Memo::new(move |_| display_order.get().len());
+
     view! {
         <div class="region-priority-list">
-            // Render the list with drop indicators
-            {move || {
-                // ONLY read display_order here - NOT drag signals
-                let regions = display_order.get();
-                let len = regions.len();
-
-                regions.into_iter().enumerate().map(|(idx, region)| {
+            <For
+                each=move || display_order.get().into_iter().enumerate()
+                key=|(_, region)| region.clone()
+                children=move |(idx, region)| {
                     let display_name = region_display_name(&region);
+                    let region_for_drag = region.clone();
 
                     view! {
                         // Drop indicator before this item
@@ -558,6 +559,30 @@ fn RegionPriorityList(
                                     "drop-indicator"
                                 }
                             }
+                            on:dragover=move |e| {
+                                e.prevent_default();
+                                set_drop_target_idx.set(Some(idx));
+                            }
+                            on:drop=move |e| {
+                                e.prevent_default();
+                                e.stop_propagation();
+
+                                if let Some(from) = dragging_idx.get_untracked() {
+                                    if from != idx {
+                                        let mut order = display_order.get();
+                                        if from < order.len() {
+                                            let item = order.remove(from);
+                                            // Insert at idx, adjusted for removal
+                                            let insert_at = if from < idx { idx - 1 } else { idx };
+                                            order.insert(insert_at.min(order.len()), item);
+                                            settings.update(|s| s.region_priority = order);
+                                        }
+                                    }
+                                }
+
+                                set_dragging_idx.set(None);
+                                set_drop_target_idx.set(None);
+                            }
                         />
                         <div
                             class=move || {
@@ -568,8 +593,15 @@ fn RegionPriorityList(
                                 }
                             }
                             draggable="true"
-                            on:dragstart=move |_| {
-                                set_dragging_idx.set(Some(idx));
+                            on:dragstart={
+                                let region = region_for_drag.clone();
+                                move |_| {
+                                    // Find current index of this region in the list
+                                    let current_idx = display_order.get().iter().position(|r| r == &region);
+                                    if let Some(idx) = current_idx {
+                                        set_dragging_idx.set(Some(idx));
+                                    }
+                                }
                             }
                             on:dragend=move |_| {
                                 set_dragging_idx.set(None);
@@ -612,42 +644,49 @@ fn RegionPriorityList(
                             <span class="region-name">{display_name}</span>
                         </div>
                         // Drop indicator after last item
-                        {(idx == len - 1).then(|| view! {
-                            <div
-                                class=move || {
-                                    if drop_target_idx.get() == Some(len)
-                                        && dragging_idx.get().is_some()
-                                    {
-                                        "drop-indicator drop-indicator-end visible"
-                                    } else {
-                                        "drop-indicator drop-indicator-end"
-                                    }
-                                }
-                                on:dragover=move |e| {
-                                    e.prevent_default();
-                                    set_drop_target_idx.set(Some(len));
-                                }
-                                on:drop=move |e| {
-                                    e.prevent_default();
-                                    e.stop_propagation();
-
-                                    if let Some(from) = dragging_idx.get_untracked() {
-                                        let mut order = display_order.get();
-                                        if from < order.len() {
-                                            let item = order.remove(from);
-                                            order.push(item);
-                                            settings.update(|s| s.region_priority = order);
+                        {move || {
+                            let len = list_len.get();
+                            (idx == len - 1).then(|| view! {
+                                <div
+                                    class=move || {
+                                        let len = list_len.get();
+                                        if drop_target_idx.get() == Some(len)
+                                            && dragging_idx.get().is_some()
+                                        {
+                                            "drop-indicator drop-indicator-end visible"
+                                        } else {
+                                            "drop-indicator drop-indicator-end"
                                         }
                                     }
+                                    on:dragover={
+                                        let len = list_len.get();
+                                        move |e| {
+                                            e.prevent_default();
+                                            set_drop_target_idx.set(Some(len));
+                                        }
+                                    }
+                                    on:drop=move |e| {
+                                        e.prevent_default();
+                                        e.stop_propagation();
 
-                                    set_dragging_idx.set(None);
-                                    set_drop_target_idx.set(None);
-                                }
-                            />
-                        })}
+                                        if let Some(from) = dragging_idx.get_untracked() {
+                                            let mut order = display_order.get();
+                                            if from < order.len() {
+                                                let item = order.remove(from);
+                                                order.push(item);
+                                                settings.update(|s| s.region_priority = order);
+                                            }
+                                        }
+
+                                        set_dragging_idx.set(None);
+                                        set_drop_target_idx.set(None);
+                                    }
+                                />
+                            })
+                        }}
                     }
-                }).collect_view()
-            }}
+                }
+            />
         </div>
     }
 }
