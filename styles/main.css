@@ -1576,15 +1576,15 @@ h1, h2, h3, h4, h5, h6 {
 .drop-indicator {
     height: 0;
     width: 100%;
-    background-color: #3b82f6;
+    background: #3b82f6 !important;
     margin: 0;
     border-radius: 2px;
-    overflow: hidden;
 }
 
 .drop-indicator.visible {
-    height: 4px;
-    margin: 4px 0;
+    height: 6px !important;
+    margin: 4px 0 !important;
+    box-shadow: 0 0 4px #3b82f6;
 }
 
 .drop-indicator-end {
@@ -1592,8 +1592,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drop-indicator-end.visible {
-    min-height: 4px;
-    margin: 6px 0;
+    min-height: 6px !important;
+    margin: 6px 0 !important;
 }
 
 .region-name {

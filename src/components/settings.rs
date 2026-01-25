@@ -674,15 +674,24 @@ fn RegionPriorityList(
 
                                 // Show if this is the drop target and we're dragging
                                 // Don't show at positions that wouldn't move the item
-                                let dominated_is_dragging = dragging_region.get().is_some();
+                                let is_dragging = dragging_region.get().is_some();
                                 let is_target = target == Some(idx);
                                 let would_be_noop = from_idx == Some(idx) || from_idx.map(|i| i + 1) == Some(idx);
 
-                                if dominated_is_dragging && is_target && !would_be_noop {
+                                let class = if is_dragging && is_target && !would_be_noop {
                                     "drop-indicator visible"
                                 } else {
                                     "drop-indicator"
+                                };
+
+                                if is_dragging && is_target {
+                                    web_sys::console::log_1(&format!(
+                                        "indicator idx={} from={:?} target={:?} noop={} class={}",
+                                        idx, from_idx, target, would_be_noop, class
+                                    ).into());
                                 }
+
+                                class
                             }
                         />
                         <div
