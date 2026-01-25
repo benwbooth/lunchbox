@@ -512,11 +512,11 @@ fn RegionPriorityList(
     all_regions: ReadSignal<Vec<String>>,
     settings: RwSignal<AppSettings>,
 ) -> impl IntoView {
-    // Track dragging state using signals (avoid dataTransfer which has poor Leptos support)
+    // Track dragging state using signals
     let (dragging_idx, set_dragging_idx) = signal::<Option<usize>>(None);
     let (drop_target_idx, set_drop_target_idx) = signal::<Option<usize>>(None);
 
-    // Compute the display order as a memo (only updates when settings or all_regions change)
+    // Compute the display order as a memo
     let display_order = Memo::new(move |_| {
         let saved_priority = settings.get().region_priority;
         let all = all_regions.get();
@@ -534,29 +534,34 @@ fn RegionPriorityList(
         }
     });
 
+    // Build items once from memo, keyed by region name
+    let items = move || display_order.get();
+
     view! {
         <div class="region-priority-list">
+            // Render the list with drop indicators
             {move || {
-                let regions = display_order.get();
+                let regions = items();
                 let len = regions.len();
+                let drag = dragging_idx.get();
+                let drop = drop_target_idx.get();
 
                 regions.into_iter().enumerate().map(|(idx, region)| {
                     let display_name = region_display_name(&region);
+                    let is_dragging = drag == Some(idx);
+                    let show_indicator = drop == Some(idx) && drag.is_some() && drag != Some(idx);
                     let is_last = idx == len - 1;
+                    let show_end_indicator = is_last && drop == Some(len) && drag.is_some();
 
                     view! {
                         // Drop indicator before this item
                         <div
                             class="drop-indicator"
-                            class:visible=move || {
-                                let drag = dragging_idx.get();
-                                let drop = drop_target_idx.get();
-                                drop == Some(idx) && drag.is_some() && drag != Some(idx)
-                            }
+                            class:visible=show_indicator
                         />
                         <div
                             class="region-priority-item"
-                            class:dragging=move || dragging_idx.get() == Some(idx)
+                            class:dragging=is_dragging
                             draggable="true"
                             on:dragstart=move |_| {
                                 set_dragging_idx.set(Some(idx));
@@ -567,22 +572,12 @@ fn RegionPriorityList(
                             }
                             on:dragover=move |e| {
                                 e.prevent_default();
-                                // Only update if changed to avoid constant re-renders
-                                if drop_target_idx.get_untracked() != Some(idx) {
-                                    set_drop_target_idx.set(Some(idx));
-                                }
-                            }
-                            on:dragleave=move |_| {
-                                // Only clear if we're leaving this specific target
-                                if drop_target_idx.get_untracked() == Some(idx) {
-                                    set_drop_target_idx.set(None);
-                                }
+                                set_drop_target_idx.set(Some(idx));
                             }
                             on:drop=move |e| {
                                 e.prevent_default();
                                 e.stop_propagation();
 
-                                // Get source from signal (set during dragstart)
                                 if let Some(from) = dragging_idx.get_untracked() {
                                     if from != idx {
                                         let mut order = display_order.get();
@@ -611,20 +606,14 @@ fn RegionPriorityList(
                             </span>
                             <span class="region-name">{display_name}</span>
                         </div>
-                        // Drop indicator after last item (for moving to end)
+                        // Drop indicator after last item
                         {is_last.then(|| view! {
                             <div
                                 class="drop-indicator drop-indicator-end"
-                                class:visible=move || {
-                                    let drag = dragging_idx.get();
-                                    let drop = drop_target_idx.get();
-                                    drop == Some(len) && drag.is_some()
-                                }
+                                class:visible=show_end_indicator
                                 on:dragover=move |e| {
                                     e.prevent_default();
-                                    if drop_target_idx.get_untracked() != Some(len) {
-                                        set_drop_target_idx.set(Some(len));
-                                    }
+                                    set_drop_target_idx.set(Some(len));
                                 }
                                 on:drop=move |e| {
                                     e.prevent_default();
