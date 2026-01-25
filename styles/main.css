@@ -3180,7 +3180,9 @@ body.sidebar-resizing * {
     align-items: center;
     justify-content: center;
     width: 22px;
+    min-width: 22px;
     height: 22px;
+    min-height: 22px;
     border-radius: 50%;
     background: #ff6b6b;
     color: #fff;
