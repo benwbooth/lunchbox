@@ -540,6 +540,25 @@ fn RegionPriorityList(
         }
     });
 
+    // Derive the region name at the target position (for visual indicator)
+    // This recomputes whenever drop_target_idx or display_order changes
+    let target_region = Memo::new(move |_| {
+        let target_idx = drop_target_idx.get()?;
+        let order = display_order.get();
+        // If target_idx == len, we're inserting at end (return None)
+        order.get(target_idx).cloned()
+    });
+
+    // Is the target at the very end?
+    let target_at_end = Memo::new(move |_| {
+        let target_idx = drop_target_idx.get();
+        let order = display_order.get();
+        match target_idx {
+            Some(idx) => idx == order.len(),
+            None => false,
+        }
+    });
+
     // Calculate drop target based on mouse Y position
     let calculate_drop_target = move |client_y: i32| -> Option<usize> {
         let list_el = list_ref.get()?;
@@ -624,20 +643,20 @@ fn RegionPriorityList(
             }
         >
             <For
-                each=move || {
-                    let items: Vec<_> = display_order.get().into_iter().enumerate().collect();
-                    let len = items.len();
-                    items.into_iter().map(move |(idx, region)| (idx, region, len))
-                }
-                key=|(_, region, _)| region.clone()
-                children=move |(idx, region, len)| {
+                each=move || display_order.get()
+                key=|region| region.clone()
+                children=move |region| {
                     let display_name = region_display_name(&region);
+                    let region_for_indicator = region.clone();
                     let region_for_class = region.clone();
                     let region_for_drag = region;
 
                     view! {
-                        // Drop indicator before this item
-                        <Show when=move || dragging_region.get().is_some() && drop_target_idx.get() == Some(idx)>
+                        // Drop indicator before this item (compare by region name, not stale index)
+                        <Show when=move || {
+                            dragging_region.get().is_some()
+                                && target_region.get().as_ref() == Some(&region_for_indicator)
+                        }>
                             <div class="drop-indicator" />
                         </Show>
                         <div
@@ -672,13 +691,13 @@ fn RegionPriorityList(
                             </span>
                             <span class="region-name">{display_name}</span>
                         </div>
-                        // Drop indicator after last item
-                        <Show when=move || idx == len - 1 && dragging_region.get().is_some() && drop_target_idx.get() == Some(len)>
-                            <div class="drop-indicator" />
-                        </Show>
                     }
                 }
             />
+            // Drop indicator at end (outside For, uses target_at_end memo)
+            <Show when=move || dragging_region.get().is_some() && target_at_end.get()>
+                <div class="drop-indicator" />
+            </Show>
         </div>
     }
 }
