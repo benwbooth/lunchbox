@@ -668,10 +668,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
     let core_path = check_retroarch_core_installed(core_name);
     tracing::debug!(core_path = ?core_path, "Core installation check");
 
-    let core_arg = core_path
-        .as_ref()
-        .and_then(|p| p.to_str())
-        .unwrap_or(core_name);
+    let core_filename = get_core_filename(core_name);
 
     match current_os() {
         "Linux" => {
@@ -680,10 +677,14 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             tracing::debug!(flatpak_installed = is_flatpak, "Checking RetroArch installation");
 
             if is_flatpak {
+                // For flatpak, use the sandbox-internal path (~/.config/retroarch/cores/)
+                // not the host path (~/.var/app/org.libretro.RetroArch/config/retroarch/cores/)
+                let flatpak_core_path = format!("~/.config/retroarch/cores/{}", core_filename);
+
                 let mut cmd = Command::new("flatpak");
                 cmd.arg("run").arg("org.libretro.RetroArch");
                 if core_path.is_some() {
-                    cmd.arg("-L").arg(core_arg);
+                    cmd.arg("-L").arg(&flatpak_core_path);
                 }
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
@@ -692,8 +693,8 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                 spawn_and_verify(cmd, "RetroArch")
             } else {
                 let mut cmd = Command::new("retroarch");
-                if core_path.is_some() {
-                    cmd.arg("-L").arg(core_arg);
+                if let Some(ref path) = core_path {
+                    cmd.arg("-L").arg(path);
                 }
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
@@ -707,8 +708,8 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                 .or_else(|_| which::which("retroarch.exe"))
                 .map_err(|_| "Could not find RetroArch executable")?;
             let mut cmd = Command::new(retroarch_path);
-            if core_path.is_some() {
-                cmd.arg("-L").arg(core_arg);
+            if let Some(ref path) = core_path {
+                cmd.arg("-L").arg(path);
             }
             if let Some(rom) = rom_path {
                 cmd.arg(rom);
@@ -720,8 +721,8 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             cmd.arg("-a").arg("RetroArch");
             if core_path.is_some() || rom_path.is_some() {
                 cmd.arg("--args");
-                if core_path.is_some() {
-                    cmd.arg("-L").arg(core_arg);
+                if let Some(ref path) = core_path {
+                    cmd.arg("-L").arg(path);
                 }
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
