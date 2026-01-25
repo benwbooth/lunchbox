@@ -540,12 +540,6 @@ fn RegionPriorityList(
         }
     });
 
-    // Get current index of dragging region
-    let get_dragging_idx = move || -> Option<usize> {
-        let region = dragging_region.get()?;
-        display_order.get().iter().position(|r| r == &region)
-    };
-
     // Calculate drop target based on mouse Y position
     let calculate_drop_target = move |client_y: i32| -> Option<usize> {
         let list_el = list_ref.get()?;
@@ -646,17 +640,13 @@ fn RegionPriorityList(
                         <div
                             class=move || {
                                 let target = drop_target_idx.get();
-                                let from_idx = get_dragging_idx();
+                                let dragging = dragging_region.get();
 
-                                match (from_idx, target) {
-                                    (Some(from), Some(to)) if to == idx => {
-                                        if is_valid_drop(from, to) {
-                                            "drop-indicator visible"
-                                        } else {
-                                            "drop-indicator"
-                                        }
-                                    }
-                                    _ => "drop-indicator"
+                                // Simple check: show indicator at target slot while dragging
+                                if dragging.is_some() && target == Some(idx) {
+                                    "drop-indicator visible"
+                                } else {
+                                    "drop-indicator"
                                 }
                             }
                         />
@@ -698,17 +688,13 @@ fn RegionPriorityList(
                                 <div
                                     class=move || {
                                         let target = drop_target_idx.get();
-                                        let from_idx = get_dragging_idx();
+                                        let dragging = dragging_region.get();
 
-                                        match (from_idx, target) {
-                                            (Some(from), Some(to)) if to == len => {
-                                                if is_valid_drop(from, to) {
-                                                    "drop-indicator drop-indicator-end visible"
-                                                } else {
-                                                    "drop-indicator drop-indicator-end"
-                                                }
-                                            }
-                                            _ => "drop-indicator drop-indicator-end"
+                                        // Simple check: show indicator at end slot while dragging
+                                        if dragging.is_some() && target == Some(len) {
+                                            "drop-indicator drop-indicator-end visible"
+                                        } else {
+                                            "drop-indicator drop-indicator-end"
                                         }
                                     }
                                 />
