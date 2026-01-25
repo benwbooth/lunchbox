@@ -1552,8 +1552,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .region-priority-item.dragging {
-    opacity: 0.4;
-    cursor: grabbing;
+    display: none;
 }
 
 .drag-handle {
@@ -1569,9 +1568,6 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--text-secondary);
 }
 
-.region-priority-item.dragging .drag-handle {
-    cursor: grabbing;
-}
 
 .drop-indicator {
     display: flex;
