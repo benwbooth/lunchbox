@@ -8,7 +8,8 @@
 use crate::db::schema::EmulatorInfo;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::io::Read;
 
 /// Emulator with installation status for frontend display
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -578,6 +579,51 @@ fn get_libretro_core_url(core_name: &str) -> String {
 // Launching
 // ============================================================================
 
+/// Spawn a command and check if it crashes immediately.
+/// Returns the pid on success, or an error message if it fails/crashes.
+fn spawn_and_verify(mut cmd: Command, name: &str) -> Result<u32, String> {
+    // Capture stderr to get error messages if the process crashes
+    cmd.stderr(Stdio::piped());
+    cmd.stdout(Stdio::null());
+
+    let mut child = cmd.spawn()
+        .map_err(|e| format!("Failed to launch {}: {}", name, e))?;
+
+    let pid = child.id();
+
+    // Wait a brief moment to see if the process crashes immediately
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Check if the process is still running
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            // Process exited - try to get stderr
+            let mut stderr_output = String::new();
+            if let Some(mut stderr) = child.stderr.take() {
+                let _ = stderr.read_to_string(&mut stderr_output);
+            }
+
+            let error_msg = if stderr_output.trim().is_empty() {
+                format!("{} exited immediately with status: {}", name, status)
+            } else {
+                format!("{} failed: {}", name, stderr_output.trim())
+            };
+
+            tracing::error!(error = %error_msg, "Process crashed immediately");
+            Err(error_msg)
+        }
+        Ok(None) => {
+            // Process is still running - success!
+            tracing::debug!(pid = pid, "Process is running");
+            Ok(pid)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to check process status");
+            Err(format!("Failed to check {} status: {}", name, e))
+        }
+    }
+}
+
 /// Launch an emulator (optionally with a ROM)
 /// If `as_retroarch_core` is true, launch via RetroArch; otherwise launch standalone
 pub fn launch_emulator(emulator: &EmulatorInfo, rom_path: Option<&str>, as_retroarch_core: bool) -> Result<u32, String> {
@@ -627,7 +673,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
         .and_then(|p| p.to_str())
         .unwrap_or(core_name);
 
-    let child = match current_os() {
+    match current_os() {
         "Linux" => {
             // Try flatpak first
             let is_flatpak = is_flatpak_installed("org.libretro.RetroArch");
@@ -643,8 +689,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                     cmd.arg(rom);
                 }
                 tracing::info!(command = ?cmd, "Spawning RetroArch via flatpak");
-                cmd.spawn()
-                    .map_err(|e| format!("Failed to launch RetroArch via flatpak: {}", e))?
+                spawn_and_verify(cmd, "RetroArch")
             } else {
                 let mut cmd = Command::new("retroarch");
                 if core_path.is_some() {
@@ -654,8 +699,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                     cmd.arg(rom);
                 }
                 tracing::info!(command = ?cmd, "Spawning RetroArch native");
-                cmd.spawn()
-                    .map_err(|e| format!("Failed to launch RetroArch: {}", e))?
+                spawn_and_verify(cmd, "RetroArch")
             }
         }
         "Windows" => {
@@ -669,8 +713,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             if let Some(rom) = rom_path {
                 cmd.arg(rom);
             }
-            cmd.spawn()
-                .map_err(|e| format!("Failed to launch RetroArch: {}", e))?
+            spawn_and_verify(cmd, "RetroArch")
         }
         "macOS" => {
             let mut cmd = Command::new("open");
@@ -684,13 +727,10 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                     cmd.arg(rom);
                 }
             }
-            cmd.spawn()
-                .map_err(|e| format!("Failed to launch RetroArch: {}", e))?
+            spawn_and_verify(cmd, "RetroArch")
         }
-        _ => return Err("Unsupported operating system".to_string()),
-    };
-
-    Ok(child.id())
+        _ => Err("Unsupported operating system".to_string()),
+    }
 }
 
 /// Launch a standalone emulator (optionally with a ROM)
@@ -706,7 +746,7 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
 
     tracing::debug!(exe_path = ?exe_path, "Found emulator executable");
 
-    let child = if exe_path.to_string_lossy().starts_with("flatpak::") {
+    if exe_path.to_string_lossy().starts_with("flatpak::") {
         // Flatpak app
         let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
         let mut cmd = Command::new("flatpak");
@@ -715,12 +755,7 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
             cmd.arg(rom);
         }
         tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
-        cmd.spawn()
-            .map_err(|e| {
-                let err = format!("Failed to launch via flatpak: {}", e);
-                tracing::error!(error = %err);
-                err
-            })?
+        spawn_and_verify(cmd, &emulator.name)
     } else if current_os() == "macOS" && exe_path.extension().map(|e| e == "app").unwrap_or(false) {
         // macOS .app bundle
         let mut cmd = Command::new("open");
@@ -729,12 +764,7 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
             cmd.arg(rom);
         }
         tracing::info!(command = ?cmd, "Spawning macOS app");
-        cmd.spawn()
-            .map_err(|e| {
-                let err = format!("Failed to launch {}: {}", emulator.name, e);
-                tracing::error!(error = %err);
-                err
-            })?
+        spawn_and_verify(cmd, &emulator.name)
     } else {
         // Regular executable
         let mut cmd = Command::new(&exe_path);
@@ -742,15 +772,8 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
             cmd.arg(rom);
         }
         tracing::info!(command = ?cmd, "Spawning native executable");
-        cmd.spawn()
-            .map_err(|e| {
-                let err = format!("Failed to launch {}: {}", emulator.name, e);
-                tracing::error!(error = %err);
-                err
-            })?
-    };
-
-    Ok(child.id())
+        spawn_and_verify(cmd, &emulator.name)
+    }
 }
 
 // ============================================================================
