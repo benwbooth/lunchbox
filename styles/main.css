@@ -1574,25 +1574,27 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drop-indicator {
-    height: 4px;
+    height: 0;
     width: 100%;
-    background-color: transparent;
+    background-color: var(--accent-color);
     margin: 0;
-    padding: 6px 0;
-    background-clip: content-box;
     border-radius: 2px;
-    transition: background-color 0.1s ease;
+    transition: height 0.1s ease;
+    overflow: hidden;
 }
 
 .drop-indicator.visible {
-    background-color: var(--accent-color);
+    height: 4px;
+    margin: 2px 0;
 }
 
 .drop-indicator-end {
-    /* Make the end drop zone larger so it's easier to hit */
+    min-height: 0;
+}
+
+.drop-indicator-end.visible {
     min-height: 4px;
-    padding: 12px 0;
-    margin-top: 0;
+    margin: 4px 0;
 }
 
 .region-name {

@@ -631,8 +631,12 @@ fn RegionPriorityList(
             on:dragover=move |e| {
                 e.prevent_default();
                 if dragging_region.get().is_some() {
-                    if let Some(target) = calculate_drop_target(e.client_y()) {
+                    let y = e.client_y();
+                    if let Some(target) = calculate_drop_target(y) {
+                        web_sys::console::log_1(&format!("dragover y={} target={}", y, target).into());
                         set_drop_target_idx.set(Some(target));
+                    } else {
+                        web_sys::console::log_1(&format!("dragover y={} NO TARGET", y).into());
                     }
                 }
             }
@@ -668,16 +672,18 @@ fn RegionPriorityList(
                         <div
                             class=move || {
                                 let dominated_region = dragging_region.get();
-                                let dominated_from_idx = dominated_region.as_ref().and_then(|r| {
+                                let from_idx = dominated_region.as_ref().and_then(|r| {
                                     display_order.get().iter().position(|x| x == r)
                                 });
+                                let target = drop_target_idx.get();
+
                                 // Show if this is the drop target and we're dragging
-                                // Don't show indicator at the dragged item's current position or right after it
-                                if drop_target_idx.get() == Some(idx)
-                                    && dragging_region.get().is_some()
-                                    && dominated_from_idx != Some(idx)
-                                    && dominated_from_idx != Some(idx.saturating_sub(1))
-                                {
+                                // Don't show at positions that wouldn't move the item
+                                let dominated_is_dragging = dragging_region.get().is_some();
+                                let is_target = target == Some(idx);
+                                let would_be_noop = from_idx == Some(idx) || from_idx.map(|i| i + 1) == Some(idx);
+
+                                if dominated_is_dragging && is_target && !would_be_noop {
                                     "drop-indicator visible"
                                 } else {
                                     "drop-indicator"
@@ -696,6 +702,7 @@ fn RegionPriorityList(
                             on:dragstart={
                                 let region = region_for_drag.clone();
                                 move |_| {
+                                    web_sys::console::log_1(&format!("dragstart: {}", region).into());
                                     set_dragging_region.set(Some(region.clone()));
                                 }
                             }
