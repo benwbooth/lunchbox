@@ -225,9 +225,9 @@ async fn get_all_regions(
             }
         }
 
-        // Sort alphabetically
+        // Sort by default region priority (USA first, then Japan, Europe, etc.)
         let mut result: Vec<String> = regions.into_iter().collect();
-        result.sort();
+        result.sort_by_key(|r| crate::tags::region_priority(r));
 
         // Add empty string for "plain/no region" at the start
         result.insert(0, String::new());
