@@ -3,6 +3,7 @@
 ## Code Style
 
 - Keep code straightforward - don't go crazy with abstractions
+- If a fix doesn't work the first time, don't give up and revert to a half-baked solution. Keep investigating and trying until it works.
 - Refactor to maintain clean code standards when it makes sense
 - Never put stubs in to be done later - just do the thing
 - No TODOs, no "coming in a future update", no "not yet implemented" - implement it now or break it into smaller steps

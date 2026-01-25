@@ -507,78 +507,71 @@ fn RegionPriorityList(
     all_regions: ReadSignal<Vec<String>>,
     settings: RwSignal<AppSettings>,
 ) -> impl IntoView {
-    // Track dragging state
+    // Track dragging state using signals (avoid dataTransfer which has poor Leptos support)
     let (dragging_idx, set_dragging_idx) = signal::<Option<usize>>(None);
     let (drop_target_idx, set_drop_target_idx) = signal::<Option<usize>>(None);
 
     // Compute the display order: user's saved priority first, then remaining regions
-    let display_order = move || -> Vec<String> {
-        let saved_priority = settings.get().region_priority;
-        let all = all_regions.get();
+    let get_display_order = {
+        let all_regions = all_regions.clone();
+        move || -> Vec<String> {
+            let saved_priority = settings.get().region_priority;
+            let all = all_regions.get();
 
-        if !saved_priority.is_empty() {
-            let mut result = saved_priority.clone();
-            for region in all {
-                if !result.contains(&region) {
-                    result.push(region);
+            if !saved_priority.is_empty() {
+                let mut result = saved_priority.clone();
+                for region in all {
+                    if !result.contains(&region) {
+                        result.push(region);
+                    }
                 }
+                result
+            } else {
+                all
             }
-            result
-        } else {
-            all
         }
     };
 
-    let move_region = move |from: usize, to: usize| {
-        if from != to {
-            settings.update(|s| {
-                let mut order = display_order();
+    // Move region from one position to another
+    let do_move = {
+        let get_display_order = get_display_order.clone();
+        move |from: usize, to: usize| {
+            if from != to {
+                let mut order = get_display_order();
                 if from < order.len() && to <= order.len() {
                     let item = order.remove(from);
-                    // Adjust target index if we removed before it
-                    let adjusted_to = if from < to { to - 1 } else { to };
-                    order.insert(adjusted_to.min(order.len()), item);
-                    s.region_priority = order;
+                    let insert_at = if from < to { to - 1 } else { to };
+                    order.insert(insert_at.min(order.len()), item);
+                    settings.update(|s| s.region_priority = order);
                 }
-            });
+            }
         }
     };
 
     view! {
-        <div
-            class="region-priority-list"
-            on:dragover=move |e| e.prevent_default()
-            on:drop=move |e| {
-                e.prevent_default();
-                if let (Some(from), Some(to)) = (dragging_idx.get(), drop_target_idx.get()) {
-                    move_region(from, to);
-                }
-                set_dragging_idx.set(None);
-                set_drop_target_idx.set(None);
-            }
-        >
+        <div class="region-priority-list">
             {move || {
-                let regions = display_order();
+                let regions = get_display_order();
                 let len = regions.len();
+
                 regions.into_iter().enumerate().map(|(idx, region)| {
                     let display_name = region_display_name(&region);
-                    let is_dragging = move || dragging_idx.get() == Some(idx);
-                    let show_drop_before = move || {
-                        drop_target_idx.get() == Some(idx) && dragging_idx.get() != Some(idx)
-                    };
-                    let show_drop_after = move || {
-                        idx == len - 1 && drop_target_idx.get() == Some(len) && dragging_idx.get() != Some(idx)
-                    };
+                    let do_move = do_move.clone();
+                    let do_move_end = do_move.clone();
 
                     view! {
-                        // Drop indicator line before this item
+                        // Drop indicator before this item
                         <div
                             class="drop-indicator"
-                            class:visible=show_drop_before
+                            class:visible=move || {
+                                let drag = dragging_idx.get();
+                                let drop = drop_target_idx.get();
+                                drop == Some(idx) && drag.is_some() && drag != Some(idx)
+                            }
                         />
                         <div
                             class="region-priority-item"
-                            class:dragging=is_dragging
+                            class:dragging=move || dragging_idx.get() == Some(idx)
                             draggable="true"
                             on:dragstart=move |_| {
                                 set_dragging_idx.set(Some(idx));
@@ -589,9 +582,25 @@ fn RegionPriorityList(
                             }
                             on:dragover=move |e| {
                                 e.prevent_default();
-                                e.stop_propagation();
-                                // Show drop indicator before this item
                                 set_drop_target_idx.set(Some(idx));
+                            }
+                            on:dragleave=move |_| {
+                                // Only clear if we're leaving this specific target
+                                if drop_target_idx.get() == Some(idx) {
+                                    set_drop_target_idx.set(None);
+                                }
+                            }
+                            on:drop=move |e| {
+                                e.prevent_default();
+                                e.stop_propagation();
+
+                                // Get source from signal (set during dragstart)
+                                if let Some(from) = dragging_idx.get() {
+                                    do_move(from, idx);
+                                }
+
+                                set_dragging_idx.set(None);
+                                set_drop_target_idx.set(None);
                             }
                         >
                             <span class="drag-handle" title="Drag to reorder">
@@ -606,11 +615,30 @@ fn RegionPriorityList(
                             </span>
                             <span class="region-name">{display_name}</span>
                         </div>
-                        // Drop indicator line after last item
+                        // Drop indicator after last item (for moving to end)
                         {(idx == len - 1).then(|| view! {
                             <div
-                                class="drop-indicator"
-                                class:visible=show_drop_after
+                                class="drop-indicator drop-indicator-end"
+                                class:visible=move || {
+                                    let drag = dragging_idx.get();
+                                    let drop = drop_target_idx.get();
+                                    drop == Some(len) && drag.is_some()
+                                }
+                                on:dragover=move |e| {
+                                    e.prevent_default();
+                                    set_drop_target_idx.set(Some(len));
+                                }
+                                on:drop=move |e| {
+                                    e.prevent_default();
+                                    e.stop_propagation();
+
+                                    if let Some(from) = dragging_idx.get() {
+                                        do_move_end(from, len);
+                                    }
+
+                                    set_dragging_idx.set(None);
+                                    set_drop_target_idx.set(None);
+                                }
                             />
                         })}
                     }
