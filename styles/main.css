@@ -1552,7 +1552,17 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .region-priority-item.dragging {
-    opacity: 0.3;
+    animation: drag-collapse 0.01s 50ms forwards;
+}
+
+@keyframes drag-collapse {
+    to {
+        opacity: 0;
+        height: 0;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+    }
 }
 
 .drag-handle {
