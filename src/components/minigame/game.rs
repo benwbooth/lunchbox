@@ -14,8 +14,8 @@ use super::physics;
 use super::world;
 use super::ai;
 
-/// Render scale (2x pixel size)
-const SCALE: f64 = 2.0;
+/// Render scale (1x pixel size for crisp small pixels)
+const SCALE: f64 = 1.0;
 
 /// Target FPS
 const TARGET_FPS: f64 = 60.0;

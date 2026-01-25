@@ -58,19 +58,16 @@ fn generate_ground(world: &mut GameWorld, tiles_wide: i32, ground_y: i32) {
 
 /// Generate floating platforms with bricks and question blocks
 fn generate_floating_platforms(world: &mut GameWorld, tiles_wide: i32, ground_y: i32, _tile_size: i32) {
-    // Height levels for floating platforms
-    let levels = [
-        ground_y - 4,
-        ground_y - 7,
-        ground_y - 10,
-        ground_y - 13,
-        ground_y - 16,
-    ];
+    // Generate platform levels dynamically based on screen height
+    // Space platforms every 3-4 tiles from near ground up to near top
+    let mut levels = Vec::new();
+    let mut y = ground_y - 4;
+    while y > 3 {
+        levels.push(y);
+        y -= 3; // 3 tiles between each level
+    }
 
     for &level_y in &levels {
-        if level_y < 3 {
-            continue;
-        }
 
         let mut x = (js_sys::Math::random() * 4.0) as i32;
 
@@ -106,10 +103,12 @@ fn generate_floating_platforms(world: &mut GameWorld, tiles_wide: i32, ground_y:
         }
     }
 
-    // Add some standalone question blocks in the air
-    for _ in 0..((tiles_wide / 8) as usize) {
+    // Add some standalone question blocks in the air (more for larger screens)
+    let num_questions = ((tiles_wide * ground_y) / 80).max(5) as usize;
+    for _ in 0..num_questions {
         let qx = (js_sys::Math::random() * (tiles_wide - 2) as f64) as i32 + 1;
-        let qy = (js_sys::Math::random() * ((ground_y - 6) as f64) + 4.0) as i32;
+        // Spawn across the full height (from y=4 to ground_y - 4)
+        let qy = (js_sys::Math::random() * ((ground_y - 8) as f64) + 4.0) as i32;
 
         // Check if position is free
         let has_block = world.blocks.iter().any(|b| b.x == qx && b.y == qy);
@@ -127,8 +126,8 @@ fn generate_floating_platforms(world: &mut GameWorld, tiles_wide: i32, ground_y:
 
 /// Spawn more Mario characters
 fn spawn_marios(world: &mut GameWorld, tiles_wide: i32, tile_size: i32) {
-    // More Marios: 8-15 based on screen width
-    let count = ((tiles_wide as f64 / 10.0).ceil() as i32).clamp(8, 15);
+    // More Marios for larger screens: 12-25 based on screen width
+    let count = ((tiles_wide as f64 / 8.0).ceil() as i32).clamp(12, 25);
 
     for i in 0..count {
         // Spread Marios across the level
