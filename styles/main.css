@@ -1901,6 +1901,37 @@ h1, h2, h3, h4, h5, h6 {
     font-weight: 500;
 }
 
+.game-emulator-pref {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.game-emulator-pref .pref-value {
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+.game-emulator-pref .pref-reset-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.game-emulator-pref .pref-reset-btn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: var(--text-highlight);
+}
+
 /* Game Actions */
 .game-actions {
     display: flex;

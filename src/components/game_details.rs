@@ -22,6 +22,8 @@ pub fn GameDetails(
     let (show_emulator_picker, set_show_emulator_picker) = signal(false);
     let (emulators, set_emulators) = signal::<Vec<EmulatorWithStatus>>(Vec::new());
     let (emulators_loading, set_emulators_loading) = signal(false);
+    // Per-game emulator preference
+    let (game_emulator_pref, set_game_emulator_pref) = signal::<Option<String>>(None);
 
     // Initialize display_game from prop when game changes
     Effect::new(move || {
@@ -33,6 +35,24 @@ pub fn GameDetails(
             set_is_fav.set(false);
             set_variants.set(Vec::new());
             set_selected_variant.set(None);
+            set_game_emulator_pref.set(None);
+        }
+    });
+
+    // Load per-game emulator preference
+    Effect::new(move || {
+        if let Some(g) = display_game.get() {
+            let db_id = g.database_id;
+            spawn_local(async move {
+                // Get game-specific preference (not platform default)
+                if let Ok(prefs) = tauri::get_all_emulator_preferences().await {
+                    let game_pref = prefs.game_preferences
+                        .into_iter()
+                        .find(|p| p.launchbox_db_id == db_id)
+                        .map(|p| p.emulator_name);
+                    set_game_emulator_pref.set(game_pref);
+                }
+            });
         }
     });
 
@@ -286,6 +306,31 @@ pub fn GameDetails(
                                                             "Last: "
                                                             <span class="stat-value">{last_played}</span>
                                                         </span>
+                                                    </div>
+                                                }
+                                            })}
+                                        </Show>
+
+                                        // Per-game emulator preference
+                                        <Show when=move || game_emulator_pref.get().is_some()>
+                                            {move || game_emulator_pref.get().map(|emu_name| {
+                                                view! {
+                                                    <div class="game-emulator-pref">
+                                                        <span class="pref-label">"Preferred emulator: "</span>
+                                                        <span class="pref-value">{emu_name}</span>
+                                                        <button
+                                                            class="pref-reset-btn"
+                                                            on:click=move |_| {
+                                                                spawn_local(async move {
+                                                                    if tauri::clear_game_emulator_preference(db_id).await.is_ok() {
+                                                                        set_game_emulator_pref.set(None);
+                                                                    }
+                                                                });
+                                                            }
+                                                            title="Reset to ask every time"
+                                                        >
+                                                            "Reset"
+                                                        </button>
                                                     </div>
                                                 }
                                             })}
