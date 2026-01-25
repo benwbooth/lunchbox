@@ -515,8 +515,8 @@ fn RegionPriorityList(
     use leptos::prelude::NodeRef;
     use wasm_bindgen::JsCast;
 
-    // Track dragging state using signals
-    let (dragging_region, set_dragging_region) = signal::<Option<String>>(None);
+    // Track dragging state: store the index of the item being dragged
+    let (dragging_from_idx, set_dragging_from_idx) = signal::<Option<usize>>(None);
     let (drop_target_idx, set_drop_target_idx) = signal::<Option<usize>>(None);
 
     // Ref to the list container for position calculations
@@ -541,51 +541,54 @@ fn RegionPriorityList(
     });
 
     // Calculate drop target based on mouse Y position
-    let calculate_drop_target = move |client_y: i32| {
-        if let Some(list_el) = list_ref.get() {
-            let list_node: &web_sys::HtmlElement = &list_el;
-            let children = list_node.children();
-            let len = display_order.get().len();
+    let calculate_drop_target = move |client_y: i32| -> Option<usize> {
+        let list_el = list_ref.get()?;
+        let list_node: &web_sys::HtmlElement = &list_el;
+        let children = list_node.children();
 
-            // Collect midpoints of each item
-            let mut item_mids: Vec<f64> = Vec::new();
+        // Collect midpoints of each item
+        let mut item_mids: Vec<f64> = Vec::new();
 
-            for i in 0..children.length() {
-                if let Some(child) = children.item(i) {
-                    if let Some(el) = child.dyn_ref::<web_sys::Element>() {
-                        if el.class_list().contains("region-priority-item") {
-                            let rect = el.get_bounding_client_rect();
-                            let mid = rect.top() + rect.height() / 2.0;
-                            item_mids.push(mid);
-                        }
+        for i in 0..children.length() {
+            if let Some(child) = children.item(i) {
+                if let Some(el) = child.dyn_ref::<web_sys::Element>() {
+                    if el.class_list().contains("region-priority-item") {
+                        let rect = el.get_bounding_client_rect();
+                        let mid = rect.top() + rect.height() / 2.0;
+                        item_mids.push(mid);
                     }
                 }
             }
-
-            let y = client_y as f64;
-
-            // Find insert position based on cursor Y vs item midpoints
-            // If cursor is above item's midpoint, insert before that item
-            for (i, mid) in item_mids.iter().enumerate() {
-                if y < *mid {
-                    return Some(i);
-                }
-            }
-
-            // Below all midpoints = insert at end
-            return Some(len);
         }
-        None
+
+        let y = client_y as f64;
+        let len = item_mids.len();
+
+        // Find insert position based on cursor Y vs item midpoints
+        for (i, mid) in item_mids.iter().enumerate() {
+            if y < *mid {
+                return Some(i);
+            }
+        }
+
+        // Below all midpoints = insert at end
+        Some(len)
+    };
+
+    // Check if dropping at target would actually move the item
+    let is_valid_drop = move |from_idx: usize, to_idx: usize| -> bool {
+        // Can't drop at same position or immediately after (no movement)
+        from_idx != to_idx && from_idx + 1 != to_idx
     };
 
     // Perform the drop operation
     let perform_drop = move || {
-        if let (Some(from_region), Some(to_idx)) =
-            (dragging_region.get_untracked(), drop_target_idx.get_untracked())
+        if let (Some(from_idx), Some(to_idx)) =
+            (dragging_from_idx.get_untracked(), drop_target_idx.get_untracked())
         {
-            let mut order = display_order.get();
-            if let Some(from_idx) = order.iter().position(|r| r == &from_region) {
-                if from_idx != to_idx && from_idx + 1 != to_idx {
+            if is_valid_drop(from_idx, to_idx) {
+                let mut order = display_order.get_untracked();
+                if from_idx < order.len() {
                     let item = order.remove(from_idx);
                     // Adjust target index after removal
                     let insert_at = if from_idx < to_idx {
@@ -598,7 +601,7 @@ fn RegionPriorityList(
                 }
             }
         }
-        set_dragging_region.set(None);
+        set_dragging_from_idx.set(None);
         set_drop_target_idx.set(None);
     };
 
@@ -608,7 +611,7 @@ fn RegionPriorityList(
             node_ref=list_ref
             on:dragover=move |e| {
                 e.prevent_default();
-                if dragging_region.get().is_some() {
+                if dragging_from_idx.get().is_some() {
                     if let Some(target) = calculate_drop_target(e.client_y()) {
                         set_drop_target_idx.set(Some(target));
                     }
@@ -617,19 +620,6 @@ fn RegionPriorityList(
             on:drop=move |e| {
                 e.prevent_default();
                 perform_drop();
-            }
-            on:dragleave=move |e| {
-                // Only clear if leaving the list entirely
-                if let Some(related) = e.related_target() {
-                    if let Some(list_el) = list_ref.get() {
-                        let list_el: &web_sys::Node = &list_el;
-                        if !list_el.contains(related.dyn_ref::<web_sys::Node>()) {
-                            set_drop_target_idx.set(None);
-                        }
-                    }
-                } else {
-                    set_drop_target_idx.set(None);
-                }
             }
         >
             <For
@@ -641,47 +631,42 @@ fn RegionPriorityList(
                 key=|(_, region, _)| region.clone()
                 children=move |(idx, region, len)| {
                     let display_name = region_display_name(&region);
-                    let region_for_drag = region.clone();
                     let region_for_class = region.clone();
-                    let region_clone = region.clone();
 
                     view! {
-                        // Drop indicator before this item
+                        // Drop indicator before this item (at slot idx)
                         <div
                             class=move || {
                                 let target = drop_target_idx.get();
-                                let dragging = dragging_region.get();
+                                let from = dragging_from_idx.get();
 
-                                if dragging.is_none() || target != Some(idx) {
-                                    return "drop-indicator";
+                                match (from, target) {
+                                    (Some(from_idx), Some(to_idx)) if to_idx == idx => {
+                                        // Show indicator only if this would be a valid drop
+                                        if from_idx != idx && from_idx + 1 != idx {
+                                            "drop-indicator visible"
+                                        } else {
+                                            "drop-indicator"
+                                        }
+                                    }
+                                    _ => "drop-indicator"
                                 }
-
-                                // Check if this would be a no-op (same position or adjacent)
-                                let dragged = dragging.as_ref().unwrap();
-                                if dragged == &region_clone {
-                                    return "drop-indicator"; // Can't drop on self
-                                }
-
-                                "drop-indicator visible"
                             }
                         />
                         <div
                             class=move || {
-                                if dragging_region.get().as_ref() == Some(&region_for_class) {
+                                if dragging_from_idx.get() == Some(idx) {
                                     "region-priority-item dragging"
                                 } else {
                                     "region-priority-item"
                                 }
                             }
                             draggable="true"
-                            on:dragstart={
-                                let region = region_for_drag.clone();
-                                move |_| {
-                                    set_dragging_region.set(Some(region.clone()));
-                                }
+                            on:dragstart=move |_| {
+                                set_dragging_from_idx.set(Some(idx));
                             }
                             on:dragend=move |_| {
-                                set_dragging_region.set(None);
+                                set_dragging_from_idx.set(None);
                                 set_drop_target_idx.set(None);
                             }
                         >
@@ -697,18 +682,24 @@ fn RegionPriorityList(
                             </span>
                             <span class="region-name">{display_name}</span>
                         </div>
-                        // Drop indicator after last item
+                        // Drop indicator after last item (at slot len)
                         {(idx == len - 1).then(|| {
                             view! {
                                 <div
                                     class=move || {
                                         let target = drop_target_idx.get();
-                                        let dragging = dragging_region.get();
+                                        let from = dragging_from_idx.get();
 
-                                        if dragging.is_some() && target == Some(len) {
-                                            "drop-indicator drop-indicator-end visible"
-                                        } else {
-                                            "drop-indicator drop-indicator-end"
+                                        match (from, target) {
+                                            (Some(from_idx), Some(to_idx)) if to_idx == len => {
+                                                // Show if not dragging from last position
+                                                if from_idx + 1 != len {
+                                                    "drop-indicator drop-indicator-end visible"
+                                                } else {
+                                                    "drop-indicator drop-indicator-end"
+                                                }
+                                            }
+                                            _ => "drop-indicator drop-indicator-end"
                                         }
                                     }
                                 />
