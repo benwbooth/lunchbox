@@ -1523,6 +1523,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Region Priority List */
 .region-priority-list {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -1574,20 +1575,15 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drop-indicator {
+    position: absolute;
+    left: 8px;
+    right: 8px;
     height: 4px;
-    width: 100%;
-    margin: 2px 0;
-    border-radius: 2px;
-    background: transparent;
-}
-
-.drop-indicator.visible {
     background: #3b82f6;
-}
-
-.drop-indicator-end {
-    height: 4px;
-    margin: 4px 0;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 10;
+    transition: top 0.05s ease, opacity 0.1s ease;
 }
 
 .region-name {

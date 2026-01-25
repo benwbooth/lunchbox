@@ -606,6 +606,22 @@ fn RegionPriorityList(
         set_drop_target_idx.set(None);
     };
 
+    // Compute indicator style based on drop target position
+    let indicator_style = move || {
+        let dragging = dragging_region.get();
+        let target = drop_target_idx.get();
+
+        match (dragging, target) {
+            (Some(_), Some(target_idx)) => {
+                // Item height: 6px padding*2 + ~20px content = ~32px, plus 2px gap
+                let item_height = 34.0;
+                let top = (target_idx as f64) * item_height;
+                format!("top: {}px; opacity: 1;", top)
+            }
+            _ => "opacity: 0;".to_string(),
+        }
+    };
+
     view! {
         <div
             class="region-priority-list"
@@ -623,33 +639,18 @@ fn RegionPriorityList(
                 perform_drop();
             }
         >
+            // Single indicator - always in DOM, visibility controlled by style
+            <div class="drop-indicator" style=indicator_style />
+
             <For
-                each=move || {
-                    let items: Vec<_> = display_order.get().into_iter().enumerate().collect();
-                    let len = items.len();
-                    items.into_iter().map(move |(idx, region)| (idx, region, len))
-                }
-                key=|(_, region, _)| region.clone()
-                children=move |(idx, region, len)| {
+                each=move || display_order.get().into_iter().enumerate()
+                key=|(_, region)| region.clone()
+                children=move |(_, region)| {
                     let display_name = region_display_name(&region);
                     let region_for_class = region.clone();
                     let region_for_drag = region;
 
                     view! {
-                        // Drop indicator before this item (at slot idx)
-                        <div
-                            class=move || {
-                                let target = drop_target_idx.get();
-                                let dragging = dragging_region.get();
-
-                                // Simple check: show indicator at target slot while dragging
-                                if dragging.is_some() && target == Some(idx) {
-                                    "drop-indicator visible"
-                                } else {
-                                    "drop-indicator"
-                                }
-                            }
-                        />
                         <div
                             class=move || {
                                 if dragging_region.get().as_ref() == Some(&region_for_class) {
@@ -682,24 +683,6 @@ fn RegionPriorityList(
                             </span>
                             <span class="region-name">{display_name}</span>
                         </div>
-                        // Drop indicator after last item (at slot len)
-                        {(idx == len - 1).then(|| {
-                            view! {
-                                <div
-                                    class=move || {
-                                        let target = drop_target_idx.get();
-                                        let dragging = dragging_region.get();
-
-                                        // Simple check: show indicator at end slot while dragging
-                                        if dragging.is_some() && target == Some(len) {
-                                            "drop-indicator drop-indicator-end visible"
-                                        } else {
-                                            "drop-indicator drop-indicator-end"
-                                        }
-                                    }
-                                />
-                            }
-                        })}
                     }
                 }
             />
