@@ -702,6 +702,74 @@ pub fn LazyImage(
                         }.into_any()
                     }
                     ImageState::Ready { url, source } => {
+                        // Clone values for the click handler
+                        let title_for_click = search_title.get_value();
+                        let plat_for_click = search_platform.get_value();
+                        let img_type_for_click = image_type.clone();
+                        let db_id_for_click = launchbox_db_id;
+                        let source_for_click = source.clone();
+                        let set_state_for_click = set_state;
+
+                        // Handler to redownload from next source when clicking the badge
+                        let on_badge_click = move |ev: web_sys::MouseEvent| {
+                            ev.stop_propagation(); // Don't trigger card click
+                            if let Some(ref current_src) = source_for_click {
+                                let title = title_for_click.clone();
+                                let plat = plat_for_click.clone();
+                                let img_type = img_type_for_click.clone();
+                                let db_id = if db_id_for_click > 0 { Some(db_id_for_click) } else { None };
+                                let current = current_src.clone();
+                                let set_state = set_state_for_click;
+
+                                spawn_local(async move {
+                                    // Show loading state
+                                    let _ = set_state.try_set(ImageState::Downloading {
+                                        progress: -1.0,
+                                        source: format!("Trying next after {}...", current),
+                                    });
+
+                                    // Clear the frontend LRU cache for this image
+                                    let cache_key = ImageUrlCache::make_key(
+                                        db_id.unwrap_or(0),
+                                        &title,
+                                        &plat,
+                                        &img_type,
+                                    );
+                                    IMAGE_URL_CACHE.with(|c| {
+                                        c.borrow_mut().entries.remove(&cache_key);
+                                    });
+
+                                    // Call the redownload API
+                                    match tauri::redownload_image_from_next_source(
+                                        title.clone(),
+                                        plat.clone(),
+                                        img_type.clone(),
+                                        db_id,
+                                        current.clone(),
+                                    ).await {
+                                        Ok(local_path) => {
+                                            let source = source_from_path(&local_path);
+                                            let url = file_to_asset_url(&local_path);
+                                            // Update cache with new result
+                                            let source_str = source.clone().unwrap_or_else(|| "??".to_string());
+                                            IMAGE_URL_CACHE.with(|c| {
+                                                c.borrow_mut().insert(cache_key, url.clone(), source_str);
+                                            });
+                                            let _ = set_state.try_set(ImageState::Ready { url, source });
+                                        }
+                                        Err(e) => {
+                                            log(&format!("Redownload failed: {}", e));
+                                            // Stay on current image but show error briefly
+                                            let _ = set_state.try_set(ImageState::Downloading {
+                                                progress: -1.0,
+                                                source: "No more sources".to_string(),
+                                            });
+                                        }
+                                    }
+                                });
+                            }
+                        };
+
                         view! {
                             <div class=format!("{} lazy-image-container", class_str)>
                                 <img
@@ -711,7 +779,11 @@ pub fn LazyImage(
                                     loading="lazy"
                                 />
                                 {source.map(|s| view! {
-                                    <span class="image-source-badge">{s}</span>
+                                    <span
+                                        class="image-source-badge"
+                                        title="Click to try next image source"
+                                        on:click=on_badge_click.clone()
+                                    >{s}</span>
                                 })}
                             </div>
                         }.into_any()

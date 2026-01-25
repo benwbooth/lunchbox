@@ -119,6 +119,32 @@ impl ImageSource {
             ImageSource::WebSearch => "WS",
         }
     }
+
+    /// Get source from 2-letter abbreviation
+    pub fn from_abbreviation(abbrev: &str) -> Option<ImageSource> {
+        match abbrev {
+            "LC" => Some(ImageSource::Local),
+            "LB" => Some(ImageSource::LaunchBox),
+            "LR" => Some(ImageSource::LibRetro),
+            "SG" => Some(ImageSource::SteamGridDB),
+            "IG" => Some(ImageSource::IGDB),
+            "EM" => Some(ImageSource::EmuMovies),
+            "SS" => Some(ImageSource::ScreenScraper),
+            "WS" => Some(ImageSource::WebSearch),
+            _ => None,
+        }
+    }
+
+    /// Get the next source in the rotation after this one
+    pub fn next_source(&self) -> Option<ImageSource> {
+        let all = Self::all_sources();
+        for (i, s) in all.iter().enumerate() {
+            if s == self {
+                return all.get(i + 1).copied();
+            }
+        }
+        None
+    }
 }
 
 /// Normalize image type to folder-safe name (e.g., "Box - Front" -> "box-front")
@@ -179,6 +205,42 @@ pub fn find_cached_media(
         }
     }
     None
+}
+
+/// Delete all cached media for a game/type across all sources
+/// Returns the paths that were deleted
+pub fn delete_cached_media(
+    cache_dir: &Path,
+    game_id: &str,
+    image_type: &str,
+) -> Vec<PathBuf> {
+    let normalized_type = normalize_image_type(image_type);
+    let game_dir = cache_dir.join(game_id);
+    let mut deleted = Vec::new();
+
+    if !game_dir.exists() {
+        return deleted;
+    }
+
+    let extensions = ["png", "jpg", "webp", "gif"];
+
+    for source in ImageSource::all_sources() {
+        let source_dir = game_dir.join(source.folder_name());
+
+        for ext in &extensions {
+            let path = source_dir.join(format!("{}.{}", normalized_type, ext));
+            if path.exists() {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    tracing::warn!("Failed to delete cached media {}: {}", path.display(), e);
+                } else {
+                    tracing::info!("Deleted cached media: {}", path.display());
+                    deleted.push(path);
+                }
+            }
+        }
+    }
+
+    deleted
 }
 
 /// Get game ID string for cache path (uses launchbox_db_id or hash)
@@ -1096,6 +1158,202 @@ impl ImageService {
 
         tracing::info!("  FAILED: No image found from any source for: {} - {} - {} (total time: {:?})", game_title, platform, image_type, total_start.elapsed());
         anyhow::bail!("No image found from any source for: {} - {} - {}", game_title, platform, image_type)
+    }
+
+    /// Download an image with fallback, skipping specified sources
+    ///
+    /// This is used for "try next source" functionality - the user clicks on the
+    /// source badge to get an image from a different source.
+    pub async fn download_with_fallback_skip_sources(
+        &self,
+        game_title: &str,
+        platform: &str,
+        image_type: &str,
+        launchbox_db_id: Option<i64>,
+        launchbox_platform: Option<&str>,
+        libretro_platform: Option<&str>,
+        libretro_title: Option<&str>,
+        steamgriddb_client: Option<&crate::scraper::SteamGridDBClient>,
+        igdb_client: Option<&crate::scraper::IGDBClient>,
+        emumovies_client: Option<&EmuMoviesClient>,
+        screenscraper_client: Option<&crate::scraper::ScreenScraperClient>,
+        skip_sources: &[ImageSource],
+    ) -> Result<String> {
+        // Compute game_id for cache path
+        let game_id = get_game_cache_id(launchbox_db_id, game_title, platform);
+
+        tracing::info!("download_with_fallback_skip_sources: game='{}', skipping {:?}",
+            game_title, skip_sources);
+
+        let total_start = std::time::Instant::now();
+
+        // 1. LaunchBox CDN
+        if !skip_sources.contains(&ImageSource::LaunchBox) {
+            if let (Some(db_id), Some(images_pool)) = (launchbox_db_id, &self.images_pool) {
+                let filename: Option<String> = sqlx::query_scalar(
+                    "SELECT filename FROM game_images WHERE launchbox_db_id = ? AND image_type = ? LIMIT 1"
+                )
+                .bind(db_id)
+                .bind(image_type)
+                .fetch_optional(images_pool)
+                .await
+                .ok()
+                .flatten();
+
+                if let Some(filename) = filename {
+                    let url = format!("{}/{}", LAUNCHBOX_CDN_URL, filename);
+                    if let Ok(path) = self.download_to_cache(&url, &game_id, ImageSource::LaunchBox, image_type).await {
+                        tracing::info!("  SUCCESS from LaunchBox CDN: {}", path);
+                        return Ok(path);
+                    }
+                }
+            }
+        } else {
+            tracing::info!("  Skipping LaunchBox (in skip list)");
+        }
+
+        // 2. libretro-thumbnails
+        if !skip_sources.contains(&ImageSource::LibRetro) {
+            let libretro_client = LibRetroThumbnailsClient::new(self.cache_dir.clone());
+            let lr_platform = libretro_platform.unwrap_or(platform);
+            let lr_title = libretro_title.unwrap_or(game_title);
+            let lr_type = match image_type {
+                "Box - Front" | "Box - Back" => LibRetroImageType::Boxart,
+                "Screenshot - Gameplay" | "Screenshot" => LibRetroImageType::Snap,
+                "Clear Logo" => LibRetroImageType::Title,
+                _ => LibRetroImageType::Boxart,
+            };
+            if let Some(path) = libretro_client.find_thumbnail(lr_platform, lr_type, lr_title).await {
+                tracing::info!("  SUCCESS from libretro: {}", path);
+                return Ok(path);
+            }
+        } else {
+            tracing::info!("  Skipping LibRetro (in skip list)");
+        }
+
+        // 3. SteamGridDB
+        if !skip_sources.contains(&ImageSource::SteamGridDB) {
+            if let Some(client) = steamgriddb_client {
+                if client.has_credentials() {
+                    if let Ok(result) = client.search_and_get_artwork(game_title).await {
+                        if let Some((_, artwork)) = result {
+                            let url = match image_type {
+                                "Box - Front" => artwork.grids.first().map(|a| a.url.clone()),
+                                "Banner" => artwork.heroes.first().map(|a| a.url.clone()),
+                                "Clear Logo" => artwork.logos.first().map(|a| a.url.clone()),
+                                _ => None,
+                            };
+                            if let Some(url) = url {
+                                if let Ok(path) = self.download_to_cache(&url, &game_id, ImageSource::SteamGridDB, image_type).await {
+                                    tracing::info!("  SUCCESS from SteamGridDB: {}", path);
+                                    return Ok(path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            tracing::info!("  Skipping SteamGridDB (in skip list)");
+        }
+
+        // 4. IGDB
+        if !skip_sources.contains(&ImageSource::IGDB) {
+            if let Some(client) = igdb_client {
+                if client.has_credentials() {
+                    if let Ok(games) = client.search_games(game_title, 1).await {
+                        if let Some(game) = games.first() {
+                            let image = match image_type {
+                                "Box - Front" => game.cover.as_ref(),
+                                "Screenshot - Gameplay" | "Screenshot" => {
+                                    game.screenshots.as_ref().and_then(|s| s.first())
+                                }
+                                "Fanart - Background" => {
+                                    game.artworks.as_ref().and_then(|a| a.first())
+                                }
+                                _ => None,
+                            };
+                            if let Some(img) = image {
+                                let url = img.url("720p");
+                                if let Ok(path) = self.download_to_cache(&url, &game_id, ImageSource::IGDB, image_type).await {
+                                    tracing::info!("  SUCCESS from IGDB: {}", path);
+                                    return Ok(path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            tracing::info!("  Skipping IGDB (in skip list)");
+        }
+
+        // 5. EmuMovies
+        if !skip_sources.contains(&ImageSource::EmuMovies) {
+            if let Some(client) = emumovies_client {
+                if client.has_credentials() {
+                    if let Some(media_type) = emumovies::EmuMoviesMediaType::from_launchbox_type(image_type) {
+                        let cache_dir = self.cache_dir.clone();
+                        let game_id_clone = game_id.clone();
+                        let image_type_str = image_type.to_string();
+                        let client = client.clone();
+                        let platform = platform.to_string();
+                        let game_title = game_title.to_string();
+                        let result = tokio::task::spawn_blocking(move || {
+                            client.download_to_path(&platform, media_type, &game_title, &cache_dir, &game_id_clone, &image_type_str)
+                        }).await;
+                        if let Ok(Ok(path)) = result {
+                            tracing::info!("  SUCCESS from EmuMovies: {}", path);
+                            return Ok(path);
+                        }
+                    }
+                }
+            }
+        } else {
+            tracing::info!("  Skipping EmuMovies (in skip list)");
+        }
+
+        // 6. ScreenScraper
+        if !skip_sources.contains(&ImageSource::ScreenScraper) {
+            if let Some(client) = screenscraper_client {
+                if client.has_credentials() {
+                    let platform_id = crate::scraper::screenscraper::get_screenscraper_platform_id(platform);
+                    if let Ok(Some(game)) = client.lookup_by_checksum("", "", "", 0, game_title, platform_id).await {
+                        let url = match image_type {
+                            "Box - Front" => game.media.box_front,
+                            "Box - Back" => game.media.box_back,
+                            "Screenshot - Gameplay" | "Screenshot" => game.media.screenshot,
+                            "Fanart - Background" => game.media.fanart,
+                            "Clear Logo" => game.media.wheel,
+                            _ => None,
+                        };
+                        if let Some(url) = url {
+                            if let Ok(path) = self.download_to_cache(&url, &game_id, ImageSource::ScreenScraper, image_type).await {
+                                tracing::info!("  SUCCESS from ScreenScraper: {}", path);
+                                return Ok(path);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            tracing::info!("  Skipping ScreenScraper (in skip list)");
+        }
+
+        // 7. Web search
+        if !skip_sources.contains(&ImageSource::WebSearch) {
+            let web_search = web_search::WebImageSearch::new();
+            let cache_path = get_media_path(&self.cache_dir, &game_id, ImageSource::WebSearch, image_type);
+            if let Ok(path) = web_search.search_and_download(game_title, platform, image_type, &cache_path).await {
+                tracing::info!("  SUCCESS from web search: {}", path);
+                return Ok(path);
+            }
+        } else {
+            tracing::info!("  Skipping WebSearch (in skip list)");
+        }
+
+        tracing::info!("  FAILED: No image found from remaining sources (total time: {:?})", total_start.elapsed());
+        anyhow::bail!("No image found from remaining sources for: {} - {} - {}", game_title, platform, image_type)
     }
 
     /// Download an image from a URL and cache it using new structure

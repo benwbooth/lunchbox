@@ -135,6 +135,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/get_game_image", get(rspc_get_game_image))
         .route("/rspc/check_cached_media", get(rspc_check_cached_media))
         .route("/rspc/download_image_with_fallback", get(rspc_download_image_with_fallback))
+        .route("/rspc/redownload_image_from_next_source", get(rspc_redownload_image_from_next_source))
         // rspc-style endpoints for video handling
         .route("/rspc/check_cached_video", get(rspc_check_cached_video))
         .route("/rspc/download_game_video", get(rspc_download_game_video))
@@ -1221,6 +1222,17 @@ struct DownloadImageWithFallbackInput {
     launchbox_db_id: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedownloadImageInput {
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+    /// Current source abbreviation (e.g., "LB", "LR", "SG") - will skip to next source
+    current_source: String,
+}
+
 async fn rspc_download_image_with_fallback(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -1353,6 +1365,173 @@ async fn rspc_download_image_with_fallback(
         }
         Err(e) => {
             tracing::warn!("  Download failed: {}", e);
+            rspc_err::<String>(e.to_string()).into_response()
+        }
+    }
+}
+
+/// Redownload an image from the next source in the rotation
+/// This deletes the current cached image and tries the next available source
+async fn rspc_redownload_image_from_next_source(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    // Parse the input parameter (JSON-encoded)
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<String>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: RedownloadImageInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    tracing::info!("rspc_redownload_image_from_next_source: game='{}', platform='{}', type='{}', current_source='{}'",
+        input.game_title, input.platform, input.image_type, input.current_source);
+
+    let state_guard = state.read().await;
+
+    let games_pool = match state_guard.games_db_pool.as_ref() {
+        Some(p) => p,
+        None => return rspc_err::<String>("Games database not initialized".to_string()).into_response(),
+    };
+
+    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+
+    // Get the game cache ID
+    let game_id = crate::images::get_game_cache_id(
+        input.launchbox_db_id,
+        &input.game_title,
+        &input.platform,
+    );
+
+    // Delete the current cached images for this game/type
+    let deleted = crate::images::delete_cached_media(&cache_dir, &game_id, &input.image_type);
+    tracing::info!("  Deleted {} cached files", deleted.len());
+
+    // Parse the current source and determine which sources to skip
+    let current_source = crate::images::ImageSource::from_abbreviation(&input.current_source);
+    let skip_sources: Vec<crate::images::ImageSource> = if let Some(src) = current_source {
+        // Skip all sources up to and including the current one
+        crate::images::ImageSource::all_sources()
+            .iter()
+            .take_while(|s| **s != src)
+            .chain(std::iter::once(&src))
+            .copied()
+            .collect()
+    } else {
+        // Invalid source - don't skip any
+        Vec::new()
+    };
+
+    tracing::info!("  Skipping sources: {:?}", skip_sources);
+
+    // Look up platform info to get launchbox_name and libretro_name
+    let platform_info: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?"
+    )
+    .bind(&input.platform)
+    .fetch_optional(games_pool)
+    .await
+    .ok()
+    .flatten();
+
+    let (launchbox_platform, libretro_platform) = platform_info
+        .map(|(lb, lr)| (lb, lr))
+        .unwrap_or((None, None));
+
+    // Look up libretro_title if we have a launchbox_db_id
+    let libretro_title: Option<String> = if let Some(db_id) = input.launchbox_db_id {
+        sqlx::query_scalar("SELECT libretro_title FROM games WHERE launchbox_db_id = ?")
+            .bind(db_id)
+            .fetch_optional(games_pool)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let mut service = crate::images::ImageService::new(games_pool.clone(), cache_dir.clone());
+    if let Some(ref images_pool) = state_guard.images_db_pool {
+        service = service.with_images_pool(images_pool.clone());
+    }
+
+    // Create clients for various sources
+    let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {
+        Some(crate::scraper::SteamGridDBClient::new(
+            crate::scraper::SteamGridDBConfig {
+                api_key: state_guard.settings.steamgriddb.api_key.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    let igdb_client = if !state_guard.settings.igdb.client_id.is_empty()
+        && !state_guard.settings.igdb.client_secret.is_empty()
+    {
+        Some(crate::scraper::IGDBClient::new(
+            crate::scraper::IGDBConfig {
+                client_id: state_guard.settings.igdb.client_id.clone(),
+                client_secret: state_guard.settings.igdb.client_secret.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    let emumovies_client = if !state_guard.settings.emumovies.username.is_empty()
+        && !state_guard.settings.emumovies.password.is_empty()
+    {
+        Some(crate::images::EmuMoviesClient::new(
+            crate::images::EmuMoviesConfig {
+                username: state_guard.settings.emumovies.username.clone(),
+                password: state_guard.settings.emumovies.password.clone(),
+            },
+            cache_dir.clone(),
+        ))
+    } else {
+        None
+    };
+
+    let screenscraper_client = if !state_guard.settings.screenscraper.dev_id.is_empty()
+        && !state_guard.settings.screenscraper.dev_password.is_empty()
+    {
+        Some(crate::scraper::ScreenScraperClient::new(
+            crate::scraper::ScreenScraperConfig {
+                dev_id: state_guard.settings.screenscraper.dev_id.clone(),
+                dev_password: state_guard.settings.screenscraper.dev_password.clone(),
+                user_id: state_guard.settings.screenscraper.user_id.clone(),
+                user_password: state_guard.settings.screenscraper.user_password.clone(),
+            }
+        ))
+    } else {
+        None
+    };
+
+    // Download with skip_sources
+    match service.download_with_fallback_skip_sources(
+        &input.game_title,
+        &input.platform,
+        &input.image_type,
+        input.launchbox_db_id,
+        launchbox_platform.as_deref(),
+        libretro_platform.as_deref(),
+        libretro_title.as_deref(),
+        steamgriddb_client.as_ref(),
+        igdb_client.as_ref(),
+        emumovies_client.as_ref(),
+        screenscraper_client.as_ref(),
+        &skip_sources,
+    ).await {
+        Ok(path) => {
+            tracing::info!("  Redownload succeeded: {}", path);
+            rspc_ok(path).into_response()
+        }
+        Err(e) => {
+            tracing::warn!("  Redownload failed: {}", e);
             rspc_err::<String>(e.to_string()).into_response()
         }
     }

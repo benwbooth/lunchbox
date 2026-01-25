@@ -986,6 +986,33 @@ pub async fn download_image_with_fallback(
     }).await
 }
 
+/// Redownload an image from the next source in rotation
+/// Deletes the current cached image and tries the next available source
+pub async fn redownload_image_from_next_source(
+    game_title: String,
+    platform: String,
+    image_type: String,
+    launchbox_db_id: Option<i64>,
+    current_source: String,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        image_type: String,
+        launchbox_db_id: Option<i64>,
+        current_source: String,
+    }
+    invoke("redownload_image_from_next_source", Args {
+        game_title,
+        platform,
+        image_type,
+        launchbox_db_id,
+        current_source,
+    }).await
+}
+
 /// Download a thumbnail from libretro-thumbnails
 pub async fn download_libretro_thumbnail(
     game_title: String,
