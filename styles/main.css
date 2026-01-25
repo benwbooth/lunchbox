@@ -1576,24 +1576,19 @@ h1, h2, h3, h4, h5, h6 {
 .drop-indicator {
     height: 0;
     width: 100%;
-    background: #3b82f6 !important;
     margin: 0;
+    border: none;
     border-radius: 2px;
 }
 
 .drop-indicator.visible {
-    height: 6px !important;
-    margin: 4px 0 !important;
-    box-shadow: 0 0 4px #3b82f6;
-}
-
-.drop-indicator-end {
-    min-height: 0;
+    height: 0;
+    margin: 4px 0;
+    border-top: 4px solid #3b82f6;
 }
 
 .drop-indicator-end.visible {
-    min-height: 6px !important;
-    margin: 6px 0 !important;
+    margin: 6px 0;
 }
 
 .region-name {
