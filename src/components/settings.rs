@@ -602,6 +602,11 @@ fn RegionPriorityList(
         {
             let mut order = display_order.get();
             if let Some(from_idx) = order.iter().position(|r| r == &from_region) {
+                web_sys::console::log_1(&format!(
+                    "DROP: region={} from_idx={} to_idx={} order_before={:?}",
+                    from_region, from_idx, to_idx, order
+                ).into());
+
                 if from_idx != to_idx && from_idx + 1 != to_idx {
                     let item = order.remove(from_idx);
                     // Adjust target index after removal
@@ -611,7 +616,13 @@ fn RegionPriorityList(
                         to_idx
                     };
                     order.insert(insert_at.min(order.len()), item);
+                    web_sys::console::log_1(&format!(
+                        "DROP: insert_at={} order_after={:?}",
+                        insert_at, order
+                    ).into());
                     settings.update(|s| s.region_priority = order);
+                } else {
+                    web_sys::console::log_1(&"DROP: skipped (would be noop)".into());
                 }
             }
         }
