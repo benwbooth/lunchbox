@@ -117,6 +117,11 @@ pub fn check_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
     }
 
     // Otherwise check for standalone emulator
+    check_standalone_installation(emulator)
+}
+
+/// Check for standalone emulator installation (ignores RetroArch core)
+fn check_standalone_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
     match current_os() {
         "Linux" => check_linux_installation(emulator),
         "Windows" => check_windows_installation(emulator),
@@ -736,9 +741,10 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
 fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<u32, String> {
     tracing::debug!(emulator = %emulator.name, rom = ?rom_path, "Launching standalone emulator");
 
-    let exe_path = check_installation(emulator)
+    // Use check_standalone_installation to skip RetroArch core check
+    let exe_path = check_standalone_installation(emulator)
         .ok_or_else(|| {
-            let err = format!("{} is not installed", emulator.name);
+            let err = format!("{} standalone is not installed", emulator.name);
             tracing::error!(error = %err, "Emulator not installed");
             err
         })?;
@@ -859,43 +865,6 @@ fn find_retroarch_executable() -> Option<PathBuf> {
         return Some(path);
     }
 
-    None
-}
-
-/// Check if standalone emulator is installed (not via RetroArch)
-fn check_standalone_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
-    match current_os() {
-        "Linux" => {
-            if let Some(ref flatpak_id) = emulator.flatpak_id {
-                // Check if flatpak app is installed
-                if Command::new("flatpak")
-                    .args(["info", flatpak_id])
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false)
-                {
-                    return Some(PathBuf::from(format!("flatpak run {}", flatpak_id)));
-                }
-            }
-        }
-        "Windows" => {
-            if emulator.winget_id.is_some() {
-                // Check common install locations or PATH
-                if let Ok(path) = which::which(&emulator.name.to_lowercase()) {
-                    return Some(path);
-                }
-            }
-        }
-        "macOS" => {
-            if emulator.homebrew_formula.is_some() {
-                // Check PATH or /Applications
-                if let Ok(path) = which::which(&emulator.name.to_lowercase()) {
-                    return Some(path);
-                }
-            }
-        }
-        _ => {}
-    }
     None
 }
 
