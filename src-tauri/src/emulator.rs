@@ -729,8 +729,12 @@ pub fn add_status_as_standalone(emulator: EmulatorInfo) -> EmulatorWithStatus {
     let is_installed = install_path.is_some();
     let display_name = emulator.name.clone();
 
+    // Clear retroarch_core so install_emulator uses the standalone path
+    let mut standalone_info = emulator;
+    standalone_info.retroarch_core = None;
+
     EmulatorWithStatus {
-        info: emulator,
+        info: standalone_info,
         is_installed,
         install_method,
         is_retroarch_core: false,
