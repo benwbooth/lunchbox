@@ -241,131 +241,136 @@ pub fn MarioMinigame() -> impl IntoView {
         }
 
         let Some(canvas) = canvas_ref.get() else { return };
-        let canvas: HtmlCanvasElement = canvas.into();
+        let canvas: HtmlCanvasElement = canvas.clone().into();
 
-        // Get window dimensions for full-screen canvas
         let window = match web_sys::window() {
             Some(w) => w,
             None => return,
         };
 
-        // Use window inner dimensions for proper sizing
-        let width = window.inner_width().ok()
-            .and_then(|v| v.as_f64())
-            .map(|w| w as u32)
-            .unwrap_or(800);
-        let height = window.inner_height().ok()
-            .and_then(|v| v.as_f64())
-            .map(|h| h as u32)
-            .unwrap_or(600);
+        // Clone references for the delayed initialization closure
+        let canvas_clone = canvas.clone();
+        let game_world_init_clone = game_world_init.clone();
+        let animation_frame_id_init_clone = animation_frame_id_init.clone();
+        let last_frame_time_init_clone = last_frame_time_init.clone();
+        let input_state_loop_clone = input_state_loop.clone();
+        let initialized_inner = initialized_clone.clone();
 
-        // Try to get container size first, fall back to window
-        let parent = canvas.parent_element();
-        let (width, height) = if let Some(p) = parent {
-            let pw = p.client_width();
-            let ph = p.client_height();
-            if pw > 100 && ph > 100 {
-                (pw as u32, ph as u32)
-            } else {
-                (width, height)
+        // Use requestAnimationFrame to ensure layout is computed
+        let init_closure = Closure::once(move || {
+            if *initialized_inner.borrow() {
+                return;
             }
-        } else {
-            (width, height)
-        };
 
-        if width < 100 || height < 100 {
-            return; // Container not ready yet
-        }
+            let window = match web_sys::window() {
+                Some(w) => w,
+                None => return,
+            };
 
-        canvas.set_width(width);
-        canvas.set_height(height);
+            // Use window dimensions directly - most reliable approach
+            // Subtract sidebar width (~240px) and toolbar height (~52px)
+            let window_width = window.inner_width().ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1200.0);
+            let window_height = window.inner_height().ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(800.0);
 
-        let ctx = canvas
-            .get_context("2d")
-            .ok()
-            .flatten()
-            .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok());
+            // Calculate available space (window minus sidebar and toolbar)
+            let sidebar_width = 240.0;
+            let toolbar_height = 52.0;
 
-        let Some(ctx) = ctx else { return };
+            let width = ((window_width - sidebar_width).max(400.0)) as u32;
+            let height = ((window_height - toolbar_height).max(300.0)) as u32;
 
-        ctx.set_image_smoothing_enabled(false);
+            canvas_clone.set_width(width);
+            canvas_clone.set_height(height);
 
-        *initialized_clone.borrow_mut() = true;
+            let ctx = canvas_clone
+                .get_context("2d")
+                .ok()
+                .flatten()
+                .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok());
 
-        // Generate world with 16-pixel tiles
-        let tile_size = 16;
-        let world = world::generate_world(width as i32, height as i32, tile_size);
-        *game_world_init.borrow_mut() = Some(world);
+            let Some(ctx) = ctx else { return };
 
-        // Start game loop
-        let game_world_loop = game_world_init.clone();
-        let animation_frame_id_loop = animation_frame_id_init.clone();
-        let last_frame_time_loop = last_frame_time_init.clone();
-        let input_loop = input_state_loop.clone();
+            ctx.set_image_smoothing_enabled(false);
 
-        let game_loop_ref: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
-        let game_loop_ref_inner = game_loop_ref.clone();
+            *initialized_inner.borrow_mut() = true;
 
-        let closure = Closure::new(move |timestamp: f64| {
-            let mut last_time = last_frame_time_loop.borrow_mut();
+            // Generate world with 16-pixel tiles
+            let tile_size = 16;
+            let world = world::generate_world(width as i32, height as i32, tile_size);
+            *game_world_init_clone.borrow_mut() = Some(world);
 
-            let elapsed = timestamp - *last_time;
-            if elapsed < FRAME_TIME {
+            // Start game loop
+            let game_world_loop = game_world_init_clone.clone();
+            let animation_frame_id_loop = animation_frame_id_init_clone.clone();
+            let animation_frame_id_outer = animation_frame_id_init_clone.clone();
+            let last_frame_time_loop = last_frame_time_init_clone.clone();
+            let input_loop = input_state_loop_clone.clone();
+
+            let game_loop_ref: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+            let game_loop_ref_inner = game_loop_ref.clone();
+
+            let closure = Closure::new(move |timestamp: f64| {
+                let mut last_time = last_frame_time_loop.borrow_mut();
+
+                let elapsed = timestamp - *last_time;
+                if elapsed < FRAME_TIME {
+                    if let Some(window) = web_sys::window() {
+                        if let Some(ref closure) = *game_loop_ref_inner.borrow() {
+                            let id = window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
+                            *animation_frame_id_loop.borrow_mut() = id;
+                        }
+                    }
+                    return;
+                }
+                *last_time = timestamp;
+
+                if let Some(ref mut world) = *game_world_loop.borrow_mut() {
+                    let input = input_loop.borrow();
+                    physics::apply_player_input(world, input.left, input.right, input.jump);
+                    ai::update_ai(world);
+                    physics::update(world);
+
+                    world.spawn_timer += 1;
+                    if world.spawn_timer >= GOOMBA_RESPAWN_INTERVAL && world.goombas.len() < MAX_GOOMBAS {
+                        world::spawn_random_goomba(world);
+                        world.spawn_timer = 0;
+                    }
+
+                    render(&ctx, world, width, height);
+                }
+
                 if let Some(window) = web_sys::window() {
                     if let Some(ref closure) = *game_loop_ref_inner.borrow() {
                         let id = window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
                         *animation_frame_id_loop.borrow_mut() = id;
                     }
                 }
-                return;
-            }
-            *last_time = timestamp;
+            });
 
-            if let Some(ref mut world) = *game_world_loop.borrow_mut() {
-                // Apply player input
-                let input = input_loop.borrow();
-                physics::apply_player_input(world, input.left, input.right, input.jump);
-
-                // Update AI
-                ai::update_ai(world);
-
-                // Update physics
-                physics::update(world);
-
-                // Spawn new Goombas periodically
-                world.spawn_timer += 1;
-                if world.spawn_timer >= GOOMBA_RESPAWN_INTERVAL && world.goombas.len() < MAX_GOOMBAS {
-                    world::spawn_random_goomba(world);
-                    world.spawn_timer = 0;
-                }
-
-                // Render
-                render(&ctx, world, width, height);
-            }
+            *game_loop_ref.borrow_mut() = Some(closure);
 
             if let Some(window) = web_sys::window() {
-                if let Some(ref closure) = *game_loop_ref_inner.borrow() {
-                    let id = window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
-                    *animation_frame_id_loop.borrow_mut() = id;
-                }
+                let id = {
+                    let borrow = game_loop_ref.borrow();
+                    if let Some(ref closure) = *borrow {
+                        window.request_animation_frame(closure.as_ref().unchecked_ref()).ok()
+                    } else {
+                        None
+                    }
+                };
+                *animation_frame_id_outer.borrow_mut() = id;
             }
+
+            std::mem::forget(game_loop_ref);
         });
 
-        *game_loop_ref.borrow_mut() = Some(closure);
-
-        if let Some(window) = web_sys::window() {
-            let id = {
-                let borrow = game_loop_ref.borrow();
-                if let Some(ref closure) = *borrow {
-                    window.request_animation_frame(closure.as_ref().unchecked_ref()).ok()
-                } else {
-                    None
-                }
-            };
-            *animation_frame_id_init.borrow_mut() = id;
-        }
-
-        std::mem::forget(game_loop_ref);
+        // Schedule initialization after layout
+        window.request_animation_frame(init_closure.as_ref().unchecked_ref()).ok();
+        init_closure.forget();
     });
 
     // Keyboard input handlers
