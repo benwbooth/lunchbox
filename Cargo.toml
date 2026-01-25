@@ -74,6 +74,9 @@ tracing-appender = "0.2"
 
 [profile.dev]
 opt-level = 1
+# Prevent incremental compilation linker errors with rust-lld
+lto = "off"
+codegen-units = 256
 
 [profile.dev.package."*"]
 opt-level = 3
