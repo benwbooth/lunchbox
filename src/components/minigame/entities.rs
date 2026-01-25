@@ -27,6 +27,15 @@ pub enum MarioState {
     Dead,
 }
 
+/// Character type (visual variant)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CharacterType {
+    Mario,
+    Luigi,
+    Toad,
+    Princess,
+}
+
 /// A Mario character (player or AI controlled)
 #[derive(Clone, Debug)]
 pub struct Mario {
@@ -50,10 +59,20 @@ pub struct Mario {
     /// AI state
     pub ai_jump_cooldown: u8,
     pub ai_direction_timer: u8,
+    /// Character type (Mario, Luigi, Toad, Princess)
+    pub character_type: CharacterType,
 }
 
 impl Mario {
     pub fn new(x: f64, y: f64, id: u32) -> Self {
+        // Randomly pick a character type
+        let character_type = match (js_sys::Math::random() * 4.0) as u32 {
+            0 => CharacterType::Mario,
+            1 => CharacterType::Luigi,
+            2 => CharacterType::Toad,
+            _ => CharacterType::Princess,
+        };
+
         Self {
             pos: Vec2::new(x, y),
             vel: Vec2::zero(),
@@ -70,6 +89,7 @@ impl Mario {
             death_timer: 0,
             ai_jump_cooldown: 0,
             ai_direction_timer: 0,
+            character_type,
         }
     }
 
@@ -109,6 +129,7 @@ pub struct Goomba {
     pub vel: Vec2,
     pub facing_right: bool,
     pub alive: bool,
+    pub on_ground: bool,
     pub squish_timer: u8,
     pub walk_frame: u8,
     pub walk_timer: u8,
@@ -121,6 +142,7 @@ impl Goomba {
             vel: Vec2::new(-0.5, 0.0),
             facing_right: false,
             alive: true,
+            on_ground: false,
             squish_timer: 0,
             walk_frame: 0,
             walk_timer: 0,
@@ -129,6 +151,55 @@ impl Goomba {
 
     pub fn hitbox(&self) -> (f64, f64, f64, f64) {
         (self.pos.x, self.pos.y, 8.0, 8.0)
+    }
+
+    pub fn head_hitbox(&self) -> (f64, f64, f64, f64) {
+        (self.pos.x + 1.0, self.pos.y, 6.0, 4.0)
+    }
+}
+
+/// Koopa state
+#[derive(Clone, Debug, PartialEq)]
+pub enum KoopaState {
+    Walking,
+    Shell,
+    ShellMoving,
+}
+
+/// A Koopa enemy (turtle)
+#[derive(Clone, Debug)]
+pub struct Koopa {
+    pub pos: Vec2,
+    pub vel: Vec2,
+    pub facing_right: bool,
+    pub alive: bool,
+    pub on_ground: bool,
+    pub state: KoopaState,
+    pub shell_timer: u8,
+    pub walk_frame: u8,
+    pub walk_timer: u8,
+}
+
+impl Koopa {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self {
+            pos: Vec2::new(x, y),
+            vel: Vec2::new(-0.5, 0.0),
+            facing_right: false,
+            alive: true,
+            on_ground: false,
+            state: KoopaState::Walking,
+            shell_timer: 0,
+            walk_frame: 0,
+            walk_timer: 0,
+        }
+    }
+
+    pub fn hitbox(&self) -> (f64, f64, f64, f64) {
+        match self.state {
+            KoopaState::Walking => (self.pos.x, self.pos.y, 8.0, 12.0), // Taller when walking
+            _ => (self.pos.x, self.pos.y, 8.0, 8.0), // Shell is shorter
+        }
     }
 
     pub fn head_hitbox(&self) -> (f64, f64, f64, f64) {
@@ -253,6 +324,32 @@ impl Platform {
     }
 }
 
+/// A coin collectible
+#[derive(Clone, Debug)]
+pub struct Coin {
+    pub pos: Vec2,
+    pub vel: Vec2,
+    pub on_ground: bool,
+    pub collected: bool,
+    pub bounce_timer: u8,
+}
+
+impl Coin {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self {
+            pos: Vec2::new(x, y),
+            vel: Vec2::new(0.0, -4.0), // Pop up when spawned
+            on_ground: false,
+            collected: false,
+            bounce_timer: 0,
+        }
+    }
+
+    pub fn hitbox(&self) -> (f64, f64, f64, f64) {
+        (self.pos.x, self.pos.y, 8.0, 8.0)
+    }
+}
+
 /// The complete game world state
 #[derive(Clone)]
 pub struct GameWorld {
@@ -260,7 +357,9 @@ pub struct GameWorld {
     pub blocks: Vec<Block>,
     pub marios: Vec<Mario>,
     pub goombas: Vec<Goomba>,
+    pub koopas: Vec<Koopa>,
     pub mushrooms: Vec<Mushroom>,
+    pub coins: Vec<Coin>,
     pub debris: Vec<Debris>,
     pub width: i32,
     pub height: i32,
@@ -277,7 +376,9 @@ impl GameWorld {
             blocks: Vec::new(),
             marios: Vec::new(),
             goombas: Vec::new(),
+            koopas: Vec::new(),
             mushrooms: Vec::new(),
+            coins: Vec::new(),
             debris: Vec::new(),
             width,
             height,

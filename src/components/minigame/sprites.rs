@@ -28,12 +28,19 @@ pub const NES_BLUE: u32 = 0x0058F8;     // Overalls
 pub const PALETTE_MARIO: Palette = [0, NES_RED, NES_TAN, NES_BROWN];
 pub const PALETTE_MARIO_BIG: Palette = [0, NES_RED, NES_TAN, NES_BROWN];
 pub const PALETTE_LUIGI: Palette = [0, NES_GREEN, NES_TAN, NES_BROWN];
+pub const PALETTE_TOAD: Palette = [0, NES_RED, NES_WHITE, NES_TAN]; // Red spots, white cap, tan face
+pub const PALETTE_PRINCESS: Palette = [0, 0xFFAACC, NES_YELLOW, NES_TAN]; // Pink dress, blonde hair, tan skin
 pub const PALETTE_GOOMBA: Palette = [0, NES_BROWN, NES_TAN, NES_BLACK];
 pub const PALETTE_BRICK: Palette = [0, NES_ORANGE, NES_BROWN, NES_DARK_BROWN];
 pub const PALETTE_QUESTION: Palette = [0, NES_YELLOW, NES_ORANGE, NES_BLACK];
 pub const PALETTE_GROUND: Palette = [0, NES_ORANGE, NES_BROWN, NES_DARK_BROWN];
 pub const PALETTE_MUSHROOM: Palette = [0, NES_RED, NES_WHITE, NES_TAN];
 pub const PALETTE_PLAYER: Palette = [0, NES_WHITE, NES_TAN, NES_RED]; // Highlighted player
+pub const PALETTE_PLAYER_LUIGI: Palette = [0, NES_WHITE, NES_TAN, NES_GREEN];
+pub const PALETTE_PLAYER_TOAD: Palette = [0, NES_WHITE, NES_TAN, NES_RED];
+pub const PALETTE_PLAYER_PRINCESS: Palette = [0, NES_WHITE, NES_TAN, 0xFFAACC];
+pub const PALETTE_KOOPA: Palette = [0, NES_GREEN, NES_TAN, NES_WHITE]; // Green shell, tan skin, white
+pub const PALETTE_COIN: Palette = [0, NES_YELLOW, NES_ORANGE, NES_DARK_BROWN]; // Gold coin
 
 /// Helper to create sprite from visual representation
 /// Each char: '.' = 0 (transparent), '1' = color 1, '2' = color 2, '3' = color 3
@@ -179,10 +186,10 @@ pub const BRICK: Sprite = sprite_from_str(b"\
 // 1=yellow(border), 2=orange(background), 3=black(? shape)
 pub const QUESTION: Sprite = sprite_from_str(b"\
 11111111\
-12233221\
-12322321\
+12333221\
 12222321\
-12233221\
+12222321\
+12333221\
 12222221\
 12233221\
 11111111");
@@ -241,3 +248,150 @@ pub const MARIO_DEAD: Sprite = sprite_from_str(b"\
 ...11...\
 ..1111..\
 ..3..3..");
+
+// Koopa (green turtle) walking - uses PALETTE_KOOPA
+// 1=green(shell), 2=tan(skin), 3=white(eyes/belly)
+pub const KOOPA_WALK: Sprite = sprite_from_str(b"\
+..111...\
+.11111..\
+.13311..\
+.11111..\
+..333...\
+..222...\
+.22.22..\
+.22.22..");
+
+// Koopa shell (when stomped)
+pub const KOOPA_SHELL: Sprite = sprite_from_str(b"\
+..1111..\
+.111111.\
+11111111\
+11311311\
+11111111\
+.111111.\
+..1111..\
+........");
+
+// Coin sprite - uses PALETTE_COIN
+// 1=yellow, 2=orange(shading), 3=dark(outline)
+pub const COIN: Sprite = sprite_from_str(b"\
+..3333..\
+.311113.\
+31222213\
+31222213\
+31222213\
+31222213\
+.311113.\
+..3333..");
+
+// Toad standing - uses PALETTE_TOAD
+// 1=red(spots), 2=white(cap), 3=tan(face/body)
+pub const TOAD_STAND: Sprite = sprite_from_str(b"\
+..1221..\
+.122221.\
+.231132.\
+.233332.\
+..3333..\
+..2222..\
+..2..2..\
+..33.33.");
+
+// Toad walking
+pub const TOAD_WALK1: Sprite = sprite_from_str(b"\
+..1221..\
+.122221.\
+.231132.\
+.233332.\
+..3333..\
+..2222..\
+.2....2.\
+.33..33.");
+
+// Toad jumping
+pub const TOAD_JUMP: Sprite = sprite_from_str(b"\
+..1221..\
+.122221.\
+.231132.\
+.233332.\
+..3333..\
+..2222..\
+.2....2.\
+33....33");
+
+// Princess standing - uses PALETTE_PRINCESS
+// 1=pink(dress), 2=yellow(hair/crown), 3=tan(skin)
+pub const PRINCESS_STAND: Sprite = sprite_from_str(b"\
+..2222..\
+.223322.\
+..3333..\
+..1111..\
+.111111.\
+.111111.\
+..1111..\
+..11.11.");
+
+// Princess walking
+pub const PRINCESS_WALK1: Sprite = sprite_from_str(b"\
+..2222..\
+.223322.\
+..3333..\
+..1111..\
+.111111.\
+.111111.\
+.1....1.\
+.11..11.");
+
+// Princess jumping
+pub const PRINCESS_JUMP: Sprite = sprite_from_str(b"\
+..2222..\
+.223322.\
+..3333..\
+.111111.\
+.111111.\
+..1111..\
+.1....1.\
+11....11");
+
+// Big Toad top (same sprite, toad is small)
+pub const TOAD_BIG_STAND_TOP: Sprite = sprite_from_str(b"\
+..1221..\
+.122221.\
+12211221\
+22222222\
+.231132.\
+.233332.\
+..3333..\
+..2222..");
+
+// Big Toad bottom
+pub const TOAD_BIG_STAND_BOT: Sprite = sprite_from_str(b"\
+..2222..\
+.222222.\
+.223322.\
+..2222..\
+..2..2..\
+..2..2..\
+..33.33.\
+.333.333");
+
+// Big Princess top
+pub const PRINCESS_BIG_STAND_TOP: Sprite = sprite_from_str(b"\
+..2222..\
+.222222.\
+.223322.\
+..3333..\
+..3333..\
+..1111..\
+.111111.\
+.111111.");
+
+// Big Princess bottom
+pub const PRINCESS_BIG_STAND_BOT: Sprite = sprite_from_str(b"\
+.111111.\
+.111111.\
+.111111.\
+..1111..\
+..1111..\
+..1..1..\
+..11.11.\
+.111.111");

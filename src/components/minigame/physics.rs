@@ -1,6 +1,6 @@
 //! Physics simulation for the Mario mini-game
 
-use super::entities::{GameWorld, Mario, Goomba, Mushroom, Debris, BlockType, MarioState};
+use super::entities::{GameWorld, Mario, Goomba, Koopa, KoopaState, Mushroom, Coin, Debris, BlockType, MarioState};
 
 /// Physics constants
 pub const GRAVITY: f64 = 0.4;
@@ -9,6 +9,8 @@ pub const BIG_JUMP_VELOCITY: f64 = -9.5;
 pub const MOVE_SPEED: f64 = 2.0;
 pub const MAX_FALL_SPEED: f64 = 7.0;
 pub const GOOMBA_SPEED: f64 = 0.6;
+pub const KOOPA_SPEED: f64 = 0.5;
+pub const SHELL_SPEED: f64 = 4.0;
 pub const MUSHROOM_SPEED: f64 = 1.5;
 
 /// Check if two rectangles overlap (AABB collision)
@@ -171,15 +173,68 @@ fn update_mario_physics(mario: &mut Mario, world: &GameWorld, block_hits: &mut V
 
 /// Respawn a Mario at a random platform
 fn respawn_mario(mario: &mut Mario, world: &GameWorld) {
-    mario.pos.y = -32.0;
-    mario.vel.y = 0.0;
     mario.is_big = false;
 
-    if !world.platforms.is_empty() {
-        let idx = (js_sys::Math::random() * world.platforms.len() as f64) as usize;
-        let plat = &world.platforms[idx % world.platforms.len()];
-        mario.pos.x = (plat.x * world.tile_size) as f64 +
-                      (plat.width * world.tile_size / 2) as f64;
+    // Randomly choose spawn location: top (40%), bottom/hole (40%), or sides (20%)
+    let spawn_type = js_sys::Math::random();
+
+    if spawn_type < 0.4 {
+        // Spawn from top (falling down)
+        mario.pos.y = -32.0;
+        mario.vel.y = 0.0;
+
+        if !world.platforms.is_empty() {
+            let idx = (js_sys::Math::random() * world.platforms.len() as f64) as usize;
+            let plat = &world.platforms[idx % world.platforms.len()];
+            mario.pos.x = (plat.x * world.tile_size) as f64 +
+                          (plat.width * world.tile_size / 2) as f64;
+        }
+    } else if spawn_type < 0.8 {
+        // Spawn from bottom (jumping out of hole)
+        mario.pos.y = world.height as f64 + 8.0;
+        mario.vel.y = JUMP_VELOCITY * 1.5; // Strong upward jump
+
+        // Random x position, preferring near gaps in ground
+        let ground_platforms: Vec<_> = world.platforms.iter()
+            .filter(|p| p.is_ground)
+            .collect();
+
+        if ground_platforms.len() >= 2 {
+            // Spawn between two ground platforms (in a gap)
+            let idx = (js_sys::Math::random() * (ground_platforms.len() - 1) as f64) as usize;
+            let plat = ground_platforms[idx];
+            let next_plat = ground_platforms.get(idx + 1);
+
+            if let Some(next) = next_plat {
+                let gap_x = (plat.x + plat.width) * world.tile_size;
+                let gap_width = (next.x * world.tile_size) - gap_x;
+                if gap_width > 0 {
+                    mario.pos.x = gap_x as f64 + (gap_width as f64 / 2.0);
+                } else {
+                    mario.pos.x = js_sys::Math::random() * world.width as f64;
+                }
+            } else {
+                mario.pos.x = js_sys::Math::random() * world.width as f64;
+            }
+        } else {
+            mario.pos.x = js_sys::Math::random() * world.width as f64;
+        }
+    } else {
+        // Spawn from side (running in)
+        let from_left = js_sys::Math::random() > 0.5;
+        mario.pos.x = if from_left { -8.0 } else { world.width as f64 + 8.0 };
+        mario.vel.x = if from_left { MOVE_SPEED } else { -MOVE_SPEED };
+        mario.facing_right = from_left;
+
+        // Spawn at a random height above a platform
+        if !world.platforms.is_empty() {
+            let idx = (js_sys::Math::random() * world.platforms.len() as f64) as usize;
+            let plat = &world.platforms[idx % world.platforms.len()];
+            mario.pos.y = ((plat.y - 2) * world.tile_size) as f64;
+        } else {
+            mario.pos.y = world.height as f64 / 2.0;
+        }
+        mario.vel.y = 0.0;
     }
 }
 
@@ -233,8 +288,21 @@ fn update_goomba_physics(goomba: &mut Goomba, world: &GameWorld) {
         let (bx, by, bw, bh) = block.hitbox(tile_size);
         let (gx, gy, gw, gh) = goomba.hitbox();
 
+        // Land on top of block
+        if goomba.vel.y > 0.0 {
+            let goomba_bottom = gy + gh;
+            let goomba_prev_bottom = goomba_bottom - goomba.vel.y;
+            if gx + gw > bx && gx < bx + bw
+                && goomba_bottom >= by && goomba_prev_bottom <= by + 4.0
+            {
+                goomba.pos.y = by - gh;
+                goomba.vel.y = 0.0;
+                goomba.on_ground = true;
+            }
+        }
+
         // Side collision
-        if aabb_overlap(gx, gy + 4.0, gw, gh - 8.0, bx, by, bw, bh) {
+        if aabb_overlap(gx, gy + 2.0, gw, gh - 4.0, bx, by, bw, bh) {
             if goomba.vel.x > 0.0 {
                 goomba.vel.x = -GOOMBA_SPEED;
                 goomba.facing_right = false;
@@ -354,6 +422,375 @@ fn update_debris_physics(debris: &mut Debris, world_height: i32) {
 
     if debris.pos.y > world_height as f64 + 50.0 {
         debris.alive = false;
+    }
+}
+
+/// Update Koopa physics
+fn update_koopa_physics(koopa: &mut Koopa, world: &GameWorld) {
+    if !koopa.alive {
+        return;
+    }
+
+    // Gravity
+    koopa.vel.y += GRAVITY;
+    if koopa.vel.y > MAX_FALL_SPEED {
+        koopa.vel.y = MAX_FALL_SPEED;
+    }
+
+    // Movement based on state
+    match koopa.state {
+        KoopaState::Walking => {
+            koopa.vel.x = if koopa.facing_right { KOOPA_SPEED } else { -KOOPA_SPEED };
+        }
+        KoopaState::Shell => {
+            koopa.vel.x = 0.0;
+            koopa.shell_timer = koopa.shell_timer.saturating_add(1);
+            // Pop back up after a while
+            if koopa.shell_timer > 180 {
+                koopa.state = KoopaState::Walking;
+                koopa.shell_timer = 0;
+            }
+        }
+        KoopaState::ShellMoving => {
+            // Shell keeps moving at high speed
+        }
+    }
+
+    koopa.pos.x += koopa.vel.x;
+    koopa.pos.y += koopa.vel.y;
+
+    let (kx, ky, kw, kh) = koopa.hitbox();
+    let tile_size = world.tile_size;
+    koopa.on_ground = false;
+
+    // Platform collision
+    for platform in &world.platforms {
+        let (px, py, pw, _ph) = platform.hitbox(tile_size);
+        let koopa_bottom = ky + kh;
+        let koopa_prev_bottom = koopa_bottom - koopa.vel.y;
+
+        if koopa.vel.y > 0.0
+            && kx + kw > px && kx < px + pw
+            && koopa_bottom >= py && koopa_prev_bottom <= py + 4.0
+        {
+            koopa.pos.y = py - kh;
+            koopa.vel.y = 0.0;
+            koopa.on_ground = true;
+
+            // Turn at edges (only when walking)
+            if koopa.state == KoopaState::Walking {
+                let koopa_center = koopa.pos.x + kw / 2.0;
+                if koopa_center < px + 8.0 {
+                    koopa.facing_right = true;
+                } else if koopa_center > px + pw - 8.0 {
+                    koopa.facing_right = false;
+                }
+            }
+        }
+    }
+
+    // Block collision
+    for block in &world.blocks {
+        let (bx, by, bw, bh) = block.hitbox(tile_size);
+        let (kx, ky, kw, kh) = koopa.hitbox();
+
+        // Land on top of block
+        if koopa.vel.y > 0.0 {
+            let koopa_bottom = ky + kh;
+            let koopa_prev_bottom = koopa_bottom - koopa.vel.y;
+            if kx + kw > bx && kx < bx + bw
+                && koopa_bottom >= by && koopa_prev_bottom <= by + 4.0
+            {
+                koopa.pos.y = by - kh;
+                koopa.vel.y = 0.0;
+                koopa.on_ground = true;
+            }
+        }
+
+        // Side collision - bounce shell, turn walker
+        if aabb_overlap(kx, ky + 2.0, kw, kh - 4.0, bx, by, bw, bh) {
+            if koopa.state == KoopaState::ShellMoving {
+                koopa.vel.x = -koopa.vel.x;
+            } else {
+                koopa.facing_right = !koopa.facing_right;
+            }
+        }
+    }
+
+    // World boundaries
+    if koopa.pos.x < 0.0 {
+        if koopa.state == KoopaState::ShellMoving {
+            koopa.vel.x = SHELL_SPEED;
+        } else {
+            koopa.facing_right = true;
+        }
+    } else if koopa.pos.x > world.width as f64 - 8.0 {
+        if koopa.state == KoopaState::ShellMoving {
+            koopa.vel.x = -SHELL_SPEED;
+        } else {
+            koopa.facing_right = false;
+        }
+    }
+
+    if koopa.pos.y > world.height as f64 + 32.0 {
+        koopa.alive = false;
+    }
+
+    // Walk animation
+    if koopa.state == KoopaState::Walking {
+        koopa.walk_timer += 1;
+        if koopa.walk_timer >= 12 {
+            koopa.walk_timer = 0;
+            koopa.walk_frame = (koopa.walk_frame + 1) % 2;
+        }
+    }
+}
+
+/// Update Coin physics
+fn update_coin_physics(coin: &mut Coin, world: &GameWorld) {
+    if coin.collected {
+        return;
+    }
+
+    // Gravity
+    coin.vel.y += GRAVITY;
+    if coin.vel.y > MAX_FALL_SPEED {
+        coin.vel.y = MAX_FALL_SPEED;
+    }
+
+    coin.pos.x += coin.vel.x;
+    coin.pos.y += coin.vel.y;
+
+    let (cx, cy, cw, ch) = coin.hitbox();
+    let tile_size = world.tile_size;
+    coin.on_ground = false;
+
+    // Platform collision
+    for platform in &world.platforms {
+        let (px, py, pw, _ph) = platform.hitbox(tile_size);
+        let coin_bottom = cy + ch;
+        let coin_prev_bottom = coin_bottom - coin.vel.y;
+
+        if coin.vel.y > 0.0
+            && cx + cw > px && cx < px + pw
+            && coin_bottom >= py && coin_prev_bottom <= py + 4.0
+        {
+            coin.pos.y = py - ch;
+            coin.vel.y = 0.0;
+            coin.on_ground = true;
+        }
+    }
+
+    // Block collision
+    for block in &world.blocks {
+        let (bx, by, bw, bh) = block.hitbox(tile_size);
+        let (cx, cy, cw, ch) = coin.hitbox();
+
+        if coin.vel.y > 0.0 {
+            let coin_bottom = cy + ch;
+            let coin_prev_bottom = coin_bottom - coin.vel.y;
+            if cx + cw > bx && cx < bx + bw
+                && coin_bottom >= by && coin_prev_bottom <= by + 4.0
+            {
+                coin.pos.y = by - ch;
+                coin.vel.y = 0.0;
+                coin.on_ground = true;
+            }
+        }
+    }
+
+    if coin.pos.y > world.height as f64 + 32.0 {
+        coin.collected = true; // Remove it
+    }
+}
+
+/// Handle Goomba-Goomba collisions (bounce off each other)
+fn check_goomba_collisions(world: &mut GameWorld) {
+    let len = world.goombas.len();
+    for i in 0..len {
+        if !world.goombas[i].alive {
+            continue;
+        }
+        for j in (i + 1)..len {
+            if !world.goombas[j].alive {
+                continue;
+            }
+
+            let (ax, ay, aw, ah) = world.goombas[i].hitbox();
+            let (bx, by, bw, bh) = world.goombas[j].hitbox();
+
+            if aabb_overlap(ax, ay, aw, ah, bx, by, bw, bh) {
+                // Bounce off each other - reverse directions
+                let a_center = ax + aw / 2.0;
+                let b_center = bx + bw / 2.0;
+
+                if a_center < b_center {
+                    // A is to the left, A goes left, B goes right
+                    world.goombas[i].vel.x = -GOOMBA_SPEED;
+                    world.goombas[i].facing_right = false;
+                    world.goombas[j].vel.x = GOOMBA_SPEED;
+                    world.goombas[j].facing_right = true;
+                } else {
+                    world.goombas[i].vel.x = GOOMBA_SPEED;
+                    world.goombas[i].facing_right = true;
+                    world.goombas[j].vel.x = -GOOMBA_SPEED;
+                    world.goombas[j].facing_right = false;
+                }
+
+                // Push apart
+                let overlap = (aw / 2.0 + bw / 2.0) - (b_center - a_center).abs();
+                if overlap > 0.0 {
+                    world.goombas[i].pos.x -= overlap / 2.0;
+                    world.goombas[j].pos.x += overlap / 2.0;
+                }
+            }
+        }
+    }
+}
+
+/// Check for Mario interacting with Koopas
+fn check_koopa_collisions(world: &mut GameWorld) {
+    let mut koopa_stomps: Vec<usize> = Vec::new();
+    let mut shell_kicks: Vec<(usize, bool)> = Vec::new(); // (koopa_idx, kick_right)
+    let mut mario_hits: Vec<usize> = Vec::new();
+
+    for (mi, mario) in world.marios.iter().enumerate() {
+        if !mario.alive || mario.state == MarioState::Dead {
+            continue;
+        }
+
+        for (ki, koopa) in world.koopas.iter().enumerate() {
+            if !koopa.alive {
+                continue;
+            }
+
+            let (mx, my, mw, mh) = mario.hitbox();
+            let (kx, ky, kw, kh) = koopa.hitbox();
+
+            if aabb_overlap(mx, my, mw, mh, kx, ky, kw, kh) {
+                match koopa.state {
+                    KoopaState::Walking => {
+                        // Stomp or get hit
+                        if mario.vel.y > 0.0 && my + mh - 4.0 < ky + 4.0 {
+                            koopa_stomps.push(ki);
+                        } else if mario.invincible_timer == 0 {
+                            mario_hits.push(mi);
+                        }
+                    }
+                    KoopaState::Shell => {
+                        // Kick the shell
+                        let kick_right = mx + mw / 2.0 < kx + kw / 2.0;
+                        shell_kicks.push((ki, kick_right));
+                    }
+                    KoopaState::ShellMoving => {
+                        // Moving shell kills Mario (unless stomping)
+                        if mario.vel.y > 0.0 && my + mh - 4.0 < ky + 4.0 {
+                            // Stop the shell
+                            koopa_stomps.push(ki);
+                        } else if mario.invincible_timer == 0 {
+                            mario_hits.push(mi);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Process stomps (turn into shell or stop shell)
+    for ki in koopa_stomps {
+        let koopa = &mut world.koopas[ki];
+        match koopa.state {
+            KoopaState::Walking => {
+                koopa.state = KoopaState::Shell;
+                koopa.shell_timer = 0;
+                koopa.pos.y += 4.0; // Adjust for shorter shell
+            }
+            KoopaState::ShellMoving => {
+                koopa.state = KoopaState::Shell;
+                koopa.vel.x = 0.0;
+                koopa.shell_timer = 0;
+            }
+            _ => {}
+        }
+    }
+
+    // Process shell kicks
+    for (ki, kick_right) in shell_kicks {
+        let koopa = &mut world.koopas[ki];
+        koopa.state = KoopaState::ShellMoving;
+        koopa.vel.x = if kick_right { SHELL_SPEED } else { -SHELL_SPEED };
+    }
+
+    // Process Mario hits
+    for mi in mario_hits {
+        let mario = &mut world.marios[mi];
+        if mario.is_big {
+            mario.is_big = false;
+            mario.invincible_timer = 90;
+            mario.pos.y += 8.0;
+        } else {
+            mario.alive = false;
+            mario.state = MarioState::Dead;
+            mario.vel.y = JUMP_VELOCITY;
+            mario.death_timer = 60;
+        }
+    }
+
+    // Shell kills Goombas and other Koopas
+    for koopa in &world.koopas {
+        if koopa.state != KoopaState::ShellMoving {
+            continue;
+        }
+        let (kx, ky, kw, kh) = koopa.hitbox();
+
+        for goomba in &mut world.goombas {
+            if !goomba.alive {
+                continue;
+            }
+            let (gx, gy, gw, gh) = goomba.hitbox();
+            if aabb_overlap(kx, ky, kw, kh, gx, gy, gw, gh) {
+                goomba.alive = false;
+                goomba.squish_timer = 30;
+            }
+        }
+    }
+
+    // Shell-shell collision
+    let koopa_count = world.koopas.len();
+    for i in 0..koopa_count {
+        if world.koopas[i].state != KoopaState::ShellMoving {
+            continue;
+        }
+        for j in 0..koopa_count {
+            if i == j || !world.koopas[j].alive {
+                continue;
+            }
+            let (ax, ay, aw, ah) = world.koopas[i].hitbox();
+            let (bx, by, bw, bh) = world.koopas[j].hitbox();
+            if aabb_overlap(ax, ay, aw, ah, bx, by, bw, bh) {
+                world.koopas[j].alive = false;
+            }
+        }
+    }
+}
+
+/// Check for Mario collecting coins
+fn check_coin_collisions(world: &mut GameWorld) {
+    for mario in &world.marios {
+        if !mario.alive {
+            continue;
+        }
+        let (mx, my, mw, mh) = mario.hitbox();
+
+        for coin in &mut world.coins {
+            if coin.collected {
+                continue;
+            }
+            let (cx, cy, cw, ch) = coin.hitbox();
+            if aabb_overlap(mx, my, mw, mh, cx, cy, cw, ch) {
+                coin.collected = true;
+            }
+        }
     }
 }
 
@@ -594,8 +1031,16 @@ pub fn update(world: &mut GameWorld) {
         update_goomba_physics(goomba, &world_snapshot);
     }
 
+    for koopa in &mut world.koopas {
+        update_koopa_physics(koopa, &world_snapshot);
+    }
+
     for mushroom in &mut world.mushrooms {
         update_mushroom_physics(mushroom, &world_snapshot);
+    }
+
+    for coin in &mut world.coins {
+        update_coin_physics(coin, &world_snapshot);
     }
 
     let world_height = world.height;
@@ -605,13 +1050,18 @@ pub fn update(world: &mut GameWorld) {
 
     // Process collisions
     check_stomp_collisions(world);
+    check_koopa_collisions(world);
+    check_goomba_collisions(world);
     check_mushroom_collisions(world);
+    check_coin_collisions(world);
     process_block_hits(world, block_hits);
     update_block_animations(world);
 
     // Cleanup dead entities
     world.goombas.retain(|g| g.alive || g.squish_timer > 0);
+    world.koopas.retain(|k| k.alive);
     world.mushrooms.retain(|m| m.active);
+    world.coins.retain(|c| !c.collected);
     world.debris.retain(|d| d.alive);
 
     // Respawn dead marios after animation

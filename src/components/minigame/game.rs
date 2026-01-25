@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::sprites::*;
-use super::entities::{GameWorld, MarioState, BlockType};
+use super::entities::{GameWorld, MarioState, BlockType, KoopaState, CharacterType};
 use super::physics;
 use super::world;
 use super::ai;
@@ -181,7 +181,32 @@ fn render(ctx: &CanvasRenderingContext2d, buffer: &mut PixelBuffer, world: &Game
         }
     }
 
-    // Draw Marios
+    // Draw Koopas
+    for koopa in &world.koopas {
+        if koopa.alive {
+            let kx = koopa.pos.x as i32;
+            let ky = koopa.pos.y as i32;
+
+            match koopa.state {
+                KoopaState::Walking => {
+                    // Koopa is taller when walking (12px), draw head above body
+                    draw_sprite_to_buffer(buffer, &KOOPA_WALK, kx, ky + 4, &PALETTE_KOOPA, !koopa.facing_right);
+                }
+                KoopaState::Shell | KoopaState::ShellMoving => {
+                    draw_sprite_to_buffer(buffer, &KOOPA_SHELL, kx, ky, &PALETTE_KOOPA, false);
+                }
+            }
+        }
+    }
+
+    // Draw Coins
+    for coin in &world.coins {
+        if !coin.collected {
+            draw_sprite_to_buffer(buffer, &COIN, coin.pos.x as i32, coin.pos.y as i32, &PALETTE_COIN, false);
+        }
+    }
+
+    // Draw Marios (and other characters)
     for mario in &world.marios {
         // Skip if dead and off screen
         if mario.state == MarioState::Dead && mario.pos.y > height as f64 {
@@ -193,10 +218,21 @@ fn render(ctx: &CanvasRenderingContext2d, buffer: &mut PixelBuffer, world: &Game
             continue;
         }
 
+        // Get palette based on character type and player status
         let palette = if mario.is_player {
-            &PALETTE_PLAYER
+            match mario.character_type {
+                CharacterType::Mario => &PALETTE_PLAYER,
+                CharacterType::Luigi => &PALETTE_PLAYER_LUIGI,
+                CharacterType::Toad => &PALETTE_PLAYER_TOAD,
+                CharacterType::Princess => &PALETTE_PLAYER_PRINCESS,
+            }
         } else {
-            &PALETTE_MARIO
+            match mario.character_type {
+                CharacterType::Mario => &PALETTE_MARIO,
+                CharacterType::Luigi => &PALETTE_LUIGI,
+                CharacterType::Toad => &PALETTE_TOAD,
+                CharacterType::Princess => &PALETTE_PRINCESS,
+            }
         };
 
         let mx = mario.pos.x as i32;
@@ -205,30 +241,56 @@ fn render(ctx: &CanvasRenderingContext2d, buffer: &mut PixelBuffer, world: &Game
         if mario.state == MarioState::Dead {
             draw_sprite_to_buffer(buffer, &MARIO_DEAD, mx, my, palette, false);
         } else if mario.is_big {
-            // Draw big Mario (2 sprites stacked)
-            let (top, bot) = match mario.state {
-                MarioState::Standing => (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT),
-                MarioState::Walking => {
-                    if mario.walk_frame == 0 {
-                        (&MARIO_BIG_WALK_TOP, &MARIO_BIG_WALK_BOT)
-                    } else {
-                        (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT)
+            // Draw big character (2 sprites stacked)
+            let (top, bot) = match mario.character_type {
+                CharacterType::Mario | CharacterType::Luigi => {
+                    match mario.state {
+                        MarioState::Standing => (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT),
+                        MarioState::Walking => {
+                            if mario.walk_frame == 0 {
+                                (&MARIO_BIG_WALK_TOP, &MARIO_BIG_WALK_BOT)
+                            } else {
+                                (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT)
+                            }
+                        }
+                        MarioState::Jumping => (&MARIO_BIG_WALK_TOP, &MARIO_BIG_WALK_BOT),
+                        MarioState::Dead => (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT),
                     }
                 }
-                MarioState::Jumping => (&MARIO_BIG_WALK_TOP, &MARIO_BIG_WALK_BOT),
-                MarioState::Dead => (&MARIO_BIG_STAND_TOP, &MARIO_BIG_STAND_BOT),
+                CharacterType::Toad => (&TOAD_BIG_STAND_TOP, &TOAD_BIG_STAND_BOT),
+                CharacterType::Princess => (&PRINCESS_BIG_STAND_TOP, &PRINCESS_BIG_STAND_BOT),
             };
             draw_sprite_to_buffer(buffer, top, mx, my, palette, !mario.facing_right);
             draw_sprite_to_buffer(buffer, bot, mx, my + 8, palette, !mario.facing_right);
         } else {
-            // Draw small Mario
-            let sprite = match mario.state {
-                MarioState::Standing => &MARIO_STAND,
-                MarioState::Walking => {
-                    if mario.walk_frame == 0 { &MARIO_WALK1 } else { &MARIO_WALK2 }
+            // Draw small character
+            let sprite = match mario.character_type {
+                CharacterType::Mario | CharacterType::Luigi => {
+                    match mario.state {
+                        MarioState::Standing => &MARIO_STAND,
+                        MarioState::Walking => {
+                            if mario.walk_frame == 0 { &MARIO_WALK1 } else { &MARIO_WALK2 }
+                        }
+                        MarioState::Jumping => &MARIO_JUMP,
+                        MarioState::Dead => &MARIO_DEAD,
+                    }
                 }
-                MarioState::Jumping => &MARIO_JUMP,
-                MarioState::Dead => &MARIO_DEAD,
+                CharacterType::Toad => {
+                    match mario.state {
+                        MarioState::Standing => &TOAD_STAND,
+                        MarioState::Walking => &TOAD_WALK1,
+                        MarioState::Jumping => &TOAD_JUMP,
+                        MarioState::Dead => &MARIO_DEAD,
+                    }
+                }
+                CharacterType::Princess => {
+                    match mario.state {
+                        MarioState::Standing => &PRINCESS_STAND,
+                        MarioState::Walking => &PRINCESS_WALK1,
+                        MarioState::Jumping => &PRINCESS_JUMP,
+                        MarioState::Dead => &MARIO_DEAD,
+                    }
+                }
             };
             draw_sprite_to_buffer(buffer, sprite, mx, my, palette, !mario.facing_right);
         }
