@@ -204,10 +204,16 @@ async fn get_all_regions(
 
         let mut regions: HashSet<String> = HashSet::new();
 
-        // Add explicit regions from region column
+        // Add explicit regions from region column, splitting combined regions
         for (region,) in explicit_regions {
             if let Some(r) = region {
-                regions.insert(r);
+                // Split by comma and trim each part
+                for part in r.split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        regions.insert(trimmed.to_string());
+                    }
+                }
             }
         }
 
@@ -221,7 +227,13 @@ async fn get_all_regions(
 
         for (title,) in titles {
             if let Some(extracted) = extract_region_from_title(&title) {
-                regions.insert(extracted);
+                // Split combined regions like "USA, Europe"
+                for part in extracted.split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        regions.insert(trimmed.to_string());
+                    }
+                }
             }
         }
 

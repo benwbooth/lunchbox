@@ -392,18 +392,22 @@ pub fn has_region(title: &str, region: &str) -> bool {
 /// USA/World are typically preferred, followed by Europe, then others
 pub fn region_priority(region: &str) -> i32 {
     match region.to_lowercase().as_str() {
-        "usa" => 0,
+        "usa" | "north america" | "united states" => 0,
         "world" => 1,
-        "usa, europe" | "europe, usa" => 2,
-        "north america" | "united states" => 3,
-        "japan" => 4,
-        "japan, usa" | "usa, japan" => 5,
-        "europe" => 10,
-        "europe, australia" => 11,
-        "asia" => 20,
-        "korea" => 21,
-        "china" => 22,
-        "taiwan" => 23,
+        "japan" => 2,
+        "europe" => 3,
+        "australia" => 4,
+        "asia" => 10,
+        "korea" => 11,
+        "china" => 12,
+        "taiwan" => 13,
+        "brazil" => 20,
+        "canada" => 21,
+        "france" => 22,
+        "germany" => 23,
+        "italy" => 24,
+        "spain" => 25,
+        "uk" | "united kingdom" => 26,
         _ => 100,
     }
 }
