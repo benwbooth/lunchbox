@@ -175,15 +175,16 @@ pub const BRICK: Sprite = sprite_from_str(b"\
 11111111\
 33333333");
 
-// Question block (frame 1)
+// Question block (frame 1) - clear ? shape
+// 1=yellow(border), 2=orange(background), 3=black(? shape)
 pub const QUESTION: Sprite = sprite_from_str(b"\
 11111111\
-13333331\
-13112131\
-13331131\
-13311131\
-13333131\
-13311131\
+12233221\
+12322321\
+12222321\
+12233221\
+12222221\
+12233221\
 11111111");
 
 // Question block (hit/empty)
