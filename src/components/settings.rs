@@ -547,18 +547,26 @@ fn RegionPriorityList(
 
                     view! {
                         // Drop indicator before this item
-                        // class:visible is its own reactive context
                         <div
-                            class="drop-indicator"
-                            class:visible=move || {
-                                drop_target_idx.get() == Some(idx)
+                            class=move || {
+                                if drop_target_idx.get() == Some(idx)
                                     && dragging_idx.get().is_some()
                                     && dragging_idx.get() != Some(idx)
+                                {
+                                    "drop-indicator visible"
+                                } else {
+                                    "drop-indicator"
+                                }
                             }
                         />
                         <div
-                            class="region-priority-item"
-                            class:dragging=move || dragging_idx.get() == Some(idx)
+                            class=move || {
+                                if dragging_idx.get() == Some(idx) {
+                                    "region-priority-item dragging"
+                                } else {
+                                    "region-priority-item"
+                                }
+                            }
                             draggable="true"
                             on:dragstart=move |_| {
                                 set_dragging_idx.set(Some(idx));
@@ -606,10 +614,14 @@ fn RegionPriorityList(
                         // Drop indicator after last item
                         {(idx == len - 1).then(|| view! {
                             <div
-                                class="drop-indicator drop-indicator-end"
-                                class:visible=move || {
-                                    drop_target_idx.get() == Some(len)
+                                class=move || {
+                                    if drop_target_idx.get() == Some(len)
                                         && dragging_idx.get().is_some()
+                                    {
+                                        "drop-indicator drop-indicator-end visible"
+                                    } else {
+                                        "drop-indicator drop-indicator-end"
+                                    }
                                 }
                                 on:dragover=move |e| {
                                     e.prevent_default();
