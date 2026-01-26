@@ -1,5 +1,5 @@
 // Mario Minigame - Instanced Render Shader
-// Efficient sprite rendering using instanced quads
+// Efficient sprite rendering with proper brick tiling
 
 //=============================================================================
 // DATA STRUCTURES
@@ -51,21 +51,27 @@ struct Platform {
 const TILE: f32 = 8.0;
 const ENTITY_COUNT: u32 = 128u;
 const BLOCK_COUNT: u32 = 512u;
-const PLATFORM_COUNT: u32 = 512u;  // Many platforms
+const PLATFORM_COUNT: u32 = 512u;
 
-// Total instances = platforms + blocks + entities
 const PLATFORM_OFFSET: u32 = 0u;
-const BLOCK_OFFSET: u32 = 512u;        // After platforms (512)
-const ENTITY_OFFSET: u32 = 1024u;      // After blocks (512 + 512)
-const TOTAL_INSTANCES: u32 = 1152u;    // 512 + 512 + 128
+const BLOCK_OFFSET: u32 = 512u;
+const ENTITY_OFFSET: u32 = 1024u;
+const TOTAL_INSTANCES: u32 = 1152u;
 
 // Entity kinds
 const KIND_MARIO: u32 = 0u;
 const KIND_GOOMBA: u32 = 1u;
 const KIND_KOOPA: u32 = 2u;
 const KIND_COIN: u32 = 3u;
+const KIND_MUSHROOM: u32 = 4u;
+const KIND_DEBRIS: u32 = 5u;
 
-// Sprite indices
+// Koopa states
+const KOOPA_WALK: u32 = 0u;
+const KOOPA_SHELL: u32 = 1u;
+const KOOPA_SHELL_MOVING: u32 = 2u;
+
+// Sprite indices (must match gpu.rs sprite_list order)
 const SPR_MARIO_STAND: u32 = 0u;
 const SPR_MARIO_WALK1: u32 = 1u;
 const SPR_MARIO_WALK2: u32 = 2u;
@@ -76,6 +82,11 @@ const SPR_QUESTION: u32 = 6u;
 const SPR_GROUND: u32 = 7u;
 const SPR_KOOPA: u32 = 8u;
 const SPR_COIN: u32 = 9u;
+const SPR_MUSHROOM: u32 = 10u;
+const SPR_MARIO_DEAD: u32 = 11u;
+const SPR_QUESTION_EMPTY: u32 = 12u;
+const SPR_KOOPA_SHELL: u32 = 13u;
+const SPR_DEBRIS: u32 = 14u;
 
 // Palette indices
 const PAL_MARIO: u32 = 0u;
@@ -95,7 +106,7 @@ const FLAG_GROUND: u32 = 4u;
 const FLAG_PLAYER: u32 = 16u;
 
 //=============================================================================
-// VERTEX SHADER - Instanced quad rendering
+// VERTEX SHADER
 //=============================================================================
 
 struct VertexOut {
@@ -104,6 +115,7 @@ struct VertexOut {
     @location(1) @interpolate(flat) sprite_id: u32,
     @location(2) @interpolate(flat) palette_id: u32,
     @location(3) @interpolate(flat) flags: u32,
+    @location(4) pixel_size: vec2<f32>,  // Size in pixels for tiling
 };
 
 @vertex
@@ -113,11 +125,6 @@ fn vs_main(
 ) -> VertexOut {
     var out: VertexOut;
 
-    // Quad vertices (2 triangles, 6 vertices)
-    // 0--1    Triangles: 0-1-2, 2-1-3
-    // |\ |
-    // | \|
-    // 2--3
     var quad_pos: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
         vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0)
@@ -131,7 +138,6 @@ fn vs_main(
     let local_pos = quad_pos[vertex_idx];
     let local_uv = quad_uv[vertex_idx];
 
-    // Determine what we're rendering based on instance index
     var world_pos: vec2<f32>;
     var size: vec2<f32> = vec2<f32>(TILE, TILE);
     var sprite_id: u32 = 0u;
@@ -140,14 +146,13 @@ fn vs_main(
     var visible: bool = true;
 
     if (instance_idx < BLOCK_OFFSET) {
-        // Platform instance - render ALL platforms, not just ground
+        // Platform instance
         let plat_idx = instance_idx;
         if (plat_idx < PLATFORM_COUNT) {
             let p = platforms[plat_idx];
             if (p.width > 0.0) {
                 world_pos = vec2<f32>(p.x * TILE, p.y * TILE);
                 size = vec2<f32>(p.width * TILE, TILE);
-                // Use ground sprite for all platforms (or could use brick for floating)
                 sprite_id = select(SPR_BRICK, SPR_GROUND, p.is_ground == 1u);
                 palette_id = select(PAL_BRICK, PAL_GROUND, p.is_ground == 1u);
             } else {
@@ -163,8 +168,17 @@ fn vs_main(
             let b = blocks[block_idx];
             if ((b.flags & 2u) == 0u && b.pos.x > 0.0) {
                 world_pos = b.pos;
-                sprite_id = select(SPR_BRICK, SPR_QUESTION, b.kind == 1u);
-                palette_id = select(PAL_BRICK, PAL_QUESTION, b.kind == 1u);
+                if (b.kind == 2u) {
+                    // Empty question block
+                    sprite_id = SPR_QUESTION_EMPTY;
+                    palette_id = PAL_BRICK; // Use brick palette for empty blocks
+                } else if (b.kind == 1u) {
+                    sprite_id = SPR_QUESTION;
+                    palette_id = PAL_QUESTION;
+                } else {
+                    sprite_id = SPR_BRICK;
+                    palette_id = PAL_BRICK;
+                }
             } else {
                 visible = false;
             }
@@ -192,6 +206,7 @@ fn vs_main(
                         } else {
                             sprite_id = SPR_MARIO_STAND;
                         }
+                        // state 0 = Mario, state 1 = Luigi
                         palette_id = select(select(PAL_MARIO, PAL_LUIGI, e.state == 1u), PAL_PLAYER, is_player);
                     }
                     case KIND_GOOMBA: {
@@ -199,12 +214,24 @@ fn vs_main(
                         palette_id = PAL_GOOMBA;
                     }
                     case KIND_KOOPA: {
-                        sprite_id = SPR_KOOPA;
+                        if (e.state >= KOOPA_SHELL) {
+                            sprite_id = SPR_KOOPA_SHELL;
+                        } else {
+                            sprite_id = SPR_KOOPA;
+                        }
                         palette_id = PAL_KOOPA;
                     }
                     case KIND_COIN: {
                         sprite_id = SPR_COIN;
                         palette_id = PAL_COIN;
+                    }
+                    case KIND_MUSHROOM: {
+                        sprite_id = SPR_MUSHROOM;
+                        palette_id = PAL_MARIO; // Red mushroom
+                    }
+                    case KIND_DEBRIS: {
+                        sprite_id = SPR_DEBRIS;
+                        palette_id = PAL_BRICK;
                     }
                     default: {
                         visible = false;
@@ -218,17 +245,16 @@ fn vs_main(
         }
     }
 
-    // Hide invisible instances by placing off-screen
     if (!visible) {
         out.pos = vec4<f32>(-10.0, -10.0, 0.0, 1.0);
         out.uv = vec2<f32>(0.0, 0.0);
         out.sprite_id = 0u;
         out.palette_id = 0u;
         out.flags = 0u;
+        out.pixel_size = vec2<f32>(8.0, 8.0);
         return out;
     }
 
-    // Calculate screen position
     let pixel_pos = world_pos + local_pos * size;
     let ndc = (pixel_pos / u.resolution) * 2.0 - 1.0;
 
@@ -237,12 +263,13 @@ fn vs_main(
     out.sprite_id = sprite_id;
     out.palette_id = palette_id;
     out.flags = flags;
+    out.pixel_size = size;  // Pass actual size for tiling
 
     return out;
 }
 
 //=============================================================================
-// FRAGMENT SHADER - Sprite sampling
+// FRAGMENT SHADER - With proper tiling for wide platforms
 //=============================================================================
 
 fn get_sprite_pixel(sprite_id: u32, x: u32, y: u32, flip: bool) -> u32 {
@@ -255,7 +282,7 @@ fn get_sprite_pixel(sprite_id: u32, x: u32, y: u32, flip: bool) -> u32 {
 
 fn get_color(palette_id: u32, color_idx: u32) -> vec4<f32> {
     if (color_idx == 0u) {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0); // Transparent
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
     let packed = palettes[palette_id * 4u + color_idx];
     return vec4<f32>(
@@ -268,15 +295,17 @@ fn get_color(palette_id: u32, color_idx: u32) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    // Sample sprite at UV position (8x8 sprite)
-    let sprite_x = u32(in.uv.x * 8.0) % 8u;
-    let sprite_y = u32(in.uv.y * 8.0) % 8u;
+    // Calculate actual pixel position within the quad
+    let pixel_in_quad = in.uv * in.pixel_size;
+
+    // Tile the 8x8 sprite by taking modulo 8
+    let sprite_x = u32(pixel_in_quad.x) % 8u;
+    let sprite_y = u32(pixel_in_quad.y) % 8u;
 
     let flip = (in.flags & FLAG_FLIP) != 0u;
     let color_idx = get_sprite_pixel(in.sprite_id, sprite_x, sprite_y, flip);
     let color = get_color(in.palette_id, color_idx);
 
-    // Discard transparent pixels
     if (color.a < 0.5) {
         discard;
     }

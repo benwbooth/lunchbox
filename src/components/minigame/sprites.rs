@@ -171,15 +171,16 @@ pub const GOOMBA: Sprite = sprite_from_str(b"\
 .22..22.\
 22....22");
 
-// Brick block
+// Brick block - classic SMB style with clear mortar lines
+// 1=highlight, 2=brick face, 3=dark mortar/shadow
 pub const BRICK: Sprite = sprite_from_str(b"\
-11111111\
-12321232\
-11111111\
-32123212\
-11111111\
-12321232\
-11111111\
+22232223\
+11131113\
+22232223\
+33333333\
+32223222\
+31113111\
+32223222\
 33333333");
 
 // Question block (frame 1) - clear ? shape
@@ -205,15 +206,16 @@ pub const QUESTION_EMPTY: Sprite = sprite_from_str(b"\
 31111113\
 33333333");
 
-// Ground block
+// Ground block - earthy texture with dark bottom
+// 1=highlight/light, 2=main color, 3=dark/shadow
 pub const GROUND: Sprite = sprite_from_str(b"\
 11111111\
-11121112\
-11111111\
-21112111\
-11111111\
-11121112\
-11111111\
+12212212\
+22122212\
+12212122\
+22122122\
+12222212\
+22222222\
 33333333");
 
 // Mushroom
