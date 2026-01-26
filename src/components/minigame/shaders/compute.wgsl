@@ -40,7 +40,7 @@ struct Platform {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read_write> entities: array<Entity, 128>;
 @group(0) @binding(2) var<storage, read_write> blocks: array<Block, 512>;
-@group(0) @binding(3) var<storage, read_write> platforms: array<Platform, 64>;
+@group(0) @binding(3) var<storage, read_write> platforms: array<Platform, 512>;
 @group(0) @binding(4) var<storage, read> sprites: array<u32, 256>;
 @group(0) @binding(5) var<storage, read> palettes: array<u32, 48>;
 
@@ -54,9 +54,9 @@ const JUMP_VEL: f32 = -7.5;
 const MOVE_SPEED: f32 = 1.5;
 const TILE: f32 = 8.0;
 
-const ENTITY_COUNT: u32 = 48u;
-const BLOCK_COUNT: u32 = 256u;
-const PLATFORM_COUNT: u32 = 64u;  // Max platforms
+const ENTITY_COUNT: u32 = 128u;   // More entities
+const BLOCK_COUNT: u32 = 512u;
+const PLATFORM_COUNT: u32 = 512u; // Many more platforms for dense coverage
 
 // Entity kinds
 const KIND_MARIO: u32 = 0u;
@@ -95,81 +95,88 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Initialize on first frame
     if (u.frame == 0u) {
-        // Initialize platforms across the full screen height
+        // Initialize platforms - dense grid so Mario can always jump to another
         if (idx < PLATFORM_COUNT) {
             let screen_tiles_x = floor(u.resolution.x / TILE);
             let screen_tiles_y = floor(u.resolution.y / TILE);
             let ground_y = screen_tiles_y - 2.0;
 
-            if (idx < 6u) {
-                // Ground platforms - cover the full width with some gaps
-                let segment_width = screen_tiles_x / 6.0;
+            // Jump distance is roughly 4-6 tiles horizontal, 3-4 tiles vertical
+            // So we want platforms spaced about 5 tiles apart horizontally, 3 tiles vertically
+            let jump_h = 5.0;  // Horizontal jump distance
+            let jump_v = 3.0;  // Vertical jump distance
+
+            let cols = u32(screen_tiles_x / jump_h) + 1u;
+            let rows = u32(screen_tiles_y / jump_v);
+
+            if (idx < 12u) {
+                // Ground platforms - full coverage with small gaps
+                let segment_width = screen_tiles_x / 12.0;
                 platforms[idx].x = f32(idx) * segment_width;
                 platforms[idx].y = ground_y;
-                // Leave small gaps between ground segments
-                platforms[idx].width = segment_width - 2.0;
+                platforms[idx].width = segment_width - 1.0;
                 platforms[idx].is_ground = 1u;
-            } else if (idx < 30u) {
-                // Main floating platforms - many across the screen
-                let plat_idx = idx - 6u;
-                let num_cols = 6u;
-                let num_rows = 4u;
-                let col = plat_idx % num_cols;
-                let row = plat_idx / num_cols;
-
-                let col_width = screen_tiles_x / f32(num_cols);
-                let row_height = (ground_y - 8.0) / f32(num_rows);
-
-                // Stagger columns for more interesting layout
-                let x_offset = select(0.0, col_width * 0.5, row % 2u == 1u);
-
-                platforms[idx].x = f32(col) * col_width + x_offset + random(f32(idx), 2.0) * 4.0;
-                platforms[idx].y = 4.0 + f32(row) * row_height + random(f32(idx), 22.0) * 3.0;
-                platforms[idx].width = 6.0 + random(f32(idx), 3.0) * 6.0;
-                platforms[idx].is_ground = 0u;
-            } else if (idx < 50u) {
-                // Stairs - small stepping platforms
-                let stair_idx = idx - 30u;
-                let stair_set = stair_idx / 5u;  // 4 sets of 5 stairs
-                let stair_step = stair_idx % 5u;
-
-                let set_x = random(f32(stair_set + 100u), 50.0) * (screen_tiles_x - 20.0) + 5.0;
-                let set_y = random(f32(stair_set + 100u), 51.0) * (ground_y - 20.0) + 10.0;
-
-                // Stairs go up-right or up-left alternating
-                let dir = select(-1.0, 1.0, stair_set % 2u == 0u);
-
-                platforms[idx].x = set_x + f32(stair_step) * 3.0 * dir;
-                platforms[idx].y = set_y - f32(stair_step) * 2.5;
-                platforms[idx].width = 3.0;
-                platforms[idx].is_ground = 0u;
             } else {
-                // Extra small platforms scattered around
-                let extra_idx = idx - 50u;
-                platforms[idx].x = random(f32(idx), 60.0) * (screen_tiles_x - 8.0);
-                platforms[idx].y = random(f32(idx), 61.0) * (ground_y - 10.0) + 5.0;
-                platforms[idx].width = 3.0 + random(f32(idx), 62.0) * 4.0;
-                platforms[idx].is_ground = 0u;
+                // Floating platforms in a dense grid pattern
+                let grid_idx = idx - 12u;
+                let col = grid_idx % cols;
+                let row = grid_idx / cols;
+
+                if (row < rows - 1u) {  // Don't place platforms at ground level
+                    // Base position on grid
+                    let base_x = f32(col) * jump_h;
+                    let base_y = f32(row) * jump_v + 4.0;  // Start 4 tiles from top
+
+                    // Add some randomness but keep within jump range
+                    let rand_x = (random(f32(idx), 1.0) - 0.5) * 2.0;  // -1 to 1
+                    let rand_y = (random(f32(idx), 2.0) - 0.5) * 1.5;  // -0.75 to 0.75
+
+                    // Stagger odd rows
+                    let stagger = select(0.0, jump_h * 0.5, row % 2u == 1u);
+
+                    platforms[idx].x = base_x + stagger + rand_x;
+                    platforms[idx].y = base_y + rand_y;
+                    platforms[idx].width = 3.0 + random(f32(idx), 3.0) * 3.0;  // 3-6 tiles wide
+                    platforms[idx].is_ground = 0u;
+
+                    // Make sure platform stays on screen
+                    if (platforms[idx].x < 0.0) {
+                        platforms[idx].x = 0.0;
+                    }
+                    if (platforms[idx].x + platforms[idx].width > screen_tiles_x) {
+                        platforms[idx].x = screen_tiles_x - platforms[idx].width;
+                    }
+                } else {
+                    // Unused platform
+                    platforms[idx].width = 0.0;
+                }
             }
         }
 
-        // Initialize blocks on floating platforms (not on ground or stairs)
+        // Initialize blocks - some on platforms, some floating
         if (idx < BLOCK_COUNT) {
-            let plat_idx = 6u + (idx / 6u);  // Start from floating platforms (index 6+), 6 blocks per platform
-            // Only place blocks on main floating platforms (6-29), not stairs or extra platforms
-            if (plat_idx < 30u) {
-                let plat = platforms[plat_idx];
-                let block_offset = f32(idx % 6u);
-                if (block_offset < plat.width && plat.width > 0.0) {
-                    // Place blocks on top of platforms
-                    blocks[idx].pos = vec2<f32>((plat.x + block_offset) * TILE, (plat.y - 1.0) * TILE);
-                    blocks[idx].kind = select(0u, 1u, random(f32(idx), 4.0) < 0.25);  // 25% question blocks
-                    blocks[idx].flags = 0u;
-                } else {
-                    blocks[idx].flags = 2u; // destroyed/unused
-                }
+            // Scatter blocks across the screen
+            let screen_tiles_x = floor(u.resolution.x / TILE);
+            let screen_tiles_y = floor(u.resolution.y / TILE);
+
+            // Place blocks in a loose grid with randomness
+            let block_cols = 16u;
+            let block_rows = 12u;
+            let col = idx % block_cols;
+            let row = idx / block_cols;
+
+            if (row < block_rows) {
+                let col_spacing = screen_tiles_x / f32(block_cols);
+                let row_spacing = (screen_tiles_y - 8.0) / f32(block_rows);
+
+                blocks[idx].pos = vec2<f32>(
+                    (f32(col) * col_spacing + random(f32(idx), 30.0) * 2.0) * TILE,
+                    (f32(row) * row_spacing + 4.0 + random(f32(idx), 31.0) * 2.0) * TILE
+                );
+                blocks[idx].kind = select(0u, 1u, random(f32(idx), 4.0) < 0.3);  // 30% question blocks
+                blocks[idx].flags = 0u;
             } else {
-                blocks[idx].flags = 2u;
+                blocks[idx].flags = 2u; // unused
             }
         }
 
@@ -178,30 +185,30 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             var e: Entity;
             e.flags = FLAG_ALIVE;
 
-            if (idx < 20u) {
-                // Marios - spread across full screen
+            if (idx < 40u) {
+                // Marios - many of them spread across screen
                 e.kind = KIND_MARIO;
                 e.pos = vec2<f32>(
                     random(f32(idx), 5.0) * u.resolution.x,
-                    random(f32(idx), 6.0) * u.resolution.y * 0.8  // Use 80% of screen height
+                    random(f32(idx), 6.0) * u.resolution.y * 0.9
                 );
                 e.vel = vec2<f32>(select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx), 7.0) > 0.5) * 0.5, 0.0);
                 if (idx == 0u) { e.flags = e.flags | FLAG_PLAYER; }
                 e.state = u32(random(f32(idx), 20.0) * 4.0);
-            } else if (idx < 35u) {
-                // Goombas - spread across screen
+            } else if (idx < 80u) {
+                // Goombas - many spread across screen
                 e.kind = KIND_GOOMBA;
                 e.pos = vec2<f32>(
                     random(f32(idx), 8.0) * u.resolution.x,
-                    random(f32(idx), 9.0) * u.resolution.y * 0.7
+                    random(f32(idx), 9.0) * u.resolution.y * 0.9
                 );
                 e.vel = vec2<f32>(select(-0.5, 0.5, random(f32(idx), 10.0) > 0.5), 0.0);
-            } else if (idx < 42u) {
+            } else if (idx < 100u) {
                 // Koopas
                 e.kind = KIND_KOOPA;
                 e.pos = vec2<f32>(
                     random(f32(idx), 11.0) * u.resolution.x,
-                    random(f32(idx), 12.0) * u.resolution.y * 0.6
+                    random(f32(idx), 12.0) * u.resolution.y * 0.8
                 );
                 e.vel = vec2<f32>(select(-0.4, 0.4, random(f32(idx), 13.0) > 0.5), 0.0);
             } else {
@@ -209,7 +216,7 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
                 e.kind = KIND_COIN;
                 e.pos = vec2<f32>(
                     random(f32(idx), 14.0) * u.resolution.x,
-                    random(f32(idx), 15.0) * u.resolution.y * 0.7
+                    random(f32(idx), 15.0) * u.resolution.y * 0.85
                 );
                 e.vel = vec2<f32>(0.0, 0.0);
             }

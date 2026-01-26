@@ -40,7 +40,7 @@ struct Platform {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read> entities: array<Entity, 128>;
 @group(0) @binding(2) var<storage, read> blocks: array<Block, 512>;
-@group(0) @binding(3) var<storage, read> platforms: array<Platform, 64>;
+@group(0) @binding(3) var<storage, read> platforms: array<Platform, 512>;
 @group(0) @binding(4) var<storage, read> sprites: array<u32, 256>;
 @group(0) @binding(5) var<storage, read> palettes: array<u32, 48>;
 
@@ -49,15 +49,15 @@ struct Platform {
 //=============================================================================
 
 const TILE: f32 = 8.0;
-const ENTITY_COUNT: u32 = 48u;
-const BLOCK_COUNT: u32 = 256u;
-const PLATFORM_COUNT: u32 = 64u;  // Max platforms
+const ENTITY_COUNT: u32 = 128u;
+const BLOCK_COUNT: u32 = 512u;
+const PLATFORM_COUNT: u32 = 512u;  // Many platforms
 
 // Total instances = platforms + blocks + entities
 const PLATFORM_OFFSET: u32 = 0u;
-const BLOCK_OFFSET: u32 = 64u;        // After platforms (64)
-const ENTITY_OFFSET: u32 = 576u;      // After blocks (64 + 512)
-const TOTAL_INSTANCES: u32 = 704u;    // 64 + 512 + 128
+const BLOCK_OFFSET: u32 = 512u;        // After platforms (512)
+const ENTITY_OFFSET: u32 = 1024u;      // After blocks (512 + 512)
+const TOTAL_INSTANCES: u32 = 1152u;    // 512 + 512 + 128
 
 // Entity kinds
 const KIND_MARIO: u32 = 0u;
@@ -140,15 +140,16 @@ fn vs_main(
     var visible: bool = true;
 
     if (instance_idx < BLOCK_OFFSET) {
-        // Platform instance
+        // Platform instance - render ALL platforms, not just ground
         let plat_idx = instance_idx;
         if (plat_idx < PLATFORM_COUNT) {
             let p = platforms[plat_idx];
-            if (p.is_ground == 1u && p.width > 0.0) {
+            if (p.width > 0.0) {
                 world_pos = vec2<f32>(p.x * TILE, p.y * TILE);
                 size = vec2<f32>(p.width * TILE, TILE);
-                sprite_id = SPR_GROUND;
-                palette_id = PAL_GROUND;
+                // Use ground sprite for all platforms (or could use brick for floating)
+                sprite_id = select(SPR_BRICK, SPR_GROUND, p.is_ground == 1u);
+                palette_id = select(PAL_BRICK, PAL_GROUND, p.is_ground == 1u);
             } else {
                 visible = false;
             }

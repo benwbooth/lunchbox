@@ -221,11 +221,11 @@ impl GpuState {
         let render_shader_desc = web_sys::GpuShaderModuleDescriptor::new(RENDER_SHADER);
         let render_shader = device.create_shader_module(&render_shader_desc);
 
-        // Create buffers
+        // Create buffers (sized for max entities: 128 entities, 512 blocks, 512 platforms)
         let uniform_buffer = create_buffer(&device, 32, gpu_buffer_usage_uniform() | gpu_buffer_usage_copy_dst());
         let entity_buffer = create_buffer(&device, 128 * 32, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
         let block_buffer = create_buffer(&device, 512 * 16, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
-        let platform_buffer = create_buffer(&device, 64 * 16, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
+        let platform_buffer = create_buffer(&device, 512 * 16, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
 
         // Create and upload sprite/palette buffers
         let sprite_data = pack_sprite_atlas();
@@ -321,7 +321,7 @@ impl GpuState {
             let compute_pass = encoder.begin_compute_pass();
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, Some(&self.compute_bind_group));
-            compute_pass.dispatch_workgroups(2); // 128 entities / 64 workgroup size
+            compute_pass.dispatch_workgroups(8); // 512 platforms / 64 workgroup size
             compute_pass.end();
         }
 
@@ -333,8 +333,8 @@ impl GpuState {
             render_pass.set_pipeline(&self.render_pipeline);
             // Render shader uses group 0 with read-only bindings (separate shader module)
             render_pass.set_bind_group(0, Some(&self.render_bind_group));
-            // Instanced rendering: 6 vertices per quad, 704 instances (64 platforms + 512 blocks + 128 entities)
-            render_pass.draw_with_instance_count(6, 704);
+            // Instanced rendering: 6 vertices per quad, 1152 instances (512 platforms + 512 blocks + 128 entities)
+            render_pass.draw_with_instance_count(6, 1152);
             render_pass.end();
         }
 
