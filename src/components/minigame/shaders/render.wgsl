@@ -104,6 +104,7 @@ const FLAG_FLIP: u32 = 1u;
 const FLAG_ALIVE: u32 = 2u;
 const FLAG_GROUND: u32 = 4u;
 const FLAG_PLAYER: u32 = 16u;
+const FLAG_DYING: u32 = 32u;
 
 //=============================================================================
 // VERTEX SHADER
@@ -190,7 +191,8 @@ fn vs_main(
         let ent_idx = instance_idx - ENTITY_OFFSET;
         if (ent_idx < ENTITY_COUNT) {
             let e = entities[ent_idx];
-            if ((e.flags & FLAG_ALIVE) != 0u) {
+            // Show alive OR dying entities
+            if ((e.flags & (FLAG_ALIVE | FLAG_DYING)) != 0u) {
                 world_pos = e.pos;
                 flags = e.flags;
 

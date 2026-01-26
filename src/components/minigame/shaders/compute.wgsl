@@ -78,6 +78,7 @@ const FLAG_ALIVE: u32 = 2u;
 const FLAG_GROUND: u32 = 4u;
 const FLAG_BIG: u32 = 8u;
 const FLAG_PLAYER: u32 = 16u;
+const FLAG_DYING: u32 = 32u;  // Death animation in progress
 
 //=============================================================================
 // UTILITY FUNCTIONS
@@ -190,24 +191,16 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
         }
 
-        // Initialize blocks - place them 3-4 tiles above platforms for hitting
+        // Initialize blocks - spread evenly across entire screen
         if (idx < BLOCK_COUNT) {
             let seed = f32(idx + 1000u);
-            let screen_tiles_xf = f32(screen_tiles_x);
-            let screen_tiles_yf = f32(screen_tiles_y);
 
-            // Try to place blocks above platform positions
-            let plat_row = idx % 30u;  // Reference a platform row
-            let block_col = idx / 30u;  // Spread horizontally
+            // Evenly distribute blocks across entire screen width
+            let x_tile = u32(random(seed, 10.0) * f32(screen_tiles_x));
+            let y_tile = u32(random(seed, 11.0) * f32(screen_tiles_y - 6u)) + 3u;
 
-            let x_tile = (block_col * 3u + u32(random(seed, 10.0) * 4.0)) % screen_tiles_x;
-
-            // Place 3-4 tiles above where platforms are (platforms are distributed across screen)
-            let base_y = (plat_row * (screen_tiles_y - 2u)) / 30u;
-            let y_tile = base_y + 3u + u32(random(seed, 11.0) * 2.0);
-
-            // 80% chance to place a block
-            if (random(seed, 12.0) < 0.8 && y_tile < screen_tiles_y - 4u) {
+            // 50% chance to place a block (less cluttered)
+            if (random(seed, 12.0) < 0.5) {
                 blocks[idx].pos = vec2<f32>(f32(x_tile) * TILE, f32(y_tile) * TILE);
                 blocks[idx].kind = select(0u, 1u, random(seed, 13.0) < 0.3);
                 blocks[idx].flags = 0u;
@@ -278,6 +271,27 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
 
         if ((e.flags & FLAG_ALIVE) == 0u) {
+            entities[idx] = e;
+            return;
+        }
+
+        // Handle dying entities - just fall, no collisions, respawn when off screen
+        if ((e.flags & FLAG_DYING) != 0u) {
+            e.vel.y = min(e.vel.y + GRAVITY, MAX_FALL);
+            e.pos = e.pos + e.vel;
+            e.timer = e.timer + 1u;
+
+            // Respawn after falling off screen or timeout
+            if (e.pos.y > u.resolution.y + 32.0 || e.timer > 90u) {
+                e.flags = FLAG_ALIVE;  // Clear dying, set alive
+                e.timer = 0u;
+                e.pos.x = random(f32(idx) + u.time, 60.0) * u.resolution.x;
+                e.pos.y = -16.0;
+                e.vel = vec2<f32>(select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx) + u.time, 61.0) > 0.5) * 0.6, 0.0);
+                if (e.kind == KIND_KOOPA) {
+                    e.state = KOOPA_WALK;
+                }
+            }
             entities[idx] = e;
             return;
         }
@@ -411,16 +425,19 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
 
             // MARIO interactions
-            if (e.kind == KIND_MARIO) {
+            if (e.kind == KIND_MARIO && (e.flags & FLAG_DYING) == 0u) {
                 // MARIO stomps GOOMBA
                 if (other.kind == KIND_GOOMBA && stomping) {
-                    entities[j].flags = entities[j].flags & ~FLAG_ALIVE; // Kill goomba
+                    entities[j].flags = (entities[j].flags & ~FLAG_ALIVE) | FLAG_DYING;
+                    entities[j].vel.y = JUMP_VEL * 0.3;
                     e.vel.y = JUMP_VEL * 0.5; // Bounce
                 }
-                // GOOMBA hits MARIO (not stomping)
+                // GOOMBA hits MARIO (not stomping) - MARIO DIES
                 else if (other.kind == KIND_GOOMBA && !stomping) {
-                    e.flags = e.flags & ~FLAG_ALIVE; // Mario dies
+                    e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                     e.vel.y = JUMP_VEL;
+                    e.vel.x = select(-2.0, 2.0, dx > 0.0);
+                    e.timer = 0u;
                 }
 
                 // MARIO stomps KOOPA (walking) -> becomes shell
@@ -429,28 +446,33 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
                     entities[j].vel.x = 0.0;
                     e.vel.y = JUMP_VEL * 0.5;
                 }
-                // KOOPA (walking) hits MARIO -> Mario dies
+                // KOOPA (walking) hits MARIO -> MARIO DIES
                 else if (other.kind == KIND_KOOPA && other.state == KOOPA_WALK && !stomping) {
-                    e.flags = e.flags & ~FLAG_ALIVE;
+                    e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                     e.vel.y = JUMP_VEL;
+                    e.vel.x = select(-2.0, 2.0, dx > 0.0);
+                    e.timer = 0u;
                 }
 
                 // MARIO touches stationary SHELL -> kick it
                 if (other.kind == KIND_KOOPA && other.state == KOOPA_SHELL) {
                     entities[j].state = KOOPA_SHELL_MOVING;
                     entities[j].vel.x = select(-SHELL_SPEED, SHELL_SPEED, dx < 0.0);
-                    e.pos.x = e.pos.x + sign(dx) * 4.0; // Push away
+                    e.pos.x = e.pos.x + sign(dx) * 4.0;
                 }
 
-                // MOVING SHELL hits MARIO -> Mario dies
+                // MOVING SHELL hits MARIO -> MARIO DIES
                 if (other.kind == KIND_KOOPA && other.state == KOOPA_SHELL_MOVING) {
-                    e.flags = e.flags & ~FLAG_ALIVE;
+                    e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                     e.vel.y = JUMP_VEL;
+                    e.vel.x = select(-2.0, 2.0, dx > 0.0);
+                    e.timer = 0u;
                 }
 
                 // MARIO stomps another MARIO/LUIGI
                 if (other.kind == KIND_MARIO && stomping && (other.flags & FLAG_PLAYER) == 0u) {
-                    entities[j].flags = entities[j].flags & ~FLAG_ALIVE;
+                    entities[j].flags = (entities[j].flags & ~FLAG_ALIVE) | FLAG_DYING;
+                    entities[j].vel.y = JUMP_VEL * 0.3;
                     e.vel.y = JUMP_VEL * 0.5;
                 }
                 // MARIO collides with MARIO (not stomping) - push apart
@@ -462,10 +484,12 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             // Moving shell kills goombas and other koopas
             if (e.kind == KIND_KOOPA && e.state == KOOPA_SHELL_MOVING) {
                 if (other.kind == KIND_GOOMBA) {
-                    entities[j].flags = entities[j].flags & ~FLAG_ALIVE;
+                    entities[j].flags = (entities[j].flags & ~FLAG_ALIVE) | FLAG_DYING;
+                    entities[j].vel.y = JUMP_VEL * 0.3;
                 }
                 if (other.kind == KIND_KOOPA && j != idx) {
-                    entities[j].flags = entities[j].flags & ~FLAG_ALIVE;
+                    entities[j].flags = (entities[j].flags & ~FLAG_ALIVE) | FLAG_DYING;
+                    entities[j].vel.y = JUMP_VEL * 0.3;
                 }
             }
         }
@@ -474,33 +498,15 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (e.pos.x < -16.0) { e.pos.x = u.resolution.x + 8.0; }
         if (e.pos.x > u.resolution.x + 16.0) { e.pos.x = -8.0; }
 
-        // Respawn when dead or fallen - from top, left, or right edges
-        let should_respawn = (e.pos.y > u.resolution.y + 32.0) || ((e.flags & FLAG_ALIVE) == 0u);
-        if (should_respawn && e.kind != KIND_DEBRIS && e.kind != KIND_COIN) {
-            // Respawn from random edge: 0=top, 1=left, 2=right
-            let edge = u32(random(f32(idx) + u.time, 50.0) * 3.0);
-
-            if (edge == 0u) {
-                // Spawn from top
-                e.pos.y = -16.0;
-                e.pos.x = random(f32(idx) + u.time, 51.0) * u.resolution.x;
-            } else if (edge == 1u) {
-                // Spawn from left
-                e.pos.x = -8.0;
-                e.pos.y = random(f32(idx) + u.time, 52.0) * u.resolution.y * 0.7;
-            } else {
-                // Spawn from right
-                e.pos.x = u.resolution.x + 8.0;
-                e.pos.y = random(f32(idx) + u.time, 53.0) * u.resolution.y * 0.7;
-            }
-
+        // Respawn when fallen off bottom (only for alive, non-dying entities)
+        if (e.pos.y > u.resolution.y + 32.0 && e.kind != KIND_DEBRIS && e.kind != KIND_COIN) {
+            // Spawn from top
+            e.pos.y = -16.0;
+            e.pos.x = random(f32(idx) + u.time, 51.0) * u.resolution.x;
             e.vel.y = 0.0;
-            e.flags = FLAG_ALIVE;
 
-            // Set movement direction based on spawn position
             if (e.kind == KIND_MARIO) {
                 e.vel.x = select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx) + u.time, 54.0) > 0.5) * 0.6;
-                e.state = select(0u, 1u, random(f32(idx) + u.time, 55.0) < 0.5);
             } else if (e.kind == KIND_GOOMBA) {
                 e.vel.x = select(-0.6, 0.6, random(f32(idx) + u.time, 56.0) > 0.5);
             } else if (e.kind == KIND_KOOPA) {
