@@ -107,13 +107,22 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             let col = idx % platforms_per_row;
 
             let total_rows = 32u;
-            let row_height = screen_tiles_y / total_rows;
 
             if (row < total_rows) {
-                let y_tile = row * row_height;
-
                 // Random seed for this platform
                 let seed = f32(idx);
+
+                // Ground rows at actual screen bottom, others distributed evenly
+                let is_ground = row >= total_rows - 2u;
+                var y_tile: u32;
+                if (is_ground) {
+                    // Put ground at actual screen bottom
+                    y_tile = screen_tiles_y - 1u - (total_rows - 1u - row);
+                } else {
+                    // Distribute other rows across remaining space (leave 2 tiles at bottom for ground)
+                    let available_height = screen_tiles_y - 2u;
+                    y_tile = (row * available_height) / (total_rows - 2u);
+                }
 
                 // Vary the pattern by row type
                 let row_type = row % 4u;
@@ -125,7 +134,6 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
                 if (row_type == 0u) {
                     // Long platforms spanning most of width with small gaps
-                    let section_width = screen_tiles_x / 4u;
                     x_tile = col * (screen_tiles_x / platforms_per_row);
                     width = 8u + u32(random(seed, 1.0) * 8.0);  // 8-16 tiles wide
                     has_platform = random(seed, 2.0) < 0.85;
@@ -147,8 +155,7 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
                     has_platform = random(seed, 9.0) < 0.7;
                 }
 
-                // Ensure ground row is always filled
-                let is_ground = row >= total_rows - 2u;
+                // Ensure ground row is always filled with wide platforms
                 if (is_ground) {
                     has_platform = true;
                     width = max(width, screen_tiles_x / platforms_per_row + 2u);
