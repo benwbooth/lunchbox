@@ -24,6 +24,7 @@ pub fn MarioMinigame() -> impl IntoView {
     let canvas_ref = NodeRef::<html::Canvas>::new();
     let initialized = Rc::new(RefCell::new(false));
     let gpu_state: Rc<RefCell<Option<GpuState>>> = Rc::new(RefCell::new(None));
+    let (error_msg, set_error_msg) = signal(Option::<String>::None);
 
     let initialized_clone = initialized.clone();
     let gpu_state_init = gpu_state.clone();
@@ -44,6 +45,7 @@ pub fn MarioMinigame() -> impl IntoView {
         let initialized_inner = initialized_clone.clone();
         let gpu_state_inner = gpu_state_init.clone();
         let canvas_clone = canvas.clone();
+        let set_error = set_error_msg.clone();
 
         // Use requestAnimationFrame to ensure layout is computed
         let init_closure = Closure::once(move || {
@@ -61,6 +63,7 @@ pub fn MarioMinigame() -> impl IntoView {
                     }
                     Err(e) => {
                         web_sys::console::error_1(&format!("WebGPU init failed: {}", e).into());
+                        set_error.set(Some(e));
                     }
                 }
             });
@@ -111,7 +114,18 @@ pub fn MarioMinigame() -> impl IntoView {
                 node_ref=canvas_ref
             />
             <div class="minigame-overlay">
-                <p>"Select a platform to view games."</p>
+                {move || {
+                    if let Some(err) = error_msg.get() {
+                        view! {
+                            <p style="color: #ff6b6b">"WebGPU not available"</p>
+                            <p style="font-size: 12px; opacity: 0.7">{err}</p>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <p>"Select a platform to view games."</p>
+                        }.into_any()
+                    }
+                }}
             </div>
         </div>
     }
@@ -194,8 +208,9 @@ impl GpuState {
             .dyn_into::<GpuCanvasContext>()
             .map_err(|_| "Failed to cast context")?;
 
-        // Configure canvas
-        let canvas_config = web_sys::GpuCanvasConfiguration::new(&device, web_sys::GpuTextureFormat::Bgra8unorm);
+        // Configure canvas with preferred format
+        let preferred_format = gpu.get_preferred_canvas_format();
+        let canvas_config = web_sys::GpuCanvasConfiguration::new(&device, preferred_format);
         let _ = context.configure(&canvas_config);
 
         // Create shader module
@@ -240,7 +255,7 @@ impl GpuState {
         let compute_pipeline = create_compute_pipeline(&device, &shader, &compute_pipeline_layout);
 
         // Create render pipeline
-        let render_pipeline = create_render_pipeline(&device, &shader, &render_pipeline_layout);
+        let render_pipeline = create_render_pipeline(&device, &shader, &render_pipeline_layout, preferred_format);
 
         let start_time = js_sys::Date::now();
 
@@ -356,33 +371,38 @@ fn create_buffer_with_data(device: &GpuDevice, data: &[u8], usage: u32) -> GpuBu
 fn create_bind_group_layout(device: &GpuDevice, is_compute: bool) -> web_sys::GpuBindGroupLayout {
     let entries = js_sys::Array::new();
 
-    // Binding 0: Uniforms
-    entries.push(&create_bgl_entry(0, if is_compute { 0x1 } else { 0x3 }, "uniform", false));
+    // Shader stage visibility flags
+    const VERTEX: u32 = 0x1;
+    const FRAGMENT: u32 = 0x2;
+    const COMPUTE: u32 = 0x4;
+
+    // Binding 0: Uniforms (compute needs COMPUTE, render needs VERTEX|FRAGMENT)
+    let uniform_vis = if is_compute { COMPUTE } else { VERTEX | FRAGMENT };
+    entries.push(&create_bgl_entry(0, uniform_vis, "uniform"));
 
     // Bindings 1-3: Storage buffers (read-write for compute, read-only for render)
+    let storage_vis = if is_compute { COMPUTE } else { FRAGMENT };
+    let storage_type = if is_compute { "storage" } else { "read-only-storage" };
     for i in 1..=3 {
-        entries.push(&create_bgl_entry(i, if is_compute { 0x1 } else { 0x2 }, "storage", !is_compute));
+        entries.push(&create_bgl_entry(i, storage_vis, storage_type));
     }
 
     // Bindings 4-5: Read-only storage (sprites, palettes)
     for i in 4..=5 {
-        entries.push(&create_bgl_entry(i, if is_compute { 0x1 } else { 0x2 }, "read-only-storage", true));
+        entries.push(&create_bgl_entry(i, storage_vis, "read-only-storage"));
     }
 
     let desc = web_sys::GpuBindGroupLayoutDescriptor::new(&entries);
     device.create_bind_group_layout(&desc).expect("Failed to create BGL")
 }
 
-fn create_bgl_entry(binding: u32, visibility: u32, buffer_type: &str, read_only: bool) -> JsValue {
+fn create_bgl_entry(binding: u32, visibility: u32, buffer_type: &str) -> JsValue {
     let entry = Object::new();
     Reflect::set(&entry, &"binding".into(), &binding.into()).unwrap();
     Reflect::set(&entry, &"visibility".into(), &visibility.into()).unwrap();
 
     let buffer = Object::new();
     Reflect::set(&buffer, &"type".into(), &buffer_type.into()).unwrap();
-    if buffer_type == "storage" && read_only {
-        Reflect::set(&buffer, &"type".into(), &"read-only-storage".into()).unwrap();
-    }
     Reflect::set(&entry, &"buffer".into(), &buffer).unwrap();
 
     entry.into()
@@ -438,13 +458,15 @@ fn create_render_pipeline(
     device: &GpuDevice,
     shader: &web_sys::GpuShaderModule,
     layout: &web_sys::GpuPipelineLayout,
+    format: web_sys::GpuTextureFormat,
 ) -> GpuRenderPipeline {
     let vertex = web_sys::GpuVertexState::new(shader);
     vertex.set_entry_point("vs_main");
 
-    // Fragment state
+    // Fragment state - use the canvas preferred format
     let target = Object::new();
-    Reflect::set(&target, &"format".into(), &"bgra8unorm".into()).unwrap();
+    let format_val: JsValue = format.into();
+    Reflect::set(&target, &"format".into(), &format_val).unwrap();
 
     let targets = js_sys::Array::new();
     targets.push(&target);
