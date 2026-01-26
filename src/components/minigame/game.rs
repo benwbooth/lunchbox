@@ -398,15 +398,15 @@ fn create_render_bind_group_layout(device: &GpuDevice) -> web_sys::GpuBindGroupL
     const VERTEX: u32 = 0x1;
     const FRAGMENT: u32 = 0x2;
 
-    // Binding 0: Uniforms
+    // Binding 0: Uniforms (vertex needs resolution for NDC conversion)
     entries.push(&create_bgl_entry(0, VERTEX | FRAGMENT, "uniform"));
 
-    // Bindings 1-3: Storage buffers (read-only for render)
+    // Bindings 1-3: Storage buffers (vertex shader reads entity/block/platform positions)
     for i in 1..=3 {
-        entries.push(&create_bgl_entry(i, FRAGMENT, "read-only-storage"));
+        entries.push(&create_bgl_entry(i, VERTEX | FRAGMENT, "read-only-storage"));
     }
 
-    // Bindings 4-5: Read-only storage (sprites, palettes)
+    // Bindings 4-5: Read-only storage (sprites, palettes - fragment only)
     for i in 4..=5 {
         entries.push(&create_bgl_entry(i, FRAGMENT, "read-only-storage"));
     }
