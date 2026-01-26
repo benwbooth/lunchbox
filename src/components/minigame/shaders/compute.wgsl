@@ -95,35 +95,48 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Initialize on first frame
     if (u.frame == 0u) {
-        // Initialize platforms
+        // Initialize platforms across the full screen height
         if (idx < PLATFORM_COUNT) {
-            let ground_y = floor(u.resolution.y / TILE) - 2.0;
+            let screen_tiles_x = floor(u.resolution.x / TILE);
+            let screen_tiles_y = floor(u.resolution.y / TILE);
+            let ground_y = screen_tiles_y - 2.0;
+
             if (idx < 8u) {
-                // Ground platforms
-                let w = 8.0 + random(f32(idx), 1.0) * 12.0;
-                platforms[idx].x = f32(idx) * 20.0;
+                // Ground platforms - cover the full width
+                let segment_width = screen_tiles_x / 8.0;
+                platforms[idx].x = f32(idx) * segment_width;
                 platforms[idx].y = ground_y;
-                platforms[idx].width = w;
+                platforms[idx].width = segment_width + 2.0;  // Overlap slightly
                 platforms[idx].is_ground = 1u;
             } else {
-                // Floating platforms
-                let level = f32(idx % 4u);
-                platforms[idx].x = random(f32(idx), 2.0) * (u.resolution.x / TILE - 10.0);
-                platforms[idx].y = ground_y - 4.0 - level * 4.0;
-                platforms[idx].width = 3.0 + random(f32(idx), 3.0) * 5.0;
+                // Floating platforms - spread across full screen height
+                let plat_idx = idx - 8u;
+                let num_levels = 8u;  // More vertical levels
+                let level = plat_idx % num_levels;
+                let col = plat_idx / num_levels;
+
+                // Spread platforms from top to bottom (leaving room at top and above ground)
+                let min_y = 4.0;  // Leave some space at top
+                let max_y = ground_y - 4.0;  // Leave space above ground
+                let level_spacing = (max_y - min_y) / f32(num_levels);
+
+                platforms[idx].x = random(f32(idx), 2.0) * (screen_tiles_x - 10.0);
+                platforms[idx].y = min_y + f32(level) * level_spacing + random(f32(idx), 22.0) * 2.0;
+                platforms[idx].width = 4.0 + random(f32(idx), 3.0) * 8.0;
                 platforms[idx].is_ground = 0u;
             }
         }
 
         // Initialize blocks on floating platforms
         if (idx < BLOCK_COUNT) {
-            let plat_idx = idx / 8u;
-            if (plat_idx >= 8u && plat_idx < PLATFORM_COUNT) {
+            let plat_idx = 8u + (idx / 8u);  // Start from floating platforms (index 8+)
+            if (plat_idx < PLATFORM_COUNT) {
                 let plat = platforms[plat_idx];
                 let block_offset = f32(idx % 8u);
-                if (block_offset < plat.width) {
-                    blocks[idx].pos = vec2<f32>((plat.x + block_offset) * TILE, plat.y * TILE);
-                    blocks[idx].kind = select(0u, 1u, random(f32(idx), 4.0) < 0.2);
+                if (block_offset < plat.width && plat.width > 0.0) {
+                    // Place blocks on top of platforms
+                    blocks[idx].pos = vec2<f32>((plat.x + block_offset) * TILE, (plat.y - 1.0) * TILE);
+                    blocks[idx].kind = select(0u, 1u, random(f32(idx), 4.0) < 0.3);  // 30% question blocks
                     blocks[idx].flags = 0u;
                 } else {
                     blocks[idx].flags = 2u; // destroyed/unused
@@ -133,28 +146,27 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
         }
 
-        // Initialize entities
+        // Initialize entities spread across the screen
         if (idx < ENTITY_COUNT) {
             var e: Entity;
             e.flags = FLAG_ALIVE;
 
             if (idx < 20u) {
-                // Marios
+                // Marios - spread across full screen
                 e.kind = KIND_MARIO;
                 e.pos = vec2<f32>(
                     random(f32(idx), 5.0) * u.resolution.x,
-                    random(f32(idx), 6.0) * u.resolution.y * 0.5
+                    random(f32(idx), 6.0) * u.resolution.y * 0.8  // Use 80% of screen height
                 );
                 e.vel = vec2<f32>(select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx), 7.0) > 0.5) * 0.5, 0.0);
                 if (idx == 0u) { e.flags = e.flags | FLAG_PLAYER; }
-                // Random character palette (Mario, Luigi, Toad, Princess colors)
                 e.state = u32(random(f32(idx), 20.0) * 4.0);
             } else if (idx < 35u) {
-                // Goombas
+                // Goombas - spread across screen
                 e.kind = KIND_GOOMBA;
                 e.pos = vec2<f32>(
                     random(f32(idx), 8.0) * u.resolution.x,
-                    random(f32(idx), 9.0) * u.resolution.y * 0.3
+                    random(f32(idx), 9.0) * u.resolution.y * 0.7
                 );
                 e.vel = vec2<f32>(select(-0.5, 0.5, random(f32(idx), 10.0) > 0.5), 0.0);
             } else if (idx < 42u) {
@@ -162,15 +174,15 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
                 e.kind = KIND_KOOPA;
                 e.pos = vec2<f32>(
                     random(f32(idx), 11.0) * u.resolution.x,
-                    random(f32(idx), 12.0) * u.resolution.y * 0.3
+                    random(f32(idx), 12.0) * u.resolution.y * 0.6
                 );
                 e.vel = vec2<f32>(select(-0.4, 0.4, random(f32(idx), 13.0) > 0.5), 0.0);
             } else {
-                // Coins
+                // Coins - spread across screen
                 e.kind = KIND_COIN;
                 e.pos = vec2<f32>(
                     random(f32(idx), 14.0) * u.resolution.x,
-                    random(f32(idx), 15.0) * u.resolution.y * 0.5 + 50.0
+                    random(f32(idx), 15.0) * u.resolution.y * 0.7
                 );
                 e.vel = vec2<f32>(0.0, 0.0);
             }
