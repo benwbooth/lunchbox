@@ -207,47 +207,39 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
         }
 
-        // Initialize entities
+        // Initialize entities - MORE of everything!
         if (idx < ENTITY_COUNT) {
             var e: Entity;
             e.flags = FLAG_ALIVE;
             e.state = 0u;
 
-            if (idx < 40u) {
-                // Marios/Luigis
+            if (idx < 50u) {
+                // Marios/Luigis - lots of them
                 e.kind = KIND_MARIO;
                 e.pos = vec2<f32>(
                     random(f32(idx), 5.0) * u.resolution.x,
-                    random(f32(idx), 6.0) * u.resolution.y * 0.9
+                    random(f32(idx), 6.0) * u.resolution.y * 0.8
                 );
-                e.vel = vec2<f32>(select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx), 7.0) > 0.5) * 0.5, 0.0);
+                e.vel = vec2<f32>(select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx), 7.0) > 0.5) * 0.6, 0.0);
                 if (idx == 0u) { e.flags = e.flags | FLAG_PLAYER; }
                 e.state = select(0u, 1u, random(f32(idx), 20.0) < 0.5); // 0=Mario, 1=Luigi
-            } else if (idx < 70u) {
-                // Goombas
+            } else if (idx < 90u) {
+                // Goombas - many more
                 e.kind = KIND_GOOMBA;
                 e.pos = vec2<f32>(
                     random(f32(idx), 8.0) * u.resolution.x,
-                    random(f32(idx), 9.0) * u.resolution.y * 0.9
+                    random(f32(idx), 9.0) * u.resolution.y * 0.8
                 );
-                e.vel = vec2<f32>(select(-0.5, 0.5, random(f32(idx), 10.0) > 0.5), 0.0);
-            } else if (idx < 90u) {
+                e.vel = vec2<f32>(select(-0.6, 0.6, random(f32(idx), 10.0) > 0.5), 0.0);
+            } else if (idx < 110u) {
                 // Koopas
                 e.kind = KIND_KOOPA;
                 e.pos = vec2<f32>(
                     random(f32(idx), 11.0) * u.resolution.x,
-                    random(f32(idx), 12.0) * u.resolution.y * 0.8
+                    random(f32(idx), 12.0) * u.resolution.y * 0.7
                 );
-                e.vel = vec2<f32>(select(-0.4, 0.4, random(f32(idx), 13.0) > 0.5), 0.0);
+                e.vel = vec2<f32>(select(-0.5, 0.5, random(f32(idx), 13.0) > 0.5), 0.0);
                 e.state = KOOPA_WALK;
-            } else if (idx < 100u) {
-                // Coins
-                e.kind = KIND_COIN;
-                e.pos = vec2<f32>(
-                    random(f32(idx), 14.0) * u.resolution.x,
-                    random(f32(idx), 15.0) * u.resolution.y * 0.85
-                );
-                e.vel = vec2<f32>(0.0, 0.0);
             } else {
                 // Reserve slots for debris (start inactive)
                 e.kind = KIND_DEBRIS;
@@ -329,13 +321,14 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
                 e.flags = e.flags | FLAG_GROUND;
             }
 
-            // Mario hitting block from below
+            // Mario hitting block from below (head hits block bottom)
+            // Block bottom is at b.pos.y + 8, Mario's head is at e.pos.y
             if (e.kind == KIND_MARIO && e.vel.y < 0.0 &&
-                e.pos.x + 7.0 > b.pos.x && e.pos.x + 1.0 < b.pos.x + 8.0 &&
-                e.pos.y <= b.pos.y + 8.0 && old_y >= b.pos.y + 4.0) {
+                e.pos.x + 6.0 > b.pos.x && e.pos.x + 2.0 < b.pos.x + 8.0 &&
+                e.pos.y < b.pos.y + 8.0 && old_y >= b.pos.y + 8.0) {
 
-                e.vel.y = 1.0; // Bounce down
-                e.pos.y = b.pos.y + 9.0;
+                e.vel.y = 2.0; // Bounce down
+                e.pos.y = b.pos.y + 8.0;
 
                 if (b.kind == 0u) {
                     // Brick - destroy it and spawn 4 debris pieces
@@ -467,21 +460,42 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
         }
 
-        // Screen wrap
-        if (e.pos.x < -8.0) { e.pos.x = u.resolution.x; }
-        if (e.pos.x > u.resolution.x) { e.pos.x = -8.0; }
+        // Screen wrap - entities continue off edges
+        if (e.pos.x < -16.0) { e.pos.x = u.resolution.x + 8.0; }
+        if (e.pos.x > u.resolution.x + 16.0) { e.pos.x = -8.0; }
 
-        // Fall respawn (for Marios and enemies, not debris)
-        if (e.pos.y > u.resolution.y + 32.0 && e.kind != KIND_DEBRIS) {
-            if (e.kind == KIND_MARIO || e.kind == KIND_GOOMBA || e.kind == KIND_KOOPA) {
+        // Respawn when dead or fallen - from top, left, or right edges
+        let should_respawn = (e.pos.y > u.resolution.y + 32.0) || ((e.flags & FLAG_ALIVE) == 0u);
+        if (should_respawn && e.kind != KIND_DEBRIS && e.kind != KIND_COIN) {
+            // Respawn from random edge: 0=top, 1=left, 2=right
+            let edge = u32(random(f32(idx) + u.time, 50.0) * 3.0);
+
+            if (edge == 0u) {
+                // Spawn from top
                 e.pos.y = -16.0;
-                e.pos.x = random(f32(idx) + u.time, 16.0) * u.resolution.x;
-                e.vel.y = 0.0;
-                e.flags = e.flags | FLAG_ALIVE;
-                if (e.kind == KIND_KOOPA) {
-                    e.state = KOOPA_WALK;
-                    e.vel.x = select(-0.4, 0.4, random(f32(idx) + u.time, 17.0) > 0.5);
-                }
+                e.pos.x = random(f32(idx) + u.time, 51.0) * u.resolution.x;
+            } else if (edge == 1u) {
+                // Spawn from left
+                e.pos.x = -8.0;
+                e.pos.y = random(f32(idx) + u.time, 52.0) * u.resolution.y * 0.7;
+            } else {
+                // Spawn from right
+                e.pos.x = u.resolution.x + 8.0;
+                e.pos.y = random(f32(idx) + u.time, 53.0) * u.resolution.y * 0.7;
+            }
+
+            e.vel.y = 0.0;
+            e.flags = FLAG_ALIVE;
+
+            // Set movement direction based on spawn position
+            if (e.kind == KIND_MARIO) {
+                e.vel.x = select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx) + u.time, 54.0) > 0.5) * 0.6;
+                e.state = select(0u, 1u, random(f32(idx) + u.time, 55.0) < 0.5);
+            } else if (e.kind == KIND_GOOMBA) {
+                e.vel.x = select(-0.6, 0.6, random(f32(idx) + u.time, 56.0) > 0.5);
+            } else if (e.kind == KIND_KOOPA) {
+                e.state = KOOPA_WALK;
+                e.vel.x = select(-0.5, 0.5, random(f32(idx) + u.time, 57.0) > 0.5);
             }
         }
 

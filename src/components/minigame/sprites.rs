@@ -171,16 +171,16 @@ pub const GOOMBA: Sprite = sprite_from_str(b"\
 .22..22.\
 22....22");
 
-// Brick block - classic SMB style with clear mortar lines
-// 1=highlight, 2=brick face, 3=dark mortar/shadow
+// Brick block - clean 8x8 with two bricks per row, offset pattern
+// 1=highlight, 2=brick face, 3=dark mortar
 pub const BRICK: Sprite = sprite_from_str(b"\
-22232223\
-11131113\
-22232223\
+22221222\
+22221222\
+22221222\
 33333333\
-32223222\
-31113111\
-32223222\
+12222122\
+12222122\
+12222122\
 33333333");
 
 // Question block (frame 1) - clear ? shape
