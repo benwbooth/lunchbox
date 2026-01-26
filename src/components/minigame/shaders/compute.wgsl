@@ -195,16 +195,18 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (idx < BLOCK_COUNT) {
             let seed = f32(idx + 1000u);
 
-            // Evenly distribute blocks across entire screen width
-            let x_tile = u32(random(seed, 10.0) * f32(screen_tiles_x));
-            let y_tile = u32(random(seed, 11.0) * f32(screen_tiles_y - 6u)) + 3u;
+            // Evenly distribute blocks across entire screen width (minimum x=1 tile)
+            let x_tile = u32(random(seed, 10.0) * f32(screen_tiles_x - 2u)) + 1u;
+            let y_tile = u32(random(seed, 11.0) * f32(screen_tiles_y - 8u)) + 4u;
 
-            // 50% chance to place a block (less cluttered)
-            if (random(seed, 12.0) < 0.5) {
+            // 40% chance to place a block (less cluttered)
+            if (random(seed, 12.0) < 0.4 && x_tile > 0u && y_tile > 0u) {
                 blocks[idx].pos = vec2<f32>(f32(x_tile) * TILE, f32(y_tile) * TILE);
                 blocks[idx].kind = select(0u, 1u, random(seed, 13.0) < 0.3);
                 blocks[idx].flags = 0u;
             } else {
+                // Mark as destroyed (invisible)
+                blocks[idx].pos = vec2<f32>(-100.0, -100.0);
                 blocks[idx].flags = 2u;
             }
         }
@@ -270,28 +272,38 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             return;
         }
 
-        if ((e.flags & FLAG_ALIVE) == 0u) {
-            entities[idx] = e;
-            return;
-        }
-
-        // Handle dying entities - just fall, no collisions, respawn when off screen
+        // Handle dying entities FIRST - just fall, no collisions, respawn when off screen
         if ((e.flags & FLAG_DYING) != 0u) {
             e.vel.y = min(e.vel.y + GRAVITY, MAX_FALL);
             e.pos = e.pos + e.vel;
             e.timer = e.timer + 1u;
 
-            // Respawn after falling off screen or timeout
-            if (e.pos.y > u.resolution.y + 32.0 || e.timer > 90u) {
+            // Respawn after falling off screen or timeout (faster: 60 frames)
+            if (e.pos.y > u.resolution.y + 32.0 || e.timer > 60u) {
                 e.flags = FLAG_ALIVE;  // Clear dying, set alive
                 e.timer = 0u;
-                e.pos.x = random(f32(idx) + u.time, 60.0) * u.resolution.x;
-                e.pos.y = -16.0;
+                // Spawn from random edge
+                let edge = u32(random(f32(idx) + u.time, 70.0) * 3.0);
+                if (edge == 0u) {
+                    e.pos.x = random(f32(idx) + u.time, 60.0) * u.resolution.x;
+                    e.pos.y = -16.0;
+                } else if (edge == 1u) {
+                    e.pos.x = -8.0;
+                    e.pos.y = random(f32(idx) + u.time, 71.0) * u.resolution.y * 0.5;
+                } else {
+                    e.pos.x = u.resolution.x + 8.0;
+                    e.pos.y = random(f32(idx) + u.time, 72.0) * u.resolution.y * 0.5;
+                }
                 e.vel = vec2<f32>(select(-MOVE_SPEED, MOVE_SPEED, random(f32(idx) + u.time, 61.0) > 0.5) * 0.6, 0.0);
                 if (e.kind == KIND_KOOPA) {
                     e.state = KOOPA_WALK;
                 }
             }
+            entities[idx] = e;
+            return;
+        }
+
+        if ((e.flags & FLAG_ALIVE) == 0u) {
             entities[idx] = e;
             return;
         }
@@ -330,35 +342,50 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
         }
 
-        // Block collision (landing on top + hitting from below)
+        // Block collision (landing on top + hitting from below + side collision)
         for (var i = 0u; i < BLOCK_COUNT; i = i + 1u) {
             var b = blocks[i];
             if ((b.flags & 2u) != 0u) { continue; }
+            // Skip invalid blocks (position 0,0 means uninitialized)
+            if (b.pos.x <= 0.0 && b.pos.y <= 0.0) { continue; }
 
-            // Landing on top
-            if (e.vel.y > 0.0 &&
-                e.pos.x + 7.0 > b.pos.x && e.pos.x + 1.0 < b.pos.x + 8.0 &&
-                e.pos.y + 8.0 >= b.pos.y && old_y + 8.0 <= b.pos.y + 4.0) {
-                e.pos.y = b.pos.y - 8.0;
-                e.vel.y = 0.0;
-                e.flags = e.flags | FLAG_GROUND;
-            }
-
-            // Mario hitting block from below
-            // Simple AABB overlap check: if Mario overlaps block while moving up, break it
-            let mario_left = e.pos.x + 1.0;
-            let mario_right = e.pos.x + 7.0;
-            let mario_top = e.pos.y;
-            let mario_bottom = e.pos.y + 8.0;
+            let ent_left = e.pos.x + 1.0;
+            let ent_right = e.pos.x + 7.0;
+            let ent_top = e.pos.y;
+            let ent_bottom = e.pos.y + 8.0;
             let block_left = b.pos.x;
             let block_right = b.pos.x + 8.0;
             let block_top = b.pos.y;
             let block_bottom = b.pos.y + 8.0;
 
-            let x_overlap = mario_right > block_left && mario_left < block_right;
-            let y_overlap = mario_bottom > block_top && mario_top < block_bottom;
+            let x_overlap = ent_right > block_left && ent_left < block_right;
+            let y_overlap = ent_bottom > block_top && ent_top < block_bottom;
+
+            // Landing on top
+            if (e.vel.y > 0.0 && x_overlap &&
+                ent_bottom >= block_top && old_y + 8.0 <= block_top + 4.0) {
+                e.pos.y = block_top - 8.0;
+                e.vel.y = 0.0;
+                e.flags = e.flags | FLAG_GROUND;
+            }
+
+            // Side collision - entities turn around or stop
+            if (y_overlap && ent_bottom > block_top + 2.0) {
+                // Hitting from left side
+                if (e.vel.x > 0.0 && ent_right > block_left && old_pos.x + 7.0 <= block_left + 2.0) {
+                    e.pos.x = block_left - 7.0;
+                    e.vel.x = -e.vel.x;  // Reverse
+                }
+                // Hitting from right side
+                if (e.vel.x < 0.0 && ent_left < block_right && old_pos.x + 1.0 >= block_right - 2.0) {
+                    e.pos.x = block_right - 1.0;
+                    e.vel.x = -e.vel.x;  // Reverse
+                }
+            }
+
+            // Mario hitting block from below - BREAK IT
             let moving_up = e.vel.y < 0.0;
-            let approaching_from_below = old_y > block_top;  // Was below block's top
+            let approaching_from_below = old_y >= block_top;
 
             if (e.kind == KIND_MARIO && moving_up && x_overlap && y_overlap && approaching_from_below) {
                 e.vel.y = 2.0; // Bounce down
@@ -370,8 +397,9 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
                     // Spawn debris (find free slots in entity pool)
                     for (var d = 0u; d < 4u; d = d + 1u) {
-                        for (var slot = 100u; slot < ENTITY_COUNT; slot = slot + 1u) {
-                            if ((entities[slot].flags & FLAG_ALIVE) == 0u) {
+                        for (var slot = 110u; slot < ENTITY_COUNT; slot = slot + 1u) {
+                            // Only use truly free slots (not alive, not dying)
+                            if ((entities[slot].flags & (FLAG_ALIVE | FLAG_DYING)) == 0u) {
                                 var debris: Entity;
                                 debris.kind = KIND_DEBRIS;
                                 debris.flags = FLAG_ALIVE;
@@ -411,27 +439,47 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             // Check if we're stomping (our feet hitting their head)
             let stomping = e.vel.y > 0.0 && dy < -2.0 && dy > -10.0 && abs(dx) < 6.0;
 
-            // GOOMBA-GOOMBA: both reverse direction
-            if (e.kind == KIND_GOOMBA && other.kind == KIND_GOOMBA) {
-                e.vel.x = -e.vel.x;
-                e.pos.x = e.pos.x + sign(dx) * 2.0;
+            // Check if other is stomping us
+            let being_stomped = other.vel.y > 0.0 && dy > 2.0 && dy < 10.0 && abs(dx) < 6.0;
+
+            // GOOMBA collisions
+            if (e.kind == KIND_GOOMBA && (e.flags & FLAG_DYING) == 0u) {
+                if (other.kind == KIND_GOOMBA) {
+                    // GOOMBA-GOOMBA: reverse direction
+                    e.vel.x = -e.vel.x;
+                    e.pos.x = e.pos.x + sign(dx) * 2.0;
+                } else if (other.kind == KIND_MARIO && (other.flags & FLAG_DYING) == 0u) {
+                    if (being_stomped) {
+                        // Mario stomped us - we die
+                        e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
+                        e.vel.y = JUMP_VEL * 0.3;
+                        e.timer = 0u;
+                    }
+                    // Note: Mario dying is handled in Mario's section
+                } else if (other.kind == KIND_KOOPA && other.state == KOOPA_WALK) {
+                    // GOOMBA-KOOPA: reverse
+                    e.vel.x = -e.vel.x;
+                    e.pos.x = e.pos.x + sign(dx) * 2.0;
+                }
             }
 
-            // KOOPA-KOOPA: both reverse (if walking)
-            if (e.kind == KIND_KOOPA && other.kind == KIND_KOOPA &&
-                e.state == KOOPA_WALK && other.state == KOOPA_WALK) {
-                e.vel.x = -e.vel.x;
-                e.pos.x = e.pos.x + sign(dx) * 2.0;
-            }
-
-            // GOOMBA-KOOPA: both reverse (if koopa walking)
-            if (e.kind == KIND_GOOMBA && other.kind == KIND_KOOPA && other.state == KOOPA_WALK) {
-                e.vel.x = -e.vel.x;
-                e.pos.x = e.pos.x + sign(dx) * 2.0;
-            }
-            if (e.kind == KIND_KOOPA && e.state == KOOPA_WALK && other.kind == KIND_GOOMBA) {
-                e.vel.x = -e.vel.x;
-                e.pos.x = e.pos.x + sign(dx) * 2.0;
+            // KOOPA collisions
+            if (e.kind == KIND_KOOPA && (e.flags & FLAG_DYING) == 0u) {
+                if (other.kind == KIND_KOOPA && e.state == KOOPA_WALK && other.state == KOOPA_WALK) {
+                    // KOOPA-KOOPA: reverse
+                    e.vel.x = -e.vel.x;
+                    e.pos.x = e.pos.x + sign(dx) * 2.0;
+                } else if (other.kind == KIND_GOOMBA && e.state == KOOPA_WALK) {
+                    // KOOPA-GOOMBA: reverse
+                    e.vel.x = -e.vel.x;
+                    e.pos.x = e.pos.x + sign(dx) * 2.0;
+                } else if (other.kind == KIND_MARIO && (other.flags & FLAG_DYING) == 0u && e.state == KOOPA_WALK) {
+                    if (being_stomped) {
+                        // Mario stomped us - become shell
+                        e.state = KOOPA_SHELL;
+                        e.vel.x = 0.0;
+                    }
+                }
             }
 
             // MARIO interactions
