@@ -190,15 +190,24 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
         }
 
-        // Initialize blocks
+        // Initialize blocks - place them 3-4 tiles above platforms for hitting
         if (idx < BLOCK_COUNT) {
             let seed = f32(idx + 1000u);
             let screen_tiles_xf = f32(screen_tiles_x);
             let screen_tiles_yf = f32(screen_tiles_y);
-            let x_tile = u32(random(seed, 10.0) * screen_tiles_xf);
-            let y_tile = u32(random(seed, 11.0) * (screen_tiles_yf - 4.0)) + 2u;
 
-            if (random(seed, 12.0) < 0.6) {
+            // Try to place blocks above platform positions
+            let plat_row = idx % 30u;  // Reference a platform row
+            let block_col = idx / 30u;  // Spread horizontally
+
+            let x_tile = (block_col * 3u + u32(random(seed, 10.0) * 4.0)) % screen_tiles_x;
+
+            // Place 3-4 tiles above where platforms are (platforms are distributed across screen)
+            let base_y = (plat_row * (screen_tiles_y - 2u)) / 30u;
+            let y_tile = base_y + 3u + u32(random(seed, 11.0) * 2.0);
+
+            // 80% chance to place a block
+            if (random(seed, 12.0) < 0.8 && y_tile < screen_tiles_y - 4u) {
                 blocks[idx].pos = vec2<f32>(f32(x_tile) * TILE, f32(y_tile) * TILE);
                 blocks[idx].kind = select(0u, 1u, random(seed, 13.0) < 0.3);
                 blocks[idx].flags = 0u;
@@ -322,11 +331,12 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
 
             // Mario hitting block from below (head hits block bottom)
-            // Block bottom is at b.pos.y + 8, Mario's head is at e.pos.y
-            if (e.kind == KIND_MARIO && e.vel.y < 0.0 &&
-                e.pos.x + 6.0 > b.pos.x && e.pos.x + 2.0 < b.pos.x + 8.0 &&
-                e.pos.y < b.pos.y + 8.0 && old_y >= b.pos.y + 8.0) {
+            // More forgiving check: if Mario is moving up and overlaps block
+            let x_overlap = e.pos.x + 7.0 > b.pos.x && e.pos.x + 1.0 < b.pos.x + 8.0;
+            let head_in_block = e.pos.y < b.pos.y + 8.0 && e.pos.y + 4.0 > b.pos.y;
+            let was_below = old_y > b.pos.y;
 
+            if (e.kind == KIND_MARIO && e.vel.y < 0.0 && x_overlap && head_in_block && was_below) {
                 e.vel.y = 2.0; // Bounce down
                 e.pos.y = b.pos.y + 8.0;
 

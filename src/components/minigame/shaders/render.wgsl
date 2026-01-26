@@ -166,7 +166,7 @@ fn vs_main(
         let block_idx = instance_idx - BLOCK_OFFSET;
         if (block_idx < BLOCK_COUNT) {
             let b = blocks[block_idx];
-            if ((b.flags & 2u) == 0u && b.pos.x > 0.0) {
+            if ((b.flags & 2u) == 0u && (b.pos.x >= 0.0 || b.pos.y >= 0.0)) {
                 world_pos = b.pos;
                 if (b.kind == 2u) {
                     // Empty question block
