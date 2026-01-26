@@ -344,13 +344,23 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
                 e.flags = e.flags | FLAG_GROUND;
             }
 
-            // Mario hitting block from below (head hits block bottom)
-            // More forgiving check: if Mario is moving up and overlaps block
-            let x_overlap = e.pos.x + 7.0 > b.pos.x && e.pos.x + 1.0 < b.pos.x + 8.0;
-            let head_in_block = e.pos.y < b.pos.y + 8.0 && e.pos.y + 4.0 > b.pos.y;
-            let was_below = old_y > b.pos.y;
+            // Mario hitting block from below
+            // Simple AABB overlap check: if Mario overlaps block while moving up, break it
+            let mario_left = e.pos.x + 1.0;
+            let mario_right = e.pos.x + 7.0;
+            let mario_top = e.pos.y;
+            let mario_bottom = e.pos.y + 8.0;
+            let block_left = b.pos.x;
+            let block_right = b.pos.x + 8.0;
+            let block_top = b.pos.y;
+            let block_bottom = b.pos.y + 8.0;
 
-            if (e.kind == KIND_MARIO && e.vel.y < 0.0 && x_overlap && head_in_block && was_below) {
+            let x_overlap = mario_right > block_left && mario_left < block_right;
+            let y_overlap = mario_bottom > block_top && mario_top < block_bottom;
+            let moving_up = e.vel.y < 0.0;
+            let approaching_from_below = old_y > block_top;  // Was below block's top
+
+            if (e.kind == KIND_MARIO && moving_up && x_overlap && y_overlap && approaching_from_below) {
                 e.vel.y = 2.0; // Bounce down
                 e.pos.y = b.pos.y + 8.0;
 
