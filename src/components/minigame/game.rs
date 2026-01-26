@@ -230,31 +230,30 @@ impl GpuState {
         let palette_data = pack_palettes();
         let palette_buffer = create_buffer_with_data(&device, &u32_slice_to_bytes(&palette_data), gpu_buffer_usage_storage());
 
-        // Create bind group layouts
-        let compute_bgl = create_bind_group_layout(&device, true);
-        let render_bgl = create_bind_group_layout(&device, false);
+        // Create bind group layouts - group 0 for compute (read_write), group 1 for render (read-only)
+        let compute_bgl = create_compute_bind_group_layout(&device);
+        let render_bgl = create_render_bind_group_layout(&device);
 
-        // Create bind groups
+        // Create bind groups - both point to the same buffers but with different layouts
         let compute_bind_group = create_bind_group(
             &device, &compute_bgl,
             &uniform_buffer, &entity_buffer, &block_buffer, &platform_buffer,
             &sprite_buffer, &palette_buffer,
         );
-
         let render_bind_group = create_bind_group(
             &device, &render_bgl,
             &uniform_buffer, &entity_buffer, &block_buffer, &platform_buffer,
             &sprite_buffer, &palette_buffer,
         );
 
-        // Create pipeline layouts
+        // Create pipeline layouts - compute uses group 0, render uses both groups
         let compute_pipeline_layout = create_pipeline_layout(&device, &compute_bgl);
-        let render_pipeline_layout = create_pipeline_layout(&device, &render_bgl);
+        let render_pipeline_layout = create_render_pipeline_layout(&device, &compute_bgl, &render_bgl);
 
         // Create compute pipeline
         let compute_pipeline = create_compute_pipeline(&device, &shader, &compute_pipeline_layout);
 
-        // Create render pipeline
+        // Create render pipeline with both bind group layouts
         let render_pipeline = create_render_pipeline(&device, &shader, &render_pipeline_layout, preferred_format);
 
         let start_time = js_sys::Date::now();
@@ -329,7 +328,9 @@ impl GpuState {
             let render_pass_desc = create_render_pass_descriptor(&color_attachment);
             let render_pass = encoder.begin_render_pass(&render_pass_desc).expect("begin render pass");
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, Some(&self.render_bind_group));
+            // Set both bind groups - compute data at group 0, render (read-only) at group 1
+            render_pass.set_bind_group(0, Some(&self.compute_bind_group));
+            render_pass.set_bind_group(1, Some(&self.render_bind_group));
             render_pass.draw(3); // Full-screen triangle
             render_pass.end();
         }
@@ -368,32 +369,47 @@ fn create_buffer_with_data(device: &GpuDevice, data: &[u8], usage: u32) -> GpuBu
     buffer
 }
 
-fn create_bind_group_layout(device: &GpuDevice, is_compute: bool) -> web_sys::GpuBindGroupLayout {
+fn create_compute_bind_group_layout(device: &GpuDevice) -> web_sys::GpuBindGroupLayout {
     let entries = js_sys::Array::new();
-
-    // Shader stage visibility flags
-    const VERTEX: u32 = 0x1;
-    const FRAGMENT: u32 = 0x2;
     const COMPUTE: u32 = 0x4;
 
-    // Binding 0: Uniforms (compute needs COMPUTE, render needs VERTEX|FRAGMENT)
-    let uniform_vis = if is_compute { COMPUTE } else { VERTEX | FRAGMENT };
-    entries.push(&create_bgl_entry(0, uniform_vis, "uniform"));
+    // Binding 0: Uniforms
+    entries.push(&create_bgl_entry(0, COMPUTE, "uniform"));
 
-    // Bindings 1-3: Storage buffers (read-write for compute, read-only for render)
-    let storage_vis = if is_compute { COMPUTE } else { FRAGMENT };
-    let storage_type = if is_compute { "storage" } else { "read-only-storage" };
+    // Bindings 1-3: Storage buffers (read-write)
     for i in 1..=3 {
-        entries.push(&create_bgl_entry(i, storage_vis, storage_type));
+        entries.push(&create_bgl_entry(i, COMPUTE, "storage"));
     }
 
     // Bindings 4-5: Read-only storage (sprites, palettes)
     for i in 4..=5 {
-        entries.push(&create_bgl_entry(i, storage_vis, "read-only-storage"));
+        entries.push(&create_bgl_entry(i, COMPUTE, "read-only-storage"));
     }
 
     let desc = web_sys::GpuBindGroupLayoutDescriptor::new(&entries);
-    device.create_bind_group_layout(&desc).expect("Failed to create BGL")
+    device.create_bind_group_layout(&desc).expect("Failed to create compute BGL")
+}
+
+fn create_render_bind_group_layout(device: &GpuDevice) -> web_sys::GpuBindGroupLayout {
+    let entries = js_sys::Array::new();
+    const VERTEX: u32 = 0x1;
+    const FRAGMENT: u32 = 0x2;
+
+    // Binding 0: Uniforms
+    entries.push(&create_bgl_entry(0, VERTEX | FRAGMENT, "uniform"));
+
+    // Bindings 1-3: Storage buffers (read-only for render)
+    for i in 1..=3 {
+        entries.push(&create_bgl_entry(i, FRAGMENT, "read-only-storage"));
+    }
+
+    // Bindings 4-5: Read-only storage (sprites, palettes)
+    for i in 4..=5 {
+        entries.push(&create_bgl_entry(i, FRAGMENT, "read-only-storage"));
+    }
+
+    let desc = web_sys::GpuBindGroupLayoutDescriptor::new(&entries);
+    device.create_bind_group_layout(&desc).expect("Failed to create render BGL")
 }
 
 fn create_bgl_entry(binding: u32, visibility: u32, buffer_type: &str) -> JsValue {
@@ -439,6 +455,18 @@ fn create_bind_group(
 fn create_pipeline_layout(device: &GpuDevice, bgl: &web_sys::GpuBindGroupLayout) -> web_sys::GpuPipelineLayout {
     let layouts = js_sys::Array::new();
     layouts.push(bgl);
+    let desc = web_sys::GpuPipelineLayoutDescriptor::new(&layouts);
+    device.create_pipeline_layout(&desc)
+}
+
+fn create_render_pipeline_layout(
+    device: &GpuDevice,
+    compute_bgl: &web_sys::GpuBindGroupLayout,
+    render_bgl: &web_sys::GpuBindGroupLayout,
+) -> web_sys::GpuPipelineLayout {
+    let layouts = js_sys::Array::new();
+    layouts.push(compute_bgl);  // Group 0 - needed for compute pass data visibility
+    layouts.push(render_bgl);   // Group 1 - read-only for fragment shader
     let desc = web_sys::GpuPipelineLayoutDescriptor::new(&layouts);
     device.create_pipeline_layout(&desc)
 }

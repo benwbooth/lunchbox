@@ -36,13 +36,22 @@ struct Platform {
     is_ground: u32,
 };
 
-// Bindings
+// Bindings - Group 0 for compute (read_write), Group 1 for render (read-only)
+// Compute uses group 0
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read_write> entities: array<Entity, 128>;
 @group(0) @binding(2) var<storage, read_write> blocks: array<Block, 512>;
 @group(0) @binding(3) var<storage, read_write> platforms: array<Platform, 64>;
-@group(0) @binding(4) var<storage, read> sprites: array<u32, 256>;  // 16 sprites * 4 u32s each
-@group(0) @binding(5) var<storage, read> palettes: array<u32, 48>;  // 12 palettes * 4 colors
+@group(0) @binding(4) var<storage, read> sprites: array<u32, 256>;
+@group(0) @binding(5) var<storage, read> palettes: array<u32, 48>;
+
+// Render uses group 1 (read-only copies for fragment shader compatibility)
+@group(1) @binding(0) var<uniform> u_r: Uniforms;
+@group(1) @binding(1) var<storage, read> entities_r: array<Entity, 128>;
+@group(1) @binding(2) var<storage, read> blocks_r: array<Block, 512>;
+@group(1) @binding(3) var<storage, read> platforms_r: array<Platform, 64>;
+@group(1) @binding(4) var<storage, read> sprites_r: array<u32, 256>;
+@group(1) @binding(5) var<storage, read> palettes_r: array<u32, 48>;
 
 //=============================================================================
 // CONSTANTS
@@ -129,6 +138,7 @@ fn aabb(a_pos: vec2<f32>, a_size: vec2<f32>, b_pos: vec2<f32>, b_size: vec2<f32>
 // SPRITE RENDERING
 //=============================================================================
 
+// Compute shader helpers (use group 0 bindings)
 fn get_sprite_pixel(sprite_id: u32, x: u32, y: u32, flip: bool) -> u32 {
     let px = select(x, 7u - x, flip);
     let idx = y * 8u + px;
@@ -147,11 +157,31 @@ fn get_color(palette_id: u32, color_idx: u32) -> vec3<f32> {
     );
 }
 
-fn draw_sprite(px: vec2<f32>, pos: vec2<f32>, sprite_id: u32, palette_id: u32, flip: bool) -> vec3<f32> {
-    let local = px - pos;
-    if (local.x >= 0.0 && local.x < 8.0 && local.y >= 0.0 && local.y < 8.0) {
-        let ci = get_sprite_pixel(sprite_id, u32(local.x), u32(local.y), flip);
-        return get_color(palette_id, ci);
+// Render shader helpers (use group 1 bindings - read-only)
+fn get_sprite_pixel_r(sprite_id: u32, x: u32, y: u32, flip: bool) -> u32 {
+    let px = select(x, 7u - x, flip);
+    let idx = y * 8u + px;
+    let word_idx = sprite_id * 4u + idx / 16u;
+    let bit_idx = (idx % 16u) * 2u;
+    return (sprites_r[word_idx] >> bit_idx) & 3u;
+}
+
+fn get_color_r(palette_id: u32, color_idx: u32) -> vec3<f32> {
+    if (color_idx == 0u) { return vec3<f32>(-1.0); }
+    let packed = palettes_r[palette_id * 4u + color_idx];
+    return vec3<f32>(
+        f32((packed >> 16u) & 0xFFu) / 255.0,
+        f32((packed >> 8u) & 0xFFu) / 255.0,
+        f32(packed & 0xFFu) / 255.0
+    );
+}
+
+fn draw_sprite(pixel: vec2<f32>, pos: vec2<f32>, sprite_id: u32, palette_id: u32, flip: bool) -> vec3<f32> {
+    if (pixel.x >= pos.x && pixel.x < pos.x + TILE &&
+        pixel.y >= pos.y && pixel.y < pos.y + TILE) {
+        let lx = u32(pixel.x - pos.x);
+        let ly = u32(pixel.y - pos.y);
+        return get_color_r(palette_id, get_sprite_pixel_r(sprite_id, lx, ly, flip));
     }
     return vec3<f32>(-1.0);
 }
@@ -375,14 +405,14 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOut {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    let px = in.uv * u.resolution;
+    let px = in.uv * u_r.resolution;
 
     // Background - dark blue gradient
     var col = mix(vec3<f32>(0.0, 0.0, 0.1), vec3<f32>(0.0, 0.0, 0.0), in.uv.y);
 
     // Draw platforms (ground)
     for (var i = 0u; i < PLATFORM_COUNT; i = i + 1u) {
-        let p = platforms[i];
+        let p = platforms_r[i];
         if (p.is_ground == 0u) { continue; }
 
         let plat_pos = vec2<f32>(p.x * TILE, p.y * TILE);
@@ -392,14 +422,14 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             px.y >= plat_pos.y && px.y < plat_pos.y + plat_size.y) {
             let lx = u32(px.x - plat_pos.x) % 8u;
             let ly = u32(px.y - plat_pos.y) % 8u;
-            let c = get_color(PAL_GROUND, get_sprite_pixel(SPR_GROUND, lx, ly, false));
+            let c = get_color_r(PAL_GROUND, get_sprite_pixel_r(SPR_GROUND, lx, ly, false));
             if (c.r >= 0.0) { col = c; }
         }
     }
 
     // Draw blocks
     for (var i = 0u; i < BLOCK_COUNT; i = i + 1u) {
-        let b = blocks[i];
+        let b = blocks_r[i];
         if ((b.flags & 2u) != 0u) { continue; }
 
         if (px.x >= b.pos.x && px.x < b.pos.x + TILE &&
@@ -409,7 +439,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             var spr = SPR_BRICK;
             var pal = PAL_BRICK;
             if (b.kind == 1u) { spr = SPR_QUESTION; pal = PAL_QUESTION; }
-            let c = get_color(pal, get_sprite_pixel(spr, lx, ly, false));
+            let c = get_color_r(pal, get_sprite_pixel_r(spr, lx, ly, false));
             if (c.r >= 0.0) { col = c; }
         }
     }
@@ -417,7 +447,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     // Draw entities (back to front by kind)
     // Coins first
     for (var i = 0u; i < ENTITY_COUNT; i = i + 1u) {
-        let e = entities[i];
+        let e = entities_r[i];
         if ((e.flags & FLAG_ALIVE) == 0u || e.kind != KIND_COIN) { continue; }
         let c = draw_sprite(px, e.pos, SPR_COIN, PAL_COIN, false);
         if (c.r >= 0.0) { col = c; }
@@ -425,7 +455,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 
     // Goombas
     for (var i = 0u; i < ENTITY_COUNT; i = i + 1u) {
-        let e = entities[i];
+        let e = entities_r[i];
         if ((e.flags & FLAG_ALIVE) == 0u || e.kind != KIND_GOOMBA) { continue; }
         let flip = (e.flags & FLAG_FLIP) != 0u;
         let c = draw_sprite(px, e.pos, SPR_GOOMBA, PAL_GOOMBA, flip);
@@ -434,7 +464,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 
     // Koopas
     for (var i = 0u; i < ENTITY_COUNT; i = i + 1u) {
-        let e = entities[i];
+        let e = entities_r[i];
         if ((e.flags & FLAG_ALIVE) == 0u || e.kind != KIND_KOOPA) { continue; }
         let flip = (e.flags & FLAG_FLIP) != 0u;
         let c = draw_sprite(px, e.pos, SPR_KOOPA, PAL_KOOPA, flip);
@@ -443,7 +473,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 
     // Marios last (on top)
     for (var i = 0u; i < ENTITY_COUNT; i = i + 1u) {
-        let e = entities[i];
+        let e = entities_r[i];
         if ((e.flags & FLAG_ALIVE) == 0u || e.kind != KIND_MARIO) { continue; }
 
         let flip = (e.flags & FLAG_FLIP) != 0u;
