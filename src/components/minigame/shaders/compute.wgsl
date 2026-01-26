@@ -384,25 +384,21 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
 
             // Mario hitting block from below - BREAK IT
-            // Check if Mario is moving up and his head intersects the block
-            let moving_up = e.vel.y < 0.0;
+            // Simple approach: if Mario overlaps block AND came from below, break it
+            // "Came from below" means old head position was at or below block's bottom
+            let came_from_below = old_y >= block_bottom - 2.0;  // Small tolerance
 
-            // Current frame overlap (Mario's bounding box overlaps block)
-            let overlaps_now = x_overlap && y_overlap;
+            // Check if Mario's head is now touching/inside the block
+            let head_in_block = ent_top < block_bottom && ent_top >= block_top - 4.0;
 
-            // Swept collision: check if Mario's head crossed the block's bottom edge this frame
-            // When jumping up: old_y > e.pos.y (Y decreases going up)
-            // Mario's head should go from BELOW block bottom to AT/ABOVE block bottom
-            let head_crossed_bottom = x_overlap &&
-                                      old_y >= block_bottom &&  // Head was at or below block's bottom
-                                      e.pos.y < block_bottom;   // Head is now above block's bottom
+            // Also catch fast movement: head passed through block this frame
+            let head_passed_through = old_y >= block_bottom && e.pos.y < block_top;
 
-            // Also check if head went completely through (started below bottom, ended above top)
-            let head_passed_through = x_overlap &&
-                                      old_y >= block_bottom &&  // Head was below block
-                                      e.pos.y <= block_top;     // Head is now at or above block top
+            // X overlap using old position too (for fast horizontal movement)
+            let old_x_overlap = old_pos.x + 7.0 > block_left && old_pos.x + 1.0 < block_right;
+            let any_x_overlap = x_overlap || old_x_overlap;
 
-            if (e.kind == KIND_MARIO && moving_up && (overlaps_now || head_crossed_bottom || head_passed_through)) {
+            if (e.kind == KIND_MARIO && any_x_overlap && came_from_below && (head_in_block || head_passed_through || y_overlap)) {
                 e.vel.y = 2.0; // Bounce down
                 e.pos.y = b.pos.y + 8.0;
 
