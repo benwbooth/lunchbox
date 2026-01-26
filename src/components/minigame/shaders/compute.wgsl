@@ -56,7 +56,7 @@ const TILE: f32 = 8.0;
 
 const ENTITY_COUNT: u32 = 48u;
 const BLOCK_COUNT: u32 = 256u;
-const PLATFORM_COUNT: u32 = 32u;
+const PLATFORM_COUNT: u32 = 64u;  // Max platforms
 
 // Entity kinds
 const KIND_MARIO: u32 = 0u;
@@ -101,42 +101,69 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             let screen_tiles_y = floor(u.resolution.y / TILE);
             let ground_y = screen_tiles_y - 2.0;
 
-            if (idx < 8u) {
-                // Ground platforms - cover the full width
-                let segment_width = screen_tiles_x / 8.0;
+            if (idx < 6u) {
+                // Ground platforms - cover the full width with some gaps
+                let segment_width = screen_tiles_x / 6.0;
                 platforms[idx].x = f32(idx) * segment_width;
                 platforms[idx].y = ground_y;
-                platforms[idx].width = segment_width + 2.0;  // Overlap slightly
+                // Leave small gaps between ground segments
+                platforms[idx].width = segment_width - 2.0;
                 platforms[idx].is_ground = 1u;
+            } else if (idx < 30u) {
+                // Main floating platforms - many across the screen
+                let plat_idx = idx - 6u;
+                let num_cols = 6u;
+                let num_rows = 4u;
+                let col = plat_idx % num_cols;
+                let row = plat_idx / num_cols;
+
+                let col_width = screen_tiles_x / f32(num_cols);
+                let row_height = (ground_y - 8.0) / f32(num_rows);
+
+                // Stagger columns for more interesting layout
+                let x_offset = select(0.0, col_width * 0.5, row % 2u == 1u);
+
+                platforms[idx].x = f32(col) * col_width + x_offset + random(f32(idx), 2.0) * 4.0;
+                platforms[idx].y = 4.0 + f32(row) * row_height + random(f32(idx), 22.0) * 3.0;
+                platforms[idx].width = 6.0 + random(f32(idx), 3.0) * 6.0;
+                platforms[idx].is_ground = 0u;
+            } else if (idx < 50u) {
+                // Stairs - small stepping platforms
+                let stair_idx = idx - 30u;
+                let stair_set = stair_idx / 5u;  // 4 sets of 5 stairs
+                let stair_step = stair_idx % 5u;
+
+                let set_x = random(f32(stair_set + 100u), 50.0) * (screen_tiles_x - 20.0) + 5.0;
+                let set_y = random(f32(stair_set + 100u), 51.0) * (ground_y - 20.0) + 10.0;
+
+                // Stairs go up-right or up-left alternating
+                let dir = select(-1.0, 1.0, stair_set % 2u == 0u);
+
+                platforms[idx].x = set_x + f32(stair_step) * 3.0 * dir;
+                platforms[idx].y = set_y - f32(stair_step) * 2.5;
+                platforms[idx].width = 3.0;
+                platforms[idx].is_ground = 0u;
             } else {
-                // Floating platforms - spread across full screen height
-                let plat_idx = idx - 8u;
-                let num_levels = 8u;  // More vertical levels
-                let level = plat_idx % num_levels;
-                let col = plat_idx / num_levels;
-
-                // Spread platforms from top to bottom (leaving room at top and above ground)
-                let min_y = 4.0;  // Leave some space at top
-                let max_y = ground_y - 4.0;  // Leave space above ground
-                let level_spacing = (max_y - min_y) / f32(num_levels);
-
-                platforms[idx].x = random(f32(idx), 2.0) * (screen_tiles_x - 10.0);
-                platforms[idx].y = min_y + f32(level) * level_spacing + random(f32(idx), 22.0) * 2.0;
-                platforms[idx].width = 4.0 + random(f32(idx), 3.0) * 8.0;
+                // Extra small platforms scattered around
+                let extra_idx = idx - 50u;
+                platforms[idx].x = random(f32(idx), 60.0) * (screen_tiles_x - 8.0);
+                platforms[idx].y = random(f32(idx), 61.0) * (ground_y - 10.0) + 5.0;
+                platforms[idx].width = 3.0 + random(f32(idx), 62.0) * 4.0;
                 platforms[idx].is_ground = 0u;
             }
         }
 
-        // Initialize blocks on floating platforms
+        // Initialize blocks on floating platforms (not on ground or stairs)
         if (idx < BLOCK_COUNT) {
-            let plat_idx = 8u + (idx / 8u);  // Start from floating platforms (index 8+)
-            if (plat_idx < PLATFORM_COUNT) {
+            let plat_idx = 6u + (idx / 6u);  // Start from floating platforms (index 6+), 6 blocks per platform
+            // Only place blocks on main floating platforms (6-29), not stairs or extra platforms
+            if (plat_idx < 30u) {
                 let plat = platforms[plat_idx];
-                let block_offset = f32(idx % 8u);
+                let block_offset = f32(idx % 6u);
                 if (block_offset < plat.width && plat.width > 0.0) {
                     // Place blocks on top of platforms
                     blocks[idx].pos = vec2<f32>((plat.x + block_offset) * TILE, (plat.y - 1.0) * TILE);
-                    blocks[idx].kind = select(0u, 1u, random(f32(idx), 4.0) < 0.3);  // 30% question blocks
+                    blocks[idx].kind = select(0u, 1u, random(f32(idx), 4.0) < 0.25);  // 25% question blocks
                     blocks[idx].flags = 0u;
                 } else {
                     blocks[idx].flags = 2u; // destroyed/unused

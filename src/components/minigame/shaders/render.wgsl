@@ -51,11 +51,11 @@ struct Platform {
 const TILE: f32 = 8.0;
 const ENTITY_COUNT: u32 = 48u;
 const BLOCK_COUNT: u32 = 256u;
-const PLATFORM_COUNT: u32 = 32u;
+const PLATFORM_COUNT: u32 = 64u;  // Max platforms
 
 // Total instances = platforms + blocks + entities
 const PLATFORM_OFFSET: u32 = 0u;
-const BLOCK_OFFSET: u32 = 64u;        // After platforms
+const BLOCK_OFFSET: u32 = 64u;        // After platforms (64)
 const ENTITY_OFFSET: u32 = 576u;      // After blocks (64 + 512)
 const TOTAL_INSTANCES: u32 = 704u;    // 64 + 512 + 128
 
