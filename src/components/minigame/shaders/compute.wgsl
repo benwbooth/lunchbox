@@ -95,88 +95,71 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Initialize on first frame
     if (u.frame == 0u) {
-        // Initialize platforms - dense grid so Mario can always jump to another
+        // STRICT 8x8 TILE GRID - everything aligns to tile boundaries
+        let screen_tiles_x = u32(floor(u.resolution.x / TILE));
+        let screen_tiles_y = u32(floor(u.resolution.y / TILE));
+
+        // Platform layout: rows of platforms every 4 tiles vertically
+        // Each row has platforms with gaps for jumping
+        let row_spacing = 4u;  // Vertical tiles between platform rows
+        let num_rows = screen_tiles_y / row_spacing;
+
+        // Initialize platforms on strict grid
         if (idx < PLATFORM_COUNT) {
-            let screen_tiles_x = floor(u.resolution.x / TILE);
-            let screen_tiles_y = floor(u.resolution.y / TILE);
-            let ground_y = screen_tiles_y - 2.0;
+            // Calculate which row and segment this platform belongs to
+            let platforms_per_row = 16u;  // Platform segments per row
+            let row = idx / platforms_per_row;
+            let seg = idx % platforms_per_row;
 
-            // Jump distance is roughly 4-6 tiles horizontal, 3-4 tiles vertical
-            // So we want platforms spaced about 5 tiles apart horizontally, 3 tiles vertically
-            let jump_h = 5.0;  // Horizontal jump distance
-            let jump_v = 3.0;  // Vertical jump distance
+            if (row < num_rows) {
+                let y_tile = row * row_spacing + 2u;  // Start 2 tiles from top
 
-            let cols = u32(screen_tiles_x / jump_h) + 1u;
-            let rows = u32(screen_tiles_y / jump_v);
+                // Segment width in tiles
+                let seg_width = screen_tiles_x / platforms_per_row;
 
-            if (idx < 12u) {
-                // Ground platforms - full coverage with small gaps
-                let segment_width = screen_tiles_x / 12.0;
-                platforms[idx].x = f32(idx) * segment_width;
-                platforms[idx].y = ground_y;
-                platforms[idx].width = segment_width - 1.0;
-                platforms[idx].is_ground = 1u;
-            } else {
-                // Floating platforms in a dense grid pattern
-                let grid_idx = idx - 12u;
-                let col = grid_idx % cols;
-                let row = grid_idx / cols;
+                // Create platform with gaps - alternate pattern
+                // Even rows: platforms on even segments
+                // Odd rows: platforms on odd segments (staggered)
+                let has_platform = ((row + seg) % 2u) == 0u;
 
-                if (row < rows - 1u) {  // Don't place platforms at ground level
-                    // Base position on grid
-                    let base_x = f32(col) * jump_h;
-                    let base_y = f32(row) * jump_v + 4.0;  // Start 4 tiles from top
-
-                    // Add some randomness but keep within jump range
-                    let rand_x = (random(f32(idx), 1.0) - 0.5) * 2.0;  // -1 to 1
-                    let rand_y = (random(f32(idx), 2.0) - 0.5) * 1.5;  // -0.75 to 0.75
-
-                    // Stagger odd rows
-                    let stagger = select(0.0, jump_h * 0.5, row % 2u == 1u);
-
-                    platforms[idx].x = base_x + stagger + rand_x;
-                    platforms[idx].y = base_y + rand_y;
-                    platforms[idx].width = 3.0 + random(f32(idx), 3.0) * 3.0;  // 3-6 tiles wide
-                    platforms[idx].is_ground = 0u;
-
-                    // Make sure platform stays on screen
-                    if (platforms[idx].x < 0.0) {
-                        platforms[idx].x = 0.0;
-                    }
-                    if (platforms[idx].x + platforms[idx].width > screen_tiles_x) {
-                        platforms[idx].x = screen_tiles_x - platforms[idx].width;
-                    }
+                if (has_platform && y_tile < screen_tiles_y - 2u) {
+                    platforms[idx].x = f32(seg * seg_width);
+                    platforms[idx].y = f32(y_tile);
+                    platforms[idx].width = f32(seg_width);
+                    platforms[idx].is_ground = select(0u, 1u, row == num_rows - 1u);
                 } else {
-                    // Unused platform
-                    platforms[idx].width = 0.0;
+                    platforms[idx].width = 0.0;  // No platform here (gap)
                 }
+            } else {
+                platforms[idx].width = 0.0;
             }
         }
 
-        // Initialize blocks - some on platforms, some floating
+        // Initialize blocks on strict grid - fill gaps between platforms
         if (idx < BLOCK_COUNT) {
-            // Scatter blocks across the screen
-            let screen_tiles_x = floor(u.resolution.x / TILE);
-            let screen_tiles_y = floor(u.resolution.y / TILE);
+            let blocks_per_row = 32u;
+            let row = idx / blocks_per_row;
+            let col = idx % blocks_per_row;
 
-            // Place blocks in a loose grid with randomness
-            let block_cols = 16u;
-            let block_rows = 12u;
-            let col = idx % block_cols;
-            let row = idx / block_cols;
+            let block_row_spacing = 4u;  // Same as platform spacing
+            let num_block_rows = screen_tiles_y / block_row_spacing;
 
-            if (row < block_rows) {
-                let col_spacing = screen_tiles_x / f32(block_cols);
-                let row_spacing = (screen_tiles_y - 8.0) / f32(block_rows);
+            if (row < num_block_rows) {
+                let y_tile = row * block_row_spacing + 2u;
+                let x_tile = col * (screen_tiles_x / blocks_per_row);
 
-                blocks[idx].pos = vec2<f32>(
-                    (f32(col) * col_spacing + random(f32(idx), 30.0) * 2.0) * TILE,
-                    (f32(row) * row_spacing + 4.0 + random(f32(idx), 31.0) * 2.0) * TILE
-                );
-                blocks[idx].kind = select(0u, 1u, random(f32(idx), 4.0) < 0.3);  // 30% question blocks
-                blocks[idx].flags = 0u;
+                // Place blocks in a checkerboard pattern offset from platforms
+                let has_block = ((row + col) % 3u) == 1u;  // Every 3rd position
+
+                if (has_block && y_tile < screen_tiles_y - 2u) {
+                    blocks[idx].pos = vec2<f32>(f32(x_tile) * TILE, f32(y_tile) * TILE);
+                    blocks[idx].kind = select(0u, 1u, (row + col) % 5u == 0u);  // Some question blocks
+                    blocks[idx].flags = 0u;
+                } else {
+                    blocks[idx].flags = 2u;  // No block here
+                }
             } else {
-                blocks[idx].flags = 2u; // unused
+                blocks[idx].flags = 2u;
             }
         }
 
