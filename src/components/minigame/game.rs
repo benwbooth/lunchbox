@@ -333,7 +333,8 @@ impl GpuState {
             render_pass.set_pipeline(&self.render_pipeline);
             // Render shader uses group 0 with read-only bindings (separate shader module)
             render_pass.set_bind_group(0, Some(&self.render_bind_group));
-            render_pass.draw(3); // Full-screen triangle
+            // Instanced rendering: 6 vertices per quad, 704 instances (64 platforms + 512 blocks + 128 entities)
+            render_pass.draw_with_instance_count(6, 704);
             render_pass.end();
         }
 
@@ -512,7 +513,7 @@ fn create_color_attachment(view: &web_sys::GpuTextureView) -> JsValue {
     let clear_color = Object::new();
     Reflect::set(&clear_color, &"r".into(), &0.0.into()).unwrap();
     Reflect::set(&clear_color, &"g".into(), &0.0.into()).unwrap();
-    Reflect::set(&clear_color, &"b".into(), &0.0.into()).unwrap();
+    Reflect::set(&clear_color, &"b".into(), &0.05.into()).unwrap();  // Dark blue background
     Reflect::set(&clear_color, &"a".into(), &1.0.into()).unwrap();
     Reflect::set(&attachment, &"clearValue".into(), &clear_color).unwrap();
 
