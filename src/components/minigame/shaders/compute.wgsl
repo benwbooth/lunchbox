@@ -384,10 +384,25 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
 
             // Mario hitting block from below - BREAK IT
+            // Check if Mario is moving up and his head intersects the block
             let moving_up = e.vel.y < 0.0;
-            let approaching_from_below = old_y >= block_top;
 
-            if (e.kind == KIND_MARIO && moving_up && x_overlap && y_overlap && approaching_from_below) {
+            // Current frame overlap (Mario's bounding box overlaps block)
+            let overlaps_now = x_overlap && y_overlap;
+
+            // Swept collision: check if Mario's head crossed the block's bottom edge this frame
+            // When jumping up: old_y > e.pos.y (Y decreases going up)
+            // Mario's head should go from BELOW block bottom to AT/ABOVE block bottom
+            let head_crossed_bottom = x_overlap &&
+                                      old_y >= block_bottom &&  // Head was at or below block's bottom
+                                      e.pos.y < block_bottom;   // Head is now above block's bottom
+
+            // Also check if head went completely through (started below bottom, ended above top)
+            let head_passed_through = x_overlap &&
+                                      old_y >= block_bottom &&  // Head was below block
+                                      e.pos.y <= block_top;     // Head is now at or above block top
+
+            if (e.kind == KIND_MARIO && moving_up && (overlaps_now || head_crossed_bottom || head_passed_through)) {
                 e.vel.y = 2.0; // Bounce down
                 e.pos.y = b.pos.y + 8.0;
 
