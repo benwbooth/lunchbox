@@ -384,21 +384,20 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
 
             // Mario hitting block from below - BREAK IT
-            // Simple approach: if Mario overlaps block AND came from below, break it
-            // "Came from below" means old head position was at or below block's bottom
-            let came_from_below = old_y >= block_bottom - 2.0;  // Small tolerance
+            // VERY simple check: Mario overlaps block AND is above block's center
+            // This means Mario's head is in the lower half of the block (hitting from below)
+            let mario_center_y = e.pos.y + 4.0;
+            let block_center_y = b.pos.y + 4.0;
+            let hitting_from_below = mario_center_y > block_center_y && y_overlap && x_overlap;
 
-            // Check if Mario's head is now touching/inside the block
-            let head_in_block = ent_top < block_bottom && ent_top >= block_top - 4.0;
+            // Also check: did Mario's path cross through the block this frame?
+            // Mario went from old_y to e.pos.y. If block is between these, collision.
+            let min_y = min(old_y, e.pos.y);
+            let max_y = max(old_y, e.pos.y) + 8.0;  // Include Mario's height
+            let path_crosses_block = x_overlap && min_y < block_bottom && max_y > block_top;
+            let was_below = old_y + 4.0 > block_center_y;
 
-            // Also catch fast movement: head passed through block this frame
-            let head_passed_through = old_y >= block_bottom && e.pos.y < block_top;
-
-            // X overlap using old position too (for fast horizontal movement)
-            let old_x_overlap = old_pos.x + 7.0 > block_left && old_pos.x + 1.0 < block_right;
-            let any_x_overlap = x_overlap || old_x_overlap;
-
-            if (e.kind == KIND_MARIO && any_x_overlap && came_from_below && (head_in_block || head_passed_through || y_overlap)) {
+            if (e.kind == KIND_MARIO && ((hitting_from_below) || (path_crosses_block && was_below))) {
                 e.vel.y = 2.0; // Bounce down
                 e.pos.y = b.pos.y + 8.0;
 
