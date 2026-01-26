@@ -397,7 +397,8 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
             let path_crosses_block = x_overlap && min_y < block_bottom && max_y > block_top;
             let was_below = old_y + 4.0 > block_center_y;
 
-            if (e.kind == KIND_MARIO && ((hitting_from_below) || (path_crosses_block && was_below))) {
+            // Debug: let ANY entity break bricks to test if detection works
+            if ((hitting_from_below) || (path_crosses_block && was_below)) {
                 e.vel.y = 2.0; // Bounce down
                 e.pos.y = b.pos.y + 8.0;
 
