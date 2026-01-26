@@ -95,68 +95,86 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Initialize on first frame
     if (u.frame == 0u) {
-        // STRICT 8x8 TILE GRID - everything aligns to tile boundaries
+        // STRICT 8x8 TILE GRID with RANDOM interesting distribution
         let screen_tiles_x = u32(floor(u.resolution.x / TILE));
         let screen_tiles_y = u32(floor(u.resolution.y / TILE));
 
-        // Platform layout: rows of platforms every 4 tiles vertically
-        // Each row has platforms with gaps for jumping
-        let row_spacing = 4u;  // Vertical tiles between platform rows
+        // Platform layout with randomness
+        let row_spacing = 3u;  // Rows every 3 tiles for denser coverage
         let num_rows = screen_tiles_y / row_spacing;
 
-        // Initialize platforms on strict grid
+        // Initialize platforms on grid with random placement
         if (idx < PLATFORM_COUNT) {
-            // Calculate which row and segment this platform belongs to
-            let platforms_per_row = 16u;  // Platform segments per row
+            let platforms_per_row = 16u;
             let row = idx / platforms_per_row;
             let seg = idx % platforms_per_row;
 
             if (row < num_rows) {
-                let y_tile = row * row_spacing + 2u;  // Start 2 tiles from top
+                let base_y = row * row_spacing + 1u;
 
-                // Segment width in tiles
-                let seg_width = screen_tiles_x / platforms_per_row;
+                // Use random to decide if this slot has a platform
+                let rand_val = random(f32(idx), 100.0);
 
-                // Create platform with gaps - alternate pattern
-                // Even rows: platforms on even segments
-                // Odd rows: platforms on odd segments (staggered)
-                let has_platform = ((row + seg) % 2u) == 0u;
+                // Higher chance of platform (70%), but random
+                let has_platform = rand_val < 0.7;
 
-                if (has_platform && y_tile < screen_tiles_y - 2u) {
-                    platforms[idx].x = f32(seg * seg_width);
-                    platforms[idx].y = f32(y_tile);
-                    platforms[idx].width = f32(seg_width);
-                    platforms[idx].is_ground = select(0u, 1u, row == num_rows - 1u);
+                // Bottom row (ground) always has platforms
+                let is_ground_row = base_y >= screen_tiles_y - 3u;
+
+                if ((has_platform || is_ground_row) && base_y < screen_tiles_y) {
+                    // Random width between 2-8 tiles, snapped to grid
+                    let base_width = 2u + u32(random(f32(idx), 101.0) * 6.0);
+                    let seg_start = seg * (screen_tiles_x / platforms_per_row);
+
+                    // Random horizontal offset within segment (0-2 tiles)
+                    let x_offset = u32(random(f32(idx), 102.0) * 3.0);
+
+                    // Slight random vertical offset (0-1 tiles) for variety
+                    let y_offset = select(0u, 1u, random(f32(idx), 103.0) > 0.7);
+
+                    platforms[idx].x = f32(seg_start + x_offset);
+                    platforms[idx].y = f32(base_y + y_offset);
+                    platforms[idx].width = f32(min(base_width, screen_tiles_x - seg_start - x_offset));
+                    platforms[idx].is_ground = select(0u, 1u, is_ground_row);
                 } else {
-                    platforms[idx].width = 0.0;  // No platform here (gap)
+                    platforms[idx].width = 0.0;
                 }
             } else {
                 platforms[idx].width = 0.0;
             }
         }
 
-        // Initialize blocks on strict grid - fill gaps between platforms
+        // Initialize blocks with random but grid-aligned placement
         if (idx < BLOCK_COUNT) {
-            let blocks_per_row = 32u;
+            let blocks_per_row = 24u;
             let row = idx / blocks_per_row;
             let col = idx % blocks_per_row;
 
-            let block_row_spacing = 4u;  // Same as platform spacing
+            let block_row_spacing = 3u;
             let num_block_rows = screen_tiles_y / block_row_spacing;
 
             if (row < num_block_rows) {
-                let y_tile = row * block_row_spacing + 2u;
-                let x_tile = col * (screen_tiles_x / blocks_per_row);
+                // Random chance for block (40%)
+                let rand_val = random(f32(idx + 500u), 200.0);
+                let has_block = rand_val < 0.4;
 
-                // Place blocks in a checkerboard pattern offset from platforms
-                let has_block = ((row + col) % 3u) == 1u;  // Every 3rd position
+                if (has_block) {
+                    let base_y = row * block_row_spacing + 1u;
+                    let base_x = col * (screen_tiles_x / blocks_per_row);
 
-                if (has_block && y_tile < screen_tiles_y - 2u) {
-                    blocks[idx].pos = vec2<f32>(f32(x_tile) * TILE, f32(y_tile) * TILE);
-                    blocks[idx].kind = select(0u, 1u, (row + col) % 5u == 0u);  // Some question blocks
-                    blocks[idx].flags = 0u;
+                    // Small random offset (0-1 tiles)
+                    let x_off = u32(random(f32(idx), 201.0) * 2.0);
+                    let y_off = u32(random(f32(idx), 202.0) * 2.0);
+
+                    if (base_y + y_off < screen_tiles_y - 2u) {
+                        blocks[idx].pos = vec2<f32>(f32(base_x + x_off) * TILE, f32(base_y + y_off) * TILE);
+                        blocks[idx].kind = select(0u, 1u, random(f32(idx), 203.0) < 0.25);
+                        blocks[idx].flags = 0u;
+                    } else {
+                        blocks[idx].flags = 2u;
+                    }
                 } else {
-                    blocks[idx].flags = 2u;  // No block here
+                    blocks[idx].flags = 2u;
                 }
             } else {
                 blocks[idx].flags = 2u;
