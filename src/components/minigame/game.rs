@@ -16,7 +16,8 @@ use js_sys::{Object, Reflect, Uint8Array};
 
 use super::gpu::{pack_sprite_atlas, pack_palettes, Uniforms, u32_slice_to_bytes};
 
-const SHADER_SOURCE: &str = include_str!("shaders/game.wgsl");
+const COMPUTE_SHADER: &str = include_str!("shaders/compute.wgsl");
+const RENDER_SHADER: &str = include_str!("shaders/render.wgsl");
 
 /// The Mario Mini-Game component (WebGPU)
 #[component]
@@ -213,9 +214,12 @@ impl GpuState {
         let canvas_config = web_sys::GpuCanvasConfiguration::new(&device, preferred_format);
         let _ = context.configure(&canvas_config);
 
-        // Create shader module
-        let shader_desc = web_sys::GpuShaderModuleDescriptor::new(SHADER_SOURCE);
-        let shader = device.create_shader_module(&shader_desc);
+        // Create shader modules (separate to avoid binding conflicts)
+        let compute_shader_desc = web_sys::GpuShaderModuleDescriptor::new(COMPUTE_SHADER);
+        let compute_shader = device.create_shader_module(&compute_shader_desc);
+
+        let render_shader_desc = web_sys::GpuShaderModuleDescriptor::new(RENDER_SHADER);
+        let render_shader = device.create_shader_module(&render_shader_desc);
 
         // Create buffers
         let uniform_buffer = create_buffer(&device, 32, gpu_buffer_usage_uniform() | gpu_buffer_usage_copy_dst());
@@ -230,7 +234,8 @@ impl GpuState {
         let palette_data = pack_palettes();
         let palette_buffer = create_buffer_with_data(&device, &u32_slice_to_bytes(&palette_data), gpu_buffer_usage_storage());
 
-        // Create bind group layouts - group 0 for compute (read_write), group 1 for render (read-only)
+        // Create bind group layouts - separate for compute (read_write) and render (read-only)
+        // With separate shader modules, each can use group 0 with different access modes
         let compute_bgl = create_compute_bind_group_layout(&device);
         let render_bgl = create_render_bind_group_layout(&device);
 
@@ -246,15 +251,13 @@ impl GpuState {
             &sprite_buffer, &palette_buffer,
         );
 
-        // Create pipeline layouts - compute uses group 0, render uses both groups
+        // Create pipeline layouts - each uses its own bind group layout at group 0
         let compute_pipeline_layout = create_pipeline_layout(&device, &compute_bgl);
-        let render_pipeline_layout = create_render_pipeline_layout(&device, &compute_bgl, &render_bgl);
+        let render_pipeline_layout = create_pipeline_layout(&device, &render_bgl);
 
-        // Create compute pipeline
-        let compute_pipeline = create_compute_pipeline(&device, &shader, &compute_pipeline_layout);
-
-        // Create render pipeline with both bind group layouts
-        let render_pipeline = create_render_pipeline(&device, &shader, &render_pipeline_layout, preferred_format);
+        // Create pipelines with their respective shaders and layouts
+        let compute_pipeline = create_compute_pipeline(&device, &compute_shader, &compute_pipeline_layout);
+        let render_pipeline = create_render_pipeline(&device, &render_shader, &render_pipeline_layout, preferred_format);
 
         let start_time = js_sys::Date::now();
 
@@ -328,9 +331,8 @@ impl GpuState {
             let render_pass_desc = create_render_pass_descriptor(&color_attachment);
             let render_pass = encoder.begin_render_pass(&render_pass_desc).expect("begin render pass");
             render_pass.set_pipeline(&self.render_pipeline);
-            // Set both bind groups - compute data at group 0, render (read-only) at group 1
-            render_pass.set_bind_group(0, Some(&self.compute_bind_group));
-            render_pass.set_bind_group(1, Some(&self.render_bind_group));
+            // Render shader uses group 0 with read-only bindings (separate shader module)
+            render_pass.set_bind_group(0, Some(&self.render_bind_group));
             render_pass.draw(3); // Full-screen triangle
             render_pass.end();
         }
@@ -455,18 +457,6 @@ fn create_bind_group(
 fn create_pipeline_layout(device: &GpuDevice, bgl: &web_sys::GpuBindGroupLayout) -> web_sys::GpuPipelineLayout {
     let layouts = js_sys::Array::new();
     layouts.push(bgl);
-    let desc = web_sys::GpuPipelineLayoutDescriptor::new(&layouts);
-    device.create_pipeline_layout(&desc)
-}
-
-fn create_render_pipeline_layout(
-    device: &GpuDevice,
-    compute_bgl: &web_sys::GpuBindGroupLayout,
-    render_bgl: &web_sys::GpuBindGroupLayout,
-) -> web_sys::GpuPipelineLayout {
-    let layouts = js_sys::Array::new();
-    layouts.push(compute_bgl);  // Group 0 - needed for compute pass data visibility
-    layouts.push(render_bgl);   // Group 1 - read-only for fragment shader
     let desc = web_sys::GpuPipelineLayoutDescriptor::new(&layouts);
     device.create_pipeline_layout(&desc)
 }
