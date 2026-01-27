@@ -152,6 +152,8 @@ pub fn Toolbar(
     set_show_settings: WriteSignal<bool>,
     artwork_type: ReadSignal<ArtworkDisplayType>,
     set_artwork_type: WriteSignal<ArtworkDisplayType>,
+    zoom_level: ReadSignal<f64>,
+    set_zoom_level: WriteSignal<f64>,
 ) -> impl IntoView {
     view! {
         <header class="toolbar">
@@ -182,6 +184,24 @@ pub fn Toolbar(
                 </div>
             </div>
             <div class="toolbar-right">
+                // Zoom controls
+                <div class="zoom-controls">
+                    <span class="zoom-label">"Zoom"</span>
+                    <input
+                        type="range"
+                        class="zoom-slider"
+                        min="0.5"
+                        max="2.0"
+                        step="0.1"
+                        prop:value=move || zoom_level.get()
+                        on:input=move |ev| {
+                            if let Ok(val) = event_target_value(&ev).parse::<f64>() {
+                                set_zoom_level.set(val);
+                            }
+                        }
+                    />
+                    <span class="zoom-value">{move || format!("{:.0}%", zoom_level.get() * 100.0)}</span>
+                </div>
                 // Artwork type dropdown (only show in grid view)
                 <Show when=move || view_mode.get() == ViewMode::Grid>
                     <select

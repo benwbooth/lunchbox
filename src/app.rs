@@ -77,6 +77,8 @@ pub fn App() -> impl IntoView {
     let (collections_refresh, set_collections_refresh) = signal(0u32);
     // State for artwork display type in grid
     let (artwork_type, set_artwork_type) = signal(ArtworkDisplayType::default());
+    // State for zoom level (0.5 to 2.0, default 1.0)
+    let (zoom_level, set_zoom_level) = signal(1.0f64);
 
     view! {
         <div class="app-container">
@@ -88,6 +90,8 @@ pub fn App() -> impl IntoView {
                 set_show_settings=set_show_settings
                 artwork_type=artwork_type
                 set_artwork_type=set_artwork_type
+                zoom_level=zoom_level
+                set_zoom_level=set_zoom_level
             />
             <div class="main-content">
                 <Sidebar
@@ -105,6 +109,8 @@ pub fn App() -> impl IntoView {
                     view_mode=view_mode
                     selected_game=set_selected_game
                     artwork_type=artwork_type
+                    zoom_level=zoom_level
+                    set_zoom_level=set_zoom_level
                 />
             </div>
             <GameDetails

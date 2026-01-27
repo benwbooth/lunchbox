@@ -335,6 +335,8 @@ pub fn GameGrid(
     view_mode: ReadSignal<ViewMode>,
     selected_game: WriteSignal<Option<Game>>,
     artwork_type: ReadSignal<ArtworkDisplayType>,
+    zoom_level: ReadSignal<f64>,
+    set_zoom_level: WriteSignal<f64>,
 ) -> impl IntoView {
     // Games cache - we load chunks as needed
     let (games, set_games) = signal::<Vec<Game>>(Vec::new());
@@ -455,19 +457,22 @@ pub fn GameGrid(
         }
     });
 
-    // Calculate visible items based on scroll
+    // Calculate visible items based on scroll (with zoom applied)
     let visible_range = move || {
         let mode = view_mode.get();
         let scroll = scroll_top.get();
         let height = container_height.get();
         let width = container_width.get();
         let total = total_count.get() as i32;
+        let zoom = zoom_level.get();
 
         match mode {
             ViewMode::Grid => {
-                let cols = (width / ITEM_WIDTH).max(1);
-                let rows_before = scroll / ITEM_HEIGHT;
-                let visible_rows = (height / ITEM_HEIGHT) + 2;
+                let scaled_item_width = (ITEM_WIDTH as f64 * zoom) as i32;
+                let scaled_item_height = (ITEM_HEIGHT as f64 * zoom) as i32;
+                let cols = (width / scaled_item_width).max(1);
+                let rows_before = scroll / scaled_item_height;
+                let visible_rows = (height / scaled_item_height) + 2;
 
                 let start = ((rows_before - BUFFER_ITEMS).max(0) * cols) as usize;
                 let end = (((rows_before + visible_rows + BUFFER_ITEMS) * cols) as usize).min(total as usize);
@@ -484,17 +489,20 @@ pub fn GameGrid(
         }
     };
 
-    // Calculate total content height
+    // Calculate total content height (with zoom applied)
     let total_height = move || {
         let mode = view_mode.get();
         let total = total_count.get() as i32;
         let width = container_width.get();
+        let zoom = zoom_level.get();
 
         match mode {
             ViewMode::Grid => {
-                let cols = (width / ITEM_WIDTH).max(1);
+                let scaled_item_width = (ITEM_WIDTH as f64 * zoom) as i32;
+                let scaled_item_height = (ITEM_HEIGHT as f64 * zoom) as i32;
+                let cols = (width / scaled_item_width).max(1);
                 let rows = (total + cols - 1) / cols;
-                rows * ITEM_HEIGHT
+                rows * scaled_item_height
             }
             ViewMode::List => {
                 total * LIST_ITEM_HEIGHT
@@ -516,16 +524,19 @@ pub fn GameGrid(
         })
     };
 
-    // Scroll to a specific game index
+    // Scroll to a specific game index (with zoom applied)
     let scroll_to_index = move |index: usize| {
         let mode = view_mode.get();
         let width = container_width.get();
+        let zoom = zoom_level.get();
 
         let scroll_pos = match mode {
             ViewMode::Grid => {
-                let cols = (width / ITEM_WIDTH).max(1);
+                let scaled_item_width = (ITEM_WIDTH as f64 * zoom) as i32;
+                let scaled_item_height = (ITEM_HEIGHT as f64 * zoom) as i32;
+                let cols = (width / scaled_item_width).max(1);
                 let row = index as i32 / cols;
-                row * ITEM_HEIGHT
+                row * scaled_item_height
             }
             ViewMode::List => {
                 (index as i32 + 1) * LIST_ITEM_HEIGHT // +1 for header
@@ -537,11 +548,65 @@ pub fn GameGrid(
         }
     };
 
+    // Pinch-to-zoom state
+    let (initial_pinch_distance, set_initial_pinch_distance) = signal::<Option<f64>>(None);
+    let (initial_zoom, set_initial_zoom) = signal(1.0f64);
+
+    let on_touchstart = move |ev: web_sys::TouchEvent| {
+        let touches = ev.touches();
+        if touches.length() == 2 {
+            if let (Some(t1), Some(t2)) = (touches.get(0), touches.get(1)) {
+                let dx = (t2.client_x() - t1.client_x()) as f64;
+                let dy = (t2.client_y() - t1.client_y()) as f64;
+                let dist = (dx * dx + dy * dy).sqrt();
+                set_initial_pinch_distance.set(Some(dist));
+                set_initial_zoom.set(zoom_level.get());
+            }
+        }
+    };
+
+    let on_touchmove = move |ev: web_sys::TouchEvent| {
+        let touches = ev.touches();
+        if touches.length() == 2 {
+            if let Some(initial_dist) = initial_pinch_distance.get() {
+                if let (Some(t1), Some(t2)) = (touches.get(0), touches.get(1)) {
+                    let dx = (t2.client_x() - t1.client_x()) as f64;
+                    let dy = (t2.client_y() - t1.client_y()) as f64;
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    let scale = dist / initial_dist;
+                    let new_zoom = (initial_zoom.get() * scale).clamp(0.5, 2.0);
+                    set_zoom_level.set(new_zoom);
+                    ev.prevent_default();
+                }
+            }
+        }
+    };
+
+    let on_touchend = move |_: web_sys::TouchEvent| {
+        set_initial_pinch_distance.set(None);
+    };
+
+    // Mouse wheel zoom (Ctrl+scroll)
+    let on_wheel = move |ev: web_sys::WheelEvent| {
+        // Only zoom when Ctrl is held (like browser zoom behavior)
+        if ev.ctrl_key() {
+            let delta = ev.delta_y();
+            let zoom_change = if delta > 0.0 { -0.1 } else { 0.1 };
+            let new_zoom = (zoom_level.get() + zoom_change).clamp(0.5, 2.0);
+            set_zoom_level.set(new_zoom);
+            ev.prevent_default();
+        }
+    };
+
     view! {
         <main
             class="game-content virtual-scroll"
             node_ref=container_ref
             on:scroll=on_scroll
+            on:touchstart=on_touchstart
+            on:touchmove=on_touchmove
+            on:touchend=on_touchend
+            on:wheel=on_wheel
         >
             {move || {
                 let games_list = games.get();
@@ -565,7 +630,7 @@ pub fn GameGrid(
                         }.into_any()
                     } else {
                         // No platform selected - show minigame!
-                        view! { <crate::components::MarioMinigame /> }.into_any()
+                        view! { <crate::components::MarioMinigame zoom_level=zoom_level set_zoom_level=set_zoom_level /> }.into_any()
                     }
                 } else {
                     // Measure container dimensions if not yet initialized
@@ -583,14 +648,17 @@ pub fn GameGrid(
                     let mode = view_mode.get();
                     let height = total_height();
                     let (start, end, cols) = visible_range();
+                    let zoom = zoom_level.get();
+                    let scaled_item_width = (ITEM_WIDTH as f64 * zoom) as i32;
+                    let scaled_item_height = (ITEM_HEIGHT as f64 * zoom) as i32;
 
                     // Calculate actual viewport range (without buffer) for priority
                     let scroll = scroll_top.get();
                     let ch = container_height.get();
                     let (viewport_start, viewport_end) = match mode {
                         ViewMode::Grid => {
-                            let rows_before = scroll / ITEM_HEIGHT;
-                            let visible_rows = (ch / ITEM_HEIGHT) + 2;
+                            let rows_before = scroll / scaled_item_height;
+                            let visible_rows = (ch / scaled_item_height) + 2;
                             let vs = (rows_before * cols as i32) as usize;
                             let ve = ((rows_before + visible_rows) * cols as i32) as usize;
                             (vs, ve)
@@ -629,8 +697,8 @@ pub fn GameGrid(
                                         {visible_games.into_iter().map(|(index, game)| {
                                             let row = index / cols;
                                             let col = index % cols;
-                                            let top = row as i32 * ITEM_HEIGHT;
-                                            let left = col as i32 * ITEM_WIDTH;
+                                            let top = row as i32 * scaled_item_height;
+                                            let left = col as i32 * scaled_item_width;
                                             let in_viewport = index >= viewport_start && index < viewport_end;
 
                                             view! {
@@ -639,8 +707,8 @@ pub fn GameGrid(
                                                     style:position="absolute"
                                                     style:top=format!("{}px", top)
                                                     style:left=format!("{}px", left)
-                                                    style:width=format!("{}px", ITEM_WIDTH)
-                                                    style:height=format!("{}px", ITEM_HEIGHT)
+                                                    style:width=format!("{}px", scaled_item_width)
+                                                    style:height=format!("{}px", scaled_item_height)
                                                 >
                                                     <GameCard game=game on_select=selected_game search_query=current_search.get() artwork_type=current_artwork_type render_index=index in_viewport=in_viewport />
                                                 </div>
