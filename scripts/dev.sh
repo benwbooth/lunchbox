@@ -87,10 +87,17 @@ elif [ "$MODE" = "browser" ]; then
     # Wait a moment for services to start
     sleep 3
 
-    # Open browser
+    # Open browser with hardware-accelerated WebGPU
     echo ""
-    echo "Opening browser..."
-    xdg-open http://127.0.0.1:1420 2>/dev/null || open http://127.0.0.1:1420 2>/dev/null || echo "Please open http://127.0.0.1:1420 in your browser"
+    echo "Opening Chromium with WebGPU enabled..."
+    nix develop "$PROJECT_DIR" --command chromium \
+        --ozone-platform=wayland \
+        --enable-features=UseOzonePlatform,Vulkan \
+        --use-vulkan \
+        --enable-unsafe-webgpu \
+        --enable-webgpu-developer-features \
+        --disable-software-rasterizer \
+        http://127.0.0.1:1420 "$@" &
 
     echo ""
     echo "═══════════════════════════════════════════════════════"
