@@ -56,6 +56,9 @@
             nodePackages.tailwindcss
             watchexec
 
+            # Browser for WebGPU development (hardware-accelerated)
+            chromium
+
             # Credential storage (secret-tool CLI)
             libsecret
 
@@ -66,6 +69,9 @@
           nativeBuildInputs = with pkgs; [
             pkg-config
           ];
+
+          # Keep flake inputs in closure so GC doesn't collect them
+          FLAKE_INPUTS = builtins.concatStringsSep ":" [ "${nixpkgs}" "${rust-overlay}" "${flake-utils}" ];
 
           # Environment variables for Tauri
           shellHook = ''
