@@ -9,7 +9,7 @@ no_sri = true
 [watch]
 ignore = ["src-tauri", "target", ".git"]
 # Watch these file types for changes
-watch = ["src", "styles", "index.html", "Cargo.toml"]
+watch = ["src", "styles", "index.html", "Cargo.toml", "build.rs"]
 
 [serve]
 # Listen on all interfaces so WebSocket works

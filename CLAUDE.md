@@ -15,8 +15,8 @@
 
 ## Workflow
 
-- After implementing a change, always git status/diff/commit/push as a WIP commit
-- Don't wait for the user to ask for a commit
+- **Only commit when something is actually fixed and working** - don't commit broken or experimental code to git
+- Don't commit after every change - wait until the fix is verified to work
 - Run the app with `./scripts/dev.sh` to test changes
 
 ## Tools

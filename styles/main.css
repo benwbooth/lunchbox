@@ -1346,6 +1346,28 @@ h1, h2, h3, h4, h5, h6 {
     padding-right: 32px;
 }
 
+.password-eye-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 4px;
+    transition: color 0.15s ease;
+}
+
+.password-eye-btn:hover {
+    color: var(--text-primary);
+}
+
+.password-eye-btn svg {
+    display: block;
+}
+
 .settings-form {
     display: flex;
     flex-direction: column;
@@ -3513,4 +3535,635 @@ body.sidebar-resizing * {
     margin: 0;
     font-size: 16px;
     text-shadow: 2px 2px 0 #000;
+}
+
+/* Import Progress */
+.import-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.import-progress {
+    width: 100%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.import-progress.import-done {
+    opacity: 0.7;
+}
+
+.import-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+}
+
+.import-progress-bar-container {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.import-progress-bar {
+    height: 100%;
+    background: var(--accent-color);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.import-progress-bar.import-progress-complete {
+    background: #22c55e;
+}
+
+.import-progress-bar.import-progress-failed {
+    background: #ef4444;
+}
+
+.import-progress-percent {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-highlight);
+    min-width: 36px;
+    text-align: right;
+}
+
+.import-progress-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.import-progress-expand {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px 6px;
+}
+
+.import-progress-expand:hover {
+    color: var(--text-primary);
+}
+
+.import-progress-details {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.import-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.import-step {
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    border-left: 3px solid var(--accent-color);
+}
+
+.import-step-error {
+    border-left-color: #ef4444;
+}
+
+.import-step-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.import-step-number {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-color);
+    background: var(--bg-secondary);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.import-step-error .import-step-number {
+    color: #ef4444;
+}
+
+.import-step-action {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.import-step-url {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    padding-left: 28px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.import-step-observation {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    padding-left: 28px;
+    line-height: 1.4;
+}
+
+.import-step-notes {
+    margin-top: 4px;
+    padding-left: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.import-step-note {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+.import-step-screenshot {
+    margin-top: 6px;
+    margin-left: 28px;
+    height: 100px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.import-step-screenshot:hover {
+    opacity: 0.8;
+}
+
+.import-screenshot-lightbox {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    cursor: pointer;
+}
+
+.import-screenshot-lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 6px;
+}
+
+.import-no-steps {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-align: center;
+    padding: 12px;
+}
+
+.cancel-import-btn {
+    align-self: flex-start;
+    padding: 4px 12px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.cancel-import-btn:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+.import-btn-action {
+    padding: 12px 24px;
+    background-color: #22c55e;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.import-btn-action:hover:not(:disabled) {
+    background-color: #16a34a;
+}
+
+.import-btn-action:disabled,
+.import-play-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.import-play-btn {
+    padding: 12px 24px;
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.import-play-btn:hover:not(:disabled) {
+    background-color: var(--accent-hover);
+}
+
+.import-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 6px;
+    font-size: 12px;
+    color: #ef4444;
+}
+
+.import-error span {
+    flex: 1;
+}
+
+.import-error-dismiss {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 6px;
+    opacity: 0.7;
+}
+
+.import-error-dismiss:hover {
+    opacity: 1;
+}
+
+.graboid-setup-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    width: 100%;
+}
+
+.graboid-settings-link {
+    color: var(--accent-color);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.graboid-settings-link:hover {
+    text-decoration: underline;
+    color: var(--accent-hover);
+}
+
+/* Job ID badge in import progress header */
+.import-job-id {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Import logs section */
+.import-logs-section {
+    margin-top: 8px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 6px;
+}
+
+.import-logs-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.import-logs-toggle:hover {
+    color: var(--text-primary);
+}
+
+.import-logs-count {
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.import-logs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 4px;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+}
+
+.import-log-entry {
+    display: flex;
+    gap: 6px;
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+
+.import-log-error {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.import-log-warning, .import-log-warn {
+    color: #eab308;
+    background: rgba(234, 179, 8, 0.1);
+}
+
+.import-log-info {
+    color: var(--text-secondary);
+}
+
+.import-log-timestamp {
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.import-log-source {
+    color: var(--accent-color);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.import-log-message {
+    word-break: break-word;
+}
+
+/* Import prompt field in game details */
+.import-prompt-field {
+    width: 100%;
+}
+
+.import-prompt-textarea {
+    width: 100%;
+    min-height: 40px;
+    padding: 6px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12px;
+    resize: vertical;
+}
+
+.import-prompt-textarea:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.import-prompt-textarea::placeholder {
+    color: var(--text-secondary);
+}
+
+/* Import Prompts management section */
+.import-prompts-section {
+    width: 100%;
+    margin-top: 8px;
+}
+
+.import-prompts-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 4px 0;
+}
+
+.import-prompts-toggle:hover {
+    color: var(--text-primary);
+}
+
+.import-prompts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.import-prompt-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.import-prompt-scope-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.import-prompt-scope-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.scope-global {
+    background: #1e40af;
+    color: #93c5fd;
+}
+
+.scope-platform {
+    background: #065f46;
+    color: #6ee7b7;
+}
+
+.scope-game {
+    background: #7c2d12;
+    color: #fdba74;
+}
+
+.import-prompt-empty {
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 12px;
+}
+
+.import-prompt-preview {
+    font-size: 12px;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.import-prompt-edit-btn,
+.import-prompt-settings-link {
+    font-size: 11px;
+    color: var(--accent-color);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    white-space: nowrap;
+}
+
+.import-prompt-edit-btn:hover,
+.import-prompt-settings-link:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+.import-prompt-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.import-prompt-editor-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.import-prompt-save-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.import-prompt-save-btn:hover {
+    background: var(--accent-hover);
+}
+
+.import-prompt-delete-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    background: none;
+    color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.import-prompt-delete-btn:hover {
+    background: rgba(255, 68, 68, 0.1);
+}
+
+.import-prompt-cancel-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    background: none;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.import-prompt-cancel-btn:hover {
+    color: var(--text-primary);
+}
+
+/* Graboid prompts list in settings */
+.graboid-prompts-list {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.graboid-prompts-list h4 {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-family: inherit;
+}
+
+.graboid-prompts-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.graboid-prompt-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+}
+
+.graboid-prompt-text {
+    font-size: 12px;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.graboid-prompt-delete {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.graboid-prompt-delete:hover {
+    color: var(--danger-color);
 }

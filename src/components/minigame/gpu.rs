@@ -63,7 +63,7 @@ pub fn pack_palettes() -> Vec<u32> {
     palettes
 }
 
-/// Uniforms struct matching WGSL layout (32 bytes)
+/// Uniforms struct matching WGSL layout (64 bytes)
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Uniforms {
@@ -73,20 +73,51 @@ pub struct Uniforms {
     pub mouse: [f32; 2],
     pub mouse_click: u32,
     pub frame: u32,
+    // Dynamic grid dimensions (calculated from screen size)
+    pub grid_width: u32,
+    pub grid_height: u32,
+    pub grid_size: u32,
+    pub egrid_width: u32,
+    pub egrid_height: u32,
+    pub egrid_cells: u32,
+    pub egrid_size: u32,
+    pub block_count: u32,
 }
 
 impl Uniforms {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(32);
-        bytes.extend_from_slice(&self.resolution[0].to_le_bytes());
-        bytes.extend_from_slice(&self.resolution[1].to_le_bytes());
-        bytes.extend_from_slice(&self.time.to_le_bytes());
-        bytes.extend_from_slice(&self.delta_time.to_le_bytes());
-        bytes.extend_from_slice(&self.mouse[0].to_le_bytes());
-        bytes.extend_from_slice(&self.mouse[1].to_le_bytes());
-        bytes.extend_from_slice(&self.mouse_click.to_le_bytes());
-        bytes.extend_from_slice(&self.frame.to_le_bytes());
-        bytes
+    pub fn write_bytes(&self, out: &mut [u8; 64]) {
+        let mut offset = 0usize;
+        out[offset..offset + 4].copy_from_slice(&self.resolution[0].to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.resolution[1].to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.time.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.delta_time.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.mouse[0].to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.mouse[1].to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.mouse_click.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.frame.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.grid_width.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.grid_height.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.grid_size.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.egrid_width.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.egrid_height.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.egrid_cells.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.egrid_size.to_le_bytes());
+        offset += 4;
+        out[offset..offset + 4].copy_from_slice(&self.block_count.to_le_bytes());
     }
 }
 

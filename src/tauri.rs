@@ -390,6 +390,8 @@ pub struct AppSettings {
     pub igdb: IGDBSettings,
     #[serde(default)]
     pub emumovies: EmuMoviesSettings,
+    #[serde(default)]
+    pub graboid: GraboidSettings,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -424,6 +426,18 @@ pub struct EmuMoviesSettings {
     pub username: String,
     #[serde(default)]
     pub password: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GraboidSettings {
+    #[serde(default)]
+    pub server_url: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default)]
+    pub import_directory: Option<String>,
+    #[serde(default)]
+    pub default_prompt: String,
 }
 
 // ============ Helpers ============
@@ -1431,4 +1445,155 @@ pub async fn launch_game(emulator_name: String, rom_path: String) -> Result<Laun
 /// Get the current operating system
 pub async fn get_current_os() -> Result<String, String> {
     invoke_no_args("get_current_os").await
+}
+
+// ============ Graboid Import Types & Commands ============
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameFile {
+    pub launchbox_db_id: i64,
+    pub game_title: String,
+    pub platform: String,
+    pub file_path: String,
+    pub file_size: Option<i64>,
+    pub imported_at: String,
+    pub import_source: String,
+    pub graboid_job_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportJob {
+    pub id: String,
+    pub launchbox_db_id: i64,
+    pub game_title: String,
+    pub platform: String,
+    pub status: String,
+    pub progress_percent: f64,
+    pub status_message: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraboidPrompt {
+    pub id: i64,
+    pub scope: String,
+    pub platform: Option<String>,
+    pub launchbox_db_id: Option<i64>,
+    pub prompt: String,
+}
+
+/// Check if a game has an imported file
+pub async fn get_game_file(launchbox_db_id: i64) -> Result<Option<GameFile>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args { launchbox_db_id: i64 }
+    invoke("get_game_file", Args { launchbox_db_id }).await
+}
+
+/// Get active import job for a game
+pub async fn get_active_import(launchbox_db_id: i64) -> Result<Option<ImportJob>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args { launchbox_db_id: i64 }
+    invoke("get_active_import", Args { launchbox_db_id }).await
+}
+
+/// Start a Graboid import job
+pub async fn start_graboid_import(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+) -> Result<ImportJob, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        game_title: String,
+        platform: String,
+    }
+    invoke("start_graboid_import", Args { launchbox_db_id, game_title, platform }).await
+}
+
+/// Cancel an import job
+pub async fn cancel_import(job_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args { job_id: String }
+    invoke("cancel_import", Args { job_id }).await
+}
+
+/// Test connection to Graboid server
+pub async fn test_graboid_connection(
+    server_url: String,
+    api_key: String,
+) -> Result<ConnectionTestResult, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        server_url: String,
+        api_key: String,
+    }
+    invoke("test_graboid_connection", Args { server_url, api_key }).await
+}
+
+/// Get all graboid prompts
+pub async fn get_graboid_prompts() -> Result<Vec<GraboidPrompt>, String> {
+    invoke_no_args("get_graboid_prompts").await
+}
+
+/// Save a graboid prompt
+pub async fn save_graboid_prompt(
+    scope: String,
+    platform: Option<String>,
+    launchbox_db_id: Option<i64>,
+    prompt: String,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        scope: String,
+        platform: Option<String>,
+        launchbox_db_id: Option<i64>,
+        prompt: String,
+    }
+    invoke("save_graboid_prompt", Args { scope, platform, launchbox_db_id, prompt }).await
+}
+
+/// Delete a graboid prompt
+pub async fn delete_graboid_prompt(
+    scope: String,
+    platform: Option<String>,
+    launchbox_db_id: Option<i64>,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        scope: String,
+        platform: Option<String>,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke("delete_graboid_prompt", Args { scope, platform, launchbox_db_id }).await
+}
+
+/// Get the effective graboid prompt for a game (global + platform + game combined)
+pub async fn get_effective_graboid_prompt(
+    platform: String,
+    launchbox_db_id: i64,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        platform: String,
+        launchbox_db_id: i64,
+    }
+    invoke("get_effective_graboid_prompt", Args { platform, launchbox_db_id }).await
+}
+
+/// Get the SSE endpoint URL for a Graboid job
+pub fn graboid_sse_url(job_id: &str) -> String {
+    format!("{}/api/graboid/jobs/{}/events", HTTP_API_BASE, job_id)
 }

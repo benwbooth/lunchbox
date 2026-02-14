@@ -2263,3 +2263,119 @@ pub async fn launch_emulator(
 pub fn get_current_os() -> String {
     handlers::get_current_os()
 }
+
+// ============ Graboid Import Commands ============
+
+use crate::handlers::{
+    GameFile, ImportJob, StartImportInput,
+    GraboidPrompt, SaveGraboidPromptInput, DeleteGraboidPromptInput,
+};
+
+/// Check if a game has an imported file
+#[tauri::command]
+pub async fn get_game_file(
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<GameFile>, String> {
+    let state_guard = state.read().await;
+    handlers::get_game_file(&state_guard, launchbox_db_id).await
+}
+
+/// Get active import job for a game
+#[tauri::command]
+pub async fn get_active_import(
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<ImportJob>, String> {
+    let state_guard = state.read().await;
+    handlers::get_active_import(&state_guard, launchbox_db_id).await
+}
+
+/// Start a Graboid import job
+#[tauri::command]
+pub async fn start_graboid_import(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<ImportJob, String> {
+    let state_guard = state.read().await;
+    handlers::start_graboid_import(&state_guard, StartImportInput {
+        launchbox_db_id,
+        game_title,
+        platform,
+    }).await
+}
+
+/// Cancel an import job
+#[tauri::command]
+pub async fn cancel_import(
+    job_id: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::cancel_import(&state_guard, &job_id).await
+}
+
+/// Test connection to Graboid server
+#[tauri::command]
+pub async fn test_graboid_connection(
+    server_url: String,
+    api_key: String,
+) -> Result<ConnectionTestResult, String> {
+    Ok(handlers::test_graboid_connection(&server_url, &api_key).await)
+}
+
+/// Get all graboid prompts
+#[tauri::command]
+pub async fn get_graboid_prompts(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<GraboidPrompt>, String> {
+    let state_guard = state.read().await;
+    handlers::get_graboid_prompts(&state_guard).await
+}
+
+/// Save a graboid prompt
+#[tauri::command]
+pub async fn save_graboid_prompt(
+    scope: String,
+    platform: Option<String>,
+    launchbox_db_id: Option<i64>,
+    prompt: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::save_graboid_prompt(&state_guard, SaveGraboidPromptInput {
+        scope,
+        platform,
+        launchbox_db_id,
+        prompt,
+    }).await
+}
+
+/// Delete a graboid prompt
+#[tauri::command]
+pub async fn delete_graboid_prompt(
+    scope: String,
+    platform: Option<String>,
+    launchbox_db_id: Option<i64>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::delete_graboid_prompt(&state_guard, DeleteGraboidPromptInput {
+        scope,
+        platform,
+        launchbox_db_id,
+    }).await
+}
+
+/// Get the effective graboid prompt for a game (global + platform + game combined)
+#[tauri::command]
+pub async fn get_effective_graboid_prompt(
+    platform: String,
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<String, String> {
+    let state_guard = state.read().await;
+    handlers::get_effective_graboid_prompt(&state_guard, &platform, launchbox_db_id).await
+}

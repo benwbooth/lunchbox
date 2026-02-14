@@ -116,6 +116,7 @@ pub fn App() -> impl IntoView {
             <GameDetails
                 game=selected_game
                 on_close=set_selected_game
+                set_show_settings=set_show_settings
             />
             <Settings
                 show=show_settings

@@ -2,13 +2,15 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats, EmulatorWithStatus};
-use super::{VideoPlayer, LazyImage, Box3DViewer};
+use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats, EmulatorWithStatus, GameFile};
+use super::{VideoPlayer, LazyImage, Box3DViewer, ImportProgress};
 
 #[component]
 pub fn GameDetails(
     game: ReadSignal<Option<Game>>,
     on_close: WriteSignal<Option<Game>>,
+    #[prop(optional)]
+    set_show_settings: Option<WriteSignal<bool>>,
 ) -> impl IntoView {
     // Local display state - allows switching variants without affecting external state
     let (display_game, set_display_game) = signal::<Option<Game>>(None);
@@ -24,6 +26,23 @@ pub fn GameDetails(
     let (emulators_loading, set_emulators_loading) = signal(false);
     // Per-game emulator preference
     let (game_emulator_pref, set_game_emulator_pref) = signal::<Option<String>>(None);
+    // Import state
+    let (game_file, set_game_file) = signal::<Option<GameFile>>(None);
+    let (graboid_configured, set_graboid_configured) = signal(false);
+    let (import_job_id, set_import_job_id) = signal::<Option<String>>(None);
+    let (auto_play_on_complete, set_auto_play_on_complete) = signal(false);
+    let (import_complete, set_import_complete) = signal::<Option<String>>(None);
+    let (import_failed, set_import_failed) = signal::<Option<String>>(None);
+    let (import_error, set_import_error) = signal::<Option<String>>(None);
+    let import_prompt = RwSignal::new(String::new());
+    // Prompt management state
+    let (prompts_expanded, set_prompts_expanded) = signal(false);
+    let prompts: RwSignal<Vec<tauri::GraboidPrompt>> = RwSignal::new(Vec::new());
+    let (platform_prompt_editing, set_platform_prompt_editing) = signal(false);
+    let (game_prompt_editing, set_game_prompt_editing) = signal(false);
+    let platform_prompt_text = RwSignal::new(String::new());
+    let game_prompt_text = RwSignal::new(String::new());
+    let global_prompt_text = RwSignal::new(String::new());
 
     // Initialize display_game from prop when game changes
     Effect::new(move || {
@@ -36,6 +55,9 @@ pub fn GameDetails(
             set_variants.set(Vec::new());
             set_selected_variant.set(None);
             set_game_emulator_pref.set(None);
+            set_game_file.set(None);
+            set_import_job_id.set(None);
+            set_auto_play_on_complete.set(false);
         }
     });
 
@@ -107,6 +129,21 @@ pub fn GameDetails(
                 } else if !is_variant_switch {
                     set_variants.set(Vec::new());
                 }
+
+                // Check game file and active import
+                if let Ok(file) = tauri::get_game_file(db_id).await {
+                    set_game_file.set(file);
+                } else {
+                    set_game_file.set(None);
+                }
+                match tauri::get_active_import(db_id).await {
+                    Ok(Some(job)) => {
+                        set_import_job_id.set(Some(job.id));
+                    }
+                    _ => {
+                        set_import_job_id.set(None);
+                    }
+                }
             });
         }
     });
@@ -128,6 +165,53 @@ pub fn GameDetails(
         }
     });
 
+    // Check if Graboid is configured
+    Effect::new(move || {
+        spawn_local(async move {
+            if let Ok(settings) = tauri::get_settings().await {
+                set_graboid_configured.set(!settings.graboid.server_url.is_empty());
+            }
+        });
+    });
+
+    // Handle import completion
+    Effect::new(move || {
+        if let Some(_file_path) = import_complete.get() {
+            set_import_job_id.set(None);
+            if let Some(g) = display_game.get_untracked() {
+                let db_id = g.database_id;
+                let platform = g.platform.clone();
+                let should_auto_play = auto_play_on_complete.get_untracked();
+                spawn_local(async move {
+                    if let Ok(file) = tauri::get_game_file(db_id).await {
+                        set_game_file.set(file);
+                    }
+                    if should_auto_play {
+                        set_auto_play_on_complete.set(false);
+                        set_emulators_loading.set(true);
+                        set_show_emulator_picker.set(true);
+                        match tauri::get_emulators_with_status(platform).await {
+                            Ok(emu_list) => set_emulators.set(emu_list),
+                            Err(_) => set_emulators.set(Vec::new()),
+                        }
+                        set_emulators_loading.set(false);
+                    }
+                });
+            }
+            set_import_complete.set(None);
+        }
+    });
+
+    // Handle import failure
+    Effect::new(move || {
+        if let Some(err) = import_failed.get() {
+            set_import_job_id.set(None);
+            set_auto_play_on_complete.set(false);
+            set_import_error.set(Some(err));
+            set_import_failed.set(None);
+        }
+    });
+
     view! {
         <Show when=move || display_game.get().is_some()>
             {move || {
@@ -135,7 +219,6 @@ pub fn GameDetails(
                     let display_title = g.display_title.clone();
                     let first_char = display_title.chars().next().unwrap_or('?').to_string();
                     let platform = g.platform.clone();
-                    let platform_for_play = g.platform.clone();
                     let description = g.description.clone().unwrap_or_else(|| "No description available.".to_string());
                     let developer = g.developer.clone();
                     let publisher = g.publisher.clone();
@@ -156,29 +239,66 @@ pub fn GameDetails(
                     let title_for_select = g.title.clone();
                     let platform_for_select = g.platform.clone();
 
-                    let on_play = move |_| {
-                        let platform = platform_for_play.clone();
-                        set_emulators_loading.set(true);
-                        set_show_emulator_picker.set(true);
-                        spawn_local(async move {
-                            // Fetch emulators for this platform with installation status
-                            match tauri::get_emulators_with_status(platform).await {
-                                Ok(emu_list) => {
-                                    set_emulators.set(emu_list);
-                                }
-                                Err(e) => {
-                                    web_sys::console::error_1(&format!("Failed to fetch emulators: {}", e).into());
-                                    set_emulators.set(Vec::new());
-                                }
-                            }
-                            set_emulators_loading.set(false);
-                        });
-                    };
-
                     // Store game info for emulator selection
                     let stored_title = StoredValue::new(title_for_select);
                     let stored_platform = StoredValue::new(platform_for_select);
                     let stored_db_id = StoredValue::new(db_id);
+
+                    let on_import = move |_: web_sys::MouseEvent| {
+                        set_import_error.set(None);
+                        let title = stored_title.get_value();
+                        let platform = stored_platform.get_value();
+                        let db_id = stored_db_id.get_value();
+                        let prompt = import_prompt.get();
+                        spawn_local(async move {
+                            // Save prompt if non-empty
+                            if !prompt.trim().is_empty() {
+                                let _ = tauri::save_graboid_prompt(
+                                    "game".to_string(),
+                                    Some(platform.clone()),
+                                    Some(db_id),
+                                    prompt,
+                                ).await;
+                            }
+                            match tauri::start_graboid_import(db_id, title, platform).await {
+                                Ok(job) => {
+                                    set_import_job_id.set(Some(job.id));
+                                }
+                                Err(e) => {
+                                    set_import_error.set(Some(e));
+                                }
+                            }
+                        });
+                    };
+
+                    let on_import_and_play = move |_: web_sys::MouseEvent| {
+                        set_import_error.set(None);
+                        set_auto_play_on_complete.set(true);
+                        let title = stored_title.get_value();
+                        let platform = stored_platform.get_value();
+                        let db_id = stored_db_id.get_value();
+                        let prompt = import_prompt.get();
+                        spawn_local(async move {
+                            // Save prompt if non-empty
+                            if !prompt.trim().is_empty() {
+                                let _ = tauri::save_graboid_prompt(
+                                    "game".to_string(),
+                                    Some(platform.clone()),
+                                    Some(db_id),
+                                    prompt,
+                                ).await;
+                            }
+                            match tauri::start_graboid_import(db_id, title, platform).await {
+                                Ok(job) => {
+                                    set_import_job_id.set(Some(job.id));
+                                }
+                                Err(e) => {
+                                    set_auto_play_on_complete.set(false);
+                                    set_import_error.set(Some(e));
+                                }
+                            }
+                        });
+                    };
 
                     let on_toggle_favorite = move |_| {
                         let title = title_for_fav.clone();
@@ -337,7 +457,94 @@ pub fn GameDetails(
                                         </Show>
 
                                         <div class="game-actions">
-                                            <button class="play-btn" on:click=on_play>"Play Game"</button>
+                                            // Import progress when actively importing
+                                            <Show when=move || import_job_id.get().is_some()>
+                                                {move || import_job_id.get().map(|jid| view! {
+                                                    <div class="import-section">
+                                                        <ImportProgress
+                                                            job_id=jid.clone()
+                                                            on_complete=set_import_complete
+                                                            on_failed=set_import_failed
+                                                        />
+                                                        <button class="cancel-import-btn" on:click=move |_| {
+                                                            if let Some(jid) = import_job_id.get() {
+                                                                set_import_job_id.set(None);
+                                                                set_auto_play_on_complete.set(false);
+                                                                spawn_local(async move {
+                                                                    let _ = tauri::cancel_import(jid).await;
+                                                                });
+                                                            }
+                                                        }>"Cancel"</button>
+                                                    </div>
+                                                })}
+                                            </Show>
+
+                                            // Import prompt and buttons when no file and not importing
+                                            <Show when=move || game_file.get().is_none() && import_job_id.get().is_none()>
+                                                <Show when=move || graboid_configured.get()>
+                                                    <div class="import-prompt-field">
+                                                        <textarea
+                                                            class="import-prompt-textarea"
+                                                            placeholder="Additional instructions for agent (optional)"
+                                                            rows="2"
+                                                            prop:value=move || import_prompt.get()
+                                                            on:input=move |ev| import_prompt.set(event_target_value(&ev))
+                                                        />
+                                                    </div>
+                                                </Show>
+                                                <button
+                                                    class="import-btn-action"
+                                                    on:click=on_import
+                                                    disabled=move || !graboid_configured.get()
+                                                >"Import"</button>
+                                                <button
+                                                    class="import-play-btn"
+                                                    on:click=on_import_and_play
+                                                    disabled=move || !graboid_configured.get()
+                                                >"Import & Play"</button>
+                                                <Show when=move || !graboid_configured.get()>
+                                                    <div class="graboid-setup-hint">
+                                                        "Configure "
+                                                        <a href="#" class="graboid-settings-link" on:click=move |e| {
+                                                            e.prevent_default();
+                                                            if let Some(setter) = set_show_settings {
+                                                                setter.set(true);
+                                                            }
+                                                        }>"Graboid in Settings"</a>
+                                                        " to import and play games"
+                                                    </div>
+                                                </Show>
+                                            </Show>
+
+                                            // Import error message
+                                            <Show when=move || import_error.get().is_some()>
+                                                {move || import_error.get().map(|err| view! {
+                                                    <div class="import-error">
+                                                        <span>{err}</span>
+                                                        <button class="import-error-dismiss" on:click=move |_| set_import_error.set(None)>"Dismiss"</button>
+                                                    </div>
+                                                })}
+                                            </Show>
+
+                                            // Play button only when game file exists and not importing
+                                            <Show when=move || game_file.get().is_some() && import_job_id.get().is_none()>
+                                                <button class="play-btn" on:click=move |_| {
+                                                    let platform = stored_platform.get_value();
+                                                    set_emulators_loading.set(true);
+                                                    set_show_emulator_picker.set(true);
+                                                    spawn_local(async move {
+                                                        match tauri::get_emulators_with_status(platform).await {
+                                                            Ok(emu_list) => set_emulators.set(emu_list),
+                                                            Err(e) => {
+                                                                web_sys::console::error_1(&format!("Failed to fetch emulators: {}", e).into());
+                                                                set_emulators.set(Vec::new());
+                                                            }
+                                                        }
+                                                        set_emulators_loading.set(false);
+                                                    });
+                                                }>"Play"</button>
+                                            </Show>
+
                                             <button
                                                 class="favorite-btn"
                                                 class:is-favorite=move || is_fav.get()
@@ -358,6 +565,27 @@ pub fn GameDetails(
                                                 set_show_emulator_picker=set_show_emulator_picker
                                             />
                                         </Show>
+
+                                        // Import Prompts management section
+                                        {let platform_for_prompts = g.platform.clone(); view! {
+                                        <Show when=move || graboid_configured.get()>
+                                            <ImportPromptsSection
+                                                db_id=db_id
+                                                platform=platform_for_prompts.clone()
+                                                prompts=prompts
+                                                prompts_expanded=prompts_expanded
+                                                set_prompts_expanded=set_prompts_expanded
+                                                platform_prompt_editing=platform_prompt_editing
+                                                set_platform_prompt_editing=set_platform_prompt_editing
+                                                game_prompt_editing=game_prompt_editing
+                                                set_game_prompt_editing=set_game_prompt_editing
+                                                platform_prompt_text=platform_prompt_text
+                                                game_prompt_text=game_prompt_text
+                                                global_prompt_text=global_prompt_text
+                                                set_show_settings=set_show_settings
+                                            />
+                                        </Show>
+                                        }}
                                     </div>
 
                                 // Video player, full width
@@ -997,6 +1225,203 @@ fn EmulatorPickerModal(
                     </Show>
                 </div>
             </div>
+        </div>
+    }
+}
+
+/// Collapsible section for managing import prompts at different scopes
+#[component]
+fn ImportPromptsSection(
+    db_id: i64,
+    #[prop(into)]
+    platform: String,
+    prompts: RwSignal<Vec<tauri::GraboidPrompt>>,
+    prompts_expanded: ReadSignal<bool>,
+    set_prompts_expanded: WriteSignal<bool>,
+    platform_prompt_editing: ReadSignal<bool>,
+    set_platform_prompt_editing: WriteSignal<bool>,
+    game_prompt_editing: ReadSignal<bool>,
+    set_game_prompt_editing: WriteSignal<bool>,
+    platform_prompt_text: RwSignal<String>,
+    game_prompt_text: RwSignal<String>,
+    global_prompt_text: RwSignal<String>,
+    set_show_settings: Option<WriteSignal<bool>>,
+) -> impl IntoView {
+    let stored_platform = StoredValue::new(platform);
+
+    // Load prompts on mount
+    Effect::new(move || {
+        let platform = stored_platform.get_value();
+        spawn_local(async move {
+            if let Ok(all_prompts) = tauri::get_graboid_prompts().await {
+                // Find global prompt from settings
+                if let Ok(settings) = tauri::get_settings().await {
+                    global_prompt_text.set(settings.graboid.default_prompt);
+                }
+                // Find platform prompt
+                if let Some(pp) = all_prompts.iter().find(|p| p.scope == "platform" && p.platform.as_deref() == Some(&*platform)) {
+                    platform_prompt_text.set(pp.prompt.clone());
+                } else {
+                    platform_prompt_text.set(String::new());
+                }
+                // Find game prompt
+                if let Some(gp) = all_prompts.iter().find(|p| p.scope == "game" && p.launchbox_db_id == Some(db_id)) {
+                    game_prompt_text.set(gp.prompt.clone());
+                } else {
+                    game_prompt_text.set(String::new());
+                }
+                prompts.set(all_prompts);
+            }
+        });
+    });
+
+    let save_platform_prompt = move |_: web_sys::MouseEvent| {
+        let platform = stored_platform.get_value();
+        let text = platform_prompt_text.get();
+        set_platform_prompt_editing.set(false);
+        spawn_local(async move {
+            if text.trim().is_empty() {
+                let _ = tauri::delete_graboid_prompt("platform".to_string(), Some(platform), None).await;
+            } else {
+                let _ = tauri::save_graboid_prompt("platform".to_string(), Some(platform), None, text).await;
+            }
+        });
+    };
+
+    let delete_platform_prompt = move |_: web_sys::MouseEvent| {
+        let platform = stored_platform.get_value();
+        platform_prompt_text.set(String::new());
+        set_platform_prompt_editing.set(false);
+        spawn_local(async move {
+            let _ = tauri::delete_graboid_prompt("platform".to_string(), Some(platform), None).await;
+        });
+    };
+
+    let save_game_prompt = move |_: web_sys::MouseEvent| {
+        let text = game_prompt_text.get();
+        set_game_prompt_editing.set(false);
+        spawn_local(async move {
+            if text.trim().is_empty() {
+                let _ = tauri::delete_graboid_prompt("game".to_string(), None, Some(db_id)).await;
+            } else {
+                let _ = tauri::save_graboid_prompt("game".to_string(), None, Some(db_id), text).await;
+            }
+        });
+    };
+
+    let delete_game_prompt = move |_: web_sys::MouseEvent| {
+        game_prompt_text.set(String::new());
+        set_game_prompt_editing.set(false);
+        spawn_local(async move {
+            let _ = tauri::delete_graboid_prompt("game".to_string(), None, Some(db_id)).await;
+        });
+    };
+
+    view! {
+        <div class="import-prompts-section">
+            <button
+                class="import-prompts-toggle"
+                on:click=move |_| set_prompts_expanded.set(!prompts_expanded.get())
+            >
+                {move || if prompts_expanded.get() { "\u{25B2} Import Prompts" } else { "\u{25BC} Import Prompts" }}
+            </button>
+            <Show when=move || prompts_expanded.get()>
+                <div class="import-prompts-list">
+                    // Global prompt (read-only, edit in settings)
+                    <div class="import-prompt-item">
+                        <div class="import-prompt-scope-header">
+                            <span class="import-prompt-scope-badge scope-global">"Global"</span>
+                            {move || {
+                                let text = global_prompt_text.get();
+                                if text.is_empty() {
+                                    view! { <span class="import-prompt-empty">"(not set)"</span> }.into_any()
+                                } else {
+                                    view! { <span class="import-prompt-preview">{text}</span> }.into_any()
+                                }
+                            }}
+                            <button class="import-prompt-settings-link" on:click=move |_| {
+                                if let Some(setter) = set_show_settings {
+                                    setter.set(true);
+                                }
+                            }>"Edit in Settings"</button>
+                        </div>
+                    </div>
+
+                    // Platform prompt (editable)
+                    <div class="import-prompt-item">
+                        <div class="import-prompt-scope-header">
+                            <span class="import-prompt-scope-badge scope-platform">"Platform"</span>
+                            <Show
+                                when=move || !platform_prompt_editing.get()
+                                fallback=move || view! {}
+                            >
+                                {move || {
+                                    let text = platform_prompt_text.get();
+                                    if text.is_empty() {
+                                        view! { <span class="import-prompt-empty">"(not set)"</span> }.into_any()
+                                    } else {
+                                        view! { <span class="import-prompt-preview">{text}</span> }.into_any()
+                                    }
+                                }}
+                                <button class="import-prompt-edit-btn" on:click=move |_| set_platform_prompt_editing.set(true)>"Edit"</button>
+                            </Show>
+                        </div>
+                        <Show when=move || platform_prompt_editing.get()>
+                            <div class="import-prompt-editor">
+                                <textarea
+                                    class="import-prompt-textarea"
+                                    rows="3"
+                                    prop:value=move || platform_prompt_text.get()
+                                    on:input=move |ev| platform_prompt_text.set(event_target_value(&ev))
+                                    placeholder="Instructions for all games on this platform"
+                                />
+                                <div class="import-prompt-editor-actions">
+                                    <button class="import-prompt-save-btn" on:click=save_platform_prompt>"Save"</button>
+                                    <button class="import-prompt-delete-btn" on:click=delete_platform_prompt>"Delete"</button>
+                                    <button class="import-prompt-cancel-btn" on:click=move |_| set_platform_prompt_editing.set(false)>"Cancel"</button>
+                                </div>
+                            </div>
+                        </Show>
+                    </div>
+
+                    // Game prompt (editable)
+                    <div class="import-prompt-item">
+                        <div class="import-prompt-scope-header">
+                            <span class="import-prompt-scope-badge scope-game">"Game"</span>
+                            <Show
+                                when=move || !game_prompt_editing.get()
+                                fallback=move || view! {}
+                            >
+                                {move || {
+                                    let text = game_prompt_text.get();
+                                    if text.is_empty() {
+                                        view! { <span class="import-prompt-empty">"(not set)"</span> }.into_any()
+                                    } else {
+                                        view! { <span class="import-prompt-preview">{text}</span> }.into_any()
+                                    }
+                                }}
+                                <button class="import-prompt-edit-btn" on:click=move |_| set_game_prompt_editing.set(true)>"Edit"</button>
+                            </Show>
+                        </div>
+                        <Show when=move || game_prompt_editing.get()>
+                            <div class="import-prompt-editor">
+                                <textarea
+                                    class="import-prompt-textarea"
+                                    rows="3"
+                                    prop:value=move || game_prompt_text.get()
+                                    on:input=move |ev| game_prompt_text.set(event_target_value(&ev))
+                                    placeholder="Instructions for this specific game"
+                                />
+                                <div class="import-prompt-editor-actions">
+                                    <button class="import-prompt-save-btn" on:click=save_game_prompt>"Save"</button>
+                                    <button class="import-prompt-delete-btn" on:click=delete_game_prompt>"Delete"</button>
+                                    <button class="import-prompt-cancel-btn" on:click=move |_| set_game_prompt_editing.set(false)>"Cancel"</button>
+                                </div>
+                            </div>
+                        </Show>
+                    </div>
+                </div>
+            </Show>
         </div>
     }
 }

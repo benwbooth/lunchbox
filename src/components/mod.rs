@@ -9,6 +9,7 @@ mod box_3d_viewer;
 mod video_player;
 mod queue_status;
 mod minigame;
+mod import_progress;
 
 pub use sidebar::Sidebar;
 pub use game_grid::GameGrid;
@@ -21,3 +22,4 @@ pub use box_3d_viewer::Box3DViewer;
 pub use video_player::VideoPlayer;
 pub use queue_status::QueueStatus;
 pub use minigame::MarioMinigame;
+pub use import_progress::ImportProgress;

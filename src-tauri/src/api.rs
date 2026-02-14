@@ -159,6 +159,18 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
         .route("/rspc/get_current_os", get(rspc_get_current_os))
+        // Graboid import endpoints
+        .route("/rspc/get_game_file", get(rspc_get_game_file))
+        .route("/rspc/get_active_import", get(rspc_get_active_import))
+        .route("/rspc/start_graboid_import", get(rspc_start_graboid_import))
+        .route("/rspc/cancel_import", get(rspc_cancel_import))
+        .route("/rspc/test_graboid_connection", get(rspc_test_graboid_connection))
+        .route("/rspc/get_graboid_prompts", get(rspc_get_graboid_prompts))
+        .route("/rspc/save_graboid_prompt", get(rspc_save_graboid_prompt))
+        .route("/rspc/delete_graboid_prompt", get(rspc_delete_graboid_prompt))
+        .route("/rspc/get_effective_graboid_prompt", get(rspc_get_effective_graboid_prompt))
+        // SSE proxy for Graboid job events
+        .route("/api/graboid/jobs/:job_id/events", get(graboid_sse_proxy))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
         .layer(cors)
@@ -2208,4 +2220,510 @@ async fn rspc_launch_game(
 
 async fn rspc_get_current_os() -> impl IntoResponse {
     rspc_ok(handlers::get_current_os())
+}
+
+// ============================================================================
+// Graboid Import Endpoints
+// ============================================================================
+
+use crate::handlers::{
+    GameFile, ImportJob, StartImportInput,
+    GraboidPrompt, SaveGraboidPromptInput, DeleteGraboidPromptInput,
+};
+
+async fn rspc_get_game_file(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Option<GameFile>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let launchbox_db_id: i64 = match serde_json::from_str(input_str) {
+        Ok(id) => id,
+        Err(e) => return rspc_err::<Option<GameFile>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_game_file(&state_guard, launchbox_db_id).await {
+        Ok(file) => rspc_ok(file).into_response(),
+        Err(e) => rspc_err::<Option<GameFile>>(e).into_response(),
+    }
+}
+
+async fn rspc_get_active_import(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<Option<ImportJob>>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let launchbox_db_id: i64 = match serde_json::from_str(input_str) {
+        Ok(id) => id,
+        Err(e) => return rspc_err::<Option<ImportJob>>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_active_import(&state_guard, launchbox_db_id).await {
+        Ok(job) => rspc_ok(job).into_response(),
+        Err(e) => rspc_err::<Option<ImportJob>>(e).into_response(),
+    }
+}
+
+async fn rspc_start_graboid_import(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<ImportJob>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: StartImportInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<ImportJob>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::start_graboid_import(&state_guard, input).await {
+        Ok(job) => rspc_ok(job).into_response(),
+        Err(e) => rspc_err::<ImportJob>(e).into_response(),
+    }
+}
+
+async fn rspc_cancel_import(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let job_id: String = match serde_json::from_str(input_str) {
+        Ok(id) => id,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::cancel_import(&state_guard, &job_id).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestGraboidInput {
+    server_url: String,
+    api_key: String,
+}
+
+async fn rspc_test_graboid_connection(
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<crate::router::ConnectionTestResult>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: TestGraboidInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<crate::router::ConnectionTestResult>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let result = handlers::test_graboid_connection(&input.server_url, &input.api_key).await;
+    rspc_ok(result).into_response()
+}
+
+async fn rspc_get_graboid_prompts(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::get_graboid_prompts(&state_guard).await {
+        Ok(prompts) => rspc_ok(prompts).into_response(),
+        Err(e) => rspc_err::<Vec<GraboidPrompt>>(e).into_response(),
+    }
+}
+
+async fn rspc_save_graboid_prompt(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: SaveGraboidPromptInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::save_graboid_prompt(&state_guard, input).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+async fn rspc_delete_graboid_prompt(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: DeleteGraboidPromptInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::delete_graboid_prompt(&state_guard, input).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+async fn rspc_get_effective_graboid_prompt(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<String>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    #[derive(serde::Deserialize)]
+    struct Input {
+        platform: String,
+        launchbox_db_id: i64,
+    }
+
+    let input: Input = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_effective_graboid_prompt(&state_guard, &input.platform, input.launchbox_db_id).await {
+        Ok(prompt) => rspc_ok(prompt).into_response(),
+        Err(e) => rspc_err::<String>(e).into_response(),
+    }
+}
+
+// ============================================================================
+// SSE Proxy for Graboid Job Events
+// ============================================================================
+
+async fn graboid_sse_proxy(
+    State(state): State<SharedState>,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    use axum::response::sse::{Event, Sse};
+    use futures::stream::StreamExt;
+
+    let state_guard = state.read().await;
+    let graboid = &state_guard.settings.graboid;
+
+    if graboid.server_url.is_empty() || graboid.api_key.is_empty() {
+        drop(state_guard);
+        let stream = async_stream::stream! {
+            yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                serde_json::json!({"type": "error", "message": "Graboid not configured"}).to_string()
+            ));
+        };
+        return Sse::new(stream).into_response();
+    }
+
+    let graboid_url = format!(
+        "{}/api/v1/jobs/{}/events",
+        graboid.server_url.trim_end_matches('/'),
+        job_id
+    );
+    let api_key = graboid.api_key.clone();
+    drop(state_guard);
+
+    let state_clone = state.clone();
+    let job_id_clone = job_id.clone();
+
+    let stream = async_stream::stream! {
+        let client = reqwest::Client::new();
+        let response = match client
+            .get(&graboid_url)
+            .header("X-API-Key", &api_key)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                    serde_json::json!({"type": "error", "message": format!("Failed to connect to Graboid: {}", e)}).to_string()
+                ));
+                return;
+            }
+        };
+
+        if !response.status().is_success() {
+            yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                serde_json::json!({"type": "error", "message": format!("Graboid returned HTTP {}", response.status())}).to_string()
+            ));
+            return;
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = match chunk {
+                Ok(c) => c,
+                Err(e) => {
+                    yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                        serde_json::json!({"type": "error", "message": format!("Stream error: {}", e)}).to_string()
+                    ));
+                    return;
+                }
+            };
+
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+            // Parse SSE events from buffer
+            while let Some(event_end) = buffer.find("\n\n") {
+                let event_text = buffer[..event_end].to_string();
+                buffer = buffer[event_end + 2..].to_string();
+
+                // Extract event type and data from SSE event
+                let mut event_type = String::new();
+                let mut data = String::new();
+                for line in event_text.lines() {
+                    if let Some(d) = line.strip_prefix("data:") {
+                        let d = d.strip_prefix(' ').unwrap_or(d);
+                        if !data.is_empty() {
+                            data.push('\n');
+                        }
+                        data.push_str(d);
+                    } else if let Some(t) = line.strip_prefix("event:") {
+                        event_type = t.strip_prefix(' ').unwrap_or(t).to_string();
+                    }
+                }
+
+                if data.is_empty() {
+                    continue;
+                }
+
+                // Parse and translate Graboid events into our normalized format.
+                // Graboid SSE event types:
+                //   - snapshot: {"job": {...}, "logs": [...], "steps": [...]}
+                //   - update/complete/etc: {"id": "...", "status": "...", "progress_percent": 0-100, ...}
+                //   - step: individual navigation step
+                // We translate into: {type, progress, message, file_path, steps, screenshot}
+                tracing::debug!("Graboid SSE event: type={:?} data_len={}", event_type, data.len());
+                if let Ok(event_json) = serde_json::from_str::<serde_json::Value>(&data) {
+                    // Handle step events directly (graboid sends "job_step", also accept "step"/"navigation_step")
+                    if event_type == "step" || event_type == "navigation_step" || event_type == "job_step" {
+                        let step_event = serde_json::json!({
+                            "type": "step",
+                            "step_number": event_json["step_number"],
+                            "action": event_json["action"],
+                            "observation": event_json["observation"],
+                            "url": event_json["url"],
+                            "claude_messages": event_json["claude_messages"],
+                            "screenshot": event_json["screenshot_base64"],
+                            "notes": event_json["notes"],
+                            "is_error": event_json["is_error"],
+                        });
+                        yield Ok::<_, std::convert::Infallible>(Event::default().data(step_event.to_string()));
+                        continue;
+                    }
+
+                    // Handle screenshot events from graboid
+                    if event_type == "job_screenshot" {
+                        let screenshot_event = serde_json::json!({
+                            "type": "screenshot",
+                            "step_number": event_json["step_number"],
+                            "data_base64": event_json["data_base64"]
+                                .as_str()
+                                .or_else(|| event_json["screenshot_base64"].as_str())
+                                .unwrap_or(""),
+                        });
+                        yield Ok::<_, std::convert::Infallible>(Event::default().data(screenshot_event.to_string()));
+                        continue;
+                    }
+
+                    // Handle log events from graboid
+                    if event_type == "job_log" {
+                        let log_event = serde_json::json!({
+                            "type": "log",
+                            "level": event_json["level"].as_str().unwrap_or("info"),
+                            "source": event_json["source"].as_str().unwrap_or(""),
+                            "message": event_json["message"].as_str().unwrap_or(""),
+                            "timestamp": event_json["timestamp"].as_str().unwrap_or(""),
+                        });
+                        yield Ok::<_, std::convert::Infallible>(Event::default().data(log_event.to_string()));
+                        continue;
+                    }
+
+                    // Handle job_update events (status/progress changes)
+                    if event_type == "job_update" {
+                        let status = event_json["status"].as_str().unwrap_or("");
+                        let progress_pct = event_json["progress_percent"].as_f64().unwrap_or(0.0);
+                        let progress_msg = event_json["progress_message"].as_str()
+                            .or_else(|| event_json["message"].as_str())
+                            .unwrap_or("");
+                        let error_msg = event_json["error_message"].as_str().unwrap_or("");
+
+                        let state_guard = state_clone.read().await;
+                        match status {
+                            "completed" | "done" => {
+                                let file_path = event_json["final_paths"]
+                                    .as_array()
+                                    .and_then(|a| a.first())
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                let _ = handlers::complete_import(
+                                    &state_guard, &job_id_clone, file_path, None
+                                ).await;
+                                drop(state_guard);
+                                yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                    serde_json::json!({
+                                        "type": "complete",
+                                        "progress": 100.0,
+                                        "message": "Import complete!",
+                                        "file_path": file_path,
+                                    }).to_string()
+                                ));
+                                return;
+                            }
+                            "failed" | "error" | "cancelled" => {
+                                let msg = if error_msg.is_empty() { progress_msg } else { error_msg };
+                                let _ = handlers::fail_import(
+                                    &state_guard, &job_id_clone, msg
+                                ).await;
+                                drop(state_guard);
+                                yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                    serde_json::json!({
+                                        "type": "error",
+                                        "message": msg,
+                                    }).to_string()
+                                ));
+                                return;
+                            }
+                            _ => {
+                                let _ = handlers::update_import_progress(
+                                    &state_guard, &job_id_clone, progress_pct, Some(progress_msg), Some("in_progress")
+                                ).await;
+                                drop(state_guard);
+                                yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                    serde_json::json!({
+                                        "type": "progress",
+                                        "progress": progress_pct,
+                                        "message": progress_msg,
+                                    }).to_string()
+                                ));
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Extract job object: either from snapshot wrapper or flat status update
+                    let job = if event_json.get("job").is_some() {
+                        &event_json["job"]
+                    } else if event_json.get("status").is_some() {
+                        &event_json
+                    } else {
+                        // Unknown format, forward raw
+                        yield Ok::<_, std::convert::Infallible>(Event::default().data(data));
+                        continue;
+                    };
+
+                    // Forward steps from snapshot (check both top-level and inside job)
+                    let steps_arr = event_json.get("steps").and_then(|s| s.as_array())
+                        .or_else(|| job.get("steps").and_then(|s| s.as_array()));
+                    if let Some(steps) = steps_arr {
+                        tracing::debug!("Forwarding {} steps from Graboid event", steps.len());
+                        for step in steps {
+                            let step_event = serde_json::json!({
+                                "type": "step",
+                                "step_number": step["step_number"],
+                                "action": step["action"],
+                                "observation": step["observation"],
+                                "url": step["url"],
+                                "claude_messages": step["claude_messages"],
+                                "screenshot": step["screenshot_base64"],
+                                "notes": step["notes"],
+                                "is_error": step["is_error"],
+                            });
+                            yield Ok::<_, std::convert::Infallible>(Event::default().data(step_event.to_string()));
+                        }
+                    }
+
+                    let status = job["status"].as_str().unwrap_or("pending");
+                    let progress_pct = job["progress_percent"].as_f64().unwrap_or(0.0);
+                    let progress_msg = job["progress_message"].as_str().unwrap_or("");
+                    let error_msg = job["error_message"].as_str().unwrap_or("");
+
+                    // Translate status into our event types
+                    let state_guard = state_clone.read().await;
+                    match status {
+                        "completed" | "done" => {
+                            let file_path = job["final_paths"]
+                                .as_array()
+                                .and_then(|a| a.first())
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let _ = handlers::complete_import(
+                                &state_guard, &job_id_clone, file_path, None
+                            ).await;
+                            drop(state_guard);
+                            yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                serde_json::json!({
+                                    "type": "complete",
+                                    "progress": 100.0,
+                                    "message": "Import complete!",
+                                    "file_path": file_path,
+                                }).to_string()
+                            ));
+                            return;
+                        }
+                        "failed" | "error" | "cancelled" => {
+                            let msg = if error_msg.is_empty() { progress_msg } else { error_msg };
+                            let _ = handlers::fail_import(
+                                &state_guard, &job_id_clone, msg
+                            ).await;
+                            drop(state_guard);
+                            yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                serde_json::json!({
+                                    "type": "error",
+                                    "message": msg,
+                                }).to_string()
+                            ));
+                            return;
+                        }
+                        _ => {
+                            // pending, running, downloading, etc. — treat as progress
+                            let _ = handlers::update_import_progress(
+                                &state_guard, &job_id_clone, progress_pct, Some(progress_msg), Some("in_progress")
+                            ).await;
+                            drop(state_guard);
+                            yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                serde_json::json!({
+                                    "type": "progress",
+                                    "progress": progress_pct,
+                                    "message": progress_msg,
+                                }).to_string()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    Sse::new(stream).into_response()
 }

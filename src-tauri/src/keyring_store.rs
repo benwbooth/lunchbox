@@ -88,6 +88,7 @@ pub mod keys {
     pub const SCREENSCRAPER_DEV_PASSWORD: &str = "screenscraper_dev_password";
     pub const SCREENSCRAPER_USER_ID: &str = "screenscraper_user_id";
     pub const SCREENSCRAPER_USER_PASSWORD: &str = "screenscraper_user_password";
+    pub const GRABOID_API_KEY: &str = "graboid_api_key";
 }
 
 /// Store a credential in the system keyring (if available)

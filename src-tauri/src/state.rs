@@ -67,6 +67,8 @@ pub struct AppSettings {
     pub igdb: IGDBSettings,
     #[serde(default)]
     pub emumovies: EmuMoviesSettings,
+    #[serde(default)]
+    pub graboid: GraboidSettings,
 }
 
 /// ScreenScraper API settings
@@ -111,6 +113,39 @@ pub struct EmuMoviesSettings {
     pub password: String,
 }
 
+/// Graboid import service settings
+/// Note: API key is stored in system keyring, not in JSON config
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraboidSettings {
+    /// Graboid server URL (e.g., "http://localhost:6749")
+    #[serde(default = "default_graboid_url")]
+    pub server_url: String,
+    /// API key for X-API-Key header (stored in keyring when available)
+    #[serde(default)]
+    pub api_key: String,
+    /// Directory where imported ROMs are stored. Defaults to data_directory/roms.
+    #[serde(default)]
+    pub import_directory: Option<PathBuf>,
+    /// Global additional prompt sent with every Graboid request
+    #[serde(default)]
+    pub default_prompt: String,
+}
+
+fn default_graboid_url() -> String {
+    "http://localhost:6749".to_string()
+}
+
+impl Default for GraboidSettings {
+    fn default() -> Self {
+        Self {
+            server_url: default_graboid_url(),
+            api_key: String::new(),
+            import_directory: None,
+            default_prompt: String::new(),
+        }
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -123,6 +158,7 @@ impl Default for AppSettings {
             steamgriddb: SteamGridDBSettings::default(),
             igdb: IGDBSettings::default(),
             emumovies: EmuMoviesSettings::default(),
+            graboid: GraboidSettings::default(),
         }
     }
 }
@@ -158,6 +194,13 @@ impl AppSettings {
     pub fn get_saves_directory(&self) -> PathBuf {
         self.saves_directory.clone().unwrap_or_else(|| {
             self.get_data_directory().join("saves")
+        })
+    }
+
+    /// Get the import directory for downloaded ROMs
+    pub fn get_import_directory(&self) -> PathBuf {
+        self.graboid.import_directory.clone().unwrap_or_else(|| {
+            self.get_data_directory().join("roms")
         })
     }
 }
@@ -424,7 +467,7 @@ pub async fn ensure_user_db(state: &mut AppState) -> Result<&SqlitePool> {
 }
 
 /// Load settings from database and keyring
-async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
+pub async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
     let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = 'app_settings'")
         .fetch_optional(pool)
         .await?;
@@ -447,6 +490,11 @@ async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
     settings.screenscraper.user_id = creds.screenscraper_user_id;
     settings.screenscraper.user_password = creds.screenscraper_user_password;
 
+    // Load Graboid API key from keyring
+    if let Ok(Some(api_key)) = crate::keyring_store::get_credential(crate::keyring_store::keys::GRABOID_API_KEY) {
+        settings.graboid.api_key = api_key;
+    }
+
     Ok(settings)
 }
 
@@ -465,6 +513,12 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         settings.screenscraper.user_password.as_deref(),
     )?;
 
+    // Store Graboid API key in keyring
+    crate::keyring_store::store_credential(
+        crate::keyring_store::keys::GRABOID_API_KEY,
+        &settings.graboid.api_key,
+    )?;
+
     // If keyring is available, clear credentials from DB copy
     // If not, store them in DB as fallback
     let settings_for_db = if crate::keyring_store::is_keyring_available() {
@@ -473,6 +527,7 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         s.igdb = IGDBSettings::default();
         s.emumovies = EmuMoviesSettings::default();
         s.screenscraper = ScreenScraperSettings::default();
+        s.graboid.api_key = String::new();
         s
     } else {
         settings.clone()

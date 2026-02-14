@@ -105,6 +105,16 @@ pub fn run() {
             commands::launch_emulator,
             commands::launch_game,
             commands::get_current_os,
+            // Graboid import commands
+            commands::get_game_file,
+            commands::get_active_import,
+            commands::start_graboid_import,
+            commands::cancel_import,
+            commands::test_graboid_connection,
+            commands::get_graboid_prompts,
+            commands::save_graboid_prompt,
+            commands::delete_graboid_prompt,
+            commands::get_effective_graboid_prompt,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

@@ -7,10 +7,11 @@ use std::rc::Rc;
 use crate::tauri::{
     get_settings, save_settings, get_credential_storage_name,
     test_screenscraper_connection, test_steamgriddb_connection,
-    test_igdb_connection, get_all_regions, AppSettings,
+    test_igdb_connection, test_graboid_connection, get_all_regions, AppSettings,
     get_all_emulator_preferences, clear_game_emulator_preference,
     clear_platform_emulator_preference, set_platform_emulator_preference,
     get_emulators_for_platform, get_platforms, EmulatorPreferences, EmulatorInfo,
+    get_graboid_prompts, delete_graboid_prompt, GraboidPrompt,
 };
 use super::ImageSourcesWizard;
 
@@ -38,9 +39,21 @@ pub fn Settings(
     let (sgdb_test_result, set_sgdb_test_result) = signal::<Option<(bool, String)>>(None);
     let (testing_igdb, set_testing_igdb) = signal(false);
     let (igdb_test_result, set_igdb_test_result) = signal::<Option<(bool, String)>>(None);
+    let (testing_graboid, set_testing_graboid) = signal(false);
+    let (graboid_test_result, set_graboid_test_result) = signal::<Option<(bool, String)>>(None);
 
     // Image sources wizard state
     let (show_wizard, set_show_wizard) = signal(false);
+
+    // Per-field password visibility toggles
+    let show_pw = [
+        RwSignal::new(false), // 0: ScreenScraper dev password
+        RwSignal::new(false), // 1: ScreenScraper user password
+        RwSignal::new(false), // 2: SteamGridDB API key
+        RwSignal::new(false), // 3: IGDB client secret
+        RwSignal::new(false), // 4: EmuMovies password
+        RwSignal::new(false), // 5: Graboid API key
+    ];
 
     // Region priority state
     let (all_regions, set_all_regions) = signal::<Vec<String>>(Vec::new());
@@ -209,12 +222,15 @@ pub fn Settings(
                                     "Developer Password"
                                     <span class="settings-input-wrapper">
                                         <input
-                                            type="password"
+                                            type=move || if show_pw[0].get() { "text" } else { "password" }
                                             class="settings-input"
                                             placeholder="Your dev password"
                                             prop:value=move || settings.get().screenscraper.dev_password
                                             on:input=move |ev| settings.update(|s| s.screenscraper.dev_password = event_target_value(&ev))
                                         />
+                                        <button type="button" class="password-eye-btn" on:click=move |_| show_pw[0].update(|v| *v = !*v) title="Toggle visibility">
+                                            <PasswordEyeIcon visible=show_pw[0] />
+                                        </button>
                                         <Show when=move || !saving.get() && settings.get().screenscraper.dev_password == saved_settings.get().screenscraper.dev_password>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
@@ -242,7 +258,7 @@ pub fn Settings(
                                     "User Password"
                                     <span class="settings-input-wrapper">
                                         <input
-                                            type="password"
+                                            type=move || if show_pw[1].get() { "text" } else { "password" }
                                             class="settings-input"
                                             placeholder="Your ScreenScraper password"
                                             prop:value=move || settings.get().screenscraper.user_password.clone().unwrap_or_default()
@@ -251,6 +267,9 @@ pub fn Settings(
                                                 settings.update(|s| s.screenscraper.user_password = if v.is_empty() { None } else { Some(v) })
                                             }
                                         />
+                                        <button type="button" class="password-eye-btn" on:click=move |_| show_pw[1].update(|v| *v = !*v) title="Toggle visibility">
+                                            <PasswordEyeIcon visible=show_pw[1] />
+                                        </button>
                                         <Show when=move || !saving.get() && settings.get().screenscraper.user_password == saved_settings.get().screenscraper.user_password>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
@@ -308,12 +327,15 @@ pub fn Settings(
                                     "API Key"
                                     <span class="settings-input-wrapper">
                                         <input
-                                            type="password"
+                                            type=move || if show_pw[2].get() { "text" } else { "password" }
                                             class="settings-input"
                                             placeholder="Your SteamGridDB API key"
                                             prop:value=move || settings.get().steamgriddb.api_key
                                             on:input=move |ev| settings.update(|s| s.steamgriddb.api_key = event_target_value(&ev))
                                         />
+                                        <button type="button" class="password-eye-btn" on:click=move |_| show_pw[2].update(|v| *v = !*v) title="Toggle visibility">
+                                            <PasswordEyeIcon visible=show_pw[2] />
+                                        </button>
                                         <Show when=move || !saving.get() && settings.get().steamgriddb.api_key == saved_settings.get().steamgriddb.api_key>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
@@ -379,12 +401,15 @@ pub fn Settings(
                                     "Twitch Client Secret"
                                     <span class="settings-input-wrapper">
                                         <input
-                                            type="password"
+                                            type=move || if show_pw[3].get() { "text" } else { "password" }
                                             class="settings-input"
                                             placeholder="Your Twitch Client Secret"
                                             prop:value=move || settings.get().igdb.client_secret
                                             on:input=move |ev| settings.update(|s| s.igdb.client_secret = event_target_value(&ev))
                                         />
+                                        <button type="button" class="password-eye-btn" on:click=move |_| show_pw[3].update(|v| *v = !*v) title="Toggle visibility">
+                                            <PasswordEyeIcon visible=show_pw[3] />
+                                        </button>
                                         <Show when=move || !saving.get() && settings.get().igdb.client_secret == saved_settings.get().igdb.client_secret>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
@@ -449,17 +474,122 @@ pub fn Settings(
                                     "Password"
                                     <span class="settings-input-wrapper">
                                         <input
-                                            type="password"
+                                            type=move || if show_pw[4].get() { "text" } else { "password" }
                                             class="settings-input"
                                             placeholder="Your EmuMovies password"
                                             prop:value=move || settings.get().emumovies.password
                                             on:input=move |ev| settings.update(|s| s.emumovies.password = event_target_value(&ev))
                                         />
+                                        <button type="button" class="password-eye-btn" on:click=move |_| show_pw[4].update(|v| *v = !*v) title="Toggle visibility">
+                                            <PasswordEyeIcon visible=show_pw[4] />
+                                        </button>
                                         <Show when=move || !saving.get() && settings.get().emumovies.password == saved_settings.get().emumovies.password>
                                             <span class="settings-saved-check">"✓"</span>
                                         </Show>
                                     </span>
                                 </label>
+                            </div>
+
+                            // Graboid Import Section
+                            <div class="settings-section">
+                                <h3>"Graboid (Game Import)"</h3>
+                                <p class="settings-help">
+                                    "AI-powered game import service. Configure your Graboid server to import games directly."
+                                </p>
+                                <label class="settings-label">
+                                    "Server URL"
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="text"
+                                            class="settings-input"
+                                            placeholder="http://localhost:6749"
+                                            prop:value=move || settings.get().graboid.server_url
+                                            on:input=move |ev| settings.update(|s| s.graboid.server_url = event_target_value(&ev))
+                                        />
+                                        <Show when=move || !saving.get() && settings.get().graboid.server_url == saved_settings.get().graboid.server_url>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
+                                </label>
+                                <label class="settings-label">
+                                    "API Key"
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type=move || if show_pw[5].get() { "text" } else { "password" }
+                                            class="settings-input"
+                                            placeholder="Your Graboid API key"
+                                            prop:value=move || settings.get().graboid.api_key
+                                            on:input=move |ev| settings.update(|s| s.graboid.api_key = event_target_value(&ev))
+                                        />
+                                        <button type="button" class="password-eye-btn" on:click=move |_| show_pw[5].update(|v| *v = !*v) title="Toggle visibility">
+                                            <PasswordEyeIcon visible=show_pw[5] />
+                                        </button>
+                                        <Show when=move || !saving.get() && settings.get().graboid.api_key == saved_settings.get().graboid.api_key>
+                                            <span class="settings-saved-check">"✓"</span>
+                                        </Show>
+                                    </span>
+                                </label>
+                                <label class="settings-label">
+                                    "Import Directory (optional)"
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="text"
+                                            class="settings-input"
+                                            placeholder="Default: ~/.local/share/lunchbox/roms"
+                                            prop:value=move || settings.get().graboid.import_directory.unwrap_or_default()
+                                            on:input=move |ev| {
+                                                let val = event_target_value(&ev);
+                                                settings.update(|s| s.graboid.import_directory = if val.is_empty() { None } else { Some(val) });
+                                            }
+                                        />
+                                    </span>
+                                </label>
+                                <label class="settings-label">
+                                    "Default Prompt (optional)"
+                                    <span class="settings-input-wrapper">
+                                        <input
+                                            type="text"
+                                            class="settings-input"
+                                            placeholder="Additional instructions for all imports"
+                                            prop:value=move || settings.get().graboid.default_prompt
+                                            on:input=move |ev| settings.update(|s| s.graboid.default_prompt = event_target_value(&ev))
+                                        />
+                                    </span>
+                                </label>
+                                <div class="connection-test">
+                                    <button
+                                        class="test-btn"
+                                        disabled=move || testing_graboid.get() || settings.get().graboid.server_url.is_empty()
+                                        on:click=move |_| {
+                                            let url = settings.get().graboid.server_url.clone();
+                                            let key = settings.get().graboid.api_key.clone();
+                                            set_testing_graboid.set(true);
+                                            set_graboid_test_result.set(None);
+                                            spawn_local(async move {
+                                                let result = test_graboid_connection(url, key).await;
+                                                match result {
+                                                    Ok(r) => set_graboid_test_result.set(Some((r.success, r.message))),
+                                                    Err(e) => set_graboid_test_result.set(Some((false, e))),
+                                                }
+                                                set_testing_graboid.set(false);
+                                            });
+                                        }
+                                    >
+                                        {move || if testing_graboid.get() { "Testing..." } else { "Test Connection" }}
+                                    </button>
+                                    <Show when=move || graboid_test_result.get().is_some()>
+                                        <span class=move || {
+                                            if graboid_test_result.get().map(|(s, _)| s).unwrap_or(false) {
+                                                "test-result test-success"
+                                            } else {
+                                                "test-result test-failure"
+                                            }
+                                        }>
+                                            {move || graboid_test_result.get().map(|(_, m)| m).unwrap_or_default()}
+                                        </span>
+                                    </Show>
+                                </div>
+                                <GraboidPromptsList />
                             </div>
 
                             // Emulator Preferences Section
@@ -493,6 +623,31 @@ pub fn Settings(
                 show=show_wizard
                 on_close=set_show_wizard
             />
+        </Show>
+    }
+}
+
+/// Eye icon that toggles between open (visible) and closed (hidden) states
+#[component]
+fn PasswordEyeIcon(visible: RwSignal<bool>) -> impl IntoView {
+    view! {
+        <Show
+            when=move || visible.get()
+            fallback=|| view! {
+                // Eye closed (password hidden)
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+            }
+        >
+            // Eye open (password visible)
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
         </Show>
     }
 }
@@ -866,5 +1021,81 @@ fn EmulatorPreferencesSection() -> impl IntoView {
                 </div>
             </Show>
         </div>
+    }
+}
+
+/// List of graboid prompts (platform and game level) in settings
+#[component]
+fn GraboidPromptsList() -> impl IntoView {
+    let (prompt_list, set_prompt_list) = signal::<Vec<GraboidPrompt>>(Vec::new());
+    let (loading, set_loading) = signal(true);
+
+    let load_prompts = move || {
+        set_loading.set(true);
+        spawn_local(async move {
+            match get_graboid_prompts().await {
+                Ok(prompts) => {
+                    // Only show platform and game prompts (global is handled by the settings field)
+                    let filtered: Vec<GraboidPrompt> = prompts.into_iter()
+                        .filter(|p| p.scope == "platform" || p.scope == "game")
+                        .collect();
+                    set_prompt_list.set(filtered);
+                }
+                Err(_) => set_prompt_list.set(Vec::new()),
+            }
+            set_loading.set(false);
+        });
+    };
+
+    Effect::new(move || {
+        load_prompts();
+    });
+
+    view! {
+        <Show when=move || !loading.get() && !prompt_list.get().is_empty()>
+            <div class="graboid-prompts-list">
+                <h4>"Custom Prompts"</h4>
+                <div class="graboid-prompts-items">
+                    {move || {
+                        prompt_list.get().into_iter().map(|prompt| {
+                            let scope = prompt.scope.clone();
+                            let scope_for_delete = prompt.scope.clone();
+                            let platform = prompt.platform.clone();
+                            let platform_for_delete = prompt.platform.clone();
+                            let db_id = prompt.launchbox_db_id;
+                            let text = prompt.prompt.clone();
+                            let label = match scope.as_str() {
+                                "platform" => format!("Platform: {}", platform.as_deref().unwrap_or("?")),
+                                "game" => format!("Game #{}", db_id.unwrap_or(0)),
+                                _ => scope.clone(),
+                            };
+                            let truncated = if text.len() > 60 {
+                                format!("{}...", &text[..60])
+                            } else {
+                                text.clone()
+                            };
+
+                            view! {
+                                <div class="graboid-prompt-row">
+                                    <span class=format!("import-prompt-scope-badge scope-{}", scope)>{label}</span>
+                                    <span class="graboid-prompt-text">{truncated}</span>
+                                    <button
+                                        class="graboid-prompt-delete"
+                                        on:click=move |_| {
+                                            let scope = scope_for_delete.clone();
+                                            let platform = platform_for_delete.clone();
+                                            spawn_local(async move {
+                                                let _ = delete_graboid_prompt(scope, platform, db_id).await;
+                                                load_prompts();
+                                            });
+                                        }
+                                    >"×"</button>
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
+            </div>
+        </Show>
     }
 }
