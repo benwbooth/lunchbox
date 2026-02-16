@@ -23,9 +23,11 @@ const WORKGROUP_SIZE: u32 = 64;
 const TILE_PX: u32 = 8;
 const ENTITY_COUNT: u32 = 256;
 const ECELL_PX: u32 = 64;  // Entity grid cell size in pixels
-const EGRID_SLOTS: u32 = 4;  // Max entities per cell
+const EGRID_SLOTS: u32 = 16;  // Max entities per cell
 const MAX_WORLD_WIDTH: u32 = 4096;
 const MAX_WORLD_HEIGHT: u32 = 4096;
+const MIN_ZOOM: f64 = 1.0;
+const MAX_ZOOM: f64 = 5.0;
 
 /// Calculate dynamic grid dimensions from screen size
 fn calculate_grid_dimensions(width: u32, height: u32) -> (u32, u32, u32, u32, u32, u32, u32, u32) {
@@ -49,6 +51,38 @@ fn calculate_grid_dimensions(width: u32, height: u32) -> (u32, u32, u32, u32, u3
     (grid_width, grid_height, grid_size, egrid_width, egrid_height, egrid_cells, egrid_size, block_count)
 }
 
+fn canvas_viewport_size(canvas_ref: &NodeRef<html::Canvas>) -> Option<(f64, f64)> {
+    let canvas = canvas_ref.get()?;
+    let canvas: HtmlCanvasElement = canvas.into();
+
+    let w = if canvas.client_width() > 0 {
+        canvas.client_width() as f64
+    } else {
+        canvas.width() as f64
+    };
+    let h = if canvas.client_height() > 0 {
+        canvas.client_height() as f64
+    } else {
+        canvas.height() as f64
+    };
+
+    if w > 0.0 && h > 0.0 {
+        Some((w, h))
+    } else {
+        None
+    }
+}
+
+fn clamp_pan_to_zoom(pan: (f64, f64), zoom: f64, viewport: (f64, f64)) -> (f64, f64) {
+    let (vw, vh) = viewport;
+    let max_pan_x = ((zoom - 1.0) * vw * 0.5).max(0.0);
+    let max_pan_y = ((zoom - 1.0) * vh * 0.5).max(0.0);
+    (
+        pan.0.clamp(-max_pan_x, max_pan_x),
+        pan.1.clamp(-max_pan_y, max_pan_y),
+    )
+}
+
 /// The Mario Mini-Game component (WebGPU)
 #[component]
 pub fn MarioMinigame(
@@ -67,8 +101,32 @@ pub fn MarioMinigame(
     let (last_mouse_pos, set_last_mouse_pos) = signal((0i32, 0i32));
 
     // Pinch-to-zoom state
-    let (initial_pinch_distance, set_initial_pinch_distance) = signal::<Option<f64>>(None);
-    let (initial_zoom, set_initial_zoom) = signal(1.0f64);
+    let (last_pinch_distance, set_last_pinch_distance) = signal::<Option<f64>>(None);
+
+    // Keep zoom/pan in bounds even when zoom comes from shared external state.
+    {
+        let canvas_ref = canvas_ref.clone();
+        let set_zoom_level = set_zoom_level;
+        let set_pan_offset = set_pan_offset;
+        Effect::new(move || {
+            let zoom = zoom_level.get();
+            let pan = pan_offset.get();
+
+            let clamped_zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+            let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
+                clamp_pan_to_zoom(pan, clamped_zoom, viewport)
+            } else {
+                pan
+            };
+
+            if (clamped_zoom - zoom).abs() > 0.0001 {
+                set_zoom_level.set(clamped_zoom);
+            }
+            if (clamped_pan.0 - pan.0).abs() > 0.01 || (clamped_pan.1 - pan.1).abs() > 0.01 {
+                set_pan_offset.set(clamped_pan);
+            }
+        });
+    }
 
     let initialized_clone = initialized.clone();
     let gpu_state_init = gpu_state.clone();
@@ -156,17 +214,25 @@ pub fn MarioMinigame(
         }
     };
 
-    let on_mousemove = move |ev: web_sys::MouseEvent| {
+    let on_mousemove = {
+        let canvas_ref = canvas_ref.clone();
+        move |ev: web_sys::MouseEvent| {
         if is_panning.get() {
             let (lx, ly) = last_mouse_pos.get();
             let dx = ev.client_x() - lx;
             let dy = ev.client_y() - ly;
             let (px, py) = pan_offset.get();
-            let zoom = zoom_level.get();
-            // Adjust pan by zoom level so pan feels natural
-            set_pan_offset.set((px + dx as f64 / zoom, py + dy as f64 / zoom));
+            let next_pan = (px + dx as f64, py + dy as f64);
+            let zoom = zoom_level.get().clamp(MIN_ZOOM, MAX_ZOOM);
+            let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
+                clamp_pan_to_zoom(next_pan, zoom, viewport)
+            } else {
+                next_pan
+            };
+            set_pan_offset.set(clamped_pan);
             set_last_mouse_pos.set((ev.client_x(), ev.client_y()));
         }
+    }
     };
 
     let on_mouseup = move |_: web_sys::MouseEvent| {
@@ -181,41 +247,76 @@ pub fn MarioMinigame(
                 let dx = (t2.client_x() - t1.client_x()) as f64;
                 let dy = (t2.client_y() - t1.client_y()) as f64;
                 let dist = (dx * dx + dy * dy).sqrt();
-                set_initial_pinch_distance.set(Some(dist));
-                set_initial_zoom.set(zoom_level.get());
+                set_last_pinch_distance.set(Some(dist));
+                ev.stop_propagation();
                 ev.prevent_default();
             }
         }
     };
 
-    let on_touchmove = move |ev: web_sys::TouchEvent| {
+    let on_touchmove = {
+        let canvas_ref = canvas_ref.clone();
+        move |ev: web_sys::TouchEvent| {
         let touches = ev.touches();
         if touches.length() == 2 {
-            if let Some(initial_dist) = initial_pinch_distance.get() {
+            if let Some(last_dist) = last_pinch_distance.get() {
                 if let (Some(t1), Some(t2)) = (touches.get(0), touches.get(1)) {
                     let dx = (t2.client_x() - t1.client_x()) as f64;
                     let dy = (t2.client_y() - t1.client_y()) as f64;
                     let dist = (dx * dx + dy * dy).sqrt();
-                    let scale = dist / initial_dist;
-                    let new_zoom = (initial_zoom.get() * scale).clamp(0.5, 2.0);
-                    set_zoom_level.set(new_zoom);
+                    if last_dist > 0.0 {
+                        // Make pinch noticeably more responsive.
+                        let raw_scale = dist / last_dist;
+                        let scale = (1.0 + (raw_scale - 1.0) * 3.5).clamp(0.55, 1.45);
+                        let target_zoom = zoom_level.get() * scale;
+                        let new_zoom = target_zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+                        let pan = pan_offset.get();
+                        let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
+                            clamp_pan_to_zoom(pan, new_zoom, viewport)
+                        } else {
+                            pan
+                        };
+                        set_zoom_level.set(new_zoom);
+                        set_pan_offset.set(clamped_pan);
+                    }
+                    set_last_pinch_distance.set(Some(dist));
+                    ev.stop_propagation();
                     ev.prevent_default();
                 }
             }
         }
+    }
     };
 
-    let on_touchend = move |_: web_sys::TouchEvent| {
-        set_initial_pinch_distance.set(None);
+    let on_touchend = move |ev: web_sys::TouchEvent| {
+        if ev.touches().length() < 2 {
+            set_last_pinch_distance.set(None);
+            ev.stop_propagation();
+        }
     };
 
     // Mouse wheel zoom
-    let on_wheel = move |ev: web_sys::WheelEvent| {
+    let on_wheel = {
+        let canvas_ref = canvas_ref.clone();
+        move |ev: web_sys::WheelEvent| {
         let delta = ev.delta_y();
-        let zoom_change = if delta > 0.0 { -0.1 } else { 0.1 };
-        let new_zoom = (zoom_level.get() + zoom_change).clamp(0.5, 2.0);
+        // Trackpad pinch often arrives as ctrl+wheel with small deltas.
+        // Keep normal wheel comfortable, but make pinch much faster.
+        let sensitivity = if ev.ctrl_key() { 0.0075 } else { 0.0015 };
+        let zoom_factor = (-delta * sensitivity).exp();
+        let target_zoom = zoom_level.get() * zoom_factor;
+        let new_zoom = target_zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+        let pan = pan_offset.get();
+        let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
+            clamp_pan_to_zoom(pan, new_zoom, viewport)
+        } else {
+            pan
+        };
         set_zoom_level.set(new_zoom);
+        set_pan_offset.set(clamped_pan);
+        ev.stop_propagation();
         ev.prevent_default();
+    }
     };
 
     view! {
@@ -231,15 +332,16 @@ pub fn MarioMinigame(
             on:touchstart=on_touchstart
             on:touchmove=on_touchmove
             on:touchend=on_touchend
+            on:touchcancel=move |_| set_last_pinch_distance.set(None)
             on:wheel=on_wheel
             style="touch-action: none;"
         >
             <div
                 class="minigame-zoom-wrapper"
                 style:transform=move || {
-                    let z = zoom_level.get();
+                    let z = zoom_level.get().clamp(MIN_ZOOM, MAX_ZOOM);
                     let (px, py) = pan_offset.get();
-                    format!("scale({}) translate({}px, {}px)", z, px, py)
+                    format!("translate({}px, {}px) scale({})", px, py, z)
                 }
                 style:transform-origin="center center"
                 style="width: 100%; height: 100%;"

@@ -467,40 +467,45 @@ async fn get_games(
 
             *variant_counts.entry(key.clone()).or_insert(0) += 1;
 
-            if !seen.contains_key(&key) {
-                let game = Game {
-                    id,
-                    database_id: launchbox_db_id,
-                    title: title.clone(),
-                    display_title: normalize_title_for_display(&title),
-                    platform,
-                    platform_id,
-                    description: row.get("description"),
-                    release_date: row.get("release_date"),
-                    release_year: row.get("release_year"),
-                    developer: row.get("developer"),
-                    publisher: row.get("publisher"),
-                    genres: row.get("genre"),
-                    players: row.get("players"),
-                    rating: row.get("rating"),
-                    rating_count: row.get("rating_count"),
-                    esrb: row.get("esrb"),
-                    cooperative: row.get::<Option<i32>, _>("cooperative").map(|v| v != 0),
-                    video_url: row.get("video_url"),
-                    wikipedia_url: row.get("wikipedia_url"),
-                    release_type: row.get("release_type"),
-                    notes: row.get("notes"),
-                    sort_title: row.get("sort_title"),
-                    series: row.get("series"),
-                    region: row.get("region"),
-                    play_mode: row.get("play_mode"),
-                    version: row.get("version"),
-                    status: row.get("status"),
-                    steam_app_id: row.get("steam_app_id"),
-                    box_front_path: None,
-                    screenshot_path: None,
-                    variant_count: 1,
-                };
+            let game = Game {
+                id,
+                database_id: launchbox_db_id,
+                title: title.clone(),
+                display_title: normalize_title_for_display(&title),
+                platform,
+                platform_id,
+                description: row.get("description"),
+                release_date: row.get("release_date"),
+                release_year: row.get("release_year"),
+                developer: row.get("developer"),
+                publisher: row.get("publisher"),
+                genres: row.get("genre"),
+                players: row.get("players"),
+                rating: row.get("rating"),
+                rating_count: row.get("rating_count"),
+                esrb: row.get("esrb"),
+                cooperative: row.get::<Option<i32>, _>("cooperative").map(|v| v != 0),
+                video_url: row.get("video_url"),
+                wikipedia_url: row.get("wikipedia_url"),
+                release_type: row.get("release_type"),
+                notes: row.get("notes"),
+                sort_title: row.get("sort_title"),
+                series: row.get("series"),
+                region: row.get("region"),
+                play_mode: row.get("play_mode"),
+                version: row.get("version"),
+                status: row.get("status"),
+                steam_app_id: row.get("steam_app_id"),
+                box_front_path: None,
+                screenshot_path: None,
+                variant_count: 1,
+            };
+
+            let should_replace = match seen.get(&key) {
+                Some(existing) => existing.database_id <= 0 && game.database_id > 0,
+                None => true,
+            };
+            if should_replace {
                 seen.insert(key, game);
             }
         }
@@ -629,22 +634,33 @@ async fn get_game_by_uuid(
 
             // Count variants using normalize_for_dedup for consistency with list view
             let normalized_for_dedup = normalize_title_for_dedup(&title);
-            let all_titles: Vec<(String,)> = sqlx::query_as(
-                "SELECT title FROM games WHERE platform_id = ?"
+            let all_titles: Vec<(String, i64)> = sqlx::query_as(
+                "SELECT title, COALESCE(launchbox_db_id, 0) as launchbox_db_id FROM games WHERE platform_id = ?"
             )
             .bind(platform_id)
             .fetch_all(games_pool)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            let variant_count = all_titles
-                .iter()
-                .filter(|(t,)| normalize_title_for_dedup(t) == normalized_for_dedup)
-                .count() as i64;
+            let mut variant_count = 0i64;
+            let mut fallback_launchbox_db_id = 0i64;
+            for (variant_title, variant_db_id) in &all_titles {
+                if normalize_title_for_dedup(variant_title) == normalized_for_dedup {
+                    variant_count += 1;
+                    if fallback_launchbox_db_id == 0 && *variant_db_id > 0 {
+                        fallback_launchbox_db_id = *variant_db_id;
+                    }
+                }
+            }
+            let resolved_launchbox_db_id = if launchbox_db_id > 0 {
+                launchbox_db_id
+            } else {
+                fallback_launchbox_db_id
+            };
 
             let game = Game {
                 id: row.get("id"),
-                database_id: launchbox_db_id,
+                database_id: resolved_launchbox_db_id,
                 title: title.clone(),
                 display_title: normalize_title_for_display(&title),
                 platform: row.get("platform"),
@@ -870,6 +886,7 @@ async fn get_favorites(
             let row = sqlx::query(
                 r#"
                 SELECT g.id, g.title, g.platform_id, p.name as platform,
+                       COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                        g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                            g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -888,7 +905,7 @@ async fn get_favorites(
                 let title: String = row.get("title");
                 games.push(Game {
                     id: row.get("id"),
-                    database_id: 0,
+                    database_id: row.get("launchbox_db_id"),
                     title: title.clone(),
                     display_title: normalize_title_for_display(&title),
                     platform: row.get("platform"),
@@ -2187,6 +2204,8 @@ async fn rspc_launch_emulator(
 struct LaunchGameInput {
     emulator_name: String,
     rom_path: String,
+    #[serde(default)]
+    is_retroarch_core: Option<bool>,
 }
 
 async fn rspc_launch_game(
@@ -2212,7 +2231,7 @@ async fn rspc_launch_game(
         Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
     };
 
-    match handlers::launch_game_with_emulator(&emulator, &input.rom_path) {
+    match handlers::launch_game_with_emulator(&emulator, &input.rom_path, input.is_retroarch_core) {
         Ok(result) => rspc_ok(result).into_response(),
         Err(e) => rspc_err::<LaunchResult>(e).into_response(),
     }
@@ -2231,6 +2250,44 @@ use crate::handlers::{
     GraboidPrompt, SaveGraboidPromptInput, DeleteGraboidPromptInput,
 };
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum LaunchboxDbIdInput {
+    Raw(i64),
+    Wrapped {
+        #[serde(rename = "launchboxDbId", alias = "launchbox_db_id")]
+        launchbox_db_id: i64,
+    },
+}
+
+impl LaunchboxDbIdInput {
+    fn into_value(self) -> i64 {
+        match self {
+            Self::Raw(value) => value,
+            Self::Wrapped { launchbox_db_id } => launchbox_db_id,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum JobIdInput {
+    Raw(String),
+    Wrapped {
+        #[serde(rename = "jobId", alias = "job_id")]
+        job_id: String,
+    },
+}
+
+impl JobIdInput {
+    fn into_value(self) -> String {
+        match self {
+            Self::Raw(value) => value,
+            Self::Wrapped { job_id } => job_id,
+        }
+    }
+}
+
 async fn rspc_get_game_file(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -2240,8 +2297,8 @@ async fn rspc_get_game_file(
         None => return rspc_err::<Option<GameFile>>("Missing 'input' parameter".to_string()).into_response(),
     };
 
-    let launchbox_db_id: i64 = match serde_json::from_str(input_str) {
-        Ok(id) => id,
+    let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
+        Ok(input) => input.into_value(),
         Err(e) => return rspc_err::<Option<GameFile>>(format!("Invalid input: {}", e)).into_response(),
     };
 
@@ -2261,8 +2318,8 @@ async fn rspc_get_active_import(
         None => return rspc_err::<Option<ImportJob>>("Missing 'input' parameter".to_string()).into_response(),
     };
 
-    let launchbox_db_id: i64 = match serde_json::from_str(input_str) {
-        Ok(id) => id,
+    let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
+        Ok(input) => input.into_value(),
         Err(e) => return rspc_err::<Option<ImportJob>>(format!("Invalid input: {}", e)).into_response(),
     };
 
@@ -2303,8 +2360,8 @@ async fn rspc_cancel_import(
         None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
     };
 
-    let job_id: String = match serde_json::from_str(input_str) {
-        Ok(id) => id,
+    let job_id = match serde_json::from_str::<JobIdInput>(input_str) {
+        Ok(input) => input.into_value(),
         Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
     };
 
@@ -2580,16 +2637,25 @@ async fn graboid_sse_proxy(
 
                         let state_guard = state_clone.read().await;
                         match status {
-                            "completed" | "done" => {
+                            "complete" | "completed" | "done" => {
                                 let file_path = event_json["final_paths"]
                                     .as_array()
                                     .and_then(|a| a.first())
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
-                                let _ = handlers::complete_import(
+                                let completion = handlers::complete_import(
                                     &state_guard, &job_id_clone, file_path, None
                                 ).await;
                                 drop(state_guard);
+                                if let Err(err) = completion {
+                                    yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                        serde_json::json!({
+                                            "type": "error",
+                                            "message": format!("Import completed but failed to register file: {}", err),
+                                        }).to_string()
+                                    ));
+                                    return;
+                                }
                                 yield Ok::<_, std::convert::Infallible>(Event::default().data(
                                     serde_json::json!({
                                         "type": "complete",
@@ -2671,16 +2737,25 @@ async fn graboid_sse_proxy(
                     // Translate status into our event types
                     let state_guard = state_clone.read().await;
                     match status {
-                        "completed" | "done" => {
+                        "complete" | "completed" | "done" => {
                             let file_path = job["final_paths"]
                                 .as_array()
                                 .and_then(|a| a.first())
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
-                            let _ = handlers::complete_import(
+                            let completion = handlers::complete_import(
                                 &state_guard, &job_id_clone, file_path, None
                             ).await;
                             drop(state_guard);
+                            if let Err(err) = completion {
+                                yield Ok::<_, std::convert::Infallible>(Event::default().data(
+                                    serde_json::json!({
+                                        "type": "error",
+                                        "message": format!("Import completed but failed to register file: {}", err),
+                                    }).to_string()
+                                ));
+                                return;
+                            }
                             yield Ok::<_, std::convert::Infallible>(Event::default().data(
                                 serde_json::json!({
                                     "type": "complete",

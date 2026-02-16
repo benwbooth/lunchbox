@@ -2,8 +2,64 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use std::collections::HashSet;
 use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats, EmulatorWithStatus, GameFile};
 use super::{VideoPlayer, LazyImage, Box3DViewer, ImportProgress};
+
+async fn launch_game_with_resolved_rom(
+    launchbox_db_id: i64,
+    fallback_rom_path: Option<String>,
+    emulator_name: String,
+    is_retroarch_core: bool,
+) -> Result<tauri::LaunchResult, String> {
+    let rom_path = match tauri::get_game_file(launchbox_db_id).await {
+        Ok(Some(file)) if !file.file_path.trim().is_empty() => file.file_path,
+        _ => fallback_rom_path
+            .and_then(|path| {
+                if path.trim().is_empty() {
+                    None
+                } else {
+                    Some(path)
+                }
+            })
+            .ok_or_else(|| "No ROM file path is available for this game".to_string())?,
+    };
+
+    tauri::launch_game(emulator_name, rom_path, is_retroarch_core).await
+}
+
+async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
+    if game.database_id > 0 {
+        if let Ok(Some(file)) = tauri::get_game_file(game.database_id).await {
+            return Some(file);
+        }
+    }
+
+    let mut checked_ids: HashSet<i64> = HashSet::new();
+
+    let variants = tauri::get_game_variants(
+        game.id.clone(),
+        game.display_title.clone(),
+        game.platform_id,
+    )
+    .await
+    .ok()?;
+
+    for variant in variants {
+        let variant_game = match tauri::get_game_by_uuid(variant.id).await {
+            Ok(Some(g)) => g,
+            _ => continue,
+        };
+        if variant_game.database_id <= 0 || !checked_ids.insert(variant_game.database_id) {
+            continue;
+        }
+        if let Ok(Some(file)) = tauri::get_game_file(variant_game.database_id).await {
+            return Some(file);
+        }
+    }
+
+    None
+}
 
 #[component]
 pub fn GameDetails(
@@ -28,6 +84,7 @@ pub fn GameDetails(
     let (game_emulator_pref, set_game_emulator_pref) = signal::<Option<String>>(None);
     // Import state
     let (game_file, set_game_file) = signal::<Option<GameFile>>(None);
+    let (import_state_loading, set_import_state_loading) = signal(false);
     let (graboid_configured, set_graboid_configured) = signal(false);
     let (import_job_id, set_import_job_id) = signal::<Option<String>>(None);
     let (auto_play_on_complete, set_auto_play_on_complete) = signal(false);
@@ -48,15 +105,20 @@ pub fn GameDetails(
     Effect::new(move || {
         if let Some(g) = game.get() {
             set_display_game.set(Some(g));
+            set_game_file.set(None);
+            set_import_job_id.set(None);
+            set_import_state_loading.set(true);
         } else {
             set_display_game.set(None);
             set_play_stats.set(None);
             set_is_fav.set(false);
             set_variants.set(Vec::new());
             set_selected_variant.set(None);
+            set_pending_variant_load.set(None);
             set_game_emulator_pref.set(None);
             set_game_file.set(None);
             set_import_job_id.set(None);
+            set_import_state_loading.set(false);
             set_auto_play_on_complete.set(false);
         }
     });
@@ -81,11 +143,14 @@ pub fn GameDetails(
     // Load play stats, favorite status, and variants when display_game changes
     Effect::new(move || {
         if let Some(g) = display_game.get() {
+            set_import_state_loading.set(true);
+            let game_snapshot = g.clone();
             let game_id = g.id.clone();
             let db_id = g.database_id;
             let display_title = g.display_title.clone();
             let platform_id = g.platform_id;
             let variant_count = g.variant_count;
+            let expected_game_id = game_id.clone();
 
             // Check if we're switching variants of the same game (variants already loaded)
             // by checking if current game is in the existing variants list
@@ -93,12 +158,26 @@ pub fn GameDetails(
             let is_variant_switch = current_variants.iter().any(|v| v.id == game_id);
 
             spawn_local(async move {
+                let is_current_game = || {
+                    display_game
+                        .get_untracked()
+                        .as_ref()
+                        .map(|current| current.id.as_str() == expected_game_id.as_str())
+                        .unwrap_or(false)
+                };
+
                 // Load play stats
                 if let Ok(stats) = tauri::get_play_stats(db_id).await {
+                    if !is_current_game() {
+                        return;
+                    }
                     set_play_stats.set(stats);
                 }
                 // Check favorite status
                 if let Ok(fav) = tauri::is_favorite(db_id).await {
+                    if !is_current_game() {
+                        return;
+                    }
                     set_is_fav.set(fav);
                 }
 
@@ -108,41 +187,82 @@ pub fn GameDetails(
                     web_sys::console::log_1(&format!("Fetching variants for game_id={}", game_id).into());
                     match tauri::get_game_variants(game_id.clone(), display_title.clone(), platform_id).await {
                         Ok(vars) => {
+                            if !is_current_game() {
+                                return;
+                            }
                             web_sys::console::log_1(&format!("Got {} variants", vars.len()).into());
-                            // Always select the first (preferred) variant - list is sorted by region preference
+                            // Prefer first variant only when it has a valid LaunchBox DB id.
+                            // Some region-specific rows carry no launchbox_db_id (0) and break
+                            // import/file lookup if auto-selected.
                             let preferred_variant_id = vars.first().map(|v| v.id.clone());
-                            set_selected_variant.set(preferred_variant_id.clone());
                             set_variants.set(vars);
 
-                            // If preferred variant is different from current game, load its metadata
                             if let Some(preferred_id) = preferred_variant_id {
                                 if preferred_id != game_id {
-                                    // Trigger load of preferred variant's metadata
-                                    set_pending_variant_load.set(Some(preferred_id));
+                                    match tauri::get_game_by_uuid(preferred_id.clone()).await {
+                                        Ok(Some(preferred_game)) if preferred_game.database_id > 0 => {
+                                            if !is_current_game() {
+                                                return;
+                                            }
+                                            set_selected_variant.set(Some(preferred_id.clone()));
+                                            set_pending_variant_load.set(Some(preferred_id));
+                                        }
+                                        _ => {
+                                            if !is_current_game() {
+                                                return;
+                                            }
+                                            set_selected_variant.set(Some(game_id.clone()));
+                                        }
+                                    }
+                                } else {
+                                    if !is_current_game() {
+                                        return;
+                                    }
+                                    set_selected_variant.set(Some(game_id.clone()));
                                 }
+                            } else {
+                                if !is_current_game() {
+                                    return;
+                                }
+                                set_selected_variant.set(Some(game_id.clone()));
                             }
                         }
                         Err(_) => {
+                            if !is_current_game() {
+                                return;
+                            }
                             set_variants.set(Vec::new());
                         }
                     }
                 } else if !is_variant_switch {
+                    if !is_current_game() {
+                        return;
+                    }
                     set_variants.set(Vec::new());
                 }
 
-                // Check game file and active import
-                if let Ok(file) = tauri::get_game_file(db_id).await {
-                    set_game_file.set(file);
-                } else {
-                    set_game_file.set(None);
+                // Check game file (with variant-aware fallback) and active import
+                let resolved_file = resolve_game_file_for_display(&game_snapshot).await;
+                if !is_current_game() {
+                    return;
                 }
+                set_game_file.set(resolved_file);
                 match tauri::get_active_import(db_id).await {
                     Ok(Some(job)) => {
+                        if !is_current_game() {
+                            return;
+                        }
                         set_import_job_id.set(Some(job.id));
                     }
                     _ => {
+                        if !is_current_game() {
+                            return;
+                        }
                         set_import_job_id.set(None);
                     }
+                }
+                if is_current_game() {
+                    set_import_state_loading.set(false);
                 }
             });
         }
@@ -153,14 +273,35 @@ pub fn GameDetails(
     Effect::new(move || {
         let variant_id = pending_variant_load.get();
         if let Some(variant_id) = variant_id {
+            let still_visible = variants
+                .get_untracked()
+                .iter()
+                .any(|v| v.id == variant_id);
+            if !still_visible {
+                set_pending_variant_load.set(None);
+                return;
+            }
             // Update selected_variant to show visual selection
             set_selected_variant.set(Some(variant_id.clone()));
             spawn_local(async move {
-                if let Ok(Some(new_game)) = tauri::get_game_by_uuid(variant_id).await {
-                    set_display_game.set(Some(new_game));
+                let requested_variant_id = variant_id.clone();
+                if let Ok(Some(new_game)) = tauri::get_game_by_uuid(requested_variant_id.clone()).await {
+                    if pending_variant_load
+                        .get_untracked()
+                        .as_deref()
+                        == Some(requested_variant_id.as_str())
+                    {
+                        set_display_game.set(Some(new_game));
+                    }
                 }
-                // Clear after loading completes to prevent re-triggering during load
-                set_pending_variant_load.set(None);
+                // Clear after loading completes to prevent re-triggering during load.
+                if pending_variant_load
+                    .get_untracked()
+                    .as_deref()
+                    == Some(requested_variant_id.as_str())
+                {
+                    set_pending_variant_load.set(None);
+                }
             });
         }
     });
@@ -176,16 +317,34 @@ pub fn GameDetails(
 
     // Handle import completion
     Effect::new(move || {
-        if let Some(_file_path) = import_complete.get() {
+        if let Some(file_path) = import_complete.get() {
             set_import_job_id.set(None);
             if let Some(g) = display_game.get_untracked() {
                 let db_id = g.database_id;
                 let platform = g.platform.clone();
+                let game_title = g.title.clone();
+                let file_path_for_fallback = file_path.clone();
                 let should_auto_play = auto_play_on_complete.get_untracked();
+                let game_snapshot = g.clone();
                 spawn_local(async move {
-                    if let Ok(file) = tauri::get_game_file(db_id).await {
-                        set_game_file.set(file);
-                    }
+                    let file_from_db = resolve_game_file_for_display(&game_snapshot).await;
+                    let resolved_file = file_from_db.or_else(|| {
+                        if file_path_for_fallback.trim().is_empty() {
+                            None
+                        } else {
+                            Some(tauri::GameFile {
+                                launchbox_db_id: db_id,
+                                game_title,
+                                platform: platform.clone(),
+                                file_path: file_path_for_fallback.clone(),
+                                file_size: None,
+                                imported_at: String::new(),
+                                import_source: "graboid".to_string(),
+                                graboid_job_id: None,
+                            })
+                        }
+                    });
+                    set_game_file.set(resolved_file);
                     if should_auto_play {
                         set_auto_play_on_complete.set(false);
                         set_emulators_loading.set(true);
@@ -480,7 +639,11 @@ pub fn GameDetails(
                                             </Show>
 
                                             // Import prompt and buttons when no file and not importing
-                                            <Show when=move || game_file.get().is_none() && import_job_id.get().is_none()>
+                                            <Show when=move || import_state_loading.get() && import_job_id.get().is_none()>
+                                                <div class="import-status-hint">"Checking imported file…"</div>
+                                            </Show>
+
+                                            <Show when=move || !import_state_loading.get() && game_file.get().is_none() && import_job_id.get().is_none()>
                                                 <Show when=move || graboid_configured.get()>
                                                     <div class="import-prompt-field">
                                                         <textarea
@@ -527,7 +690,7 @@ pub fn GameDetails(
                                             </Show>
 
                                             // Play button only when game file exists and not importing
-                                            <Show when=move || game_file.get().is_some() && import_job_id.get().is_none()>
+                                            <Show when=move || !import_state_loading.get() && game_file.get().is_some() && import_job_id.get().is_none()>
                                                 <button class="play-btn" on:click=move |_| {
                                                     let platform = stored_platform.get_value();
                                                     set_emulators_loading.set(true);
@@ -559,6 +722,7 @@ pub fn GameDetails(
                                             <EmulatorPickerModal
                                                 emulators=emulators
                                                 emulators_loading=emulators_loading
+                                                game_file=game_file
                                                 stored_title=stored_title
                                                 stored_platform=stored_platform
                                                 stored_db_id=stored_db_id
@@ -865,6 +1029,7 @@ fn format_date(date_str: &str) -> String {
 fn EmulatorPickerModal(
     emulators: ReadSignal<Vec<EmulatorWithStatus>>,
     emulators_loading: ReadSignal<bool>,
+    game_file: ReadSignal<Option<GameFile>>,
     stored_title: StoredValue<String>,
     stored_platform: StoredValue<String>,
     stored_db_id: StoredValue<i64>,
@@ -977,6 +1142,7 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
+                                            let fallback_rom_path = game_file.get_untracked().map(|file| file.file_path);
                                             let is_ra = is_retroarch_core;
 
                                             if is_installed {
@@ -985,8 +1151,13 @@ fn EmulatorPickerModal(
                                                 spawn_local(async move {
                                                     // Record play session
                                                     let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                    // Launch the emulator
-                                                    match tauri::launch_emulator(emulator_name.clone(), is_ra).await {
+                                                    // Launch selected emulator with ROM path
+                                                    match launch_game_with_resolved_rom(
+                                                        db_id,
+                                                        fallback_rom_path.clone(),
+                                                        emulator_name.clone(),
+                                                        is_ra,
+                                                    ).await {
                                                         Ok(result) => {
                                                             if result.success {
                                                                 set_progress_state.set(None);
@@ -1012,8 +1183,13 @@ fn EmulatorPickerModal(
                                                             set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
                                                             // Record play session
                                                             let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                            // Launch the emulator
-                                                            match tauri::launch_emulator(emulator_for_install.clone(), is_ra).await {
+                                                            // Launch selected emulator with ROM path
+                                                            match launch_game_with_resolved_rom(
+                                                                db_id,
+                                                                fallback_rom_path.clone(),
+                                                                emulator_for_install.clone(),
+                                                                is_ra,
+                                                            ).await {
                                                                 Ok(result) => {
                                                                     if result.success {
                                                                         set_progress_state.set(None);
@@ -1044,6 +1220,7 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
+                                            let fallback_rom_path = game_file.get_untracked().map(|file| file.file_path);
                                             let is_ra = is_retroarch_core;
 
                                             if is_installed {
@@ -1051,7 +1228,12 @@ fn EmulatorPickerModal(
                                                 spawn_local(async move {
                                                     let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
                                                     let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                    match tauri::launch_emulator(emulator_name.clone(), is_ra).await {
+                                                    match launch_game_with_resolved_rom(
+                                                        db_id,
+                                                        fallback_rom_path.clone(),
+                                                        emulator_name.clone(),
+                                                        is_ra,
+                                                    ).await {
                                                         Ok(result) => {
                                                             if result.success {
                                                                 set_progress_state.set(None);
@@ -1076,7 +1258,12 @@ fn EmulatorPickerModal(
                                                             let _ = tauri::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
                                                             let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                            match tauri::launch_emulator(emu_for_install.clone(), is_ra).await {
+                                                            match launch_game_with_resolved_rom(
+                                                                db_id,
+                                                                fallback_rom_path.clone(),
+                                                                emu_for_install.clone(),
+                                                                is_ra,
+                                                            ).await {
                                                                 Ok(result) => {
                                                                     if result.success {
                                                                         set_progress_state.set(None);
@@ -1107,6 +1294,7 @@ fn EmulatorPickerModal(
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
                                             let db_id = stored_db_id.get_value();
+                                            let fallback_rom_path = game_file.get_untracked().map(|file| file.file_path);
                                             let is_ra = is_retroarch_core;
 
                                             if is_installed {
@@ -1114,7 +1302,12 @@ fn EmulatorPickerModal(
                                                 spawn_local(async move {
                                                     let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
                                                     let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                    match tauri::launch_emulator(emulator_name.clone(), is_ra).await {
+                                                    match launch_game_with_resolved_rom(
+                                                        db_id,
+                                                        fallback_rom_path.clone(),
+                                                        emulator_name.clone(),
+                                                        is_ra,
+                                                    ).await {
                                                         Ok(result) => {
                                                             if result.success {
                                                                 set_progress_state.set(None);
@@ -1139,7 +1332,12 @@ fn EmulatorPickerModal(
                                                             let _ = tauri::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
                                                             let _ = tauri::record_play_session(db_id, title, platform).await;
-                                                            match tauri::launch_emulator(emu_for_install.clone(), is_ra).await {
+                                                            match launch_game_with_resolved_rom(
+                                                                db_id,
+                                                                fallback_rom_path.clone(),
+                                                                emu_for_install.clone(),
+                                                                is_ra,
+                                                            ).await {
                                                                 Ok(result) => {
                                                                     if result.success {
                                                                         set_progress_state.set(None);

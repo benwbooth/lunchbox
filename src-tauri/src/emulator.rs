@@ -666,11 +666,78 @@ pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, Strin
     launch_emulator(emulator, Some(rom_path), as_retroarch_core)
 }
 
+/// Find the RetroArch executable path for native launches.
+fn find_retroarch_binary() -> Option<PathBuf> {
+    match current_os() {
+        "Windows" => which::which("retroarch")
+            .or_else(|_| which::which("retroarch.exe"))
+            .ok(),
+        "macOS" => {
+            if let Ok(path) = which::which("retroarch") {
+                Some(path)
+            } else {
+                let app_binary = PathBuf::from("/Applications/RetroArch.app/Contents/MacOS/RetroArch");
+                if app_binary.exists() {
+                    Some(app_binary)
+                } else {
+                    None
+                }
+            }
+        }
+        _ => which::which("retroarch").ok(),
+    }
+}
+
+/// Convert a host path into the Flatpak-visible path on Linux.
+fn map_path_for_flatpak(path: &str) -> String {
+    if current_os() != "Linux" {
+        return path.to_string();
+    }
+
+    // On systems where /var/home does not exist (common non-ostree Linux),
+    // keep canonical /home paths as-is.
+    if !std::path::Path::new("/var/home").exists() {
+        return path.to_string();
+    }
+
+    let Some(home) = dirs::home_dir() else {
+        return path.to_string();
+    };
+    let home_path = home.to_string_lossy().to_string();
+
+    // If the host home is already under /var/home, no rewrite needed.
+    if home_path.starts_with("/var/home/") {
+        return path.to_string();
+    }
+
+    let username = home
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("user");
+
+    let home_with_sep = format!("{}/", home_path);
+    if let Some(rest) = path.strip_prefix(&home_with_sep) {
+        return format!("/var/home/{}/{}", username, rest);
+    }
+    if path == home_path {
+        return format!("/var/home/{}", username);
+    }
+
+    path.to_string()
+}
+
 /// Launch RetroArch with a specific core (optionally with a ROM)
-fn launch_retroarch(_core_name: &str, _rom_path: Option<&str>) -> Result<u32, String> {
-    // For now, just launch RetroArch without -L flag
-    // User can select core and ROM manually in RetroArch UI
-    tracing::debug!("Launching RetroArch (user will select core/ROM in UI)");
+fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, String> {
+    let core_path = check_retroarch_core_installed(core_name)
+        .ok_or_else(|| format!("RetroArch core '{}' is not installed", core_name))?;
+    let core_path_str = core_path.to_string_lossy().to_string();
+
+    tracing::debug!(
+        core = %core_name,
+        core_path = %core_path_str,
+        rom = ?rom_path,
+        "Launching RetroArch with explicit core"
+    );
 
     match current_os() {
         "Linux" => {
@@ -678,24 +745,42 @@ fn launch_retroarch(_core_name: &str, _rom_path: Option<&str>) -> Result<u32, St
             if is_flatpak {
                 let mut cmd = Command::new("flatpak");
                 cmd.arg("run").arg("org.libretro.RetroArch");
-                tracing::info!(command = ?cmd, "Spawning RetroArch via flatpak");
+                cmd.arg("-L").arg(map_path_for_flatpak(&core_path_str));
+                if let Some(rom) = rom_path {
+                    cmd.arg(map_path_for_flatpak(rom));
+                }
+                tracing::info!(
+                    command = ?cmd,
+                    core = %core_name,
+                    rom = ?rom_path,
+                    "Spawning RetroArch via flatpak"
+                );
                 spawn_and_verify(cmd, "RetroArch")
             } else {
-                let cmd = Command::new("retroarch");
-                tracing::info!(command = ?cmd, "Spawning RetroArch native");
+                let retroarch_path = find_retroarch_binary()
+                    .ok_or_else(|| "Could not find RetroArch executable".to_string())?;
+                let mut cmd = Command::new(retroarch_path);
+                cmd.arg("-L").arg(&core_path_str);
+                if let Some(rom) = rom_path {
+                    cmd.arg(rom);
+                }
+                tracing::info!(
+                    command = ?cmd,
+                    core = %core_name,
+                    rom = ?rom_path,
+                    "Spawning RetroArch native"
+                );
                 spawn_and_verify(cmd, "RetroArch")
             }
         }
-        "Windows" => {
-            let retroarch_path = which::which("retroarch")
-                .or_else(|_| which::which("retroarch.exe"))
-                .map_err(|_| "Could not find RetroArch executable")?;
-            let cmd = Command::new(retroarch_path);
-            spawn_and_verify(cmd, "RetroArch")
-        }
-        "macOS" => {
-            let mut cmd = Command::new("open");
-            cmd.arg("-a").arg("RetroArch");
+        "Windows" | "macOS" => {
+            let retroarch_path = find_retroarch_binary()
+                .ok_or_else(|| "Could not find RetroArch executable".to_string())?;
+            let mut cmd = Command::new(retroarch_path);
+            cmd.arg("-L").arg(&core_path_str);
+            if let Some(rom) = rom_path {
+                cmd.arg(rom);
+            }
             spawn_and_verify(cmd, "RetroArch")
         }
         _ => Err("Unsupported operating system".to_string()),
@@ -722,7 +807,7 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
         let mut cmd = Command::new("flatpak");
         cmd.arg("run").arg(&app_id);
         if let Some(rom) = rom_path {
-            cmd.arg(rom);
+            cmd.arg(map_path_for_flatpak(rom));
         }
         tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
         spawn_and_verify(cmd, &emulator.name)

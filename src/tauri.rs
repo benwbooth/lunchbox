@@ -1432,14 +1432,19 @@ pub async fn launch_emulator(emulator_name: String, is_retroarch_core: bool) -> 
 }
 
 /// Launch a game with the specified emulator
-pub async fn launch_game(emulator_name: String, rom_path: String) -> Result<LaunchResult, String> {
+pub async fn launch_game(
+    emulator_name: String,
+    rom_path: String,
+    is_retroarch_core: bool,
+) -> Result<LaunchResult, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
         rom_path: String,
+        is_retroarch_core: bool,
     }
-    invoke("launch_game", Args { emulator_name, rom_path }).await
+    invoke("launch_game", Args { emulator_name, rom_path, is_retroarch_core }).await
 }
 
 /// Get the current operating system

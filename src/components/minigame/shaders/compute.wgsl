@@ -26,9 +26,9 @@ struct Uniforms {
 struct Entity {
     pos: vec2<f32>,
     vel: vec2<f32>,
-    kind: u32,      // 0=mario, 1=goomba, 2=koopa, 3=coin, 4=mushroom, 5=debris
-    state: u32,     // For koopa: 0=walk, 1=shell, 2=moving_shell. For debris: lifetime
-    flags: u32,     // bit0=flip_x, bit1=alive, bit2=on_ground, bit3=is_big, bit4=is_player
+    kind: u32,      // 0=mario, 1=goomba, 2=koopa, 3=coin, 4=mushroom, 5=debris, 6=fire_flower, 7=star, 8=fireball
+    state: u32,     // Kind-specific state. Mario low bit = variant, high bits = star expiry frame.
+    flags: u32,     // bit0=flip_x, bit1=alive, bit2=on_ground, bit3=is_big, bit4=is_player, bit6=fire, bit7=star
     timer: u32,     // multi-purpose timer
 };
 
@@ -58,14 +58,14 @@ const MAX_FALL: f32 = 1.5;
 const JUMP_VEL: f32 = -2.0;
 const MOVE_SPEED: f32 = 0.3;
 const TILE: f32 = 8.0;
-const SHELL_SPEED: f32 = 0.4;
+const SHELL_SPEED: f32 = MOVE_SPEED * 2.0;
 
 // Fixed counts (entities are always 256)
 const ENTITY_COUNT: u32 = 256u;
 
 // Entity grid cell size (fixed, dimensions are dynamic via uniforms)
 const ECELL_SIZE: f32 = 64.0;   // Entity cell size in pixels
-const EGRID_SLOTS: u32 = 4u;    // Max entities per cell
+const EGRID_SLOTS: u32 = 16u;    // Max entities per cell
 
 // Note: GRID_WIDTH, GRID_HEIGHT, u.grid_size, EGRID_WIDTH, EGRID_HEIGHT, u.egrid_cells,
 // u.egrid_size, u.block_count are now passed via uniforms (u.grid_width, etc.)
@@ -77,6 +77,9 @@ const KIND_KOOPA: u32 = 2u;
 const KIND_COIN: u32 = 3u;
 const KIND_MUSHROOM: u32 = 4u;
 const KIND_DEBRIS: u32 = 5u;
+const KIND_FIRE_FLOWER: u32 = 6u;
+const KIND_STAR: u32 = 7u;
+const KIND_FIREBALL: u32 = 8u;
 
 // Koopa states
 const KOOPA_WALK: u32 = 0u;
@@ -87,6 +90,10 @@ const KOOPA_SHELL_MOVING: u32 = 2u;
 const GOOMBA_WALK: u32 = 0u;
 const GOOMBA_FLAT: u32 = 1u;  // Squished, waiting to disappear
 
+// Item states
+const ITEM_RISING: u32 = 0u;
+const ITEM_ACTIVE: u32 = 1u;
+
 // Flags
 const FLAG_FLIP: u32 = 1u;
 const FLAG_ALIVE: u32 = 2u;
@@ -94,6 +101,26 @@ const FLAG_GROUND: u32 = 4u;
 const FLAG_BIG: u32 = 8u;
 const FLAG_PLAYER: u32 = 16u;
 const FLAG_DYING: u32 = 32u;  // Death animation in progress
+const FLAG_FIRE: u32 = 64u;   // Fire flower power active
+const FLAG_STAR: u32 = 128u;  // Star invincibility active
+
+// Death/respawn timing
+const DYING_FALL_RATIO: f32 = 0.10;     // Fall for ~10% of screen height
+const DYING_FALL_SPEED: f32 = 1.2;      // Pixels per frame during death fall
+const DYING_FADE_FRAMES: u32 = 24u;     // Then fade out before respawn
+
+// Power-up timings
+const STAR_DURATION_FRAMES: u32 = 600u;   // 10 seconds at 60 FPS
+const FIREBALL_COOLDOWN_FRAMES: u32 = 20u;
+
+// Mario state bit packing
+const MARIO_VARIANT_MASK: u32 = 1u;
+const MARIO_META_MASK: u32 = 0xFFu;
+const MARIO_STAR_SHIFT: u32 = 8u;
+const STAR_EXPIRY_NONE: u32 = 0u;
+
+// Shared slot range for temporary entities (items, projectiles, debris)
+const SPECIAL_SLOT_START: u32 = 220u;
 
 //=============================================================================
 // UTILITY FUNCTIONS
@@ -114,6 +141,44 @@ fn random(seed: f32, offset: f32) -> f32 {
 fn random_with_time(seed: f32, offset: f32) -> f32 {
     let s = u32(seed * 12.9898 + offset * 78.233 + u.time * 100.0);
     return f32(pcg_hash(s)) / 4294967295.0;
+}
+
+fn mario_variant(state: u32) -> u32 {
+    return state & MARIO_VARIANT_MASK;
+}
+
+fn mario_star_expiry(state: u32) -> u32 {
+    return state >> MARIO_STAR_SHIFT;
+}
+
+fn mario_set_star_expiry(state: u32, expiry: u32) -> u32 {
+    return (state & MARIO_META_MASK) | (expiry << MARIO_STAR_SHIFT);
+}
+
+fn spawn_question_item(slot: u32, spawn_pos: vec2<f32>, item_kind: u32) {
+    var item: Entity;
+    item.kind = item_kind;
+    item.flags = FLAG_ALIVE;
+    item.pos = spawn_pos;
+    item.vel = vec2<f32>(0.0, 0.0);
+    item.state = ITEM_RISING;
+    item.timer = 0u;
+
+    if (item_kind == KIND_COIN) {
+        // Coin pops up quickly then disappears.
+        item.vel = vec2<f32>(0.0, -1.1);
+        item.state = ITEM_ACTIVE;
+    } else if (item_kind == KIND_MUSHROOM) {
+        item.vel.x = select(-0.22, 0.22, random_with_time(f32(slot), 210.0) > 0.5);
+    } else if (item_kind == KIND_FIRE_FLOWER) {
+        item.vel = vec2<f32>(0.0, 0.0);
+    } else if (item_kind == KIND_STAR) {
+        item.state = ITEM_ACTIVE;
+        item.vel.x = select(-0.30, 0.30, random_with_time(f32(slot), 211.0) > 0.5);
+        item.vel.y = -1.0;
+    }
+
+    entities_in[slot] = item;
 }
 
 // Spatial grid helpers - O(1) block lookup
@@ -350,7 +415,7 @@ fn init_populate(@builtin(global_invocation_id) gid: vec3<u32>) {
             e.vel = vec2<f32>(select(-0.15, 0.15, random(f32(idx), 13.0) > 0.5), 0.0);
             e.state = KOOPA_WALK;
         } else {
-            // Reserve slots for debris (36 slots)
+            // Reserve slots for temporary entities (items, projectiles, debris)
             e.kind = KIND_DEBRIS;
             e.flags = 0u; // Not alive
         }
@@ -420,10 +485,30 @@ fn frame_prep(@builtin(global_invocation_id) gid: vec3<u32>) {
                 }
             }
         } else if (b.kind == 1u) {
-            // Question block - mark as empty
+            // Question block - mark as empty and emit one item.
             b.kind = 2u;
             blocks[idx] = b;
             atomicStore(&spatial_grid[grid_idx], idx);
+
+            var item_kind = KIND_COIN;
+            let item_roll = random_with_time(f32(idx), 140.0);
+            if (item_roll < 0.25) {
+                item_kind = KIND_COIN;
+            } else if (item_roll < 0.50) {
+                item_kind = KIND_MUSHROOM;
+            } else if (item_roll < 0.75) {
+                item_kind = KIND_FIRE_FLOWER;
+            } else {
+                item_kind = KIND_STAR;
+            }
+
+            let spawn_pos = b.pos + vec2<f32>(0.0, -8.0);
+            for (var slot = SPECIAL_SLOT_START; slot < ENTITY_COUNT; slot = slot + 1u) {
+                if ((entities_in[slot].flags & (FLAG_ALIVE | FLAG_DYING)) == 0u) {
+                    spawn_question_item(slot, spawn_pos, item_kind);
+                    break;
+                }
+            }
         }
     }
 }
@@ -444,6 +529,15 @@ fn update_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     var e = entities_in[idx];
 
+    if (e.kind == KIND_MARIO) {
+        // Star invincibility timeout (stored in mario state high bits).
+        let star_expiry = mario_star_expiry(e.state);
+        if ((e.flags & FLAG_STAR) != 0u && star_expiry != STAR_EXPIRY_NONE && u.frame >= star_expiry) {
+            e.flags = e.flags & ~FLAG_STAR;
+            e.state = mario_set_star_expiry(e.state, STAR_EXPIRY_NONE);
+        }
+    }
+
     // Handle debris lifetime
     if (e.kind == KIND_DEBRIS && (e.flags & FLAG_ALIVE) != 0u) {
         e.vel.y = min(e.vel.y + GRAVITY, MAX_FALL);
@@ -457,28 +551,122 @@ fn update_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // Handle dying entities FIRST - just fall with no collisions until off screen
-    if ((e.flags & FLAG_DYING) != 0u) {
-        // Apply gravity and fall (no horizontal movement change, no collisions)
-        e.vel.y = min(e.vel.y + GRAVITY, MAX_FALL);
-        e.pos.y = e.pos.y + e.vel.y;
-        // Keep slight horizontal drift from death impact
-        e.pos.x = e.pos.x + e.vel.x * 0.98;  // Slow down horizontal
-        e.vel.x = e.vel.x * 0.98;
+    // Coin from question block: jump and vanish.
+    if (e.kind == KIND_COIN && (e.flags & FLAG_ALIVE) != 0u) {
+        e.vel.y = e.vel.y + GRAVITY * 0.75;
+        e.pos = e.pos + e.vel;
+        e.timer = e.timer + 1u;
+        if (e.timer > 30u) {
+            e.flags = e.flags & ~FLAG_ALIVE;
+        }
+        entities_out[idx] = e;
+        return;
+    }
 
-        // Only respawn after falling completely off screen (no timeout!)
-        if (e.pos.y > u.resolution.y + 32.0) {
-            e.flags = FLAG_ALIVE;  // Clear dying, set alive
+    // Fire flower: rise out of block then stay in place.
+    if (e.kind == KIND_FIRE_FLOWER && (e.flags & FLAG_ALIVE) != 0u) {
+        if (e.state == ITEM_RISING) {
+            e.pos.y = e.pos.y - 0.5;
+            e.timer = e.timer + 1u;
+            if (e.timer >= 16u) {
+                e.state = ITEM_ACTIVE;
+                e.timer = 0u;
+            }
+        }
+        let my_ecx = pos_to_ecell_x(e.pos.x);
+        let my_ecy = pos_to_ecell_y(e.pos.y);
+        register_entity_in_cell(idx, my_ecx, my_ecy);
+        entities_out[idx] = e;
+        return;
+    }
+
+    // Fireball: fast horizontal projectile with short lifetime.
+    if (e.kind == KIND_FIREBALL && (e.flags & FLAG_ALIVE) != 0u) {
+        e.pos = e.pos + e.vel;
+        e.timer = e.timer + 1u;
+        if (e.timer > 90u || e.pos.x < -20.0 || e.pos.x > u.resolution.x + 20.0 || e.pos.y < -20.0 || e.pos.y > u.resolution.y + 20.0) {
+            e.flags = e.flags & ~FLAG_ALIVE;
+            entities_out[idx] = e;
+            return;
+        }
+        let my_ecx = pos_to_ecell_x(e.pos.x);
+        let my_ecy = pos_to_ecell_y(e.pos.y);
+        register_entity_in_cell(idx, my_ecx, my_ecy);
+        entities_out[idx] = e;
+        return;
+    }
+
+    // Handle dying entities FIRST - fall for ~10% of screen height, then fade, then respawn
+    if ((e.flags & FLAG_DYING) != 0u) {
+        let fall_distance = max(8.0, u.resolution.y * DYING_FALL_RATIO);
+        let fall_frames = max(1u, u32(ceil(fall_distance / DYING_FALL_SPEED)));
+        // Death fall is strictly vertical.
+        e.vel.x = 0.0;
+
+        if (e.timer < fall_frames) {
+            // Deterministic downward fall phase before fade starts.
+            e.pos.y = e.pos.y + DYING_FALL_SPEED;
+        }
+
+        e.timer = e.timer + 1u;
+
+        // Respawn after the fall+fade windows complete
+        if (e.timer >= fall_frames + DYING_FADE_FRAMES) {
+            let is_player = (e.flags & FLAG_PLAYER) != 0u;
+            e.flags = ((e.flags | FLAG_ALIVE) & ~FLAG_DYING) & ~FLAG_GROUND;
             e.timer = 0u;
-            // Spawn from top
-            e.pos.x = random_with_time(f32(idx), 60.0) * u.resolution.x;
-            e.pos.y = -16.0;
+            if (e.kind == KIND_MARIO) {
+                // Respawn players in small form and clear temporary powers.
+                e.flags = e.flags & ~(FLAG_BIG | FLAG_FIRE | FLAG_STAR);
+                e.state = mario_variant(e.state);
+            }
+
+            // Non-player entities can spawn from top, left, or right.
+            var spawn_mode = 0u; // 0=top, 1=left, 2=right
+            if (!is_player) {
+                spawn_mode = min(u32(random_with_time(f32(idx), 60.0) * 3.0), 2u);
+            }
+
+            if (spawn_mode == 0u) {
+                e.pos.x = random_with_time(f32(idx), 61.0) * u.resolution.x;
+                e.pos.y = -16.0;
+            } else if (spawn_mode == 1u) {
+                e.pos.x = -16.0;
+                e.pos.y = random_with_time(f32(idx), 62.0) * (u.resolution.y * 0.75);
+            } else {
+                e.pos.x = u.resolution.x + 8.0;
+                e.pos.y = random_with_time(f32(idx), 63.0) * (u.resolution.y * 0.75);
+            }
             e.vel.y = 0.0;
-            e.vel.x = select(-MOVE_SPEED, MOVE_SPEED, random_with_time(f32(idx), 61.0) > 0.5);
-            if (e.kind == KIND_KOOPA) {
-                e.state = KOOPA_WALK;
+
+            if (e.kind == KIND_MARIO) {
+                if (spawn_mode == 1u) {
+                    e.vel.x = MOVE_SPEED;
+                } else if (spawn_mode == 2u) {
+                    e.vel.x = -MOVE_SPEED;
+                } else {
+                    e.vel.x = select(-MOVE_SPEED, MOVE_SPEED, random_with_time(f32(idx), 64.0) > 0.5);
+                }
             } else if (e.kind == KIND_GOOMBA) {
                 e.state = GOOMBA_WALK;
+                if (spawn_mode == 1u) {
+                    e.vel.x = 0.2;
+                } else if (spawn_mode == 2u) {
+                    e.vel.x = -0.2;
+                } else {
+                    e.vel.x = select(-0.2, 0.2, random_with_time(f32(idx), 65.0) > 0.5);
+                }
+            } else if (e.kind == KIND_KOOPA) {
+                e.state = KOOPA_WALK;
+                if (spawn_mode == 1u) {
+                    e.vel.x = 0.15;
+                } else if (spawn_mode == 2u) {
+                    e.vel.x = -0.15;
+                } else {
+                    e.vel.x = select(-0.15, 0.15, random_with_time(f32(idx), 66.0) > 0.5);
+                }
+            } else {
+                e.vel.x = select(-MOVE_SPEED, MOVE_SPEED, random_with_time(f32(idx), 67.0) > 0.5);
             }
         }
         entities_out[idx] = e;
@@ -486,6 +674,24 @@ fn update_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     if ((e.flags & FLAG_ALIVE) == 0u) {
+        entities_out[idx] = e;
+        return;
+    }
+
+    // Mushroom rises from block before it starts sliding.
+    if (e.kind == KIND_MUSHROOM && e.state == ITEM_RISING) {
+        e.pos.y = e.pos.y - 0.5;
+        e.timer = e.timer + 1u;
+        if (e.timer >= 16u) {
+            e.state = ITEM_ACTIVE;
+            e.timer = 0u;
+            if (abs(e.vel.x) < 0.05) {
+                e.vel.x = select(-0.22, 0.22, random_with_time(f32(idx), 220.0) > 0.5);
+            }
+        }
+        let my_ecx = pos_to_ecell_x(e.pos.x);
+        let my_ecy = pos_to_ecell_y(e.pos.y);
+        register_entity_in_cell(idx, my_ecx, my_ecy);
         entities_out[idx] = e;
         return;
     }
@@ -547,10 +753,12 @@ fn update_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
             if (e.vel.y < 0.0 && old_y >= block_bottom && e.pos.y < block_bottom) {
                 e.pos.y = block_bottom;
                 e.vel.y = 2.0;
-                // Any entity hitting block from below can break it (not just Mario)
-                let destroy_grid_idx = grid_index(tx, ty);
-                if (destroy_grid_idx < u.grid_size) {
-                    atomicStore(&spatial_grid[destroy_grid_idx], block_idx | 0x80000000u);
+                // Only core actors can trigger block hits from below.
+                if (e.kind == KIND_MARIO || e.kind == KIND_GOOMBA || e.kind == KIND_KOOPA) {
+                    let destroy_grid_idx = grid_index(tx, ty);
+                    if (destroy_grid_idx < u.grid_size) {
+                        atomicStore(&spatial_grid[destroy_grid_idx], block_idx | 0x80000000u);
+                    }
                 }
             }
 
@@ -596,6 +804,23 @@ fn update_positions(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
 
+    // Star keeps bouncing while active.
+    if (e.kind == KIND_STAR && (e.flags & FLAG_GROUND) != 0u) {
+        e.vel.y = -1.0;
+        if (abs(e.vel.x) < 0.2) {
+            e.vel.x = select(-0.30, 0.30, random_with_time(f32(idx), 221.0) > 0.5);
+        }
+    }
+    if (e.kind == KIND_STAR) {
+        if (e.pos.x < 0.0) {
+            e.pos.x = 0.0;
+            e.vel.x = abs(e.vel.x);
+        } else if (e.pos.x > u.resolution.x - 8.0) {
+            e.pos.x = u.resolution.x - 8.0;
+            e.vel.x = -abs(e.vel.x);
+        }
+    }
+
     // Register this entity in the spatial grid for collision detection (skip coins/debris)
     if (e.kind != KIND_COIN && e.kind != KIND_DEBRIS) {
         let my_ecx = pos_to_ecell_x(e.pos.x);
@@ -636,17 +861,112 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
+    // Fireballs only interact with enemies, then disappear.
+    if (e.kind == KIND_FIREBALL) {
+        let my_ecx = pos_to_ecell_x(e.pos.x);
+        let my_ecy = pos_to_ecell_y(e.pos.y);
+
+        for (var cdy = -1; cdy <= 1; cdy = cdy + 1) {
+            for (var cdx = -1; cdx <= 1; cdx = cdx + 1) {
+                let cx = u32(max(0, i32(my_ecx) + cdx));
+                let cy = u32(max(0, i32(my_ecy) + cdy));
+                if (cx >= u.egrid_width || cy >= u.egrid_height) { continue; }
+
+                let cell = ecell_index(cx, cy);
+                let cell_base = cell * EGRID_SLOTS;
+                let cell_count = min(atomicLoad(&entity_cell_counts[cell]), EGRID_SLOTS);
+                for (var slot = 0u; slot < cell_count; slot = slot + 1u) {
+                    let grid_idx = cell_base + slot;
+                    if (grid_idx >= u.egrid_size) { continue; }
+                    let j = entity_grid[grid_idx];
+                    if (j == idx || j >= ENTITY_COUNT) { continue; }
+
+                    var other = entities_in[j];
+                    if ((other.flags & FLAG_ALIVE) == 0u || (other.flags & FLAG_DYING) != 0u) { continue; }
+                    if (other.kind != KIND_GOOMBA && other.kind != KIND_KOOPA) { continue; }
+
+                    let dx = e.pos.x - other.pos.x;
+                    let dy = e.pos.y - other.pos.y;
+                    if (abs(dx) >= 7.0 || abs(dy) >= 7.0) { continue; }
+
+                    other.flags = (other.flags & ~FLAG_ALIVE) | FLAG_DYING;
+                    other.vel.y = JUMP_VEL * 0.3;
+                    other.vel.x = select(-0.5, 0.5, dx > 0.0);
+                    other.timer = 0u;
+                    entities_in[j] = other;
+
+                    e.flags = e.flags & ~FLAG_ALIVE;
+                    entities_out[idx] = e;
+                    return;
+                }
+            }
+        }
+
+        entities_out[idx] = e;
+        return;
+    }
+
+    // Items should disappear immediately when touched by any living Mario.
+    // Mario power-up state is handled in the Mario collision branch below.
+    if ((e.kind == KIND_MUSHROOM || e.kind == KIND_FIRE_FLOWER || e.kind == KIND_STAR) && (e.flags & FLAG_ALIVE) != 0u) {
+        let my_ecx = pos_to_ecell_x(e.pos.x);
+        let my_ecy = pos_to_ecell_y(e.pos.y);
+
+        for (var cdy = -1; cdy <= 1; cdy = cdy + 1) {
+            for (var cdx = -1; cdx <= 1; cdx = cdx + 1) {
+                let cx = u32(max(0, i32(my_ecx) + cdx));
+                let cy = u32(max(0, i32(my_ecy) + cdy));
+                if (cx >= u.egrid_width || cy >= u.egrid_height) { continue; }
+
+                let cell = ecell_index(cx, cy);
+                let cell_base = cell * EGRID_SLOTS;
+                let cell_count = min(atomicLoad(&entity_cell_counts[cell]), EGRID_SLOTS);
+                for (var slot = 0u; slot < cell_count; slot = slot + 1u) {
+                    let grid_idx = cell_base + slot;
+                    if (grid_idx >= u.egrid_size) { continue; }
+                    let j = entity_grid[grid_idx];
+                    if (j == idx || j >= ENTITY_COUNT) { continue; }
+
+                    let other = entities_in[j];
+                    if ((other.flags & FLAG_ALIVE) == 0u || (other.flags & FLAG_DYING) != 0u) { continue; }
+                    if (other.kind != KIND_MARIO) { continue; }
+
+                    let dx = e.pos.x - other.pos.x;
+                    let dy = e.pos.y - other.pos.y;
+                    if (abs(dx) >= 7.0 || abs(dy) >= 7.0) { continue; }
+
+                    e.flags = e.flags & ~FLAG_ALIVE;
+                    entities_out[idx] = e;
+                    return;
+                }
+            }
+        }
+    }
+
     // Handle flat goombas - they stay flat for 1 second (real time) then respawn
     // timer stores the time when goomba became flat (as centiseconds)
     if (e.kind == KIND_GOOMBA && e.state == GOOMBA_FLAT) {
         let flat_time = f32(e.timer) / 100.0;  // Convert back to seconds
         if (u.time - flat_time > 1.0) {
-            // Respawn as a new goomba from the top
+            // Respawn as a new goomba from top or side
             e.state = GOOMBA_WALK;
             e.timer = 0u;
-            e.pos.y = -16.0;
-            e.pos.x = random_with_time(f32(idx), 80.0) * u.resolution.x;
-            e.vel.x = select(-0.2, 0.2, random_with_time(f32(idx), 81.0) > 0.5);
+            e.flags = e.flags & ~FLAG_GROUND;
+
+            let spawn_mode = min(u32(random_with_time(f32(idx), 80.0) * 3.0), 2u);
+            if (spawn_mode == 0u) {
+                e.pos.y = -16.0;
+                e.pos.x = random_with_time(f32(idx), 81.0) * u.resolution.x;
+                e.vel.x = select(-0.2, 0.2, random_with_time(f32(idx), 82.0) > 0.5);
+            } else if (spawn_mode == 1u) {
+                e.pos.x = -16.0;
+                e.pos.y = random_with_time(f32(idx), 83.0) * (u.resolution.y * 0.75);
+                e.vel.x = 0.2;
+            } else {
+                e.pos.x = u.resolution.x + 8.0;
+                e.pos.y = random_with_time(f32(idx), 84.0) * (u.resolution.y * 0.75);
+                e.vel.x = -0.2;
+            }
             e.vel.y = 0.0;
         }
         entities_out[idx] = e;
@@ -679,21 +999,32 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
 
                 var other = entities_in[j];
                 if ((other.flags & FLAG_ALIVE) == 0u) { continue; }
-                if (other.kind == KIND_COIN || other.kind == KIND_DEBRIS) { continue; }
+                if (other.kind == KIND_COIN || other.kind == KIND_DEBRIS || other.kind == KIND_FIREBALL) { continue; }
                 // Skip flat goombas - they're effectively dead
                 if (other.kind == KIND_GOOMBA && other.state == GOOMBA_FLAT) { continue; }
                 // Skip dying entities
                 if ((other.flags & FLAG_DYING) != 0u) { continue; }
+                // Only Marios can collect power-up entities.
+                if (e.kind != KIND_MARIO && (other.kind == KIND_MUSHROOM || other.kind == KIND_FIRE_FLOWER || other.kind == KIND_STAR)) { continue; }
 
                 let dx = e.pos.x - other.pos.x;
                 let dy = e.pos.y - other.pos.y;
                 let adx = abs(dx);
                 let ady = abs(dy);
-                if (adx >= 7.0 || ady >= 7.0) { continue; }
+                // Allow a little extra vertical tolerance so stomping stationary shells
+                // still registers even when sprites are only touching edges.
+                let shell_touch =
+                    (
+                        (e.kind == KIND_KOOPA && e.state == KOOPA_SHELL && other.kind == KIND_MARIO) ||
+                        (e.kind == KIND_MARIO && other.kind == KIND_KOOPA && other.state == KOOPA_SHELL)
+                    ) &&
+                    adx < 7.5 &&
+                    ady < 9.0;
+                if ((adx >= 7.0 || ady >= 7.0) && !shell_touch) { continue; }
 
                 // Calculate overlap and push apart FIRST
-                let overlap_x = 7.0 - adx;
-                let overlap_y = 7.0 - ady;
+                let overlap_x = max(0.0, 7.0 - adx);
+                let overlap_y = max(0.0, 7.0 - ady);
                 let push_dir_x = select(-1.0, 1.0, dx > 0.0);
                 let push_dir_y = select(-1.0, 1.0, dy > 0.0);
 
@@ -703,37 +1034,100 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
 
                 // MARIO interactions
                 if (e.kind == KIND_MARIO && (e.flags & FLAG_DYING) == 0u) {
+                    let invincible = (e.flags & FLAG_STAR) != 0u;
+                    let powered = (e.flags & (FLAG_BIG | FLAG_FIRE)) != 0u;
+
+                    // Power-up collection
+                    if (other.kind == KIND_MUSHROOM) {
+                        e.flags = (e.flags | FLAG_BIG) & ~FLAG_DYING;
+                        other.flags = other.flags & ~FLAG_ALIVE;
+                        entities_in[j] = other;
+                        continue;
+                    } else if (other.kind == KIND_FIRE_FLOWER) {
+                        e.flags = (e.flags | FLAG_BIG | FLAG_FIRE) & ~FLAG_DYING;
+                        other.flags = other.flags & ~FLAG_ALIVE;
+                        entities_in[j] = other;
+                        continue;
+                    } else if (other.kind == KIND_STAR) {
+                        e.flags = (e.flags | FLAG_STAR) & ~FLAG_DYING;
+                        e.state = mario_set_star_expiry(e.state, u.frame + STAR_DURATION_FRAMES);
+                        other.flags = other.flags & ~FLAG_ALIVE;
+                        entities_in[j] = other;
+                        continue;
+                    }
+
                     if (other.kind == KIND_GOOMBA && other.state != GOOMBA_FLAT) {
-                        if (stomping) {
+                        if (invincible) {
+                            other.flags = (other.flags & ~FLAG_ALIVE) | FLAG_DYING;
+                            other.vel.y = JUMP_VEL * 0.3;
+                            other.vel.x = -push_dir_x * 0.5;
+                            other.timer = 0u;
+                            entities_in[j] = other;
+                            e.vel.y = JUMP_VEL * 0.25;
+                        } else if (stomping) {
                             e.vel.y = JUMP_VEL * 0.5;
                             e.pos.y = other.pos.y - 8.0;  // Place on top
+                        } else if (powered) {
+                            e.flags = e.flags & ~(FLAG_BIG | FLAG_FIRE | FLAG_STAR);
+                            e.state = mario_set_star_expiry(e.state, STAR_EXPIRY_NONE);
+                            e.vel.y = JUMP_VEL * 0.2;
+                            e.vel.x = push_dir_x * 0.25;
                         } else {
                             e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                             e.vel.y = JUMP_VEL;
-                            e.vel.x = push_dir_x * 0.5;
+                            e.vel.x = 0.0;
                             e.timer = 0u;
                         }
                     } else if (other.kind == KIND_KOOPA) {
                         if (other.state == KOOPA_WALK || other.state == KOOPA_SHELL_MOVING) {
-                            if (stomping) {
+                            if (invincible) {
+                                other.flags = (other.flags & ~FLAG_ALIVE) | FLAG_DYING;
+                                other.vel.y = JUMP_VEL * 0.3;
+                                other.vel.x = -push_dir_x * 0.5;
+                                other.timer = 0u;
+                                entities_in[j] = other;
+                                e.vel.y = JUMP_VEL * 0.25;
+                            } else if (stomping) {
                                 e.vel.y = JUMP_VEL * 0.5;
                                 e.pos.y = other.pos.y - 8.0;
+                            } else if (powered) {
+                                e.flags = e.flags & ~(FLAG_BIG | FLAG_FIRE | FLAG_STAR);
+                                e.state = mario_set_star_expiry(e.state, STAR_EXPIRY_NONE);
+                                e.vel.y = JUMP_VEL * 0.2;
+                                e.vel.x = push_dir_x * 0.25;
                             } else {
                                 e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                                 e.vel.y = JUMP_VEL;
-                                e.vel.x = push_dir_x * 0.5;
+                                e.vel.x = 0.0;
                                 e.timer = 0u;
                             }
                         } else if (other.state == KOOPA_SHELL) {
-                            // Can kick stationary shell
-                            e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
+                            // Any touch (including stomp) on a stationary shell should re-launch it.
+                            if (stomping) {
+                                e.vel.y = JUMP_VEL * 0.45;
+                                e.pos.y = other.pos.y - 8.0;
+                            } else {
+                                e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
+                            }
+                            other.state = KOOPA_SHELL_MOVING;
+                            other.vel.x = select(-SHELL_SPEED, SHELL_SPEED, dx < 0.0);
+                            entities_in[j] = other;
                         }
                     } else if (other.kind == KIND_MARIO) {
                         if (being_stomped) {
-                            e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
-                            e.vel.y = JUMP_VEL * 0.5;
-                            e.vel.x = push_dir_x * 0.3;
-                            e.timer = 0u;
+                            if (invincible) {
+                                e.vel.y = JUMP_VEL * 0.25;
+                            } else if (powered) {
+                                e.flags = e.flags & ~(FLAG_BIG | FLAG_FIRE | FLAG_STAR);
+                                e.state = mario_set_star_expiry(e.state, STAR_EXPIRY_NONE);
+                                e.vel.y = JUMP_VEL * 0.2;
+                                e.vel.x = push_dir_x * 0.25;
+                            } else {
+                                e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
+                                e.vel.y = JUMP_VEL * 0.5;
+                                e.vel.x = 0.0;
+                                e.timer = 0u;
+                            }
                         } else if (stomping) {
                             e.vel.y = JUMP_VEL * 0.5;
                             e.pos.y = other.pos.y - 8.0;
@@ -758,10 +1152,15 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
                     } else if (other.kind == KIND_KOOPA && other.state == KOOPA_WALK) {
                         e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
                         e.vel.x = push_dir_x * abs(e.vel.x);
+                    } else if (other.kind == KIND_KOOPA && other.state == KOOPA_SHELL) {
+                        // Stationary shells are solid obstacles for goombas.
+                        e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
+                        e.vel.x = push_dir_x * abs(e.vel.x);
                     } else if (other.kind == KIND_KOOPA && other.state == KOOPA_SHELL_MOVING) {
                         e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                         e.vel.y = JUMP_VEL * 0.3;
                         e.vel.x = push_dir_x * 0.5;
+                        e.timer = 0u;
                     } else if (other.kind == KIND_MARIO) {
                         // Push apart from mario
                         e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
@@ -776,10 +1175,15 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
                         } else if (other.kind == KIND_GOOMBA || (other.kind == KIND_KOOPA && other.state == KOOPA_WALK)) {
                             e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
                             e.vel.x = push_dir_x * abs(e.vel.x);
+                        } else if (other.kind == KIND_KOOPA && other.state == KOOPA_SHELL) {
+                            // Walking koopas also bump off stationary shells.
+                            e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
+                            e.vel.x = push_dir_x * abs(e.vel.x);
                         } else if (other.kind == KIND_KOOPA && other.state == KOOPA_SHELL_MOVING) {
                             e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                             e.vel.y = JUMP_VEL * 0.3;
                             e.vel.x = push_dir_x * 0.5;
+                            e.timer = 0u;
                         } else if (other.kind == KIND_MARIO) {
                             e.pos.x = e.pos.x + push_dir_x * overlap_x * 0.5;
                         }
@@ -797,6 +1201,7 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
                             e.flags = (e.flags & ~FLAG_ALIVE) | FLAG_DYING;
                             e.vel.y = JUMP_VEL * 0.3;
                             e.vel.x = push_dir_x * 0.5;
+                            e.timer = 0u;
                         } else if (other.kind == KIND_KOOPA && other.state == KOOPA_SHELL) {
                             // Moving shell hits stationary shell - bounce off
                             e.vel.x = -e.vel.x;
@@ -808,24 +1213,58 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
         } // dx loop
     } // dy loop
 
-    // Screen wrap - entities continue off edges
-    if (e.pos.x < -16.0) { e.pos.x = u.resolution.x + 8.0; }
-    if (e.pos.x > u.resolution.x + 16.0) { e.pos.x = -8.0; }
+    // Screen wrap for core actors only.
+    if (e.kind == KIND_MARIO || e.kind == KIND_GOOMBA || e.kind == KIND_KOOPA) {
+        if (e.pos.x < -16.0) { e.pos.x = u.resolution.x + 8.0; }
+        if (e.pos.x > u.resolution.x + 16.0) { e.pos.x = -8.0; }
+    }
 
     // Respawn when fallen off bottom (only for alive, non-dying entities)
-    if (e.pos.y > u.resolution.y + 32.0 && e.kind != KIND_DEBRIS && e.kind != KIND_COIN) {
-        // Spawn from top
-        e.pos.y = -16.0;
-        e.pos.x = random_with_time(f32(idx), 51.0) * u.resolution.x;
+    if (e.pos.y > u.resolution.y + 32.0 && (e.kind == KIND_MARIO || e.kind == KIND_GOOMBA || e.kind == KIND_KOOPA)) {
+        let is_player = (e.flags & FLAG_PLAYER) != 0u;
+        e.flags = e.flags & ~FLAG_GROUND;
+        var spawn_mode = 0u; // 0=top, 1=left, 2=right
+        if (!is_player) {
+            spawn_mode = min(u32(random_with_time(f32(idx), 51.0) * 3.0), 2u);
+        }
+
+        if (spawn_mode == 0u) {
+            e.pos.y = -16.0;
+            e.pos.x = random_with_time(f32(idx), 52.0) * u.resolution.x;
+        } else if (spawn_mode == 1u) {
+            e.pos.x = -16.0;
+            e.pos.y = random_with_time(f32(idx), 53.0) * (u.resolution.y * 0.75);
+        } else {
+            e.pos.x = u.resolution.x + 8.0;
+            e.pos.y = random_with_time(f32(idx), 54.0) * (u.resolution.y * 0.75);
+        }
         e.vel.y = 0.0;
 
         if (e.kind == KIND_MARIO) {
-            e.vel.x = select(-MOVE_SPEED, MOVE_SPEED, random_with_time(f32(idx), 54.0) > 0.5);
+            if (spawn_mode == 1u) {
+                e.vel.x = MOVE_SPEED;
+            } else if (spawn_mode == 2u) {
+                e.vel.x = -MOVE_SPEED;
+            } else {
+                e.vel.x = select(-MOVE_SPEED, MOVE_SPEED, random_with_time(f32(idx), 55.0) > 0.5);
+            }
         } else if (e.kind == KIND_GOOMBA) {
-            e.vel.x = select(-0.2, 0.2, random_with_time(f32(idx), 56.0) > 0.5);
+            if (spawn_mode == 1u) {
+                e.vel.x = 0.2;
+            } else if (spawn_mode == 2u) {
+                e.vel.x = -0.2;
+            } else {
+                e.vel.x = select(-0.2, 0.2, random_with_time(f32(idx), 56.0) > 0.5);
+            }
         } else if (e.kind == KIND_KOOPA) {
             e.state = KOOPA_WALK;
-            e.vel.x = select(-0.15, 0.15, random_with_time(f32(idx), 57.0) > 0.5);
+            if (spawn_mode == 1u) {
+                e.vel.x = 0.15;
+            } else if (spawn_mode == 2u) {
+                e.vel.x = -0.15;
+            } else {
+                e.vel.x = select(-0.15, 0.15, random_with_time(f32(idx), 57.0) > 0.5);
+            }
         }
     }
 
@@ -850,10 +1289,30 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
 
+    // Fire flower power: spit fireballs on a fixed cadence.
+    if (e.kind == KIND_MARIO && (e.flags & FLAG_FIRE) != 0u && (e.flags & FLAG_DYING) == 0u) {
+        if ((u.frame + idx) % FIREBALL_COOLDOWN_FRAMES == 0u) {
+            for (var slot = SPECIAL_SLOT_START; slot < ENTITY_COUNT; slot = slot + 1u) {
+                if ((entities_in[slot].flags & (FLAG_ALIVE | FLAG_DYING)) == 0u) {
+                    var fb: Entity;
+                    fb.kind = KIND_FIREBALL;
+                    fb.flags = FLAG_ALIVE;
+                    fb.pos = e.pos + vec2<f32>(3.0, 2.0);
+                    let facing_right = (e.flags & FLAG_FLIP) == 0u;
+                    fb.vel = vec2<f32>(select(-0.9, 0.9, facing_right), 0.0);
+                    fb.state = 0u;
+                    fb.timer = 0u;
+                    entities_in[slot] = fb;
+                    break;
+                }
+            }
+        }
+    }
+
     // AI for non-player entities
     if (!is_player && on_ground && (e.flags & FLAG_ALIVE) != 0u) {
-        // Random direction changes (not for shells)
-        if (!is_koopa_shell && random_with_time(f32(idx), 17.0) < 0.01) {
+        // Random direction changes (Mario AI only)
+        if (e.kind == KIND_MARIO && !is_koopa_shell && random_with_time(f32(idx), 17.0) < 0.01) {
             e.vel.x = -e.vel.x;
         }
 
@@ -863,15 +1322,26 @@ fn resolve_collisions(@builtin(global_invocation_id) gid: vec3<u32>) {
             e.flags = e.flags & ~FLAG_GROUND;
         }
 
-        // Edge detection
-        if (e.pos.x < 16.0) { e.vel.x = abs(e.vel.x); }
-        if (e.pos.x > u.resolution.x - 24.0) { e.vel.x = -abs(e.vel.x); }
+        // Edge detection for Mario AI only
+        if (e.kind == KIND_MARIO) {
+            if (e.pos.x < 16.0) { e.vel.x = abs(e.vel.x); }
+            if (e.pos.x > u.resolution.x - 24.0) { e.vel.x = -abs(e.vel.x); }
+        }
 
         // Shells bounce off edges
         if (is_moving_shell) {
             if (e.pos.x < 8.0 || e.pos.x > u.resolution.x - 16.0) {
                 e.vel.x = -e.vel.x;
             }
+        }
+    }
+
+    // Clean up dropped/offscreen items so question blocks can keep spawning.
+    if (e.kind == KIND_MUSHROOM || e.kind == KIND_FIRE_FLOWER || e.kind == KIND_STAR) {
+        if (e.pos.y > u.resolution.y + 24.0 || e.pos.x < -24.0 || e.pos.x > u.resolution.x + 24.0) {
+            e.flags = e.flags & ~FLAG_ALIVE;
+            entities_out[idx] = e;
+            return;
         }
     }
 

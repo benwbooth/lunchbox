@@ -98,6 +98,8 @@ pub const PALETTE_PLAYER_TOAD: Palette = [0, NES_WHITE, NES_SKIN, NES_MARIO_RED]
 pub const PALETTE_PLAYER_PRINCESS: Palette = [0, NES_WHITE, NES_SKIN, NES_PINK];
 pub const PALETTE_KOOPA: Palette = [0, NES_GREEN, NES_SKIN, NES_WHITE];
 pub const PALETTE_COIN: Palette = [0, NES_YELLOW, NES_ORANGE, NES_BROWN];
+pub const PALETTE_STAR: Palette = [0, NES_YELLOW, NES_WHITE, NES_BLACK];
+pub const PALETTE_FIREBALL: Palette = [0, NES_ORANGE, NES_YELLOW, NES_WHITE];
 
 /// Helper to create sprite from visual representation
 /// Each char: '.' = 0 (transparent), '1' = color 1, '2' = color 2, '3' = color 3
@@ -244,10 +246,10 @@ pub const BRICK: Sprite = sprite_from_str(b"\
 // 1=yellow(border), 2=orange(background), 3=black(? shape)
 pub const QUESTION: Sprite = sprite_from_str(b"\
 11111111\
-12333221\
+12333321\
 12222321\
-12222321\
-12333221\
+12233321\
+12232221\
 12222221\
 12233221\
 11111111");
@@ -322,13 +324,13 @@ pub const KOOPA_WALK: Sprite = sprite_from_str(b"\
 
 // Koopa shell (when stomped)
 pub const KOOPA_SHELL: Sprite = sprite_from_str(b"\
+........\
 ..1111..\
 .111111.\
-11111111\
-11311311\
-11111111\
-.111111.\
-..1111..\
+11333311\
+12222221\
+13333331\
+........\
 ........");
 
 // Coin sprite - uses PALETTE_COIN
@@ -343,3 +345,35 @@ pub const COIN: Sprite = sprite_from_str(b"\
 .311113.\
 ..3333..");
 
+// Fire flower power-up
+pub const FIRE_FLOWER: Sprite = sprite_from_str(b"\
+...11...\
+..1221..\
+.122221.\
+..1221..\
+...33...\
+..3333..\
+..3..3..\
+...33...");
+
+// Invincibility star
+pub const STAR: Sprite = sprite_from_str(b"\
+...11...\
+..1111..\
+.111111.\
+11111111\
+.113331.\
+..13.31.\
+..1...1.\
+.1....1.");
+
+// Fireball projectile
+pub const FIREBALL: Sprite = sprite_from_str(b"\
+........\
+...11...\
+..1221..\
+.122221.\
+.122221.\
+..1221..\
+...11...\
+........");

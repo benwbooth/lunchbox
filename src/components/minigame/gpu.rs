@@ -13,7 +13,7 @@ pub fn pack_sprite_atlas() -> Vec<u32> {
         GOOMBA, BRICK, QUESTION, GROUND,
         KOOPA_WALK, COIN, MUSHROOM, MARIO_DEAD,
         QUESTION_EMPTY, KOOPA_SHELL, BRICK_DEBRIS,
-        MARIO_BIG_STAND_TOP,
+        MARIO_BIG_STAND_TOP, FIRE_FLOWER, STAR, FIREBALL,
     ];
 
     for sprite in &sprite_list {
@@ -41,7 +41,7 @@ pub fn pack_sprite_atlas() -> Vec<u32> {
 
 /// Pack palette data for GPU upload
 pub fn pack_palettes() -> Vec<u32> {
-    let palette_list: [Palette; 12] = [
+    let palette_list: [Palette; 14] = [
         PALETTE_MARIO,      // 0
         PALETTE_LUIGI,      // 1
         PALETTE_GOOMBA,     // 2
@@ -54,6 +54,8 @@ pub fn pack_palettes() -> Vec<u32> {
         PALETTE_MUSHROOM,   // 9
         PALETTE_TOAD,       // 10
         PALETTE_PRINCESS,   // 11
+        PALETTE_STAR,       // 12
+        PALETTE_FIREBALL,   // 13
     ];
 
     let mut palettes = Vec::new();

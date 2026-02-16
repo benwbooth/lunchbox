@@ -234,7 +234,7 @@ pub async fn get_games(
                 // Search within a specific platform
                 sqlx::query(
                     r#"
-                    SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+                    SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                            g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                            g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -253,7 +253,7 @@ pub async fn get_games(
                 // Search across all platforms
                 sqlx::query(
                     r#"
-                    SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+                    SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                            g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                            g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                            g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -271,7 +271,7 @@ pub async fn get_games(
         } else if let Some(ref platform_name) = platform {
             sqlx::query(
                 r#"
-                SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+                SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                        g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                        g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -328,6 +328,10 @@ pub async fn get_games(
             grouped.entry(key)
                 .and_modify(|(existing, variant_titles)| {
                     variant_titles.insert(title.clone());
+                    // Keep a resolvable LaunchBox id in the deduped row.
+                    if existing.database_id <= 0 && launchbox_db_id > 0 {
+                        existing.database_id = launchbox_db_id;
+                    }
                     // Prefer entries with more metadata
                     if existing.description.is_none() && description.is_some() {
                         existing.description = description.clone();
@@ -537,7 +541,7 @@ pub async fn get_game_by_uuid(
     if let Some(ref games_pool) = state_guard.games_db_pool {
         let row_opt = sqlx::query(
             r#"
-            SELECT g.id, g.title, g.platform_id, p.name as platform, g.launchbox_db_id,
+            SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                    g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
                    g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
                    g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
@@ -585,22 +589,33 @@ pub async fn get_game_by_uuid(
 
             // Count matching variants
             let normalized_lower = display_title.to_lowercase();
-            let all_titles: Vec<(String,)> = sqlx::query_as(
-                "SELECT DISTINCT title FROM games WHERE platform_id = ?"
+            let all_titles: Vec<(String, i64)> = sqlx::query_as(
+                "SELECT title, COALESCE(launchbox_db_id, 0) as launchbox_db_id FROM games WHERE platform_id = ?"
             )
             .bind(platform_id)
             .fetch_all(games_pool)
             .await
             .unwrap_or_default();
 
-            let actual_variant_count = all_titles
-                .iter()
-                .filter(|(t,)| normalize_title_for_display(t).to_lowercase() == normalized_lower)
-                .count() as i32;
+            let mut actual_variant_count = 0i32;
+            let mut fallback_launchbox_db_id = 0i64;
+            for (variant_title, variant_db_id) in &all_titles {
+                if normalize_title_for_display(variant_title).to_lowercase() == normalized_lower {
+                    actual_variant_count += 1;
+                    if fallback_launchbox_db_id == 0 && *variant_db_id > 0 {
+                        fallback_launchbox_db_id = *variant_db_id;
+                    }
+                }
+            }
+            let resolved_launchbox_db_id = if launchbox_db_id > 0 {
+                launchbox_db_id
+            } else {
+                fallback_launchbox_db_id
+            };
 
             return Ok(Some(Game {
                 id,
-                database_id: launchbox_db_id,
+                database_id: resolved_launchbox_db_id,
                 title,
                 display_title,
                 platform,
@@ -2229,6 +2244,7 @@ pub async fn install_emulator(
 pub async fn launch_game(
     emulator_name: String,
     rom_path: String,
+    is_retroarch_core: Option<bool>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<LaunchResult, String> {
     let state_guard = state.read().await;
@@ -2238,7 +2254,7 @@ pub async fn launch_game(
         .await?
         .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
 
-    handlers::launch_game_with_emulator(&emulator, &rom_path)
+    handlers::launch_game_with_emulator(&emulator, &rom_path, is_retroarch_core)
 }
 
 /// Launch an emulator (without a ROM)

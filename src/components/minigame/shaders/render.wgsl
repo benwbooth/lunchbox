@@ -58,11 +58,17 @@ const KIND_KOOPA: u32 = 2u;
 const KIND_COIN: u32 = 3u;
 const KIND_MUSHROOM: u32 = 4u;
 const KIND_DEBRIS: u32 = 5u;
+const KIND_FIRE_FLOWER: u32 = 6u;
+const KIND_STAR: u32 = 7u;
+const KIND_FIREBALL: u32 = 8u;
 
 // Koopa states
 const KOOPA_WALK: u32 = 0u;
 const KOOPA_SHELL: u32 = 1u;
 const KOOPA_SHELL_MOVING: u32 = 2u;
+
+// Goomba states
+const GOOMBA_FLAT: u32 = 1u;
 
 // Sprite indices (must match gpu.rs sprite_list order)
 const SPR_MARIO_STAND: u32 = 0u;
@@ -80,6 +86,9 @@ const SPR_MARIO_DEAD: u32 = 11u;
 const SPR_QUESTION_EMPTY: u32 = 12u;
 const SPR_KOOPA_SHELL: u32 = 13u;
 const SPR_DEBRIS: u32 = 14u;
+const SPR_FIRE_FLOWER: u32 = 16u;
+const SPR_STAR: u32 = 17u;
+const SPR_FIREBALL: u32 = 18u;
 
 // Palette indices
 const PAL_MARIO: u32 = 0u;
@@ -91,6 +100,9 @@ const PAL_GROUND: u32 = 5u;
 const PAL_KOOPA: u32 = 6u;
 const PAL_COIN: u32 = 7u;
 const PAL_PLAYER: u32 = 8u;
+const PAL_MUSHROOM: u32 = 9u;
+const PAL_STAR: u32 = 12u;
+const PAL_FIREBALL: u32 = 13u;
 
 // Flags
 const FLAG_FLIP: u32 = 1u;
@@ -99,14 +111,25 @@ const FLAG_GROUND: u32 = 4u;
 const FLAG_BIG: u32 = 8u;
 const FLAG_PLAYER: u32 = 16u;
 const FLAG_DYING: u32 = 32u;
+const FLAG_FIRE: u32 = 64u;
+const FLAG_STAR: u32 = 128u;
+
+// Mario state bit packing (must match compute.wgsl)
+const MARIO_VARIANT_MASK: u32 = 1u;
+
+// Must match compute.wgsl
+const DYING_FALL_RATIO: f32 = 0.10;
+const DYING_FALL_SPEED: f32 = 1.2;
+const DYING_FADE_FRAMES: u32 = 24u;
 
 //=============================================================================
 // SHARED SPRITE FUNCTIONS
 //=============================================================================
 
-fn get_sprite_pixel(sprite_id: u32, x: u32, y: u32, flip: bool) -> u32 {
-    let px = select(x, 7u - x, flip);
-    let idx = y * 8u + px;
+fn get_sprite_pixel(sprite_id: u32, x: u32, y: u32, flip_x: bool, flip_y: bool) -> u32 {
+    let px = select(x, 7u - x, flip_x);
+    let py = select(y, 7u - y, flip_y);
+    let idx = py * 8u + px;
     let word_idx = sprite_id * 4u + idx / 16u;
     let bit_idx = (idx % 16u) * 2u;
     return (sprites[word_idx] >> bit_idx) & 3u;
@@ -234,7 +257,7 @@ fn fs_block(in: BlockVertexOut) -> @location(0) vec4<f32> {
     let px = u32(in.uv.x * 7.999);
     let py = u32(in.uv.y * 7.999);
 
-    let color_idx = get_sprite_pixel(in.sprite_id, px, py, false);
+    let color_idx = get_sprite_pixel(in.sprite_id, px, py, false, false);
     let color = get_color(in.palette_id, color_idx);
 
     // Discard transparent pixels
@@ -255,6 +278,8 @@ struct EntityVertexOut {
     @location(1) @interpolate(flat) sprite_id: u32,
     @location(2) @interpolate(flat) palette_id: u32,
     @location(3) @interpolate(flat) flip: u32,
+    @location(4) @interpolate(flat) flip_y: u32,
+    @location(5) fade_alpha: f32,
 };
 
 @vertex
@@ -276,6 +301,8 @@ fn vs_entity(
         out.sprite_id = 0u;
         out.palette_id = 0u;
         out.flip = 0u;
+        out.flip_y = 0u;
+        out.fade_alpha = 0.0;
         return out;
     }
 
@@ -290,7 +317,24 @@ fn vs_entity(
     );
 
     let offset = quad_offsets[vertex_idx];
-    let pixel_pos = e.pos + offset * TILE;
+
+    let is_player = (e.flags & FLAG_PLAYER) != 0u;
+    let on_ground = (e.flags & FLAG_GROUND) != 0u;
+    let is_dying = (e.flags & FLAG_DYING) != 0u;
+    let is_big = (e.flags & FLAG_BIG) != 0u;
+
+    // Flat goombas and powered-up players use custom scale.
+    var scale = vec2<f32>(TILE, TILE);
+    var sprite_offset = vec2<f32>(0.0, 0.0);
+    if (e.kind == KIND_GOOMBA && e.state == GOOMBA_FLAT) {
+        scale.y = TILE * 0.40;
+        sprite_offset.y = TILE - scale.y;
+    } else if (e.kind == KIND_MARIO && is_big && !is_dying) {
+        scale.y = TILE * 1.6;
+        sprite_offset.y = TILE - scale.y;
+    }
+
+    let pixel_pos = e.pos + sprite_offset + vec2<f32>(offset.x * scale.x, offset.y * scale.y);
 
     // Convert pixel position to NDC
     let ndc = (pixel_pos / u.resolution) * 2.0 - 1.0;
@@ -299,25 +343,52 @@ fn vs_entity(
     // UV for sprite sampling
     out.uv = offset;
     out.flip = select(0u, 1u, (e.flags & FLAG_FLIP) != 0u);
+    out.flip_y = 0u;
+
+    // Dying entities fade after the brief fall phase
+    var fade_alpha = 1.0;
+    if ((e.flags & FLAG_DYING) != 0u) {
+        let fall_distance = max(8.0, u.resolution.y * DYING_FALL_RATIO);
+        let fall_frames = max(1.0, ceil(fall_distance / DYING_FALL_SPEED));
+        let fade_progress = clamp(
+            (f32(e.timer) - fall_frames) / f32(DYING_FADE_FRAMES),
+            0.0,
+            1.0
+        );
+        fade_alpha = 1.0 - fade_progress;
+    }
+    out.fade_alpha = fade_alpha;
 
     // Select sprite and palette based on entity kind and state
-    let is_player = (e.flags & FLAG_PLAYER) != 0u;
-    let on_ground = (e.flags & FLAG_GROUND) != 0u;
 
     switch (e.kind) {
         case KIND_MARIO: {
-            if (!on_ground) {
+            if (is_dying) {
+                out.sprite_id = SPR_MARIO_DEAD;
+                out.flip_y = 1u;
+            } else if (!on_ground) {
                 out.sprite_id = SPR_MARIO_JUMP;
             } else if (abs(e.vel.x) > 0.3) {
                 out.sprite_id = select(SPR_MARIO_WALK1, SPR_MARIO_WALK2, (e.timer / 8u) % 2u == 1u);
             } else {
                 out.sprite_id = SPR_MARIO_STAND;
             }
-            out.palette_id = select(select(PAL_MARIO, PAL_LUIGI, e.state == 1u), PAL_PLAYER, is_player);
+            let variant = e.state & MARIO_VARIANT_MASK;
+            let base_palette = select(PAL_MARIO, PAL_LUIGI, variant == 1u);
+            if ((e.flags & FLAG_STAR) != 0u && ((u.frame / 6u) % 2u == 0u)) {
+                out.palette_id = PAL_STAR;
+            } else if ((e.flags & FLAG_FIRE) != 0u) {
+                out.palette_id = PAL_PLAYER;
+            } else {
+                out.palette_id = select(base_palette, PAL_PLAYER, is_player);
+            }
         }
         case KIND_GOOMBA: {
             out.sprite_id = SPR_GOOMBA;
             out.palette_id = PAL_GOOMBA;
+            if (is_dying) {
+                out.flip_y = 1u;
+            }
         }
         case KIND_KOOPA: {
             if (e.state >= KOOPA_SHELL) {
@@ -326,6 +397,9 @@ fn vs_entity(
                 out.sprite_id = SPR_KOOPA;
             }
             out.palette_id = PAL_KOOPA;
+            if (is_dying) {
+                out.flip_y = 1u;
+            }
         }
         case KIND_COIN: {
             out.sprite_id = SPR_COIN;
@@ -333,11 +407,23 @@ fn vs_entity(
         }
         case KIND_MUSHROOM: {
             out.sprite_id = SPR_MUSHROOM;
-            out.palette_id = PAL_MARIO;
+            out.palette_id = PAL_MUSHROOM;
         }
         case KIND_DEBRIS: {
             out.sprite_id = SPR_DEBRIS;
             out.palette_id = PAL_BRICK;
+        }
+        case KIND_FIRE_FLOWER: {
+            out.sprite_id = SPR_FIRE_FLOWER;
+            out.palette_id = PAL_MUSHROOM;
+        }
+        case KIND_STAR: {
+            out.sprite_id = SPR_STAR;
+            out.palette_id = PAL_STAR;
+        }
+        case KIND_FIREBALL: {
+            out.sprite_id = SPR_FIREBALL;
+            out.palette_id = PAL_FIREBALL;
         }
         default: {
             out.sprite_id = SPR_MARIO_STAND;
@@ -354,7 +440,7 @@ fn fs_entity(in: EntityVertexOut) -> @location(0) vec4<f32> {
     let px = u32(in.uv.x * 7.999);
     let py = u32(in.uv.y * 7.999);
 
-    let color_idx = get_sprite_pixel(in.sprite_id, px, py, in.flip != 0u);
+    let color_idx = get_sprite_pixel(in.sprite_id, px, py, in.flip != 0u, in.flip_y != 0u);
     let color = get_color(in.palette_id, color_idx);
 
     // Discard transparent pixels
@@ -362,5 +448,10 @@ fn fs_entity(in: EntityVertexOut) -> @location(0) vec4<f32> {
         discard;
     }
 
-    return color;
+    // We dim RGB as alpha drops so fade works even without swapchain blending.
+    let alpha = color.a * in.fade_alpha;
+    if (alpha <= 0.01) {
+        discard;
+    }
+    return vec4<f32>(color.rgb * in.fade_alpha, alpha);
 }

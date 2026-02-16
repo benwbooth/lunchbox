@@ -707,8 +707,10 @@ pub async fn install_emulator(emulator: &EmulatorInfo, is_retroarch_core: bool) 
 pub fn launch_game_with_emulator(
     emulator: &EmulatorInfo,
     rom_path: &str,
+    is_retroarch_core: Option<bool>,
 ) -> Result<LaunchResult, String> {
-    match emulator::launch_game(emulator, rom_path) {
+    let as_retroarch_core = is_retroarch_core.unwrap_or(emulator.retroarch_core.is_some());
+    match emulator::launch_emulator(emulator, Some(rom_path), as_retroarch_core) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),
@@ -855,17 +857,149 @@ pub async fn get_active_import(state: &AppState, launchbox_db_id: i64) -> Result
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(row.map(|(id, db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at)| ImportJob {
-        id,
-        launchbox_db_id: db_id,
-        game_title,
-        platform,
-        status,
-        progress_percent,
-        status_message,
-        created_at,
-        updated_at,
-    }))
+    if let Some((id, db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at)) = row {
+        // Recover from missed terminal SSE events:
+        // older builds could leave jobs stuck as in_progress at 100%.
+        let maybe_complete = status.eq_ignore_ascii_case("in_progress")
+            && (progress_percent >= 99.9
+                || status_message
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_ascii_lowercase()
+                    .contains("complete"));
+        if maybe_complete {
+            if let Ok(true) = reconcile_terminal_import_job(state, &id).await {
+                return Ok(None);
+            }
+        }
+
+        // Recover from stale jobs that have not updated for a long time.
+        // This prevents very old "in_progress"/"pending" rows from masking
+        // already-imported files in the UI.
+        let stale_minutes = chrono::NaiveDateTime::parse_from_str(&updated_at, "%Y-%m-%d %H:%M:%S")
+            .ok()
+            .map(|dt| chrono::Utc::now().naive_utc().signed_duration_since(dt).num_minutes())
+            .unwrap_or(0);
+        let maybe_stale = stale_minutes >= 30;
+        if maybe_stale {
+            if let Ok(true) = reconcile_terminal_import_job(state, &id).await {
+                return Ok(None);
+            }
+            let stale_msg = format!(
+                "Import stalled with no updates for {} minutes; marked failed",
+                stale_minutes
+            );
+            let _ = fail_import(state, &id, &stale_msg).await;
+            return Ok(None);
+        }
+
+        return Ok(Some(ImportJob {
+            id,
+            launchbox_db_id: db_id,
+            game_title,
+            platform,
+            status,
+            progress_percent,
+            status_message,
+            created_at,
+            updated_at,
+        }));
+    }
+
+    Ok(None)
+}
+
+async fn fetch_graboid_job(state: &AppState, job_id: &str) -> Result<Option<serde_json::Value>, String> {
+    let graboid = &state.settings.graboid;
+    if graboid.server_url.is_empty() || graboid.api_key.is_empty() {
+        return Ok(None);
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
+    let url = format!("{}/api/v1/jobs/{}", graboid.server_url.trim_end_matches('/'), job_id);
+
+    let response = client
+        .get(&url)
+        .header("X-API-Key", &graboid.api_key)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch Graboid job {}: {}", job_id, e))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Graboid job {} response: {}", job_id, e))?;
+    Ok(Some(payload))
+}
+
+async fn reconcile_terminal_import_job(state: &AppState, job_id: &str) -> Result<bool, String> {
+    let Some(job) = fetch_graboid_job(state, job_id).await? else {
+        return Ok(false);
+    };
+
+    let status = job["status"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    match status.as_str() {
+        "complete" | "completed" | "done" => {
+            let file_path = job["final_paths"]
+                .as_array()
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if file_path.trim().is_empty() {
+                let db_pool = state
+                    .db_pool
+                    .as_ref()
+                    .ok_or_else(|| "Database not initialized".to_string())?;
+                let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                sqlx::query(
+                    "UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = 'Import complete', updated_at = ? WHERE id = ?",
+                )
+                .bind(&now)
+                .bind(job_id)
+                .execute(db_pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            } else {
+                complete_import(state, job_id, file_path, None).await?;
+            }
+            Ok(true)
+        }
+        "failed" | "error" => {
+            let message = job["error_message"]
+                .as_str()
+                .filter(|v| !v.trim().is_empty())
+                .or_else(|| job["progress_message"].as_str())
+                .unwrap_or("Import failed");
+            fail_import(state, job_id, message).await?;
+            Ok(true)
+        }
+        "cancelled" => {
+            let db_pool = state
+                .db_pool
+                .as_ref()
+                .ok_or_else(|| "Database not initialized".to_string())?;
+            let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            sqlx::query("UPDATE graboid_jobs SET status = 'cancelled', updated_at = ? WHERE id = ?")
+                .bind(&now)
+                .bind(job_id)
+                .execute(db_pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
 }
 
 /// Start a Graboid import job
