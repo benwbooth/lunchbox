@@ -657,10 +657,43 @@ pub fn GameDetails(
                                                         {move || if files_loading.get() { "Loading..." } else { "Download" }}
                                                     </button>
                                                     <button
-                                                        class="play-btn"
-                                                        disabled=true
-                                                        title="No ROM file available"
-                                                    >"Play"</button>
+                                                        class="import-btn-action"
+                                                        title="Import a local ROM file by path"
+                                                        on:click=move |_| {
+                                                            if let Some(g) = game.get_untracked() {
+                                                                let db_id = g.database_id;
+                                                                let title = g.display_title.clone();
+                                                                let platform = stored_platform.get_value();
+                                                                // Prompt for file path (in Tauri mode, would use native dialog)
+                                                                let window = web_sys::window().unwrap();
+                                                                if let Some(path) = window.prompt_with_message("Enter path to ROM file:").ok().flatten() {
+                                                                    if !path.trim().is_empty() {
+                                                                        let path = path.trim().to_string();
+                                                                        spawn_local(async move {
+                                                                            let entries = vec![tauri::RomImportEntry {
+                                                                                file_path: path,
+                                                                                launchbox_db_id: db_id,
+                                                                                game_title: title,
+                                                                                platform,
+                                                                                copy_to_library: false,
+                                                                            }];
+                                                                            match tauri::confirm_rom_import(entries).await {
+                                                                                Ok(count) => {
+                                                                                    if count > 0 {
+                                                                                        // Refresh game file
+                                                                                        if let Ok(Some(file)) = tauri::get_game_file(db_id).await {
+                                                                                            set_game_file.set(Some(file));
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                                Err(e) => set_import_error.set(Some(e)),
+                                                                            }
+                                                                        });
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    >"Import"</button>
                                                 </Show>
 
                                                 // File picker dialog
