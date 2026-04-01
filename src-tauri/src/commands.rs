@@ -2550,10 +2550,11 @@ pub async fn has_minerva_db(
 #[tauri::command]
 pub async fn get_minerva_rom_for_game(
     launchbox_db_id: i64,
+    platform_id: Option<i64>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Option<handlers::MinervaRom>, String> {
     let state_guard = state.read().await;
-    handlers::get_minerva_rom_for_game(&state_guard, launchbox_db_id).await
+    handlers::get_minerva_rom_for_game(&state_guard, launchbox_db_id, platform_id).await
 }
 
 /// Search for all minerva ROM variants matching a game

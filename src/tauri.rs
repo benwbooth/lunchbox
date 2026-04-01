@@ -1928,13 +1928,14 @@ pub async fn has_minerva_db() -> Result<bool, String> {
     invoke("has_minerva_db", ()).await
 }
 
-pub async fn get_minerva_rom_for_game(launchbox_db_id: i64) -> Result<Option<MinervaRom>, String> {
+pub async fn get_minerva_rom_for_game(launchbox_db_id: i64, platform_id: Option<i64>) -> Result<Option<MinervaRom>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
+        platform_id: Option<i64>,
     }
-    invoke("get_minerva_rom_for_game", Args { launchbox_db_id }).await
+    invoke("get_minerva_rom_for_game", Args { launchbox_db_id, platform_id }).await
 }
 
 pub async fn search_minerva(

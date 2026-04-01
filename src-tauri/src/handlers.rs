@@ -997,6 +997,7 @@ pub fn has_minerva_db(state: &AppState) -> bool {
 pub async fn get_minerva_rom_for_game(
     state: &AppState,
     launchbox_db_id: i64,
+    platform_id: Option<i64>,
 ) -> Result<Option<MinervaRom>, String> {
     let minerva_pool = state
         .minerva_db_pool
@@ -1009,18 +1010,22 @@ pub async fn get_minerva_rom_for_game(
         .as_ref()
         .ok_or_else(|| "Games database not available".to_string())?;
 
-    let platform_id: Option<(i64,)> = sqlx::query_as(
-        "SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1"
-    )
-    .bind(launchbox_db_id)
-    .fetch_optional(games_db)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let platform_id = match platform_id {
-        Some((pid,)) => pid,
-        None => return Ok(None),
+    // Resolve platform_id: use passed value, or look up from game
+    let resolved_platform_id = if let Some(pid) = platform_id {
+        pid
+    } else if launchbox_db_id > 0 {
+        match sqlx::query_as::<_, (i64,)>("SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1")
+            .bind(launchbox_db_id)
+            .fetch_optional(games_db)
+            .await
+            .map_err(|e| e.to_string())? {
+            Some((pid,)) => pid,
+            None => return Ok(None),
+        }
+    } else {
+        return Ok(None);
     };
+    let platform_id = resolved_platform_id;
 
     // Find a torrent for this platform
     let row: Option<(i64, String, String, String, i64)> = sqlx::query_as(

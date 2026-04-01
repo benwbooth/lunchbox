@@ -2655,8 +2655,17 @@ async fn rspc_get_minerva_rom_for_game(
         }
     };
 
-    let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
-        Ok(input) => input.into_value(),
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum MinervaGameInput {
+        Simple(i64),
+        #[serde(rename_all = "camelCase")]
+        Full { launchbox_db_id: i64, platform_id: Option<i64> },
+    }
+
+    let (launchbox_db_id, platform_id) = match serde_json::from_str::<MinervaGameInput>(input_str) {
+        Ok(MinervaGameInput::Simple(id)) => (id, None),
+        Ok(MinervaGameInput::Full { launchbox_db_id, platform_id }) => (launchbox_db_id, platform_id),
         Err(e) => {
             return rspc_err::<Option<handlers::MinervaRom>>(format!("Invalid input: {}", e))
                 .into_response()
@@ -2664,7 +2673,7 @@ async fn rspc_get_minerva_rom_for_game(
     };
 
     let state_guard = state.read().await;
-    match handlers::get_minerva_rom_for_game(&state_guard, launchbox_db_id).await {
+    match handlers::get_minerva_rom_for_game(&state_guard, launchbox_db_id, platform_id).await {
         Ok(rom) => rspc_ok(rom).into_response(),
         Err(e) => rspc_err::<Option<handlers::MinervaRom>>(e).into_response(),
     }

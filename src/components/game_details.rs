@@ -306,8 +306,8 @@ pub fn GameDetails(
                     }
                 }
                 // Check minerva ROM availability
-                if db_id > 0 {
-                    if let Ok(rom) = tauri::get_minerva_rom_for_game(db_id).await {
+                {
+                    if let Ok(rom) = tauri::get_minerva_rom_for_game(db_id, Some(platform_id)).await {
                         if is_current_game() {
                             set_minerva_rom.set(rom);
                         }
