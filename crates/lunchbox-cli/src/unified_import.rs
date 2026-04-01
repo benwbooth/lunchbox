@@ -23,7 +23,7 @@ use crate::enrich::{extract_variant_tags, normalize_title, similarity_ratio};
 
 /// Platform name aliases for matching across different databases
 /// Maps various names to a canonical name (using LaunchBox Platforms.xml names as canonical)
-fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
+pub fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     let mut aliases = HashMap::new();
 
     // =========================================================================
@@ -39,16 +39,31 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     // Nintendo - NES / Famicom
     // =========================================================================
     aliases.insert("nes", "Nintendo Entertainment System");
-    aliases.insert("nintendo entertainment system", "Nintendo Entertainment System");
-    aliases.insert("nintendo - nintendo entertainment system", "Nintendo Entertainment System");
+    aliases.insert(
+        "nintendo entertainment system",
+        "Nintendo Entertainment System",
+    );
+    aliases.insert(
+        "nintendo - nintendo entertainment system",
+        "Nintendo Entertainment System",
+    );
     aliases.insert("famicom", "Nintendo Entertainment System");
-    aliases.insert("nintendo - family computer", "Nintendo Entertainment System");
+    aliases.insert(
+        "nintendo - family computer",
+        "Nintendo Entertainment System",
+    );
 
     // Famicom Disk System
     aliases.insert("fds", "Nintendo Famicom Disk System");
     aliases.insert("famicom disk system", "Nintendo Famicom Disk System");
-    aliases.insert("nintendo famicom disk system", "Nintendo Famicom Disk System");
-    aliases.insert("nintendo - famicom disk system", "Nintendo Famicom Disk System");
+    aliases.insert(
+        "nintendo famicom disk system",
+        "Nintendo Famicom Disk System",
+    );
+    aliases.insert(
+        "nintendo - famicom disk system",
+        "Nintendo Famicom Disk System",
+    );
 
     // =========================================================================
     // Nintendo - SNES / Super Famicom
@@ -56,9 +71,18 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     aliases.insert("snes", "Super Nintendo Entertainment System");
     aliases.insert("super nes", "Super Nintendo Entertainment System");
     aliases.insert("super famicom", "Super Nintendo Entertainment System");
-    aliases.insert("super nintendo entertainment system", "Super Nintendo Entertainment System");
-    aliases.insert("nintendo - super nintendo entertainment system", "Super Nintendo Entertainment System");
-    aliases.insert("nintendo super nintendo entertainment system", "Super Nintendo Entertainment System");
+    aliases.insert(
+        "super nintendo entertainment system",
+        "Super Nintendo Entertainment System",
+    );
+    aliases.insert(
+        "nintendo - super nintendo entertainment system",
+        "Super Nintendo Entertainment System",
+    );
+    aliases.insert(
+        "nintendo super nintendo entertainment system",
+        "Super Nintendo Entertainment System",
+    );
 
     // =========================================================================
     // Nintendo - Game Boy family
@@ -646,7 +670,10 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     // Epoch - Super Cassette Vision
     // =========================================================================
     aliases.insert("super cassette vision", "Epoch Super Cassette Vision");
-    aliases.insert("epoch - super cassette vision", "Epoch Super Cassette Vision");
+    aliases.insert(
+        "epoch - super cassette vision",
+        "Epoch Super Cassette Vision",
+    );
 
     // =========================================================================
     // VTech - CreatiVision
@@ -791,11 +818,17 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     // =========================================================================
     // 3DO
     aliases.insert("the 3do company - 3do", "3DO Interactive Multiplayer");
-    aliases.insert("panasonic - 3do interactive multiplayer", "3DO Interactive Multiplayer");
+    aliases.insert(
+        "panasonic - 3do interactive multiplayer",
+        "3DO Interactive Multiplayer",
+    );
 
     // Nintendo
     aliases.insert("nintendo - nintendo 64dd", "Nintendo 64DD");
-    aliases.insert("nintendo - family computer disk system", "Nintendo Famicom Disk System");
+    aliases.insert(
+        "nintendo - family computer disk system",
+        "Nintendo Famicom Disk System",
+    );
     aliases.insert("nintendo - satellaview", "Nintendo Satellaview");
     aliases.insert("nintendo - e-reader", "Nintendo e-Reader");
     aliases.insert("nintendo - game & watch", "Nintendo Game & Watch");
@@ -833,14 +866,20 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     aliases.insert("funtech - super acan", "Funtech Super Acan");
 
     // Benesse
-    aliases.insert("benesse - pocket challenge v2", "Benesse Pocket Challenge V2");
+    aliases.insert(
+        "benesse - pocket challenge v2",
+        "Benesse Pocket Challenge V2",
+    );
 
     // Konami
     aliases.insert("konami - picno", "Konami Picno");
 
     // LeapFrog
     aliases.insert("leapfrog - leappad", "LeapFrog LeapPad");
-    aliases.insert("leapfrog - leapster learning game system", "LeapFrog Leapster");
+    aliases.insert(
+        "leapfrog - leapster learning game system",
+        "LeapFrog Leapster",
+    );
 
     // Mobile
     aliases.insert("mobile - j2me", "Mobile J2ME");
@@ -850,7 +889,10 @@ fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
 
     // Microsoft Xbox variants
     aliases.insert("microsoft - xbox 360 (digital)", "Microsoft Xbox 360");
-    aliases.insert("microsoft - xbox 360 (games on demand)", "Microsoft Xbox 360");
+    aliases.insert(
+        "microsoft - xbox 360 (games on demand)",
+        "Microsoft Xbox 360",
+    );
     aliases.insert("microsoft - xbox 360 (title updates)", "Microsoft Xbox 360");
 
     // Sony PSP variants
@@ -883,8 +925,14 @@ fn get_libretro_name_mapping() -> HashMap<&'static str, &'static str> {
     let mut map = HashMap::new();
 
     // Nintendo
-    map.insert("Nintendo Entertainment System", "Nintendo - Nintendo Entertainment System");
-    map.insert("Super Nintendo Entertainment System", "Nintendo - Super Nintendo Entertainment System");
+    map.insert(
+        "Nintendo Entertainment System",
+        "Nintendo - Nintendo Entertainment System",
+    );
+    map.insert(
+        "Super Nintendo Entertainment System",
+        "Nintendo - Super Nintendo Entertainment System",
+    );
     map.insert("Nintendo 64", "Nintendo - Nintendo 64");
     map.insert("Nintendo 64DD", "Nintendo - Nintendo 64DD");
     map.insert("Nintendo GameCube", "Nintendo - GameCube");
@@ -898,7 +946,10 @@ fn get_libretro_name_mapping() -> HashMap<&'static str, &'static str> {
     map.insert("Nintendo DSi", "Nintendo - Nintendo DSi");
     map.insert("Nintendo 3DS", "Nintendo - Nintendo 3DS");
     map.insert("Nintendo Virtual Boy", "Nintendo - Virtual Boy");
-    map.insert("Nintendo Famicom Disk System", "Nintendo - Family Computer Disk System");
+    map.insert(
+        "Nintendo Famicom Disk System",
+        "Nintendo - Family Computer Disk System",
+    );
     map.insert("Nintendo Pokemon Mini", "Nintendo - Pokemon Mini");
     map.insert("Nintendo Satellaview", "Nintendo - Satellaview");
     map.insert("Nintendo Game & Watch", "Nintendo - Game & Watch");
@@ -1038,25 +1089,43 @@ fn get_libretro_name_mapping() -> HashMap<&'static str, &'static str> {
     map.insert("Nintendo Satellaview", "Nintendo - Satellaview");
     map.insert("Nintendo Game & Watch", "Nintendo - Game & Watch");
     map.insert("PC Engine SuperGrafx", "NEC - PC Engine SuperGrafx");
-    map.insert("Sega Dreamcast VMU", "Sega - Dreamcast (Visual Memory Unit)");
+    map.insert(
+        "Sega Dreamcast VMU",
+        "Sega - Dreamcast (Visual Memory Unit)",
+    );
     map.insert("Sega Pico", "Sega - PICO");
     map.insert("Sony PocketStation", "Sony - PlayStation (PocketStation)");
     map.insert("Nuon", "VM-Labs - NUON");
     map.insert("Philips Videopac+", "Philips - Videopac+");
     map.insert("Windows", "IBM - PC and Compatibles");
     map.insert("Windows 3.X", "IBM - PC and Compatibles");
-    map.insert("Game Wave Family Entertainment System", "Non Redump - ZAPiT Games - Game Wave Family Entertainment System");
-    map.insert("GameWave", "Non Redump - ZAPiT Games - Game Wave Family Entertainment System");
-    map.insert("Sega Triforce", "Namco, Sega, Nintendo - TriForce (Cartridges)");
+    map.insert(
+        "Game Wave Family Entertainment System",
+        "Non Redump - ZAPiT Games - Game Wave Family Entertainment System",
+    );
+    map.insert(
+        "GameWave",
+        "Non Redump - ZAPiT Games - Game Wave Family Entertainment System",
+    );
+    map.insert(
+        "Sega Triforce",
+        "Namco, Sega, Nintendo - TriForce (Cartridges)",
+    );
     map.insert("Sharp MZ-2500", "Sharp - MZ-2200");
     map.insert("Capcom CPS1", "Capcom - CP System I");
     map.insert("Capcom CPS2", "Capcom - CP System II");
     map.insert("Capcom CPS3", "Capcom - CP System III");
     map.insert("Sega Beena", "Sega - Beena");
     map.insert("Bit Corporation Gamate", "Bit Corporation - Gamate");
-    map.insert("Benesse Pocket Challenge V2", "Benesse - Pocket Challenge V2");
+    map.insert(
+        "Benesse Pocket Challenge V2",
+        "Benesse - Pocket Challenge V2",
+    );
     map.insert("LeapFrog LeapPad", "LeapFrog - LeapPad");
-    map.insert("LeapFrog Leapster", "LeapFrog - Leapster Learning Game System");
+    map.insert(
+        "LeapFrog Leapster",
+        "LeapFrog - Leapster Learning Game System",
+    );
     map.insert("Mobile J2ME", "Mobile - J2ME");
     map.insert("Mobile Palm OS", "Mobile - Palm OS");
     map.insert("Mobile Symbian", "Mobile - Symbian");
@@ -1066,9 +1135,9 @@ fn get_libretro_name_mapping() -> HashMap<&'static str, &'static str> {
     map.insert("Analogue Pocket", "Analogue - Analogue Pocket");
     map.insert("Fujitsu FM Towns Marty", "Fujitsu - FM Towns");
     map.insert("Sony Playstation 4", "Sony - PlayStation 4");
-    map.insert("Sony Playstation 5", "Sony - PlayStation 4");  // Use PS4 icon for PS5
-    map.insert("PICO-8", "TIC-80");  // Similar fantasy console
-    map.insert("WASM-4", "TIC-80");  // Similar fantasy console
+    map.insert("Sony Playstation 5", "Sony - PlayStation 4"); // Use PS4 icon for PS5
+    map.insert("PICO-8", "TIC-80"); // Similar fantasy console
+    map.insert("WASM-4", "TIC-80"); // Similar fantasy console
 
     map
 }
@@ -1097,7 +1166,8 @@ pub fn normalize_platform_name(name: &str) -> String {
 /// Create the unified games database schema
 pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
     // Platforms table
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS platforms (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
@@ -1117,7 +1187,8 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
             aliases TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
-    "#)
+    "#,
+    )
     .execute(pool)
     .await?;
 
@@ -1178,28 +1249,48 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
     .await?;
 
     // Create indexes
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_platform ON games(platform_id)").execute(pool).await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_title ON games(title)").execute(pool).await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_launchbox_id ON games(launchbox_db_id)").execute(pool).await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_crc32 ON games(libretro_crc32)").execute(pool).await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_openvgdb_id ON games(openvgdb_release_id)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_platform ON games(platform_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_title ON games(title)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_launchbox_id ON games(launchbox_db_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_crc32 ON games(libretro_crc32)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_games_openvgdb_id ON games(openvgdb_release_id)")
+        .execute(pool)
+        .await?;
 
     // Game alternate names table (for regional/alternate titles)
     // Note: No foreign key since launchbox_db_id in games is not unique
     // (multiple game variants can share the same launchbox_db_id)
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS game_alternate_names (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             launchbox_db_id INTEGER NOT NULL,
             alternate_name TEXT NOT NULL,
             region TEXT
         )
-    "#)
+    "#,
+    )
     .execute(pool)
     .await?;
 
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_db_id ON game_alternate_names(launchbox_db_id)").execute(pool).await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_alt_names_name ON game_alternate_names(alternate_name)").execute(pool).await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_alt_names_db_id ON game_alternate_names(launchbox_db_id)",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_alt_names_name ON game_alternate_names(alternate_name)",
+    )
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
@@ -1207,7 +1298,8 @@ pub async fn create_schema(pool: &SqlitePool) -> Result<()> {
 /// Create schema for the separate game_images database
 pub async fn create_images_schema(pool: &SqlitePool) -> Result<()> {
     // Game images table (LaunchBox CDN metadata for UUID-based lookups)
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS game_images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             launchbox_db_id INTEGER NOT NULL,
@@ -1217,7 +1309,8 @@ pub async fn create_images_schema(pool: &SqlitePool) -> Result<()> {
             crc32 TEXT,
             UNIQUE(launchbox_db_id, filename)
         )
-    "#)
+    "#,
+    )
     .execute(pool)
     .await?;
 
@@ -1419,8 +1512,7 @@ impl UnifiedImporter {
         }
 
         let db_url = format!("sqlite:{}?mode=rwc", output_path.display());
-        let options = SqliteConnectOptions::from_str(&db_url)?
-            .create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(&db_url)?.create_if_missing(true);
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect_with(options)
@@ -1449,7 +1541,10 @@ impl UnifiedImporter {
             platform_cache.insert(canonical, id);
         }
 
-        Ok(Self { pool, platform_cache })
+        Ok(Self {
+            pool,
+            platform_cache,
+        })
     }
 
     /// Get or create a platform, returns platform ID
@@ -1457,12 +1552,16 @@ impl UnifiedImporter {
         let canonical = normalize_platform_name(&record.name);
 
         // Generate aliases if not provided
-        let aliases = record.aliases.clone().or_else(|| get_platform_search_aliases(&canonical));
+        let aliases = record
+            .aliases
+            .clone()
+            .or_else(|| get_platform_search_aliases(&canonical));
 
         // Check cache first
         if let Some(&id) = self.platform_cache.get(&canonical) {
             // Update with any new source IDs (don't overwrite existing)
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 UPDATE platforms SET
                     launchbox_name = COALESCE(launchbox_name, ?),
                     libretro_name = COALESCE(libretro_name, ?),
@@ -1474,7 +1573,8 @@ impl UnifiedImporter {
                     file_extensions = COALESCE(file_extensions, ?),
                     aliases = COALESCE(aliases, ?)
                 WHERE id = ?
-            "#)
+            "#,
+            )
             .bind(&record.launchbox_name)
             .bind(&record.libretro_name)
             .bind(record.screenscraper_id)
@@ -1517,15 +1617,18 @@ impl UnifiedImporter {
 
     /// Try to find an existing game that matches
     /// Match priority: launchbox_db_id > CRC > normalized title + platform
-    async fn find_existing_game(&self, record: &GameRecord, platform_id: i64) -> Result<Option<String>> {
+    async fn find_existing_game(
+        &self,
+        record: &GameRecord,
+        platform_id: i64,
+    ) -> Result<Option<String>> {
         // Match by LaunchBox ID
         if let Some(lb_id) = record.launchbox_db_id {
-            let existing: Option<(String,)> = sqlx::query_as(
-                "SELECT id FROM games WHERE launchbox_db_id = ?"
-            )
-            .bind(lb_id)
-            .fetch_optional(&self.pool)
-            .await?;
+            let existing: Option<(String,)> =
+                sqlx::query_as("SELECT id FROM games WHERE launchbox_db_id = ?")
+                    .bind(lb_id)
+                    .fetch_optional(&self.pool)
+                    .await?;
             if let Some((id,)) = existing {
                 return Ok(Some(id));
             }
@@ -1533,13 +1636,12 @@ impl UnifiedImporter {
 
         // Match by CRC32
         if let Some(ref crc) = record.libretro_crc32 {
-            let existing: Option<(String,)> = sqlx::query_as(
-                "SELECT id FROM games WHERE libretro_crc32 = ? AND platform_id = ?"
-            )
-            .bind(crc.to_uppercase())
-            .bind(platform_id)
-            .fetch_optional(&self.pool)
-            .await?;
+            let existing: Option<(String,)> =
+                sqlx::query_as("SELECT id FROM games WHERE libretro_crc32 = ? AND platform_id = ?")
+                    .bind(crc.to_uppercase())
+                    .bind(platform_id)
+                    .fetch_optional(&self.pool)
+                    .await?;
             if let Some((id,)) = existing {
                 return Ok(Some(id));
             }
@@ -1547,12 +1649,11 @@ impl UnifiedImporter {
 
         // Match by normalized title + platform
         let normalized = normalize_title(&record.title);
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT id, title FROM games WHERE platform_id = ?"
-        )
-        .bind(platform_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT id, title FROM games WHERE platform_id = ?")
+                .bind(platform_id)
+                .fetch_all(&self.pool)
+                .await?;
 
         for (id, existing_title) in rows {
             let existing_normalized = normalize_title(&existing_title);
@@ -1577,7 +1678,8 @@ impl UnifiedImporter {
         // Check for existing game
         if let Some(existing_id) = self.find_existing_game(&record, platform_id).await? {
             // Update existing - only fill empty fields
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 UPDATE games SET
                     launchbox_db_id = COALESCE(launchbox_db_id, ?),
                     libretro_crc32 = COALESCE(libretro_crc32, ?),
@@ -1611,7 +1713,8 @@ impl UnifiedImporter {
                     status = COALESCE(status, ?),
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-            "#)
+            "#,
+            )
             .bind(record.launchbox_db_id)
             .bind(record.libretro_crc32.as_ref().map(|s| s.to_uppercase()))
             .bind(&record.libretro_md5)
@@ -1762,7 +1865,8 @@ impl UnifiedImporter {
                 let game_id = uuid::Uuid::new_v4().to_string();
                 dedup_cache.insert(dedup_key, game_id.clone());
 
-                sqlx::query(r#"
+                sqlx::query(
+                    r#"
                     INSERT INTO games (
                         id, title, platform_id, launchbox_db_id,
                         description, release_date, release_year, developer, publisher, genre,
@@ -1774,7 +1878,8 @@ impl UnifiedImporter {
                         ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?
                     )
-                "#)
+                "#,
+                )
                 .bind(&game_id)
                 .bind(&game.name)
                 .bind(platform_id)
@@ -1807,7 +1912,10 @@ impl UnifiedImporter {
         }
 
         if skipped_dupes > 0 {
-            println!("  Skipped {} duplicates (same normalized title + platform)", skipped_dupes);
+            println!(
+                "  Skipped {} duplicates (same normalized title + platform)",
+                skipped_dupes
+            );
         }
 
         Ok(imported)
@@ -1826,10 +1934,12 @@ impl UnifiedImporter {
             let mut tx = self.pool.begin().await?;
 
             for alt in chunk {
-                sqlx::query(r#"
+                sqlx::query(
+                    r#"
                     INSERT INTO game_alternate_names (launchbox_db_id, alternate_name, region)
                     VALUES (?, ?, ?)
-                "#)
+                "#,
+                )
                 .bind(alt.database_id)
                 .bind(&alt.alternate_name)
                 .bind(&alt.region)
@@ -1846,7 +1956,6 @@ impl UnifiedImporter {
         Ok(imported)
     }
 
-
     /// Batch import LibRetro games for a single platform
     /// Uses transaction for speed, matches by CRC or normalized title, or inserts new
     pub async fn import_libretro_games_batch(
@@ -1862,7 +1971,7 @@ impl UnifiedImporter {
         let platform_id = if let Some(&id) = self.platform_cache.get(&platform_canonical) {
             // Update libretro_name if not already set (platform may have been created by LaunchBox import)
             sqlx::query(
-                "UPDATE platforms SET libretro_name = COALESCE(libretro_name, ?) WHERE id = ?"
+                "UPDATE platforms SET libretro_name = COALESCE(libretro_name, ?) WHERE id = ?",
             )
             .bind(platform_name)
             .bind(id)
@@ -1887,7 +1996,7 @@ impl UnifiedImporter {
 
         // Pre-load existing LaunchBox games for this platform: normalized_title -> (id, title)
         let existing_games: Vec<(String, String)> = sqlx::query_as(
-            "SELECT id, title FROM games WHERE platform_id = ? AND metadata_source = 'launchbox'"
+            "SELECT id, title FROM games WHERE platform_id = ? AND metadata_source = 'launchbox'",
         )
         .bind(platform_id)
         .fetch_all(&mut *tx)
@@ -1899,10 +2008,14 @@ impl UnifiedImporter {
             .collect();
 
         // Group LibRetro games by normalized title to detect multiple variants
-        let mut libretro_by_normalized: HashMap<String, Vec<&lunchbox_core::import::DatGame>> = HashMap::new();
+        let mut libretro_by_normalized: HashMap<String, Vec<&lunchbox_core::import::DatGame>> =
+            HashMap::new();
         for game in games {
             let normalized = normalize_title(&game.name);
-            libretro_by_normalized.entry(normalized).or_default().push(game);
+            libretro_by_normalized
+                .entry(normalized)
+                .or_default()
+                .push(game);
         }
 
         // Dedup cache for this import run
@@ -1910,7 +2023,9 @@ impl UnifiedImporter {
 
         for game in games {
             let primary_rom = game.roms.first();
-            let crc = primary_rom.and_then(|r| r.crc.as_ref()).map(|c| c.to_uppercase());
+            let crc = primary_rom
+                .and_then(|r| r.crc.as_ref())
+                .map(|c| c.to_uppercase());
             let normalized = normalize_title(&game.name);
 
             // Try to find existing game by CRC first
@@ -1926,7 +2041,8 @@ impl UnifiedImporter {
 
             if let Some((id,)) = existing_by_crc {
                 // Update existing with any new data (CRC match)
-                sqlx::query(r#"
+                sqlx::query(
+                    r#"
                     UPDATE games SET
                         libretro_md5 = COALESCE(libretro_md5, ?),
                         libretro_sha1 = COALESCE(libretro_sha1, ?),
@@ -1938,7 +2054,8 @@ impl UnifiedImporter {
                         genre = COALESCE(genre, ?),
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                "#)
+                "#,
+                )
                 .bind(primary_rom.and_then(|r| r.md5.as_ref()))
                 .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
                 .bind(&game.serial)
@@ -1955,12 +2072,16 @@ impl UnifiedImporter {
             }
 
             // Check if LaunchBox has this game and if this is the ONLY LibRetro variant
-            let libretro_variants = libretro_by_normalized.get(&normalized).map(|v| v.len()).unwrap_or(0);
+            let libretro_variants = libretro_by_normalized
+                .get(&normalized)
+                .map(|v| v.len())
+                .unwrap_or(0);
 
             if let Some((launchbox_id, _)) = launchbox_by_normalized.get(&normalized) {
                 if libretro_variants == 1 {
                     // Single LibRetro entry matching a LaunchBox entry = same game, merge
-                    sqlx::query(r#"
+                    sqlx::query(
+                        r#"
                         UPDATE games SET
                             libretro_crc32 = COALESCE(?, libretro_crc32),
                             libretro_md5 = COALESCE(?, libretro_md5),
@@ -1973,7 +2094,8 @@ impl UnifiedImporter {
                             genre = COALESCE(genre, ?),
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
-                    "#)
+                    "#,
+                    )
                     .bind(&crc)
                     .bind(primary_rom.and_then(|r| r.md5.as_ref()))
                     .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
@@ -2003,13 +2125,15 @@ impl UnifiedImporter {
             let game_id = uuid::Uuid::new_v4().to_string();
             dedup_cache.insert(game.name.clone(), game_id.clone());
 
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 INSERT INTO games (
                     id, title, platform_id,
                     libretro_crc32, libretro_md5, libretro_sha1, libretro_serial, libretro_title,
                     release_year, developer, publisher, genre, metadata_source
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#)
+            "#,
+            )
             .bind(&game_id)
             .bind(&game.name)
             .bind(platform_id)
@@ -2017,7 +2141,7 @@ impl UnifiedImporter {
             .bind(primary_rom.and_then(|r| r.md5.as_ref()))
             .bind(primary_rom.and_then(|r| r.sha1.as_ref()))
             .bind(&game.serial)
-            .bind(&game.name)  // libretro_title = original libretro name
+            .bind(&game.name) // libretro_title = original libretro name
             .bind(game.release_year.map(|y| y as i32))
             .bind(&game.developer)
             .bind(&game.publisher)
@@ -2035,7 +2159,10 @@ impl UnifiedImporter {
                 println!("    Skipped {} duplicates", skipped_dupes);
             }
             if merged_with_launchbox > 0 {
-                println!("    Merged {} with LaunchBox entries", merged_with_launchbox);
+                println!(
+                    "    Merged {} with LaunchBox entries",
+                    merged_with_launchbox
+                );
             }
         }
 
@@ -2088,18 +2215,33 @@ pub async fn build_unified_database(
     openvgdb_path: Option<&Path>,
     threshold: f64,
 ) -> Result<()> {
-    use crate::launchbox;
     use crate::enrich;
-    use lunchbox_core::import::{parse_dat_file, merge_dat_files, DatFile};
+    use crate::launchbox;
+    use lunchbox_core::import::{merge_dat_files, parse_dat_file, DatFile};
 
     println!("Unified Game Database Builder");
     println!("==============================");
     println!("Output: {}", output.display());
     println!();
     println!("Import order (best quality first):");
-    println!("  1. LaunchBox: {}", launchbox_xml.map(|p| p.display().to_string()).unwrap_or_else(|| "not provided".into()));
-    println!("  2. LibRetro:  {}", libretro_path.map(|p| p.display().to_string()).unwrap_or_else(|| "not provided".into()));
-    println!("  3. OpenVGDB:  {}", openvgdb_path.map(|p| p.display().to_string()).unwrap_or_else(|| "not provided".into()));
+    println!(
+        "  1. LaunchBox: {}",
+        launchbox_xml
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "not provided".into())
+    );
+    println!(
+        "  2. LibRetro:  {}",
+        libretro_path
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "not provided".into())
+    );
+    println!(
+        "  3. OpenVGDB:  {}",
+        openvgdb_path
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "not provided".into())
+    );
     println!();
 
     let mut importer = UnifiedImporter::new(output).await?;
@@ -2124,7 +2266,9 @@ pub async fn build_unified_database(
             println!("  Parsed {} alternate names", alt_names.len());
 
             let pb = create_progress_bar(alt_names.len() as u64, "Importing alternate names");
-            let alt_imported = importer.import_alternate_names_batch(&alt_names, &pb).await?;
+            let alt_imported = importer
+                .import_alternate_names_batch(&alt_names, &pb)
+                .await?;
             pb.finish_with_message("Done");
             println!("  Imported {} alternate names", alt_imported);
 
@@ -2145,8 +2289,11 @@ pub async fn build_unified_database(
             let images_pool = SqlitePoolOptions::new()
                 .max_connections(1)
                 .connect_with(
-                    SqliteConnectOptions::from_str(&format!("sqlite:{}?mode=rwc", images_db_path.display()))?
-                        .create_if_missing(true)
+                    SqliteConnectOptions::from_str(&format!(
+                        "sqlite:{}?mode=rwc",
+                        images_db_path.display()
+                    ))?
+                    .create_if_missing(true),
                 )
                 .await?;
 
@@ -2165,7 +2312,10 @@ pub async fn build_unified_database(
     // Phase 2: Import LibRetro (adds checksums, fills gaps)
     if let Some(lr_path) = libretro_path {
         if !lr_path.exists() {
-            println!("Warning: LibRetro database not found: {}", lr_path.display());
+            println!(
+                "Warning: LibRetro database not found: {}",
+                lr_path.display()
+            );
         } else {
             println!("Phase 2: Importing LibRetro DAT files...");
 
@@ -2202,7 +2352,10 @@ pub async fn build_unified_database(
                 let mut total_imported = 0;
 
                 for dat_path in &dat_files {
-                    let platform_name = dat_path.file_stem().and_then(|s| s.to_str()).unwrap_or("Unknown");
+                    let platform_name = dat_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Unknown");
                     pb.set_message(platform_name.to_string());
 
                     let base_dat = match parse_dat_file(dat_path) {
@@ -2215,7 +2368,12 @@ pub async fn build_unified_database(
                     };
 
                     let mut supplements: Vec<DatFile> = Vec::new();
-                    for supp_path in [&developer_path, &publisher_path, &genre_path, &releaseyear_path] {
+                    for supp_path in [
+                        &developer_path,
+                        &publisher_path,
+                        &genre_path,
+                        &releaseyear_path,
+                    ] {
                         let supp_file = supp_path.join(format!("{}.dat", platform_name));
                         if supp_file.exists() {
                             if let Ok(supp_dat) = parse_dat_file(&supp_file) {
@@ -2224,10 +2382,16 @@ pub async fn build_unified_database(
                         }
                     }
 
-                    let merged = if supplements.is_empty() { base_dat } else { merge_dat_files(base_dat, supplements) };
+                    let merged = if supplements.is_empty() {
+                        base_dat
+                    } else {
+                        merge_dat_files(base_dat, supplements)
+                    };
 
                     // Batch import all games for this platform
-                    let imported = importer.import_libretro_games_batch(platform_name, &merged.games).await?;
+                    let imported = importer
+                        .import_libretro_games_batch(platform_name, &merged.games)
+                        .await?;
                     total_imported += imported;
                     pb.inc(1);
                 }
@@ -2253,9 +2417,15 @@ pub async fn build_unified_database(
             // Reopen for stats
             let db_url = format!("sqlite:{}?mode=ro", output.display());
             let pool = SqlitePool::connect(&db_url).await?;
-            let (platforms,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM platforms").fetch_one(&pool).await?;
-            let (games,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM games").fetch_one(&pool).await?;
-            let (alt_names,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM game_alternate_names").fetch_one(&pool).await?;
+            let (platforms,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM platforms")
+                .fetch_one(&pool)
+                .await?;
+            let (games,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM games")
+                .fetch_one(&pool)
+                .await?;
+            let (alt_names,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM game_alternate_names")
+                .fetch_one(&pool)
+                .await?;
             pool.close().await;
 
             println!("Build complete!");
@@ -2305,7 +2475,10 @@ fn finalize_databases(output: &Path, data_dir: &Path) -> Result<()> {
         too_large.push((output.with_extension("db.zst"), games_compressed_size));
     }
     if images_compressed_size > MAX_COMPRESSED_SIZE {
-        too_large.push((images_db_path.with_extension("db.zst"), images_compressed_size));
+        too_large.push((
+            images_db_path.with_extension("db.zst"),
+            images_compressed_size,
+        ));
     }
 
     if !too_large.is_empty() {
@@ -2314,7 +2487,11 @@ fn finalize_databases(output: &Path, data_dir: &Path) -> Result<()> {
         eprintln!("║  ⚠️  ERROR: COMPRESSED DATABASE(S) EXCEED 100 MB GITHUB LIMIT  ⚠️     ║");
         eprintln!("╠═══════════════════════════════════════════════════════════════════════╣");
         for (path, size) in &too_large {
-            eprintln!("║  {} ({} MB)", path.file_name().unwrap().to_string_lossy(), size / 1024 / 1024);
+            eprintln!(
+                "║  {} ({} MB)",
+                path.file_name().unwrap().to_string_lossy(),
+                size / 1024 / 1024
+            );
         }
         eprintln!("║                                                                       ║");
         eprintln!("║  These files are too large to commit to GitHub!                       ║");
@@ -2337,7 +2514,11 @@ fn finalize_databases(output: &Path, data_dir: &Path) -> Result<()> {
     if images_db_path.exists() {
         let images_dest = data_dir.join("game_images.db");
         std::fs::copy(&images_db_path, &images_dest)?;
-        println!("  Copied: {} -> {}", images_db_path.display(), images_dest.display());
+        println!(
+            "  Copied: {} -> {}",
+            images_db_path.display(),
+            images_dest.display()
+        );
     }
 
     Ok(())
@@ -2352,7 +2533,10 @@ fn compress_database(db_path: &Path) -> Result<u64> {
     let compressed_path = db_path.with_extension("db.zst");
 
     println!();
-    println!("Compressing {}...", db_path.file_name().unwrap().to_string_lossy());
+    println!(
+        "Compressing {}...",
+        db_path.file_name().unwrap().to_string_lossy()
+    );
 
     let input_file = File::open(db_path)?;
     let input_size = input_file.metadata()?.len();
@@ -2371,7 +2555,11 @@ fn compress_database(db_path: &Path) -> Result<u64> {
     let ratio = (compressed_size as f64 / input_size as f64) * 100.0;
 
     println!("  Original:   {} MB", input_size / 1024 / 1024);
-    println!("  Compressed: {} MB ({:.1}%)", compressed_size / 1024 / 1024, ratio);
+    println!(
+        "  Compressed: {} MB ({:.1}%)",
+        compressed_size / 1024 / 1024,
+        ratio
+    );
     println!("  Output:     {}", compressed_path.display());
 
     Ok(compressed_size)

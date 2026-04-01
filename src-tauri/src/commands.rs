@@ -1,12 +1,11 @@
 //! Tauri commands exposed to the frontend
 
 use crate::db::schema::{
-    extract_region_from_title, normalize_title_for_display,
-    Game, GameVariant, Platform,
+    extract_region_from_title, normalize_title_for_display, Game, GameVariant, Platform,
 };
 use crate::handlers::{
-    self, Collection, CollectionIdInput, CollectionGameInput,
-    CreateCollectionInput, UpdateCollectionInput,
+    self, Collection, CollectionGameInput, CollectionIdInput, CreateCollectionInput,
+    UpdateCollectionInput,
 };
 use crate::images::{CacheStats, ImageInfo, ImageService};
 use crate::scraper::{get_screenscraper_platform_id, ScreenScraperClient, ScreenScraperConfig};
@@ -107,6 +106,55 @@ fn platform_name_to_filename(name: &str) -> String {
         .replace(" ", "_")
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct GameQueryFilters {
+    pub installed_only: bool,
+    pub hide_homebrew: bool,
+    pub hide_adult: bool,
+}
+
+fn contains_token(text: &str, token: &str) -> bool {
+    text.split(|c: char| !c.is_alphanumeric())
+        .any(|part| part.eq_ignore_ascii_case(token))
+}
+
+fn is_homebrew_game(title: &str, release_type: Option<&str>) -> bool {
+    if let Some(release_type) = release_type {
+        let rt = release_type.trim().to_ascii_lowercase();
+        if rt == "homebrew" || rt == "rom hack" {
+            return true;
+        }
+    }
+
+    let (_, tags) = crate::tags::parse_title_tags(title);
+    tags.into_iter().any(|tag| {
+        tag.category == crate::tags::TagCategory::License
+            && tag.text.eq_ignore_ascii_case("homebrew")
+    })
+}
+
+fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
+    if let Some(esrb) = esrb {
+        let esrb_lower = esrb.to_ascii_lowercase();
+        if esrb_lower.starts_with("ao") || esrb_lower.contains("adults only") {
+            return true;
+        }
+    }
+
+    if title.to_ascii_lowercase().contains("adults only")
+        || genre
+            .map(|g| g.to_ascii_lowercase().contains("adults only"))
+            .unwrap_or(false)
+    {
+        return true;
+    }
+
+    const ADULT_TOKENS: &[&str] = &["adult", "hentai", "erotic", "porn", "sex"];
+    ADULT_TOKENS.iter().any(|token| {
+        contains_token(title, token) || genre.map(|g| contains_token(g, token)).unwrap_or(false)
+    })
+}
+
 #[tauri::command]
 pub async fn get_platforms(
     state: tauri::State<'_, AppStateHandle>,
@@ -116,23 +164,21 @@ pub async fn get_platforms(
     // Try shipped games database first (browse-first mode)
     if let Some(ref games_pool) = state_guard.games_db_pool {
         // Get all platforms with aliases
-        let platforms: Vec<(i64, String, Option<String>)> = sqlx::query_as(
-            "SELECT id, name, aliases FROM platforms ORDER BY name"
-        )
-        .fetch_all(games_pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let platforms: Vec<(i64, String, Option<String>)> =
+            sqlx::query_as("SELECT id, name, aliases FROM platforms ORDER BY name")
+                .fetch_all(games_pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         // For each platform, count deduplicated games (by normalized title)
         let mut result = Vec::new();
         for (id, name, aliases) in platforms {
-            let all_titles: Vec<(String,)> = sqlx::query_as(
-                "SELECT title FROM games WHERE platform_id = ?"
-            )
-            .bind(id)
-            .fetch_all(games_pool)
-            .await
-            .map_err(|e| e.to_string())?;
+            let all_titles: Vec<(String,)> =
+                sqlx::query_as("SELECT title FROM games WHERE platform_id = ?")
+                    .bind(id)
+                    .fetch_all(games_pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
 
             // Count unique normalized titles
             let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -145,7 +191,13 @@ pub async fn get_platforms(
             // Build icon URL from platform name (icons are named after canonical platform names)
             let filename = platform_name_to_filename(&name);
             let icon_url = Some(format!("/assets/platforms/{}.png", filename));
-            result.push(Platform { id, name, game_count: seen.len() as i64, aliases, icon_url });
+            result.push(Platform {
+                id,
+                name,
+                game_count: seen.len() as i64,
+                aliases,
+                icon_url,
+            });
         }
         return Ok(result);
     }
@@ -159,68 +211,26 @@ pub async fn get_platforms(
 pub async fn get_game_count(
     platform: Option<String>,
     search: Option<String>,
+    filters: Option<GameQueryFilters>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<i64, String> {
-    let state_guard = state.read().await;
-
-    if let Some(ref games_pool) = state_guard.games_db_pool {
-        // Fetch all matching titles
-        let titles: Vec<(String,)> = if let Some(ref query) = search {
-            let pattern = format!("%{}%", query);
-            if let Some(ref platform_name) = platform {
-                sqlx::query_as(
-                    "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ? AND g.title LIKE ?"
-                )
-                .bind(platform_name)
-                .bind(&pattern)
-                .fetch_all(games_pool)
-                .await
-                .map_err(|e| e.to_string())?
-            } else {
-                sqlx::query_as("SELECT title FROM games WHERE title LIKE ?")
-                    .bind(&pattern)
-                    .fetch_all(games_pool)
-                    .await
-                    .map_err(|e| e.to_string())?
-            }
-        } else if let Some(ref platform_name) = platform {
-            sqlx::query_as(
-                "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ?"
-            )
-            .bind(platform_name)
-            .fetch_all(games_pool)
-            .await
-            .map_err(|e| e.to_string())?
-        } else {
-            sqlx::query_as("SELECT title FROM games")
-                .fetch_all(games_pool)
-                .await
-                .map_err(|e| e.to_string())?
-        };
-
-        // Count unique normalized titles
-        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for (title,) in titles {
-            let normalized = normalize_title_for_display(&title).to_lowercase();
-            seen.insert(normalized);
-        }
-        return Ok(seen.len() as i64);
-    }
-
-    Ok(0)
+    let games = get_games(platform, search, filters, None, None, state).await?;
+    Ok(games.len() as i64)
 }
 
 #[tauri::command]
 pub async fn get_games(
     platform: Option<String>,
     search: Option<String>,
+    filters: Option<GameQueryFilters>,
     limit: Option<i64>,
     offset: Option<i64>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<Vec<Game>, String> {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     let state_guard = state.read().await;
+    let filters = filters.unwrap_or_default();
     let limit = limit.map(|l| l as usize);
     let offset = offset.unwrap_or(0) as usize;
 
@@ -286,12 +296,66 @@ pub async fn get_games(
             .await
             .map_err(|e| e.to_string())?
         } else {
-            Vec::new()
+            sqlx::query(
+                r#"
+                SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
+                       g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
+                       g.players, g.rating, g.rating_count, g.esrb, g.cooperative, g.video_url, g.wikipedia_url,
+                       g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
+                FROM games g
+                JOIN platforms p ON g.platform_id = p.id
+                ORDER BY g.title
+                "#
+            )
+            .fetch_all(games_pool)
+            .await
+            .map_err(|e| e.to_string())?
+        };
+
+        let downloaded_launchbox_ids: HashSet<i64> = if let Some(ref db_pool) = state_guard.db_pool
+        {
+            let candidate_launchbox_ids: Vec<i64> = raw_rows
+                .iter()
+                .filter_map(|row| {
+                    use sqlx::Row;
+                    let db_id: i64 = row.get("launchbox_db_id");
+                    (db_id > 0).then_some(db_id)
+                })
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect();
+
+            if candidate_launchbox_ids.is_empty() {
+                HashSet::new()
+            } else {
+                const CHUNK_SIZE: usize = 900;
+                let mut downloaded_ids = HashSet::new();
+                for chunk in candidate_launchbox_ids.chunks(CHUNK_SIZE) {
+                    let placeholders = std::iter::repeat("?")
+                        .take(chunk.len())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let sql = format!(
+                        "SELECT launchbox_db_id FROM game_files WHERE launchbox_db_id IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query_as::<_, (i64,)>(&sql);
+                    for db_id in chunk {
+                        q = q.bind(db_id);
+                    }
+                    let rows = q.fetch_all(db_pool).await.map_err(|e| e.to_string())?;
+                    downloaded_ids.extend(rows.into_iter().map(|(db_id,)| db_id));
+                }
+                downloaded_ids
+            }
+        } else {
+            HashSet::new()
         };
 
         // Deduplicate by normalized title - keep best metadata and track unique variant titles
         // variant_titles tracks unique full titles per normalized title (e.g., "Baseball (USA)", "Baseball (Japan)")
-        let mut grouped: HashMap<String, (Game, std::collections::HashSet<String>)> = HashMap::new();
+        let mut grouped: HashMap<String, (Game, std::collections::HashSet<String>)> =
+            HashMap::new();
 
         for row in raw_rows {
             use sqlx::Row;
@@ -322,12 +386,29 @@ pub async fn get_games(
             let version: Option<String> = row.get("version");
             let status: Option<String> = row.get("status");
             let steam_app_id: Option<i64> = row.get("steam_app_id");
+            let has_game_file =
+                launchbox_db_id > 0 && downloaded_launchbox_ids.contains(&launchbox_db_id);
+
+            if filters.installed_only && !has_game_file {
+                continue;
+            }
+            if filters.hide_homebrew && is_homebrew_game(&title, release_type.as_deref()) {
+                continue;
+            }
+            if filters.hide_adult && is_adult_game(&title, esrb.as_deref(), genre.as_deref()) {
+                continue;
+            }
+
             let display_title = normalize_title_for_display(&title);
             let key = display_title.to_lowercase();
 
-            grouped.entry(key)
+            grouped
+                .entry(key)
                 .and_modify(|(existing, variant_titles)| {
                     variant_titles.insert(title.clone());
+                    if has_game_file {
+                        existing.has_game_file = true;
+                    }
                     // Keep a resolvable LaunchBox id in the deduped row.
                     if existing.database_id <= 0 && launchbox_db_id > 0 {
                         existing.database_id = launchbox_db_id;
@@ -403,51 +484,60 @@ pub async fn get_games(
                 .or_insert_with(|| {
                     let mut variant_titles = std::collections::HashSet::new();
                     variant_titles.insert(title.clone());
-                    (Game {
-                        id,
-                        database_id: launchbox_db_id,
-                        title: title.clone(),
-                        display_title: display_title.clone(),
-                        platform,
-                        platform_id,
-                        description,
-                        release_date,
-                        release_year,
-                        developer,
-                        publisher,
-                        genres: genre,
-                        players,
-                        rating,
-                        rating_count,
-                        esrb,
-                        cooperative: cooperative.map(|c| c != 0),
-                        video_url,
-                        wikipedia_url,
-                        release_type,
-                        notes,
-                        sort_title,
-                        series,
-                        region,
-                        play_mode,
-                        version,
-                        status,
-                        steam_app_id,
-                        box_front_path: None,
-                        screenshot_path: None,
-                        variant_count: 1,
-                    }, variant_titles)
+                    (
+                        Game {
+                            id,
+                            database_id: launchbox_db_id,
+                            title: title.clone(),
+                            display_title: display_title.clone(),
+                            platform,
+                            platform_id,
+                            description,
+                            release_date,
+                            release_year,
+                            developer,
+                            publisher,
+                            genres: genre,
+                            players,
+                            rating,
+                            rating_count,
+                            esrb,
+                            cooperative: cooperative.map(|c| c != 0),
+                            video_url,
+                            wikipedia_url,
+                            release_type,
+                            notes,
+                            sort_title,
+                            series,
+                            region,
+                            play_mode,
+                            version,
+                            status,
+                            steam_app_id,
+                            box_front_path: None,
+                            screenshot_path: None,
+                            variant_count: 1,
+                            has_game_file,
+                        },
+                        variant_titles,
+                    )
                 });
         }
 
         // Convert to vec, update variant counts (unique titles, not raw rows), sort, and paginate
-        let mut games: Vec<Game> = grouped.into_iter()
+        let mut games: Vec<Game> = grouped
+            .into_iter()
             .map(|(_, (mut game, variant_titles))| {
                 game.variant_count = variant_titles.len() as i32;
                 game
             })
             .collect();
 
-        games.sort_by(|a, b| a.display_title.to_lowercase().cmp(&b.display_title.to_lowercase()));
+        games.sort_by(|a, b| {
+            a.display_title
+                .to_lowercase()
+                .cmp(&b.display_title.to_lowercase())
+        });
 
         // Apply pagination after deduplication (if limit specified)
         let games: Vec<Game> = if let Some(lim) = limit {
@@ -523,6 +613,7 @@ pub async fn get_game_by_id(
                 box_front_path: None,
                 screenshot_path: None,
                 variant_count: 1,
+                has_game_file: false,
             }));
         }
     }
@@ -645,6 +736,7 @@ pub async fn get_game_by_uuid(
                 box_front_path: None,
                 screenshot_path: None,
                 variant_count: actual_variant_count,
+                has_game_file: false,
             }));
         }
     }
@@ -654,7 +746,7 @@ pub async fn get_game_by_uuid(
 
 /// Default region priority order
 const DEFAULT_REGION_PRIORITY: &[&str] = &[
-    "",       // No region (unspecified/plain version)
+    "", // No region (unspecified/plain version)
     "USA",
     "World",
     "Japan",
@@ -732,7 +824,7 @@ pub async fn get_all_regions(
     if let Some(ref games_pool) = state_guard.games_db_pool {
         // Get unique regions from the region column
         let explicit_regions: Vec<(Option<String>,)> = sqlx::query_as(
-            "SELECT DISTINCT region FROM games WHERE region IS NOT NULL AND region != ''"
+            "SELECT DISTINCT region FROM games WHERE region IS NOT NULL AND region != ''",
         )
         .fetch_all(games_pool)
         .await
@@ -748,12 +840,11 @@ pub async fn get_all_regions(
         }
 
         // Also extract regions from title parentheses (e.g., "Game (USA)")
-        let titles: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT title FROM games WHERE title LIKE '%(%'"
-        )
-        .fetch_all(games_pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let titles: Vec<(String,)> =
+            sqlx::query_as("SELECT DISTINCT title FROM games WHERE title LIKE '%(%'")
+                .fetch_all(games_pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         for (title,) in titles {
             if let Some(extracted) = extract_region_from_title(&title) {
@@ -764,8 +855,12 @@ pub async fn get_all_regions(
         // Sort by default priority order first, then alphabetically for unknown regions
         let mut result: Vec<String> = regions.into_iter().collect();
         result.sort_by(|a, b| {
-            let pos_a = DEFAULT_REGION_PRIORITY.iter().position(|&r| r == a.as_str());
-            let pos_b = DEFAULT_REGION_PRIORITY.iter().position(|&r| r == b.as_str());
+            let pos_a = DEFAULT_REGION_PRIORITY
+                .iter()
+                .position(|&r| r == a.as_str());
+            let pos_b = DEFAULT_REGION_PRIORITY
+                .iter()
+                .position(|&r| r == b.as_str());
             match (pos_a, pos_b) {
                 (Some(pa), Some(pb)) => pa.cmp(&pb),
                 (Some(_), None) => std::cmp::Ordering::Less,
@@ -805,7 +900,7 @@ pub async fn get_game_variants(
             FROM games
             WHERE platform_id = ?
             ORDER BY title
-            "#
+            "#,
         )
         .bind(platform_id)
         .fetch_all(games_pool)
@@ -838,7 +933,9 @@ pub async fn get_game_variants(
         variants.sort_by(|a, b| {
             let priority_a = region_priority(&a.title, &custom_region_order);
             let priority_b = region_priority(&b.title, &custom_region_order);
-            priority_a.cmp(&priority_b).then_with(|| a.title.cmp(&b.title))
+            priority_a
+                .cmp(&priority_b)
+                .then_with(|| a.title.cmp(&b.title))
         });
 
         return Ok(variants);
@@ -848,9 +945,7 @@ pub async fn get_game_variants(
 }
 
 #[tauri::command]
-pub async fn get_settings(
-    state: tauri::State<'_, AppStateHandle>,
-) -> Result<AppSettings, String> {
+pub async fn get_settings(state: tauri::State<'_, AppStateHandle>) -> Result<AppSettings, String> {
     let state_guard = state.read().await;
     Ok(state_guard.settings.clone())
 }
@@ -913,7 +1008,8 @@ pub async fn scrape_rom(
     let checksums = crate::scanner::Checksums::calculate(&path)
         .map_err(|e| format!("Failed to calculate checksums: {}", e))?;
 
-    let file_name = path.file_name()
+    let file_name = path
+        .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
 
@@ -927,14 +1023,17 @@ pub async fn scrape_rom(
     let client = ScreenScraperClient::new(config);
 
     // Look up the game
-    match client.lookup_by_checksum(
-        &checksums.crc32,
-        &checksums.md5,
-        &checksums.sha1,
-        checksums.size,
-        file_name,
-        platform_id,
-    ).await {
+    match client
+        .lookup_by_checksum(
+            &checksums.crc32,
+            &checksums.md5,
+            &checksums.sha1,
+            checksums.size,
+            file_name,
+            platform_id,
+        )
+        .await
+    {
         Ok(Some(scraped)) => {
             let display_title = normalize_title_for_display(&scraped.name);
             let game = Game {
@@ -969,6 +1068,7 @@ pub async fn scrape_rom(
                 box_front_path: scraped.media.box_front,
                 screenshot_path: scraped.media.screenshot,
                 variant_count: 1,
+                has_game_file: false,
             };
             Ok(ScrapeResult {
                 success: true,
@@ -1018,7 +1118,15 @@ pub async fn update_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-    handlers::update_collection(&state_guard, UpdateCollectionInput { id, name, description }).await
+    handlers::update_collection(
+        &state_guard,
+        UpdateCollectionInput {
+            id,
+            name,
+            description,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1047,7 +1155,14 @@ pub async fn add_game_to_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-    handlers::add_game_to_collection(&state_guard, CollectionGameInput { collection_id, game_id }).await?;
+    handlers::add_game_to_collection(
+        &state_guard,
+        CollectionGameInput {
+            collection_id,
+            game_id,
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -1058,7 +1173,14 @@ pub async fn remove_game_from_collection(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-    handlers::remove_game_from_collection(&state_guard, CollectionGameInput { collection_id, game_id }).await?;
+    handlers::remove_game_from_collection(
+        &state_guard,
+        CollectionGameInput {
+            collection_id,
+            game_id,
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -1085,7 +1207,9 @@ pub async fn record_play_session(
 ) -> Result<(), String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -1109,7 +1233,11 @@ pub async fn record_play_session(
     .await
     .map_err(|e| e.to_string())?;
 
-    tracing::info!("Recorded play session for: {} ({})", game_title, launchbox_db_id);
+    tracing::info!(
+        "Recorded play session for: {} ({})",
+        game_title,
+        launchbox_db_id
+    );
     Ok(())
 }
 
@@ -1120,7 +1248,9 @@ pub async fn get_play_stats(
 ) -> Result<Option<PlayStats>, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let stats: Option<(i64, String, String, i64, i64, Option<String>, Option<String>)> = sqlx::query_as(
@@ -1131,15 +1261,17 @@ pub async fn get_play_stats(
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(stats.map(|(db_id, title, platform, count, time, last, first)| PlayStats {
-        launchbox_db_id: db_id,
-        game_title: title,
-        platform,
-        play_count: count,
-        total_play_time_seconds: time,
-        last_played: last,
-        first_played: first,
-    }))
+    Ok(stats.map(
+        |(db_id, title, platform, count, time, last, first)| PlayStats {
+            launchbox_db_id: db_id,
+            game_title: title,
+            platform,
+            play_count: count,
+            total_play_time_seconds: time,
+            last_played: last,
+            first_played: first,
+        },
+    ))
 }
 
 #[tauri::command]
@@ -1149,7 +1281,9 @@ pub async fn get_recent_games(
 ) -> Result<Vec<PlayStats>, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let limit = limit.unwrap_or(10);
@@ -1162,15 +1296,20 @@ pub async fn get_recent_games(
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(stats.into_iter().map(|(db_id, title, platform, count, time, last, first)| PlayStats {
-        launchbox_db_id: db_id,
-        game_title: title,
-        platform,
-        play_count: count,
-        total_play_time_seconds: time,
-        last_played: last,
-        first_played: first,
-    }).collect())
+    Ok(stats
+        .into_iter()
+        .map(
+            |(db_id, title, platform, count, time, last, first)| PlayStats {
+                launchbox_db_id: db_id,
+                game_title: title,
+                platform,
+                play_count: count,
+                total_play_time_seconds: time,
+                last_played: last,
+                first_played: first,
+            },
+        )
+        .collect())
 }
 
 #[tauri::command]
@@ -1180,7 +1319,9 @@ pub async fn get_most_played(
 ) -> Result<Vec<PlayStats>, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let limit = limit.unwrap_or(10);
@@ -1193,15 +1334,20 @@ pub async fn get_most_played(
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(stats.into_iter().map(|(db_id, title, platform, count, time, last, first)| PlayStats {
-        launchbox_db_id: db_id,
-        game_title: title,
-        platform,
-        play_count: count,
-        total_play_time_seconds: time,
-        last_played: last,
-        first_played: first,
-    }).collect())
+    Ok(stats
+        .into_iter()
+        .map(
+            |(db_id, title, platform, count, time, last, first)| PlayStats {
+                launchbox_db_id: db_id,
+                game_title: title,
+                platform,
+                play_count: count,
+                total_play_time_seconds: time,
+                last_played: last,
+                first_played: first,
+            },
+        )
+        .collect())
 }
 
 // ============ Service Connection Tests ============
@@ -1251,11 +1397,13 @@ pub async fn add_favorite(
 ) -> Result<(), String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     sqlx::query(
-        "INSERT OR IGNORE INTO favorites (launchbox_db_id, game_title, platform) VALUES (?, ?, ?)"
+        "INSERT OR IGNORE INTO favorites (launchbox_db_id, game_title, platform) VALUES (?, ?, ?)",
     )
     .bind(launchbox_db_id)
     .bind(&game_title)
@@ -1274,7 +1422,9 @@ pub async fn remove_favorite(
 ) -> Result<(), String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     sqlx::query("DELETE FROM favorites WHERE launchbox_db_id = ?")
@@ -1293,33 +1443,34 @@ pub async fn is_favorite(
 ) -> Result<bool, String> {
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
-    let exists: Option<(i64,)> = sqlx::query_as(
-        "SELECT launchbox_db_id FROM favorites WHERE launchbox_db_id = ?"
-    )
-    .bind(launchbox_db_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let exists: Option<(i64,)> =
+        sqlx::query_as("SELECT launchbox_db_id FROM favorites WHERE launchbox_db_id = ?")
+            .bind(launchbox_db_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     Ok(exists.is_some())
 }
 
 #[tauri::command]
-pub async fn get_favorites(
-    state: tauri::State<'_, AppStateHandle>,
-) -> Result<Vec<Game>, String> {
+pub async fn get_favorites(state: tauri::State<'_, AppStateHandle>) -> Result<Vec<Game>, String> {
     use sqlx::Row;
 
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let favorites: Vec<(i64, String, String)> = sqlx::query_as(
-        "SELECT launchbox_db_id, game_title, platform FROM favorites ORDER BY added_at DESC"
+        "SELECT launchbox_db_id, game_title, platform FROM favorites ORDER BY added_at DESC",
     )
     .fetch_all(pool)
     .await
@@ -1356,7 +1507,7 @@ pub async fn get_favorites(
 
                 games.push(Game {
                     id: row.get::<i64, _>("id").to_string(),
-                    database_id: db_id,  // We already have this from favorites table
+                    database_id: db_id, // We already have this from favorites table
                     title: title_str,
                     display_title,
                     platform: row.get("platform"),
@@ -1386,6 +1537,7 @@ pub async fn get_favorites(
                     box_front_path: None,
                     screenshot_path: None,
                     variant_count: 1,
+                    has_game_file: false,
                 });
                 continue;
             }
@@ -1425,6 +1577,7 @@ pub async fn get_favorites(
             box_front_path: None,
             screenshot_path: None,
             variant_count: 1,
+            has_game_file: false,
         });
     }
 
@@ -1446,7 +1599,9 @@ pub async fn get_game_images(
 ) -> Result<Vec<ImageInfo>, String> {
     let state_guard = state.read().await;
 
-    let games_pool = state_guard.games_db_pool.as_ref()
+    let games_pool = state_guard
+        .games_db_pool
+        .as_ref()
         .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -1455,7 +1610,9 @@ pub async fn get_game_images(
         service = service.with_images_pool(images_pool.clone());
     }
 
-    service.get_game_images(launchbox_db_id).await
+    service
+        .get_game_images(launchbox_db_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -1468,7 +1625,9 @@ pub async fn get_game_image(
 ) -> Result<Option<ImageInfo>, String> {
     let state_guard = state.read().await;
 
-    let games_pool = state_guard.games_db_pool.as_ref()
+    let games_pool = state_guard
+        .games_db_pool
+        .as_ref()
         .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -1477,7 +1636,9 @@ pub async fn get_game_image(
         service = service.with_images_pool(images_pool.clone());
     }
 
-    service.get_image_by_type(launchbox_db_id, &image_type).await
+    service
+        .get_image_by_type(launchbox_db_id, &image_type)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -1489,7 +1650,9 @@ pub async fn get_available_image_types(
 ) -> Result<Vec<String>, String> {
     let state_guard = state.read().await;
 
-    let games_pool = state_guard.games_db_pool.as_ref()
+    let games_pool = state_guard
+        .games_db_pool
+        .as_ref()
         .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -1498,7 +1661,9 @@ pub async fn get_available_image_types(
         service = service.with_images_pool(images_pool.clone());
     }
 
-    service.get_available_types(launchbox_db_id).await
+    service
+        .get_available_types(launchbox_db_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -1510,7 +1675,9 @@ pub async fn download_image(
 ) -> Result<String, String> {
     let state_guard = state.read().await;
 
-    let games_pool = state_guard.games_db_pool.as_ref()
+    let games_pool = state_guard
+        .games_db_pool
+        .as_ref()
         .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -1519,7 +1686,9 @@ pub async fn download_image(
         service = service.with_images_pool(images_pool.clone());
     }
 
-    service.download_image(image_id).await
+    service
+        .download_image(image_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -1532,7 +1701,9 @@ pub async fn download_game_images(
 ) -> Result<Vec<String>, String> {
     let state_guard = state.read().await;
 
-    let games_pool = state_guard.games_db_pool.as_ref()
+    let games_pool = state_guard
+        .games_db_pool
+        .as_ref()
         .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -1541,7 +1712,9 @@ pub async fn download_game_images(
         service = service.with_images_pool(images_pool.clone());
     }
 
-    service.download_game_images(launchbox_db_id, image_types).await
+    service
+        .download_game_images(launchbox_db_id, image_types)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -1552,7 +1725,9 @@ pub async fn get_image_cache_stats(
 ) -> Result<CacheStats, String> {
     let state_guard = state.read().await;
 
-    let games_pool = state_guard.games_db_pool.as_ref()
+    let games_pool = state_guard
+        .games_db_pool
+        .as_ref()
         .ok_or_else(|| "Games database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -1561,8 +1736,7 @@ pub async fn get_image_cache_stats(
         service = service.with_images_pool(images_pool.clone());
     }
 
-    service.get_cache_stats().await
-        .map_err(|e| e.to_string())
+    service.get_cache_stats().await.map_err(|e| e.to_string())
 }
 
 /// Result from cache check
@@ -1586,14 +1760,12 @@ pub async fn check_cached_media(
     let cache_dir = get_cache_dir(&state_guard.settings);
 
     // Compute game_id
-    let game_id = crate::images::get_game_cache_id(
-        launchbox_db_id,
-        &game_title,
-        &platform,
-    );
+    let game_id = crate::images::get_game_cache_id(launchbox_db_id, &game_title, &platform);
 
     // Check cache
-    if let Some((path, source)) = crate::images::find_cached_media(&cache_dir, &game_id, &image_type) {
+    if let Some((path, source)) =
+        crate::images::find_cached_media(&cache_dir, &game_id, &image_type)
+    {
         return Ok(Some(CachedMediaResult {
             path: path.to_string_lossy().to_string(),
             source: source.abbreviation().to_string(),
@@ -1622,18 +1794,19 @@ pub async fn download_image_with_fallback(
 ) -> Result<String, String> {
     let state_guard = state.read().await;
 
-    let games_pool = state_guard.games_db_pool.as_ref()
+    let games_pool = state_guard
+        .games_db_pool
+        .as_ref()
         .ok_or_else(|| "Games database not initialized".to_string())?;
 
     // Look up platform info to get launchbox_name and libretro_name
-    let platform_info: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?"
-    )
-    .bind(&platform)
-    .fetch_optional(games_pool)
-    .await
-    .ok()
-    .flatten();
+    let platform_info: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?")
+            .bind(&platform)
+            .fetch_optional(games_pool)
+            .await
+            .ok()
+            .flatten();
 
     let (launchbox_platform, libretro_platform) = platform_info
         .map(|(lb, lr)| (lb, lr))
@@ -1662,7 +1835,7 @@ pub async fn download_image_with_fallback(
         Some(crate::scraper::SteamGridDBClient::new(
             crate::scraper::SteamGridDBConfig {
                 api_key: state_guard.settings.steamgriddb.api_key.clone(),
-            }
+            },
         ))
     } else {
         None
@@ -1676,7 +1849,7 @@ pub async fn download_image_with_fallback(
             crate::scraper::IGDBConfig {
                 client_id: state_guard.settings.igdb.client_id.clone(),
                 client_secret: state_guard.settings.igdb.client_secret.clone(),
-            }
+            },
         ))
     } else {
         None
@@ -1707,25 +1880,27 @@ pub async fn download_image_with_fallback(
                 dev_password: state_guard.settings.screenscraper.dev_password.clone(),
                 user_id: state_guard.settings.screenscraper.user_id.clone(),
                 user_password: state_guard.settings.screenscraper.user_password.clone(),
-            }
+            },
         ))
     } else {
         None
     };
 
-    service.download_with_fallback(
-        &game_title,
-        &platform,
-        &image_type,
-        launchbox_db_id,
-        launchbox_platform.as_deref(),
-        libretro_platform.as_deref(),
-        libretro_title.as_deref(),
-        steamgriddb_client.as_ref(),
-        igdb_client.as_ref(),
-        emumovies_client.as_ref(),
-        screenscraper_client.as_ref(),
-    ).await
+    service
+        .download_with_fallback(
+            &game_title,
+            &platform,
+            &image_type,
+            launchbox_db_id,
+            launchbox_platform.as_deref(),
+            libretro_platform.as_deref(),
+            libretro_title.as_deref(),
+            steamgriddb_client.as_ref(),
+            igdb_client.as_ref(),
+            emumovies_client.as_ref(),
+            screenscraper_client.as_ref(),
+        )
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -1749,7 +1924,9 @@ pub async fn download_libretro_thumbnail(
     };
 
     let client = crate::images::LibRetroThumbnailsClient::new(cache_dir);
-    let result = client.find_thumbnail(&platform, libretro_type, &game_title).await;
+    let result = client
+        .find_thumbnail(&platform, libretro_type, &game_title)
+        .await;
 
     Ok(result)
 }
@@ -1782,14 +1959,18 @@ pub async fn download_unified_media(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<String, String> {
-    use crate::images::{MediaEventSender, NormalizedMediaType, MediaSource, GameMediaId, RoundRobinSourceSelector};
+    use crate::images::{
+        GameMediaId, MediaEventSender, MediaSource, NormalizedMediaType, RoundRobinSourceSelector,
+    };
 
     let normalized_type = NormalizedMediaType::from_str(&media_type)
         .ok_or_else(|| format!("Unknown media type: {}", media_type))?;
 
     let state_guard = state.read().await;
 
-    let pool = state_guard.db_pool.as_ref()
+    let pool = state_guard
+        .db_pool
+        .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -1817,7 +1998,9 @@ pub async fn download_unified_media(
 
     // Create parent directories
     if let Some(parent) = local_path.parent() {
-        tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     // Try to download based on source
@@ -1829,15 +2012,12 @@ pub async fn download_unified_media(
                 launchbox_db_id,
                 normalized_type,
                 &local_path,
-            ).await
+            )
+            .await
         }
         MediaSource::LibRetro => {
-            download_from_libretro_unified(
-                &cache_dir,
-                &game_title,
-                &platform,
-                normalized_type,
-            ).await
+            download_from_libretro_unified(&cache_dir, &game_title, &platform, normalized_type)
+                .await
         }
         _ => {
             // Fall back to LaunchBox for unimplemented sources
@@ -1847,7 +2027,8 @@ pub async fn download_unified_media(
                 launchbox_db_id,
                 normalized_type,
                 &local_path,
-            ).await
+            )
+            .await
         }
     };
 
@@ -1917,7 +2098,11 @@ async fn download_from_launchbox_unified(
         .ok_or_else(|| anyhow::anyhow!("No LaunchBox image found for type {}", launchbox_type))?;
 
     // Build CDN URL
-    let url = format!("{}/{}", crate::images::LAUNCHBOX_CDN_URL, urlencoding::encode(&filename));
+    let url = format!(
+        "{}/{}",
+        crate::images::LAUNCHBOX_CDN_URL,
+        urlencoding::encode(&filename)
+    );
 
     // Determine actual local path with correct extension
     let extension = filename.rsplit('.').next().unwrap_or("png");
@@ -1943,8 +2128,8 @@ async fn download_from_libretro_unified(
     media_type: crate::images::NormalizedMediaType,
 ) -> Result<String, anyhow::Error> {
     let libretro_type = match media_type {
-        crate::images::NormalizedMediaType::BoxFront |
-        crate::images::NormalizedMediaType::BoxBack => crate::images::LibRetroImageType::Boxart,
+        crate::images::NormalizedMediaType::BoxFront
+        | crate::images::NormalizedMediaType::BoxBack => crate::images::LibRetroImageType::Boxart,
         crate::images::NormalizedMediaType::Screenshot => crate::images::LibRetroImageType::Snap,
         crate::images::NormalizedMediaType::TitleScreen => crate::images::LibRetroImageType::Title,
         _ => anyhow::bail!("Media type not supported by libretro"),
@@ -2009,17 +2194,18 @@ pub async fn check_cached_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            let games_pool = state_guard.games_db_pool.as_ref()
+            let games_pool = state_guard
+                .games_db_pool
+                .as_ref()
                 .ok_or_else(|| "Games database not initialized".to_string())?;
 
             // Get platform_id
-            let platform_id: Option<(i64,)> = sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&platform)
-            .fetch_optional(games_pool)
-            .await
-            .map_err(|e| e.to_string())?;
+            let platform_id: Option<(i64,)> =
+                sqlx::query_as("SELECT id FROM platforms WHERE name = ?")
+                    .bind(&platform)
+                    .fetch_optional(games_pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
 
             let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
             crate::images::GameMediaId::compute_hash(platform_id, &game_title)
@@ -2032,7 +2218,8 @@ pub async fn check_cached_video(
         .join("emumovies")
         .join("video.mp4");
 
-    if video_path.exists() {
+    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
+    if video_path.exists() && crate::images::emumovies::is_video_cache_current(&game_cache_dir) {
         Ok(Some(video_path.to_string_lossy().to_string()))
     } else {
         Ok(None)
@@ -2047,13 +2234,17 @@ pub async fn download_game_video(
     launchbox_db_id: Option<i64>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<String, String> {
+    const VIDEO_DOWNLOAD_TIMEOUT_SECS: u64 = 20;
+
     let state_guard = state.read().await;
 
     // Check if EmuMovies is configured
     if state_guard.settings.emumovies.username.is_empty()
         || state_guard.settings.emumovies.password.is_empty()
     {
-        return Err("EmuMovies credentials not configured. Configure them in Settings.".to_string());
+        return Err(
+            "EmuMovies credentials not configured. Configure them in Settings.".to_string(),
+        );
     }
 
     let cache_dir = get_cache_dir(&state_guard.settings);
@@ -2063,26 +2254,25 @@ pub async fn download_game_video(
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
         None => {
             // Fall back to computing hash from platform and title
-            let games_pool = state_guard.games_db_pool.as_ref()
+            let games_pool = state_guard
+                .games_db_pool
+                .as_ref()
                 .ok_or_else(|| "Games database not initialized".to_string())?;
 
             // Get platform_id
-            let platform_id: Option<(i64,)> = sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&platform)
-            .fetch_optional(games_pool)
-            .await
-            .map_err(|e| e.to_string())?;
+            let platform_id: Option<(i64,)> =
+                sqlx::query_as("SELECT id FROM platforms WHERE name = ?")
+                    .bind(&platform)
+                    .fetch_optional(games_pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
 
             let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
             crate::images::GameMediaId::compute_hash(platform_id, &game_title)
         }
     };
 
-    let game_cache_dir = cache_dir
-        .join("media")
-        .join(game_id.directory_name());
+    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
 
     // Create EmuMovies client
     let client = crate::images::EmuMoviesClient::new(
@@ -2093,9 +2283,38 @@ pub async fn download_game_video(
         cache_dir.clone(),
     );
 
-    // Download the video
-    let video_path = client.get_video(&platform, &game_title, &game_cache_dir, None)
-        .map_err(|e| e.to_string())?;
+    // Release shared state lock before blocking FTP work.
+    drop(state_guard);
+
+    // Download the video with timeout so UI doesn't hang indefinitely.
+    let platform_for_task = platform.clone();
+    let game_title_for_task = game_title.clone();
+    let game_cache_dir_for_task = game_cache_dir.clone();
+    let task = tokio::task::spawn_blocking(move || {
+        client.get_video(
+            &platform_for_task,
+            &game_title_for_task,
+            &game_cache_dir_for_task,
+            None,
+        )
+    });
+
+    let video_path = match tokio::time::timeout(
+        std::time::Duration::from_secs(VIDEO_DOWNLOAD_TIMEOUT_SECS),
+        task,
+    )
+    .await
+    {
+        Ok(Ok(Ok(path))) => path,
+        Ok(Ok(Err(e))) => return Err(e.to_string()),
+        Ok(Err(e)) => return Err(format!("Video download task failed: {}", e)),
+        Err(_) => {
+            return Err(format!(
+                "Video download timed out after {} seconds",
+                VIDEO_DOWNLOAD_TIMEOUT_SECS
+            ));
+        }
+    };
 
     Ok(video_path.to_string_lossy().to_string())
 }
@@ -2136,8 +2355,8 @@ pub async fn get_all_emulators(
 
 // ============ Emulator Preference Commands ============
 
-use crate::handlers::EmulatorPreferences;
 use crate::emulator::{EmulatorWithStatus, LaunchResult};
+use crate::handlers::EmulatorPreferences;
 
 /// Get emulator preference for a game (checks game-specific, then platform)
 #[tauri::command]
@@ -2283,8 +2502,8 @@ pub fn get_current_os() -> String {
 // ============ Graboid Import Commands ============
 
 use crate::handlers::{
-    GameFile, ImportJob, StartImportInput,
-    GraboidPrompt, SaveGraboidPromptInput, DeleteGraboidPromptInput,
+    DeleteGraboidPromptInput, GameFile, GraboidPrompt, ImportJob, SaveGraboidPromptInput,
+    StartImportInput,
 };
 
 /// Check if a game has an imported file
@@ -2316,11 +2535,15 @@ pub async fn start_graboid_import(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<ImportJob, String> {
     let state_guard = state.read().await;
-    handlers::start_graboid_import(&state_guard, StartImportInput {
-        launchbox_db_id,
-        game_title,
-        platform,
-    }).await
+    handlers::start_graboid_import(
+        &state_guard,
+        StartImportInput {
+            launchbox_db_id,
+            game_title,
+            platform,
+        },
+    )
+    .await
 }
 
 /// Cancel an import job
@@ -2361,12 +2584,16 @@ pub async fn save_graboid_prompt(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-    handlers::save_graboid_prompt(&state_guard, SaveGraboidPromptInput {
-        scope,
-        platform,
-        launchbox_db_id,
-        prompt,
-    }).await
+    handlers::save_graboid_prompt(
+        &state_guard,
+        SaveGraboidPromptInput {
+            scope,
+            platform,
+            launchbox_db_id,
+            prompt,
+        },
+    )
+    .await
 }
 
 /// Delete a graboid prompt
@@ -2378,11 +2605,15 @@ pub async fn delete_graboid_prompt(
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<(), String> {
     let state_guard = state.read().await;
-    handlers::delete_graboid_prompt(&state_guard, DeleteGraboidPromptInput {
-        scope,
-        platform,
-        launchbox_db_id,
-    }).await
+    handlers::delete_graboid_prompt(
+        &state_guard,
+        DeleteGraboidPromptInput {
+            scope,
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
 }
 
 /// Get the effective graboid prompt for a game (global + platform + game combined)
@@ -2394,4 +2625,110 @@ pub async fn get_effective_graboid_prompt(
 ) -> Result<String, String> {
     let state_guard = state.read().await;
     handlers::get_effective_graboid_prompt(&state_guard, &platform, launchbox_db_id).await
+}
+
+// ============================================================================
+// Minerva Archive Commands
+// ============================================================================
+
+/// Check if the minerva database is available
+#[tauri::command]
+pub async fn has_minerva_db(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<bool, String> {
+    let state_guard = state.read().await;
+    Ok(handlers::has_minerva_db(&state_guard))
+}
+
+/// Find the best matching minerva ROM for a game
+#[tauri::command]
+pub async fn get_minerva_rom_for_game(
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<handlers::MinervaRom>, String> {
+    let state_guard = state.read().await;
+    handlers::get_minerva_rom_for_game(&state_guard, launchbox_db_id).await
+}
+
+/// Search for all minerva ROM variants matching a game
+#[tauri::command]
+pub async fn search_minerva(
+    launchbox_db_id: Option<i64>,
+    game_title: Option<String>,
+    platform_id: Option<i64>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<handlers::MinervaRom>, String> {
+    let state_guard = state.read().await;
+    handlers::search_minerva(&state_guard, launchbox_db_id, game_title, platform_id).await
+}
+
+/// Start a minerva ROM download via torrent
+#[tauri::command]
+pub async fn start_minerva_download(
+    input: handlers::StartMinervaDownloadInput,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<handlers::ImportJob, String> {
+    let mut state_guard = state.write().await;
+    handlers::start_minerva_download(&mut state_guard, input).await
+}
+
+/// Get download progress for a minerva download
+#[tauri::command]
+pub async fn get_minerva_download_progress(
+    job_id: String,
+) -> Result<Option<crate::torrent::DownloadProgress>, String> {
+    Ok(handlers::get_minerva_download_progress(&job_id))
+}
+
+/// Cancel an active minerva download
+#[tauri::command]
+pub async fn cancel_minerva_download(
+    job_id: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+    handlers::cancel_minerva_download(&state_guard, &job_id).await
+}
+
+/// Test torrent client connection
+#[tauri::command]
+pub async fn test_torrent_connection(
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(bool, String), String> {
+    let state_guard = state.read().await;
+    handlers::test_torrent_connection(&state_guard).await
+}
+
+/// List files in a torrent with fuzzy matching against a game title
+#[tauri::command]
+pub async fn list_torrent_files(
+    input: handlers::ListTorrentFilesInput,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<handlers::TorrentFileMatch>, String> {
+    let state_guard = state.read().await;
+    handlers::list_torrent_files(&state_guard, input).await
+}
+
+// ============================================================================
+// ROM Import Commands
+// ============================================================================
+
+/// Scan directories for ROMs and match them to games
+#[tauri::command]
+pub async fn scan_and_match_roms(
+    input: handlers::ScanRomsInput,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<handlers::ScanRomsResult, String> {
+    let state_guard = state.read().await;
+    handlers::scan_and_match_roms(&state_guard, input).await
+}
+
+/// Confirm and execute ROM import for selected files
+#[tauri::command]
+pub async fn confirm_rom_import(
+    input: handlers::ConfirmImportInput,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<usize, String> {
+    let mut state_guard = state.write().await;
+    handlers::confirm_rom_import(&mut state_guard, input).await
 }

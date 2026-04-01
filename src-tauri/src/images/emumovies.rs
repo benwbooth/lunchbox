@@ -14,12 +14,14 @@
 //!   /Official/Artwork/{Platform}/{Platform} (Type)(Source)(Version).zip
 //!   /Official/Video Snaps (HQ)/{Platform} (Video Snaps)(HQ)(...)/game.mp4
 
+use crate::tags;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use suppaftp::FtpStream;
-use crate::tags;
 
 /// EmuMovies FTP configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -114,18 +116,30 @@ pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
     match normalized.as_str() {
         // Nintendo
         s if s.contains("nintendo entertainment system") => Some("Nintendo Entertainment System"),
-        s if s.contains("nes") && !s.contains("snes") && !s.contains("super") => Some("Nintendo Entertainment System"),
-        s if s.contains("super nintendo") || (s.contains("snes") && !s.contains("msu")) => Some("Super Nintendo Entertainment System"),
+        s if contains_word(s, "nes") && !contains_word(s, "snes") && !contains_word(s, "super") => {
+            Some("Nintendo Entertainment System")
+        }
+        s if s.contains("super nintendo")
+            || (contains_word(s, "snes") && !contains_word(s, "msu")) =>
+        {
+            Some("Super Nintendo Entertainment System")
+        }
         s if s.contains("nintendo 64") || s == "n64" => Some("Nintendo 64"),
         s if s.contains("game boy advance") || s == "gba" => Some("Nintendo Game Boy Advance"),
-        s if s.contains("game boy color") || s == "gbc" || s.contains("gameboy color") => Some("Nintendo Gameboy Color"),
-        s if s.contains("game boy") && !s.contains("advance") && !s.contains("color") => Some("Nintendo Game Boy"),
+        s if s.contains("game boy color") || s == "gbc" || s.contains("gameboy color") => {
+            Some("Nintendo Gameboy Color")
+        }
+        s if s.contains("game boy") && !s.contains("advance") && !s.contains("color") => {
+            Some("Nintendo Game Boy")
+        }
         s if s.contains("nintendo ds") || s == "nds" => Some("Nintendo DS"),
         s if s.contains("nintendo 3ds") || s == "3ds" => Some("Nintendo 3DS"),
         s if s.contains("gamecube") => Some("Nintendo GameCube"),
         s if s.contains("wii u") => Some("Nintendo Wii U"),
         s if s.contains("wiiware") => Some("Nintendo WiiWare"),
-        s if s.contains("wii") && !s.contains("wii u") && !s.contains("wiiware") => Some("Nintendo Wii"),
+        s if s.contains("wii") && !s.contains("wii u") && !s.contains("wiiware") => {
+            Some("Nintendo Wii")
+        }
         s if s.contains("switch") => Some("Nintendo Switch"),
         s if s.contains("virtual boy") => Some("Nintendo Virtual Boy"),
         s if s.contains("famicom disk") => Some("Nintendo Famicom Disk System"),
@@ -145,7 +159,9 @@ pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
         s if s.contains("playstation 3") || s == "ps3" => Some("Sony Playstation 3"),
         s if s.contains("playstation portable") || s == "psp" => Some("Sony PSP"),
         s if s.contains("ps vita") || s.contains("vita") => Some("Sony Playstation Vita"),
-        s if s.contains("playstation") && !s.contains("2") && !s.contains("3") => Some("Sony Playstation"),
+        s if s.contains("playstation") && !s.contains("2") && !s.contains("3") => {
+            Some("Sony Playstation")
+        }
 
         // NEC
         s if s.contains("turbografx") && s.contains("cd") => Some("NEC TurboGrafx-CD"),
@@ -174,6 +190,296 @@ pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
 
         _ => None,
     }
+}
+
+fn contains_word(haystack: &str, needle: &str) -> bool {
+    haystack
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|token| token == needle)
+}
+
+// Prevent multiple threads from downloading/building the same archive at once.
+static ARCHIVE_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+// Cache discovered video folders per normalized EmuMovies platform folder.
+static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
+// Cache video indices per remote FTP folder path.
+static VIDEO_INDEX_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<VideoIndexEntry>>>>> =
+    OnceLock::new();
+
+const VIDEO_MATCH_CACHE_VERSION: &str = "3";
+
+fn video_cache_version_path(game_cache_dir: &Path) -> PathBuf {
+    game_cache_dir.join("emumovies").join("video.match-version")
+}
+
+pub fn is_video_cache_current(game_cache_dir: &Path) -> bool {
+    std::fs::read_to_string(video_cache_version_path(game_cache_dir))
+        .map(|v| v.trim() == VIDEO_MATCH_CACHE_VERSION)
+        .unwrap_or(false)
+}
+
+fn write_video_cache_version(game_cache_dir: &Path) -> Result<()> {
+    let version_path = video_cache_version_path(game_cache_dir);
+    if let Some(parent) = version_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(version_path, VIDEO_MATCH_CACHE_VERSION)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct VideoIndexEntry {
+    path: String,
+    normalized: String,
+    no_region: String,
+    tokens: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VideoMatchKind {
+    Exact,
+    Regionless,
+    Fuzzy,
+}
+
+fn video_match_kind_rank(kind: VideoMatchKind) -> u8 {
+    match kind {
+        VideoMatchKind::Exact => 3,
+        VideoMatchKind::Regionless => 2,
+        VideoMatchKind::Fuzzy => 1,
+    }
+}
+
+fn compare_video_candidates(
+    a_kind: VideoMatchKind,
+    a_folder_rank: u8,
+    a_score: f32,
+    a_source_order: usize,
+    b_kind: VideoMatchKind,
+    b_folder_rank: u8,
+    b_score: f32,
+    b_source_order: usize,
+) -> Ordering {
+    video_match_kind_rank(a_kind)
+        .cmp(&video_match_kind_rank(b_kind))
+        // Lower folder rank is better (exact platform folder first, then variants).
+        .then_with(|| b_folder_rank.cmp(&a_folder_rank))
+        .then_with(|| a_score.partial_cmp(&b_score).unwrap_or(Ordering::Equal))
+        // Lower source order is better (HQ before SQ).
+        .then_with(|| b_source_order.cmp(&a_source_order))
+}
+
+fn video_folder_name(folder_path: &str) -> &str {
+    folder_path.rsplit('/').next().unwrap_or(folder_path)
+}
+
+fn video_folder_platform_stem(folder_path: &str) -> &str {
+    let folder_name = video_folder_name(folder_path);
+    folder_name.split(" (").next().unwrap_or(folder_name).trim()
+}
+
+fn video_folder_match_rank(folder_path: &str, system_folder: &str) -> Option<u8> {
+    let stem = video_folder_platform_stem(folder_path);
+    let stem_lower = stem.to_ascii_lowercase();
+    let system_lower = system_folder.to_ascii_lowercase();
+
+    if stem_lower == system_lower {
+        return Some(0);
+    }
+
+    let dash_prefix = format!("{}-", system_lower);
+    let space_prefix = format!("{} ", system_lower);
+
+    if stem_lower.starts_with(&dash_prefix) || stem_lower.starts_with(&space_prefix) {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
+struct VideoFolderCandidate {
+    path: String,
+    source_order: usize,
+    match_rank: u8,
+}
+
+fn tokenize_for_match(normalized_name: &str) -> Vec<String> {
+    normalized_name
+        .split_whitespace()
+        .filter(|token| !token.is_empty())
+        .map(canonicalize_match_token)
+        .collect()
+}
+
+fn parse_roman_numeral(token: &str) -> Option<u32> {
+    let upper = token.to_ascii_uppercase();
+    if upper.is_empty() {
+        return None;
+    }
+    if !upper
+        .chars()
+        .all(|c| matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M'))
+    {
+        return None;
+    }
+
+    let value_of = |c| match c {
+        'I' => 1,
+        'V' => 5,
+        'X' => 10,
+        'L' => 50,
+        'C' => 100,
+        'D' => 500,
+        'M' => 1000,
+        _ => 0,
+    };
+
+    let chars: Vec<char> = upper.chars().collect();
+    let mut total = 0u32;
+    for i in 0..chars.len() {
+        let cur = value_of(chars[i]);
+        let next = chars.get(i + 1).map(|c| value_of(*c)).unwrap_or(0);
+        if cur < next {
+            total = total.saturating_sub(cur);
+        } else {
+            total = total.saturating_add(cur);
+        }
+    }
+
+    // Keep roman parsing focused on sequel numerals to avoid false positives.
+    if (1..=30).contains(&total) {
+        Some(total)
+    } else {
+        None
+    }
+}
+
+fn parse_sequence_number(token: &str) -> Option<u32> {
+    if token.chars().all(|c| c.is_ascii_digit()) && token.len() <= 4 {
+        return token.parse::<u32>().ok();
+    }
+    parse_roman_numeral(token)
+}
+
+fn canonicalize_match_token(token: &str) -> String {
+    parse_sequence_number(token)
+        .map(|n| format!("#{}", n))
+        .unwrap_or_else(|| token.to_string())
+}
+
+fn extract_sequence_numbers(tokens: &[String]) -> HashSet<u32> {
+    tokens
+        .iter()
+        .filter_map(|token| token.strip_prefix('#'))
+        .filter_map(|num| num.parse::<u32>().ok())
+        .collect()
+}
+
+fn dice_similarity(tokens_a: &[String], tokens_b: &[String]) -> f32 {
+    if tokens_a.is_empty() || tokens_b.is_empty() {
+        return 0.0;
+    }
+
+    let set_a: HashSet<&str> = tokens_a.iter().map(|s| s.as_str()).collect();
+    let set_b: HashSet<&str> = tokens_b.iter().map(|s| s.as_str()).collect();
+    if set_a.is_empty() || set_b.is_empty() {
+        return 0.0;
+    }
+
+    let overlap = set_a.intersection(&set_b).count() as f32;
+    if overlap == 0.0 {
+        return 0.0;
+    }
+
+    (2.0 * overlap) / (set_a.len() as f32 + set_b.len() as f32)
+}
+
+fn find_best_video_match(
+    entries: &[VideoIndexEntry],
+    game_name: &str,
+) -> Option<(String, VideoMatchKind, f32)> {
+    const MIN_FUZZY_MATCH_SCORE: f32 = 0.70;
+    const PREFIX_BOOST: f32 = 0.05;
+    const MIN_FUZZY_MARGIN: f32 = 0.06;
+
+    let game_normalized = normalize_game_name(game_name);
+    let game_no_region = remove_region_codes(&game_normalized);
+    let game_tokens = tokenize_for_match(&game_no_region);
+    let game_sequence_numbers = extract_sequence_numbers(&game_tokens);
+
+    for entry in entries {
+        if entry.normalized == game_normalized {
+            return Some((entry.path.clone(), VideoMatchKind::Exact, 1.0));
+        }
+    }
+
+    for entry in entries {
+        if entry.no_region == game_no_region {
+            return Some((entry.path.clone(), VideoMatchKind::Regionless, 0.99));
+        }
+    }
+
+    if game_tokens.is_empty() {
+        return None;
+    }
+
+    let mut best: Option<(f32, &VideoIndexEntry)> = None;
+    let mut second_best = 0.0f32;
+
+    for entry in entries {
+        let entry_sequence_numbers = extract_sequence_numbers(&entry.tokens);
+        if !game_sequence_numbers.is_empty() && game_sequence_numbers != entry_sequence_numbers {
+            continue;
+        }
+
+        let mut score = dice_similarity(&game_tokens, &entry.tokens);
+        if score <= 0.0 {
+            continue;
+        }
+
+        if entry.no_region.starts_with(&game_no_region)
+            || game_no_region.starts_with(&entry.no_region)
+        {
+            score = (score + PREFIX_BOOST).min(1.0);
+        }
+
+        if let Some((best_score, _)) = best {
+            if score > best_score {
+                second_best = best_score;
+                best = Some((score, entry));
+            } else if score > second_best {
+                second_best = score;
+            }
+        } else {
+            best = Some((score, entry));
+        }
+    }
+
+    best.and_then(|(score, entry)| {
+        if score < MIN_FUZZY_MATCH_SCORE {
+            return None;
+        }
+        if second_best > 0.0 && (score - second_best) < MIN_FUZZY_MARGIN {
+            tracing::info!(
+                "Rejecting ambiguous fuzzy match for '{}': best {:.3}, second {:.3}",
+                game_name,
+                score,
+                second_best
+            );
+            return None;
+        }
+        Some((entry.path.clone(), VideoMatchKind::Fuzzy, score))
+    })
+}
+
+fn get_archive_lock(archive_path: &Path) -> Arc<Mutex<()>> {
+    let key = archive_path.to_string_lossy().to_string();
+    let locks = ARCHIVE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = locks.lock().expect("archive lock map poisoned");
+    map.entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
 }
 
 /// Archive index entry - maps filenames in archive to their paths
@@ -263,7 +569,11 @@ impl EmuMoviesClient {
             .map(|c| if c.is_alphanumeric() { c } else { '-' })
             .collect::<String>();
 
-        let filename = format!("{}-{}.zip", safe_platform, media_type.archive_pattern().to_lowercase());
+        let filename = format!(
+            "{}-{}.zip",
+            safe_platform,
+            media_type.archive_pattern().to_lowercase()
+        );
         self.archives_dir().join(filename)
     }
 
@@ -275,8 +585,8 @@ impl EmuMoviesClient {
     /// Connect to FTP server
     fn connect(&self) -> Result<FtpStream> {
         let addr = format!("{}:{}", FTP_HOST, FTP_PORT);
-        let mut ftp = FtpStream::connect(&addr)
-            .context("Failed to connect to EmuMovies FTP server")?;
+        let mut ftp =
+            FtpStream::connect(&addr).context("Failed to connect to EmuMovies FTP server")?;
 
         ftp.login(&self.config.username, &self.config.password)
             .context("FTP login failed - check username/password")?;
@@ -293,7 +603,11 @@ impl EmuMoviesClient {
     }
 
     /// Find the archive file for a platform and media type on the FTP server
-    pub fn find_archive(&self, platform: &str, media_type: EmuMoviesMediaType) -> Result<Option<String>> {
+    pub fn find_archive(
+        &self,
+        platform: &str,
+        media_type: EmuMoviesMediaType,
+    ) -> Result<Option<String>> {
         let system_folder = get_emumovies_system_folder(platform)
             .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
 
@@ -334,7 +648,11 @@ impl EmuMoviesClient {
             std::fs::create_dir_all(parent)?;
         }
 
-        tracing::info!("Downloading archive: {} -> {}", remote_path, local_path.display());
+        tracing::info!(
+            "Downloading archive: {} -> {}",
+            remote_path,
+            local_path.display()
+        );
 
         let mut ftp = self.connect()?;
         ftp.transfer_type(suppaftp::types::FileType::Binary)?;
@@ -346,7 +664,8 @@ impl EmuMoviesClient {
         let temp_path = local_path.with_extension("tmp");
 
         // Download with progress tracking
-        let data = ftp.retr_as_buffer(remote_path)
+        let data = ftp
+            .retr_as_buffer(remote_path)
             .context(format!("Failed to download: {}", remote_path))?;
 
         let _ = ftp.quit();
@@ -436,7 +755,8 @@ impl EmuMoviesClient {
         let file = std::fs::File::open(archive_path)?;
         let mut archive = zip::ZipArchive::new(file)?;
 
-        let mut entry = archive.by_name(entry_path)
+        let mut entry = archive
+            .by_name(entry_path)
             .context(format!("Entry not found in archive: {}", entry_path))?;
 
         // Create parent directories
@@ -467,37 +787,56 @@ impl EmuMoviesClient {
         }
 
         let archive_path = self.get_archive_path(platform, media_type);
+        let index = {
+            let lock = get_archive_lock(&archive_path);
+            let _guard = match lock.try_lock() {
+                Ok(g) => g,
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    anyhow::bail!(
+                        "Archive setup already in progress for {}",
+                        archive_path.display()
+                    );
+                }
+                Err(std::sync::TryLockError::Poisoned(_)) => {
+                    anyhow::bail!("Archive setup lock poisoned for {}", archive_path.display());
+                }
+            };
 
-        // Check if we need to download the archive
-        if !archive_path.exists() {
-            // Find the archive on FTP
-            let remote_path = self.find_archive(platform, media_type)?
-                .ok_or_else(|| anyhow::anyhow!(
-                    "No {} archive found for platform {}",
-                    media_type.archive_pattern(),
-                    platform
-                ))?;
+            // Check if we need to download the archive
+            if !archive_path.exists() {
+                // Find the archive on FTP
+                let remote_path = self.find_archive(platform, media_type)?.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "No {} archive found for platform {}",
+                        media_type.archive_pattern(),
+                        platform
+                    )
+                })?;
 
-            // Download it
-            self.download_archive(&remote_path, &archive_path, progress)?;
-        }
+                // Download it
+                self.download_archive(&remote_path, &archive_path, progress)?;
+            }
 
-        // Get or build the index
-        let index = self.get_or_build_index(&archive_path)?;
+            // Build/load index once while holding archive setup lock
+            self.get_or_build_index(&archive_path)?
+        };
 
         // Find the entry for this game
-        let entry_path = index.find_entry(game_name)
-            .ok_or_else(|| anyhow::anyhow!(
+        let entry_path = index.find_entry(game_name).ok_or_else(|| {
+            anyhow::anyhow!(
                 "No entry found for game '{}' in {} archive",
                 game_name,
                 media_type.archive_pattern()
-            ))?;
+            )
+        })?;
 
         // Determine output path
         let ext = entry_path.rsplit('.').next().unwrap_or("png");
-        let output_path = game_cache_dir
-            .join("emumovies")
-            .join(format!("{}.{}", media_type.cache_filename(), ext));
+        let output_path = game_cache_dir.join("emumovies").join(format!(
+            "{}.{}",
+            media_type.cache_filename(),
+            ext
+        ));
 
         // Extract the file
         self.extract_from_archive(&archive_path, entry_path, &output_path)?;
@@ -505,29 +844,120 @@ impl EmuMoviesClient {
         Ok(output_path)
     }
 
-    /// Find the video folder for a platform
-    pub fn find_video_folder(&self, platform: &str) -> Result<Option<String>> {
+    /// Find candidate video folders for a platform, in priority order.
+    /// We prefer HQ, then fall back to SQ when HQ doesn't contain a title.
+    pub fn find_video_folders(&self, platform: &str) -> Result<Vec<String>> {
         let system_folder = get_emumovies_system_folder(platform)
             .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
+        let cache_key = system_folder.to_ascii_lowercase();
 
-        let video_base = "/Official/Video Snaps (HQ)";
+        if let Some(cached) = VIDEO_FOLDER_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("video folder cache lock poisoned")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(cached);
+        }
 
-        tracing::info!("Searching for video folder for {} in {}", system_folder, video_base);
+        let bases = ["/Official/Video Snaps (HQ)", "/Official/Video Snaps (SQ)"];
+        let mut matches: Vec<VideoFolderCandidate> = Vec::new();
 
-        let folders = self.list_files(video_base)?;
+        for (source_order, video_base) in bases.iter().enumerate() {
+            tracing::info!(
+                "Searching for video folder for {} in {}",
+                system_folder,
+                video_base
+            );
+            let folders = match self.list_files(video_base) {
+                Ok(f) => f,
+                Err(e) => {
+                    tracing::warn!("Failed to list {}: {}", video_base, e);
+                    continue;
+                }
+            };
 
-        // Find a folder containing the platform name
-        for folder in &folders {
-            let folder_name = folder.rsplit('/').next().unwrap_or(folder);
-            if folder_name.contains(system_folder) ||
-               folder_name.to_lowercase().contains(&system_folder.to_lowercase()) {
-                tracing::info!("Found video folder: {}", folder);
-                return Ok(Some(folder.clone()));
+            for folder in folders {
+                if let Some(match_rank) = video_folder_match_rank(&folder, system_folder) {
+                    tracing::info!("Found video folder: {} (match_rank={})", folder, match_rank);
+                    matches.push(VideoFolderCandidate {
+                        path: folder,
+                        source_order,
+                        match_rank,
+                    });
+                }
             }
         }
 
-        tracing::info!("No video folder found for {}", system_folder);
-        Ok(None)
+        matches.sort_by(|a, b| {
+            a.match_rank
+                .cmp(&b.match_rank)
+                .then_with(|| a.source_order.cmp(&b.source_order))
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        matches.dedup_by(|a, b| a.path == b.path);
+
+        let ordered_paths: Vec<String> = matches.into_iter().map(|m| m.path).collect();
+
+        if ordered_paths.is_empty() {
+            tracing::info!("No video folder found for {}", system_folder);
+        }
+
+        if !ordered_paths.is_empty() {
+            VIDEO_FOLDER_CACHE
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+                .expect("video folder cache lock poisoned")
+                .insert(cache_key, ordered_paths.clone());
+        }
+
+        Ok(ordered_paths)
+    }
+
+    /// Build or load a cached video index for a specific FTP folder.
+    fn get_video_index(&self, video_folder: &str) -> Result<Arc<Vec<VideoIndexEntry>>> {
+        if let Some(index) = VIDEO_INDEX_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("video index cache lock poisoned")
+            .get(video_folder)
+            .cloned()
+        {
+            return Ok(index);
+        }
+
+        let videos = self.list_files(video_folder)?;
+        let entries: Vec<VideoIndexEntry> = videos
+            .into_iter()
+            .filter_map(|video| {
+                let filename = video.rsplit('/').next().unwrap_or(&video);
+                if !filename.ends_with(".mp4") {
+                    return None;
+                }
+
+                let video_name = filename.strip_suffix(".mp4").unwrap_or(filename);
+                let normalized = normalize_game_name(video_name);
+                let no_region = remove_region_codes(&normalized);
+                let tokens = tokenize_for_match(&no_region);
+
+                Some(VideoIndexEntry {
+                    path: video,
+                    normalized,
+                    no_region,
+                    tokens,
+                })
+            })
+            .collect();
+
+        let index = Arc::new(entries);
+        VIDEO_INDEX_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("video index cache lock poisoned")
+            .insert(video_folder.to_string(), index.clone());
+
+        Ok(index)
     }
 
     /// Download a video for a game
@@ -538,52 +968,76 @@ impl EmuMoviesClient {
         game_cache_dir: &Path,
         progress: Option<&ProgressCallback>,
     ) -> Result<PathBuf> {
-        let output_path = game_cache_dir
-            .join("emumovies")
-            .join("video.mp4");
+        let output_path = game_cache_dir.join("emumovies").join("video.mp4");
+        let system_folder = get_emumovies_system_folder(platform)
+            .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
 
         // Check cache first
-        if output_path.exists() {
+        if output_path.exists() && is_video_cache_current(game_cache_dir) {
             return Ok(output_path);
         }
 
-        // Find the video folder
-        let video_folder = self.find_video_folder(platform)?
-            .ok_or_else(|| anyhow::anyhow!("No video folder found for platform {}", platform))?;
+        // Find candidate video folders (HQ first, then SQ fallback)
+        let video_folders = self.find_video_folders(platform)?;
+        if video_folders.is_empty() {
+            anyhow::bail!("No video folder found for platform {}", platform);
+        }
 
-        // List videos in the folder
-        let videos = self.list_files(&video_folder)?;
+        // Evaluate matches across all candidate folders before selecting.
+        let mut selected_video: Option<(String, String, VideoMatchKind, f32, u8, usize)> = None;
 
-        // Find a matching video
-        let game_normalized = normalize_game_name(game_name);
-        let game_no_region = remove_region_codes(&game_normalized);
+        for (source_order, video_folder) in video_folders.iter().enumerate() {
+            let index = match self.get_video_index(video_folder) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Failed to build video index for {}: {}", video_folder, e);
+                    continue;
+                }
+            };
 
-        let mut best_match: Option<&String> = None;
+            if let Some((path, kind, score)) = find_best_video_match(index.as_slice(), game_name) {
+                let folder_rank = video_folder_match_rank(video_folder, system_folder).unwrap_or(2);
+                let replace = match selected_video.as_ref() {
+                    Some((_, _, cur_kind, cur_score, cur_rank, cur_order)) => {
+                        compare_video_candidates(
+                            kind,
+                            folder_rank,
+                            score,
+                            source_order,
+                            *cur_kind,
+                            *cur_rank,
+                            *cur_score,
+                            *cur_order,
+                        ) == Ordering::Greater
+                    }
+                    None => true,
+                };
 
-        for video in &videos {
-            let filename = video.rsplit('/').next().unwrap_or(video);
-            if !filename.ends_with(".mp4") {
-                continue;
-            }
-
-            let video_name = filename.strip_suffix(".mp4").unwrap_or(filename);
-            let video_normalized = normalize_game_name(video_name);
-            let video_no_region = remove_region_codes(&video_normalized);
-
-            // Exact match (with region)
-            if video_normalized == game_normalized {
-                best_match = Some(video);
-                break;
-            }
-
-            // Match without region
-            if video_no_region == game_no_region {
-                best_match = Some(video);
+                if replace {
+                    selected_video = Some((
+                        path,
+                        video_folder.clone(),
+                        kind,
+                        score,
+                        folder_rank,
+                        source_order,
+                    ));
+                }
             }
         }
 
-        let video_path = best_match
-            .ok_or_else(|| anyhow::anyhow!("No video found for game '{}'", game_name))?;
+        let (video_path, selected_folder, selected_kind, selected_score, folder_rank, _) =
+            selected_video
+                .ok_or_else(|| anyhow::anyhow!("No video found for game '{}'", game_name))?;
+
+        tracing::info!(
+            "Selected video for '{}' from {} using {:?} match (score {:.2}, folder_rank={})",
+            game_name,
+            selected_folder,
+            selected_kind,
+            selected_score,
+            folder_rank
+        );
 
         tracing::info!("Downloading video: {}", video_path);
 
@@ -596,10 +1050,11 @@ impl EmuMoviesClient {
         let mut ftp = self.connect()?;
         ftp.transfer_type(suppaftp::types::FileType::Binary)?;
 
-        let file_size = ftp.size(video_path).ok();
+        let file_size = ftp.size(&video_path).ok();
         tracing::info!("Video size: {:?} bytes", file_size);
 
-        let data = ftp.retr_as_buffer(video_path)
+        let data = ftp
+            .retr_as_buffer(&video_path)
             .context(format!("Failed to download: {}", video_path))?;
 
         let _ = ftp.quit();
@@ -614,6 +1069,7 @@ impl EmuMoviesClient {
         let temp_path = output_path.with_extension("tmp");
         std::fs::write(&temp_path, &bytes)?;
         std::fs::rename(&temp_path, &output_path)?;
+        write_video_cache_version(game_cache_dir)?;
 
         tracing::info!("Downloaded video to {}", output_path.display());
 
@@ -634,9 +1090,11 @@ impl EmuMoviesClient {
 
         // Check cache first
         let expected_ext = if media_type.is_video() { "mp4" } else { "png" };
-        let cache_path = game_cache_dir
-            .join("emumovies")
-            .join(format!("{}.{}", media_type.cache_filename(), expected_ext));
+        let cache_path = game_cache_dir.join("emumovies").join(format!(
+            "{}.{}",
+            media_type.cache_filename(),
+            expected_ext
+        ));
 
         if cache_path.exists() {
             return Ok(cache_path.to_string_lossy().to_string());
@@ -661,7 +1119,8 @@ impl EmuMoviesClient {
         let mut ftp = self.connect()?;
 
         // Try to list root directory to verify access
-        let _ = ftp.nlst(Some("/"))
+        let _ = ftp
+            .nlst(Some("/"))
             .context("Failed to list directory - access denied")?;
 
         let _ = ftp.quit();
@@ -701,9 +1160,26 @@ mod tests {
 
     #[test]
     fn test_platform_mapping() {
-        assert_eq!(get_emumovies_system_folder("Nintendo Entertainment System"), Some("Nintendo Entertainment System"));
-        assert_eq!(get_emumovies_system_folder("NES"), Some("Nintendo Entertainment System"));
-        assert_eq!(get_emumovies_system_folder("Sega Genesis"), Some("Sega Genesis - Mega Drive"));
+        assert_eq!(
+            get_emumovies_system_folder("Nintendo Entertainment System"),
+            Some("Nintendo Entertainment System")
+        );
+        assert_eq!(
+            get_emumovies_system_folder("NES"),
+            Some("Nintendo Entertainment System")
+        );
+        assert_eq!(
+            get_emumovies_system_folder("Sega Genesis"),
+            Some("Sega Genesis - Mega Drive")
+        );
+        assert_eq!(
+            get_emumovies_system_folder("Genesis"),
+            Some("Sega Genesis - Mega Drive")
+        );
+        assert_ne!(
+            get_emumovies_system_folder("Sega Genesis"),
+            Some("Nintendo Entertainment System")
+        );
     }
 
     #[test]
@@ -721,12 +1197,124 @@ mod tests {
     #[test]
     fn test_normalize_game_name() {
         assert_eq!(normalize_game_name("Super Mario Bros."), "super mario bros");
-        assert_eq!(normalize_game_name("The Legend of Zelda"), "the legend of zelda");
+        assert_eq!(
+            normalize_game_name("The Legend of Zelda"),
+            "the legend of zelda"
+        );
     }
 
     #[test]
     fn test_remove_region_codes() {
-        assert_eq!(remove_region_codes("super mario bros (usa)"), "super mario bros");
+        assert_eq!(
+            remove_region_codes("super mario bros (usa)"),
+            "super mario bros"
+        );
         assert_eq!(remove_region_codes("zelda (japan, usa)"), "zelda");
+    }
+
+    #[test]
+    fn test_find_best_video_match_prefers_exact() {
+        let entries = vec![
+            VideoIndexEntry {
+                path: "/videos/example-game-deluxe.mp4".to_string(),
+                normalized: "example game deluxe".to_string(),
+                no_region: "example game deluxe".to_string(),
+                tokens: tokenize_for_match("example game deluxe"),
+            },
+            VideoIndexEntry {
+                path: "/videos/example-game-deluxe-usa.mp4".to_string(),
+                normalized: "example game deluxe usa".to_string(),
+                no_region: "example game deluxe".to_string(),
+                tokens: tokenize_for_match("example game deluxe"),
+            },
+        ];
+
+        let exact =
+            find_best_video_match(&entries, "Example Game Deluxe").expect("expected exact match");
+        assert_eq!(exact.0, "/videos/example-game-deluxe.mp4");
+        assert_eq!(exact.1, VideoMatchKind::Exact);
+    }
+
+    #[test]
+    fn test_find_best_video_match_fuzzy_variant_title() {
+        let entries = vec![
+            VideoIndexEntry {
+                path: "/videos/example-game-deluxe.mp4".to_string(),
+                normalized: "example game deluxe".to_string(),
+                no_region: "example game deluxe".to_string(),
+                tokens: tokenize_for_match("example game deluxe"),
+            },
+            VideoIndexEntry {
+                path: "/videos/completely-different-title.mp4".to_string(),
+                normalized: "completely different title".to_string(),
+                no_region: "completely different title".to_string(),
+                tokens: tokenize_for_match("completely different title"),
+            },
+        ];
+
+        let matched = find_best_video_match(&entries, "Example Game Deluxe Extended Edition")
+            .expect("expected fuzzy match");
+        assert_eq!(matched.0, "/videos/example-game-deluxe.mp4");
+        assert_eq!(matched.1, VideoMatchKind::Fuzzy);
+        assert!(matched.2 >= 0.72);
+    }
+
+    #[test]
+    fn test_find_best_video_match_rejects_wrong_sequel_number() {
+        let entries = vec![VideoIndexEntry {
+            path: "/videos/super-mario-bros-3.mp4".to_string(),
+            normalized: "super mario bros 3".to_string(),
+            no_region: "super mario bros 3".to_string(),
+            tokens: tokenize_for_match("super mario bros 3"),
+        }];
+
+        let matched = find_best_video_match(&entries, "Super Mario Bros. 2");
+        assert!(matched.is_none(), "should reject wrong sequel number");
+    }
+
+    #[test]
+    fn test_find_best_video_match_treats_roman_and_arabic_numbers_as_equivalent() {
+        let entries = vec![VideoIndexEntry {
+            path: "/videos/street-fighter-ii.mp4".to_string(),
+            normalized: "street fighter ii".to_string(),
+            no_region: "street fighter ii".to_string(),
+            tokens: tokenize_for_match("street fighter ii"),
+        }];
+
+        let matched = find_best_video_match(&entries, "Street Fighter 2")
+            .expect("expected numeric-equivalent match");
+        assert_eq!(matched.0, "/videos/street-fighter-ii.mp4");
+    }
+
+    #[test]
+    fn test_video_folder_match_rank_is_strict_for_platform_stem() {
+        let nes = "Nintendo Entertainment System";
+
+        assert_eq!(
+            video_folder_match_rank(
+                "/Official/Video Snaps (HQ)/Nintendo Entertainment System (Video Snaps)(HQ)(No-Intro)(EM 2.5)",
+                nes
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            video_folder_match_rank(
+                "/Official/Video Snaps (HQ)/Super Nintendo Entertainment System (Video Snaps)(HQ)(No-Intro)(EM 2.5)",
+                nes
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_video_folder_match_rank_allows_platform_variants_after_primary() {
+        let nes = "Nintendo Entertainment System";
+        assert_eq!(
+            video_folder_match_rank(
+                "/Official/Video Snaps (HQ)/Nintendo Entertainment System-Hacks (Video Snaps)(HQ)(EM 1.7)",
+                nes
+            ),
+            Some(1)
+        );
     }
 }

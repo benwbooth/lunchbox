@@ -129,11 +129,11 @@ impl PrioritySourceSelector {
     pub fn new() -> Self {
         Self {
             sources: vec![
-                MediaSource::LaunchBox,    // Best quality, requires metadata
-                MediaSource::LibRetro,     // Free, good coverage
-                MediaSource::SteamGridDB,  // Good for PC games
-                MediaSource::IGDB,         // Good metadata
-                MediaSource::EmuMovies,    // Good for retro
+                MediaSource::LaunchBox,     // Best quality, requires metadata
+                MediaSource::LibRetro,      // Free, good coverage
+                MediaSource::SteamGridDB,   // Good for PC games
+                MediaSource::IGDB,          // Good metadata
+                MediaSource::EmuMovies,     // Good for retro
                 MediaSource::ScreenScraper, // ROM-based matching
             ],
         }

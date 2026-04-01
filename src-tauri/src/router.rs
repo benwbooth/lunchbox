@@ -156,13 +156,14 @@ pub async fn test_igdb_impl(client_id: String, client_secret: String) -> Connect
         },
         Err(e) => {
             let err_str = e.to_string();
-            let message =
-                if err_str.contains("401") || err_str.contains("403") || err_str.contains("invalid")
-                {
-                    "Invalid credentials. Please check your Twitch Client ID and Secret.".to_string()
-                } else {
-                    format!("Connection failed: {}", err_str)
-                };
+            let message = if err_str.contains("401")
+                || err_str.contains("403")
+                || err_str.contains("invalid")
+            {
+                "Invalid credentials. Please check your Twitch Client ID and Secret.".to_string()
+            } else {
+                format!("Connection failed: {}", err_str)
+            };
             ConnectionTestResult {
                 success: false,
                 message,
@@ -192,7 +193,8 @@ pub async fn test_emumovies_impl(username: String, password: String) -> Connecti
         // Use a temp dir for the client since we're just testing
         let client = EmuMoviesClient::new(config, std::path::PathBuf::from("/tmp"));
         client.test_connection()
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => ConnectionTestResult {
@@ -217,7 +219,7 @@ pub async fn test_emumovies_impl(username: String, password: String) -> Connecti
             success: false,
             message: format!("Connection task failed: {}", e),
             user_info: None,
-        }
+        },
     }
 }
 
@@ -268,7 +270,8 @@ pub async fn test_screenscraper_impl(
             if err_str.contains("401") || err_str.contains("403") {
                 ConnectionTestResult {
                     success: false,
-                    message: "Invalid credentials. Please check your developer ID and password.".to_string(),
+                    message: "Invalid credentials. Please check your developer ID and password."
+                        .to_string(),
                     user_info: None,
                 }
             } else if err_str.contains("429") {

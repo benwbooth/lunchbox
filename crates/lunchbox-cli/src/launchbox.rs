@@ -134,7 +134,11 @@ pub fn parse_launchbox_metadata(path: &Path) -> Result<Vec<LaunchBoxGame>> {
             Ok(Event::Eof) => break,
             Err(e) => {
                 // Log error but continue parsing
-                tracing::warn!("XML parse error at position {}: {}", xml_reader.buffer_position(), e);
+                tracing::warn!(
+                    "XML parse error at position {}: {}",
+                    xml_reader.buffer_position(),
+                    e
+                );
             }
             _ => {}
         }
@@ -214,7 +218,11 @@ pub fn parse_alternate_names(path: &Path) -> Result<Vec<GameAlternateName>> {
             }
             Ok(Event::Eof) => break,
             Err(e) => {
-                tracing::warn!("XML parse error at position {}: {}", xml_reader.buffer_position(), e);
+                tracing::warn!(
+                    "XML parse error at position {}: {}",
+                    xml_reader.buffer_position(),
+                    e
+                );
             }
             _ => {}
         }
@@ -236,8 +244,8 @@ pub fn parse_alternate_names(path: &Path) -> Result<Vec<GameAlternateName>> {
 #[derive(Debug, Clone, Default)]
 pub struct GameImage {
     pub database_id: i64,
-    pub filename: String,  // UUID filename like "3c4cc1f6-051a-43f5-b904-b60eed55b074.jpg"
-    pub image_type: String,  // "Box - Front", "Screenshot - Gameplay", etc.
+    pub filename: String, // UUID filename like "3c4cc1f6-051a-43f5-b904-b60eed55b074.jpg"
+    pub image_type: String, // "Box - Front", "Screenshot - Gameplay", etc.
     pub region: Option<String>,
     pub crc32: Option<String>,
 }
@@ -282,7 +290,10 @@ pub fn parse_game_images(path: &Path) -> Result<Vec<GameImage>> {
                 if tag_name == "GameImage" {
                     if let Some(img) = current_image.take() {
                         // Only keep entries with valid data
-                        if img.database_id > 0 && !img.filename.is_empty() && !img.image_type.is_empty() {
+                        if img.database_id > 0
+                            && !img.filename.is_empty()
+                            && !img.image_type.is_empty()
+                        {
                             images.push(img);
                         }
                     }
@@ -306,7 +317,11 @@ pub fn parse_game_images(path: &Path) -> Result<Vec<GameImage>> {
             }
             Ok(Event::Eof) => break,
             Err(e) => {
-                tracing::warn!("XML parse error at position {}: {}", xml_reader.buffer_position(), e);
+                tracing::warn!(
+                    "XML parse error at position {}: {}",
+                    xml_reader.buffer_position(),
+                    e
+                );
             }
             _ => {}
         }
@@ -393,7 +408,10 @@ impl LaunchBoxIndex {
             by_title_platform.entry(key).or_insert(idx);
 
             // Index by title only for fallback matching
-            by_title.entry(normalized_title.clone()).or_default().push(idx);
+            by_title
+                .entry(normalized_title.clone())
+                .or_default()
+                .push(idx);
 
             // Index by each word for fuzzy pre-filtering
             for word in extract_words(&normalized_title) {
@@ -432,7 +450,10 @@ impl LaunchBoxIndex {
         let normalized_platform = normalize_platform(platform);
 
         // Try exact title + platform match
-        if let Some(&idx) = self.by_title_platform.get(&(normalized_title.clone(), normalized_platform.clone())) {
+        if let Some(&idx) = self
+            .by_title_platform
+            .get(&(normalized_title.clone(), normalized_platform.clone()))
+        {
             return Some((idx, 1.0));
         }
 
@@ -511,7 +532,10 @@ pub async fn enrich_from_launchbox(
     std::io::Write::flush(&mut std::io::stdout())?;
     let index = LaunchBoxIndex::new(launchbox_games);
     println!("done");
-    println!("  Title+Platform index: {} entries", index.by_title_platform.len());
+    println!(
+        "  Title+Platform index: {} entries",
+        index.by_title_platform.len()
+    );
     println!("  Title index: {} entries", index.by_title.len());
     println!();
 
@@ -527,19 +551,22 @@ pub async fn enrich_from_launchbox(
         SELECT g.id, g.title, p.name as platform
         FROM games g
         JOIN platforms p ON g.platform_id = p.id
-        "#
+        "#,
     )
     .fetch_all(&pool)
     .await?;
 
-    let our_games: Vec<OurGame> = rows.iter().map(|row| {
-        use sqlx::Row;
-        OurGame {
-            id: row.get("id"),
-            title: row.get("title"),
-            platform: row.get("platform"),
-        }
-    }).collect();
+    let our_games: Vec<OurGame> = rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            OurGame {
+                id: row.get("id"),
+                title: row.get("title"),
+                platform: row.get("platform"),
+            }
+        })
+        .collect();
 
     pool.close().await;
     println!("{} games", our_games.len());
@@ -575,11 +602,24 @@ pub async fn enrich_from_launchbox(
     println!();
 
     println!("Match Results:");
-    println!("  Exact matches: {:>6} ({:.1}%)", exact_matches, 100.0 * exact_matches as f64 / our_games.len() as f64);
-    println!("  Fuzzy matches: {:>6} ({:.1}%)", fuzzy_matches, 100.0 * fuzzy_matches as f64 / our_games.len() as f64);
-    println!("  No match:      {:>6} ({:.1}%)", our_games.len() - matches.len(), 100.0 * (our_games.len() - matches.len()) as f64 / our_games.len() as f64);
+    println!(
+        "  Exact matches: {:>6} ({:.1}%)",
+        exact_matches,
+        100.0 * exact_matches as f64 / our_games.len() as f64
+    );
+    println!(
+        "  Fuzzy matches: {:>6} ({:.1}%)",
+        fuzzy_matches,
+        100.0 * fuzzy_matches as f64 / our_games.len() as f64
+    );
+    println!(
+        "  No match:      {:>6} ({:.1}%)",
+        our_games.len() - matches.len(),
+        100.0 * (our_games.len() - matches.len()) as f64 / our_games.len() as f64
+    );
     println!("  ─────────────────────────");
-    println!("  Total matched: {:>6} / {} ({:.1}%)",
+    println!(
+        "  Total matched: {:>6} / {} ({:.1}%)",
         matches.len(),
         our_games.len(),
         100.0 * matches.len() as f64 / our_games.len() as f64
@@ -587,7 +627,8 @@ pub async fn enrich_from_launchbox(
     println!();
 
     // Show sample matches
-    let samples: Vec<_> = matches.iter()
+    let samples: Vec<_> = matches
+        .iter()
         .filter(|(_, _, sim)| *sim < 1.0)
         .take(10)
         .collect();
@@ -597,7 +638,8 @@ pub async fn enrich_from_launchbox(
         for (our_id, lb_idx, sim) in &samples {
             let our_game = our_games.iter().find(|g| g.id == *our_id).unwrap();
             let lb_game = &index.games[*lb_idx];
-            println!("  {:.0}% \"{}\" ({}) -> \"{}\" ({})",
+            println!(
+                "  {:.0}% \"{}\" ({}) -> \"{}\" ({})",
                 sim * 100.0,
                 our_game.title,
                 our_game.platform,
@@ -609,7 +651,10 @@ pub async fn enrich_from_launchbox(
     }
 
     if dry_run {
-        println!("[Dry run] Would update {} games with metadata", matches.len());
+        println!(
+            "[Dry run] Would update {} games with metadata",
+            matches.len()
+        );
         return Ok(());
     }
 
@@ -621,7 +666,9 @@ pub async fn enrich_from_launchbox(
     let pb = ProgressBar::new(matches.len() as u64);
     pb.set_style(
         ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({per_sec})")
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({per_sec})",
+            )
             .unwrap()
             .progress_chars("#>-"),
     );
@@ -632,10 +679,14 @@ pub async fn enrich_from_launchbox(
         let lb_game = &index.games[*lb_idx];
 
         // Only update if we have useful metadata
-        let has_data = lb_game.overview.is_some() || lb_game.developer.is_some() ||
-                       lb_game.publisher.is_some() || lb_game.genres.is_some() ||
-                       lb_game.release_year.is_some() || lb_game.esrb.is_some() ||
-                       lb_game.video_url.is_some() || lb_game.wikipedia_url.is_some();
+        let has_data = lb_game.overview.is_some()
+            || lb_game.developer.is_some()
+            || lb_game.publisher.is_some()
+            || lb_game.genres.is_some()
+            || lb_game.release_year.is_some()
+            || lb_game.esrb.is_some()
+            || lb_game.video_url.is_some()
+            || lb_game.wikipedia_url.is_some();
 
         if has_data {
             sqlx::query(
@@ -658,7 +709,7 @@ pub async fn enrich_from_launchbox(
                     metadata_source = COALESCE(metadata_source, 'launchbox'),
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-                "#
+                "#,
             )
             .bind(&lb_game.overview)
             .bind(&lb_game.developer)

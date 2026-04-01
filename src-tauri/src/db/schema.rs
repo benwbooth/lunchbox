@@ -3,9 +3,9 @@
 //! All game metadata fields are defined here. Other modules should use these types
 //! rather than defining their own Game structs.
 
+use crate::tags;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use crate::tags;
 
 /// Platform from database
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -264,6 +264,7 @@ pub struct Game {
     pub box_front_path: Option<String>,
     pub screenshot_path: Option<String>,
     pub variant_count: i32, // Number of variants (regions/versions)
+    pub has_game_file: bool,
 }
 
 impl Game {
@@ -302,6 +303,7 @@ impl Game {
             box_front_path: None,
             screenshot_path: None,
             variant_count: 1,
+            has_game_file: false,
         }
     }
 
@@ -368,6 +370,7 @@ impl Game {
             box_front_path: None,
             screenshot_path: None,
             variant_count: 1,
+            has_game_file: false,
         }
     }
 }

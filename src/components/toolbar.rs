@@ -1,7 +1,7 @@
+use crate::app::{ArtworkDisplayType, GameFilters, ViewMode};
+use crate::tauri;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::app::{ViewMode, ArtworkDisplayType};
-use crate::tauri;
 
 /// Frontend build info (embedded at compile time)
 const FRONTEND_BUILD_HASH: &str = env!("BUILD_HASH");
@@ -46,9 +46,7 @@ fn parse_build_timestamp(ts: &str) -> Option<f64> {
 
 /// Calculate minutes since a build timestamp
 fn minutes_since_build(timestamp: &str) -> Option<i64> {
-    parse_build_timestamp(timestamp).map(|build_ms| {
-        ((now_ms() - build_ms) / 60000.0) as i64
-    })
+    parse_build_timestamp(timestamp).map(|build_ms| ((now_ms() - build_ms) / 60000.0) as i64)
 }
 
 /// Status indicator showing backend connectivity and build info
@@ -100,7 +98,8 @@ fn StatusIndicator() -> impl IntoView {
     // Compute relative times based on build timestamps
     let backend_relative = move || {
         let _ = tick.get(); // Subscribe to updates
-        backend_timestamp.get()
+        backend_timestamp
+            .get()
             .and_then(|ts| minutes_since_build(&ts))
             .map(|mins| format!(" ({})", format_relative_time(mins)))
             .unwrap_or_default()
@@ -115,9 +114,15 @@ fn StatusIndicator() -> impl IntoView {
 
     // Build tooltip text
     let tooltip = move || {
-        let status = if is_connected.get() { "Connected" } else { "Disconnected" };
+        let status = if is_connected.get() {
+            "Connected"
+        } else {
+            "Disconnected"
+        };
         let be_hash = backend_hash.get().unwrap_or_else(|| "unknown".to_string());
-        let be_time = backend_timestamp.get().unwrap_or_else(|| "unknown".to_string());
+        let be_time = backend_timestamp
+            .get()
+            .unwrap_or_else(|| "unknown".to_string());
         format!(
             "Backend: {}\nBackend build: {} ({})\nFrontend build: {} ({})",
             status, be_hash, be_time, FRONTEND_BUILD_HASH, FRONTEND_BUILD_TIMESTAMP
@@ -135,6 +140,7 @@ fn StatusIndicator() -> impl IntoView {
                 <span class="status-label">"BE:"</span>
                 <span class="status-hash">{move || backend_hash.get().unwrap_or_else(|| "...".to_string())}</span>
                 <span class="status-time">{move || backend_timestamp.get().unwrap_or_else(|| "".to_string())}{backend_relative}</span>
+                <br/>
                 <span class="status-label">"FE:"</span>
                 <span class="status-hash">{FRONTEND_BUILD_HASH}</span>
                 <span class="status-time">{FRONTEND_BUILD_TIMESTAMP}{frontend_relative}</span>
@@ -154,6 +160,8 @@ pub fn Toolbar(
     set_artwork_type: WriteSignal<ArtworkDisplayType>,
     zoom_level: ReadSignal<f64>,
     set_zoom_level: WriteSignal<f64>,
+    game_filters: ReadSignal<GameFilters>,
+    set_game_filters: WriteSignal<GameFilters>,
 ) -> impl IntoView {
     view! {
         <header class="toolbar">
@@ -201,6 +209,62 @@ pub fn Toolbar(
                         }
                     />
                     <span class="zoom-value">{move || format!("{:.0}%", zoom_level.get() * 100.0)}</span>
+                </div>
+                <div class="game-filters">
+                    <details class="filters-dropdown">
+                        <summary class="filters-summary" title="Filter game list">
+                            <span>"Filters"</span>
+                            <span class="filters-summary-count">
+                                {move || {
+                                    let filters = game_filters.get();
+                                    let active = filters.installed_only as usize
+                                        + filters.hide_homebrew as usize
+                                        + filters.hide_adult as usize;
+                                    if active > 0 {
+                                        format!(" ({})", active)
+                                    } else {
+                                        String::new()
+                                    }
+                                }}
+                            </span>
+                            <span class="filters-caret">"▾"</span>
+                        </summary>
+                        <div class="filters-menu">
+                            <label class="filter-item" title="Show only games that already have a downloaded game file">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || game_filters.get().installed_only
+                                    on:change=move |ev| {
+                                        let checked = event_target_checked(&ev);
+                                        set_game_filters.update(|f| f.installed_only = checked);
+                                    }
+                                />
+                                <span class="filter-item-title">"Installed"</span>
+                            </label>
+                            <label class="filter-item" title="Hide games marked as Homebrew or ROM Hack">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || game_filters.get().hide_homebrew
+                                    on:change=move |ev| {
+                                        let checked = event_target_checked(&ev);
+                                        set_game_filters.update(|f| f.hide_homebrew = checked);
+                                    }
+                                />
+                                <span class="filter-item-title">"Hide Homebrew/Hacks"</span>
+                            </label>
+                            <label class="filter-item" title="Hide games marked as adult-only">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || game_filters.get().hide_adult
+                                    on:change=move |ev| {
+                                        let checked = event_target_checked(&ev);
+                                        set_game_filters.update(|f| f.hide_adult = checked);
+                                    }
+                                />
+                                <span class="filter-item-title">"Hide Adult"</span>
+                            </label>
+                        </div>
+                    </details>
                 </div>
                 // Artwork type dropdown (only show in grid view)
                 <Show when=move || view_mode.get() == ViewMode::Grid>

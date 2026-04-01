@@ -105,15 +105,58 @@ pub fn is_variant_tag(tag: &str) -> bool {
     // === REGIONS ===
     // Single word regions
     let regions = [
-        "usa", "europe", "japan", "world", "asia", "australia", "brazil",
-        "canada", "china", "finland", "france", "germany", "greece",
-        "hong kong", "italy", "korea", "mexico", "netherlands", "norway",
-        "poland", "portugal", "russia", "scandinavia", "spain", "sweden",
-        "taiwan", "uk", "argentina", "austria", "belgium", "chile",
-        "colombia", "czech", "denmark", "hungary", "india", "indonesia",
-        "ireland", "israel", "malaysia", "new zealand", "peru", "philippines",
-        "romania", "singapore", "slovakia", "south africa", "switzerland",
-        "thailand", "turkey", "ukraine", "vietnam",
+        "usa",
+        "europe",
+        "japan",
+        "world",
+        "asia",
+        "australia",
+        "brazil",
+        "canada",
+        "china",
+        "finland",
+        "france",
+        "germany",
+        "greece",
+        "hong kong",
+        "italy",
+        "korea",
+        "mexico",
+        "netherlands",
+        "norway",
+        "poland",
+        "portugal",
+        "russia",
+        "scandinavia",
+        "spain",
+        "sweden",
+        "taiwan",
+        "uk",
+        "argentina",
+        "austria",
+        "belgium",
+        "chile",
+        "colombia",
+        "czech",
+        "denmark",
+        "hungary",
+        "india",
+        "indonesia",
+        "ireland",
+        "israel",
+        "malaysia",
+        "new zealand",
+        "peru",
+        "philippines",
+        "romania",
+        "singapore",
+        "slovakia",
+        "south africa",
+        "switzerland",
+        "thailand",
+        "turkey",
+        "ukraine",
+        "vietnam",
     ];
     if regions.iter().any(|r| tag_trimmed == *r) {
         return true;
@@ -128,7 +171,13 @@ pub fn is_variant_tag(tag: &str) -> bool {
     }
 
     // === VERSIONS ===
-    if tag_trimmed.starts_with("v") && tag_trimmed.chars().nth(1).map(|c| c.is_ascii_digit()).unwrap_or(false) {
+    if tag_trimmed.starts_with("v")
+        && tag_trimmed
+            .chars()
+            .nth(1)
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+    {
         return true; // v1.0, v1.1, etc.
     }
     if tag_trimmed.starts_with("rev") {
@@ -148,10 +197,28 @@ pub fn is_variant_tag(tag: &str) -> bool {
 
     // === SPECIAL RELEASES ===
     let special = [
-        "beta", "proto", "prototype", "sample", "demo", "kiosk", "debug",
-        "unl", "unlicensed", "pirate", "hack", "alt", "alternate",
-        "ndc", "competition", "promo", "promotional", "preview",
-        "alpha", "pre-release", "prerelease", "aftermarket",
+        "beta",
+        "proto",
+        "prototype",
+        "sample",
+        "demo",
+        "kiosk",
+        "debug",
+        "unl",
+        "unlicensed",
+        "pirate",
+        "hack",
+        "alt",
+        "alternate",
+        "ndc",
+        "competition",
+        "promo",
+        "promotional",
+        "preview",
+        "alpha",
+        "pre-release",
+        "prerelease",
+        "aftermarket",
     ];
     if special.iter().any(|s| tag_trimmed.contains(s)) {
         return true;
@@ -159,9 +226,21 @@ pub fn is_variant_tag(tag: &str) -> bool {
 
     // === PLATFORM/DISTRIBUTION ===
     let platforms = [
-        "virtual console", "psn", "xbla", "eshop", "steam", "gog",
-        "switch online", "wiiware", "dsiware", "xbox live", "playstation network",
-        "nintendo online", "game pass", "psplus", "arcade archives",
+        "virtual console",
+        "psn",
+        "xbla",
+        "eshop",
+        "steam",
+        "gog",
+        "switch online",
+        "wiiware",
+        "dsiware",
+        "xbox live",
+        "playstation network",
+        "nintendo online",
+        "game pass",
+        "psplus",
+        "arcade archives",
     ];
     if platforms.iter().any(|p| tag_trimmed.contains(p)) {
         return true;
@@ -177,7 +256,10 @@ pub fn is_variant_tag(tag: &str) -> bool {
 
 /// Extract only variant-significant tags from a title
 pub fn extract_variant_tags(title: &str) -> Vec<String> {
-    extract_tags(title).into_iter().filter(|t| is_variant_tag(t)).collect()
+    extract_tags(title)
+        .into_iter()
+        .filter(|t| is_variant_tag(t))
+        .collect()
 }
 
 /// - Removes "the " prefix
@@ -212,7 +294,13 @@ pub fn normalize_title(title: &str) -> String {
     // Remove punctuation and extra whitespace
     result = result
         .chars()
-        .map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c.is_whitespace() {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
 
     // Normalize whitespace
@@ -248,7 +336,11 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     for i in 1..=a_len {
         curr_row[0] = i;
         for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
             curr_row[j] = (prev_row[j] + 1)
                 .min(curr_row[j - 1] + 1)
                 .min(prev_row[j - 1] + cost);
@@ -283,24 +375,27 @@ async fn load_openvgdb_games(openvgdb_path: &Path) -> Result<Vec<OpenVGDBGame>> 
         FROM ROMs r
         JOIN RELEASES rel ON r.romID = rel.romID
         WHERE r.romHashCRC IS NOT NULL AND r.romHashCRC != ''
-        "#
+        "#,
     )
     .fetch_all(&pool)
     .await?;
 
-    let games: Vec<OpenVGDBGame> = rows.iter().map(|row| {
-        use sqlx::Row;
-        let release_title: String = row.get("release_title");
-        let normalized = normalize_title(&release_title);
-        let words = extract_words(&normalized);
-        OpenVGDBGame {
-            release_id: row.get("releaseID"),
-            crc: row.get("crc"),
-            release_title,
-            normalized_title: normalized,
-            title_words: words,
-        }
-    }).collect();
+    let games: Vec<OpenVGDBGame> = rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            let release_title: String = row.get("release_title");
+            let normalized = normalize_title(&release_title);
+            let words = extract_words(&normalized);
+            OpenVGDBGame {
+                release_id: row.get("releaseID"),
+                crc: row.get("crc"),
+                release_title,
+                normalized_title: normalized,
+                title_words: words,
+            }
+        })
+        .collect();
 
     pool.close().await;
     Ok(games)
@@ -323,19 +418,22 @@ async fn load_libretro_games(db_path: &Path) -> Result<Vec<LibRetroGame>> {
         r#"
         SELECT id, title, libretro_crc32
         FROM games
-        "#
+        "#,
     )
     .fetch_all(&pool)
     .await?;
 
-    let games: Vec<LibRetroGame> = rows.iter().map(|row| {
-        use sqlx::Row;
-        LibRetroGame {
-            id: row.get("id"),
-            title: row.get("title"),
-            crc32: row.get("libretro_crc32"),
-        }
-    }).collect();
+    let games: Vec<LibRetroGame> = rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            LibRetroGame {
+                id: row.get("id"),
+                title: row.get("title"),
+                crc32: row.get("libretro_crc32"),
+            }
+        })
+        .collect();
 
     pool.close().await;
     Ok(games)
@@ -399,11 +497,7 @@ fn find_fuzzy_candidates(normalized: &str, maps: &MatchMaps) -> HashSet<usize> {
 }
 
 /// Find the best match for a LibRetro game in OpenVGDB
-fn find_best_match(
-    game: &LibRetroGame,
-    maps: &MatchMaps,
-    threshold: f64,
-) -> Option<MatchResult> {
+fn find_best_match(game: &LibRetroGame, maps: &MatchMaps, threshold: f64) -> Option<MatchResult> {
     let normalized_title = normalize_title(&game.title);
 
     // Try CRC match first (most reliable)
@@ -526,14 +620,17 @@ async fn apply_matches(
         for row in rows {
             use sqlx::Row;
             let release_id: i64 = row.get("releaseID");
-            release_data.insert(release_id, ReleaseData {
+            release_data.insert(
                 release_id,
-                description: row.get("releaseDescription"),
-                developer: row.get("releaseDeveloper"),
-                publisher: row.get("releasePublisher"),
-                genre: row.get("releaseGenre"),
-                release_date: row.get("releaseDate"),
-            });
+                ReleaseData {
+                    release_id,
+                    description: row.get("releaseDescription"),
+                    developer: row.get("releaseDeveloper"),
+                    publisher: row.get("releasePublisher"),
+                    genre: row.get("releaseGenre"),
+                    release_date: row.get("releaseDate"),
+                },
+            );
         }
     }
 
@@ -559,8 +656,11 @@ async fn apply_matches(
         for m in chunk {
             if let Some(data) = release_data.get(&m.openvgdb_release_id) {
                 // Only update if we have something to add
-                let has_data = data.description.is_some() || data.developer.is_some() ||
-                               data.publisher.is_some() || data.genre.is_some() || data.release_date.is_some();
+                let has_data = data.description.is_some()
+                    || data.developer.is_some()
+                    || data.publisher.is_some()
+                    || data.genre.is_some()
+                    || data.release_date.is_some();
 
                 if has_data {
                     sqlx::query(
@@ -575,7 +675,7 @@ async fn apply_matches(
                             metadata_source = COALESCE(metadata_source, 'openvgdb'),
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
-                        "#
+                        "#,
                     )
                     .bind(&data.description)
                     .bind(&data.developer)
@@ -688,12 +788,29 @@ pub async fn enrich_database(
     println!();
 
     println!("Match Results:");
-    println!("  CRC matches:   {:>6} ({:.1}%)", crc_matches, 100.0 * crc_matches as f64 / libretro_games.len() as f64);
-    println!("  Title matches: {:>6} ({:.1}%)", title_matches, 100.0 * title_matches as f64 / libretro_games.len() as f64);
-    println!("  Fuzzy matches: {:>6} ({:.1}%)", fuzzy_matches, 100.0 * fuzzy_matches as f64 / libretro_games.len() as f64);
-    println!("  No match:      {:>6} ({:.1}%)", no_match, 100.0 * no_match as f64 / libretro_games.len() as f64);
+    println!(
+        "  CRC matches:   {:>6} ({:.1}%)",
+        crc_matches,
+        100.0 * crc_matches as f64 / libretro_games.len() as f64
+    );
+    println!(
+        "  Title matches: {:>6} ({:.1}%)",
+        title_matches,
+        100.0 * title_matches as f64 / libretro_games.len() as f64
+    );
+    println!(
+        "  Fuzzy matches: {:>6} ({:.1}%)",
+        fuzzy_matches,
+        100.0 * fuzzy_matches as f64 / libretro_games.len() as f64
+    );
+    println!(
+        "  No match:      {:>6} ({:.1}%)",
+        no_match,
+        100.0 * no_match as f64 / libretro_games.len() as f64
+    );
     println!("  ─────────────────────────");
-    println!("  Total matched: {:>6} / {} ({:.1}%)",
+    println!(
+        "  Total matched: {:>6} / {} ({:.1}%)",
         matches.len(),
         libretro_games.len(),
         100.0 * matches.len() as f64 / libretro_games.len() as f64
@@ -701,7 +818,8 @@ pub async fn enrich_database(
     println!();
 
     // Show some sample fuzzy matches for verification
-    let fuzzy_samples: Vec<_> = matches.iter()
+    let fuzzy_samples: Vec<_> = matches
+        .iter()
         .filter(|m| matches!(m.match_type, MatchType::FuzzyTitle))
         .take(10)
         .collect();
@@ -716,7 +834,10 @@ pub async fn enrich_database(
     }
 
     if dry_run {
-        println!("[Dry run] Would update {} games with metadata", matches.len());
+        println!(
+            "[Dry run] Would update {} games with metadata",
+            matches.len()
+        );
     } else {
         println!("Applying metadata updates...");
         let updated = apply_matches(database_path, openvgdb_path, &matches).await?;
@@ -733,10 +854,22 @@ mod tests {
 
     #[test]
     fn test_normalize_title() {
-        assert_eq!(normalize_title("Super Mario Bros. (USA)"), "super mario bros");
-        assert_eq!(normalize_title("The Legend of Zelda (Europe) [!]"), "legend of zelda");
-        assert_eq!(normalize_title("Sonic the Hedgehog 2 (World)"), "sonic hedgehog 2");
-        assert_eq!(normalize_title("Street Fighter II: Champion Edition"), "street fighter ii champion edition");
+        assert_eq!(
+            normalize_title("Super Mario Bros. (USA)"),
+            "super mario bros"
+        );
+        assert_eq!(
+            normalize_title("The Legend of Zelda (Europe) [!]"),
+            "legend of zelda"
+        );
+        assert_eq!(
+            normalize_title("Sonic the Hedgehog 2 (World)"),
+            "sonic hedgehog 2"
+        );
+        assert_eq!(
+            normalize_title("Street Fighter II: Champion Edition"),
+            "street fighter ii champion edition"
+        );
     }
 
     #[test]

@@ -50,7 +50,10 @@ impl IGDBImage {
     /// Sizes: cover_small, cover_big, screenshot_med, screenshot_big, screenshot_huge,
     ///        logo_med, thumb, micro, 720p, 1080p
     pub fn url(&self, size: &str) -> String {
-        format!("https://images.igdb.com/igdb/image/upload/t_{}/{}.jpg", size, self.image_id)
+        format!(
+            "https://images.igdb.com/igdb/image/upload/t_{}/{}.jpg",
+            size, self.image_id
+        )
     }
 }
 
@@ -164,11 +167,14 @@ impl IGDBClient {
             anyhow::bail!("Twitch OAuth error: {} - {}", status, body);
         }
 
-        let token_data: TokenResponse = response.json().await
+        let token_data: TokenResponse = response
+            .json()
+            .await
             .context("Failed to parse OAuth response")?;
 
         // Cache token (with 60 second buffer before expiry)
-        let expires_at = std::time::Instant::now() + std::time::Duration::from_secs((token_data.expires_in - 60) as u64);
+        let expires_at = std::time::Instant::now()
+            + std::time::Duration::from_secs((token_data.expires_in - 60) as u64);
         let token = token_data.access_token.clone();
 
         {
@@ -208,7 +214,10 @@ impl IGDBClient {
             anyhow::bail!("IGDB API error: {} - {}", status, body);
         }
 
-        response.text().await.context("Failed to read IGDB response")
+        response
+            .text()
+            .await
+            .context("Failed to read IGDB response")
     }
 
     /// Search for games by name
@@ -228,8 +237,8 @@ limit {};"#,
         );
 
         let response = self.api_request("games", &body).await?;
-        let games: Vec<IGDBGame> = serde_json::from_str(&response)
-            .context("Failed to parse IGDB games response")?;
+        let games: Vec<IGDBGame> =
+            serde_json::from_str(&response).context("Failed to parse IGDB games response")?;
 
         Ok(games)
     }
@@ -249,8 +258,8 @@ fields id, name, summary, storyline, rating, aggregated_rating, first_release_da
         );
 
         let response = self.api_request("games", &body).await?;
-        let games: Vec<IGDBGame> = serde_json::from_str(&response)
-            .context("Failed to parse IGDB game response")?;
+        let games: Vec<IGDBGame> =
+            serde_json::from_str(&response).context("Failed to parse IGDB game response")?;
 
         Ok(games.into_iter().next())
     }
@@ -292,7 +301,7 @@ pub fn get_igdb_platform_id(platform_name: &str) -> Option<i32> {
     let normalized = platform_name.to_lowercase();
 
     match normalized.as_str() {
-        s if s.contains("nes") && !s.contains("snes") => Some(18),   // NES
+        s if s.contains("nes") && !s.contains("snes") => Some(18), // NES
         s if s.contains("snes") || s.contains("super nintendo") => Some(19), // SNES
         s if s.contains("nintendo 64") || s.contains("n64") => Some(4), // N64
         s if s.contains("game boy advance") || s.contains("gba") => Some(24), // GBA
@@ -300,40 +309,53 @@ pub fn get_igdb_platform_id(platform_name: &str) -> Option<i32> {
         s if s.contains("game boy") && !s.contains("advance") && !s.contains("color") => Some(33), // GB
         s if s.contains("nintendo ds") || s.contains("nds") => Some(20), // NDS
         s if s.contains("nintendo 3ds") || s.contains("3ds") => Some(37), // 3DS
-        s if s.contains("gamecube") || s.contains("ngc") => Some(21), // GameCube
-        s if s.contains("wii u") => Some(41), // Wii U
-        s if s.contains("wii") && !s.contains("wii u") => Some(5), // Wii
-        s if s.contains("switch") => Some(130), // Nintendo Switch
+        s if s.contains("gamecube") || s.contains("ngc") => Some(21),    // GameCube
+        s if s.contains("wii u") => Some(41),                            // Wii U
+        s if s.contains("wii") && !s.contains("wii u") => Some(5),       // Wii
+        s if s.contains("switch") => Some(130),                          // Nintendo Switch
         s if s.contains("genesis") || s.contains("mega drive") => Some(29), // Genesis
-        s if s.contains("master system") => Some(64), // SMS
-        s if s.contains("game gear") => Some(35), // Game Gear
-        s if s.contains("saturn") => Some(32), // Saturn
-        s if s.contains("dreamcast") => Some(23), // Dreamcast
+        s if s.contains("master system") => Some(64),                    // SMS
+        s if s.contains("game gear") => Some(35),                        // Game Gear
+        s if s.contains("saturn") => Some(32),                           // Saturn
+        s if s.contains("dreamcast") => Some(23),                        // Dreamcast
         s if s.contains("sega cd") || s.contains("mega-cd") => Some(78), // Sega CD
-        s if s.contains("32x") => Some(30), // 32X
+        s if s.contains("32x") => Some(30),                              // 32X
         s if s.contains("playstation 2") || s.contains("ps2") => Some(8), // PS2
         s if s.contains("playstation 3") || s.contains("ps3") => Some(9), // PS3
         s if s.contains("playstation 4") || s.contains("ps4") => Some(48), // PS4
         s if s.contains("playstation 5") || s.contains("ps5") => Some(167), // PS5
-        s if s.contains("psp") => Some(38), // PSP
-        s if s.contains("ps vita") || s.contains("vita") => Some(46), // Vita
-        s if s.contains("playstation") && !s.contains("2") && !s.contains("3") && !s.contains("4") && !s.contains("5") => Some(7), // PS1
-        s if s.contains("xbox one") => Some(49), // Xbox One
-        s if s.contains("xbox 360") => Some(12), // Xbox 360
-        s if s.contains("xbox") && !s.contains("360") && !s.contains("one") && !s.contains("series") => Some(11), // Original Xbox
+        s if s.contains("psp") => Some(38),                              // PSP
+        s if s.contains("ps vita") || s.contains("vita") => Some(46),    // Vita
+        s if s.contains("playstation")
+            && !s.contains("2")
+            && !s.contains("3")
+            && !s.contains("4")
+            && !s.contains("5") =>
+        {
+            Some(7)
+        } // PS1
+        s if s.contains("xbox one") => Some(49),                         // Xbox One
+        s if s.contains("xbox 360") => Some(12),                         // Xbox 360
+        s if s.contains("xbox")
+            && !s.contains("360")
+            && !s.contains("one")
+            && !s.contains("series") =>
+        {
+            Some(11)
+        } // Original Xbox
         s if s.contains("turbografx") || s.contains("pc engine") => Some(86), // TurboGrafx
         s if s.contains("neo geo") && s.contains("pocket") => Some(119), // NGP
-        s if s.contains("neo geo") => Some(80), // Neo Geo
-        s if s.contains("atari 2600") => Some(59), // Atari 2600
-        s if s.contains("atari 5200") => Some(66), // Atari 5200
-        s if s.contains("atari 7800") => Some(60), // Atari 7800
-        s if s.contains("lynx") => Some(61), // Atari Lynx
-        s if s.contains("jaguar") => Some(62), // Atari Jaguar
-        s if s.contains("colecovision") => Some(68), // ColecoVision
-        s if s.contains("intellivision") => Some(67), // Intellivision
-        s if s.contains("arcade") || s.contains("mame") => Some(52), // Arcade
-        s if s.contains("dos") || s.contains("ms-dos") => Some(13), // DOS
-        s if s.contains("windows") || s.contains("pc") => Some(6), // Windows/PC
+        s if s.contains("neo geo") => Some(80),                          // Neo Geo
+        s if s.contains("atari 2600") => Some(59),                       // Atari 2600
+        s if s.contains("atari 5200") => Some(66),                       // Atari 5200
+        s if s.contains("atari 7800") => Some(60),                       // Atari 7800
+        s if s.contains("lynx") => Some(61),                             // Atari Lynx
+        s if s.contains("jaguar") => Some(62),                           // Atari Jaguar
+        s if s.contains("colecovision") => Some(68),                     // ColecoVision
+        s if s.contains("intellivision") => Some(67),                    // Intellivision
+        s if s.contains("arcade") || s.contains("mame") => Some(52),     // Arcade
+        s if s.contains("dos") || s.contains("ms-dos") => Some(13),      // DOS
+        s if s.contains("windows") || s.contains("pc") => Some(6),       // Windows/PC
         _ => None,
     }
 }
@@ -351,7 +373,10 @@ mod tests {
 
     #[test]
     fn test_platform_mapping() {
-        assert_eq!(get_igdb_platform_id("Nintendo Entertainment System"), Some(18));
+        assert_eq!(
+            get_igdb_platform_id("Nintendo Entertainment System"),
+            Some(18)
+        );
         assert_eq!(get_igdb_platform_id("PlayStation 2"), Some(8));
         assert_eq!(get_igdb_platform_id("Unknown Platform"), None);
     }
@@ -364,6 +389,9 @@ mod tests {
             width: Some(1920),
             height: Some(1080),
         };
-        assert_eq!(image.url("cover_big"), "https://images.igdb.com/igdb/image/upload/t_cover_big/abc123.jpg");
+        assert_eq!(
+            image.url("cover_big"),
+            "https://images.igdb.com/igdb/image/upload/t_cover_big/abc123.jpg"
+        );
     }
 }

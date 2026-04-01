@@ -13,6 +13,7 @@ pub mod scanner;
 pub mod scraper;
 pub mod state;
 pub mod tags;
+pub mod torrent;
 
 use router::Ctx;
 use state::AppState;
@@ -115,6 +116,18 @@ pub fn run() {
             commands::save_graboid_prompt,
             commands::delete_graboid_prompt,
             commands::get_effective_graboid_prompt,
+            // Minerva archive commands
+            commands::has_minerva_db,
+            commands::get_minerva_rom_for_game,
+            commands::search_minerva,
+            commands::start_minerva_download,
+            commands::get_minerva_download_progress,
+            commands::cancel_minerva_download,
+            commands::test_torrent_connection,
+            commands::list_torrent_files,
+            // ROM import commands
+            commands::scan_and_match_roms,
+            commands::confirm_rom_import,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -135,7 +148,8 @@ pub fn run() {
 
                     // Create rspc Axum endpoint
                     let rspc_ctx = Ctx { state };
-                    let rspc_axum_router = rspc_axum::endpoint(rspc_router_for_http, move || rspc_ctx.clone());
+                    let rspc_axum_router =
+                        rspc_axum::endpoint(rspc_router_for_http, move || rspc_ctx.clone());
 
                     // Merge routers - rspc at /rspc, legacy at /api
                     let combined_router = axum::Router::new()

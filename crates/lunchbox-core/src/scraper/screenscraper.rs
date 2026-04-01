@@ -64,7 +64,7 @@ pub fn get_screenscraper_platform_id(platform_name: &str) -> Option<i32> {
 
     // Common platform mappings
     match normalized.as_str() {
-        s if s.contains("nes") && !s.contains("snes") => Some(3),   // NES
+        s if s.contains("nes") && !s.contains("snes") => Some(3), // NES
         s if s.contains("snes") || s.contains("super nintendo") => Some(4), // SNES
         s if s.contains("nintendo 64") || s.contains("n64") => Some(14), // N64
         s if s.contains("game boy advance") || s.contains("gba") => Some(12), // GBA
@@ -72,35 +72,35 @@ pub fn get_screenscraper_platform_id(platform_name: &str) -> Option<i32> {
         s if s.contains("game boy") && !s.contains("advance") && !s.contains("color") => Some(10), // GB
         s if s.contains("nintendo ds") || s.contains("nds") => Some(15), // NDS
         s if s.contains("nintendo 3ds") || s.contains("3ds") => Some(17), // 3DS
-        s if s.contains("gamecube") || s.contains("ngc") => Some(13), // GameCube
-        s if s.contains("wii u") => Some(18), // Wii U
-        s if s.contains("wii") && !s.contains("wii u") => Some(16), // Wii
-        s if s.contains("switch") => Some(225), // Nintendo Switch
+        s if s.contains("gamecube") || s.contains("ngc") => Some(13),    // GameCube
+        s if s.contains("wii u") => Some(18),                            // Wii U
+        s if s.contains("wii") && !s.contains("wii u") => Some(16),      // Wii
+        s if s.contains("switch") => Some(225),                          // Nintendo Switch
         s if s.contains("genesis") || s.contains("mega drive") => Some(1), // Genesis
-        s if s.contains("master system") => Some(2), // SMS
-        s if s.contains("game gear") => Some(21), // Game Gear
-        s if s.contains("saturn") => Some(22), // Saturn
-        s if s.contains("dreamcast") => Some(23), // Dreamcast
+        s if s.contains("master system") => Some(2),                     // SMS
+        s if s.contains("game gear") => Some(21),                        // Game Gear
+        s if s.contains("saturn") => Some(22),                           // Saturn
+        s if s.contains("dreamcast") => Some(23),                        // Dreamcast
         s if s.contains("sega cd") || s.contains("mega-cd") => Some(20), // Sega CD
-        s if s.contains("32x") => Some(19), // 32X
+        s if s.contains("32x") => Some(19),                              // 32X
         s if s.contains("playstation 2") || s.contains("ps2") => Some(58), // PS2
         s if s.contains("playstation 3") || s.contains("ps3") => Some(59), // PS3
-        s if s.contains("psp") => Some(61), // PSP
-        s if s.contains("ps vita") || s.contains("vita") => Some(62), // Vita
+        s if s.contains("psp") => Some(61),                              // PSP
+        s if s.contains("ps vita") || s.contains("vita") => Some(62),    // Vita
         s if s.contains("playstation") && !s.contains("2") && !s.contains("3") => Some(57), // PS1
         s if s.contains("turbografx") || s.contains("pc engine") => Some(31), // TurboGrafx
-        s if s.contains("neo geo") && s.contains("pocket") => Some(82), // NGP
-        s if s.contains("neo geo") => Some(142), // Neo Geo
-        s if s.contains("atari 2600") => Some(26), // Atari 2600
-        s if s.contains("atari 5200") => Some(40), // Atari 5200
-        s if s.contains("atari 7800") => Some(41), // Atari 7800
-        s if s.contains("lynx") => Some(28), // Atari Lynx
-        s if s.contains("jaguar") => Some(27), // Atari Jaguar
-        s if s.contains("colecovision") => Some(48), // ColecoVision
-        s if s.contains("intellivision") => Some(115), // Intellivision
-        s if s.contains("arcade") || s.contains("mame") => Some(75), // Arcade
-        s if s.contains("dos") || s.contains("ms-dos") => Some(135), // DOS
-        s if s.contains("windows") => Some(138), // Windows
+        s if s.contains("neo geo") && s.contains("pocket") => Some(82),  // NGP
+        s if s.contains("neo geo") => Some(142),                         // Neo Geo
+        s if s.contains("atari 2600") => Some(26),                       // Atari 2600
+        s if s.contains("atari 5200") => Some(40),                       // Atari 5200
+        s if s.contains("atari 7800") => Some(41),                       // Atari 7800
+        s if s.contains("lynx") => Some(28),                             // Atari Lynx
+        s if s.contains("jaguar") => Some(27),                           // Atari Jaguar
+        s if s.contains("colecovision") => Some(48),                     // ColecoVision
+        s if s.contains("intellivision") => Some(115),                   // Intellivision
+        s if s.contains("arcade") || s.contains("mame") => Some(75),     // Arcade
+        s if s.contains("dos") || s.contains("ms-dos") => Some(135),     // DOS
+        s if s.contains("windows") => Some(138),                         // Windows
         _ => None,
     }
 }
@@ -193,8 +193,8 @@ impl ScreenScraperClient {
         }
 
         let body = response.text().await?;
-        let data: ScreenScraperResponse = serde_json::from_str(&body)
-            .context("Failed to parse ScreenScraper response")?;
+        let data: ScreenScraperResponse =
+            serde_json::from_str(&body).context("Failed to parse ScreenScraper response")?;
 
         if let Some(game) = data.response.jeu {
             Ok(Some(parse_screenscraper_game(game)))
@@ -284,14 +284,18 @@ struct ScreenScraperMedia {
 /// Parse ScreenScraper game data into our format
 fn parse_screenscraper_game(game: ScreenScraperGame) -> ScrapedGame {
     // Get English or first available name
-    let name = game.noms.iter()
+    let name = game
+        .noms
+        .iter()
         .find(|n| n.region.as_deref() == Some("us") || n.region.as_deref() == Some("wor"))
         .or_else(|| game.noms.first())
         .map(|n| n.text.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
     // Get English or first available description
-    let description = game.synopsis.iter()
+    let description = game
+        .synopsis
+        .iter()
         .find(|s| s.langue.as_deref() == Some("en"))
         .or_else(|| game.synopsis.first())
         .map(|s| s.text.clone());
@@ -300,15 +304,20 @@ fn parse_screenscraper_game(game: ScreenScraperGame) -> ScrapedGame {
     let publisher = game.editeur.map(|e| e.text);
 
     // Get US or first available release date
-    let release_date = game.dates.iter()
+    let release_date = game
+        .dates
+        .iter()
         .find(|d| d.region.as_deref() == Some("us") || d.region.as_deref() == Some("wor"))
         .or_else(|| game.dates.first())
         .map(|d| d.text.clone());
 
     // Extract genre names (English preferred)
-    let genres: Vec<String> = game.genres.iter()
+    let genres: Vec<String> = game
+        .genres
+        .iter()
         .filter_map(|g| {
-            g.noms.iter()
+            g.noms
+                .iter()
                 .find(|n| n.region.as_deref() == Some("en"))
                 .or_else(|| g.noms.first())
                 .map(|n| n.text.clone())
@@ -318,7 +327,8 @@ fn parse_screenscraper_game(game: ScreenScraperGame) -> ScrapedGame {
     let players = game.joueurs.map(|j| j.text);
 
     // Parse rating (ScreenScraper uses 0-20 scale)
-    let rating = game.note
+    let rating = game
+        .note
         .and_then(|n| n.text.parse::<f64>().ok())
         .map(|r| r / 20.0 * 10.0); // Convert to 0-10 scale
 
@@ -326,7 +336,9 @@ fn parse_screenscraper_game(game: ScreenScraperGame) -> ScrapedGame {
     let mut media = ScrapedMedia::default();
 
     // Build a set of media types that have US region versions
-    let us_media_types: std::collections::HashSet<_> = game.medias.iter()
+    let us_media_types: std::collections::HashSet<_> = game
+        .medias
+        .iter()
         .filter(|m| m.region.as_deref() == Some("us"))
         .map(|m| m.media_type.clone())
         .collect();
@@ -368,8 +380,14 @@ mod tests {
 
     #[test]
     fn test_platform_id_mapping() {
-        assert_eq!(get_screenscraper_platform_id("Nintendo Entertainment System"), Some(3));
-        assert_eq!(get_screenscraper_platform_id("Super Nintendo Entertainment System"), Some(4));
+        assert_eq!(
+            get_screenscraper_platform_id("Nintendo Entertainment System"),
+            Some(3)
+        );
+        assert_eq!(
+            get_screenscraper_platform_id("Super Nintendo Entertainment System"),
+            Some(4)
+        );
         assert_eq!(get_screenscraper_platform_id("Nintendo 64"), Some(14));
         assert_eq!(get_screenscraper_platform_id("Sega Genesis"), Some(1));
         assert_eq!(get_screenscraper_platform_id("Sony PlayStation"), Some(57));

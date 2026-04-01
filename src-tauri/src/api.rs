@@ -4,12 +4,11 @@
 //! the frontend to work in a regular browser during development.
 
 use crate::db::schema::{
-    extract_region_from_title, normalize_title_for_dedup, normalize_title_for_display,
-    Game, GameVariant, Platform,
+    extract_region_from_title, normalize_title_for_dedup, normalize_title_for_display, Game,
+    GameVariant, Platform,
 };
 use crate::handlers::{
-    self as handlers, Collection, CollectionIdInput, CollectionGameInput,
-    CreateCollectionInput,
+    self as handlers, Collection, CollectionGameInput, CollectionIdInput, CreateCollectionInput,
 };
 use crate::state::AppState;
 use axum::{
@@ -123,38 +122,80 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/stats/:db_id", get(get_play_stats))
         .route("/api/favorites", get(get_favorites))
         .route("/api/favorites/check/:db_id", get(check_is_favorite))
-        .route("/api/favorites/:game_id", post(add_favorite).delete(remove_favorite))
+        .route(
+            "/api/favorites/:game_id",
+            post(add_favorite).delete(remove_favorite),
+        )
         // Collection endpoints
         .route("/rspc/get_collections", get(rspc_get_collections))
         .route("/rspc/create_collection", get(rspc_create_collection))
         .route("/rspc/delete_collection", get(rspc_delete_collection))
         .route("/rspc/get_collection_games", get(rspc_get_collection_games))
-        .route("/rspc/add_game_to_collection", get(rspc_add_game_to_collection))
-        .route("/rspc/remove_game_from_collection", get(rspc_remove_game_from_collection))
+        .route(
+            "/rspc/add_game_to_collection",
+            get(rspc_add_game_to_collection),
+        )
+        .route(
+            "/rspc/remove_game_from_collection",
+            get(rspc_remove_game_from_collection),
+        )
         // rspc-style endpoints for image handling
         .route("/rspc/get_game_image", get(rspc_get_game_image))
         .route("/rspc/check_cached_media", get(rspc_check_cached_media))
-        .route("/rspc/download_image_with_fallback", get(rspc_download_image_with_fallback))
-        .route("/rspc/redownload_image_from_next_source", get(rspc_redownload_image_from_next_source))
+        .route(
+            "/rspc/download_image_with_fallback",
+            get(rspc_download_image_with_fallback),
+        )
+        .route(
+            "/rspc/redownload_image_from_next_source",
+            get(rspc_redownload_image_from_next_source),
+        )
         // rspc-style endpoints for video handling
         .route("/rspc/check_cached_video", get(rspc_check_cached_video))
         .route("/rspc/download_game_video", get(rspc_download_game_video))
         // rspc-style endpoints for emulator handling
-        .route("/rspc/get_emulators_for_platform", get(rspc_get_emulators_for_platform))
+        .route(
+            "/rspc/get_emulators_for_platform",
+            get(rspc_get_emulators_for_platform),
+        )
         .route("/rspc/get_emulator", get(rspc_get_emulator))
         .route("/rspc/get_all_emulators", get(rspc_get_all_emulators))
         // rspc-style endpoints for play session
         .route("/rspc/record_play_session", get(rspc_record_play_session))
         // rspc-style endpoints for emulator preferences
-        .route("/rspc/get_emulator_preference", get(rspc_get_emulator_preference))
-        .route("/rspc/set_game_emulator_preference", get(rspc_set_game_emulator_preference))
-        .route("/rspc/set_platform_emulator_preference", get(rspc_set_platform_emulator_preference))
-        .route("/rspc/clear_game_emulator_preference", get(rspc_clear_game_emulator_preference))
-        .route("/rspc/clear_platform_emulator_preference", get(rspc_clear_platform_emulator_preference))
-        .route("/rspc/get_all_emulator_preferences", get(rspc_get_all_emulator_preferences))
-        .route("/rspc/clear_all_emulator_preferences", get(rspc_clear_all_emulator_preferences))
+        .route(
+            "/rspc/get_emulator_preference",
+            get(rspc_get_emulator_preference),
+        )
+        .route(
+            "/rspc/set_game_emulator_preference",
+            get(rspc_set_game_emulator_preference),
+        )
+        .route(
+            "/rspc/set_platform_emulator_preference",
+            get(rspc_set_platform_emulator_preference),
+        )
+        .route(
+            "/rspc/clear_game_emulator_preference",
+            get(rspc_clear_game_emulator_preference),
+        )
+        .route(
+            "/rspc/clear_platform_emulator_preference",
+            get(rspc_clear_platform_emulator_preference),
+        )
+        .route(
+            "/rspc/get_all_emulator_preferences",
+            get(rspc_get_all_emulator_preferences),
+        )
+        .route(
+            "/rspc/clear_all_emulator_preferences",
+            get(rspc_clear_all_emulator_preferences),
+        )
         // Emulator installation and launch endpoints
-        .route("/rspc/get_emulators_with_status", get(rspc_get_emulators_with_status))
+        .route(
+            "/rspc/get_emulators_with_status",
+            get(rspc_get_emulators_with_status),
+        )
         .route("/rspc/install_emulator", get(rspc_install_emulator))
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
@@ -164,13 +205,34 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/get_active_import", get(rspc_get_active_import))
         .route("/rspc/start_graboid_import", get(rspc_start_graboid_import))
         .route("/rspc/cancel_import", get(rspc_cancel_import))
-        .route("/rspc/test_graboid_connection", get(rspc_test_graboid_connection))
+        .route(
+            "/rspc/test_graboid_connection",
+            get(rspc_test_graboid_connection),
+        )
         .route("/rspc/get_graboid_prompts", get(rspc_get_graboid_prompts))
         .route("/rspc/save_graboid_prompt", get(rspc_save_graboid_prompt))
-        .route("/rspc/delete_graboid_prompt", get(rspc_delete_graboid_prompt))
-        .route("/rspc/get_effective_graboid_prompt", get(rspc_get_effective_graboid_prompt))
+        .route(
+            "/rspc/delete_graboid_prompt",
+            get(rspc_delete_graboid_prompt),
+        )
+        .route(
+            "/rspc/get_effective_graboid_prompt",
+            get(rspc_get_effective_graboid_prompt),
+        )
         // SSE proxy for Graboid job events
         .route("/api/graboid/jobs/:job_id/events", get(graboid_sse_proxy))
+        // Minerva archive routes
+        .route("/rspc/has_minerva_db", get(rspc_has_minerva_db))
+        .route("/rspc/get_minerva_rom_for_game", get(rspc_get_minerva_rom_for_game))
+        .route("/rspc/search_minerva", get(rspc_search_minerva))
+        .route("/rspc/start_minerva_download", get(rspc_start_minerva_download))
+        .route("/rspc/get_minerva_download_progress", get(rspc_get_minerva_download_progress))
+        .route("/rspc/cancel_minerva_download", get(rspc_cancel_minerva_download))
+        .route("/rspc/test_torrent_connection", get(rspc_test_torrent_connection))
+        .route("/rspc/list_torrent_files", get(rspc_list_torrent_files))
+        // ROM import routes
+        .route("/rspc/scan_and_match_roms", get(rspc_scan_and_match_roms))
+        .route("/rspc/confirm_rom_import", get(rspc_confirm_rom_import))
         // Asset serving for browser dev mode
         .route("/assets/*path", get(serve_asset))
         .layer(cors)
@@ -208,7 +270,7 @@ async fn get_all_regions(
     if let Some(ref games_pool) = state_guard.games_db_pool {
         // Get unique regions from the region column
         let explicit_regions: Vec<(Option<String>,)> = sqlx::query_as(
-            "SELECT DISTINCT region FROM games WHERE region IS NOT NULL AND region != ''"
+            "SELECT DISTINCT region FROM games WHERE region IS NOT NULL AND region != ''",
         )
         .fetch_all(games_pool)
         .await
@@ -230,12 +292,11 @@ async fn get_all_regions(
         }
 
         // Also extract regions from title parentheses (e.g., "Game (USA)")
-        let titles: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT title FROM games WHERE title LIKE '%(%'"
-        )
-        .fetch_all(games_pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let titles: Vec<(String,)> =
+            sqlx::query_as("SELECT DISTINCT title FROM games WHERE title LIKE '%(%'")
+                .fetch_all(games_pool)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         for (title,) in titles {
             if let Some(extracted) = extract_region_from_title(&title) {
@@ -296,22 +357,20 @@ async fn get_platforms(
     let state_guard = state.read().await;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let platforms: Vec<(i64, String, Option<String>)> = sqlx::query_as(
-            "SELECT id, name, aliases FROM platforms ORDER BY name"
-        )
-        .fetch_all(games_pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let platforms: Vec<(i64, String, Option<String>)> =
+            sqlx::query_as("SELECT id, name, aliases FROM platforms ORDER BY name")
+                .fetch_all(games_pool)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let mut result = Vec::new();
         for (id, name, aliases) in platforms {
-            let all_titles: Vec<(String,)> = sqlx::query_as(
-                "SELECT title FROM games WHERE platform_id = ?"
-            )
-            .bind(id)
-            .fetch_all(games_pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let all_titles: Vec<(String,)> =
+                sqlx::query_as("SELECT title FROM games WHERE platform_id = ?")
+                    .bind(id)
+                    .fetch_all(games_pool)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
             let mut seen: HashSet<String> = HashSet::new();
             for (title,) in all_titles {
@@ -323,7 +382,13 @@ async fn get_platforms(
             // Build icon URL from platform name (icons are named after canonical platform names)
             let filename = platform_name_to_filename(&name);
             let icon_url = Some(format!("/assets/platforms/{}.png", filename));
-            result.push(Platform { id, name, game_count: seen.len() as i64, aliases, icon_url });
+            result.push(Platform {
+                id,
+                name,
+                game_count: seen.len() as i64,
+                aliases,
+                icon_url,
+            });
         }
         return Ok(Json(result));
     }
@@ -339,6 +404,12 @@ async fn get_platforms(
 struct GamesQuery {
     platform: Option<String>,
     search: Option<String>,
+    #[serde(default)]
+    installed_only: bool,
+    #[serde(default)]
+    hide_homebrew: bool,
+    #[serde(default)]
+    hide_adult: bool,
     limit: Option<i64>,
     offset: Option<i64>,
 }
@@ -350,6 +421,48 @@ fn build_search_patterns(query: &str) -> Vec<String> {
         .filter(|word| !word.is_empty())
         .map(|word| format!("%{}%", word))
         .collect()
+}
+
+fn contains_token(text: &str, token: &str) -> bool {
+    text.split(|c: char| !c.is_alphanumeric())
+        .any(|part| part.eq_ignore_ascii_case(token))
+}
+
+fn is_homebrew_game(title: &str, release_type: Option<&str>) -> bool {
+    if let Some(release_type) = release_type {
+        let rt = release_type.trim().to_ascii_lowercase();
+        if rt == "homebrew" || rt == "rom hack" {
+            return true;
+        }
+    }
+
+    let (_, tags) = crate::tags::parse_title_tags(title);
+    tags.into_iter().any(|tag| {
+        tag.category == crate::tags::TagCategory::License
+            && tag.text.eq_ignore_ascii_case("homebrew")
+    })
+}
+
+fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
+    if let Some(esrb) = esrb {
+        let esrb_lower = esrb.to_ascii_lowercase();
+        if esrb_lower.starts_with("ao") || esrb_lower.contains("adults only") {
+            return true;
+        }
+    }
+
+    if title.to_ascii_lowercase().contains("adults only")
+        || genre
+            .map(|g| g.to_ascii_lowercase().contains("adults only"))
+            .unwrap_or(false)
+    {
+        return true;
+    }
+
+    const ADULT_TOKENS: &[&str] = &["adult", "hentai", "erotic", "porn", "sex"];
+    ADULT_TOKENS.iter().any(|token| {
+        contains_token(title, token) || genre.map(|g| contains_token(g, token)).unwrap_or(false)
+    })
 }
 
 async fn get_games(
@@ -450,6 +563,49 @@ async fn get_games(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         };
 
+        let downloaded_launchbox_ids: HashSet<i64> = if let Some(ref db_pool) = state_guard.db_pool
+        {
+            let candidate_launchbox_ids: Vec<i64> = raw_rows
+                .iter()
+                .filter_map(|row| {
+                    use sqlx::Row;
+                    let db_id: i64 = row.get("launchbox_db_id");
+                    (db_id > 0).then_some(db_id)
+                })
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect();
+
+            if candidate_launchbox_ids.is_empty() {
+                HashSet::new()
+            } else {
+                const CHUNK_SIZE: usize = 900;
+                let mut downloaded_ids = HashSet::new();
+                for chunk in candidate_launchbox_ids.chunks(CHUNK_SIZE) {
+                    let placeholders = std::iter::repeat("?")
+                        .take(chunk.len())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let sql = format!(
+                        "SELECT launchbox_db_id FROM game_files WHERE launchbox_db_id IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query_as::<_, (i64,)>(&sql);
+                    for db_id in chunk {
+                        q = q.bind(db_id);
+                    }
+                    let rows = q
+                        .fetch_all(db_pool)
+                        .await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    downloaded_ids.extend(rows.into_iter().map(|(db_id,)| db_id));
+                }
+                downloaded_ids
+            }
+        } else {
+            HashSet::new()
+        };
+
         // Deduplicate by normalized title, keeping the "best" variant
         let mut seen: HashMap<String, Game> = HashMap::new();
         let mut variant_counts: HashMap<String, i32> = HashMap::new();
@@ -461,6 +617,21 @@ async fn get_games(
             let platform_id: i64 = row.get("platform_id");
             let platform: String = row.get("platform");
             let launchbox_db_id: i64 = row.get("launchbox_db_id");
+            let has_game_file =
+                launchbox_db_id > 0 && downloaded_launchbox_ids.contains(&launchbox_db_id);
+            let release_type: Option<String> = row.get("release_type");
+            let esrb: Option<String> = row.get("esrb");
+            let genre: Option<String> = row.get("genre");
+
+            if query.installed_only && !has_game_file {
+                continue;
+            }
+            if query.hide_homebrew && is_homebrew_game(&title, release_type.as_deref()) {
+                continue;
+            }
+            if query.hide_adult && is_adult_game(&title, esrb.as_deref(), genre.as_deref()) {
+                continue;
+            }
 
             let normalized = normalize_title_for_dedup(&title);
             let key = format!("{}:{}", platform_id, normalized);
@@ -483,11 +654,11 @@ async fn get_games(
                 players: row.get("players"),
                 rating: row.get("rating"),
                 rating_count: row.get("rating_count"),
-                esrb: row.get("esrb"),
+                esrb,
                 cooperative: row.get::<Option<i32>, _>("cooperative").map(|v| v != 0),
                 video_url: row.get("video_url"),
                 wikipedia_url: row.get("wikipedia_url"),
-                release_type: row.get("release_type"),
+                release_type,
                 notes: row.get("notes"),
                 sort_title: row.get("sort_title"),
                 series: row.get("series"),
@@ -499,13 +670,17 @@ async fn get_games(
                 box_front_path: None,
                 screenshot_path: None,
                 variant_count: 1,
+                has_game_file,
             };
 
-            let should_replace = match seen.get(&key) {
-                Some(existing) => existing.database_id <= 0 && game.database_id > 0,
-                None => true,
-            };
-            if should_replace {
+            if let Some(existing) = seen.get_mut(&key) {
+                if has_game_file {
+                    existing.has_game_file = true;
+                }
+                if existing.database_id <= 0 && game.database_id > 0 {
+                    *existing = game;
+                }
+            } else {
                 seen.insert(key, game);
             }
         }
@@ -517,7 +692,11 @@ async fn get_games(
 
         // Sort and paginate
         let mut games: Vec<Game> = seen.into_values().collect();
-        games.sort_by(|a, b| a.display_title.to_lowercase().cmp(&b.display_title.to_lowercase()));
+        games.sort_by(|a, b| {
+            a.display_title
+                .to_lowercase()
+                .cmp(&b.display_title.to_lowercase())
+        });
 
         let games: Vec<Game> = if let Some(lim) = limit {
             games.into_iter().skip(offset).take(lim).collect()
@@ -535,72 +714,29 @@ async fn get_games(
 struct GameCountQuery {
     platform: Option<String>,
     search: Option<String>,
+    #[serde(default)]
+    installed_only: bool,
+    #[serde(default)]
+    hide_homebrew: bool,
+    #[serde(default)]
+    hide_adult: bool,
 }
 
 async fn get_game_count(
     State(state): State<SharedState>,
     axum::extract::Query(query): axum::extract::Query<GameCountQuery>,
 ) -> Result<Json<i64>, (StatusCode, String)> {
-    let state_guard = state.read().await;
-
-    if let Some(ref games_pool) = state_guard.games_db_pool {
-        let titles: Vec<(String,)> = if let Some(ref search_query) = query.search {
-            // Split search into words for flexible matching
-            let patterns = build_search_patterns(search_query);
-            if patterns.is_empty() {
-                Vec::new()
-            } else {
-                let like_clauses: Vec<&str> = patterns.iter().map(|_| "g.title LIKE ?").collect();
-                let where_clause = like_clauses.join(" AND ");
-
-                if let Some(ref platform_name) = query.platform {
-                    let sql = format!(
-                        "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ? AND ({})",
-                        where_clause
-                    );
-                    let mut q = sqlx::query_as(&sql);
-                    q = q.bind(platform_name);
-                    for pattern in &patterns {
-                        q = q.bind(pattern);
-                    }
-                    q.fetch_all(games_pool)
-                        .await
-                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-                } else {
-                    let sql = format!("SELECT title FROM games g WHERE {}", where_clause);
-                    let mut q = sqlx::query_as(&sql);
-                    for pattern in &patterns {
-                        q = q.bind(pattern);
-                    }
-                    q.fetch_all(games_pool)
-                        .await
-                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-                }
-            }
-        } else if let Some(ref platform_name) = query.platform {
-            sqlx::query_as(
-                "SELECT g.title FROM games g JOIN platforms p ON g.platform_id = p.id WHERE p.name = ?"
-            )
-            .bind(platform_name)
-            .fetch_all(games_pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        } else {
-            sqlx::query_as("SELECT title FROM games")
-                .fetch_all(games_pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        };
-
-        let mut seen: HashSet<String> = HashSet::new();
-        for (title,) in titles {
-            let normalized = normalize_title_for_dedup(&title);
-            seen.insert(normalized);
-        }
-        return Ok(Json(seen.len() as i64));
-    }
-
-    Ok(Json(0))
+    let games_query = GamesQuery {
+        platform: query.platform,
+        search: query.search,
+        installed_only: query.installed_only,
+        hide_homebrew: query.hide_homebrew,
+        hide_adult: query.hide_adult,
+        limit: None,
+        offset: None,
+    };
+    let games = get_games(State(state), axum::extract::Query(games_query)).await?;
+    Ok(Json(games.0.len() as i64))
 }
 
 async fn get_game_by_uuid(
@@ -690,6 +826,7 @@ async fn get_game_by_uuid(
                 box_front_path: None,
                 screenshot_path: None,
                 variant_count: variant_count as i32,
+                has_game_file: false,
             };
 
             return Ok(Json(Some(game)));
@@ -730,13 +867,12 @@ async fn get_game_variants(
             let normalized = normalize_title_for_dedup(&title);
 
             // Find all variants with the same normalized title
-            let variants: Vec<(String, String)> = sqlx::query_as(
-                "SELECT id, title FROM games WHERE platform_id = ? ORDER BY title"
-            )
-            .bind(platform_id)
-            .fetch_all(games_pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let variants: Vec<(String, String)> =
+                sqlx::query_as("SELECT id, title FROM games WHERE platform_id = ? ORDER BY title")
+                    .bind(platform_id)
+                    .fetch_all(games_pool)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
             let mut result: Vec<GameVariant> = variants
                 .into_iter()
@@ -750,9 +886,13 @@ async fn get_game_variants(
 
             // Sort by region priority (uses user's preference if set)
             result.sort_by(|a, b| {
-                let priority_a = crate::commands::region_priority_for_title(&a.title, &custom_region_order);
-                let priority_b = crate::commands::region_priority_for_title(&b.title, &custom_region_order);
-                priority_a.cmp(&priority_b).then_with(|| a.title.cmp(&b.title))
+                let priority_a =
+                    crate::commands::region_priority_for_title(&a.title, &custom_region_order);
+                let priority_b =
+                    crate::commands::region_priority_for_title(&b.title, &custom_region_order);
+                priority_a
+                    .cmp(&priority_b)
+                    .then_with(|| a.title.cmp(&b.title))
             });
 
             return Ok(Json(result));
@@ -827,7 +967,16 @@ async fn get_play_stats(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-        if let Some((launchbox_db_id, game_title, platform, play_count, total_play_time_seconds, last_played, first_played)) = row {
+        if let Some((
+            launchbox_db_id,
+            game_title,
+            platform,
+            play_count,
+            total_play_time_seconds,
+            last_played,
+            first_played,
+        )) = row
+        {
             return Ok(Json(Some(PlayStats {
                 launchbox_db_id,
                 game_title,
@@ -854,13 +1003,12 @@ async fn check_is_favorite(
     let state_guard = state.read().await;
 
     if let Some(ref db_pool) = state_guard.db_pool {
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM favorites WHERE launchbox_db_id = ?"
-        )
-        .bind(db_id)
-        .fetch_one(db_pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM favorites WHERE launchbox_db_id = ?")
+                .bind(db_id)
+                .fetch_one(db_pool)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         return Ok(Json(count.0 > 0));
     }
@@ -873,13 +1021,14 @@ async fn get_favorites(
 ) -> Result<Json<Vec<Game>>, (StatusCode, String)> {
     let state_guard = state.read().await;
 
-    if let (Some(ref db_pool), Some(ref games_pool)) = (&state_guard.db_pool, &state_guard.games_db_pool) {
-        let favorite_ids: Vec<(String,)> = sqlx::query_as(
-            "SELECT game_id FROM favorites ORDER BY added_at DESC"
-        )
-        .fetch_all(db_pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if let (Some(ref db_pool), Some(ref games_pool)) =
+        (&state_guard.db_pool, &state_guard.games_db_pool)
+    {
+        let favorite_ids: Vec<(String,)> =
+            sqlx::query_as("SELECT game_id FROM favorites ORDER BY added_at DESC")
+                .fetch_all(db_pool)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let mut games = Vec::new();
         for (game_id,) in favorite_ids {
@@ -935,6 +1084,7 @@ async fn get_favorites(
                     box_front_path: None,
                     screenshot_path: None,
                     variant_count: 1,
+                    has_game_file: false,
                 });
             }
         }
@@ -984,9 +1134,7 @@ async fn remove_favorite(
 // Collections - Using shared handlers from handlers.rs
 // ============================================================================
 
-async fn rspc_get_collections(
-    State(state): State<SharedState>,
-) -> impl IntoResponse {
+async fn rspc_get_collections(State(state): State<SharedState>) -> impl IntoResponse {
     let state_guard = state.read().await;
     match handlers::get_collections(&state_guard).await {
         Ok(collections) => rspc_ok(collections).into_response(),
@@ -1000,7 +1148,9 @@ async fn rspc_create_collection(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Collection>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Collection>("Missing 'input' parameter".to_string()).into_response()
+        }
     };
 
     let input: CreateCollectionInput = match serde_json::from_str(input_str) {
@@ -1042,7 +1192,9 @@ async fn rspc_get_collection_games(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Vec<Game>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Vec<Game>>("Missing 'input' parameter".to_string()).into_response()
+        }
     };
 
     let input: CollectionIdInput = match serde_json::from_str(input_str) {
@@ -1125,9 +1277,12 @@ fn rspc_ok<T: serde::Serialize>(data: T) -> Json<RspcResponse<T>> {
 }
 
 fn rspc_err<T: serde::Serialize>(message: String) -> (StatusCode, Json<RspcResponse<T>>) {
-    (StatusCode::OK, Json(RspcResponse {
-        result: RspcResult::Error { code: -1, message },
-    }))
+    (
+        StatusCode::OK,
+        Json(RspcResponse {
+            result: RspcResult::Error { code: -1, message },
+        }),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -1155,16 +1310,24 @@ async fn rspc_get_game_image(
     // Parse the input parameter (JSON-encoded)
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<ImageInfo>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<ImageInfo>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let input: GetGameImageInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => return rspc_err::<Option<ImageInfo>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<ImageInfo>>(format!("Invalid input: {}", e)).into_response()
+        }
     };
 
-    tracing::info!("rspc_get_game_image: launchbox_db_id={}, image_type={}",
-        input.launchbox_db_id, input.image_type);
+    tracing::info!(
+        "rspc_get_game_image: launchbox_db_id={}, image_type={}",
+        input.launchbox_db_id,
+        input.image_type
+    );
 
     let state_guard = state.read().await;
 
@@ -1175,7 +1338,10 @@ async fn rspc_get_game_image(
             service = service.with_images_pool(images_pool.clone());
         }
 
-        match service.get_image_by_type(input.launchbox_db_id, &input.image_type).await {
+        match service
+            .get_image_by_type(input.launchbox_db_id, &input.image_type)
+            .await
+        {
             Ok(Some(info)) => {
                 return rspc_ok(Some(ImageInfo {
                     id: info.id,
@@ -1184,7 +1350,8 @@ async fn rspc_get_game_image(
                     cdn_url: info.cdn_url,
                     local_path: info.local_path,
                     downloaded: info.downloaded,
-                })).into_response();
+                }))
+                .into_response();
             }
             Ok(None) => {
                 tracing::info!("  No image metadata found");
@@ -1223,34 +1390,48 @@ async fn rspc_check_cached_media(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<CachedMediaResult>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<CachedMediaResult>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let input: CheckCachedMediaInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => return rspc_err::<Option<CachedMediaResult>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<CachedMediaResult>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
     };
 
     let state_guard = state.read().await;
     let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
 
     // Compute game_id
-    let game_id = crate::images::get_game_cache_id(
-        input.launchbox_db_id,
-        &input.game_title,
-        &input.platform,
-    );
+    let game_id =
+        crate::images::get_game_cache_id(input.launchbox_db_id, &input.game_title, &input.platform);
 
     // Check cache
-    if let Some((path, source)) = crate::images::find_cached_media(&cache_dir, &game_id, &input.image_type) {
-        tracing::info!("check_cached_media: HIT game_id={}, path={:?}", game_id, path);
+    if let Some((path, source)) =
+        crate::images::find_cached_media(&cache_dir, &game_id, &input.image_type)
+    {
+        tracing::info!(
+            "check_cached_media: HIT game_id={}, path={:?}",
+            game_id,
+            path
+        );
         return rspc_ok(Some(CachedMediaResult {
             path: path.to_string_lossy().to_string(),
             source: source.abbreviation().to_string(),
-        })).into_response();
+        }))
+        .into_response();
     }
 
-    tracing::info!("check_cached_media: MISS game_id={}, cache_dir={:?}", game_id, cache_dir);
+    tracing::info!(
+        "check_cached_media: MISS game_id={}, cache_dir={:?}",
+        game_id,
+        cache_dir
+    );
     rspc_ok::<Option<CachedMediaResult>>(None).into_response()
 }
 
@@ -1289,25 +1470,31 @@ async fn rspc_download_image_with_fallback(
         Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    tracing::info!("rspc_download_image_with_fallback: game='{}', platform='{}', type='{}', db_id={:?}",
-        input.game_title, input.platform, input.image_type, input.launchbox_db_id);
+    tracing::info!(
+        "rspc_download_image_with_fallback: game='{}', platform='{}', type='{}', db_id={:?}",
+        input.game_title,
+        input.platform,
+        input.image_type,
+        input.launchbox_db_id
+    );
 
     let state_guard = state.read().await;
 
     let games_pool = match state_guard.games_db_pool.as_ref() {
         Some(p) => p,
-        None => return rspc_err::<String>("Games database not initialized".to_string()).into_response(),
+        None => {
+            return rspc_err::<String>("Games database not initialized".to_string()).into_response()
+        }
     };
 
     // Look up platform info to get launchbox_name and libretro_name
-    let platform_info: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?"
-    )
-    .bind(&input.platform)
-    .fetch_optional(games_pool)
-    .await
-    .ok()
-    .flatten();
+    let platform_info: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?")
+            .bind(&input.platform)
+            .fetch_optional(games_pool)
+            .await
+            .ok()
+            .flatten();
 
     let (launchbox_platform, libretro_platform) = platform_info
         .map(|(lb, lr)| (lb, lr))
@@ -1336,7 +1523,7 @@ async fn rspc_download_image_with_fallback(
         Some(crate::scraper::SteamGridDBClient::new(
             crate::scraper::SteamGridDBConfig {
                 api_key: state_guard.settings.steamgriddb.api_key.clone(),
-            }
+            },
         ))
     } else {
         None
@@ -1350,7 +1537,7 @@ async fn rspc_download_image_with_fallback(
             crate::scraper::IGDBConfig {
                 client_id: state_guard.settings.igdb.client_id.clone(),
                 client_secret: state_guard.settings.igdb.client_secret.clone(),
-            }
+            },
         ))
     } else {
         None
@@ -1381,25 +1568,28 @@ async fn rspc_download_image_with_fallback(
                 dev_password: state_guard.settings.screenscraper.dev_password.clone(),
                 user_id: state_guard.settings.screenscraper.user_id.clone(),
                 user_password: state_guard.settings.screenscraper.user_password.clone(),
-            }
+            },
         ))
     } else {
         None
     };
 
-    match service.download_with_fallback(
-        &input.game_title,
-        &input.platform,
-        &input.image_type,
-        input.launchbox_db_id,
-        launchbox_platform.as_deref(),
-        libretro_platform.as_deref(),
-        libretro_title.as_deref(),
-        steamgriddb_client.as_ref(),
-        igdb_client.as_ref(),
-        emumovies_client.as_ref(),
-        screenscraper_client.as_ref(),
-    ).await {
+    match service
+        .download_with_fallback(
+            &input.game_title,
+            &input.platform,
+            &input.image_type,
+            input.launchbox_db_id,
+            launchbox_platform.as_deref(),
+            libretro_platform.as_deref(),
+            libretro_title.as_deref(),
+            steamgriddb_client.as_ref(),
+            igdb_client.as_ref(),
+            emumovies_client.as_ref(),
+            screenscraper_client.as_ref(),
+        )
+        .await
+    {
         Ok(path) => {
             tracing::info!("  Download succeeded: {}", path);
             rspc_ok(path).into_response()
@@ -1435,17 +1625,16 @@ async fn rspc_redownload_image_from_next_source(
 
     let games_pool = match state_guard.games_db_pool.as_ref() {
         Some(p) => p,
-        None => return rspc_err::<String>("Games database not initialized".to_string()).into_response(),
+        None => {
+            return rspc_err::<String>("Games database not initialized".to_string()).into_response()
+        }
     };
 
     let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
 
     // Get the game cache ID
-    let game_id = crate::images::get_game_cache_id(
-        input.launchbox_db_id,
-        &input.game_title,
-        &input.platform,
-    );
+    let game_id =
+        crate::images::get_game_cache_id(input.launchbox_db_id, &input.game_title, &input.platform);
 
     // Delete the current cached images for this game/type
     let deleted = crate::images::delete_cached_media(&cache_dir, &game_id, &input.image_type);
@@ -1469,14 +1658,13 @@ async fn rspc_redownload_image_from_next_source(
     tracing::info!("  Skipping sources: {:?}", skip_sources);
 
     // Look up platform info to get launchbox_name and libretro_name
-    let platform_info: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?"
-    )
-    .bind(&input.platform)
-    .fetch_optional(games_pool)
-    .await
-    .ok()
-    .flatten();
+    let platform_info: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?")
+            .bind(&input.platform)
+            .fetch_optional(games_pool)
+            .await
+            .ok()
+            .flatten();
 
     let (launchbox_platform, libretro_platform) = platform_info
         .map(|(lb, lr)| (lb, lr))
@@ -1504,7 +1692,7 @@ async fn rspc_redownload_image_from_next_source(
         Some(crate::scraper::SteamGridDBClient::new(
             crate::scraper::SteamGridDBConfig {
                 api_key: state_guard.settings.steamgriddb.api_key.clone(),
-            }
+            },
         ))
     } else {
         None
@@ -1517,7 +1705,7 @@ async fn rspc_redownload_image_from_next_source(
             crate::scraper::IGDBConfig {
                 client_id: state_guard.settings.igdb.client_id.clone(),
                 client_secret: state_guard.settings.igdb.client_secret.clone(),
-            }
+            },
         ))
     } else {
         None
@@ -1546,27 +1734,30 @@ async fn rspc_redownload_image_from_next_source(
                 dev_password: state_guard.settings.screenscraper.dev_password.clone(),
                 user_id: state_guard.settings.screenscraper.user_id.clone(),
                 user_password: state_guard.settings.screenscraper.user_password.clone(),
-            }
+            },
         ))
     } else {
         None
     };
 
     // Download with skip_sources
-    match service.download_with_fallback_skip_sources(
-        &input.game_title,
-        &input.platform,
-        &input.image_type,
-        input.launchbox_db_id,
-        launchbox_platform.as_deref(),
-        libretro_platform.as_deref(),
-        libretro_title.as_deref(),
-        steamgriddb_client.as_ref(),
-        igdb_client.as_ref(),
-        emumovies_client.as_ref(),
-        screenscraper_client.as_ref(),
-        &skip_sources,
-    ).await {
+    match service
+        .download_with_fallback_skip_sources(
+            &input.game_title,
+            &input.platform,
+            &input.image_type,
+            input.launchbox_db_id,
+            launchbox_platform.as_deref(),
+            libretro_platform.as_deref(),
+            libretro_title.as_deref(),
+            steamgriddb_client.as_ref(),
+            igdb_client.as_ref(),
+            emumovies_client.as_ref(),
+            screenscraper_client.as_ref(),
+            &skip_sources,
+        )
+        .await
+    {
         Ok(path) => {
             tracing::info!("  Redownload succeeded: {}", path);
             rspc_ok(path).into_response()
@@ -1588,8 +1779,12 @@ async fn serve_asset(
     use axum::response::Response;
 
     // The path comes in URL-encoded, decode it
-    let decoded_path = urlencoding::decode(&path)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid path encoding: {}", e)))?;
+    let decoded_path = urlencoding::decode(&path).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid path encoding: {}", e),
+        )
+    })?;
 
     // Axum's wildcard strips the leading slash, so we need to add it back for absolute paths
     let full_path = if decoded_path.starts_with('/') {
@@ -1602,7 +1797,10 @@ async fn serve_asset(
 
     // Check that the path exists and is a file
     if !file_path.exists() {
-        return Err((StatusCode::NOT_FOUND, format!("File not found: {}", decoded_path)));
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("File not found: {}", decoded_path),
+        ));
     }
 
     if !file_path.is_file() {
@@ -1622,8 +1820,12 @@ async fn serve_asset(
     };
 
     // Read the file
-    let data = tokio::fs::read(&file_path).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read file: {}", e)))?;
+    let data = tokio::fs::read(&file_path).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read file: {}", e),
+        )
+    })?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -1652,12 +1854,17 @@ async fn rspc_check_cached_video(
     // Parse the input parameter (JSON-encoded)
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<String>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<String>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let input: CheckCachedVideoInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response()
+        }
     };
 
     let state_guard = state.read().await;
@@ -1670,19 +1877,22 @@ async fn rspc_check_cached_video(
             // Fall back to computing hash from platform and title
             let games_pool = match state_guard.games_db_pool.as_ref() {
                 Some(p) => p,
-                None => return rspc_err::<Option<String>>("Games database not initialized".to_string()).into_response(),
+                None => {
+                    return rspc_err::<Option<String>>("Games database not initialized".to_string())
+                        .into_response()
+                }
             };
 
             // Get platform_id
-            let platform_id: Option<(i64,)> = match sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&input.platform)
-            .fetch_optional(games_pool)
-            .await {
-                Ok(r) => r,
-                Err(e) => return rspc_err::<Option<String>>(e.to_string()).into_response(),
-            };
+            let platform_id: Option<(i64,)> =
+                match sqlx::query_as("SELECT id FROM platforms WHERE name = ?")
+                    .bind(&input.platform)
+                    .fetch_optional(games_pool)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => return rspc_err::<Option<String>>(e.to_string()).into_response(),
+                };
 
             let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
             crate::images::GameMediaId::compute_hash(platform_id, &input.game_title)
@@ -1695,7 +1905,8 @@ async fn rspc_check_cached_video(
         .join("emumovies")
         .join("video.mp4");
 
-    if video_path.exists() {
+    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
+    if video_path.exists() && crate::images::emumovies::is_video_cache_current(&game_cache_dir) {
         rspc_ok(Some(video_path.to_string_lossy().to_string())).into_response()
     } else {
         rspc_ok::<Option<String>>(None).into_response()
@@ -1714,6 +1925,8 @@ async fn rspc_download_game_video(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
+    const VIDEO_DOWNLOAD_TIMEOUT_SECS: u64 = 20;
+
     // Parse the input parameter (JSON-encoded)
     let input_str = match params.get("input") {
         Some(s) => s,
@@ -1725,8 +1938,12 @@ async fn rspc_download_game_video(
         Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    tracing::info!("rspc_download_game_video: game='{}', platform='{}', db_id={:?}",
-        input.game_title, input.platform, input.launchbox_db_id);
+    tracing::info!(
+        "rspc_download_game_video: game='{}', platform='{}', db_id={:?}",
+        input.game_title,
+        input.platform,
+        input.launchbox_db_id
+    );
 
     let state_guard = state.read().await;
 
@@ -1734,7 +1951,10 @@ async fn rspc_download_game_video(
     if state_guard.settings.emumovies.username.is_empty()
         || state_guard.settings.emumovies.password.is_empty()
     {
-        return rspc_err::<String>("EmuMovies credentials not configured. Configure them in Settings.".to_string()).into_response();
+        return rspc_err::<String>(
+            "EmuMovies credentials not configured. Configure them in Settings.".to_string(),
+        )
+        .into_response();
     }
 
     let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
@@ -1746,28 +1966,29 @@ async fn rspc_download_game_video(
             // Fall back to computing hash from platform and title
             let games_pool = match state_guard.games_db_pool.as_ref() {
                 Some(p) => p,
-                None => return rspc_err::<String>("Games database not initialized".to_string()).into_response(),
+                None => {
+                    return rspc_err::<String>("Games database not initialized".to_string())
+                        .into_response()
+                }
             };
 
             // Get platform_id
-            let platform_id: Option<(i64,)> = match sqlx::query_as(
-                "SELECT id FROM platforms WHERE name = ?"
-            )
-            .bind(&input.platform)
-            .fetch_optional(games_pool)
-            .await {
-                Ok(r) => r,
-                Err(e) => return rspc_err::<String>(e.to_string()).into_response(),
-            };
+            let platform_id: Option<(i64,)> =
+                match sqlx::query_as("SELECT id FROM platforms WHERE name = ?")
+                    .bind(&input.platform)
+                    .fetch_optional(games_pool)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => return rspc_err::<String>(e.to_string()).into_response(),
+                };
 
             let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
             crate::images::GameMediaId::compute_hash(platform_id, &input.game_title)
         }
     };
 
-    let game_cache_dir = cache_dir
-        .join("media")
-        .join(game_id.directory_name());
+    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
 
     // Create EmuMovies client
     let client = crate::images::EmuMoviesClient::new(
@@ -1778,15 +1999,48 @@ async fn rspc_download_game_video(
         cache_dir.clone(),
     );
 
-    // Download the video
-    match client.get_video(&input.platform, &input.game_title, &game_cache_dir, None) {
-        Ok(video_path) => {
+    // Release shared state lock before blocking FTP work.
+    drop(state_guard);
+
+    // Download the video with timeout so frontend doesn't stall indefinitely.
+    let platform_for_task = input.platform.clone();
+    let game_title_for_task = input.game_title.clone();
+    let game_cache_dir_for_task = game_cache_dir.clone();
+    let task = tokio::task::spawn_blocking(move || {
+        client.get_video(
+            &platform_for_task,
+            &game_title_for_task,
+            &game_cache_dir_for_task,
+            None,
+        )
+    });
+
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(VIDEO_DOWNLOAD_TIMEOUT_SECS),
+        task,
+    )
+    .await
+    {
+        Ok(Ok(Ok(video_path))) => {
             tracing::info!("  Video download succeeded: {}", video_path.display());
             rspc_ok(video_path.to_string_lossy().to_string()).into_response()
         }
-        Err(e) => {
+        Ok(Ok(Err(e))) => {
             tracing::warn!("  Video download failed: {}", e);
             rspc_err::<String>(e.to_string()).into_response()
+        }
+        Ok(Err(e)) => {
+            let msg = format!("Video download task failed: {}", e);
+            tracing::warn!("  {}", msg);
+            rspc_err::<String>(msg).into_response()
+        }
+        Err(_) => {
+            let msg = format!(
+                "Video download timed out after {} seconds",
+                VIDEO_DOWNLOAD_TIMEOUT_SECS
+            );
+            tracing::warn!("  {}", msg);
+            rspc_err::<String>(msg).into_response()
         }
     }
 }
@@ -1805,13 +2059,18 @@ async fn rspc_get_emulators_for_platform(
     // Parse the input parameter (JSON-encoded platform name string)
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Vec<EmulatorInfo>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Vec<EmulatorInfo>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     // Input is a JSON-encoded string (e.g., "\"Nintendo Entertainment System\"")
     let platform_name: String = match serde_json::from_str(input_str) {
         Ok(s) => s,
-        Err(e) => return rspc_err::<Vec<EmulatorInfo>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Vec<EmulatorInfo>>(format!("Invalid input: {}", e)).into_response()
+        }
     };
 
     let state_guard = state.read().await;
@@ -1828,12 +2087,18 @@ async fn rspc_get_emulator(
     // Parse the input parameter (JSON-encoded emulator name string)
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<EmulatorInfo>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<EmulatorInfo>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let name: String = match serde_json::from_str(input_str) {
         Ok(s) => s,
-        Err(e) => return rspc_err::<Option<EmulatorInfo>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<EmulatorInfo>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
     };
 
     let state_guard = state.read().await;
@@ -1955,16 +2220,27 @@ async fn rspc_get_emulator_preference(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<String>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<String>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let input: GetEmulatorPreferenceInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response()
+        }
     };
 
     let state_guard = state.read().await;
-    match handlers::get_emulator_preference(&state_guard, input.launchbox_db_id, &input.platform_name).await {
+    match handlers::get_emulator_preference(
+        &state_guard,
+        input.launchbox_db_id,
+        &input.platform_name,
+    )
+    .await
+    {
         Ok(pref) => rspc_ok(pref).into_response(),
         Err(e) => rspc_err::<Option<String>>(e).into_response(),
     }
@@ -1992,7 +2268,13 @@ async fn rspc_set_game_emulator_preference(
     };
 
     let state_guard = state.read().await;
-    match handlers::set_game_emulator_preference(&state_guard, input.launchbox_db_id, &input.emulator_name).await {
+    match handlers::set_game_emulator_preference(
+        &state_guard,
+        input.launchbox_db_id,
+        &input.emulator_name,
+    )
+    .await
+    {
         Ok(()) => rspc_ok(()).into_response(),
         Err(e) => rspc_err::<()>(e).into_response(),
     }
@@ -2020,7 +2302,13 @@ async fn rspc_set_platform_emulator_preference(
     };
 
     let state_guard = state.read().await;
-    match handlers::set_platform_emulator_preference(&state_guard, &input.platform_name, &input.emulator_name).await {
+    match handlers::set_platform_emulator_preference(
+        &state_guard,
+        &input.platform_name,
+        &input.emulator_name,
+    )
+    .await
+    {
         Ok(()) => rspc_ok(()).into_response(),
         Err(e) => rspc_err::<()>(e).into_response(),
     }
@@ -2080,9 +2368,7 @@ async fn rspc_clear_platform_emulator_preference(
     }
 }
 
-async fn rspc_get_all_emulator_preferences(
-    State(state): State<SharedState>,
-) -> impl IntoResponse {
+async fn rspc_get_all_emulator_preferences(State(state): State<SharedState>) -> impl IntoResponse {
     let state_guard = state.read().await;
     match handlers::get_all_emulator_preferences(&state_guard).await {
         Ok(prefs) => rspc_ok(prefs).into_response(),
@@ -2110,12 +2396,18 @@ async fn rspc_get_emulators_with_status(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Vec<EmulatorWithStatus>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Vec<EmulatorWithStatus>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let platform_name: String = match serde_json::from_str(input_str) {
         Ok(s) => s,
-        Err(e) => return rspc_err::<Vec<EmulatorWithStatus>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Vec<EmulatorWithStatus>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
     };
 
     let state_guard = state.read().await;
@@ -2152,7 +2444,10 @@ async fn rspc_install_emulator(
     // Look up the emulator by name
     let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
         Ok(Some(e)) => e,
-        Ok(None) => return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name)).into_response(),
+        Ok(None) => {
+            return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
+                .into_response()
+        }
         Err(e) => return rspc_err::<String>(e).into_response(),
     };
 
@@ -2176,7 +2471,10 @@ async fn rspc_launch_emulator(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let input: LaunchEmulatorInput = match serde_json::from_str(input_str) {
@@ -2189,7 +2487,13 @@ async fn rspc_launch_emulator(
     // Look up the emulator by name
     let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
         Ok(Some(e)) => e,
-        Ok(None) => return rspc_err::<LaunchResult>(format!("Emulator '{}' not found", input.emulator_name)).into_response(),
+        Ok(None) => {
+            return rspc_err::<LaunchResult>(format!(
+                "Emulator '{}' not found",
+                input.emulator_name
+            ))
+            .into_response()
+        }
         Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
     };
 
@@ -2214,7 +2518,10 @@ async fn rspc_launch_game(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let input: LaunchGameInput = match serde_json::from_str(input_str) {
@@ -2227,7 +2534,13 @@ async fn rspc_launch_game(
     // Look up the emulator by name
     let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
         Ok(Some(e)) => e,
-        Ok(None) => return rspc_err::<LaunchResult>(format!("Emulator '{}' not found", input.emulator_name)).into_response(),
+        Ok(None) => {
+            return rspc_err::<LaunchResult>(format!(
+                "Emulator '{}' not found",
+                input.emulator_name
+            ))
+            .into_response()
+        }
         Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
     };
 
@@ -2246,8 +2559,8 @@ async fn rspc_get_current_os() -> impl IntoResponse {
 // ============================================================================
 
 use crate::handlers::{
-    GameFile, ImportJob, StartImportInput,
-    GraboidPrompt, SaveGraboidPromptInput, DeleteGraboidPromptInput,
+    DeleteGraboidPromptInput, GameFile, GraboidPrompt, ImportJob, SaveGraboidPromptInput,
+    StartImportInput,
 };
 
 #[derive(Debug, Deserialize)]
@@ -2294,12 +2607,17 @@ async fn rspc_get_game_file(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<GameFile>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<GameFile>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
         Ok(input) => input.into_value(),
-        Err(e) => return rspc_err::<Option<GameFile>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<GameFile>>(format!("Invalid input: {}", e)).into_response()
+        }
     };
 
     let state_guard = state.read().await;
@@ -2315,12 +2633,17 @@ async fn rspc_get_active_import(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<ImportJob>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<ImportJob>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
 
     let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
         Ok(input) => input.into_value(),
-        Err(e) => return rspc_err::<Option<ImportJob>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<ImportJob>>(format!("Invalid input: {}", e)).into_response()
+        }
     };
 
     let state_guard = state.read().await;
@@ -2336,7 +2659,9 @@ async fn rspc_start_graboid_import(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<ImportJob>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<ImportJob>("Missing 'input' parameter".to_string()).into_response()
+        }
     };
 
     let input: StartImportInput = match serde_json::from_str(input_str) {
@@ -2384,21 +2709,27 @@ async fn rspc_test_graboid_connection(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<crate::router::ConnectionTestResult>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<crate::router::ConnectionTestResult>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response()
+        }
     };
 
     let input: TestGraboidInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => return rspc_err::<crate::router::ConnectionTestResult>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<crate::router::ConnectionTestResult>(format!("Invalid input: {}", e))
+                .into_response()
+        }
     };
 
     let result = handlers::test_graboid_connection(&input.server_url, &input.api_key).await;
     rspc_ok(result).into_response()
 }
 
-async fn rspc_get_graboid_prompts(
-    State(state): State<SharedState>,
-) -> impl IntoResponse {
+async fn rspc_get_graboid_prompts(State(state): State<SharedState>) -> impl IntoResponse {
     let state_guard = state.read().await;
     match handlers::get_graboid_prompts(&state_guard).await {
         Ok(prompts) => rspc_ok(prompts).into_response(),
@@ -2469,7 +2800,13 @@ async fn rspc_get_effective_graboid_prompt(
     };
 
     let state_guard = state.read().await;
-    match handlers::get_effective_graboid_prompt(&state_guard, &input.platform, input.launchbox_db_id).await {
+    match handlers::get_effective_graboid_prompt(
+        &state_guard,
+        &input.platform,
+        input.launchbox_db_id,
+    )
+    .await
+    {
         Ok(prompt) => rspc_ok(prompt).into_response(),
         Err(e) => rspc_err::<String>(e).into_response(),
     }
@@ -2801,4 +3138,282 @@ async fn graboid_sse_proxy(
     };
 
     Sse::new(stream).into_response()
+}
+
+// ============================================================================
+// Minerva Archive HTTP Handlers
+// ============================================================================
+
+async fn rspc_has_minerva_db(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    rspc_ok(handlers::has_minerva_db(&state_guard)).into_response()
+}
+
+async fn rspc_get_minerva_rom_for_game(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Option<handlers::MinervaRom>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
+    };
+
+    let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
+        Ok(input) => input.into_value(),
+        Err(e) => {
+            return rspc_err::<Option<handlers::MinervaRom>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_minerva_rom_for_game(&state_guard, launchbox_db_id).await {
+        Ok(rom) => rspc_ok(rom).into_response(),
+        Err(e) => rspc_err::<Option<handlers::MinervaRom>>(e).into_response(),
+    }
+}
+
+async fn rspc_search_minerva(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Vec<handlers::MinervaRom>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
+    };
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct SearchInput {
+        launchbox_db_id: Option<i64>,
+        game_title: Option<String>,
+        platform_id: Option<i64>,
+    }
+
+    let input: SearchInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<Vec<handlers::MinervaRom>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
+    };
+
+    let state_guard = state.read().await;
+    match handlers::search_minerva(
+        &state_guard,
+        input.launchbox_db_id,
+        input.game_title,
+        input.platform_id,
+    )
+    .await
+    {
+        Ok(roms) => rspc_ok(roms).into_response(),
+        Err(e) => rspc_err::<Vec<handlers::MinervaRom>>(e).into_response(),
+    }
+}
+
+async fn rspc_start_minerva_download(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<handlers::ImportJob>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
+    };
+
+    let input: handlers::StartMinervaDownloadInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<handlers::ImportJob>(format!("Invalid input: {}", e))
+                .into_response()
+        }
+    };
+
+    #[cfg(feature = "minerva-torrent")]
+    {
+        let mut state_guard = state.write().await;
+        match handlers::start_minerva_download(&mut state_guard, input).await {
+            Ok(job) => rspc_ok(job).into_response(),
+            Err(e) => rspc_err::<handlers::ImportJob>(e).into_response(),
+        }
+    }
+
+    #[cfg(not(feature = "minerva-torrent"))]
+    {
+        let _ = input;
+        rspc_err::<handlers::ImportJob>(
+            "Torrent downloads not available (minerva-torrent feature disabled)".to_string(),
+        )
+        .into_response()
+    }
+}
+
+async fn rspc_get_minerva_download_progress(
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Option<serde_json::Value>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
+    };
+
+    let job_id: String = match serde_json::from_str(input_str) {
+        Ok(id) => id,
+        Err(e) => {
+            return rspc_err::<Option<serde_json::Value>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
+    };
+
+    #[cfg(feature = "minerva-torrent")]
+    {
+        let progress = handlers::get_minerva_download_progress(&job_id);
+        rspc_ok(progress).into_response()
+    }
+
+    #[cfg(not(feature = "minerva-torrent"))]
+    {
+        let _ = job_id;
+        rspc_ok::<Option<serde_json::Value>>(None).into_response()
+    }
+}
+
+async fn rspc_cancel_minerva_download(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response()
+        }
+    };
+
+    let job_id: String = match serde_json::from_str(input_str) {
+        Ok(id) => id,
+        Err(e) => {
+            return rspc_err::<()>(format!("Invalid input: {}", e)).into_response()
+        }
+    };
+
+    #[cfg(feature = "minerva-torrent")]
+    {
+        let state_guard = state.read().await;
+        match handlers::cancel_minerva_download(&state_guard, &job_id).await {
+            Ok(()) => rspc_ok(()).into_response(),
+            Err(e) => rspc_err::<()>(e).into_response(),
+        }
+    }
+
+    #[cfg(not(feature = "minerva-torrent"))]
+    {
+        let _ = (state, job_id);
+        rspc_err::<()>("Torrent downloads not available".to_string()).into_response()
+    }
+}
+
+async fn rspc_test_torrent_connection(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::test_torrent_connection(&state_guard).await {
+        Ok((success, msg)) => rspc_ok(serde_json::json!({"success": success, "message": msg})).into_response(),
+        Err(e) => rspc_err::<serde_json::Value>(e).into_response(),
+    }
+}
+
+async fn rspc_list_torrent_files(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Vec<handlers::TorrentFileMatch>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
+    };
+
+    let input: handlers::ListTorrentFilesInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<Vec<handlers::TorrentFileMatch>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
+    };
+
+    let state_guard = state.read().await;
+    match handlers::list_torrent_files(&state_guard, input).await {
+        Ok(files) => rspc_ok(files).into_response(),
+        Err(e) => rspc_err::<Vec<handlers::TorrentFileMatch>>(e).into_response(),
+    }
+}
+
+// ============================================================================
+// ROM Import HTTP Handlers
+// ============================================================================
+
+async fn rspc_scan_and_match_roms(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<handlers::ScanRomsResult>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
+    };
+
+    let input: handlers::ScanRomsInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<handlers::ScanRomsResult>(format!("Invalid input: {}", e))
+                .into_response()
+        }
+    };
+
+    let state_guard = state.read().await;
+    match handlers::scan_and_match_roms(&state_guard, input).await {
+        Ok(result) => rspc_ok(result).into_response(),
+        Err(e) => rspc_err::<handlers::ScanRomsResult>(e).into_response(),
+    }
+}
+
+async fn rspc_confirm_rom_import(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<usize>("Missing 'input' parameter".to_string()).into_response()
+        }
+    };
+
+    let input: handlers::ConfirmImportInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<usize>(format!("Invalid input: {}", e)).into_response()
+        }
+    };
+
+    let mut state_guard = state.write().await;
+    match handlers::confirm_rom_import(&mut state_guard, input).await {
+        Ok(count) => rspc_ok(count).into_response(),
+        Err(e) => rspc_err::<usize>(e).into_response(),
+    }
 }

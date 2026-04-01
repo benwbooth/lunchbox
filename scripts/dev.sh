@@ -87,17 +87,27 @@ elif [ "$MODE" = "browser" ]; then
     # Wait a moment for services to start
     sleep 3
 
-    # Open browser with hardware-accelerated WebGPU
+    # Open browser with WebGPU/Vulkan enabled by default.
+    # If Chromium becomes unstable on a specific system/session, use:
+    #   LUNCHBOX_STABLE_CHROMIUM=1 ./scripts/dev.sh
     echo ""
-    echo "Opening Chromium with WebGPU enabled..."
-    nix develop "$PROJECT_DIR" --command chromium \
-        --ozone-platform=wayland \
-        --enable-features=UseOzonePlatform,Vulkan \
-        --use-vulkan \
-        --enable-unsafe-webgpu \
-        --enable-webgpu-developer-features \
-        --disable-software-rasterizer \
-        http://127.0.0.1:1420 "$@" &
+    if [ "${LUNCHBOX_STABLE_CHROMIUM:-0}" = "1" ]; then
+        echo "Opening Chromium with stable flags (WebGPU/Vulkan disabled via LUNCHBOX_STABLE_CHROMIUM=1)..."
+        nix develop "$PROJECT_DIR" --command chromium \
+            --ozone-platform-hint=auto \
+            --disable-features=Vulkan \
+            http://127.0.0.1:1420 "$@" &
+    else
+        echo "Opening Chromium with experimental WebGPU/Vulkan flags..."
+        nix develop "$PROJECT_DIR" --command chromium \
+            --ozone-platform=wayland \
+            --enable-features=UseOzonePlatform,Vulkan \
+            --use-vulkan \
+            --enable-unsafe-webgpu \
+            --enable-webgpu-developer-features \
+            --disable-software-rasterizer \
+            http://127.0.0.1:1420 "$@" &
+    fi
 
     echo ""
     echo "═══════════════════════════════════════════════════════"

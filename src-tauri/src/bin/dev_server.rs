@@ -5,7 +5,12 @@
 //!
 //! This allows hot-reloading the backend while keeping the browser open.
 
-use lunchbox_lib::{api, db::{self, USER_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, EMULATORS_DB_NAME, APP_DATA_DIR}, logging, router, state::AppState};
+use lunchbox_lib::{
+    api,
+    db::{self, APP_DATA_DIR, EMULATORS_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, MINERVA_DB_NAME, USER_DB_NAME},
+    logging, router,
+    state::AppState,
+};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -51,14 +56,14 @@ fn find_or_decompress_database(db_name: &str, data_dir: &Path) -> Option<PathBuf
 
     // Possible locations for compressed or uncompressed database
     let possible_paths = [
-        PathBuf::from(format!("../db/{}", db_file)),  // Dev mode (from src-tauri)
-        PathBuf::from(format!("./db/{}", db_file)),   // Dev mode (from root)
+        PathBuf::from(format!("../db/{}", db_file)), // Dev mode (from src-tauri)
+        PathBuf::from(format!("./db/{}", db_file)),  // Dev mode (from root)
         PathBuf::from(format!("/usr/share/lunchbox/{}", db_file)),
     ];
 
     let possible_zst_paths = [
-        PathBuf::from(format!("../db/{}", zst_file)),  // Dev mode (from src-tauri)
-        PathBuf::from(format!("./db/{}", zst_file)),   // Dev mode (from root)
+        PathBuf::from(format!("../db/{}", zst_file)), // Dev mode (from src-tauri)
+        PathBuf::from(format!("./db/{}", zst_file)),  // Dev mode (from root)
         PathBuf::from(format!("/usr/share/lunchbox/{}", zst_file)),
     ];
 
@@ -94,7 +99,10 @@ async fn main() -> anyhow::Result<()> {
     let _log_guard = logging::init_dev_logging();
 
     tracing::info!("Starting Lunchbox dev server...");
-    tracing::info!("Logs are being written to: {}", logging::logs_dir().display());
+    tracing::info!(
+        "Logs are being written to: {}",
+        logging::logs_dir().display()
+    );
 
     // Get the app data directory
     let data_dir = directories::BaseDirs::new()
@@ -115,7 +123,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Load settings from database + keyring
     let settings = if let Some(ref pool) = db_pool {
-        lunchbox_lib::state::load_settings(pool).await.unwrap_or_default()
+        lunchbox_lib::state::load_settings(pool)
+            .await
+            .unwrap_or_default()
     } else {
         Default::default()
     };
@@ -211,6 +221,19 @@ async fn main() -> anyhow::Result<()> {
         games_db_pool,
         images_db_pool,
         emulators_db_pool,
+        minerva_db_pool: {
+            match find_or_decompress_database(MINERVA_DB_NAME, &data_dir) {
+                Some(path) => {
+                    let db_url = format!("sqlite:{}?mode=ro", path.display());
+                    SqlitePoolOptions::new()
+                        .max_connections(4)
+                        .connect_with(SqliteConnectOptions::from_str(&db_url).unwrap().read_only(true))
+                        .await
+                        .ok()
+                }
+                None => None,
+            }
+        },
         settings,
     }));
 

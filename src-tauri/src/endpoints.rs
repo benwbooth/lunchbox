@@ -94,16 +94,29 @@ macro_rules! http_handler {
     ($name:ident, $handler:path, $output:ty, $input:ty) => {
         pub async fn $name(
             axum::extract::State(state): axum::extract::State<SharedState>,
-            axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+            axum::extract::Query(params): axum::extract::Query<
+                std::collections::HashMap<String, String>,
+            >,
         ) -> impl axum::response::IntoResponse {
             use axum::response::IntoResponse;
 
             let input: $input = match params.get("input") {
                 Some(s) => match serde_json::from_str(s) {
                     Ok(i) => i,
-                    Err(e) => return $crate::endpoints::rspc_err::<$output>(format!("Invalid input: {}", e)).into_response(),
+                    Err(e) => {
+                        return $crate::endpoints::rspc_err::<$output>(format!(
+                            "Invalid input: {}",
+                            e
+                        ))
+                        .into_response()
+                    }
                 },
-                None => return $crate::endpoints::rspc_err::<$output>("Missing 'input' parameter".to_string()).into_response(),
+                None => {
+                    return $crate::endpoints::rspc_err::<$output>(
+                        "Missing 'input' parameter".to_string(),
+                    )
+                    .into_response()
+                }
             };
 
             let state_guard = state.read().await;
@@ -115,5 +128,5 @@ macro_rules! http_handler {
     };
 }
 
-pub use tauri_command;
 pub use http_handler;
+pub use tauri_command;

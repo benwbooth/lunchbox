@@ -39,3 +39,6 @@ Thumbs.db
 
 # Local scratch data/tools
 /rom_sources/
+/minerva-cache/
+/minerva-roms.csv
+/minerva-torrents.csv

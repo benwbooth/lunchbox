@@ -1,12 +1,31 @@
 //! Sidebar component with platforms and collections
 
+use crate::app::{PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES};
+use crate::components::QueueStatus;
+use crate::tauri::{self, Collection, Platform};
+use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos::html;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
-use crate::tauri::{self, Platform, Collection};
-use crate::components::QueueStatus;
 use web_sys::console;
+
+const SIDEBAR_UI_STATE_KEY: &str = "lunchbox.ui.sidebar.v1";
+
+#[derive(Clone, Serialize, Deserialize)]
+struct SidebarUiState {
+    platform_search: String,
+    sidebar_width: i32,
+}
+
+impl Default for SidebarUiState {
+    fn default() -> Self {
+        Self {
+            platform_search: String::new(),
+            sidebar_width: 240,
+        }
+    }
+}
 
 /// Format a number with comma separators (e.g., 1234567 -> "1,234,567")
 fn format_number(n: i64) -> String {
@@ -30,10 +49,14 @@ pub fn Sidebar(
     collections_refresh: ReadSignal<u32>,
     set_collections_refresh: WriteSignal<u32>,
 ) -> impl IntoView {
+    let persisted =
+        crate::ui_state::load_json::<SidebarUiState>(SIDEBAR_UI_STATE_KEY).unwrap_or_default();
+
     // Fetch platforms from Tauri backend
     let (platforms, set_platforms) = signal::<Vec<Platform>>(Vec::new());
     let (platforms_loading, set_platforms_loading) = signal(true);
-    let (platform_search, set_platform_search) = signal(String::new());
+    let (platform_search, set_platform_search) = signal(persisted.platform_search);
+    let (sidebar_width, set_sidebar_width) = signal(persisted.sidebar_width.clamp(180, 400));
 
     // Load platforms on component mount
     spawn_local(async move {
@@ -54,10 +77,17 @@ pub fn Sidebar(
         if query.is_empty() {
             platforms.get()
         } else {
-            platforms.get().into_iter().filter(|p| {
-                p.name.to_lowercase().contains(&query) ||
-                p.aliases.as_ref().map(|a| a.to_lowercase().contains(&query)).unwrap_or(false)
-            }).collect()
+            platforms
+                .get()
+                .into_iter()
+                .filter(|p| {
+                    p.name.to_lowercase().contains(&query)
+                        || p.aliases
+                            .as_ref()
+                            .map(|a| a.to_lowercase().contains(&query))
+                            .unwrap_or(false)
+                })
+                .collect()
         }
     };
 
@@ -118,16 +148,28 @@ pub fn Sidebar(
     };
 
     // Sidebar resize state
-    let (sidebar_width, set_sidebar_width) = signal(240i32);
     let (is_resizing, set_is_resizing) = signal(false);
     let sidebar_ref = NodeRef::<html::Aside>::new();
+
+    Effect::new(move || {
+        crate::ui_state::save_json(
+            SIDEBAR_UI_STATE_KEY,
+            &SidebarUiState {
+                platform_search: platform_search.get(),
+                sidebar_width: sidebar_width.get().clamp(180, 400),
+            },
+        );
+    });
 
     // Handle resize drag
     let on_resize_start = move |ev: web_sys::MouseEvent| {
         ev.prevent_default();
         set_is_resizing.set(true);
         // Add class to body to prevent text selection
-        if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+        if let Some(body) = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.body())
+        {
             let _ = body.class_list().add_1("sidebar-resizing");
         }
     };
@@ -138,23 +180,32 @@ pub fn Sidebar(
             return;
         }
 
-        let mousemove = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
-            if is_resizing.get() {
-                let new_width = ev.client_x().max(180).min(400);
-                set_sidebar_width.set(new_width);
-            }
-        });
+        let mousemove = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(
+            move |ev: web_sys::MouseEvent| {
+                if is_resizing.get() {
+                    let new_width = ev.client_x().max(180).min(400);
+                    set_sidebar_width.set(new_width);
+                }
+            },
+        );
 
-        let mouseup = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(move |_: web_sys::MouseEvent| {
-            set_is_resizing.set(false);
-            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
-                let _ = body.class_list().remove_1("sidebar-resizing");
-            }
-        });
+        let mouseup = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(
+            move |_: web_sys::MouseEvent| {
+                set_is_resizing.set(false);
+                if let Some(body) = web_sys::window()
+                    .and_then(|w| w.document())
+                    .and_then(|d| d.body())
+                {
+                    let _ = body.class_list().remove_1("sidebar-resizing");
+                }
+            },
+        );
 
         if let Some(window) = web_sys::window() {
-            let _ = window.add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref());
-            let _ = window.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref());
+            let _ = window
+                .add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref());
+            let _ = window
+                .add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref());
             mousemove.forget();
             mouseup.forget();
         }
@@ -189,9 +240,23 @@ pub fn Sidebar(
             </div>
             <nav class="platform-list">
                 <button
+                    class="platform-item platform-item-minigames"
+                    class:selected=move || {
+                        selected_platform.get().as_deref() == Some(PLATFORM_SELECTION_MINIGAMES)
+                            && selected_collection.get().is_none()
+                    }
+                    on:click=move |_| on_platform_click(Some(PLATFORM_SELECTION_MINIGAMES.to_string()))
+                >
+                    <span class="platform-icon-placeholder"></span>
+                    <span class="platform-name">"MiniGames"</span>
+                </button>
+                <button
                     class="platform-item"
-                    class:selected=move || selected_platform.get().is_none() && selected_collection.get().is_none()
-                    on:click=move |_| on_platform_click(None)
+                    class:selected=move || {
+                        selected_platform.get().as_deref() == Some(PLATFORM_SELECTION_ALL_GAMES)
+                            && selected_collection.get().is_none()
+                    }
+                    on:click=move |_| on_platform_click(Some(PLATFORM_SELECTION_ALL_GAMES.to_string()))
                 >
                     <span class="platform-icon-placeholder"></span>
                     <span class="platform-name">"All Games"</span>
@@ -317,7 +382,8 @@ fn highlight_matches(text: &str, query: &str) -> AnyView {
         }
         // Add the matching text with highlight
         let matched = &text[start..start + query.len()];
-        parts.push(view! { <span class="search-highlight">{matched.to_string()}</span> }.into_any());
+        parts
+            .push(view! { <span class="search-highlight">{matched.to_string()}</span> }.into_any());
         last_end = start + query.len();
     }
 
@@ -368,7 +434,12 @@ fn PlatformItem(
 
     // Build tooltip
     let label = if game_count == 1 { "game" } else { "games" };
-    let tooltip = format!("{}\n{} {}", name_for_tooltip, format_number(game_count), label);
+    let tooltip = format!(
+        "{}\n{} {}",
+        name_for_tooltip,
+        format_number(game_count),
+        label
+    );
 
     view! {
         <button

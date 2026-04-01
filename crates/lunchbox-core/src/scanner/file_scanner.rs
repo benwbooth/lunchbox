@@ -16,33 +16,33 @@ use super::checksum::Checksums;
 /// Common ROM file extensions by platform
 pub const ROM_EXTENSIONS: &[&str] = &[
     // Nintendo
-    "nes", "fds", "unf", "unif",           // NES/Famicom
-    "sfc", "smc", "fig", "swc", "bs",      // SNES
-    "n64", "z64", "v64",                   // N64
-    "gb", "gbc", "sgb",                    // Game Boy
-    "gba",                                  // GBA
-    "nds", "dsi",                          // DS
-    "3ds", "cia",                          // 3DS
+    "nes", "fds", "unf", "unif", // NES/Famicom
+    "sfc", "smc", "fig", "swc", "bs", // SNES
+    "n64", "z64", "v64", // N64
+    "gb", "gbc", "sgb", // Game Boy
+    "gba", // GBA
+    "nds", "dsi", // DS
+    "3ds", "cia", // 3DS
     "gcm", "gcz", "iso", "ciso", "rvz", "wbfs", "wad", // GameCube/Wii
     // Sega
-    "sms", "gg",                           // Master System/Game Gear
-    "md", "gen", "bin", "smd",             // Genesis/Mega Drive
-    "32x",                                  // 32X
-    "cue", "chd",                          // Sega CD / Saturn / Dreamcast
+    "sms", "gg", // Master System/Game Gear
+    "md", "gen", "bin", "smd", // Genesis/Mega Drive
+    "32x", // 32X
+    "cue", "chd", // Sega CD / Saturn / Dreamcast
     // Sony
-    "pbp", "cso",                          // PSP
-    "pkg",                                  // PS3
+    "pbp", "cso", // PSP
+    "pkg", // PS3
     // Atari
-    "a26", "a52", "a78",                   // Atari 2600/5200/7800
-    "lnx",                                  // Lynx
-    "jag", "j64",                          // Jaguar
+    "a26", "a52", "a78", // Atari 2600/5200/7800
+    "lnx", // Lynx
+    "jag", "j64", // Jaguar
     // Other
-    "pce", "sgx",                          // TurboGrafx
-    "ngp", "ngc",                          // Neo Geo Pocket
-    "ws", "wsc",                           // WonderSwan
-    "vec",                                  // Vectrex
-    "col",                                  // ColecoVision
-    "int",                                  // Intellivision
+    "pce", "sgx", // TurboGrafx
+    "ngp", "ngc", // Neo Geo Pocket
+    "ws", "wsc", // WonderSwan
+    "vec", // Vectrex
+    "col", // ColecoVision
+    "int", // Intellivision
     // Archives
     "zip", "7z", "rar",
 ];
@@ -98,10 +98,7 @@ impl Default for RomScanner {
 
 impl RomScanner {
     pub fn new() -> Self {
-        let extensions: HashSet<String> = ROM_EXTENSIONS
-            .iter()
-            .map(|s| s.to_lowercase())
-            .collect();
+        let extensions: HashSet<String> = ROM_EXTENSIONS.iter().map(|s| s.to_lowercase()).collect();
 
         Self { extensions }
     }
@@ -143,7 +140,8 @@ impl RomScanner {
                     callback(ScanProgress {
                         total_files: total,
                         scanned_files: count,
-                        current_file: path.file_name()
+                        current_file: path
+                            .file_name()
                             .map(|s| s.to_string_lossy().to_string())
                             .unwrap_or_default(),
                     });
@@ -237,9 +235,32 @@ fn parse_rom_name(filename: &str) -> (String, Option<String>, Option<String>) {
             let tag = &name[start + 1..start + end];
 
             // Check if it's a region tag
-            let regions = ["USA", "Europe", "Japan", "World", "En", "Fr", "De", "Es", "It",
-                          "U", "E", "J", "JU", "UE", "Asia", "Korea", "China", "Brazil",
-                          "Australia", "Germany", "France", "Spain", "Italy", "Netherlands"];
+            let regions = [
+                "USA",
+                "Europe",
+                "Japan",
+                "World",
+                "En",
+                "Fr",
+                "De",
+                "Es",
+                "It",
+                "U",
+                "E",
+                "J",
+                "JU",
+                "UE",
+                "Asia",
+                "Korea",
+                "China",
+                "Brazil",
+                "Australia",
+                "Germany",
+                "France",
+                "Spain",
+                "Italy",
+                "Netherlands",
+            ];
 
             if regions.iter().any(|r| tag.contains(r)) {
                 region = Some(tag.to_string());
@@ -300,7 +321,13 @@ mod tests {
 
     #[test]
     fn test_normalize_for_matching() {
-        assert_eq!(normalize_for_matching("Super Mario Bros."), "SUPERMARIOBROS");
-        assert_eq!(normalize_for_matching("The Legend of Zelda: A Link to the Past"), "THELEGENDOFZELDAALINKTOTHEPAST");
+        assert_eq!(
+            normalize_for_matching("Super Mario Bros."),
+            "SUPERMARIOBROS"
+        );
+        assert_eq!(
+            normalize_for_matching("The Legend of Zelda: A Link to the Past"),
+            "THELEGENDOFZELDAALINKTOTHEPAST"
+        );
     }
 }

@@ -9,11 +9,25 @@ pub fn pack_sprite_atlas() -> Vec<u32> {
     let mut atlas = Vec::new();
 
     let sprite_list = [
-        MARIO_STAND, MARIO_WALK1, MARIO_WALK2, MARIO_JUMP,
-        GOOMBA, BRICK, QUESTION, GROUND,
-        KOOPA_WALK, COIN, MUSHROOM, MARIO_DEAD,
-        QUESTION_EMPTY, KOOPA_SHELL, BRICK_DEBRIS,
-        MARIO_BIG_STAND_TOP, FIRE_FLOWER, STAR, FIREBALL,
+        MARIO_STAND,
+        MARIO_WALK1,
+        MARIO_WALK2,
+        MARIO_JUMP,
+        GOOMBA,
+        BRICK,
+        QUESTION,
+        GROUND,
+        KOOPA_WALK,
+        COIN,
+        MUSHROOM,
+        MARIO_DEAD,
+        QUESTION_EMPTY,
+        KOOPA_SHELL,
+        BRICK_DEBRIS,
+        MARIO_BIG_STAND_TOP,
+        FIRE_FLOWER,
+        STAR,
+        FIREBALL,
     ];
 
     for sprite in &sprite_list {
@@ -42,20 +56,20 @@ pub fn pack_sprite_atlas() -> Vec<u32> {
 /// Pack palette data for GPU upload
 pub fn pack_palettes() -> Vec<u32> {
     let palette_list: [Palette; 14] = [
-        PALETTE_MARIO,      // 0
-        PALETTE_LUIGI,      // 1
-        PALETTE_GOOMBA,     // 2
-        PALETTE_BRICK,      // 3
-        PALETTE_QUESTION,   // 4
-        PALETTE_GROUND,     // 5
-        PALETTE_KOOPA,      // 6
-        PALETTE_COIN,       // 7
-        PALETTE_PLAYER,     // 8
-        PALETTE_MUSHROOM,   // 9
-        PALETTE_TOAD,       // 10
-        PALETTE_PRINCESS,   // 11
-        PALETTE_STAR,       // 12
-        PALETTE_FIREBALL,   // 13
+        PALETTE_MARIO,    // 0
+        PALETTE_LUIGI,    // 1
+        PALETTE_GOOMBA,   // 2
+        PALETTE_BRICK,    // 3
+        PALETTE_QUESTION, // 4
+        PALETTE_GROUND,   // 5
+        PALETTE_KOOPA,    // 6
+        PALETTE_COIN,     // 7
+        PALETTE_PLAYER,   // 8
+        PALETTE_MUSHROOM, // 9
+        PALETTE_TOAD,     // 10
+        PALETTE_PRINCESS, // 11
+        PALETTE_STAR,     // 12
+        PALETTE_FIREBALL, // 13
     ];
 
     let mut palettes = Vec::new();

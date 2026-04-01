@@ -15,7 +15,8 @@ use std::process::Command;
 
 const LAUNCHBOX_METADATA_URL: &str = "https://gamesdb.launchbox-app.com/Metadata.zip";
 const LIBRETRO_DATABASE_URL: &str = "https://github.com/libretro/libretro-database";
-const OPENVGDB_URL: &str = "https://github.com/OpenVGDB/OpenVGDB/releases/latest/download/openvgdb.zip";
+const OPENVGDB_URL: &str =
+    "https://github.com/OpenVGDB/OpenVGDB/releases/latest/download/openvgdb.zip";
 
 /// Get the default data directory
 pub fn default_data_dir() -> PathBuf {

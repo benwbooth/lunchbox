@@ -17,11 +17,11 @@
 //! )
 //! ```
 
+use crate::tags;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use crate::tags;
 
 /// Header information from a DAT file
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -193,7 +193,7 @@ fn parse_block(tokens: &mut std::iter::Peekable<Tokenizer>) -> HashMap<String, V
                 // Check if value is a block or a single value
                 if let Some(Token::OpenParen) = tokens.peek() {
                     tokens.next(); // consume open paren
-                    // Recursively parse nested block, but flatten into a string for now
+                                   // Recursively parse nested block, but flatten into a string for now
                     let nested = parse_block(tokens);
                     // For ROM blocks, we want to preserve the structure
                     // Store as a special format: "nested:key=value;key=value"

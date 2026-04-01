@@ -51,10 +51,7 @@ pub enum MediaEvent {
     },
     /// Download was cancelled
     #[serde(rename_all = "camelCase")]
-    Cancelled {
-        game_id: i64,
-        media_type: String,
-    },
+    Cancelled { game_id: i64, media_type: String },
 }
 
 impl MediaEvent {
@@ -228,22 +225,19 @@ pub enum VideoEvent {
     },
     /// Video download completed successfully
     #[serde(rename_all = "camelCase")]
-    Completed {
-        game_id: i64,
-        local_path: String,
-    },
+    Completed { game_id: i64, local_path: String },
     /// Video download failed
     #[serde(rename_all = "camelCase")]
-    Failed {
-        game_id: i64,
-        error: String,
-    },
+    Failed { game_id: i64, error: String },
 }
 
 impl VideoEvent {
     /// Create a Started event
     pub fn started(game_id: i64, total_bytes: Option<u64>) -> Self {
-        VideoEvent::Started { game_id, total_bytes }
+        VideoEvent::Started {
+            game_id,
+            total_bytes,
+        }
     }
 
     /// Create a Progress event
@@ -261,7 +255,10 @@ impl VideoEvent {
 
     /// Create a Completed event
     pub fn completed(game_id: i64, local_path: String) -> Self {
-        VideoEvent::Completed { game_id, local_path }
+        VideoEvent::Completed {
+            game_id,
+            local_path,
+        }
     }
 
     /// Create a Failed event

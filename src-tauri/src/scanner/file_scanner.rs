@@ -17,33 +17,33 @@ use crate::tags::{self, TagCategory};
 /// Common ROM file extensions by platform
 pub const ROM_EXTENSIONS: &[&str] = &[
     // Nintendo
-    "nes", "fds", "unf", "unif",           // NES/Famicom
-    "sfc", "smc", "fig", "swc", "bs",      // SNES
-    "n64", "z64", "v64",                   // N64
-    "gb", "gbc", "sgb",                    // Game Boy
-    "gba",                                  // GBA
-    "nds", "dsi",                          // DS
-    "3ds", "cia",                          // 3DS
+    "nes", "fds", "unf", "unif", // NES/Famicom
+    "sfc", "smc", "fig", "swc", "bs", // SNES
+    "n64", "z64", "v64", // N64
+    "gb", "gbc", "sgb", // Game Boy
+    "gba", // GBA
+    "nds", "dsi", // DS
+    "3ds", "cia", // 3DS
     "gcm", "gcz", "iso", "ciso", "rvz", "wbfs", "wad", // GameCube/Wii
     // Sega
-    "sms", "gg",                           // Master System/Game Gear
-    "md", "gen", "bin", "smd",             // Genesis/Mega Drive
-    "32x",                                  // 32X
-    "cue", "chd",                          // Sega CD / Saturn / Dreamcast
+    "sms", "gg", // Master System/Game Gear
+    "md", "gen", "bin", "smd", // Genesis/Mega Drive
+    "32x", // 32X
+    "cue", "chd", // Sega CD / Saturn / Dreamcast
     // Sony
-    "pbp", "cso",                          // PSP
-    "pkg",                                  // PS3
+    "pbp", "cso", // PSP
+    "pkg", // PS3
     // Atari
-    "a26", "a52", "a78",                   // Atari 2600/5200/7800
-    "lnx",                                  // Lynx
-    "jag", "j64",                          // Jaguar
+    "a26", "a52", "a78", // Atari 2600/5200/7800
+    "lnx", // Lynx
+    "jag", "j64", // Jaguar
     // Other
-    "pce", "sgx",                          // TurboGrafx
-    "ngp", "ngc",                          // Neo Geo Pocket
-    "ws", "wsc",                           // WonderSwan
-    "vec",                                  // Vectrex
-    "col",                                  // ColecoVision
-    "int",                                  // Intellivision
+    "pce", "sgx", // TurboGrafx
+    "ngp", "ngc", // Neo Geo Pocket
+    "ws", "wsc", // WonderSwan
+    "vec", // Vectrex
+    "col", // ColecoVision
+    "int", // Intellivision
     // Archives
     "zip", "7z", "rar",
 ];
@@ -99,10 +99,7 @@ impl Default for RomScanner {
 
 impl RomScanner {
     pub fn new() -> Self {
-        let extensions: HashSet<String> = ROM_EXTENSIONS
-            .iter()
-            .map(|s| s.to_lowercase())
-            .collect();
+        let extensions: HashSet<String> = ROM_EXTENSIONS.iter().map(|s| s.to_lowercase()).collect();
 
         Self { extensions }
     }
@@ -144,7 +141,8 @@ impl RomScanner {
                     callback(ScanProgress {
                         total_files: total,
                         scanned_files: count,
-                        current_file: path.file_name()
+                        current_file: path
+                            .file_name()
                             .map(|s| s.to_string_lossy().to_string())
                             .unwrap_or_default(),
                     });
@@ -233,12 +231,14 @@ fn parse_rom_name(filename: &str) -> (String, Option<String>, Option<String>) {
     let (clean_name, parsed_tags) = tags::parse_title_tags(name);
 
     // Find first region tag
-    let region = parsed_tags.iter()
+    let region = parsed_tags
+        .iter()
         .find(|t| t.category == TagCategory::Region || t.category == TagCategory::Language)
         .map(|t| t.text.clone());
 
     // Find first revision tag
-    let version = parsed_tags.iter()
+    let version = parsed_tags
+        .iter()
         .find(|t| t.category == TagCategory::Revision)
         .map(|t| t.text.clone());
 
@@ -251,6 +251,35 @@ pub fn normalize_for_matching(name: &str) -> String {
         .filter(|c| c.is_alphanumeric())
         .flat_map(|c| c.to_uppercase())
         .collect()
+}
+
+/// Non-archive ROM extensions (for checking files inside archives)
+const ROM_EXTENSIONS_NO_ARCHIVE: &[&str] = &[
+    "nes", "fds", "unf", "unif", "sfc", "smc", "fig", "swc", "bs",
+    "n64", "z64", "v64", "gb", "gbc", "sgb", "gba", "nds", "dsi",
+    "3ds", "cia", "gcm", "gcz", "iso", "ciso", "rvz", "wbfs", "wad",
+    "sms", "gg", "md", "gen", "bin", "smd", "32x", "cue", "chd",
+    "pbp", "cso", "pkg", "a26", "a52", "a78", "lnx", "jag", "j64",
+    "pce", "sgx", "ngp", "ngc", "ws", "wsc", "vec", "col", "int",
+];
+
+/// Peek inside a .zip archive to find the extension of the first ROM file inside.
+/// Returns None if the archive can't be read or contains no recognized ROM files.
+pub fn peek_archive_extension(path: &Path) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut archive = zip::ZipArchive::new(file).ok()?;
+    for i in 0..archive.len() {
+        if let Ok(entry) = archive.by_index(i) {
+            let name = entry.name().to_string();
+            if let Some(ext) = name.rsplit('.').next() {
+                let ext_lower = ext.to_lowercase();
+                if ROM_EXTENSIONS_NO_ARCHIVE.contains(&ext_lower.as_str()) {
+                    return Some(ext_lower);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -272,7 +301,13 @@ mod tests {
 
     #[test]
     fn test_normalize_for_matching() {
-        assert_eq!(normalize_for_matching("Super Mario Bros."), "SUPERMARIOBROS");
-        assert_eq!(normalize_for_matching("The Legend of Zelda: A Link to the Past"), "THELEGENDOFZELDAALINKTOTHEPAST");
+        assert_eq!(
+            normalize_for_matching("Super Mario Bros."),
+            "SUPERMARIOBROS"
+        );
+        assert_eq!(
+            normalize_for_matching("The Legend of Zelda: A Link to the Past"),
+            "THELEGENDOFZELDAALINKTOTHEPAST"
+        );
     }
 }

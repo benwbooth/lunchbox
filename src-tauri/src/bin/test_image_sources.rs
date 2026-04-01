@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
     let platform = "Nintendo Entertainment System";
     let libretro_platform = "Nintendo - Nintendo Entertainment System";
     let libretro_title = "Super Mario Bros. (World)";
-    let launchbox_db_id: i64 = 140;  // Known to have Box - Front images
+    let launchbox_db_id: i64 = 140; // Known to have Box - Front images
 
     let client = reqwest::Client::builder()
         .user_agent("Lunchbox/1.0")
@@ -59,7 +59,10 @@ async fn main() -> Result<()> {
         println!("⚠ No API key configured");
         results.push(("SteamGridDB", TestResult::NotConfigured));
     } else {
-        println!("API key: {}...", &creds.steamgriddb_api_key[..8.min(creds.steamgriddb_api_key.len())]);
+        println!(
+            "API key: {}...",
+            &creds.steamgriddb_api_key[..8.min(creds.steamgriddb_api_key.len())]
+        );
         let sgdb_result = test_steamgriddb(&client, &creds.steamgriddb_api_key, game_title).await;
         results.push(("SteamGridDB", sgdb_result));
     }
@@ -71,8 +74,17 @@ async fn main() -> Result<()> {
         println!("⚠ No client_id/client_secret configured");
         results.push(("IGDB", TestResult::NotConfigured));
     } else {
-        println!("Client ID: {}...", &creds.igdb_client_id[..8.min(creds.igdb_client_id.len())]);
-        let igdb_result = test_igdb(&client, &creds.igdb_client_id, &creds.igdb_client_secret, game_title).await;
+        println!(
+            "Client ID: {}...",
+            &creds.igdb_client_id[..8.min(creds.igdb_client_id.len())]
+        );
+        let igdb_result = test_igdb(
+            &client,
+            &creds.igdb_client_id,
+            &creds.igdb_client_secret,
+            game_title,
+        )
+        .await;
         results.push(("IGDB", igdb_result));
     }
     println!();
@@ -84,7 +96,12 @@ async fn main() -> Result<()> {
         results.push(("EmuMovies", TestResult::NotConfigured));
     } else {
         println!("Username: {}", creds.emumovies_username);
-        let emumovies_result = test_emumovies(&creds.emumovies_username, &creds.emumovies_password, platform).await;
+        let emumovies_result = test_emumovies(
+            &creds.emumovies_username,
+            &creds.emumovies_password,
+            platform,
+        )
+        .await;
         results.push(("EmuMovies", emumovies_result));
     }
     println!();
@@ -103,7 +120,8 @@ async fn main() -> Result<()> {
             creds.screenscraper_user_id.as_deref(),
             creds.screenscraper_user_password.as_deref(),
             game_title,
-        ).await;
+        )
+        .await;
         results.push(("ScreenScraper", ss_result));
     }
     println!();
@@ -194,10 +212,7 @@ async fn test_steamgriddb(client: &reqwest::Client, api_key: &str, game_title: &
     println!("Found: {} (ID: {})", game_name, game_id);
 
     // Get grids for game
-    let grids_url = format!(
-        "https://www.steamgriddb.com/api/v2/grids/game/{}",
-        game_id
-    );
+    let grids_url = format!("https://www.steamgriddb.com/api/v2/grids/game/{}", game_id);
 
     let resp = match client
         .get(&grids_url)
@@ -232,7 +247,12 @@ async fn test_steamgriddb(client: &reqwest::Client, api_key: &str, game_title: &
     }
 }
 
-async fn test_igdb(client: &reqwest::Client, client_id: &str, client_secret: &str, game_title: &str) -> TestResult {
+async fn test_igdb(
+    client: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    game_title: &str,
+) -> TestResult {
     // Get OAuth token
     println!("Getting OAuth token...");
     let token_url = format!(
@@ -260,14 +280,14 @@ async fn test_igdb(client: &reqwest::Client, client_id: &str, client_secret: &st
         Some(t) => t,
         None => return TestResult::Failed("No access_token in response".to_string()),
     };
-    println!("Got token: {}...", &access_token[..8.min(access_token.len())]);
+    println!(
+        "Got token: {}...",
+        &access_token[..8.min(access_token.len())]
+    );
 
     // Search for game
     println!("Searching for game...");
-    let search_body = format!(
-        "search \"{}\"; fields name,cover.url; limit 1;",
-        game_title
-    );
+    let search_body = format!("search \"{}\"; fields name,cover.url; limit 1;", game_title);
 
     let resp = match client
         .post("https://api.igdb.com/v4/games")
@@ -337,7 +357,10 @@ async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestR
     // Check Artwork folder (archives)
     let artwork_dir = format!("/Official/Artwork/{}", emumovies_folder);
     let artwork_archives = match ftp.nlst(Some(&artwork_dir)) {
-        Ok(files) => files.iter().filter(|f| f.ends_with(".zip") || f.ends_with(".rar")).count(),
+        Ok(files) => files
+            .iter()
+            .filter(|f| f.ends_with(".zip") || f.ends_with(".rar"))
+            .count(),
         Err(_) => 0,
     };
     println!("Artwork: {} archives in {}", artwork_archives, artwork_dir);
@@ -361,13 +384,22 @@ async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestR
         // Reconnect again
         let mut ftp = match suppaftp::FtpStream::connect("files.emumovies.com:21") {
             Ok(f) => f,
-            Err(_) => return TestResult::Success(format!("{} art archives, videos unavailable", artwork_archives)),
+            Err(_) => {
+                return TestResult::Success(format!(
+                    "{} art archives, videos unavailable",
+                    artwork_archives
+                ))
+            }
         };
         let _ = ftp.login(username, password);
         match ftp.nlst(Some(vf)) {
             Ok(files) => {
                 let count = files.iter().filter(|f| f.ends_with(".mp4")).count();
-                println!("Videos: {} mp4 files in {}", count, vf.rsplit('/').next().unwrap_or(vf));
+                println!(
+                    "Videos: {} mp4 files in {}",
+                    count,
+                    vf.rsplit('/').next().unwrap_or(vf)
+                );
                 let _ = ftp.quit();
                 count
             }
@@ -377,7 +409,10 @@ async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestR
         0
     };
 
-    TestResult::Success(format!("{} art archives, {} videos", artwork_archives, video_count))
+    TestResult::Success(format!(
+        "{} art archives, {} videos",
+        artwork_archives, video_count
+    ))
 }
 
 async fn test_screenscraper(
@@ -397,7 +432,11 @@ async fn test_screenscraper(
     );
 
     if let (Some(uid), Some(upwd)) = (user_id, user_password) {
-        url.push_str(&format!("&ssid={}&sspassword={}", urlencoding::encode(uid), urlencoding::encode(upwd)));
+        url.push_str(&format!(
+            "&ssid={}&sspassword={}",
+            urlencoding::encode(uid),
+            urlencoding::encode(upwd)
+        ));
     }
 
     println!("Querying API...");
@@ -423,7 +462,8 @@ async fn test_screenscraper(
 
     // Check for game data
     if let Some(game) = body["response"]["jeu"].as_object() {
-        let name = game.get("noms")
+        let name = game
+            .get("noms")
             .and_then(|n| n.as_array())
             .and_then(|arr| arr.first())
             .and_then(|n| n["text"].as_str())
@@ -431,7 +471,8 @@ async fn test_screenscraper(
         println!("Found: {}", name);
 
         // Check for media
-        let media_count = game.get("medias")
+        let media_count = game
+            .get("medias")
             .and_then(|m| m.as_array())
             .map(|arr| arr.len())
             .unwrap_or(0);
@@ -455,7 +496,10 @@ async fn test_launchbox_cdn(client: &reqwest::Client, launchbox_db_id: i64) -> T
     let possible_paths = [
         "../db/game_images.db",
         "./db/game_images.db",
-        &format!("{}/.local/share/lunchbox/game_images.db", std::env::var("HOME").unwrap_or_default()),
+        &format!(
+            "{}/.local/share/lunchbox/game_images.db",
+            std::env::var("HOME").unwrap_or_default()
+        ),
     ];
 
     let mut db_path = None;
@@ -478,7 +522,11 @@ async fn test_launchbox_cdn(client: &reqwest::Client, launchbox_db_id: i64) -> T
     let db_url = format!("sqlite:{}?mode=ro", db_path);
     let pool = match SqlitePoolOptions::new()
         .max_connections(1)
-        .connect_with(SqliteConnectOptions::from_str(&db_url).unwrap().read_only(true))
+        .connect_with(
+            SqliteConnectOptions::from_str(&db_url)
+                .unwrap()
+                .read_only(true),
+        )
         .await
     {
         Ok(p) => p,

@@ -16,7 +16,13 @@ fn main() {
     let tz_abbrev = iana_time_zone::get_timezone()
         .ok()
         .and_then(|tz_name| tz_name.parse::<chrono_tz::Tz>().ok())
-        .and_then(|tz| Some(tz.from_utc_datetime(&now.naive_utc()).format("%Z").to_string()))
+        .and_then(|tz| {
+            Some(
+                tz.from_utc_datetime(&now.naive_utc())
+                    .format("%Z")
+                    .to_string(),
+            )
+        })
         .unwrap_or_default();
     let timestamp = format!("{} {}", now.format("%Y-%m-%d %H:%M:%S"), tz_abbrev);
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", timestamp);

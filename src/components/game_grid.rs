@@ -1,15 +1,21 @@
 //! Game grid and list views with virtual scrolling
 
-use leptos::prelude::*;
-use leptos::html;
-use leptos::task::spawn_local;
-use wasm_bindgen::JsCast;
-use web_sys::console;
-use chrono::{Datelike, NaiveDate};
-use crate::app::{ViewMode, ArtworkDisplayType};
+use crate::app::{
+    ArtworkDisplayType, GameFilters, ViewMode, PLATFORM_SELECTION_ALL_GAMES,
+    PLATFORM_SELECTION_MINIGAMES,
+};
 use crate::tauri::{self, Game};
+use chrono::{Datelike, NaiveDate};
+use leptos::html;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use wasm_bindgen::JsCast;
+use web_sys::console;
 
 /// Format a number with comma separators (e.g., 1234567 -> "1,234,567")
 fn format_number(n: i64) -> String {
@@ -48,7 +54,8 @@ fn highlight_matches(text: &str, query: &str) -> AnyView {
         }
         // Add the matching text with highlight
         let matched = &text[start..start + query.len()];
-        parts.push(view! { <span class="search-highlight">{matched.to_string()}</span> }.into_any());
+        parts
+            .push(view! { <span class="search-highlight">{matched.to_string()}</span> }.into_any());
         last_end = start + query.len();
     }
 
@@ -60,10 +67,11 @@ fn highlight_matches(text: &str, query: &str) -> AnyView {
 
     view! { <>{parts}</> }.into_any()
 }
-const ITEM_WIDTH: i32 = 180;  // Width of each game card
+const ITEM_WIDTH: i32 = 180; // Width of each game card
 const LIST_ITEM_HEIGHT: i32 = 40; // Height in list view
 const BUFFER_ITEMS: i32 = 10; // Extra items to render above/below viewport
 const FETCH_CHUNK_SIZE: i64 = 500; // How many games to fetch at once
+const GAME_GRID_UI_STATE_KEY: &str = "lunchbox.ui.game-grid.v1";
 
 /// Parse a date string into a NaiveDate, handling various formats
 fn parse_date(date_str: &str) -> Option<NaiveDate> {
@@ -87,9 +95,18 @@ fn parse_date(date_str: &str) -> Option<NaiveDate> {
 
     // Try "Month Year" format: "July 1990"
     let months = [
-        ("january", 1), ("february", 2), ("march", 3), ("april", 4),
-        ("may", 5), ("june", 6), ("july", 7), ("august", 8),
-        ("september", 9), ("october", 10), ("november", 11), ("december", 12),
+        ("january", 1),
+        ("february", 2),
+        ("march", 3),
+        ("april", 4),
+        ("may", 5),
+        ("june", 6),
+        ("july", 7),
+        ("august", 8),
+        ("september", 9),
+        ("october", 10),
+        ("november", 11),
+        ("december", 12),
     ];
     let lower = trimmed.to_lowercase();
     for (month_name, month_num) in months {
@@ -136,7 +153,7 @@ fn sortable_date(date_str: &Option<String>) -> String {
 // ============================================================================
 
 /// Available columns for list view
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Column {
     Title,
     Platform,
@@ -154,6 +171,26 @@ pub enum Column {
     Series,
     Region,
     Notes,
+}
+
+fn sanitize_visible_columns(columns: Vec<Column>) -> Vec<Column> {
+    if columns.is_empty() {
+        return Column::default_visible();
+    }
+
+    let mut deduped = Vec::new();
+    let mut seen = HashSet::new();
+    for column in columns {
+        if seen.insert(column) {
+            deduped.push(column);
+        }
+    }
+
+    if deduped.is_empty() {
+        Column::default_visible()
+    } else {
+        deduped
+    }
 }
 
 impl Column {
@@ -186,30 +223,64 @@ impl Column {
             Column::Platform => game.platform.clone(),
             Column::Developer => game.developer.clone().unwrap_or_else(|| "-".to_string()),
             Column::Publisher => game.publisher.clone().unwrap_or_else(|| "-".to_string()),
-            Column::Year => game.release_year.map(|y| y.to_string()).unwrap_or_else(|| "-".to_string()),
-            Column::ReleaseDate => game.release_date.as_ref().map(|d| format_date(d)).unwrap_or_else(|| "-".to_string()),
+            Column::Year => game
+                .release_year
+                .map(|y| y.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            Column::ReleaseDate => game
+                .release_date
+                .as_ref()
+                .map(|d| format_date(d))
+                .unwrap_or_else(|| "-".to_string()),
             Column::Genre => game.genres.clone().unwrap_or_else(|| "-".to_string()),
             Column::Players => game.players.clone().unwrap_or_else(|| "-".to_string()),
-            Column::Rating => game.rating.map(|r| format!("{:.1}", r)).unwrap_or_else(|| "-".to_string()),
+            Column::Rating => game
+                .rating
+                .map(|r| format!("{:.1}", r))
+                .unwrap_or_else(|| "-".to_string()),
             Column::Esrb => game.esrb.clone().unwrap_or_else(|| "-".to_string()),
-            Column::Coop => game.cooperative.map(|c| if c { "Yes" } else { "No" }.to_string()).unwrap_or_else(|| "-".to_string()),
-            Column::Variants => if game.variant_count > 1 { game.variant_count.to_string() } else { "-".to_string() },
+            Column::Coop => game
+                .cooperative
+                .map(|c| if c { "Yes" } else { "No" }.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            Column::Variants => {
+                if game.variant_count > 1 {
+                    game.variant_count.to_string()
+                } else {
+                    "-".to_string()
+                }
+            }
             Column::ReleaseType => game.release_type.clone().unwrap_or_else(|| "-".to_string()),
             Column::Series => game.series.clone().unwrap_or_else(|| "-".to_string()),
             Column::Region => game.region.clone().unwrap_or_else(|| "-".to_string()),
-            Column::Notes => game.notes.clone().map(|n| if n.len() > 50 { format!("{}...", &n[..47]) } else { n }).unwrap_or_else(|| "-".to_string()),
+            Column::Notes => game
+                .notes
+                .clone()
+                .map(|n| {
+                    if n.len() > 50 {
+                        format!("{}...", &n[..47])
+                    } else {
+                        n
+                    }
+                })
+                .unwrap_or_else(|| "-".to_string()),
         }
     }
 
     /// Compare two games by this column
     pub fn compare(&self, a: &Game, b: &Game) -> Ordering {
         match self {
-            Column::Title => a.display_title.to_lowercase().cmp(&b.display_title.to_lowercase()),
+            Column::Title => a
+                .display_title
+                .to_lowercase()
+                .cmp(&b.display_title.to_lowercase()),
             Column::Platform => a.platform.to_lowercase().cmp(&b.platform.to_lowercase()),
             Column::Developer => cmp_opt_str(&a.developer, &b.developer),
             Column::Publisher => cmp_opt_str(&a.publisher, &b.publisher),
             Column::Year => cmp_opt(&a.release_year, &b.release_year),
-            Column::ReleaseDate => sortable_date(&a.release_date).cmp(&sortable_date(&b.release_date)),
+            Column::ReleaseDate => {
+                sortable_date(&a.release_date).cmp(&sortable_date(&b.release_date))
+            }
             Column::Genre => cmp_opt_str(&a.genres, &b.genres),
             Column::Players => cmp_opt_str(&a.players, &b.players),
             Column::Rating => cmp_opt_f64(&a.rating, &b.rating),
@@ -286,17 +357,34 @@ fn cmp_opt_f64(a: &Option<f64>, b: &Option<f64>) -> Ordering {
 }
 
 /// Sort direction
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SortDirection {
     Ascending,
     Descending,
 }
 
 /// Current sort state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SortState {
     pub column: Column,
     pub direction: SortDirection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GameGridUiState {
+    scroll_top: i32,
+    visible_columns: Vec<Column>,
+    sort_state: Option<SortState>,
+}
+
+impl Default for GameGridUiState {
+    fn default() -> Self {
+        Self {
+            scroll_top: 0,
+            visible_columns: Column::default_visible(),
+            sort_state: None,
+        }
+    }
 }
 
 /// Column filters - maps column to set of allowed values (empty = no filter)
@@ -337,7 +425,22 @@ pub fn GameGrid(
     artwork_type: ReadSignal<ArtworkDisplayType>,
     zoom_level: ReadSignal<f64>,
     set_zoom_level: WriteSignal<f64>,
+    game_filters: ReadSignal<GameFilters>,
 ) -> impl IntoView {
+    let is_minigames_selection =
+        |plat: &Option<String>| plat.as_deref() == Some(PLATFORM_SELECTION_MINIGAMES);
+
+    let query_platform = |plat: Option<String>| match plat.as_deref() {
+        Some(PLATFORM_SELECTION_ALL_GAMES) => None,
+        _ => plat,
+    };
+
+    let persisted =
+        crate::ui_state::load_json::<GameGridUiState>(GAME_GRID_UI_STATE_KEY).unwrap_or_default();
+    let initial_scroll_top = persisted.scroll_top.max(0);
+    let initial_visible_columns = sanitize_visible_columns(persisted.visible_columns);
+    let initial_sort_state = persisted.sort_state;
+
     // Games cache - we load chunks as needed
     let (games, set_games) = signal::<Vec<Game>>(Vec::new());
     let (total_count, set_total_count) = signal(0i64);
@@ -345,7 +448,7 @@ pub fn GameGrid(
     let (loaded_up_to, set_loaded_up_to) = signal(0i64); // How many games we've loaded
 
     // Scroll state
-    let (scroll_top, set_scroll_top) = signal(0);
+    let (scroll_top, set_scroll_top) = signal(initial_scroll_top);
     let (container_height, set_container_height) = signal(600);
     let (container_width, set_container_width) = signal(800);
 
@@ -353,10 +456,12 @@ pub fn GameGrid(
     let (current_platform, set_current_platform) = signal::<Option<String>>(None);
     let (current_collection, set_current_collection) = signal::<Option<String>>(None);
     let (current_search, set_current_search) = signal(String::new());
+    let (current_filters, set_current_filters) = signal(GameFilters::default());
+    let (did_initial_load, set_did_initial_load) = signal(false);
 
     // Column configuration for list view
-    let (visible_columns, set_visible_columns) = signal(Column::default_visible());
-    let (sort_state, set_sort_state) = signal::<Option<SortState>>(None);
+    let (visible_columns, set_visible_columns) = signal(initial_visible_columns);
+    let (sort_state, set_sort_state) = signal::<Option<SortState>>(initial_sort_state);
     let (context_menu, set_context_menu) = signal::<Option<(i32, i32)>>(None); // (x, y) position
     let (dragging_column, set_dragging_column) = signal::<Option<usize>>(None);
     let (drag_over_column, set_drag_over_column) = signal::<Option<usize>>(None);
@@ -367,7 +472,18 @@ pub fn GameGrid(
 
     // Container ref for scroll handling
     let container_ref = NodeRef::<html::Main>::new();
+    let last_scroll_persist_ms = Rc::new(Cell::new(0.0));
 
+    Effect::new(move || {
+        crate::ui_state::save_json(
+            GAME_GRID_UI_STATE_KEY,
+            &GameGridUiState {
+                scroll_top: scroll_top.get_untracked().max(0),
+                visible_columns: visible_columns.get(),
+                sort_state: sort_state.get(),
+            },
+        );
+    });
 
     // Load more games if needed
     let ensure_loaded = move |needed_index: i64| {
@@ -376,14 +492,35 @@ pub fn GameGrid(
 
         if needed_index >= current_loaded && current_loaded < total && !loading.get() {
             let plat = current_platform.get();
+            if is_minigames_selection(&plat) {
+                return;
+            }
             let search = current_search.get();
+            let filters = current_filters.get();
             let offset = current_loaded;
+            let query_plat = query_platform(plat);
 
             set_loading.set(true);
 
             spawn_local(async move {
-                let search_param = if search.is_empty() { None } else { Some(search) };
-                match tauri::get_games(plat, search_param, Some(FETCH_CHUNK_SIZE), Some(offset)).await {
+                let search_param = if search.is_empty() {
+                    None
+                } else {
+                    Some(search)
+                };
+                match tauri::get_games(
+                    query_plat,
+                    search_param,
+                    Some(tauri::GameQueryFilters {
+                        installed_only: filters.installed_only,
+                        hide_homebrew: filters.hide_homebrew,
+                        hide_adult: filters.hide_adult,
+                    }),
+                    Some(FETCH_CHUNK_SIZE),
+                    Some(offset),
+                )
+                .await
+                {
                     Ok(new_games) => {
                         let count = new_games.len() as i64;
                         set_games.update(|g| g.extend(new_games));
@@ -399,12 +536,30 @@ pub fn GameGrid(
     };
 
     // Handle scroll events
-    let on_scroll = move |ev: web_sys::Event| {
-        if let Some(target) = ev.target() {
-            let element: web_sys::HtmlElement = target.unchecked_into();
-            set_scroll_top.set(element.scroll_top());
-            set_container_height.set(element.client_height());
-            set_container_width.set(element.client_width());
+    let on_scroll = {
+        let last_scroll_persist_ms = last_scroll_persist_ms.clone();
+        move |ev: web_sys::Event| {
+            if let Some(target) = ev.target() {
+                let element: web_sys::HtmlElement = target.unchecked_into();
+                let current_scroll = element.scroll_top().max(0);
+                set_scroll_top.set(current_scroll);
+                set_container_height.set(element.client_height());
+                set_container_width.set(element.client_width());
+
+                // Persist frequently enough for restoration, but avoid hot-path writes each frame.
+                let now_ms = js_sys::Date::now();
+                if now_ms - last_scroll_persist_ms.get() > 250.0 {
+                    last_scroll_persist_ms.set(now_ms);
+                    crate::ui_state::save_json(
+                        GAME_GRID_UI_STATE_KEY,
+                        &GameGridUiState {
+                            scroll_top: current_scroll,
+                            visible_columns: visible_columns.get_untracked(),
+                            sort_state: sort_state.get_untracked(),
+                        },
+                    );
+                }
+            }
         }
     };
 
@@ -413,16 +568,30 @@ pub fn GameGrid(
         let plat = platform.get();
         let coll = collection.get();
         let search = search_query.get();
+        let filters = game_filters.get();
+        let is_initial_load = !did_initial_load.get();
 
-        if plat != current_platform.get() || coll != current_collection.get() || search != current_search.get() {
+        if plat != current_platform.get()
+            || coll != current_collection.get()
+            || search != current_search.get()
+            || filters != current_filters.get()
+        {
             set_current_platform.set(plat.clone());
             set_current_collection.set(coll.clone());
             set_current_search.set(search.clone());
+            set_current_filters.set(filters);
             set_games.set(Vec::new());
             set_loaded_up_to.set(0);
             set_total_count.set(0);
-            set_scroll_top.set(0);
+            if !is_initial_load {
+                set_scroll_top.set(0);
+                if let Some(container) = container_ref.get() {
+                    container.set_scroll_top(0);
+                }
+            }
             set_loading.set(true);
+            let container_ref_for_restore = container_ref.clone();
+            let restore_scroll_top = initial_scroll_top;
 
             spawn_local(async move {
                 // Collections - load all (they're small)
@@ -434,14 +603,44 @@ pub fn GameGrid(
                     set_games.set(result);
                     set_total_count.set(count);
                     set_loaded_up_to.set(count);
+                    if is_initial_load && restore_scroll_top > 0 {
+                        if let Some(container) = container_ref_for_restore.get() {
+                            container.set_scroll_top(restore_scroll_top);
+                            set_scroll_top.set(restore_scroll_top);
+                        }
+                    }
                     set_loading.set(false);
+                    set_did_initial_load.set(true);
+                    return;
+                }
+
+                if is_minigames_selection(&plat) {
+                    set_loading.set(false);
+                    set_did_initial_load.set(true);
                     return;
                 }
 
                 // Load all games (backend returns deduplicated results)
-                let search_param = if search.is_empty() { None } else { Some(search.clone()) };
+                let search_param = if search.is_empty() {
+                    None
+                } else {
+                    Some(search.clone())
+                };
+                let query_plat = query_platform(plat.clone());
 
-                match tauri::get_games(plat.clone(), search_param.clone(), None, None).await {
+                match tauri::get_games(
+                    query_plat,
+                    search_param.clone(),
+                    Some(tauri::GameQueryFilters {
+                        installed_only: filters.installed_only,
+                        hide_homebrew: filters.hide_homebrew,
+                        hide_adult: filters.hide_adult,
+                    }),
+                    None,
+                    None,
+                )
+                .await
+                {
                     Ok(all_games) => {
                         let count = all_games.len() as i64;
                         set_games.set(all_games);
@@ -452,7 +651,14 @@ pub fn GameGrid(
                         console::error_1(&format!("Failed to load games: {}", e).into());
                     }
                 }
+                if is_initial_load && restore_scroll_top > 0 {
+                    if let Some(container) = container_ref_for_restore.get() {
+                        container.set_scroll_top(restore_scroll_top);
+                        set_scroll_top.set(restore_scroll_top);
+                    }
+                }
                 set_loading.set(false);
+                set_did_initial_load.set(true);
             });
         }
     });
@@ -475,14 +681,16 @@ pub fn GameGrid(
                 let visible_rows = (height / scaled_item_height) + 2;
 
                 let start = ((rows_before - BUFFER_ITEMS).max(0) * cols) as usize;
-                let end = (((rows_before + visible_rows + BUFFER_ITEMS) * cols) as usize).min(total as usize);
+                let end = (((rows_before + visible_rows + BUFFER_ITEMS) * cols) as usize)
+                    .min(total as usize);
 
                 (start, end, cols as usize)
             }
             ViewMode::List => {
                 let start = ((scroll / LIST_ITEM_HEIGHT) - BUFFER_ITEMS).max(0) as usize;
                 let visible = height / LIST_ITEM_HEIGHT;
-                let end = ((scroll / LIST_ITEM_HEIGHT) + visible + BUFFER_ITEMS * 2).min(total) as usize;
+                let end =
+                    ((scroll / LIST_ITEM_HEIGHT) + visible + BUFFER_ITEMS * 2).min(total) as usize;
 
                 (start, end, 1)
             }
@@ -504,9 +712,7 @@ pub fn GameGrid(
                 let rows = (total + cols - 1) / cols;
                 rows * scaled_item_height
             }
-            ViewMode::List => {
-                total * LIST_ITEM_HEIGHT
-            }
+            ViewMode::List => total * LIST_ITEM_HEIGHT,
         }
     };
 
@@ -612,6 +818,8 @@ pub fn GameGrid(
                 let games_list = games.get();
                 let is_loading = loading.get() && games_list.is_empty();
                 let total = total_count.get();
+                let platform_selection = platform.get();
+                let is_minigames = platform_selection.as_deref() == Some(PLATFORM_SELECTION_MINIGAMES);
 
                 if is_loading {
                     view! { <div class="loading">"Loading games..."</div> }.into_any()
@@ -622,14 +830,16 @@ pub fn GameGrid(
                                 <p>"This collection is empty. Add games to see them here."</p>
                             </div>
                         }.into_any()
-                    } else if platform.get().is_some() {
+                    } else if is_minigames {
+                        view! { <crate::components::MarioMinigame zoom_level=zoom_level set_zoom_level=set_zoom_level /> }.into_any()
+                    } else if platform_selection.is_some() {
                         view! {
                             <div class="empty-state">
                                 <p>"No games found for this platform."</p>
                             </div>
                         }.into_any()
                     } else {
-                        // No platform selected - show minigame!
+                        // Fallback
                         view! { <crate::components::MarioMinigame zoom_level=zoom_level set_zoom_level=set_zoom_level /> }.into_any()
                     }
                 } else {
@@ -1123,30 +1333,34 @@ fn GameCard(
     let first_char = game.display_title.chars().next().unwrap_or('?').to_string();
     let developer = game.developer.clone();
     let variant_count = game.variant_count;
+    let has_game_file = game.has_game_file;
     let launchbox_db_id = game.database_id;
     let platform = game.platform.clone();
     let title_for_img = game.title.clone();
+    let tooltip_title = game.display_title.clone();
+    let tooltip_developer = game.developer.clone();
+    let tooltip_publisher = game.publisher.clone();
+    let tooltip_genres = game.genres.clone();
+    let tooltip_meta = game
+        .release_year
+        .map(|year| format!("{} • {}", game.platform, year))
+        .unwrap_or_else(|| game.platform.clone());
+    let hover_video_title = StoredValue::new(game.title.clone());
+    let hover_video_platform = StoredValue::new(game.platform.clone());
 
-    // Build tooltip with game info
-    let mut tooltip_parts = vec![display_title.clone()];
-    tooltip_parts.push(format!("Platform: {}", game.platform));
-    if let Some(ref dev) = game.developer {
-        tooltip_parts.push(format!("Developer: {}", dev));
-    }
-    if let Some(ref pub_) = game.publisher {
-        tooltip_parts.push(format!("Publisher: {}", pub_));
-    }
-    if let Some(year) = game.release_year {
-        tooltip_parts.push(format!("Year: {}", year));
-    }
-    if let Some(ref genres) = game.genres {
-        tooltip_parts.push(format!("Genre: {}", genres));
-    }
-    let tooltip = tooltip_parts.join("\n");
+    let (is_hovered, set_is_hovered) = signal(false);
+    let (hover_preview_armed, set_hover_preview_armed) = signal(false);
+    let (hover_video_url, set_hover_video_url) = signal::<Option<String>>(None);
+    let (hover_video_loading, set_hover_video_loading) = signal(false);
+    let (hover_video_unavailable, set_hover_video_unavailable) = signal(false);
+    let (hover_video_loaded, set_hover_video_loaded) = signal(false);
+    let (hover_video_playing, set_hover_video_playing) = signal(false);
+    let hover_token = Rc::new(Cell::new(0u64));
 
     let game_for_click = game.clone();
 
     // Track overflow for marquee
+    let card_ref = NodeRef::<html::Div>::new();
     let title_ref = NodeRef::<html::Span>::new();
     let (overflow_style, set_overflow_style) = signal(String::new());
     let (is_truncated, set_is_truncated) = signal(false);
@@ -1169,28 +1383,448 @@ fn GameCard(
         }
     });
 
+    // On hover, nudge oversized cards away from viewport edges so full artwork stays visible.
+    let on_mouse_enter = {
+        let card_ref = card_ref.clone();
+        let set_is_hovered = set_is_hovered;
+        let set_hover_video_url = set_hover_video_url;
+        let set_hover_preview_armed = set_hover_preview_armed;
+        let set_hover_video_loading = set_hover_video_loading;
+        let set_hover_video_unavailable = set_hover_video_unavailable;
+        let set_hover_video_playing = set_hover_video_playing;
+        let hover_video_url = hover_video_url;
+        let hover_video_unavailable = hover_video_unavailable;
+        let hover_token = hover_token.clone();
+        move |_: web_sys::MouseEvent| {
+            const HOVER_SCALE: f64 = 1.95;
+            const HOVER_LIFT_PX: f64 = 10.0;
+            const EDGE_MARGIN_PX: f64 = 8.0;
+
+            set_is_hovered.set(true);
+            set_hover_preview_armed.set(true);
+            set_hover_video_loading.set(false);
+            set_hover_video_playing.set(false);
+
+            let Some(card) = card_ref.get() else {
+                return;
+            };
+            let Some(window) = web_sys::window() else {
+                return;
+            };
+            let Ok(viewport_width) = window.inner_width() else {
+                return;
+            };
+            let Ok(viewport_height) = window.inner_height() else {
+                return;
+            };
+            let (Some(vw), Some(vh)) = (viewport_width.as_f64(), viewport_height.as_f64()) else {
+                return;
+            };
+
+            let (min_x, max_x, min_y, max_y) = match card.closest(".game-content") {
+                Ok(Some(container)) => {
+                    let c = container.get_bounding_client_rect();
+                    (
+                        c.left() + EDGE_MARGIN_PX,
+                        c.right() - EDGE_MARGIN_PX,
+                        c.top() + EDGE_MARGIN_PX,
+                        c.bottom() - EDGE_MARGIN_PX,
+                    )
+                }
+                _ => (
+                    EDGE_MARGIN_PX,
+                    vw - EDGE_MARGIN_PX,
+                    EDGE_MARGIN_PX,
+                    vh - EDGE_MARGIN_PX,
+                ),
+            };
+
+            let rect = card.get_bounding_client_rect();
+            let extra_x = (rect.width() * HOVER_SCALE - rect.width()) / 2.0;
+            let extra_y = (rect.height() * HOVER_SCALE - rect.height()) / 2.0;
+
+            let projected_left = rect.left() - extra_x;
+            let projected_right = rect.right() + extra_x;
+            let projected_top = rect.top() - extra_y - HOVER_LIFT_PX;
+            let projected_bottom = rect.bottom() + extra_y - HOVER_LIFT_PX;
+
+            let mut dodge_x = 0.0;
+            let mut dodge_y = 0.0;
+
+            if projected_left < min_x {
+                dodge_x += min_x - projected_left;
+            }
+            if projected_right > max_x {
+                dodge_x -= projected_right - max_x;
+            }
+            if projected_top < min_y {
+                dodge_y += min_y - projected_top;
+            }
+            if projected_bottom > max_y {
+                dodge_y -= projected_bottom - max_y;
+            }
+
+            let _ = card.set_attribute(
+                "style",
+                &format!(
+                    "--hover-dodge-x: {:.2}px; --hover-dodge-y: {:.2}px;",
+                    dodge_x, dodge_y
+                ),
+            );
+            if let Ok(Some(wrapper)) = card.closest(".virtual-item") {
+                let _ = wrapper.set_attribute("data-hovered-card", "true");
+            }
+
+            let token = hover_token.get().wrapping_add(1);
+            hover_token.set(token);
+
+            let hover_token_prefetch = hover_token.clone();
+            let hover_video_url_prefetch = hover_video_url;
+            let hover_video_unavailable_prefetch = hover_video_unavailable;
+            let title = hover_video_title.get_value();
+            let platform = hover_video_platform.get_value();
+            let db_id_opt = (launchbox_db_id > 0).then_some(launchbox_db_id);
+
+            // Start prefetch immediately so playback starts as soon as media is ready.
+            if hover_video_url_prefetch.get_untracked().is_none()
+                && !hover_video_unavailable_prefetch.get_untracked()
+                && !hover_video_loading.get_untracked()
+            {
+                let title_async = title.clone();
+                let platform_async = platform.clone();
+                let hover_token_async = hover_token_prefetch.clone();
+                spawn_local(async move {
+                    if hover_token_async.get() != token {
+                        return;
+                    }
+                    set_hover_video_loading.set(true);
+
+                    match tauri::check_cached_video(
+                        title_async.clone(),
+                        platform_async.clone(),
+                        db_id_opt,
+                    )
+                    .await
+                    {
+                        Ok(Some(cached_path)) => {
+                            if hover_token_async.get() == token {
+                                let url = tauri::file_to_asset_url(&cached_path);
+                                set_hover_video_loaded.set(false);
+                                set_hover_video_url.set(Some(url));
+                                set_hover_video_loading.set(false);
+                            }
+                            return;
+                        }
+                        Ok(None) => {}
+                        Err(_) => {}
+                    }
+
+                    if hover_token_async.get() != token {
+                        return;
+                    }
+
+                    match tauri::download_game_video(
+                        title_async.clone(),
+                        platform_async.clone(),
+                        db_id_opt,
+                    )
+                    .await
+                    {
+                        Ok(local_path) => {
+                            if hover_token_async.get() == token {
+                                let url = tauri::file_to_asset_url(&local_path);
+                                set_hover_video_loaded.set(false);
+                                set_hover_video_url.set(Some(url));
+                            }
+                        }
+                        Err(e) => {
+                            if hover_token_async.get() == token {
+                                let msg = e.to_lowercase();
+                                if msg.contains("not found")
+                                    || msg.contains("no video")
+                                    || msg.contains("unknown platform")
+                                    || msg.contains("not configured")
+                                {
+                                    set_hover_video_unavailable.set(true);
+                                }
+                            }
+                        }
+                    }
+
+                    if hover_token_async.get() == token {
+                        set_hover_video_loading.set(false);
+                    }
+                });
+            }
+        }
+    };
+
+    let on_mouse_leave = {
+        let card_ref = card_ref.clone();
+        let set_is_hovered = set_is_hovered;
+        let set_hover_preview_armed = set_hover_preview_armed;
+        let set_hover_video_loading = set_hover_video_loading;
+        let set_hover_video_playing = set_hover_video_playing;
+        let hover_token = hover_token.clone();
+        move |_: web_sys::MouseEvent| {
+            set_is_hovered.set(false);
+            set_hover_preview_armed.set(false);
+            set_hover_video_loading.set(false);
+            set_hover_video_playing.set(false);
+            hover_token.set(hover_token.get().wrapping_add(1));
+            if let Some(card) = card_ref.get() {
+                if let Ok(Some(video_el)) = card.query_selector(".cover-preview-video") {
+                    let pause_value = js_sys::Reflect::get(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("pause"),
+                    );
+                    if let Ok(pause_fn) = pause_value {
+                        if let Some(pause_fn) = pause_fn.dyn_ref::<js_sys::Function>() {
+                            let _ = pause_fn.call0(video_el.as_ref());
+                        }
+                    }
+                    let _ = js_sys::Reflect::set(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("currentTime"),
+                        &wasm_bindgen::JsValue::from_f64(0.0),
+                    );
+                    let _ = js_sys::Reflect::set(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("muted"),
+                        &wasm_bindgen::JsValue::TRUE,
+                    );
+                }
+                let _ = card.set_attribute("style", "--hover-dodge-x: 0px; --hover-dodge-y: 0px;");
+                if let Ok(Some(wrapper)) = card.closest(".virtual-item") {
+                    let _ = wrapper.remove_attribute("data-hovered-card");
+                }
+            }
+        }
+    };
+
+    // Start playback only when we are actually showing the preview layer.
+    Effect::new(move || {
+        let should_play = is_hovered.get()
+            && hover_preview_armed.get()
+            && hover_video_loaded.get()
+            && hover_video_url.with(|url| url.is_some());
+        if let Some(card) = card_ref.get() {
+            if let Ok(Some(video_el)) = card.query_selector(".cover-preview-video") {
+                if !should_play {
+                    let pause_value = js_sys::Reflect::get(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("pause"),
+                    );
+                    if let Ok(pause_fn) = pause_value {
+                        if let Some(pause_fn) = pause_fn.dyn_ref::<js_sys::Function>() {
+                            let _ = pause_fn.call0(video_el.as_ref());
+                        }
+                    }
+                    let _ = js_sys::Reflect::set(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("currentTime"),
+                        &wasm_bindgen::JsValue::from_f64(0.0),
+                    );
+                    set_hover_video_playing.set(false);
+                    return;
+                }
+
+                let _ = js_sys::Reflect::set(
+                    video_el.as_ref(),
+                    &wasm_bindgen::JsValue::from_str("muted"),
+                    &wasm_bindgen::JsValue::TRUE,
+                );
+                let _ = js_sys::Reflect::set(
+                    video_el.as_ref(),
+                    &wasm_bindgen::JsValue::from_str("volume"),
+                    &wasm_bindgen::JsValue::from_f64(0.0),
+                );
+                let _ = js_sys::Reflect::set(
+                    video_el.as_ref(),
+                    &wasm_bindgen::JsValue::from_str("currentTime"),
+                    &wasm_bindgen::JsValue::from_f64(0.0),
+                );
+                let play_value = js_sys::Reflect::get(
+                    video_el.as_ref(),
+                    &wasm_bindgen::JsValue::from_str("play"),
+                );
+                if let Ok(play_fn) = play_value {
+                    if let Some(play_fn) = play_fn.dyn_ref::<js_sys::Function>() {
+                        let _ = play_fn.call0(video_el.as_ref());
+                    }
+                }
+            }
+        }
+    });
+
+    let show_hover_video = move || {
+        is_hovered.get()
+            && hover_preview_armed.get()
+            && hover_video_playing.get()
+            && hover_video_url.with(|url| url.is_some())
+    };
+
+    let show_hover_loading = move || {
+        is_hovered.get()
+            && hover_preview_armed.get()
+            && !hover_video_unavailable.get()
+            && (hover_video_loading.get()
+                || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get()))
+    };
+
+    let show_hover_unavailable =
+        move || is_hovered.get() && hover_preview_armed.get() && hover_video_unavailable.get();
+
+    let show_hover_layer = move || {
+        is_hovered.get()
+            && hover_preview_armed.get()
+            && (hover_video_playing.get()
+                || hover_video_unavailable.get()
+                || hover_video_loading.get()
+                || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get()))
+    };
+
     view! {
         <div
             class="game-card"
-            data-tooltip=tooltip
+            node_ref=card_ref
+            on:mouseenter=on_mouse_enter
+            on:mouseleave=on_mouse_leave
             on:click=move |_| on_select.set(Some(game_for_click.clone()))
         >
             <div class="game-cover">
-                <LazyImage
-                    launchbox_db_id=launchbox_db_id
-                    game_title=title_for_img
-                    platform=platform
-                    image_type=artwork_type.to_image_type().to_string()
-                    alt=display_title.clone()
-                    class="cover-image".to_string()
-                    placeholder=first_char.clone()
-                    render_index=render_index
-                    in_viewport=in_viewport
-                />
+                <div class="cover-art-layer" class:faded=show_hover_video>
+                    <LazyImage
+                        launchbox_db_id=launchbox_db_id
+                        game_title=title_for_img.clone()
+                        platform=platform.clone()
+                        image_type=artwork_type.to_image_type().to_string()
+                        alt=display_title.clone()
+                        class="cover-image".to_string()
+                        placeholder=first_char.clone()
+                        render_index=render_index
+                        in_viewport=in_viewport
+                    />
+                </div>
+                <div class="cover-video-layer" class:active=show_hover_layer>
+                    {move || {
+                        hover_video_url
+                            .get()
+                            .map(|url| {
+                                view! {
+                                    <video
+                                        class="cover-preview-video"
+                                        src=url
+                                        muted=true
+                                        loop=true
+                                        playsinline=true
+                                        preload="auto"
+                                        on:loadedmetadata=move |ev| {
+                                            if let Some(target) = ev.target() {
+                                                if let Ok(video) = target.dyn_into::<web_sys::HtmlVideoElement>() {
+                                                    if video.video_width() == 0 || video.video_height() == 0 {
+                                                        set_hover_video_loaded.set(false);
+                                                        set_hover_video_playing.set(false);
+                                                        set_hover_video_loading.set(false);
+                                                        set_hover_video_unavailable.set(true);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        on:loadeddata=move |_| {
+                                            set_hover_video_loaded.set(true);
+                                            set_hover_video_loading.set(false);
+                                        }
+                                        on:playing=move |ev| {
+                                            set_hover_video_playing.set(true);
+                                            set_hover_video_loading.set(false);
+                                            if let Some(target) = ev.target() {
+                                                if let Ok(video) = target.dyn_into::<web_sys::HtmlVideoElement>() {
+                                                    video.set_muted(false);
+                                                    video.set_volume(0.35);
+                                                }
+                                            }
+                                        }
+                                        on:pause=move |ev| {
+                                            set_hover_video_playing.set(false);
+                                            if let Some(target) = ev.target() {
+                                                if let Ok(video) = target.dyn_into::<web_sys::HtmlVideoElement>() {
+                                                    video.set_muted(true);
+                                                }
+                                            }
+                                        }
+                                        on:ended=move |_| set_hover_video_playing.set(false)
+                                        on:error=move |_| {
+                                            set_hover_video_loaded.set(false);
+                                            set_hover_video_playing.set(false);
+                                            set_hover_video_loading.set(false);
+                                            set_hover_video_unavailable.set(true);
+                                        }
+                                    />
+                                }.into_any()
+                            })
+                            .unwrap_or_else(|| view! { <></> }.into_any())
+                    }}
+                    <div class="cover-video-loading" class:active=show_hover_loading>
+                        <span>"Loading preview..."</span>
+                        <div class="download-progress">
+                            <div class="progress-bar indeterminate"></div>
+                        </div>
+                    </div>
+                    <div class="cover-video-unavailable" class:active=show_hover_unavailable>
+                        "No preview available"
+                    </div>
+                </div>
+                {has_game_file.then(|| view! {
+                    <span class="play-ready-badge" title="Ready to play" aria-label="Ready to play">
+                        <svg
+                            class="play-ready-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <circle cx="12" cy="12" r="10" class="play-ready-icon-base" />
+                            <path d="M10 8.6 L16.3 12 L10 15.4 Z" class="play-ready-icon-triangle" />
+                        </svg>
+                    </span>
+                })}
                 {(variant_count > 1).then(|| view! {
                     <span class="variant-badge">{variant_count}</span>
                 })}
             </div>
+            <Show when=show_hover_layer>
+                <div
+                    class="game-hover-tooltip active"
+                    on:click=move |ev| ev.stop_propagation()
+                >
+                    <div class="game-hover-tooltip-art">
+                        <LazyImage
+                            launchbox_db_id=launchbox_db_id
+                            game_title=title_for_img.clone()
+                            platform=platform.clone()
+                            image_type="Box - Front".to_string()
+                            alt=format!("{} box art", tooltip_title.clone())
+                            class="tooltip-box-art".to_string()
+                            placeholder=first_char.clone()
+                            render_index=render_index.saturating_add(10_000_000)
+                            in_viewport=true
+                        />
+                    </div>
+                    <div class="game-hover-tooltip-body">
+                        <div class="game-hover-tooltip-title">{tooltip_title.clone()}</div>
+                        <div class="game-hover-tooltip-meta">{tooltip_meta.clone()}</div>
+                        {tooltip_developer.clone().map(|dev| view! {
+                            <div class="game-hover-tooltip-dev">{dev}</div>
+                        })}
+                        {tooltip_publisher.clone().map(|publisher| view! {
+                            <div class="game-hover-tooltip-publisher">{publisher}</div>
+                        })}
+                        {tooltip_genres.clone().map(|genres| view! {
+                            <div class="game-hover-tooltip-genre">{genres}</div>
+                        })}
+                    </div>
+                </div>
+            </Show>
             <div class="game-info">
                 <h3 class="game-title">
                     <span

@@ -3,6 +3,7 @@
 mod download;
 mod enrich;
 mod launchbox;
+mod minerva;
 mod unified_import;
 
 use anyhow::{Context, Result};
@@ -11,7 +12,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use lunchbox_core::import::{parse_dat_file, merge_dat_files, DatFile, LaunchBoxImporter};
+use lunchbox_core::import::{merge_dat_files, parse_dat_file, DatFile, LaunchBoxImporter};
 use lunchbox_core::scanner::{Checksums, RomScanner};
 use lunchbox_core::scraper::{
     get_screenscraper_platform_id, IGDBClient, IGDBConfig, ScreenScraperClient,
@@ -210,6 +211,29 @@ enum Commands {
         data_dir: Option<PathBuf>,
     },
 
+    /// Build Minerva Archive index database from their published hashes.db
+    MinervaBuild {
+        /// Output database path
+        #[arg(short, long, default_value = "minerva.db")]
+        output: PathBuf,
+
+        /// Path to existing games.db for ROM-to-game matching
+        #[arg(long)]
+        games_db: Option<PathBuf>,
+
+        /// Only index specific collections (comma-separated: No-Intro,Redump)
+        #[arg(long)]
+        collections: Option<String>,
+
+        /// Path to already-downloaded hashes.db from minerva-archive.org/assets/hashes.db
+        #[arg(long)]
+        hashes_db: Option<PathBuf>,
+
+        /// Also export to CSV file
+        #[arg(long)]
+        csv: Option<PathBuf>,
+    },
+
     /// Download metadata sources (LaunchBox, LibRetro, OpenVGDB)
     Download {
         /// Directory to download sources to
@@ -257,7 +281,15 @@ async fn main() -> Result<()> {
             user_id,
             user_password,
         } => {
-            cmd_scrape(&path, &platform, &dev_id, &dev_password, user_id, user_password).await?;
+            cmd_scrape(
+                &path,
+                &platform,
+                &dev_id,
+                &dev_password,
+                user_id,
+                user_password,
+            )
+            .await?;
         }
         Commands::Stats { path } => {
             cmd_stats(&path).await?;
@@ -275,7 +307,17 @@ async fn main() -> Result<()> {
             client_id,
             client_secret,
         } => {
-            cmd_test(&service, dev_id, dev_password, user_id, user_password, api_key, client_id, client_secret).await?;
+            cmd_test(
+                &service,
+                dev_id,
+                dev_password,
+                user_id,
+                user_password,
+                api_key,
+                client_id,
+                client_secret,
+            )
+            .await?;
         }
         Commands::BuildDb {
             libretro_path,
@@ -309,7 +351,32 @@ async fn main() -> Result<()> {
             download,
             data_dir,
         } => {
-            cmd_unified_build(output, launchbox_xml, libretro_path, openvgdb, threshold, download, data_dir).await?;
+            cmd_unified_build(
+                output,
+                launchbox_xml,
+                libretro_path,
+                openvgdb,
+                threshold,
+                download,
+                data_dir,
+            )
+            .await?;
+        }
+        Commands::MinervaBuild {
+            output,
+            games_db,
+            collections,
+            hashes_db,
+            csv,
+        } => {
+            minerva::cmd_minerva_build(
+                &output,
+                games_db.as_deref(),
+                collections.as_deref(),
+                hashes_db.as_deref(),
+                csv.as_deref(),
+            )
+            .await?;
         }
         Commands::Download {
             output,
@@ -325,7 +392,9 @@ async fn main() -> Result<()> {
 }
 
 async fn cmd_import(launchbox_path: &PathBuf, dry_run: bool) -> Result<()> {
-    let metadata_path = launchbox_path.join("Metadata").join("LaunchBox.Metadata.db");
+    let metadata_path = launchbox_path
+        .join("Metadata")
+        .join("LaunchBox.Metadata.db");
 
     if !metadata_path.exists() {
         anyhow::bail!(
@@ -347,7 +416,10 @@ async fn cmd_import(launchbox_path: &PathBuf, dry_run: bool) -> Result<()> {
     println!("  Games:     {}", game_count);
 
     if dry_run {
-        println!("\n[Dry run] Would import {} platforms and {} games", platform_count, game_count);
+        println!(
+            "\n[Dry run] Would import {} platforms and {} games",
+            platform_count, game_count
+        );
         return Ok(());
     }
 
@@ -451,7 +523,10 @@ async fn cmd_scrape(
 
     let platform_id = get_screenscraper_platform_id(platform);
     if platform_id.is_none() {
-        println!("Warning: Unknown platform '{}', scraping without platform filter", platform);
+        println!(
+            "Warning: Unknown platform '{}', scraping without platform filter",
+            platform
+        );
     }
 
     let files: Vec<PathBuf> = if path.is_dir() {
@@ -465,7 +540,11 @@ async fn cmd_scrape(
         vec![path.clone()]
     };
 
-    println!("Scraping {} file(s) for platform: {}\n", files.len(), platform);
+    println!(
+        "Scraping {} file(s) for platform: {}\n",
+        files.len(),
+        platform
+    );
 
     let pb = ProgressBar::new(files.len() as u64);
     pb.set_style(
@@ -491,7 +570,10 @@ async fn cmd_scrape(
         let checksums = match Checksums::calculate(file_path) {
             Ok(c) => c,
             Err(e) => {
-                pb.println(format!("  Error calculating checksums for {}: {}", file_name, e));
+                pb.println(format!(
+                    "  Error calculating checksums for {}: {}",
+                    file_name, e
+                ));
                 errors += 1;
                 pb.inc(1);
                 continue;
@@ -546,7 +628,9 @@ async fn cmd_scrape(
 }
 
 async fn cmd_stats(launchbox_path: &PathBuf) -> Result<()> {
-    let metadata_path = launchbox_path.join("Metadata").join("LaunchBox.Metadata.db");
+    let metadata_path = launchbox_path
+        .join("Metadata")
+        .join("LaunchBox.Metadata.db");
 
     if !metadata_path.exists() {
         anyhow::bail!(
@@ -649,7 +733,9 @@ async fn setup_screenscraper() -> Result<()> {
     if input.trim().to_lowercase() != "y" {
         println!();
         println!("Please visit https://www.screenscraper.fr to register and request API access.");
-        println!("Once you have credentials, run this setup again or configure in the app Settings.");
+        println!(
+            "Once you have credentials, run this setup again or configure in the app Settings."
+        );
         return Ok(());
     }
 
@@ -704,7 +790,10 @@ async fn setup_screenscraper() -> Result<()> {
 
     let client = ScreenScraperClient::new(config);
 
-    match client.lookup_by_checksum("3337EC46", "", "", 40976, "test.nes", Some(3)).await {
+    match client
+        .lookup_by_checksum("3337EC46", "", "", 40976, "test.nes", Some(3))
+        .await
+    {
         Ok(_) => {
             println!("Connection successful!");
             println!();
@@ -754,7 +843,9 @@ async fn setup_steamgriddb() -> Result<()> {
 
     if input.trim().to_lowercase() != "y" {
         println!();
-        println!("Please visit https://www.steamgriddb.com to create an account and get an API key.");
+        println!(
+            "Please visit https://www.steamgriddb.com to create an account and get an API key."
+        );
         return Ok(());
     }
 
@@ -768,7 +859,9 @@ async fn setup_steamgriddb() -> Result<()> {
     println!();
     println!("Testing connection...");
 
-    let config = SteamGridDBConfig { api_key: api_key.clone() };
+    let config = SteamGridDBConfig {
+        api_key: api_key.clone(),
+    };
     let client = SteamGridDBClient::new(config);
 
     match client.test_connection().await {
@@ -931,8 +1024,8 @@ async fn setup_emumovies() -> Result<()> {
 }
 
 async fn test_emumovies_ftp(username: &str, password: &str) -> Result<()> {
-    use std::net::TcpStream;
     use std::io::{BufRead, BufReader};
+    use std::net::TcpStream;
 
     // Connect to FTP server
     let stream = TcpStream::connect("ftp.emumovies.com:21")
@@ -990,7 +1083,8 @@ async fn cmd_test(
     match service.to_lowercase().as_str() {
         "screenscraper" => {
             let dev_id = dev_id.ok_or_else(|| anyhow::anyhow!("--dev-id is required"))?;
-            let dev_password = dev_password.ok_or_else(|| anyhow::anyhow!("--dev-password is required"))?;
+            let dev_password =
+                dev_password.ok_or_else(|| anyhow::anyhow!("--dev-password is required"))?;
 
             println!("Testing ScreenScraper connection...");
 
@@ -1003,7 +1097,10 @@ async fn cmd_test(
 
             let client = ScreenScraperClient::new(config);
 
-            match client.lookup_by_checksum("3337EC46", "", "", 40976, "test.nes", Some(3)).await {
+            match client
+                .lookup_by_checksum("3337EC46", "", "", 40976, "test.nes", Some(3))
+                .await
+            {
                 Ok(_) => {
                     println!("Connection successful!");
                     if let Some(user) = user_id {
@@ -1023,7 +1120,8 @@ async fn cmd_test(
             }
         }
         "steamgriddb" => {
-            let api_key = api_key.ok_or_else(|| anyhow::anyhow!("--api-key is required for SteamGridDB"))?;
+            let api_key =
+                api_key.ok_or_else(|| anyhow::anyhow!("--api-key is required for SteamGridDB"))?;
 
             println!("Testing SteamGridDB connection...");
 
@@ -1045,12 +1143,17 @@ async fn cmd_test(
             }
         }
         "igdb" => {
-            let client_id = client_id.ok_or_else(|| anyhow::anyhow!("--client-id is required for IGDB"))?;
-            let client_secret = client_secret.ok_or_else(|| anyhow::anyhow!("--client-secret is required for IGDB"))?;
+            let client_id =
+                client_id.ok_or_else(|| anyhow::anyhow!("--client-id is required for IGDB"))?;
+            let client_secret = client_secret
+                .ok_or_else(|| anyhow::anyhow!("--client-secret is required for IGDB"))?;
 
             println!("Testing IGDB connection...");
 
-            let config = IGDBConfig { client_id, client_secret };
+            let config = IGDBConfig {
+                client_id,
+                client_secret,
+            };
             let client = IGDBClient::new(config);
 
             match client.test_connection().await {
@@ -1060,7 +1163,10 @@ async fn cmd_test(
                 }
                 Err(e) => {
                     let err_str = e.to_string();
-                    if err_str.contains("401") || err_str.contains("403") || err_str.contains("invalid") {
+                    if err_str.contains("401")
+                        || err_str.contains("403")
+                        || err_str.contains("invalid")
+                    {
                         println!("Authentication failed. Please check your Twitch credentials.");
                     } else {
                         println!("Connection failed: {}", e);
@@ -1069,8 +1175,10 @@ async fn cmd_test(
             }
         }
         "emumovies" => {
-            let username = user_id.ok_or_else(|| anyhow::anyhow!("--user-id is required for EmuMovies"))?;
-            let password = user_password.ok_or_else(|| anyhow::anyhow!("--user-password is required for EmuMovies"))?;
+            let username =
+                user_id.ok_or_else(|| anyhow::anyhow!("--user-id is required for EmuMovies"))?;
+            let password = user_password
+                .ok_or_else(|| anyhow::anyhow!("--user-password is required for EmuMovies"))?;
 
             println!("Testing EmuMovies FTP connection...");
 
@@ -1118,11 +1226,8 @@ async fn cmd_build_db(
     }
 
     // Parse platform filter
-    let platform_filter: Option<Vec<String>> = platform_filter.map(|s| {
-        s.split(',')
-            .map(|p| p.trim().to_string())
-            .collect()
-    });
+    let platform_filter: Option<Vec<String>> =
+        platform_filter.map(|s| s.split(',').map(|p| p.trim().to_string()).collect());
 
     // Find all DAT files in no-intro directory (primary game list)
     let no_intro_path = metadat_path.join("no-intro");
@@ -1164,7 +1269,9 @@ async fn cmd_build_db(
     if let Some(ref filter) = platform_filter {
         dat_files.retain(|p| {
             let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            filter.iter().any(|f| name.to_lowercase().contains(&f.to_lowercase()))
+            filter
+                .iter()
+                .any(|f| name.to_lowercase().contains(&f.to_lowercase()))
         });
         println!("After filtering: {} DAT files", dat_files.len());
     }
@@ -1186,8 +1293,7 @@ async fn cmd_build_db(
     }
 
     let db_url = format!("sqlite:{}?mode=rwc", output_path.display());
-    let options = SqliteConnectOptions::from_str(&db_url)?
-        .create_if_missing(true);
+    let options = SqliteConnectOptions::from_str(&db_url)?.create_if_missing(true);
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
@@ -1419,7 +1525,8 @@ async fn cmd_unified_build(
         libretro_path.as_deref(),
         openvgdb.as_deref(),
         threshold,
-    ).await
+    )
+    .await
 }
 
 async fn cmd_download(
@@ -1459,8 +1566,14 @@ async fn cmd_download(
     println!();
     println!("To build the database, run:");
     println!("  lunchbox-cli unified-build \\");
-    println!("    --launchbox-xml {}/launchbox-metadata/Metadata.xml \\", data_dir.display());
-    println!("    --libretro-path {}/libretro-database \\", data_dir.display());
+    println!(
+        "    --launchbox-xml {}/launchbox-metadata/Metadata.xml \\",
+        data_dir.display()
+    );
+    println!(
+        "    --libretro-path {}/libretro-database \\",
+        data_dir.display()
+    );
     println!("    --openvgdb {}/openvgdb.sqlite", data_dir.display());
     println!();
     println!("Or simply:");

@@ -34,7 +34,10 @@ pub fn Box3DViewer(
     let front_url_clone = front_url.clone();
     let back_url_clone = back_url.clone();
 
-    log(&format!("Box3DViewer: Mounting component with canvas_id={}", canvas_id));
+    log(&format!(
+        "Box3DViewer: Mounting component with canvas_id={}",
+        canvas_id
+    ));
 
     // Initialize the viewer when component mounts
     Effect::new(move || {
@@ -42,15 +45,22 @@ pub fn Box3DViewer(
         let front = front_url_clone.clone();
         let back = back_url_clone.clone();
 
-        log(&format!("Box3DViewer: Effect running, scheduling init for {}", id));
+        log(&format!(
+            "Box3DViewer: Effect running, scheduling init for {}",
+            id
+        ));
 
         // Small delay to ensure canvas is in DOM
         // Use forget() to prevent the timeout from being cancelled when handle is dropped
         gloo_timers::callback::Timeout::new(200, move || {
-            log(&format!("Box3DViewer: Calling init({}, {}, {:?})", id, front, back));
+            log(&format!(
+                "Box3DViewer: Calling init({}, {}, {:?})",
+                id, front, back
+            ));
             let result = init(&id, &front, back.as_deref());
             log(&format!("Box3DViewer: init returned {:?}", result));
-        }).forget();
+        })
+        .forget();
     });
 
     // Clean up when component unmounts

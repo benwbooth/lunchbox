@@ -14,7 +14,7 @@ const SERVICE_NAME: &str = "lunchbox";
 /// Check which keyring backend is available
 #[derive(Clone, Copy, PartialEq)]
 enum KeyringBackend {
-    SecretTool,  // Linux: secret-tool CLI
+    SecretTool,   // Linux: secret-tool CLI
     KeyringCrate, // macOS/Windows: keyring crate
     None,
 }
@@ -28,13 +28,18 @@ fn detect_backend() -> KeyringBackend {
         #[cfg(target_os = "linux")]
         {
             // Check if secret-tool exists (it prints usage even with no args)
-            if std::process::Command::new("secret-tool")
-                .output()
-                .is_ok()
-            {
+            if std::process::Command::new("secret-tool").output().is_ok() {
                 // Test that we can actually write
                 let write_result = std::process::Command::new("secret-tool")
-                    .args(["store", "--label", "lunchbox-test", "service", SERVICE_NAME, "key", "_test"])
+                    .args([
+                        "store",
+                        "--label",
+                        "lunchbox-test",
+                        "service",
+                        SERVICE_NAME,
+                        "key",
+                        "_test",
+                    ])
                     .stdin(std::process::Stdio::piped())
                     .spawn()
                     .and_then(|mut child| {
@@ -89,6 +94,10 @@ pub mod keys {
     pub const SCREENSCRAPER_USER_ID: &str = "screenscraper_user_id";
     pub const SCREENSCRAPER_USER_PASSWORD: &str = "screenscraper_user_password";
     pub const GRABOID_API_KEY: &str = "graboid_api_key";
+    pub const QBITTORRENT_PASSWORD: &str = "qbittorrent_password";
+    pub const TRANSMISSION_PASSWORD: &str = "transmission_password";
+    pub const DELUGE_PASSWORD: &str = "deluge_password";
+    pub const ARIA2_SECRET: &str = "aria2_secret";
 }
 
 /// Store a credential in the system keyring (if available)
@@ -110,7 +119,15 @@ pub fn store_credential(key: &str, value: &str) -> Result<()> {
         KeyringBackend::SecretTool => {
             use std::io::Write;
             let result = std::process::Command::new("secret-tool")
-                .args(["store", "--label", &format!("lunchbox:{}", key), "service", SERVICE_NAME, "key", key])
+                .args([
+                    "store",
+                    "--label",
+                    &format!("lunchbox:{}", key),
+                    "service",
+                    SERVICE_NAME,
+                    "key",
+                    key,
+                ])
                 .stdin(std::process::Stdio::piped())
                 .spawn()
                 .and_then(|mut child| {
@@ -269,8 +286,14 @@ pub fn store_image_source_credentials(
     store_credential(keys::EMUMOVIES_PASSWORD, emumovies_password)?;
     store_credential(keys::SCREENSCRAPER_DEV_ID, screenscraper_dev_id)?;
     store_credential(keys::SCREENSCRAPER_DEV_PASSWORD, screenscraper_dev_password)?;
-    store_credential(keys::SCREENSCRAPER_USER_ID, screenscraper_user_id.unwrap_or(""))?;
-    store_credential(keys::SCREENSCRAPER_USER_PASSWORD, screenscraper_user_password.unwrap_or(""))?;
+    store_credential(
+        keys::SCREENSCRAPER_USER_ID,
+        screenscraper_user_id.unwrap_or(""),
+    )?;
+    store_credential(
+        keys::SCREENSCRAPER_USER_PASSWORD,
+        screenscraper_user_password.unwrap_or(""),
+    )?;
 
     Ok(())
 }
@@ -282,15 +305,38 @@ pub fn load_image_source_credentials() -> ImageSourceCredentials {
     }
 
     ImageSourceCredentials {
-        steamgriddb_api_key: get_credential(keys::STEAMGRIDDB_API_KEY).ok().flatten().unwrap_or_default(),
-        igdb_client_id: get_credential(keys::IGDB_CLIENT_ID).ok().flatten().unwrap_or_default(),
-        igdb_client_secret: get_credential(keys::IGDB_CLIENT_SECRET).ok().flatten().unwrap_or_default(),
-        emumovies_username: get_credential(keys::EMUMOVIES_USERNAME).ok().flatten().unwrap_or_default(),
-        emumovies_password: get_credential(keys::EMUMOVIES_PASSWORD).ok().flatten().unwrap_or_default(),
-        screenscraper_dev_id: get_credential(keys::SCREENSCRAPER_DEV_ID).ok().flatten().unwrap_or_default(),
-        screenscraper_dev_password: get_credential(keys::SCREENSCRAPER_DEV_PASSWORD).ok().flatten().unwrap_or_default(),
+        steamgriddb_api_key: get_credential(keys::STEAMGRIDDB_API_KEY)
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
+        igdb_client_id: get_credential(keys::IGDB_CLIENT_ID)
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
+        igdb_client_secret: get_credential(keys::IGDB_CLIENT_SECRET)
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
+        emumovies_username: get_credential(keys::EMUMOVIES_USERNAME)
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
+        emumovies_password: get_credential(keys::EMUMOVIES_PASSWORD)
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
+        screenscraper_dev_id: get_credential(keys::SCREENSCRAPER_DEV_ID)
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
+        screenscraper_dev_password: get_credential(keys::SCREENSCRAPER_DEV_PASSWORD)
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
         screenscraper_user_id: get_credential(keys::SCREENSCRAPER_USER_ID).ok().flatten(),
-        screenscraper_user_password: get_credential(keys::SCREENSCRAPER_USER_PASSWORD).ok().flatten(),
+        screenscraper_user_password: get_credential(keys::SCREENSCRAPER_USER_PASSWORD)
+            .ok()
+            .flatten(),
     }
 }
 

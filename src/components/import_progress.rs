@@ -2,10 +2,10 @@
 //!
 //! Shows real-time progress of a Graboid import job using SSE events.
 
-use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::closure::Closure;
 use crate::tauri;
+use leptos::prelude::*;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::prelude::*;
 
 /// A single navigation step from the Graboid agent
 #[derive(Clone, Debug)]
@@ -63,108 +63,130 @@ pub fn ImportProgress(
         let event_source = web_sys::EventSource::new(&url).ok();
 
         if let Some(ref es) = event_source {
-
             let es_for_message = es.clone();
-            let onmessage = Closure::<dyn Fn(web_sys::MessageEvent)>::new(move |event: web_sys::MessageEvent| {
-                if let Some(data) = event.data().as_string() {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
-                        let event_type = json["type"].as_str().unwrap_or("");
+            let onmessage = Closure::<dyn Fn(web_sys::MessageEvent)>::new(
+                move |event: web_sys::MessageEvent| {
+                    if let Some(data) = event.data().as_string() {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
+                            let event_type = json["type"].as_str().unwrap_or("");
 
-                        web_sys::console::log_1(&format!("SSE event type={} data_len={}", event_type, data.len()).into());
+                            web_sys::console::log_1(
+                                &format!("SSE event type={} data_len={}", event_type, data.len())
+                                    .into(),
+                            );
 
-                        match event_type {
-                            "progress" => {
-                                if let Some(p) = json["progress"].as_f64() {
-                                    progress.set(p);
-                                }
-                                if let Some(msg) = json["message"].as_str() {
-                                    status_message.set(msg.to_string());
-                                }
-                                status.set("in_progress".to_string());
-                            }
-                            "step" => {
-                                let step = ImportStep {
-                                    step_number: json["step_number"].as_u64().unwrap_or(0) as u32,
-                                    action: json["action"].as_str().unwrap_or("").to_string(),
-                                    observation: json["observation"].as_str().unwrap_or("").to_string(),
-                                    url: json["url"].as_str().unwrap_or("").to_string(),
-                                    screenshot: json["screenshot"].as_str().map(|s| {
-                                        if s.starts_with("data:") {
-                                            s.to_string()
-                                        } else {
-                                            format!("data:image/png;base64,{}", s)
-                                        }
-                                    }),
-                                    notes: json["notes"].as_array()
-                                        .map(|arr| arr.iter()
-                                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                            .collect())
-                                        .or_else(|| json["notes"].as_str().map(|s| vec![s.to_string()]))
-                                        .unwrap_or_default(),
-                                    is_error: json["is_error"].as_bool().unwrap_or(false),
-                                };
-                                let step_num = step.step_number;
-                                steps.update(|s| {
-                                    // Replace existing step with same number, or append
-                                    if let Some(existing) = s.iter_mut().find(|e| e.step_number == step_num) {
-                                        *existing = step;
-                                    } else {
-                                        s.push(step);
-                                        s.sort_by_key(|e| e.step_number);
+                            match event_type {
+                                "progress" => {
+                                    if let Some(p) = json["progress"].as_f64() {
+                                        progress.set(p);
                                     }
-                                });
-                                status.set("in_progress".to_string());
-                            }
-                            "screenshot" => {
-                                let step_num = json["step_number"].as_u64().unwrap_or(0) as u32;
-                                let data_b64 = json["data_base64"].as_str().unwrap_or("");
-                                if !data_b64.is_empty() && step_num > 0 {
-                                    let screenshot = if data_b64.starts_with("data:") {
-                                        data_b64.to_string()
-                                    } else {
-                                        format!("data:image/png;base64,{}", data_b64)
+                                    if let Some(msg) = json["message"].as_str() {
+                                        status_message.set(msg.to_string());
+                                    }
+                                    status.set("in_progress".to_string());
+                                }
+                                "step" => {
+                                    let step = ImportStep {
+                                        step_number: json["step_number"].as_u64().unwrap_or(0)
+                                            as u32,
+                                        action: json["action"].as_str().unwrap_or("").to_string(),
+                                        observation: json["observation"]
+                                            .as_str()
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        url: json["url"].as_str().unwrap_or("").to_string(),
+                                        screenshot: json["screenshot"].as_str().map(|s| {
+                                            if s.starts_with("data:") {
+                                                s.to_string()
+                                            } else {
+                                                format!("data:image/png;base64,{}", s)
+                                            }
+                                        }),
+                                        notes: json["notes"]
+                                            .as_array()
+                                            .map(|arr| {
+                                                arr.iter()
+                                                    .filter_map(|v| {
+                                                        v.as_str().map(|s| s.to_string())
+                                                    })
+                                                    .collect()
+                                            })
+                                            .or_else(|| {
+                                                json["notes"].as_str().map(|s| vec![s.to_string()])
+                                            })
+                                            .unwrap_or_default(),
+                                        is_error: json["is_error"].as_bool().unwrap_or(false),
                                     };
+                                    let step_num = step.step_number;
                                     steps.update(|s| {
-                                        if let Some(existing) = s.iter_mut().find(|e| e.step_number == step_num) {
-                                            existing.screenshot = Some(screenshot);
+                                        // Replace existing step with same number, or append
+                                        if let Some(existing) =
+                                            s.iter_mut().find(|e| e.step_number == step_num)
+                                        {
+                                            *existing = step;
+                                        } else {
+                                            s.push(step);
+                                            s.sort_by_key(|e| e.step_number);
                                         }
                                     });
+                                    status.set("in_progress".to_string());
                                 }
-                            }
-                            "log" => {
-                                let entry = LogEntry {
-                                    level: json["level"].as_str().unwrap_or("info").to_string(),
-                                    source: json["source"].as_str().unwrap_or("").to_string(),
-                                    message: json["message"].as_str().unwrap_or("").to_string(),
-                                    timestamp: json["timestamp"].as_str().unwrap_or("").to_string(),
-                                };
-                                logs.update(|l| l.push(entry));
-                            }
-                            "complete" => {
-                                progress.set(100.0);
-                                status_message.set("Import complete!".to_string());
-                                status.set("completed".to_string());
-                                es_for_message.close();
-                                if let Some(file_path) = json["file_path"].as_str() {
-                                    if let Some(setter) = on_complete {
-                                        setter.set(Some(file_path.to_string()));
+                                "screenshot" => {
+                                    let step_num = json["step_number"].as_u64().unwrap_or(0) as u32;
+                                    let data_b64 = json["data_base64"].as_str().unwrap_or("");
+                                    if !data_b64.is_empty() && step_num > 0 {
+                                        let screenshot = if data_b64.starts_with("data:") {
+                                            data_b64.to_string()
+                                        } else {
+                                            format!("data:image/png;base64,{}", data_b64)
+                                        };
+                                        steps.update(|s| {
+                                            if let Some(existing) =
+                                                s.iter_mut().find(|e| e.step_number == step_num)
+                                            {
+                                                existing.screenshot = Some(screenshot);
+                                            }
+                                        });
                                     }
                                 }
-                            }
-                            "error" | "failed" => {
-                                let msg = json["message"].as_str().unwrap_or("Import failed");
-                                status_message.set(msg.to_string());
-                                status.set("failed".to_string());
-                                es_for_message.close();
-                                if let Some(setter) = on_failed {
-                                    setter.set(Some(msg.to_string()));
+                                "log" => {
+                                    let entry = LogEntry {
+                                        level: json["level"].as_str().unwrap_or("info").to_string(),
+                                        source: json["source"].as_str().unwrap_or("").to_string(),
+                                        message: json["message"].as_str().unwrap_or("").to_string(),
+                                        timestamp: json["timestamp"]
+                                            .as_str()
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    };
+                                    logs.update(|l| l.push(entry));
                                 }
+                                "complete" => {
+                                    progress.set(100.0);
+                                    status_message.set("Import complete!".to_string());
+                                    status.set("completed".to_string());
+                                    es_for_message.close();
+                                    if let Some(file_path) = json["file_path"].as_str() {
+                                        if let Some(setter) = on_complete {
+                                            setter.set(Some(file_path.to_string()));
+                                        }
+                                    }
+                                }
+                                "error" | "failed" => {
+                                    let msg = json["message"].as_str().unwrap_or("Import failed");
+                                    status_message.set(msg.to_string());
+                                    status.set("failed".to_string());
+                                    es_for_message.close();
+                                    if let Some(setter) = on_failed {
+                                        setter.set(Some(msg.to_string()));
+                                    }
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
-                }
-            });
+                },
+            );
 
             es.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
             onmessage.forget();

@@ -4,3 +4,4 @@ pub mod db;
 pub mod import;
 pub mod scanner;
 pub mod scraper;
+pub mod tags;

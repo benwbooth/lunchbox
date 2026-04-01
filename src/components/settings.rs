@@ -1,25 +1,21 @@
 //! Settings panel component
 
+use super::ImageSourcesWizard;
+use crate::tauri::{
+    clear_game_emulator_preference, clear_platform_emulator_preference, delete_graboid_prompt,
+    get_all_emulator_preferences, get_all_regions, get_credential_storage_name,
+    get_emulators_for_platform, get_graboid_prompts, get_platforms, get_settings, save_settings,
+    set_platform_emulator_preference, test_graboid_connection, test_igdb_connection,
+    test_screenscraper_connection, test_steamgriddb_connection, test_torrent_connection,
+    AppSettings, EmulatorInfo, EmulatorPreferences, GraboidPrompt,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::cell::Cell;
 use std::rc::Rc;
-use crate::tauri::{
-    get_settings, save_settings, get_credential_storage_name,
-    test_screenscraper_connection, test_steamgriddb_connection,
-    test_igdb_connection, test_graboid_connection, get_all_regions, AppSettings,
-    get_all_emulator_preferences, clear_game_emulator_preference,
-    clear_platform_emulator_preference, set_platform_emulator_preference,
-    get_emulators_for_platform, get_platforms, EmulatorPreferences, EmulatorInfo,
-    get_graboid_prompts, delete_graboid_prompt, GraboidPrompt,
-};
-use super::ImageSourcesWizard;
 
 #[component]
-pub fn Settings(
-    show: ReadSignal<bool>,
-    on_close: WriteSignal<bool>,
-) -> impl IntoView {
+pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl IntoView {
     // Settings state: current values and last-saved values
     let settings = RwSignal::new(AppSettings::default());
     let saved_settings = RwSignal::new(AppSettings::default());
@@ -41,6 +37,8 @@ pub fn Settings(
     let (igdb_test_result, set_igdb_test_result) = signal::<Option<(bool, String)>>(None);
     let (testing_graboid, set_testing_graboid) = signal(false);
     let (graboid_test_result, set_graboid_test_result) = signal::<Option<(bool, String)>>(None);
+    let (testing_torrent, set_testing_torrent) = signal(false);
+    let (torrent_test_result, set_torrent_test_result) = signal::<Option<(bool, String)>>(None);
 
     // Image sources wizard state
     let (show_wizard, set_show_wizard) = signal(false);
@@ -53,6 +51,10 @@ pub fn Settings(
         RwSignal::new(false), // 3: IGDB client secret
         RwSignal::new(false), // 4: EmuMovies password
         RwSignal::new(false), // 5: Graboid API key
+        RwSignal::new(false), // 6: qBittorrent password
+        RwSignal::new(false), // 7: Transmission password
+        RwSignal::new(false), // 8: Deluge password
+        RwSignal::new(false), // 9: aria2 secret
     ];
 
     // Region priority state
@@ -85,7 +87,8 @@ pub fn Settings(
                         set_loaded.set(true);
                         gloo_timers::callback::Timeout::new(100, move || {
                             user_modified_inner.set(true);
-                        }).forget();
+                        })
+                        .forget();
                     }
                     Err(e) => {
                         set_save_error.set(Some(format!("Failed to load settings: {}", e)));
@@ -592,6 +595,252 @@ pub fn Settings(
                                 <GraboidPromptsList />
                             </div>
 
+                            // Torrent / Downloads Section
+                            <div class="settings-section">
+                                <h3>"Downloads / Torrent"</h3>
+                                <p class="settings-help">
+                                    "Configure torrent client for downloading ROMs from Minerva Archive."
+                                </p>
+                                <div class="settings-field">
+                                    <label class="settings-label">"Torrent Client"</label>
+                                    <select
+                                        class="settings-input"
+                                        prop:value=move || settings.get().torrent.client
+                                        on:change=move |ev| settings.update(|s| s.torrent.client = event_target_value(&ev))
+                                    >
+                                        <option value="auto">"Auto (try embedded, then external)"</option>
+                                        <option value="embedded">"Embedded (librqbit)"</option>
+                                        <option value="qbittorrent">"qBittorrent"</option>
+                                        <option value="transmission">"Transmission"</option>
+                                        <option value="deluge">"Deluge"</option>
+                                        <option value="rtorrent">"rTorrent"</option>
+                                        <option value="aria2">"aria2"</option>
+                                    </select>
+                                </div>
+
+                                // qBittorrent fields
+                                <Show when=move || matches!(settings.get().torrent.client.as_str(), "qbittorrent" | "auto")>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"qBittorrent Host"</label>
+                                        <input
+                                            class="settings-input"
+                                            placeholder="localhost"
+                                            prop:value=move || settings.get().torrent.qbittorrent_host
+                                            on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_host = event_target_value(&ev))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"qBittorrent Port"</label>
+                                        <input
+                                            class="settings-input"
+                                            type="number"
+                                            placeholder="8080"
+                                            prop:value=move || settings.get().torrent.qbittorrent_port.to_string()
+                                            on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_port = event_target_value(&ev).parse().unwrap_or(8080))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"qBittorrent Username"</label>
+                                        <input
+                                            class="settings-input"
+                                            placeholder="admin"
+                                            prop:value=move || settings.get().torrent.qbittorrent_username
+                                            on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_username = event_target_value(&ev))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"qBittorrent Password"</label>
+                                        <div class="password-field">
+                                            <input
+                                                class="settings-input"
+                                                type=move || if show_pw[6].get() { "text" } else { "password" }
+                                                prop:value=move || settings.get().torrent.qbittorrent_password
+                                                on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_password = event_target_value(&ev))
+                                            />
+                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[6].update(|v| *v = !*v)>
+                                                {move || if show_pw[6].get() { "Hide" } else { "Show" }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </Show>
+
+                                // Transmission fields
+                                <Show when=move || settings.get().torrent.client == "transmission">
+                                    <div class="settings-field">
+                                        <label class="settings-label">"Transmission Host"</label>
+                                        <input
+                                            class="settings-input"
+                                            placeholder="localhost"
+                                            prop:value=move || settings.get().torrent.transmission_host
+                                            on:input=move |ev| settings.update(|s| s.torrent.transmission_host = event_target_value(&ev))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"Transmission Port"</label>
+                                        <input
+                                            class="settings-input"
+                                            type="number"
+                                            placeholder="9091"
+                                            prop:value=move || settings.get().torrent.transmission_port.to_string()
+                                            on:input=move |ev| settings.update(|s| s.torrent.transmission_port = event_target_value(&ev).parse().unwrap_or(9091))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"Transmission Username"</label>
+                                        <input
+                                            class="settings-input"
+                                            prop:value=move || settings.get().torrent.transmission_username
+                                            on:input=move |ev| settings.update(|s| s.torrent.transmission_username = event_target_value(&ev))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"Transmission Password"</label>
+                                        <div class="password-field">
+                                            <input
+                                                class="settings-input"
+                                                type=move || if show_pw[7].get() { "text" } else { "password" }
+                                                prop:value=move || settings.get().torrent.transmission_password
+                                                on:input=move |ev| settings.update(|s| s.torrent.transmission_password = event_target_value(&ev))
+                                            />
+                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[7].update(|v| *v = !*v)>
+                                                {move || if show_pw[7].get() { "Hide" } else { "Show" }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </Show>
+
+                                // aria2 fields
+                                <Show when=move || settings.get().torrent.client == "aria2">
+                                    <div class="settings-field">
+                                        <label class="settings-label">"aria2 Host"</label>
+                                        <input
+                                            class="settings-input"
+                                            placeholder="localhost"
+                                            prop:value=move || settings.get().torrent.aria2_host
+                                            on:input=move |ev| settings.update(|s| s.torrent.aria2_host = event_target_value(&ev))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"aria2 Port"</label>
+                                        <input
+                                            class="settings-input"
+                                            type="number"
+                                            placeholder="6800"
+                                            prop:value=move || settings.get().torrent.aria2_port.to_string()
+                                            on:input=move |ev| settings.update(|s| s.torrent.aria2_port = event_target_value(&ev).parse().unwrap_or(6800))
+                                        />
+                                    </div>
+                                    <div class="settings-field">
+                                        <label class="settings-label">"aria2 Secret"</label>
+                                        <div class="password-field">
+                                            <input
+                                                class="settings-input"
+                                                type=move || if show_pw[9].get() { "text" } else { "password" }
+                                                prop:value=move || settings.get().torrent.aria2_secret
+                                                on:input=move |ev| settings.update(|s| s.torrent.aria2_secret = event_target_value(&ev))
+                                            />
+                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[9].update(|v| *v = !*v)>
+                                                {move || if show_pw[9].get() { "Hide" } else { "Show" }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </Show>
+
+                                // rTorrent field
+                                <Show when=move || settings.get().torrent.client == "rtorrent">
+                                    <div class="settings-field">
+                                        <label class="settings-label">"rTorrent XML-RPC URL"</label>
+                                        <input
+                                            class="settings-input"
+                                            placeholder="http://localhost:8000/RPC2"
+                                            prop:value=move || settings.get().torrent.rtorrent_url
+                                            on:input=move |ev| settings.update(|s| s.torrent.rtorrent_url = event_target_value(&ev))
+                                        />
+                                    </div>
+                                </Show>
+
+                                // Test connection button
+                                <div class="connection-test">
+                                    <button
+                                        class="test-btn"
+                                        disabled=move || testing_torrent.get()
+                                        on:click=move |_| {
+                                            set_testing_torrent.set(true);
+                                            set_torrent_test_result.set(None);
+                                            spawn_local(async move {
+                                                match test_torrent_connection().await {
+                                                    Ok(result) => set_torrent_test_result.set(Some((result.success, result.message))),
+                                                    Err(e) => set_torrent_test_result.set(Some((false, e))),
+                                                }
+                                                set_testing_torrent.set(false);
+                                            });
+                                        }
+                                    >
+                                        {move || if testing_torrent.get() { "Testing..." } else { "Test Connection" }}
+                                    </button>
+                                    <Show when=move || torrent_test_result.get().is_some()>
+                                        {move || torrent_test_result.get().map(|(success, msg)| view! {
+                                            <span class=move || if success { "test-result test-success" } else { "test-result test-failure" }>
+                                                {msg}
+                                            </span>
+                                        })}
+                                    </Show>
+                                </div>
+
+                                // Directory settings
+                                <div class="settings-field">
+                                    <label class="settings-label">"ROM Directory"</label>
+                                    <input
+                                        class="settings-input"
+                                        placeholder="Default: ~/.local/share/lunchbox/roms"
+                                        prop:value=move || settings.get().torrent.rom_directory.clone().unwrap_or_default()
+                                        on:input=move |ev| {
+                                            let v = event_target_value(&ev);
+                                            settings.update(|s| s.torrent.rom_directory = if v.is_empty() { None } else { Some(v) });
+                                        }
+                                    />
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label">"Torrent Library Directory"</label>
+                                    <input
+                                        class="settings-input"
+                                        placeholder="Default: ~/.local/share/lunchbox/torrent-library"
+                                        prop:value=move || settings.get().torrent.torrent_library_directory.clone().unwrap_or_default()
+                                        on:input=move |ev| {
+                                            let v = event_target_value(&ev);
+                                            settings.update(|s| s.torrent.torrent_library_directory = if v.is_empty() { None } else { Some(v) });
+                                        }
+                                    />
+                                </div>
+
+                                // Download options
+                                <div class="settings-field">
+                                    <label class="settings-label">
+                                        <input
+                                            type="checkbox"
+                                            prop:checked=move || settings.get().torrent.download_entire_torrent
+                                            on:change=move |ev| settings.update(|s| s.torrent.download_entire_torrent = event_target_checked(&ev))
+                                        />
+                                        " Download entire torrent (not just selected file)"
+                                    </label>
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label">"File Link Mode"</label>
+                                    <select
+                                        class="settings-input"
+                                        prop:value=move || settings.get().torrent.file_link_mode
+                                        on:change=move |ev| settings.update(|s| s.torrent.file_link_mode = event_target_value(&ev))
+                                    >
+                                        <option value="symlink">"Symlink (recommended)"</option>
+                                        <option value="hardlink">"Hard link"</option>
+                                        <option value="reflink">"Reflink (CoW copy)"</option>
+                                        <option value="copy">"Copy"</option>
+                                        <option value="leave_in_place">"Leave in place"</option>
+                                    </select>
+                                    <p class="settings-hint">"How to link ROM files from torrent library to ROM directory when downloading entire torrents."</p>
+                                </div>
+                            </div>
+
                             // Emulator Preferences Section
                             <div class="settings-section">
                                 <h3>"Emulator Preferences"</h3>
@@ -892,7 +1141,8 @@ fn EmulatorPreferencesSection() -> impl IntoView {
             set_game_prefs.set(prefs.game_preferences);
 
             // Build platform -> preference lookup
-            let pref_map: std::collections::HashMap<String, String> = prefs.platform_preferences
+            let pref_map: std::collections::HashMap<String, String> = prefs
+                .platform_preferences
                 .into_iter()
                 .map(|p| (p.platform_name, p.emulator_name))
                 .collect();
@@ -1036,7 +1286,8 @@ fn GraboidPromptsList() -> impl IntoView {
             match get_graboid_prompts().await {
                 Ok(prompts) => {
                     // Only show platform and game prompts (global is handled by the settings field)
-                    let filtered: Vec<GraboidPrompt> = prompts.into_iter()
+                    let filtered: Vec<GraboidPrompt> = prompts
+                        .into_iter()
                         .filter(|p| p.scope == "platform" || p.scope == "game")
                         .collect();
                     set_prompt_list.set(filtered);

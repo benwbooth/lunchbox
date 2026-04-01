@@ -120,8 +120,12 @@ pub const fn sprite_from_str(s: &[u8; 64]) -> Sprite {
                 _ => 0,
             };
             let bit = 7 - col;
-            if val & 1 != 0 { lo |= 1 << bit; }
-            if val & 2 != 0 { hi |= 1 << bit; }
+            if val & 1 != 0 {
+                lo |= 1 << bit;
+            }
+            if val & 2 != 0 {
+                hi |= 1 << bit;
+            }
             col += 1;
         }
         result[row * 2] = lo;
@@ -132,7 +136,8 @@ pub const fn sprite_from_str(s: &[u8; 64]) -> Sprite {
 }
 
 // Mario standing (small)
-pub const MARIO_STAND: Sprite = sprite_from_str(b"\
+pub const MARIO_STAND: Sprite = sprite_from_str(
+    b"\
 ...111..\
 ..1111..\
 ..3221..\
@@ -140,10 +145,12 @@ pub const MARIO_STAND: Sprite = sprite_from_str(b"\
 .332233.\
 ..1111..\
 ..1331..\
-..33.33.");
+..33.33.",
+);
 
 // Mario walking frame 1
-pub const MARIO_WALK1: Sprite = sprite_from_str(b"\
+pub const MARIO_WALK1: Sprite = sprite_from_str(
+    b"\
 ...111..\
 ..1111..\
 ..3221..\
@@ -151,10 +158,12 @@ pub const MARIO_WALK1: Sprite = sprite_from_str(b"\
 .332233.\
 ..1111..\
 .13..31.\
-.33..33.");
+.33..33.",
+);
 
 // Mario walking frame 2
-pub const MARIO_WALK2: Sprite = sprite_from_str(b"\
+pub const MARIO_WALK2: Sprite = sprite_from_str(
+    b"\
 ...111..\
 ..1111..\
 ..3221..\
@@ -162,10 +171,12 @@ pub const MARIO_WALK2: Sprite = sprite_from_str(b"\
 .332233.\
 ..1111..\
 ..3113..\
-.33..33.");
+.33..33.",
+);
 
 // Mario jumping
-pub const MARIO_JUMP: Sprite = sprite_from_str(b"\
+pub const MARIO_JUMP: Sprite = sprite_from_str(
+    b"\
 ...111..\
 ..1111..\
 ..3221..\
@@ -173,10 +184,12 @@ pub const MARIO_JUMP: Sprite = sprite_from_str(b"\
 1332233.\
 .111111.\
 ..3113..\
-.33..33.");
+.33..33.",
+);
 
 // Big Mario standing (top half)
-pub const MARIO_BIG_STAND_TOP: Sprite = sprite_from_str(b"\
+pub const MARIO_BIG_STAND_TOP: Sprite = sprite_from_str(
+    b"\
 ...111..\
 ..11111.\
 ..3322..\
@@ -184,10 +197,12 @@ pub const MARIO_BIG_STAND_TOP: Sprite = sprite_from_str(b"\
 .3221222\
 ..3223..\
 ...111..\
-..11111.");
+..11111.",
+);
 
 // Big Mario standing (bottom half)
-pub const MARIO_BIG_STAND_BOT: Sprite = sprite_from_str(b"\
+pub const MARIO_BIG_STAND_BOT: Sprite = sprite_from_str(
+    b"\
 ..11111.\
 .111111.\
 .1133311\
@@ -195,10 +210,12 @@ pub const MARIO_BIG_STAND_BOT: Sprite = sprite_from_str(b"\
 ..3333..\
 ..33.33.\
 ..33.33.\
-.333.333");
+.333.333",
+);
 
 // Big Mario walking top
-pub const MARIO_BIG_WALK_TOP: Sprite = sprite_from_str(b"\
+pub const MARIO_BIG_WALK_TOP: Sprite = sprite_from_str(
+    b"\
 ...111..\
 ..11111.\
 ..3322..\
@@ -206,10 +223,12 @@ pub const MARIO_BIG_WALK_TOP: Sprite = sprite_from_str(b"\
 .3221222\
 ..3223..\
 ...111..\
-..11111.");
+..11111.",
+);
 
 // Big Mario walking bottom
-pub const MARIO_BIG_WALK_BOT: Sprite = sprite_from_str(b"\
+pub const MARIO_BIG_WALK_BOT: Sprite = sprite_from_str(
+    b"\
 ..11111.\
 .1111111\
 .1133311\
@@ -217,10 +236,12 @@ pub const MARIO_BIG_WALK_BOT: Sprite = sprite_from_str(b"\
 ..3.33..\
 ..33.33.\
 .33...33\
-333...33");
+333...33",
+);
 
 // Goomba
-pub const GOOMBA: Sprite = sprite_from_str(b"\
+pub const GOOMBA: Sprite = sprite_from_str(
+    b"\
 ..1111..\
 .111111.\
 12211221\
@@ -228,11 +249,13 @@ pub const GOOMBA: Sprite = sprite_from_str(b"\
 .111111.\
 ..2222..\
 .22..22.\
-22....22");
+22....22",
+);
 
 // Brick block - clean 8x8 with two bricks per row, offset pattern
 // 1=highlight, 2=brick face, 3=dark mortar
-pub const BRICK: Sprite = sprite_from_str(b"\
+pub const BRICK: Sprite = sprite_from_str(
+    b"\
 22221222\
 22221222\
 22221222\
@@ -240,11 +263,13 @@ pub const BRICK: Sprite = sprite_from_str(b"\
 12222122\
 12222122\
 12222122\
-33333333");
+33333333",
+);
 
 // Question block (frame 1) - clear ? shape
 // 1=yellow(border), 2=orange(background), 3=black(? shape)
-pub const QUESTION: Sprite = sprite_from_str(b"\
+pub const QUESTION: Sprite = sprite_from_str(
+    b"\
 11111111\
 12333321\
 12222321\
@@ -252,10 +277,12 @@ pub const QUESTION: Sprite = sprite_from_str(b"\
 12232221\
 12222221\
 12233221\
-11111111");
+11111111",
+);
 
 // Question block (hit/empty)
-pub const QUESTION_EMPTY: Sprite = sprite_from_str(b"\
+pub const QUESTION_EMPTY: Sprite = sprite_from_str(
+    b"\
 33333333\
 31111113\
 31333313\
@@ -263,11 +290,13 @@ pub const QUESTION_EMPTY: Sprite = sprite_from_str(b"\
 31333313\
 31333313\
 31111113\
-33333333");
+33333333",
+);
 
 // Ground block - earthy texture with dark bottom
 // 1=highlight/light, 2=main color, 3=dark/shadow
-pub const GROUND: Sprite = sprite_from_str(b"\
+pub const GROUND: Sprite = sprite_from_str(
+    b"\
 11111111\
 12212212\
 22122212\
@@ -275,10 +304,12 @@ pub const GROUND: Sprite = sprite_from_str(b"\
 22122122\
 12222212\
 22222222\
-33333333");
+33333333",
+);
 
 // Mushroom
-pub const MUSHROOM: Sprite = sprite_from_str(b"\
+pub const MUSHROOM: Sprite = sprite_from_str(
+    b"\
 ..1111..\
 .111111.\
 11211211\
@@ -286,10 +317,12 @@ pub const MUSHROOM: Sprite = sprite_from_str(b"\
 11111111\
 ..3333..\
 .322223.\
-.333333.");
+.333333.",
+);
 
 // Brick debris (small piece)
-pub const BRICK_DEBRIS: Sprite = sprite_from_str(b"\
+pub const BRICK_DEBRIS: Sprite = sprite_from_str(
+    b"\
 ........\
 ........\
 ..12....\
@@ -297,10 +330,12 @@ pub const BRICK_DEBRIS: Sprite = sprite_from_str(b"\
 .1211...\
 ..11....\
 ........\
-........");
+........",
+);
 
 // Death sprite (Mario falling)
-pub const MARIO_DEAD: Sprite = sprite_from_str(b"\
+pub const MARIO_DEAD: Sprite = sprite_from_str(
+    b"\
 ..3223..\
 .322223.\
 ..1111..\
@@ -308,11 +343,13 @@ pub const MARIO_DEAD: Sprite = sprite_from_str(b"\
 ..1111..\
 ...11...\
 ..1111..\
-..3..3..");
+..3..3..",
+);
 
 // Koopa (green turtle) walking - uses PALETTE_KOOPA
 // 1=green(shell), 2=tan(skin), 3=white(eyes/belly)
-pub const KOOPA_WALK: Sprite = sprite_from_str(b"\
+pub const KOOPA_WALK: Sprite = sprite_from_str(
+    b"\
 ..111...\
 .11111..\
 .13311..\
@@ -320,10 +357,12 @@ pub const KOOPA_WALK: Sprite = sprite_from_str(b"\
 ..333...\
 ..222...\
 .22.22..\
-.22.22..");
+.22.22..",
+);
 
 // Koopa shell (when stomped)
-pub const KOOPA_SHELL: Sprite = sprite_from_str(b"\
+pub const KOOPA_SHELL: Sprite = sprite_from_str(
+    b"\
 ........\
 ..1111..\
 .111111.\
@@ -331,11 +370,13 @@ pub const KOOPA_SHELL: Sprite = sprite_from_str(b"\
 12222221\
 13333331\
 ........\
-........");
+........",
+);
 
 // Coin sprite - uses PALETTE_COIN
 // 1=yellow, 2=orange(shading), 3=dark(outline)
-pub const COIN: Sprite = sprite_from_str(b"\
+pub const COIN: Sprite = sprite_from_str(
+    b"\
 ..3333..\
 .311113.\
 31222213\
@@ -343,10 +384,12 @@ pub const COIN: Sprite = sprite_from_str(b"\
 31222213\
 31222213\
 .311113.\
-..3333..");
+..3333..",
+);
 
 // Fire flower power-up
-pub const FIRE_FLOWER: Sprite = sprite_from_str(b"\
+pub const FIRE_FLOWER: Sprite = sprite_from_str(
+    b"\
 ...11...\
 ..1221..\
 .122221.\
@@ -354,10 +397,12 @@ pub const FIRE_FLOWER: Sprite = sprite_from_str(b"\
 ...33...\
 ..3333..\
 ..3..3..\
-...33...");
+...33...",
+);
 
 // Invincibility star
-pub const STAR: Sprite = sprite_from_str(b"\
+pub const STAR: Sprite = sprite_from_str(
+    b"\
 ...11...\
 ..1111..\
 .111111.\
@@ -365,10 +410,12 @@ pub const STAR: Sprite = sprite_from_str(b"\
 .113331.\
 ..13.31.\
 ..1...1.\
-.1....1.");
+.1....1.",
+);
 
 // Fireball projectile
-pub const FIREBALL: Sprite = sprite_from_str(b"\
+pub const FIREBALL: Sprite = sprite_from_str(
+    b"\
 ........\
 ...11...\
 ..1221..\
@@ -376,4 +423,5 @@ pub const FIREBALL: Sprite = sprite_from_str(b"\
 .122221.\
 ..1221..\
 ...11...\
-........");
+........",
+);

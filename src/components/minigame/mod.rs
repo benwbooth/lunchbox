@@ -2,8 +2,8 @@
 //!
 //! Uses WebGPU for rendering - all game logic runs in WGSL shaders.
 
-mod sprites;
-mod gpu;
 mod game;
+mod gpu;
+mod sprites;
 
 pub use game::MarioMinigame;

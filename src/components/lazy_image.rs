@@ -5,15 +5,15 @@
 //! - libretro-thumbnails (free, no account needed)
 //! - SteamGridDB (requires API key)
 
+use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
 
 /// Maximum concurrent image operations (cache checks + downloads)
-/// Increased to 30 to handle slow multi-source fallback (each request can take 2-5 seconds)
-const MAX_CONCURRENT_REQUESTS: usize = 30;
+/// Keep this moderate to avoid saturating backend source fallbacks.
+const MAX_CONCURRENT_REQUESTS: usize = 12;
 
 /// Maximum pending requests in queue
 /// Can be lower now that we properly cancel requests when components unmount
@@ -69,7 +69,8 @@ impl QueueStats {
 }
 
 /// Global signal for queue stats - can be read by other components
-static QUEUE_STATS_SIGNAL: std::sync::OnceLock<(ReadSignal<QueueStats>, WriteSignal<QueueStats>)> = std::sync::OnceLock::new();
+static QUEUE_STATS_SIGNAL: std::sync::OnceLock<(ReadSignal<QueueStats>, WriteSignal<QueueStats>)> =
+    std::sync::OnceLock::new();
 
 /// Get the queue stats signal (creates it on first call)
 pub fn queue_stats_signal() -> (ReadSignal<QueueStats>, WriteSignal<QueueStats>) {
@@ -126,12 +127,15 @@ pub fn record_download_failed(source: &str, time_ms: u64) {
 struct RequestQueue {
     active: usize,
     /// Pending requests ordered by render_index (lower = processed first)
-    /// Key is render_index, value is (cache_key, task)
-    pending: BTreeMap<usize, (String, Box<dyn FnOnce()>)>,
+    /// Key is (render_index, sequence), value is (request_key, task)
+    /// Sequence guarantees stable ordering when multiple requests share render_index.
+    pending: BTreeMap<(usize, u64), (String, Box<dyn FnOnce()>)>,
     /// Keys that have been cancelled - skip these when popping
     cancelled: HashSet<String>,
-    /// Map from cache_key to render_index for quick lookup
-    key_to_index: HashMap<String, usize>,
+    /// Map from request_key to pending key for quick cancellation
+    key_to_index: HashMap<String, (usize, u64)>,
+    /// Monotonic sequence number for stable queue ordering
+    next_sequence: u64,
 }
 
 impl RequestQueue {
@@ -141,6 +145,7 @@ impl RequestQueue {
             pending: BTreeMap::new(),
             cancelled: HashSet::new(),
             key_to_index: HashMap::new(),
+            next_sequence: 0,
         }
     }
 
@@ -148,8 +153,8 @@ impl RequestQueue {
     fn cancel(&mut self, key: &str) {
         self.cancelled.insert(key.to_string());
         // Also remove from pending queue
-        if let Some(idx) = self.key_to_index.remove(key) {
-            self.pending.remove(&idx);
+        if let Some(pending_key) = self.key_to_index.remove(key) {
+            self.pending.remove(&pending_key);
         }
     }
 
@@ -160,8 +165,8 @@ impl RequestQueue {
 
     /// Pop the next non-cancelled request (lowest render_index first = top-left)
     fn pop_next(&mut self) -> Option<Box<dyn FnOnce()>> {
-        while let Some((&idx, _)) = self.pending.first_key_value() {
-            if let Some((key, task)) = self.pending.remove(&idx) {
+        while let Some((&pending_key, _)) = self.pending.first_key_value() {
+            if let Some((key, task)) = self.pending.remove(&pending_key) {
                 self.key_to_index.remove(&key);
                 if !self.cancelled.remove(&key) {
                     return Some(task);
@@ -178,12 +183,14 @@ impl RequestQueue {
     }
 
     /// Add a request to the queue
-    fn enqueue(&mut self, key: String, task: Box<dyn FnOnce()>, render_index: usize) {
+    fn enqueue(&mut self, key: String, task: Box<dyn FnOnce()>, priority: usize) {
         // Clear any previous cancellation for this key - important when re-queueing
         // after scrolling away and back
         self.cancelled.remove(&key);
-        self.pending.insert(render_index, (key.clone(), task));
-        self.key_to_index.insert(key, render_index);
+        self.next_sequence = self.next_sequence.wrapping_add(1);
+        let pending_key = (priority, self.next_sequence);
+        self.pending.insert(pending_key, (key.clone(), task));
+        self.key_to_index.insert(key, pending_key);
     }
 }
 
@@ -248,7 +255,8 @@ impl ImageUrlCache {
         // Evict oldest entries if at capacity
         while self.entries.len() >= IMAGE_CACHE_MAX_SIZE {
             // Find oldest entry
-            let oldest_key = self.entries
+            let oldest_key = self
+                .entries
                 .iter()
                 .min_by_key(|(_, (_, access))| access)
                 .map(|(k, _)| k.clone());
@@ -268,6 +276,15 @@ impl ImageUrlCache {
 thread_local! {
     static REQUEST_QUEUE: RefCell<RequestQueue> = RefCell::new(RequestQueue::new());
     static IMAGE_URL_CACHE: RefCell<ImageUrlCache> = RefCell::new(ImageUrlCache::new());
+    static NEXT_REQUEST_INSTANCE_ID: RefCell<u64> = RefCell::new(0);
+}
+
+fn next_request_instance_id() -> u64 {
+    NEXT_REQUEST_INSTANCE_ID.with(|id| {
+        let mut id = id.borrow_mut();
+        *id = id.wrapping_add(1);
+        *id
+    })
 }
 
 /// Release a slot and process next pending request
@@ -342,26 +359,25 @@ fn schedule_process_queue() {
         gloo_timers::callback::Timeout::new(0, || {
             PROCESS_SCHEDULED.with(|s| *s.borrow_mut() = false);
             process_queue();
-        }).forget();
+        })
+        .forget();
     });
 }
 
 /// Process pending requests if slots are available
 fn process_queue() {
-    REQUEST_QUEUE.with(|q| {
-        loop {
-            let mut queue = q.borrow_mut();
-            if queue.active >= MAX_CONCURRENT_REQUESTS {
-                break;
-            }
-            if let Some(task) = queue.pop_next() {
-                queue.active += 1;
-                drop(queue);
-                update_queue_stats();
-                task();
-            } else {
-                break;
-            }
+    REQUEST_QUEUE.with(|q| loop {
+        let mut queue = q.borrow_mut();
+        if queue.active >= MAX_CONCURRENT_REQUESTS {
+            break;
+        }
+        if let Some(task) = queue.pop_next() {
+            queue.active += 1;
+            drop(queue);
+            update_queue_stats();
+            task();
+        } else {
+            break;
         }
     });
     update_queue_stats();
@@ -457,22 +473,35 @@ pub fn LazyImage(
     in_viewport: bool,
 ) -> impl IntoView {
     let (state, set_state) = signal(ImageState::Loading);
+    // Unique per-component queue key suffix so two images with identical
+    // content identity do not cancel/overwrite each other in the queue.
+    let request_instance_id = next_request_instance_id();
 
     // Create a signal to track the game identity - this makes the Effect re-run when props change
     // This is critical for virtual scrolling where components may be reused with different props
-    let (game_key, set_game_key) = signal((launchbox_db_id, game_title.clone(), platform.clone(), image_type.clone()));
+    let (game_key, set_game_key) = signal((
+        launchbox_db_id,
+        game_title.clone(),
+        platform.clone(),
+        image_type.clone(),
+    ));
 
     // Update game_key when props differ (handles component reuse in virtual scroll)
-    let current_props = (launchbox_db_id, game_title.clone(), platform.clone(), image_type.clone());
+    let current_props = (
+        launchbox_db_id,
+        game_title.clone(),
+        platform.clone(),
+        image_type.clone(),
+    );
     if game_key.get_untracked() != current_props {
         set_game_key.set(current_props);
         set_state.set(ImageState::Loading);
     }
 
     // Use Arc<AtomicBool> for mounted flag - survives after component disposal and is thread-safe
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
     use futures::future::AbortHandle;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
     use std::sync::Mutex;
 
     let mounted = Arc::new(AtomicBool::new(true));
@@ -540,7 +569,7 @@ pub fn LazyImage(
         });
 
         let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
-        let queue_key = cache_key.clone();
+        let queue_key = format!("{}#{}", cache_key, request_instance_id);
 
         // Store queue key for cancellation on unmount or game change
         *queue_key_store.lock().unwrap() = Some(queue_key.clone());
@@ -548,102 +577,118 @@ pub fn LazyImage(
         // Queue the entire operation (cache check + download) to prevent
         // overwhelming the backend with parallel cache checks
         // Lower render_index = processed first (top-left items)
-        queue_request(queue_key, move || {
-            use futures::future::{Abortable, AbortHandle};
-            let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
+        queue_request(
+            queue_key,
+            move || {
+                use futures::future::{AbortHandle, Abortable};
+                let (abort_handle_new, abort_registration) = AbortHandle::new_pair();
 
-            // Store the abort handle so it can be cancelled
-            *abort_handle.lock().unwrap() = Some(abort_handle_new);
+                // Store the abort handle so it can be cancelled
+                *abort_handle.lock().unwrap() = Some(abort_handle_new);
 
-            let cache_and_download = async move {
-                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                    return;
-                }
+                let cache_and_download = async move {
+                    if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
 
-                // Step 1: Check backend cache first
-                let _ = set_state.try_set(ImageState::Downloading {
-                    progress: -1.0,
-                    source: "Checking...".to_string(),
+                    // Step 1: Check backend cache first
+                    let _ = set_state.try_set(ImageState::Downloading {
+                        progress: -1.0,
+                        source: "Checking...".to_string(),
+                    });
+
+                    match tauri::check_cached_media(
+                        title.clone(),
+                        plat.clone(),
+                        img_type.clone(),
+                        db_id_opt,
+                    )
+                    .await
+                    {
+                        Ok(Some(cached)) => {
+                            if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                                let url = file_to_asset_url(&cached.path);
+                                IMAGE_URL_CACHE.with(|c| {
+                                    c.borrow_mut().insert(
+                                        cache_key.clone(),
+                                        url.clone(),
+                                        cached.source.clone(),
+                                    )
+                                });
+                                let _ = set_state.try_set(ImageState::Ready {
+                                    url,
+                                    source: Some(cached.source),
+                                });
+                            }
+                            return; // Cache hit - done!
+                        }
+                        Ok(None) | Err(_) => {
+                            // Cache miss or error - continue to download
+                        }
+                    }
+
+                    // Step 2: Download
+                    if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
+
+                    let _ = set_state.try_set(ImageState::Downloading {
+                        progress: -1.0,
+                        source: "Searching...".to_string(),
+                    });
+
+                    let start_time = js_sys::Date::now();
+
+                    match tauri::download_image_with_fallback(
+                        title.clone(),
+                        plat.clone(),
+                        img_type.clone(),
+                        db_id_opt,
+                    )
+                    .await
+                    {
+                        Ok(local_path) => {
+                            let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
+                            let source = source_from_path(&local_path);
+                            let source_str = source.clone().unwrap_or_else(|| "??".to_string());
+
+                            record_download_complete(&source_str, elapsed_ms, 50_000);
+
+                            if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                                let url = file_to_asset_url(&local_path);
+                                IMAGE_URL_CACHE.with(|c| {
+                                    c.borrow_mut().insert(
+                                        cache_key.clone(),
+                                        url.clone(),
+                                        source_str,
+                                    )
+                                });
+                                let _ = set_state.try_set(ImageState::Ready { url, source });
+                            }
+                        }
+                        Err(_e) => {
+                            let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
+                            record_download_failed("--", elapsed_ms);
+
+                            if mounted.load(std::sync::atomic::Ordering::Relaxed) {
+                                IMAGE_URL_CACHE
+                                    .with(|c| c.borrow_mut().insert_not_found(cache_key.clone()));
+                                let _ = set_state.try_set(ImageState::NoImage);
+                            }
+                        }
+                    }
+                };
+
+                // Wrap in Abortable and spawn
+                let abortable = Abortable::new(cache_and_download, abort_registration);
+                spawn_local(async move {
+                    let _ = abortable.await;
+                    release_slot();
                 });
-
-                match tauri::check_cached_media(
-                    title.clone(),
-                    plat.clone(),
-                    img_type.clone(),
-                    db_id_opt,
-                ).await {
-                    Ok(Some(cached)) => {
-                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                            let url = file_to_asset_url(&cached.path);
-                            IMAGE_URL_CACHE.with(|c| {
-                                c.borrow_mut().insert(cache_key.clone(), url.clone(), cached.source.clone())
-                            });
-                            let _ = set_state.try_set(ImageState::Ready {
-                                url,
-                                source: Some(cached.source),
-                            });
-                        }
-                        return; // Cache hit - done!
-                    }
-                    Ok(None) | Err(_) => {
-                        // Cache miss or error - continue to download
-                    }
-                }
-
-                // Step 2: Download
-                if !mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                    return;
-                }
-
-                let _ = set_state.try_set(ImageState::Downloading {
-                    progress: -1.0,
-                    source: "Searching...".to_string(),
-                });
-
-                let start_time = js_sys::Date::now();
-
-                match tauri::download_image_with_fallback(
-                    title.clone(),
-                    plat.clone(),
-                    img_type.clone(),
-                    db_id_opt,
-                ).await {
-                    Ok(local_path) => {
-                        let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
-                        let source = source_from_path(&local_path);
-                        let source_str = source.clone().unwrap_or_else(|| "??".to_string());
-
-                        record_download_complete(&source_str, elapsed_ms, 50_000);
-
-                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                            let url = file_to_asset_url(&local_path);
-                            IMAGE_URL_CACHE.with(|c| {
-                                c.borrow_mut().insert(cache_key.clone(), url.clone(), source_str)
-                            });
-                            let _ = set_state.try_set(ImageState::Ready { url, source });
-                        }
-                    }
-                    Err(_e) => {
-                        let elapsed_ms = (js_sys::Date::now() - start_time) as u64;
-                        record_download_failed("--", elapsed_ms);
-
-                        if mounted.load(std::sync::atomic::Ordering::Relaxed) {
-                            IMAGE_URL_CACHE.with(|c| {
-                                c.borrow_mut().insert_not_found(cache_key.clone())
-                            });
-                            let _ = set_state.try_set(ImageState::NoImage);
-                        }
-                    }
-                }
-            };
-
-            // Wrap in Abortable and spawn
-            let abortable = Abortable::new(cache_and_download, abort_registration);
-            spawn_local(async move {
-                let _ = abortable.await;
-                release_slot();
-            });
-        }, render_index, in_viewport);
+            },
+            render_index,
+            in_viewport,
+        );
     });
 
     // Cleanup on unmount - cancel pending and abort in-flight requests
@@ -847,7 +892,10 @@ async fn download_and_update(
             if mounted.load(std::sync::atomic::Ordering::Relaxed) {
                 log(&format!("Failed to download image: {}", e));
                 // Fall back to CDN URL if download fails
-                let _ = set_state.try_set(ImageState::Ready { url: info.cdn_url, source: Some("LB".to_string()) });
+                let _ = set_state.try_set(ImageState::Ready {
+                    url: info.cdn_url,
+                    source: Some("LB".to_string()),
+                });
             }
         }
     }
@@ -878,23 +926,23 @@ pub fn GameImage(
         .or(cdn_url);
 
     match url {
-        Some(u) => {
-            view! {
-                <img
-                    src=u
-                    alt=alt
-                    class=format!("{} game-image", class)
-                    loading="lazy"
-                />
-            }.into_any()
+        Some(u) => view! {
+            <img
+                src=u
+                alt=alt
+                class=format!("{} game-image", class)
+                loading="lazy"
+            />
         }
+        .into_any(),
         None => {
             let char = placeholder.unwrap_or_else(|| "?".to_string());
             view! {
                 <div class=format!("{} game-image-placeholder", class)>
                     {char}
                 </div>
-            }.into_any()
+            }
+            .into_any()
         }
     }
 }

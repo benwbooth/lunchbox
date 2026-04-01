@@ -74,13 +74,15 @@ impl WebImageSearch {
         tracing::debug!("WebImageSearch: got {} bytes of HTML", html.len());
 
         // Extract vqd token from the HTML
-        let vqd = extract_vqd(&html)
-            .ok_or_else(|| {
-                // Safely truncate for logging (handle UTF-8 boundaries)
-                let preview: String = html.chars().take(500).collect();
-                tracing::warn!("WebImageSearch: failed to extract vqd token, HTML preview: {}", preview);
-                anyhow::anyhow!("Failed to extract vqd token from DuckDuckGo")
-            })?;
+        let vqd = extract_vqd(&html).ok_or_else(|| {
+            // Safely truncate for logging (handle UTF-8 boundaries)
+            let preview: String = html.chars().take(500).collect();
+            tracing::warn!(
+                "WebImageSearch: failed to extract vqd token, HTML preview: {}",
+                preview
+            );
+            anyhow::anyhow!("Failed to extract vqd token from DuckDuckGo")
+        })?;
 
         tracing::debug!("WebImageSearch: got vqd token: {}", vqd);
 
@@ -95,7 +97,8 @@ impl WebImageSearch {
         // Small delay to appear more human-like
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        let response = self.client
+        let response = self
+            .client
             .get(&images_url)
             .header("Accept", "application/json, text/javascript, */*; q=0.01")
             .header("Accept-Language", "en-US,en;q=0.5")
@@ -116,8 +119,8 @@ impl WebImageSearch {
         tracing::debug!("WebImageSearch: got {} bytes of JSON", text.len());
 
         // Parse the JSON response
-        let data: DdgResponse = serde_json::from_str(&text)
-            .context("Failed to parse DuckDuckGo response")?;
+        let data: DdgResponse =
+            serde_json::from_str(&text).context("Failed to parse DuckDuckGo response")?;
 
         tracing::debug!("WebImageSearch: got {} results", data.results.len());
 
@@ -155,14 +158,16 @@ impl WebImageSearch {
         let query = format!("{} {} {}", game_title, platform, search_term);
         tracing::info!("Web image search: '{}'", query);
 
-        let image_url = self.search_image(&query)
+        let image_url = self
+            .search_image(&query)
             .await?
             .ok_or_else(|| anyhow::anyhow!("No image results found for: {}", query))?;
 
         tracing::info!("Found image: {}", image_url);
 
         // Download the image
-        let response = self.client
+        let response = self
+            .client
             .get(&image_url)
             .send()
             .await
@@ -226,10 +231,15 @@ fn extract_vqd(html: &str) -> Option<String> {
     if let Some(start) = html.find("vqd=") {
         let start = start + 4;
         let remaining = &html[start..];
-        let end = remaining.find(|c: char| c == '&' || c == '"' || c == '\'' || c.is_whitespace())
+        let end = remaining
+            .find(|c: char| c == '&' || c == '"' || c == '\'' || c.is_whitespace())
             .unwrap_or(remaining.len().min(50));
         let token = &remaining[..end];
-        if !token.is_empty() && token.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !token.is_empty()
+            && token
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Some(token.to_string());
         }
     }

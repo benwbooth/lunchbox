@@ -7,9 +7,9 @@
 
 use crate::db::schema::EmulatorInfo;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::io::Read;
 
 /// Emulator with installation status for frontend display
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +49,10 @@ pub enum LaunchProgress {
     /// Successfully launched
     Launched { emulator_name: String, pid: u32 },
     /// Error occurred
-    Error { emulator_name: String, message: String },
+    Error {
+        emulator_name: String,
+        message: String,
+    },
 }
 
 /// Launch result with process ID or error
@@ -68,13 +71,21 @@ pub struct LaunchResult {
 /// Get the current OS as a string
 pub fn current_os() -> &'static str {
     #[cfg(target_os = "windows")]
-    { "Windows" }
+    {
+        "Windows"
+    }
     #[cfg(target_os = "macos")]
-    { "macOS" }
+    {
+        "macOS"
+    }
     #[cfg(target_os = "linux")]
-    { "Linux" }
+    {
+        "Linux"
+    }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    { "Unknown" }
+    {
+        "Unknown"
+    }
 }
 
 /// Get the install method available for the current OS
@@ -194,8 +205,12 @@ fn check_macos_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
     }
 
     // Check homebrew cask location
-    let homebrew_path = PathBuf::from("/opt/homebrew/Caskroom")
-        .join(emulator.homebrew_formula.as_deref().unwrap_or(&emulator.name.to_lowercase()));
+    let homebrew_path = PathBuf::from("/opt/homebrew/Caskroom").join(
+        emulator
+            .homebrew_formula
+            .as_deref()
+            .unwrap_or(&emulator.name.to_lowercase()),
+    );
     if homebrew_path.exists() {
         return Some(homebrew_path);
     }
@@ -242,9 +257,7 @@ fn is_retroarch_installed() -> bool {
             // Check native
             which::which("retroarch").is_ok()
         }
-        "Windows" => {
-            which::which("retroarch").is_ok() || which::which("retroarch.exe").is_ok()
-        }
+        "Windows" => which::which("retroarch").is_ok() || which::which("retroarch.exe").is_ok(),
         "macOS" => {
             PathBuf::from("/Applications/RetroArch.app").exists()
                 || which::which("retroarch").is_ok()
@@ -278,13 +291,21 @@ fn get_executable_names(name: &str) -> Vec<String> {
     // Add common variations
     match lower.as_str() {
         "dolphin" => {
-            names.extend(["dolphin-emu", "dolphin-emu-qt"].iter().map(|s| s.to_string()));
+            names.extend(
+                ["dolphin-emu", "dolphin-emu-qt"]
+                    .iter()
+                    .map(|s| s.to_string()),
+            );
         }
         "ppsspp" => {
             names.extend(["PPSSPP", "PPSSPPQt"].iter().map(|s| s.to_string()));
         }
         "duckstation" => {
-            names.extend(["duckstation-qt", "duckstation-nogui"].iter().map(|s| s.to_string()));
+            names.extend(
+                ["duckstation-qt", "duckstation-nogui"]
+                    .iter()
+                    .map(|s| s.to_string()),
+            );
         }
         "mesen" => {
             names.extend(["Mesen", "mesen-x"].iter().map(|s| s.to_string()));
@@ -326,7 +347,9 @@ fn get_retroarch_core_dirs() -> Vec<PathBuf> {
             }
         }
         "macOS" => {
-            dirs.push(PathBuf::from("/Applications/RetroArch.app/Contents/Resources/cores"));
+            dirs.push(PathBuf::from(
+                "/Applications/RetroArch.app/Contents/Resources/cores",
+            ));
             if let Some(home) = dirs::home_dir() {
                 dirs.push(home.join("Library/Application Support/RetroArch/cores"));
             }
@@ -352,7 +375,10 @@ fn get_core_filename(core_name: &str) -> String {
 
 /// Install an emulator using the appropriate package manager
 /// If `as_retroarch_core` is true, install as a RetroArch core; otherwise install standalone
-pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) -> Result<PathBuf, String> {
+pub async fn install_emulator(
+    emulator: &EmulatorInfo,
+    as_retroarch_core: bool,
+) -> Result<PathBuf, String> {
     tracing::info!(
         emulator = %emulator.name,
         as_retroarch_core = as_retroarch_core,
@@ -380,7 +406,10 @@ pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) 
                 install_flatpak(flatpak_id).await?;
                 Ok(PathBuf::from(format!("flatpak::{}", flatpak_id)))
             } else {
-                Err(format!("No installation method available for {} on Linux", emulator.name))
+                Err(format!(
+                    "No installation method available for {} on Linux",
+                    emulator.name
+                ))
             }
         }
         "Windows" => {
@@ -388,20 +417,28 @@ pub async fn install_emulator(emulator: &EmulatorInfo, as_retroarch_core: bool) 
                 tracing::info!(winget_id = winget_id, "Installing via winget");
                 install_winget(winget_id).await?;
                 // Try to find the installed executable
-                check_windows_installation(emulator)
-                    .ok_or_else(|| format!("Installed {} but could not find executable", emulator.name))
+                check_windows_installation(emulator).ok_or_else(|| {
+                    format!("Installed {} but could not find executable", emulator.name)
+                })
             } else {
-                Err(format!("No installation method available for {} on Windows", emulator.name))
+                Err(format!(
+                    "No installation method available for {} on Windows",
+                    emulator.name
+                ))
             }
         }
         "macOS" => {
             if let Some(ref formula) = emulator.homebrew_formula {
                 tracing::info!(formula = formula, "Installing via homebrew");
                 install_homebrew(formula).await?;
-                check_macos_installation(emulator)
-                    .ok_or_else(|| format!("Installed {} but could not find application", emulator.name))
+                check_macos_installation(emulator).ok_or_else(|| {
+                    format!("Installed {} but could not find application", emulator.name)
+                })
             } else {
-                Err(format!("No installation method available for {} on macOS", emulator.name))
+                Err(format!(
+                    "No installation method available for {} on macOS",
+                    emulator.name
+                ))
             }
         }
         _ => Err("Unsupported operating system".to_string()),
@@ -444,7 +481,14 @@ async fn install_winget(winget_id: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let output = tokio::process::Command::new("winget")
-            .args(["install", "--accept-package-agreements", "--accept-source-agreements", "-e", "--id", winget_id])
+            .args([
+                "install",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "-e",
+                "--id",
+                winget_id,
+            ])
             .output()
             .await
             .map_err(|e| format!("Failed to run winget: {}", e))?;
@@ -497,7 +541,8 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
     // Download the core from libretro buildbot
     let core_url = get_libretro_core_url(core_name);
     let core_dirs = get_retroarch_core_dirs();
-    let core_dir = core_dirs.first()
+    let core_dir = core_dirs
+        .first()
         .ok_or_else(|| "Could not determine RetroArch cores directory".to_string())?;
 
     // Create cores directory if it doesn't exist
@@ -507,7 +552,13 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
 
     let core_filename = get_core_filename(core_name);
     let core_path = core_dir.join(&core_filename);
-    let zip_filename = format!("{}.zip", core_filename.trim_end_matches(".so").trim_end_matches(".dll").trim_end_matches(".dylib"));
+    let zip_filename = format!(
+        "{}.zip",
+        core_filename
+            .trim_end_matches(".so")
+            .trim_end_matches(".dll")
+            .trim_end_matches(".dylib")
+    );
     let zip_path = core_dir.join(&zip_filename);
 
     // Download the core zip
@@ -519,10 +570,15 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to download core: {}", e))?;
 
     if !response.status().is_success() {
-        return Err(format!("Failed to download core: HTTP {}", response.status()));
+        return Err(format!(
+            "Failed to download core: HTTP {}",
+            response.status()
+        ));
     }
 
-    let bytes = response.bytes().await
+    let bytes = response
+        .bytes()
+        .await
         .map_err(|e| format!("Failed to read core data: {}", e))?;
 
     // Write zip file
@@ -536,9 +592,10 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
     tokio::task::spawn_blocking(move || {
         let file = std::fs::File::open(&zip_path_clone)
             .map_err(|e| format!("Failed to open zip: {}", e))?;
-        let mut archive = zip::ZipArchive::new(file)
-            .map_err(|e| format!("Failed to read zip: {}", e))?;
-        archive.extract(&core_dir_clone)
+        let mut archive =
+            zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
+        archive
+            .extract(&core_dir_clone)
             .map_err(|e| format!("Failed to extract zip: {}", e))?;
         Ok::<_, String>(())
     })
@@ -551,7 +608,10 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
     if core_path.exists() {
         Ok(core_path)
     } else {
-        Err(format!("Core file not found after extraction: {}", core_filename))
+        Err(format!(
+            "Core file not found after extraction: {}",
+            core_filename
+        ))
     }
 }
 
@@ -587,11 +647,12 @@ fn get_libretro_core_url(core_name: &str) -> String {
 /// Spawn a command and check if it crashes immediately.
 /// Returns the pid on success, or an error message if it fails/crashes.
 fn spawn_and_verify(mut cmd: Command, name: &str) -> Result<u32, String> {
-    // Capture stderr to get error messages if the process crashes
+    // Capture stdout/stderr so we can provide useful diagnostics when startup fails.
     cmd.stderr(Stdio::piped());
-    cmd.stdout(Stdio::null());
+    cmd.stdout(Stdio::piped());
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to launch {}: {}", name, e))?;
 
     let pid = child.id();
@@ -602,23 +663,68 @@ fn spawn_and_verify(mut cmd: Command, name: &str) -> Result<u32, String> {
     // Check if the process is still running
     match child.try_wait() {
         Ok(Some(status)) => {
-            // Process exited - try to get stderr
-            let mut stderr_output = String::new();
-            if let Some(mut stderr) = child.stderr.take() {
-                let _ = stderr.read_to_string(&mut stderr_output);
+            // Process exited - capture available output for diagnostics.
+            let stdout_output = if let Some(mut stdout) = child.stdout.take() {
+                let mut buf = Vec::new();
+                let _ = stdout.read_to_end(&mut buf);
+                String::from_utf8_lossy(&buf).to_string()
+            } else {
+                String::new()
+            };
+
+            let stderr_output = if let Some(mut stderr) = child.stderr.take() {
+                let mut buf = Vec::new();
+                let _ = stderr.read_to_end(&mut buf);
+                String::from_utf8_lossy(&buf).to_string()
+            } else {
+                String::new()
+            };
+
+            let mut combined = String::new();
+            if !stdout_output.trim().is_empty() {
+                combined.push_str(stdout_output.trim());
+            }
+            if !stderr_output.trim().is_empty() {
+                if !combined.is_empty() {
+                    combined.push('\n');
+                }
+                combined.push_str(stderr_output.trim());
             }
 
-            let error_msg = if stderr_output.trim().is_empty() {
-                format!("{} exited immediately with status: {}", name, status)
-            } else {
-                format!("{} failed: {}", name, stderr_output.trim())
-            };
+            let mut error_msg = format!("{} exited immediately with status: {}", name, status);
+
+            if name == "RetroArch" {
+                let hint = retroarch_startup_hint(&combined);
+                if !hint.is_empty() {
+                    error_msg.push_str("\n");
+                    error_msg.push_str(&hint);
+                }
+            }
+
+            let tail = tail_lines(&combined, 14);
+            if !tail.is_empty() {
+                error_msg.push_str("\n\nProcess output:\n");
+                error_msg.push_str(&tail);
+            }
 
             tracing::error!(error = %error_msg, "Process crashed immediately");
             Err(error_msg)
         }
         Ok(None) => {
             // Process is still running - success!
+            // Drain pipes in the background so verbose processes do not block on full buffers.
+            if let Some(mut stdout) = child.stdout.take() {
+                std::thread::spawn(move || {
+                    let mut sink = std::io::sink();
+                    let _ = std::io::copy(&mut stdout, &mut sink);
+                });
+            }
+            if let Some(mut stderr) = child.stderr.take() {
+                std::thread::spawn(move || {
+                    let mut sink = std::io::sink();
+                    let _ = std::io::copy(&mut stderr, &mut sink);
+                });
+            }
             tracing::debug!(pid = pid, "Process is running");
             Ok(pid)
         }
@@ -629,9 +735,50 @@ fn spawn_and_verify(mut cmd: Command, name: &str) -> Result<u32, String> {
     }
 }
 
+fn tail_lines(text: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let start = lines.len().saturating_sub(max_lines);
+    lines[start..].join("\n")
+}
+
+fn retroarch_startup_hint(output: &str) -> String {
+    let lower = output.to_ascii_lowercase();
+
+    if lower.contains("not an ines file") && lower.contains("failed to load content") {
+        if lower.contains("fds bios rom image missing") {
+            return "RetroArch could not load this ROM as NES content and then attempted FDS fallback (disksys.rom missing). This often means the file format is incompatible (for example unheadered .unh dumps). Try importing a headered .nes/.unf/.unif ROM.".to_string();
+        }
+        return "RetroArch could not load this ROM content. This often means the file format is incompatible with the selected core (for example unheadered .unh dumps). Try importing a headered .nes/.unf/.unif ROM.".to_string();
+    }
+
+    if lower.contains("failed to load content") {
+        return "RetroArch failed to load the ROM content. Verify the ROM file is valid for the selected core.".to_string();
+    }
+
+    if lower.contains("failed to load dynamic libretro core")
+        || lower.contains("core is not installed")
+    {
+        return "RetroArch failed to load the selected core. Reinstall the core and try again."
+            .to_string();
+    }
+
+    String::new()
+}
+
 /// Launch an emulator (optionally with a ROM)
 /// If `as_retroarch_core` is true, launch via RetroArch; otherwise launch standalone
-pub fn launch_emulator(emulator: &EmulatorInfo, rom_path: Option<&str>, as_retroarch_core: bool) -> Result<u32, String> {
+pub fn launch_emulator(
+    emulator: &EmulatorInfo,
+    rom_path: Option<&str>,
+    as_retroarch_core: bool,
+) -> Result<u32, String> {
     tracing::info!(
         emulator = %emulator.name,
         rom = ?rom_path,
@@ -676,7 +823,8 @@ fn find_retroarch_binary() -> Option<PathBuf> {
             if let Ok(path) = which::which("retroarch") {
                 Some(path)
             } else {
-                let app_binary = PathBuf::from("/Applications/RetroArch.app/Contents/MacOS/RetroArch");
+                let app_binary =
+                    PathBuf::from("/Applications/RetroArch.app/Contents/MacOS/RetroArch");
                 if app_binary.exists() {
                     Some(app_binary)
                 } else {
@@ -745,6 +893,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             if is_flatpak {
                 let mut cmd = Command::new("flatpak");
                 cmd.arg("run").arg("org.libretro.RetroArch");
+                cmd.arg("--verbose");
                 cmd.arg("-L").arg(map_path_for_flatpak(&core_path_str));
                 if let Some(rom) = rom_path {
                     cmd.arg(map_path_for_flatpak(rom));
@@ -760,6 +909,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                 let retroarch_path = find_retroarch_binary()
                     .ok_or_else(|| "Could not find RetroArch executable".to_string())?;
                 let mut cmd = Command::new(retroarch_path);
+                cmd.arg("--verbose");
                 cmd.arg("-L").arg(&core_path_str);
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
@@ -777,6 +927,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             let retroarch_path = find_retroarch_binary()
                 .ok_or_else(|| "Could not find RetroArch executable".to_string())?;
             let mut cmd = Command::new(retroarch_path);
+            cmd.arg("--verbose");
             cmd.arg("-L").arg(&core_path_str);
             if let Some(rom) = rom_path {
                 cmd.arg(rom);
@@ -792,12 +943,11 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
     tracing::debug!(emulator = %emulator.name, rom = ?rom_path, "Launching standalone emulator");
 
     // Use check_standalone_installation to skip RetroArch core check
-    let exe_path = check_standalone_installation(emulator)
-        .ok_or_else(|| {
-            let err = format!("{} standalone is not installed", emulator.name);
-            tracing::error!(error = %err, "Emulator not installed");
-            err
-        })?;
+    let exe_path = check_standalone_installation(emulator).ok_or_else(|| {
+        let err = format!("{} standalone is not installed", emulator.name);
+        tracing::error!(error = %err, "Emulator not installed");
+        err
+    })?;
 
     tracing::debug!(exe_path = ?exe_path, "Found emulator executable");
 
@@ -860,7 +1010,9 @@ pub fn add_status(emulator: EmulatorInfo) -> EmulatorWithStatus {
 
 /// Add status for an emulator as a RetroArch core entry
 pub fn add_status_as_retroarch(emulator: EmulatorInfo) -> EmulatorWithStatus {
-    let core_name = emulator.retroarch_core.as_ref()
+    let core_name = emulator
+        .retroarch_core
+        .as_ref()
         .expect("add_status_as_retroarch called on emulator without retroarch_core");
 
     let display_name = format!("RetroArch: {}", core_name);

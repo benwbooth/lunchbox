@@ -16,10 +16,10 @@ pub struct SteamGridDBConfig {
 /// Artwork types available from SteamGridDB
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtworkType {
-    Grid,   // Game cover/box art (600x900 or 920x430)
-    Hero,   // Banner image (1920x620)
-    Logo,   // Game logo with transparency
-    Icon,   // Square icon
+    Grid, // Game cover/box art (600x900 or 920x430)
+    Hero, // Banner image (1920x620)
+    Logo, // Game logo with transparency
+    Icon, // Square icon
 }
 
 /// Artwork result from SteamGridDB
@@ -82,7 +82,11 @@ impl SteamGridDBClient {
             anyhow::bail!("SteamGridDB API key not configured");
         }
 
-        let url = format!("{}/search/autocomplete/{}", Self::BASE_URL, urlencoding::encode(query));
+        let url = format!(
+            "{}/search/autocomplete/{}",
+            Self::BASE_URL,
+            urlencoding::encode(query)
+        );
 
         let response = self
             .client
@@ -98,7 +102,9 @@ impl SteamGridDBClient {
             anyhow::bail!("SteamGridDB API error: {} - {}", status, body);
         }
 
-        let data: SteamGridDBResponse<Vec<SteamGridGame>> = response.json().await
+        let data: SteamGridDBResponse<Vec<SteamGridGame>> = response
+            .json()
+            .await
             .context("Failed to parse SteamGridDB response")?;
 
         if data.success {
@@ -109,7 +115,11 @@ impl SteamGridDBClient {
     }
 
     /// Get artwork for a game by SteamGridDB game ID
-    pub async fn get_artwork(&self, game_id: i64, artwork_type: ArtworkType) -> Result<Vec<SteamGridArtwork>> {
+    pub async fn get_artwork(
+        &self,
+        game_id: i64,
+        artwork_type: ArtworkType,
+    ) -> Result<Vec<SteamGridArtwork>> {
         if !self.has_credentials() {
             anyhow::bail!("SteamGridDB API key not configured");
         }
@@ -141,7 +151,9 @@ impl SteamGridDBClient {
             anyhow::bail!("SteamGridDB API error: {} - {}", status, body);
         }
 
-        let data: SteamGridDBResponse<Vec<SteamGridArtwork>> = response.json().await
+        let data: SteamGridDBResponse<Vec<SteamGridArtwork>> = response
+            .json()
+            .await
             .context("Failed to parse SteamGridDB response")?;
 
         if data.success {
@@ -153,16 +165,36 @@ impl SteamGridDBClient {
 
     /// Get all artwork types for a game
     pub async fn get_all_artwork(&self, game_id: i64) -> Result<GameArtwork> {
-        let grids = self.get_artwork(game_id, ArtworkType::Grid).await.unwrap_or_default();
-        let heroes = self.get_artwork(game_id, ArtworkType::Hero).await.unwrap_or_default();
-        let logos = self.get_artwork(game_id, ArtworkType::Logo).await.unwrap_or_default();
-        let icons = self.get_artwork(game_id, ArtworkType::Icon).await.unwrap_or_default();
+        let grids = self
+            .get_artwork(game_id, ArtworkType::Grid)
+            .await
+            .unwrap_or_default();
+        let heroes = self
+            .get_artwork(game_id, ArtworkType::Hero)
+            .await
+            .unwrap_or_default();
+        let logos = self
+            .get_artwork(game_id, ArtworkType::Logo)
+            .await
+            .unwrap_or_default();
+        let icons = self
+            .get_artwork(game_id, ArtworkType::Icon)
+            .await
+            .unwrap_or_default();
 
-        Ok(GameArtwork { grids, heroes, logos, icons })
+        Ok(GameArtwork {
+            grids,
+            heroes,
+            logos,
+            icons,
+        })
     }
 
     /// Search for a game and get its best artwork
-    pub async fn search_and_get_artwork(&self, game_name: &str) -> Result<Option<(SteamGridGame, GameArtwork)>> {
+    pub async fn search_and_get_artwork(
+        &self,
+        game_name: &str,
+    ) -> Result<Option<(SteamGridGame, GameArtwork)>> {
         let games = self.search_game(game_name).await?;
 
         if let Some(game) = games.into_iter().next() {

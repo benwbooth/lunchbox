@@ -83,7 +83,8 @@ pub struct MediaDownloadService {
     /// Currently visible game IDs (for priority)
     viewport_games: Arc<RwLock<HashSet<i64>>>,
     /// Cancel channels by (game_id, media_type)
-    cancel_channels: Arc<RwLock<HashMap<(i64, NormalizedMediaType), tokio::sync::oneshot::Sender<()>>>>,
+    cancel_channels:
+        Arc<RwLock<HashMap<(i64, NormalizedMediaType), tokio::sync::oneshot::Sender<()>>>>,
     /// EmuMovies configuration (for FTP access)
     emumovies_config: Option<EmuMoviesConfig>,
 }
@@ -325,15 +326,9 @@ impl MediaDownloadService {
         source: MediaSource,
     ) -> Result<String> {
         match source {
-            MediaSource::LaunchBox => {
-                self.download_from_launchbox(request).await
-            }
-            MediaSource::LibRetro => {
-                self.download_from_libretro(request).await
-            }
-            MediaSource::EmuMovies => {
-                self.download_from_emumovies(request).await
-            }
+            MediaSource::LaunchBox => self.download_from_launchbox(request).await,
+            MediaSource::LibRetro => self.download_from_libretro(request).await,
+            MediaSource::EmuMovies => self.download_from_emumovies(request).await,
             _ => {
                 // Other sources not yet implemented
                 anyhow::bail!("Source {:?} not implemented", source)
@@ -376,10 +371,7 @@ impl MediaDownloadService {
 
         // Build local path using new structure
         let game_id = GameMediaId::from_launchbox_id(request.launchbox_db_id);
-        let extension = filename
-            .rsplit('.')
-            .next()
-            .unwrap_or("png");
+        let extension = filename.rsplit('.').next().unwrap_or("png");
         let local_path = game_id.media_path(&self.cache_dir, request.media_type, extension);
 
         // Check if already exists
@@ -454,9 +446,9 @@ impl MediaDownloadService {
     /// Download from EmuMovies archive (extracts from locally cached archive) or FTP for videos
     async fn download_from_emumovies(&self, request: &MediaDownloadRequest) -> Result<String> {
         // Convert media type to EmuMovies type
-        let em_media_type = EmuMoviesMediaType::from_launchbox_type(
-            request.media_type.to_launchbox_type()
-        ).ok_or_else(|| anyhow::anyhow!("Media type not supported by EmuMovies"))?;
+        let em_media_type =
+            EmuMoviesMediaType::from_launchbox_type(request.media_type.to_launchbox_type())
+                .ok_or_else(|| anyhow::anyhow!("Media type not supported by EmuMovies"))?;
 
         // Create client with credentials if available (needed for FTP video downloads)
         let config = self.emumovies_config.clone().unwrap_or_default();
@@ -469,7 +461,9 @@ impl MediaDownloadService {
         if em_media_type.is_video() {
             // Check if credentials are configured
             if !client.has_credentials() {
-                anyhow::bail!("EmuMovies video downloads require credentials. Configure them in Settings.");
+                anyhow::bail!(
+                    "EmuMovies video downloads require credentials. Configure them in Settings."
+                );
             }
 
             // Download video via FTP (blocking operation)
@@ -499,35 +493,40 @@ impl MediaDownloadService {
         // For images, extract from locally cached archives
 
         // Build archive path
-        let archive_path = self.cache_dir
-            .join("emumovies-archives")
-            .join(format!(
-                "{}-{}.zip",
-                request.platform.to_lowercase()
-                    .chars()
-                    .map(|c| if c.is_alphanumeric() { c } else { '-' })
-                    .collect::<String>(),
-                em_media_type.archive_pattern().to_lowercase()
-            ));
+        let archive_path = self.cache_dir.join("emumovies-archives").join(format!(
+            "{}-{}.zip",
+            request
+                .platform
+                .to_lowercase()
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '-' })
+                .collect::<String>(),
+            em_media_type.archive_pattern().to_lowercase()
+        ));
 
         // Check if archive exists
         if !archive_path.exists() {
-            anyhow::bail!("EmuMovies archive not downloaded: {}", archive_path.display());
+            anyhow::bail!(
+                "EmuMovies archive not downloaded: {}",
+                archive_path.display()
+            );
         }
 
         // Get or build index
         let index = client.get_or_build_index(&archive_path)?;
 
         // Find entry for this game
-        let entry_path = index.find_entry(&request.game_title)
-            .ok_or_else(|| anyhow::anyhow!(
+        let entry_path = index.find_entry(&request.game_title).ok_or_else(|| {
+            anyhow::anyhow!(
                 "Game '{}' not found in EmuMovies archive",
                 request.game_title
-            ))?;
+            )
+        })?;
 
         // Build output path
         let ext = entry_path.rsplit('.').next().unwrap_or("png");
-        let output_path = self.cache_dir
+        let output_path = self
+            .cache_dir
             .join(game_id.directory_name())
             .join("emumovies")
             .join(format!("{}.{}", request.media_type.filename(), ext));
@@ -603,11 +602,7 @@ impl MediaDownloadService {
     }
 
     /// Check if media is cached
-    pub async fn is_cached(
-        &self,
-        launchbox_db_id: i64,
-        media_type: NormalizedMediaType,
-    ) -> bool {
+    pub async fn is_cached(&self, launchbox_db_id: i64, media_type: NormalizedMediaType) -> bool {
         self.get_cached_path(launchbox_db_id, media_type)
             .await
             .is_some()

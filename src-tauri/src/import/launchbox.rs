@@ -235,13 +235,19 @@ impl LaunchBoxImporter {
     }
 
     /// Get images for a game by its DatabaseID, with platform for path resolution
-    pub async fn get_game_images_with_platform(&self, database_id: i64) -> Result<Vec<(LbGameImage, String)>> {
+    pub async fn get_game_images_with_platform(
+        &self,
+        database_id: i64,
+    ) -> Result<Vec<(LbGameImage, String)>> {
         // First get the game to find its platform
         let game = self.get_game_by_id(database_id).await?;
         let platform = game.map(|g| g.platform).unwrap_or_default();
 
         let images = self.get_game_images(database_id).await?;
-        Ok(images.into_iter().map(|img| (img, platform.clone())).collect())
+        Ok(images
+            .into_iter()
+            .map(|img| (img, platform.clone()))
+            .collect())
     }
 
     /// Get all emulators
@@ -260,7 +266,10 @@ impl LaunchBoxImporter {
     }
 
     /// Get emulator-platform mappings for a platform
-    pub async fn get_emulators_for_platform(&self, platform: &str) -> Result<Vec<LbEmulatorPlatform>> {
+    pub async fn get_emulators_for_platform(
+        &self,
+        platform: &str,
+    ) -> Result<Vec<LbEmulatorPlatform>> {
         let mappings = sqlx::query_as::<_, LbEmulatorPlatform>(
             r#"
             SELECT Emulator, Platform, CommandLine, ApplicableFileExtensions, Recommended
@@ -286,11 +295,7 @@ impl LaunchBoxImporter {
 
     /// Get all game images in batches for import
     /// Returns a stream of image records for memory-efficient processing
-    pub async fn get_all_game_images(
-        &self,
-        offset: i64,
-        limit: i64,
-    ) -> Result<Vec<LbGameImage>> {
+    pub async fn get_all_game_images(&self, offset: i64, limit: i64) -> Result<Vec<LbGameImage>> {
         let images = sqlx::query_as::<_, LbGameImage>(
             r#"
             SELECT FileName, DatabaseId, Type, Region, CRC32
@@ -454,7 +459,8 @@ fn find_matching_image(dir: &Path, game_name: &str) -> Option<String> {
 
             if file_name_str.starts_with(&pattern) {
                 let path = entry.path();
-                let ext = path.extension()
+                let ext = path
+                    .extension()
                     .and_then(|e| e.to_str())
                     .map(|s| s.to_lowercase())
                     .unwrap_or_default();
@@ -489,8 +495,17 @@ mod tests {
 
     #[test]
     fn test_normalize_for_comparison() {
-        assert_eq!(normalize_for_comparison("Super Mario Bros."), "supermariobros");
-        assert_eq!(normalize_for_comparison("The Legend of Zelda: A Link to the Past"), "thelegendofzeldaalinktothepast");
-        assert_eq!(normalize_for_comparison("Sonic the Hedgehog 2"), "sonicthehedgehog2");
+        assert_eq!(
+            normalize_for_comparison("Super Mario Bros."),
+            "supermariobros"
+        );
+        assert_eq!(
+            normalize_for_comparison("The Legend of Zelda: A Link to the Past"),
+            "thelegendofzeldaalinktothepast"
+        );
+        assert_eq!(
+            normalize_for_comparison("Sonic the Hedgehog 2"),
+            "sonicthehedgehog2"
+        );
     }
 }

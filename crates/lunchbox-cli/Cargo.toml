@@ -47,5 +47,11 @@ zip = "2"
 reqwest = { workspace = true, features = ["stream"] }
 futures-util = "0.3"
 
+# CSV output
+csv = "1"
+
+# URL encoding
+urlencoding = "2"
+
 # Directories
 directories = "5"

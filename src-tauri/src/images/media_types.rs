@@ -208,7 +208,12 @@ impl GameMediaId {
     }
 
     /// Get the full media path for a specific media type
-    pub fn media_path(&self, base_dir: &std::path::Path, media_type: NormalizedMediaType, extension: &str) -> PathBuf {
+    pub fn media_path(
+        &self,
+        base_dir: &std::path::Path,
+        media_type: NormalizedMediaType,
+        extension: &str,
+    ) -> PathBuf {
         base_dir
             .join("media")
             .join(self.directory_name())
@@ -355,7 +360,10 @@ mod tests {
     #[test]
     fn test_title_normalization() {
         assert_eq!(normalize_title("Super Mario Bros."), "super mario bros");
-        assert_eq!(normalize_title("The Legend of Zelda: Ocarina of Time"), "the legend of zelda ocarina of time");
+        assert_eq!(
+            normalize_title("The Legend of Zelda: Ocarina of Time"),
+            "the legend of zelda ocarina of time"
+        );
         assert_eq!(normalize_title("  Multiple   Spaces  "), "multiple spaces");
     }
 }

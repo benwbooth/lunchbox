@@ -4,9 +4,9 @@
 //! Structure: {Platform}/{Type}/{Game Name}.png
 //! Types: Named_Boxarts, Named_Snaps, Named_Titles
 
+use crate::tags;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use crate::tags;
 
 /// libretro-thumbnails CDN base URL
 pub const LIBRETRO_THUMBNAILS_URL: &str = "https://thumbnails.libretro.com";
@@ -53,7 +53,9 @@ pub fn get_libretro_platform_name(platform: &str) -> Option<&'static str> {
             Some("Nintendo - Super Nintendo Entertainment System")
         }
         "nintendo 64" | "n64" => Some("Nintendo - Nintendo 64"),
-        "nintendo game boy advance" | "game boy advance" | "gba" => Some("Nintendo - Game Boy Advance"),
+        "nintendo game boy advance" | "game boy advance" | "gba" => {
+            Some("Nintendo - Game Boy Advance")
+        }
         "nintendo game boy color" | "game boy color" | "gbc" => Some("Nintendo - Game Boy Color"),
         "nintendo game boy" | "game boy" | "gb" => Some("Nintendo - Game Boy"),
         "nintendo ds" | "nds" => Some("Nintendo - Nintendo DS"),
@@ -63,10 +65,14 @@ pub fn get_libretro_platform_name(platform: &str) -> Option<&'static str> {
         "nintendo wii" | "wii" => Some("Nintendo - Wii"),
         "nintendo switch" | "switch" => Some("Nintendo - Switch"),
         "nintendo virtual boy" | "virtual boy" => Some("Nintendo - Virtual Boy"),
-        "nintendo famicom disk system" | "famicom disk system" | "fds" => Some("Nintendo - Famicom Disk System"),
+        "nintendo famicom disk system" | "famicom disk system" | "fds" => {
+            Some("Nintendo - Famicom Disk System")
+        }
 
         // Sega
-        "sega genesis" | "sega mega drive" | "genesis" | "mega drive" => Some("Sega - Mega Drive - Genesis"),
+        "sega genesis" | "sega mega drive" | "genesis" | "mega drive" => {
+            Some("Sega - Mega Drive - Genesis")
+        }
         "sega master system" | "master system" => Some("Sega - Master System - Mark III"),
         "sega game gear" | "game gear" => Some("Sega - Game Gear"),
         "sega saturn" | "saturn" => Some("Sega - Saturn"),
@@ -77,17 +83,27 @@ pub fn get_libretro_platform_name(platform: &str) -> Option<&'static str> {
         // Sony
         "sony playstation 2" | "playstation 2" | "ps2" => Some("Sony - PlayStation 2"),
         "sony playstation 3" | "playstation 3" | "ps3" => Some("Sony - PlayStation 3"),
-        "sony playstation portable" | "playstation portable" | "psp" => Some("Sony - PlayStation Portable"),
-        "sony playstation vita" | "playstation vita" | "ps vita" | "psvita" => Some("Sony - PlayStation Vita"),
+        "sony playstation portable" | "playstation portable" | "psp" => {
+            Some("Sony - PlayStation Portable")
+        }
+        "sony playstation vita" | "playstation vita" | "ps vita" | "psvita" => {
+            Some("Sony - PlayStation Vita")
+        }
         "sony playstation" | "playstation" | "ps1" | "psx" => Some("Sony - PlayStation"),
 
         // NEC
-        "nec turbografx-cd" | "turbografx-cd" | "pc engine cd" => Some("NEC - PC Engine CD - TurboGrafx-CD"),
-        "nec turbografx-16" | "turbografx-16" | "pc engine" => Some("NEC - PC Engine - TurboGrafx 16"),
+        "nec turbografx-cd" | "turbografx-cd" | "pc engine cd" => {
+            Some("NEC - PC Engine CD - TurboGrafx-CD")
+        }
+        "nec turbografx-16" | "turbografx-16" | "pc engine" => {
+            Some("NEC - PC Engine - TurboGrafx 16")
+        }
         "nec pc engine supergrafx" | "supergrafx" => Some("NEC - PC Engine SuperGrafx"),
 
         // SNK
-        "snk neo geo pocket color" | "neo geo pocket color" | "ngpc" => Some("SNK - Neo Geo Pocket Color"),
+        "snk neo geo pocket color" | "neo geo pocket color" | "ngpc" => {
+            Some("SNK - Neo Geo Pocket Color")
+        }
         "snk neo geo pocket" | "neo geo pocket" | "ngp" => Some("SNK - Neo Geo Pocket"),
         "snk neo geo cd" | "neo geo cd" => Some("SNK - Neo Geo CD"),
         "snk neo geo" | "neo geo" | "neogeo" => Some("SNK - Neo Geo"),
@@ -148,7 +164,11 @@ pub fn normalize_game_name(name: &str) -> String {
 }
 
 /// Build a libretro thumbnail URL
-pub fn build_thumbnail_url(platform: &str, image_type: LibRetroImageType, game_name: &str) -> Option<String> {
+pub fn build_thumbnail_url(
+    platform: &str,
+    image_type: LibRetroImageType,
+    game_name: &str,
+) -> Option<String> {
     // If platform already looks like a libretro platform name (contains " - "), use it directly
     // Otherwise, try to map from display name
     let platform_dir = if platform.contains(" - ") || platform == "MAME" || platform == "DOS" {
@@ -189,12 +209,22 @@ impl LibRetroThumbnailsClient {
     }
 
     /// Get the URL for a thumbnail (without downloading)
-    pub fn get_thumbnail_url(&self, platform: &str, image_type: LibRetroImageType, game_name: &str) -> Option<String> {
+    pub fn get_thumbnail_url(
+        &self,
+        platform: &str,
+        image_type: LibRetroImageType,
+        game_name: &str,
+    ) -> Option<String> {
         build_thumbnail_url(platform, image_type, game_name)
     }
 
     /// Get cache path for an image
-    fn get_cache_path(&self, platform: &str, image_type: LibRetroImageType, game_name: &str) -> PathBuf {
+    fn get_cache_path(
+        &self,
+        platform: &str,
+        image_type: LibRetroImageType,
+        game_name: &str,
+    ) -> PathBuf {
         let platform_dir = get_libretro_platform_name(platform).unwrap_or("Unknown");
         let type_dir = image_type.path_segment();
         let normalized_name = normalize_game_name(game_name);
@@ -207,7 +237,12 @@ impl LibRetroThumbnailsClient {
     }
 
     /// Check if a thumbnail exists (HEAD request)
-    pub async fn check_exists(&self, platform: &str, image_type: LibRetroImageType, game_name: &str) -> bool {
+    pub async fn check_exists(
+        &self,
+        platform: &str,
+        image_type: LibRetroImageType,
+        game_name: &str,
+    ) -> bool {
         let url = match build_thumbnail_url(platform, image_type, game_name) {
             Some(u) => u,
             None => return false,
@@ -353,7 +388,10 @@ mod tests {
 
     #[test]
     fn test_normalize_game_name() {
-        assert_eq!(normalize_game_name("Super Mario Bros."), "Super Mario Bros.");
+        assert_eq!(
+            normalize_game_name("Super Mario Bros."),
+            "Super Mario Bros."
+        );
         assert_eq!(
             normalize_game_name("Legend of Zelda: Ocarina of Time"),
             "Legend of Zelda - Ocarina of Time"

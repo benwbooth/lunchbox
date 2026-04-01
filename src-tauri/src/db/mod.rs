@@ -22,6 +22,9 @@ pub const IMAGES_DB_NAME: &str = "game_images";
 /// Emulators database (emulator metadata and platform mappings)
 pub const EMULATORS_DB_NAME: &str = "emulators";
 
+/// Minerva Archive index database (ROM listings from torrent metadata)
+pub const MINERVA_DB_NAME: &str = "minerva";
+
 /// App data directory name
 pub const APP_DATA_DIR: &str = "lunchbox";
 
@@ -35,9 +38,7 @@ pub async fn init_pool(db_path: &Path) -> Result<DbPool, sqlx::Error> {
         .await?;
 
     // Run migrations
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
 
     Ok(pool)
 }

@@ -1,10 +1,13 @@
 //! Game details panel
 
+use super::{Box3DViewer, ImportProgress, LazyImage, VideoPlayer};
+use crate::tauri::{
+    self, file_to_asset_url, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashSet;
-use crate::tauri::{self, file_to_asset_url, Game, GameVariant, PlayStats, EmulatorWithStatus, GameFile};
-use super::{VideoPlayer, LazyImage, Box3DViewer, ImportProgress};
+use wasm_bindgen::{JsCast, JsValue};
 
 async fn launch_game_with_resolved_rom(
     launchbox_db_id: i64,
@@ -61,12 +64,32 @@ async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
     None
 }
 
+fn pause_game_details_video() {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Ok(Some(video_el)) = document.query_selector(".game-video") else {
+        return;
+    };
+
+    let pause_value = match js_sys::Reflect::get(video_el.as_ref(), &JsValue::from_str("pause")) {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let Some(pause_fn) = pause_value.dyn_ref::<js_sys::Function>() else {
+        return;
+    };
+    let _ = pause_fn.call0(video_el.as_ref());
+}
+
 #[component]
 pub fn GameDetails(
     game: ReadSignal<Option<Game>>,
     on_close: WriteSignal<Option<Game>>,
-    #[prop(optional)]
-    set_show_settings: Option<WriteSignal<bool>>,
+    #[prop(optional)] set_show_settings: Option<WriteSignal<bool>>,
 ) -> impl IntoView {
     // Local display state - allows switching variants without affecting external state
     let (display_game, set_display_game) = signal::<Option<Game>>(None);
@@ -92,6 +115,16 @@ pub fn GameDetails(
     let (import_failed, set_import_failed) = signal::<Option<String>>(None);
     let (import_error, set_import_error) = signal::<Option<String>>(None);
     let import_prompt = RwSignal::new(String::new());
+    // Minerva download state
+    let (minerva_rom, set_minerva_rom) = signal::<Option<tauri::MinervaRom>>(None);
+    let (minerva_downloading, set_minerva_downloading) = signal(false);
+    let (minerva_progress, set_minerva_progress) = signal::<Option<tauri::MinervaDownloadProgress>>(None);
+    let (minerva_job_id, set_minerva_job_id) = signal::<Option<String>>(None);
+    // Torrent file picker state
+    let (show_file_picker, set_show_file_picker) = signal(false);
+    let (torrent_files, set_torrent_files) = signal::<Vec<tauri::TorrentFileMatch>>(Vec::new());
+    let (selected_file_index, set_selected_file_index) = signal::<Option<usize>>(None);
+    let (files_loading, set_files_loading) = signal(false);
     // Prompt management state
     let (prompts_expanded, set_prompts_expanded) = signal(false);
     let prompts: RwSignal<Vec<tauri::GraboidPrompt>> = RwSignal::new(Vec::new());
@@ -108,6 +141,10 @@ pub fn GameDetails(
             set_game_file.set(None);
             set_import_job_id.set(None);
             set_import_state_loading.set(true);
+            set_minerva_rom.set(None);
+            set_minerva_downloading.set(false);
+            set_minerva_progress.set(None);
+            set_minerva_job_id.set(None);
         } else {
             set_display_game.set(None);
             set_play_stats.set(None);
@@ -130,7 +167,8 @@ pub fn GameDetails(
             spawn_local(async move {
                 // Get game-specific preference (not platform default)
                 if let Ok(prefs) = tauri::get_all_emulator_preferences().await {
-                    let game_pref = prefs.game_preferences
+                    let game_pref = prefs
+                        .game_preferences
                         .into_iter()
                         .find(|p| p.launchbox_db_id == db_id)
                         .map(|p| p.emulator_name);
@@ -154,7 +192,11 @@ pub fn GameDetails(
 
             // Check if we're switching variants of the same game (variants already loaded)
             // by checking if current game is in the existing variants list
-            let current_variants = variants.get();
+            // Important: do not track `variants` reactively inside this effect.
+            // This effect should follow `display_game` only; tracking variants here
+            // can create a feedback loop (`set_variants` -> rerun effect -> more async loads),
+            // which manifests as panel jitter/shaking.
+            let current_variants = variants.get_untracked();
             let is_variant_switch = current_variants.iter().any(|v| v.id == game_id);
 
             spawn_local(async move {
@@ -182,10 +224,24 @@ pub fn GameDetails(
                 }
 
                 // Only load variants if this is a new game, not a variant switch
-                web_sys::console::log_1(&format!("Loading variants: is_variant_switch={}, variant_count={}", is_variant_switch, variant_count).into());
+                web_sys::console::log_1(
+                    &format!(
+                        "Loading variants: is_variant_switch={}, variant_count={}",
+                        is_variant_switch, variant_count
+                    )
+                    .into(),
+                );
                 if !is_variant_switch && variant_count > 1 {
-                    web_sys::console::log_1(&format!("Fetching variants for game_id={}", game_id).into());
-                    match tauri::get_game_variants(game_id.clone(), display_title.clone(), platform_id).await {
+                    web_sys::console::log_1(
+                        &format!("Fetching variants for game_id={}", game_id).into(),
+                    );
+                    match tauri::get_game_variants(
+                        game_id.clone(),
+                        display_title.clone(),
+                        platform_id,
+                    )
+                    .await
+                    {
                         Ok(vars) => {
                             if !is_current_game() {
                                 return;
@@ -200,7 +256,9 @@ pub fn GameDetails(
                             if let Some(preferred_id) = preferred_variant_id {
                                 if preferred_id != game_id {
                                     match tauri::get_game_by_uuid(preferred_id.clone()).await {
-                                        Ok(Some(preferred_game)) if preferred_game.database_id > 0 => {
+                                        Ok(Some(preferred_game))
+                                            if preferred_game.database_id > 0 =>
+                                        {
                                             if !is_current_game() {
                                                 return;
                                             }
@@ -261,8 +319,56 @@ pub fn GameDetails(
                         set_import_job_id.set(None);
                     }
                 }
+                // Check minerva ROM availability
+                if db_id > 0 {
+                    if let Ok(rom) = tauri::get_minerva_rom_for_game(db_id).await {
+                        if is_current_game() {
+                            set_minerva_rom.set(rom);
+                        }
+                    }
+                }
+
                 if is_current_game() {
                     set_import_state_loading.set(false);
+                }
+            });
+        }
+    });
+
+    // Minerva download progress polling
+    Effect::new(move || {
+        if let Some(jid) = minerva_job_id.get() {
+            let jid_clone = jid.clone();
+            spawn_local(async move {
+                loop {
+                    match tauri::get_minerva_download_progress(jid_clone.clone()).await {
+                        Ok(Some(progress)) => {
+                            let done = progress.status == "completed" || progress.status == "failed" || progress.status == "cancelled";
+                            set_minerva_progress.set(Some(progress.clone()));
+                            if done {
+                                set_minerva_downloading.set(false);
+                                set_minerva_job_id.set(None);
+                                if progress.status == "completed" {
+                                    // Refresh game file
+                                    if let Some(g) = game.get_untracked() {
+                                        if let Ok(Some(file)) = tauri::get_game_file(g.database_id).await {
+                                            set_game_file.set(Some(file));
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        Ok(None) => {
+                            set_minerva_downloading.set(false);
+                            set_minerva_job_id.set(None);
+                            break;
+                        }
+                        Err(_) => break,
+                    }
+                    wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
+                        web_sys::window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 1000).unwrap();
+                    })).await.unwrap();
                 }
             });
         }
@@ -273,10 +379,7 @@ pub fn GameDetails(
     Effect::new(move || {
         let variant_id = pending_variant_load.get();
         if let Some(variant_id) = variant_id {
-            let still_visible = variants
-                .get_untracked()
-                .iter()
-                .any(|v| v.id == variant_id);
+            let still_visible = variants.get_untracked().iter().any(|v| v.id == variant_id);
             if !still_visible {
                 set_pending_variant_load.set(None);
                 return;
@@ -285,19 +388,17 @@ pub fn GameDetails(
             set_selected_variant.set(Some(variant_id.clone()));
             spawn_local(async move {
                 let requested_variant_id = variant_id.clone();
-                if let Ok(Some(new_game)) = tauri::get_game_by_uuid(requested_variant_id.clone()).await {
-                    if pending_variant_load
-                        .get_untracked()
-                        .as_deref()
+                if let Ok(Some(new_game)) =
+                    tauri::get_game_by_uuid(requested_variant_id.clone()).await
+                {
+                    if pending_variant_load.get_untracked().as_deref()
                         == Some(requested_variant_id.as_str())
                     {
                         set_display_game.set(Some(new_game));
                     }
                 }
                 // Clear after loading completes to prevent re-triggering during load.
-                if pending_variant_load
-                    .get_untracked()
-                    .as_deref()
+                if pending_variant_load.get_untracked().as_deref()
                     == Some(requested_variant_id.as_str())
                 {
                     set_pending_variant_load.set(None);
@@ -638,12 +739,149 @@ pub fn GameDetails(
                                                 })}
                                             </Show>
 
+                                            // Minerva torrent download progress
+                                            <Show when=move || minerva_downloading.get()>
+                                                {move || minerva_progress.get().map(|p| {
+                                                    let pct = p.progress_percent;
+                                                    let msg = p.status_message.clone();
+                                                    let speed = if p.download_speed > 0 {
+                                                        format!(" ({:.1} MB/s)", p.download_speed as f64 / 1_000_000.0)
+                                                    } else {
+                                                        String::new()
+                                                    };
+                                                    view! {
+                                                        <div class="import-section">
+                                                            <div class="minerva-progress">
+                                                                <div class="minerva-progress-bar">
+                                                                    <div class="minerva-progress-fill" style=format!("width: {:.1}%", pct)></div>
+                                                                </div>
+                                                                <div class="minerva-progress-text">{format!("{msg}{speed}")}</div>
+                                                            </div>
+                                                            <button class="cancel-import-btn" on:click=move |_| {
+                                                                if let Some(jid) = minerva_job_id.get() {
+                                                                    set_minerva_downloading.set(false);
+                                                                    set_minerva_job_id.set(None);
+                                                                    spawn_local(async move {
+                                                                        let _ = tauri::cancel_minerva_download(jid).await;
+                                                                    });
+                                                                }
+                                                            }>"Cancel"</button>
+                                                        </div>
+                                                    }
+                                                })}
+                                            </Show>
+
                                             // Import prompt and buttons when no file and not importing
                                             <Show when=move || import_state_loading.get() && import_job_id.get().is_none()>
                                                 <div class="import-status-hint">"Checking imported file…"</div>
                                             </Show>
 
-                                            <Show when=move || !import_state_loading.get() && game_file.get().is_none() && import_job_id.get().is_none()>
+                                            <Show when=move || !import_state_loading.get() && game_file.get().is_none() && import_job_id.get().is_none() && !minerva_downloading.get()>
+                                                // Minerva download button — opens file picker
+                                                <Show when=move || minerva_rom.get().is_some() && !show_file_picker.get()>
+                                                    <button
+                                                        class="import-btn-action minerva-download-btn"
+                                                        disabled=move || files_loading.get()
+                                                        on:click=move |_| {
+                                                            if let Some(rom) = minerva_rom.get() {
+                                                                if let Some(g) = game.get_untracked() {
+                                                                    let url = rom.torrent_url.clone();
+                                                                    let title = g.display_title.clone();
+                                                                    set_files_loading.set(true);
+                                                                    set_torrent_files.set(Vec::new());
+                                                                    set_selected_file_index.set(None);
+                                                                    spawn_local(async move {
+                                                                        match tauri::list_torrent_files(url, title).await {
+                                                                            Ok(files) => {
+                                                                                // Pre-select best match
+                                                                                if let Some(best) = files.first() {
+                                                                                    set_selected_file_index.set(Some(best.index));
+                                                                                }
+                                                                                set_torrent_files.set(files);
+                                                                                set_show_file_picker.set(true);
+                                                                            }
+                                                                            Err(e) => set_import_error.set(Some(e)),
+                                                                        }
+                                                                        set_files_loading.set(false);
+                                                                    });
+                                                                }
+                                                            }
+                                                        }
+                                                    >
+                                                        {move || if files_loading.get() { "Loading..." } else { "Download" }}
+                                                    </button>
+                                                </Show>
+
+                                                // File picker dialog
+                                                <Show when=move || show_file_picker.get()>
+                                                    <div class="file-picker-dialog">
+                                                        <div class="file-picker-header">
+                                                            <h4>"Select ROM to download"</h4>
+                                                            <button class="file-picker-close" on:click=move |_| set_show_file_picker.set(false)>"X"</button>
+                                                        </div>
+                                                        <div class="file-picker-list">
+                                                            {move || torrent_files.get().into_iter().map(|file| {
+                                                                let idx = file.index;
+                                                                let name = file.filename.clone();
+                                                                let size_mb = file.size as f64 / (1024.0 * 1024.0);
+                                                                let score = file.match_score;
+                                                                let region = file.region.clone().unwrap_or_default();
+                                                                let is_selected = move || selected_file_index.get() == Some(idx);
+                                                                view! {
+                                                                    <div
+                                                                        class="file-picker-row"
+                                                                        class:selected=is_selected
+                                                                        on:click=move |_| set_selected_file_index.set(Some(idx))
+                                                                    >
+                                                                        <div class="file-picker-name">{name}</div>
+                                                                        <div class="file-picker-meta">
+                                                                            <span class="file-picker-size">{format!("{size_mb:.1} MB")}</span>
+                                                                            {(!region.is_empty()).then(|| view! {
+                                                                                <span class="file-picker-region">{region}</span>
+                                                                            })}
+                                                                            {(score > 0.5).then(|| view! {
+                                                                                <span class="file-picker-match">{format!("{:.0}% match", score * 100.0)}</span>
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                            }).collect::<Vec<_>>()}
+                                                        </div>
+                                                        <div class="file-picker-actions">
+                                                            <button
+                                                                class="import-btn-action"
+                                                                disabled=move || selected_file_index.get().is_none()
+                                                                on:click=move |_| {
+                                                                    if let (Some(rom), Some(file_idx)) = (minerva_rom.get(), selected_file_index.get()) {
+                                                                        if let Some(g) = game.get_untracked() {
+                                                                            let rom_id = rom.id;
+                                                                            let db_id = g.database_id;
+                                                                            let title = g.display_title.clone();
+                                                                            let platform = stored_platform.get_value();
+                                                                            set_show_file_picker.set(false);
+                                                                            set_minerva_downloading.set(true);
+                                                                            set_minerva_progress.set(None);
+                                                                            let _ = file_idx; // file_index will be part of the download input in the future
+                                                                            spawn_local(async move {
+                                                                                match tauri::start_minerva_download(rom_id, db_id, title, platform).await {
+                                                                                    Ok(job) => set_minerva_job_id.set(Some(job.id)),
+                                                                                    Err(e) => {
+                                                                                        set_minerva_downloading.set(false);
+                                                                                        set_import_error.set(Some(e));
+                                                                                    }
+                                                                                }
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                }
+                                                            >"Download Selected"</button>
+                                                            <button
+                                                                class="cancel-import-btn"
+                                                                on:click=move |_| set_show_file_picker.set(false)
+                                                            >"Cancel"</button>
+                                                        </div>
+                                                    </div>
+                                                </Show>
                                                 <Show when=move || graboid_configured.get()>
                                                     <div class="import-prompt-field">
                                                         <textarea
@@ -706,6 +944,9 @@ pub fn GameDetails(
                                                         set_emulators_loading.set(false);
                                                     });
                                                 }>"Play"</button>
+                                                <span class="game-details-ready-badge" title="ROM downloaded - ready to play">
+                                                    "Ready to Play"
+                                                </span>
                                             </Show>
 
                                             <button
@@ -863,7 +1104,8 @@ fn MediaCarousel(
     placeholder: String,
 ) -> impl IntoView {
     let (current_index, set_current_index) = signal(0usize);
-    let (available_types, set_available_types) = signal::<Vec<String>>(vec!["Box - Front".to_string()]);
+    let (available_types, _set_available_types) =
+        signal::<Vec<String>>(MEDIA_TYPES.iter().map(|&s| s.to_string()).collect());
     let (box_front_url, set_box_front_url) = signal::<Option<String>>(None);
     let (box_back_url, set_box_back_url) = signal::<Option<String>>(None);
 
@@ -871,9 +1113,6 @@ fn MediaCarousel(
     let title = StoredValue::new(game_title.clone());
     let plat = StoredValue::new(platform.clone());
     let db_id = launchbox_db_id;
-
-    // Set all media types - LazyImage will download on demand
-    set_available_types.set(MEDIA_TYPES.iter().map(|&s| s.to_string()).collect());
 
     // Pre-load box URLs for 3D viewer in background
     Effect::new(move || {
@@ -887,7 +1126,9 @@ fn MediaCarousel(
                 plat.clone(),
                 "Box - Front".to_string(),
                 Some(db_id),
-            ).await {
+            )
+            .await
+            {
                 set_box_front_url.set(Some(file_to_asset_url(&path)));
             }
 
@@ -897,7 +1138,9 @@ fn MediaCarousel(
                 plat.clone(),
                 "Box - Back".to_string(),
                 Some(db_id),
-            ).await {
+            )
+            .await
+            {
                 set_box_back_url.set(Some(file_to_asset_url(&path)));
             }
         });
@@ -1138,6 +1381,7 @@ fn EmulatorPickerModal(
 
                                         // Handler for launch/install+launch
                                         let on_launch = move |_| {
+                                            pause_game_details_video();
                                             let emulator_name = name_for_click.clone();
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
@@ -1216,6 +1460,7 @@ fn EmulatorPickerModal(
 
                                         let on_set_game_pref = move |e: web_sys::MouseEvent| {
                                             e.stop_propagation();
+                                            pause_game_details_video();
                                             let emulator_name = name_for_game_pref.clone();
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
@@ -1290,6 +1535,7 @@ fn EmulatorPickerModal(
 
                                         let on_set_platform_pref = move |e: web_sys::MouseEvent| {
                                             e.stop_propagation();
+                                            pause_game_details_video();
                                             let emulator_name = name_for_platform_pref.clone();
                                             let title = stored_title.get_value();
                                             let platform = stored_platform.get_value();
@@ -1431,8 +1677,7 @@ fn EmulatorPickerModal(
 #[component]
 fn ImportPromptsSection(
     db_id: i64,
-    #[prop(into)]
-    platform: String,
+    #[prop(into)] platform: String,
     prompts: RwSignal<Vec<tauri::GraboidPrompt>>,
     prompts_expanded: ReadSignal<bool>,
     set_prompts_expanded: WriteSignal<bool>,
@@ -1457,13 +1702,19 @@ fn ImportPromptsSection(
                     global_prompt_text.set(settings.graboid.default_prompt);
                 }
                 // Find platform prompt
-                if let Some(pp) = all_prompts.iter().find(|p| p.scope == "platform" && p.platform.as_deref() == Some(&*platform)) {
+                if let Some(pp) = all_prompts
+                    .iter()
+                    .find(|p| p.scope == "platform" && p.platform.as_deref() == Some(&*platform))
+                {
                     platform_prompt_text.set(pp.prompt.clone());
                 } else {
                     platform_prompt_text.set(String::new());
                 }
                 // Find game prompt
-                if let Some(gp) = all_prompts.iter().find(|p| p.scope == "game" && p.launchbox_db_id == Some(db_id)) {
+                if let Some(gp) = all_prompts
+                    .iter()
+                    .find(|p| p.scope == "game" && p.launchbox_db_id == Some(db_id))
+                {
                     game_prompt_text.set(gp.prompt.clone());
                 } else {
                     game_prompt_text.set(String::new());
@@ -1479,9 +1730,12 @@ fn ImportPromptsSection(
         set_platform_prompt_editing.set(false);
         spawn_local(async move {
             if text.trim().is_empty() {
-                let _ = tauri::delete_graboid_prompt("platform".to_string(), Some(platform), None).await;
+                let _ = tauri::delete_graboid_prompt("platform".to_string(), Some(platform), None)
+                    .await;
             } else {
-                let _ = tauri::save_graboid_prompt("platform".to_string(), Some(platform), None, text).await;
+                let _ =
+                    tauri::save_graboid_prompt("platform".to_string(), Some(platform), None, text)
+                        .await;
             }
         });
     };
@@ -1491,7 +1745,8 @@ fn ImportPromptsSection(
         platform_prompt_text.set(String::new());
         set_platform_prompt_editing.set(false);
         spawn_local(async move {
-            let _ = tauri::delete_graboid_prompt("platform".to_string(), Some(platform), None).await;
+            let _ =
+                tauri::delete_graboid_prompt("platform".to_string(), Some(platform), None).await;
         });
     };
 
@@ -1502,7 +1757,8 @@ fn ImportPromptsSection(
             if text.trim().is_empty() {
                 let _ = tauri::delete_graboid_prompt("game".to_string(), None, Some(db_id)).await;
             } else {
-                let _ = tauri::save_graboid_prompt("game".to_string(), None, Some(db_id), text).await;
+                let _ =
+                    tauri::save_graboid_prompt("game".to_string(), None, Some(db_id), text).await;
             }
         });
     };

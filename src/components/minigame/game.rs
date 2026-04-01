@@ -1,20 +1,19 @@
 //! WebGPU-powered Mario mini-game using raw web-sys APIs
 //! All game logic runs in WGSL shaders - Rust only bootstraps WebGPU
 
-use leptos::prelude::*;
+use js_sys::{Function, Object, Promise, Reflect, Uint8Array};
 use leptos::html;
+use leptos::prelude::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    HtmlCanvasElement, KeyboardEvent,
-    GpuDevice, GpuQueue, GpuCanvasContext,
-    GpuBuffer, GpuBindGroup, GpuComputePipeline, GpuRenderPipeline,
+    GpuBindGroup, GpuBuffer, GpuCanvasContext, GpuComputePipeline, GpuDevice, GpuQueue,
+    GpuRenderPipeline, HtmlCanvasElement, KeyboardEvent,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
-use js_sys::{Object, Reflect, Uint8Array, Function, Promise};
 
-use super::gpu::{pack_sprite_atlas, pack_palettes, Uniforms, u32_slice_to_bytes};
+use super::gpu::{pack_palettes, pack_sprite_atlas, u32_slice_to_bytes, Uniforms};
 
 const COMPUTE_SHADER: &str = include_str!("shaders/compute.wgsl");
 const RENDER_SHADER: &str = include_str!("shaders/render.wgsl");
@@ -22,8 +21,8 @@ const RENDER_SHADER: &str = include_str!("shaders/render.wgsl");
 const WORKGROUP_SIZE: u32 = 64;
 const TILE_PX: u32 = 8;
 const ENTITY_COUNT: u32 = 256;
-const ECELL_PX: u32 = 64;  // Entity grid cell size in pixels
-const EGRID_SLOTS: u32 = 16;  // Max entities per cell
+const ECELL_PX: u32 = 64; // Entity grid cell size in pixels
+const EGRID_SLOTS: u32 = 16; // Max entities per cell
 const MAX_WORLD_WIDTH: u32 = 4096;
 const MAX_WORLD_HEIGHT: u32 = 4096;
 const MIN_ZOOM: f64 = 1.0;
@@ -46,9 +45,18 @@ fn calculate_grid_dimensions(width: u32, height: u32) -> (u32, u32, u32, u32, u3
     // Ground takes 1 row, platforms fill most of screen
     let tiles_x = width / TILE_PX;
     let tiles_y = height / TILE_PX;
-    let block_count = tiles_x * tiles_y;  // Max 1 block per tile
+    let block_count = tiles_x * tiles_y; // Max 1 block per tile
 
-    (grid_width, grid_height, grid_size, egrid_width, egrid_height, egrid_cells, egrid_size, block_count)
+    (
+        grid_width,
+        grid_height,
+        grid_size,
+        egrid_width,
+        egrid_height,
+        egrid_cells,
+        egrid_size,
+        block_count,
+    )
 }
 
 fn canvas_viewport_size(canvas_ref: &NodeRef<html::Canvas>) -> Option<(f64, f64)> {
@@ -136,7 +144,9 @@ pub fn MarioMinigame(
             return;
         }
 
-        let Some(canvas) = canvas_ref.get() else { return };
+        let Some(canvas) = canvas_ref.get() else {
+            return;
+        };
         let canvas: HtmlCanvasElement = canvas.clone().into();
 
         let window = match web_sys::window() {
@@ -171,7 +181,9 @@ pub fn MarioMinigame(
             });
         });
 
-        window.request_animation_frame(init_closure.as_ref().unchecked_ref()).ok();
+        window
+            .request_animation_frame(init_closure.as_ref().unchecked_ref())
+            .ok();
         init_closure.forget();
     });
 
@@ -217,22 +229,22 @@ pub fn MarioMinigame(
     let on_mousemove = {
         let canvas_ref = canvas_ref.clone();
         move |ev: web_sys::MouseEvent| {
-        if is_panning.get() {
-            let (lx, ly) = last_mouse_pos.get();
-            let dx = ev.client_x() - lx;
-            let dy = ev.client_y() - ly;
-            let (px, py) = pan_offset.get();
-            let next_pan = (px + dx as f64, py + dy as f64);
-            let zoom = zoom_level.get().clamp(MIN_ZOOM, MAX_ZOOM);
-            let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
-                clamp_pan_to_zoom(next_pan, zoom, viewport)
-            } else {
-                next_pan
-            };
-            set_pan_offset.set(clamped_pan);
-            set_last_mouse_pos.set((ev.client_x(), ev.client_y()));
+            if is_panning.get() {
+                let (lx, ly) = last_mouse_pos.get();
+                let dx = ev.client_x() - lx;
+                let dy = ev.client_y() - ly;
+                let (px, py) = pan_offset.get();
+                let next_pan = (px + dx as f64, py + dy as f64);
+                let zoom = zoom_level.get().clamp(MIN_ZOOM, MAX_ZOOM);
+                let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
+                    clamp_pan_to_zoom(next_pan, zoom, viewport)
+                } else {
+                    next_pan
+                };
+                set_pan_offset.set(clamped_pan);
+                set_last_mouse_pos.set((ev.client_x(), ev.client_y()));
+            }
         }
-    }
     };
 
     let on_mouseup = move |_: web_sys::MouseEvent| {
@@ -257,35 +269,36 @@ pub fn MarioMinigame(
     let on_touchmove = {
         let canvas_ref = canvas_ref.clone();
         move |ev: web_sys::TouchEvent| {
-        let touches = ev.touches();
-        if touches.length() == 2 {
-            if let Some(last_dist) = last_pinch_distance.get() {
-                if let (Some(t1), Some(t2)) = (touches.get(0), touches.get(1)) {
-                    let dx = (t2.client_x() - t1.client_x()) as f64;
-                    let dy = (t2.client_y() - t1.client_y()) as f64;
-                    let dist = (dx * dx + dy * dy).sqrt();
-                    if last_dist > 0.0 {
-                        // Make pinch noticeably more responsive.
-                        let raw_scale = dist / last_dist;
-                        let scale = (1.0 + (raw_scale - 1.0) * 3.5).clamp(0.55, 1.45);
-                        let target_zoom = zoom_level.get() * scale;
-                        let new_zoom = target_zoom.clamp(MIN_ZOOM, MAX_ZOOM);
-                        let pan = pan_offset.get();
-                        let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
-                            clamp_pan_to_zoom(pan, new_zoom, viewport)
-                        } else {
-                            pan
-                        };
-                        set_zoom_level.set(new_zoom);
-                        set_pan_offset.set(clamped_pan);
+            let touches = ev.touches();
+            if touches.length() == 2 {
+                if let Some(last_dist) = last_pinch_distance.get() {
+                    if let (Some(t1), Some(t2)) = (touches.get(0), touches.get(1)) {
+                        let dx = (t2.client_x() - t1.client_x()) as f64;
+                        let dy = (t2.client_y() - t1.client_y()) as f64;
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        if last_dist > 0.0 {
+                            // Make pinch noticeably more responsive.
+                            let raw_scale = dist / last_dist;
+                            let scale = (1.0 + (raw_scale - 1.0) * 3.5).clamp(0.55, 1.45);
+                            let target_zoom = zoom_level.get() * scale;
+                            let new_zoom = target_zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+                            let pan = pan_offset.get();
+                            let clamped_pan =
+                                if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
+                                    clamp_pan_to_zoom(pan, new_zoom, viewport)
+                                } else {
+                                    pan
+                                };
+                            set_zoom_level.set(new_zoom);
+                            set_pan_offset.set(clamped_pan);
+                        }
+                        set_last_pinch_distance.set(Some(dist));
+                        ev.stop_propagation();
+                        ev.prevent_default();
                     }
-                    set_last_pinch_distance.set(Some(dist));
-                    ev.stop_propagation();
-                    ev.prevent_default();
                 }
             }
         }
-    }
     };
 
     let on_touchend = move |ev: web_sys::TouchEvent| {
@@ -299,24 +312,24 @@ pub fn MarioMinigame(
     let on_wheel = {
         let canvas_ref = canvas_ref.clone();
         move |ev: web_sys::WheelEvent| {
-        let delta = ev.delta_y();
-        // Trackpad pinch often arrives as ctrl+wheel with small deltas.
-        // Keep normal wheel comfortable, but make pinch much faster.
-        let sensitivity = if ev.ctrl_key() { 0.0075 } else { 0.0015 };
-        let zoom_factor = (-delta * sensitivity).exp();
-        let target_zoom = zoom_level.get() * zoom_factor;
-        let new_zoom = target_zoom.clamp(MIN_ZOOM, MAX_ZOOM);
-        let pan = pan_offset.get();
-        let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
-            clamp_pan_to_zoom(pan, new_zoom, viewport)
-        } else {
-            pan
-        };
-        set_zoom_level.set(new_zoom);
-        set_pan_offset.set(clamped_pan);
-        ev.stop_propagation();
-        ev.prevent_default();
-    }
+            let delta = ev.delta_y();
+            // Trackpad pinch often arrives as ctrl+wheel with small deltas.
+            // Keep normal wheel comfortable, but make pinch much faster.
+            let sensitivity = if ev.ctrl_key() { 0.0075 } else { 0.0015 };
+            let zoom_factor = (-delta * sensitivity).exp();
+            let target_zoom = zoom_level.get() * zoom_factor;
+            let new_zoom = target_zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+            let pan = pan_offset.get();
+            let clamped_pan = if let Some(viewport) = canvas_viewport_size(&canvas_ref) {
+                clamp_pan_to_zoom(pan, new_zoom, viewport)
+            } else {
+                pan
+            };
+            set_zoom_level.set(new_zoom);
+            set_pan_offset.set(clamped_pan);
+            ev.stop_propagation();
+            ev.prevent_default();
+        }
     };
 
     view! {
@@ -373,10 +386,14 @@ pub fn MarioMinigame(
 }
 
 fn compute_canvas_size(window: &web_sys::Window) -> (u32, u32) {
-    let window_width = window.inner_width().ok()
+    let window_width = window
+        .inner_width()
+        .ok()
         .and_then(|v| v.as_f64())
         .unwrap_or(1200.0);
-    let window_height = window.inner_height().ok()
+    let window_height = window
+        .inner_height()
+        .ok()
         .and_then(|v| v.as_f64())
         .unwrap_or(800.0);
 
@@ -386,10 +403,8 @@ fn compute_canvas_size(window: &web_sys::Window) -> (u32, u32) {
     let max_width = MAX_WORLD_WIDTH as f64;
     let max_height = MAX_WORLD_HEIGHT as f64;
 
-    let mut width = ((window_width - sidebar_width).max(400.0))
-        .min(max_width) as u32;
-    let mut height = ((window_height - toolbar_height).max(300.0))
-        .min(max_height) as u32;
+    let mut width = ((window_width - sidebar_width).max(400.0)).min(max_width) as u32;
+    let mut height = ((window_height - toolbar_height).max(300.0)).min(max_height) as u32;
 
     // Align to tile size to keep the grid stable.
     width = width.saturating_sub(width % TILE_PX).max(TILE_PX);
@@ -476,18 +491,29 @@ async fn detect_software_adapter(adapter: &web_sys::GpuAdapter) -> Option<String
         let desc_l = desc.to_lowercase();
         let typ_l = typ.to_lowercase();
 
-        let is_swiftshader = arch_l.contains("swiftshader") || desc_l.contains("swiftshader") || typ_l == "cpu";
+        let is_swiftshader =
+            arch_l.contains("swiftshader") || desc_l.contains("swiftshader") || typ_l == "cpu";
         if is_swiftshader {
             reason_bits.push("swiftshader/cpu adapter".to_string());
         }
 
         if is_fallback || is_swiftshader {
             let mut details = Vec::new();
-            if !vendor.is_empty() { details.push(format!("vendor={}", vendor)); }
-            if !dev.is_empty() { details.push(format!("device={}", dev)); }
-            if !arch.is_empty() { details.push(format!("arch={}", arch)); }
-            if !desc.is_empty() { details.push(format!("desc={}", desc)); }
-            if !typ.is_empty() { details.push(format!("type={}", typ)); }
+            if !vendor.is_empty() {
+                details.push(format!("vendor={}", vendor));
+            }
+            if !dev.is_empty() {
+                details.push(format!("device={}", dev));
+            }
+            if !arch.is_empty() {
+                details.push(format!("arch={}", arch));
+            }
+            if !desc.is_empty() {
+                details.push(format!("desc={}", desc));
+            }
+            if !typ.is_empty() {
+                details.push(format!("type={}", typ));
+            }
             if !details.is_empty() {
                 reason_bits.push(details.join(", "));
             }
@@ -574,8 +600,8 @@ impl GpuState {
             .await
             .map_err(|e| format!("Failed to get adapter: {:?}", e))?;
 
-        let adapter: web_sys::GpuAdapter = adapter.dyn_into()
-            .map_err(|_| "Failed to cast adapter")?;
+        let adapter: web_sys::GpuAdapter =
+            adapter.dyn_into().map_err(|_| "Failed to cast adapter")?;
 
         if let Some(reason) = detect_software_adapter(&adapter).await {
             return Err(format!(
@@ -590,15 +616,15 @@ impl GpuState {
             .await
             .map_err(|e| format!("Failed to get device: {:?}", e))?;
 
-        let device: GpuDevice = device.dyn_into()
-            .map_err(|_| "Failed to cast device")?;
+        let device: GpuDevice = device.dyn_into().map_err(|_| "Failed to cast device")?;
 
         let queue = device.queue();
 
         log_adapter_info(&adapter, &device).await;
 
         // Get canvas context
-        let context = canvas.get_context("webgpu")
+        let context = canvas
+            .get_context("webgpu")
             .map_err(|e| format!("Failed to get context: {:?}", e))?
             .ok_or("No WebGPU context")?
             .dyn_into::<GpuCanvasContext>()
@@ -617,26 +643,70 @@ impl GpuState {
         let render_shader = device.create_shader_module(&render_shader_desc);
 
         // Calculate dynamic grid dimensions based on screen size
-        let (grid_width, grid_height, grid_size, egrid_width, egrid_height, egrid_cells, egrid_size, block_count) =
-            calculate_grid_dimensions(width, height);
+        let (
+            grid_width,
+            grid_height,
+            grid_size,
+            egrid_width,
+            egrid_height,
+            egrid_cells,
+            egrid_size,
+            block_count,
+        ) = calculate_grid_dimensions(width, height);
 
         // Create buffers with sizes based on screen dimensions
-        let uniform_buffer = create_buffer(&device, 64, gpu_buffer_usage_uniform() | gpu_buffer_usage_copy_dst());
-        let entity_buffer_a = create_buffer(&device, ENTITY_COUNT * 32, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
-        let entity_buffer_b = create_buffer(&device, ENTITY_COUNT * 32, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
-        let block_buffer = create_buffer(&device, block_count * 16, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
+        let uniform_buffer = create_buffer(
+            &device,
+            64,
+            gpu_buffer_usage_uniform() | gpu_buffer_usage_copy_dst(),
+        );
+        let entity_buffer_a = create_buffer(
+            &device,
+            ENTITY_COUNT * 32,
+            gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
+        );
+        let entity_buffer_b = create_buffer(
+            &device,
+            ENTITY_COUNT * 32,
+            gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
+        );
+        let block_buffer = create_buffer(
+            &device,
+            block_count * 16,
+            gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
+        );
         // Spatial grid for block collision
-        let spatial_grid_buffer = create_buffer(&device, grid_size * 4, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
+        let spatial_grid_buffer = create_buffer(
+            &device,
+            grid_size * 4,
+            gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
+        );
         // Entity grid for entity-entity collision
-        let entity_grid_buffer = create_buffer(&device, egrid_size * 4, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
-        let entity_counts_buffer = create_buffer(&device, egrid_cells * 4, gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst());
+        let entity_grid_buffer = create_buffer(
+            &device,
+            egrid_size * 4,
+            gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
+        );
+        let entity_counts_buffer = create_buffer(
+            &device,
+            egrid_cells * 4,
+            gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
+        );
 
         // Create and upload sprite/palette buffers
         let sprite_data = pack_sprite_atlas();
-        let sprite_buffer = create_buffer_with_data(&device, &u32_slice_to_bytes(&sprite_data), gpu_buffer_usage_storage());
+        let sprite_buffer = create_buffer_with_data(
+            &device,
+            &u32_slice_to_bytes(&sprite_data),
+            gpu_buffer_usage_storage(),
+        );
 
         let palette_data = pack_palettes();
-        let palette_buffer = create_buffer_with_data(&device, &u32_slice_to_bytes(&palette_data), gpu_buffer_usage_storage());
+        let palette_buffer = create_buffer_with_data(
+            &device,
+            &u32_slice_to_bytes(&palette_data),
+            gpu_buffer_usage_storage(),
+        );
 
         // Create bind group layouts
         let compute_bgl = create_compute_bind_group_layout(&device);
@@ -644,23 +714,35 @@ impl GpuState {
 
         // Create bind groups
         let compute_bind_group_a_to_b = create_compute_bind_group(
-            &device, &compute_bgl,
+            &device,
+            &compute_bgl,
             &uniform_buffer,
-            &entity_buffer_a, &entity_buffer_b,
+            &entity_buffer_a,
+            &entity_buffer_b,
             &block_buffer,
-            &spatial_grid_buffer, &entity_grid_buffer, &entity_counts_buffer,
+            &spatial_grid_buffer,
+            &entity_grid_buffer,
+            &entity_counts_buffer,
         );
         let compute_bind_group_b_to_a = create_compute_bind_group(
-            &device, &compute_bgl,
+            &device,
+            &compute_bgl,
             &uniform_buffer,
-            &entity_buffer_b, &entity_buffer_a,
+            &entity_buffer_b,
+            &entity_buffer_a,
             &block_buffer,
-            &spatial_grid_buffer, &entity_grid_buffer, &entity_counts_buffer,
+            &spatial_grid_buffer,
+            &entity_grid_buffer,
+            &entity_counts_buffer,
         );
         let render_bind_group = create_render_bind_group(
-            &device, &render_bgl,
-            &uniform_buffer, &entity_buffer_a, &block_buffer,
-            &sprite_buffer, &palette_buffer,
+            &device,
+            &render_bgl,
+            &uniform_buffer,
+            &entity_buffer_a,
+            &block_buffer,
+            &sprite_buffer,
+            &palette_buffer,
         );
 
         // Create pipeline layouts
@@ -668,20 +750,53 @@ impl GpuState {
         let render_pipeline_layout = create_pipeline_layout(&device, &render_bgl);
 
         // Create four compute pipelines
-        let clear_pipeline = create_compute_pipeline(&device, &compute_shader, &compute_pipeline_layout, "init_clear");
-        let populate_pipeline = create_compute_pipeline(&device, &compute_shader, &compute_pipeline_layout, "init_populate");
-        let frame_prep_pipeline = create_compute_pipeline(&device, &compute_shader, &compute_pipeline_layout, "frame_prep");
-        let update_positions_pipeline = create_compute_pipeline(&device, &compute_shader, &compute_pipeline_layout, "update_positions");
-        let resolve_collisions_pipeline = create_compute_pipeline(&device, &compute_shader, &compute_pipeline_layout, "resolve_collisions");
+        let clear_pipeline = create_compute_pipeline(
+            &device,
+            &compute_shader,
+            &compute_pipeline_layout,
+            "init_clear",
+        );
+        let populate_pipeline = create_compute_pipeline(
+            &device,
+            &compute_shader,
+            &compute_pipeline_layout,
+            "init_populate",
+        );
+        let frame_prep_pipeline = create_compute_pipeline(
+            &device,
+            &compute_shader,
+            &compute_pipeline_layout,
+            "frame_prep",
+        );
+        let update_positions_pipeline = create_compute_pipeline(
+            &device,
+            &compute_shader,
+            &compute_pipeline_layout,
+            "update_positions",
+        );
+        let resolve_collisions_pipeline = create_compute_pipeline(
+            &device,
+            &compute_shader,
+            &compute_pipeline_layout,
+            "resolve_collisions",
+        );
 
         // Create two render pipelines for multi-pass rendering
         let block_pipeline = create_render_pipeline(
-            &device, &render_shader, &render_pipeline_layout, preferred_format,
-            "vs_block", "fs_block"
+            &device,
+            &render_shader,
+            &render_pipeline_layout,
+            preferred_format,
+            "vs_block",
+            "fs_block",
         );
         let entity_pipeline = create_render_pipeline(
-            &device, &render_shader, &render_pipeline_layout, preferred_format,
-            "vs_entity", "fs_entity"
+            &device,
+            &render_shader,
+            &render_pipeline_layout,
+            preferred_format,
+            "vs_entity",
+            "fs_entity",
         );
 
         let start_time = js_sys::Date::now();
@@ -725,7 +840,7 @@ impl GpuState {
             start_time,
             width,
             height,
-            needs_init: true,  // Run init on first frame
+            needs_init: true, // Run init on first frame
             input_left: false,
             input_right: false,
             input_jump: false,
@@ -752,14 +867,16 @@ impl GpuState {
                 // Canvas resized - trigger full reinit
                 self.canvas.set_width(desired_width);
                 self.canvas.set_height(desired_height);
-                let canvas_config = web_sys::GpuCanvasConfiguration::new(&self.device, self.preferred_format);
+                let canvas_config =
+                    web_sys::GpuCanvasConfiguration::new(&self.device, self.preferred_format);
                 let _ = self.context.configure(&canvas_config);
 
                 self.width = desired_width;
                 self.height = desired_height;
 
                 // Recalculate grid dimensions for the new size
-                let (gw, gh, gs, ew, eh, ec, es, bc) = calculate_grid_dimensions(desired_width, desired_height);
+                let (gw, gh, gs, ew, eh, ec, es, bc) =
+                    calculate_grid_dimensions(desired_width, desired_height);
                 self.grid_width = gw;
                 self.grid_height = gh;
                 self.grid_size = gs;
@@ -795,18 +912,31 @@ impl GpuState {
 
         // Encode input state
         let mut input_bits = 0u32;
-        if self.input_left { input_bits |= 1; }
-        if self.input_right { input_bits |= 2; }
-        if self.input_jump { input_bits |= 4; }
+        if self.input_left {
+            input_bits |= 1;
+        }
+        if self.input_right {
+            input_bits |= 2;
+        }
+        if self.input_jump {
+            input_bits |= 4;
+        }
         self.uniforms.mouse_click = input_bits;
 
         // Write uniforms to buffer
         self.uniforms.write_bytes(&mut self.uniform_bytes);
         let uniform_view = unsafe { Uint8Array::view(&self.uniform_bytes) };
-        let _ = self.queue.write_buffer_with_u32_and_buffer_source(&self.uniform_buffer, 0, &uniform_view);
+        let _ = self.queue.write_buffer_with_u32_and_buffer_source(
+            &self.uniform_buffer,
+            0,
+            &uniform_view,
+        );
 
         // Get current texture
-        let texture = self.context.get_current_texture().expect("get current texture");
+        let texture = self
+            .context
+            .get_current_texture()
+            .expect("get current texture");
         let view = texture.create_view().expect("create texture view");
 
         // Create command encoder
@@ -868,7 +998,9 @@ impl GpuState {
         {
             let color_attachment = create_color_attachment(&view);
             let render_pass_desc = create_render_pass_descriptor(&color_attachment);
-            let render_pass = encoder.begin_render_pass(&render_pass_desc).expect("begin render pass");
+            let render_pass = encoder
+                .begin_render_pass(&render_pass_desc)
+                .expect("begin render pass");
 
             // All passes share the same bind group
             render_pass.set_bind_group(0, Some(&self.render_bind_group));
@@ -896,19 +1028,30 @@ impl GpuState {
 
 // Helper functions to create WebGPU objects
 
-fn gpu_buffer_usage_uniform() -> u32 { 0x0040 }
-fn gpu_buffer_usage_storage() -> u32 { 0x0080 }
-fn gpu_buffer_usage_copy_dst() -> u32 { 0x0008 }
+fn gpu_buffer_usage_uniform() -> u32 {
+    0x0040
+}
+fn gpu_buffer_usage_storage() -> u32 {
+    0x0080
+}
+fn gpu_buffer_usage_copy_dst() -> u32 {
+    0x0008
+}
 
 fn create_buffer(device: &GpuDevice, size: u32, usage: u32) -> GpuBuffer {
     let desc = web_sys::GpuBufferDescriptor::new(size as f64, usage);
-    device.create_buffer(&desc).expect("Failed to create buffer")
+    device
+        .create_buffer(&desc)
+        .expect("Failed to create buffer")
 }
 
 fn create_buffer_with_data(device: &GpuDevice, data: &[u8], usage: u32) -> GpuBuffer {
-    let desc = web_sys::GpuBufferDescriptor::new(data.len() as f64, usage | gpu_buffer_usage_copy_dst());
+    let desc =
+        web_sys::GpuBufferDescriptor::new(data.len() as f64, usage | gpu_buffer_usage_copy_dst());
     desc.set_mapped_at_creation(true);
-    let buffer = device.create_buffer(&desc).expect("Failed to create buffer");
+    let buffer = device
+        .create_buffer(&desc)
+        .expect("Failed to create buffer");
 
     let mapped = buffer.get_mapped_range().expect("get mapped range");
     let array = Uint8Array::new(&mapped);
@@ -940,7 +1083,9 @@ fn create_compute_bind_group_layout(device: &GpuDevice) -> web_sys::GpuBindGroup
     entries.push(&create_bgl_entry(6, COMPUTE, "storage"));
 
     let desc = web_sys::GpuBindGroupLayoutDescriptor::new(&entries);
-    device.create_bind_group_layout(&desc).expect("Failed to create compute BGL")
+    device
+        .create_bind_group_layout(&desc)
+        .expect("Failed to create compute BGL")
 }
 
 fn create_render_bind_group_layout(device: &GpuDevice) -> web_sys::GpuBindGroupLayout {
@@ -964,7 +1109,9 @@ fn create_render_bind_group_layout(device: &GpuDevice) -> web_sys::GpuBindGroupL
     entries.push(&create_bgl_entry(4, FRAGMENT, "read-only-storage"));
 
     let desc = web_sys::GpuBindGroupLayoutDescriptor::new(&entries);
-    device.create_bind_group_layout(&desc).expect("Failed to create render BGL")
+    device
+        .create_bind_group_layout(&desc)
+        .expect("Failed to create render BGL")
 }
 
 fn create_bgl_entry(binding: u32, visibility: u32, buffer_type: &str) -> JsValue {
@@ -1044,7 +1191,10 @@ fn create_render_bind_group(
     device.create_bind_group(&desc)
 }
 
-fn create_pipeline_layout(device: &GpuDevice, bgl: &web_sys::GpuBindGroupLayout) -> web_sys::GpuPipelineLayout {
+fn create_pipeline_layout(
+    device: &GpuDevice,
+    bgl: &web_sys::GpuBindGroupLayout,
+) -> web_sys::GpuPipelineLayout {
     let layouts = js_sys::Array::new();
     layouts.push(bgl);
     let desc = web_sys::GpuPipelineLayoutDescriptor::new(&layouts);
@@ -1093,7 +1243,9 @@ fn create_render_pipeline(
     Reflect::set(&desc, &"fragment".into(), &fragment).unwrap();
 
     let desc: web_sys::GpuRenderPipelineDescriptor = desc.unchecked_into();
-    device.create_render_pipeline(&desc).expect("create render pipeline")
+    device
+        .create_render_pipeline(&desc)
+        .expect("create render pipeline")
 }
 
 fn create_color_attachment(view: &web_sys::GpuTextureView) -> JsValue {
@@ -1105,7 +1257,7 @@ fn create_color_attachment(view: &web_sys::GpuTextureView) -> JsValue {
     let clear_color = Object::new();
     Reflect::set(&clear_color, &"r".into(), &0.0.into()).unwrap();
     Reflect::set(&clear_color, &"g".into(), &0.0.into()).unwrap();
-    Reflect::set(&clear_color, &"b".into(), &0.05.into()).unwrap();  // Dark blue background
+    Reflect::set(&clear_color, &"b".into(), &0.05.into()).unwrap(); // Dark blue background
     Reflect::set(&clear_color, &"a".into(), &1.0.into()).unwrap();
     Reflect::set(&attachment, &"clearValue".into(), &clear_color).unwrap();
 
@@ -1142,14 +1294,18 @@ fn start_game_loop(gpu_state: Rc<RefCell<Option<GpuState>>>, set_fps: impl Fn(u3
         // Request next frame
         if let Some(window) = web_sys::window() {
             if let Some(ref closure) = *game_loop_inner.borrow() {
-                window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
+                window
+                    .request_animation_frame(closure.as_ref().unchecked_ref())
+                    .ok();
             }
         }
     });
 
     // Start the loop
     if let Some(window) = web_sys::window() {
-        window.request_animation_frame(closure.as_ref().unchecked_ref()).ok();
+        window
+            .request_animation_frame(closure.as_ref().unchecked_ref())
+            .ok();
     }
 
     *game_loop.borrow_mut() = Some(closure);

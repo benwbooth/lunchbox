@@ -2,12 +2,12 @@
 //!
 //! Helps users configure image download sources with step-by-step instructions.
 
+use crate::tauri::{
+    get_settings, save_settings, test_emumovies_connection, test_igdb_connection,
+    test_screenscraper_connection, test_steamgriddb_connection, AppSettings,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::tauri::{
-    get_settings, save_settings, test_steamgriddb_connection, test_igdb_connection,
-    test_emumovies_connection, test_screenscraper_connection, AppSettings,
-};
 
 /// Status of an image source
 #[derive(Clone, Copy, PartialEq)]
@@ -98,10 +98,7 @@ const SOURCES: &[ImageSource] = &[
 ];
 
 #[component]
-pub fn ImageSourcesWizard(
-    show: ReadSignal<bool>,
-    on_close: WriteSignal<bool>,
-) -> impl IntoView {
+pub fn ImageSourcesWizard(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl IntoView {
     // Current step/expanded source
     let (expanded_source, set_expanded_source) = signal::<Option<&'static str>>(None);
 
@@ -148,7 +145,8 @@ pub fn ImageSourcesWizard(
                         set_ss_dev_id.set(s.screenscraper.dev_id.clone());
                         set_ss_dev_password.set(s.screenscraper.dev_password.clone());
                         set_ss_user_id.set(s.screenscraper.user_id.clone().unwrap_or_default());
-                        set_ss_user_password.set(s.screenscraper.user_password.clone().unwrap_or_default());
+                        set_ss_user_password
+                            .set(s.screenscraper.user_password.clone().unwrap_or_default());
 
                         // Update status based on whether credentials exist
                         // Show as Configured if credentials are present (they were saved successfully)
@@ -161,7 +159,9 @@ pub fn ImageSourcesWizard(
                         if !s.emumovies.username.is_empty() && !s.emumovies.password.is_empty() {
                             set_emumovies_status.set(SourceStatus::Configured);
                         }
-                        if !s.screenscraper.dev_id.is_empty() && !s.screenscraper.dev_password.is_empty() {
+                        if !s.screenscraper.dev_id.is_empty()
+                            && !s.screenscraper.dev_password.is_empty()
+                        {
                             set_screenscraper_status.set(SourceStatus::Configured);
                         }
 
@@ -190,8 +190,16 @@ pub fn ImageSourcesWizard(
             s.emumovies.password = em_password.get();
             s.screenscraper.dev_id = ss_dev_id.get();
             s.screenscraper.dev_password = ss_dev_password.get();
-            s.screenscraper.user_id = if ss_user_id.get().is_empty() { None } else { Some(ss_user_id.get()) };
-            s.screenscraper.user_password = if ss_user_password.get().is_empty() { None } else { Some(ss_user_password.get()) };
+            s.screenscraper.user_id = if ss_user_id.get().is_empty() {
+                None
+            } else {
+                Some(ss_user_id.get())
+            };
+            s.screenscraper.user_password = if ss_user_password.get().is_empty() {
+                None
+            } else {
+                Some(ss_user_password.get())
+            };
 
             spawn_local(async move {
                 match save_settings(s.clone()).await {
@@ -286,9 +294,19 @@ pub fn ImageSourcesWizard(
             match test_screenscraper_connection(
                 dev_id,
                 dev_password,
-                if user_id.is_empty() { None } else { Some(user_id) },
-                if user_password.is_empty() { None } else { Some(user_password) },
-            ).await {
+                if user_id.is_empty() {
+                    None
+                } else {
+                    Some(user_id)
+                },
+                if user_password.is_empty() {
+                    None
+                } else {
+                    Some(user_password)
+                },
+            )
+            .await
+            {
                 Ok(result) => {
                     if result.success {
                         set_screenscraper_status.set(SourceStatus::Configured);

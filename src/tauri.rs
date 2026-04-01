@@ -60,7 +60,10 @@ async fn log_to_backend_async(level: &str, message: &str) -> Result<(), String> 
 
     let url = format!("{}/api/log", HTTP_API_BASE);
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
-    request.headers().set("Content-Type", "application/json").map_err(|e| format!("{:?}", e))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{:?}", e))?;
 
     let window = web_sys::window().ok_or("No window")?;
     let _ = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await;
@@ -70,7 +73,7 @@ async fn log_to_backend_async(level: &str, message: &str) -> Result<(), String> 
 // ============ HTTP Fetch Helpers ============
 
 async fn http_get<T: DeserializeOwned>(path: &str) -> Result<T, String> {
-    use web_sys::{Request, RequestInit, RequestMode, Response, console};
+    use web_sys::{console, Request, RequestInit, RequestMode, Response};
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -242,7 +245,10 @@ struct RspcError {
 }
 
 /// Call an rspc query via HTTP
-async fn rspc_query<T: DeserializeOwned, A: Serialize>(procedure: &str, args: &A) -> Result<T, String> {
+async fn rspc_query<T: DeserializeOwned, A: Serialize>(
+    procedure: &str,
+    args: &A,
+) -> Result<T, String> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
     // Build URL - only add input param if args is not ()
@@ -251,7 +257,10 @@ async fn rspc_query<T: DeserializeOwned, A: Serialize>(procedure: &str, args: &A
     } else {
         let args_json = serde_json::to_string(args).map_err(|e| e.to_string())?;
         let encoded_args = urlencoding::encode(&args_json);
-        format!("{}/rspc/{}?input={}", HTTP_API_BASE, procedure, encoded_args)
+        format!(
+            "{}/rspc/{}?input={}",
+            HTTP_API_BASE, procedure, encoded_args
+        )
     };
 
     let opts = RequestInit::new();
@@ -275,15 +284,12 @@ async fn rspc_query<T: DeserializeOwned, A: Serialize>(procedure: &str, args: &A
         .await
         .map_err(|e| format!("{:?}", e))?;
 
-    let response: RspcJsonRpcResponse = serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
+    let response: RspcJsonRpcResponse =
+        serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
 
     match response.result {
-        RspcResult::Response(data) => {
-            serde_json::from_value(data).map_err(|e| e.to_string())
-        }
-        RspcResult::Error(error) => {
-            Err(error.message)
-        }
+        RspcResult::Response(data) => serde_json::from_value(data).map_err(|e| e.to_string()),
+        RspcResult::Error(error) => Err(error.message),
     }
 }
 
@@ -360,6 +366,8 @@ pub struct Game {
     pub box_front_path: Option<String>,
     pub screenshot_path: Option<String>,
     pub variant_count: i32,
+    #[serde(default)]
+    pub has_game_file: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -367,6 +375,13 @@ pub struct GameVariant {
     pub id: String,
     pub title: String,
     pub region: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameQueryFilters {
+    pub installed_only: bool,
+    pub hide_homebrew: bool,
+    pub hide_adult: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -392,6 +407,8 @@ pub struct AppSettings {
     pub emumovies: EmuMoviesSettings,
     #[serde(default)]
     pub graboid: GraboidSettings,
+    #[serde(default)]
+    pub torrent: TorrentSettings,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -440,6 +457,163 @@ pub struct GraboidSettings {
     pub default_prompt: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TorrentSettings {
+    #[serde(default)]
+    pub client: String,
+    #[serde(default)]
+    pub rom_directory: Option<String>,
+    #[serde(default)]
+    pub torrent_library_directory: Option<String>,
+    #[serde(default)]
+    pub download_entire_torrent: bool,
+    #[serde(default)]
+    pub file_link_mode: String,
+    #[serde(default)]
+    pub qbittorrent_host: String,
+    #[serde(default)]
+    pub qbittorrent_port: u16,
+    #[serde(default)]
+    pub qbittorrent_username: String,
+    #[serde(default)]
+    pub qbittorrent_password: String,
+    #[serde(default)]
+    pub transmission_host: String,
+    #[serde(default)]
+    pub transmission_port: u16,
+    #[serde(default)]
+    pub transmission_username: String,
+    #[serde(default)]
+    pub transmission_password: String,
+    #[serde(default)]
+    pub deluge_host: String,
+    #[serde(default)]
+    pub deluge_port: u16,
+    #[serde(default)]
+    pub deluge_username: String,
+    #[serde(default)]
+    pub deluge_password: String,
+    #[serde(default)]
+    pub rtorrent_url: String,
+    #[serde(default)]
+    pub aria2_host: String,
+    #[serde(default)]
+    pub aria2_port: u16,
+    #[serde(default)]
+    pub aria2_secret: String,
+}
+
+impl Default for TorrentSettings {
+    fn default() -> Self {
+        Self {
+            client: "auto".to_string(),
+            rom_directory: None,
+            torrent_library_directory: None,
+            download_entire_torrent: false,
+            file_link_mode: "symlink".to_string(),
+            qbittorrent_host: "localhost".to_string(),
+            qbittorrent_port: 8080,
+            qbittorrent_username: String::new(),
+            qbittorrent_password: String::new(),
+            transmission_host: "localhost".to_string(),
+            transmission_port: 9091,
+            transmission_username: String::new(),
+            transmission_password: String::new(),
+            deluge_host: "localhost".to_string(),
+            deluge_port: 58846,
+            deluge_username: String::new(),
+            deluge_password: String::new(),
+            rtorrent_url: String::new(),
+            aria2_host: "localhost".to_string(),
+            aria2_port: 6800,
+            aria2_secret: String::new(),
+        }
+    }
+}
+
+// ============ ROM Import ============
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedRom {
+    pub file_path: String,
+    pub file_name: String,
+    pub file_size: u64,
+    pub extension: String,
+    pub inner_extension: Option<String>,
+    pub detected_platform: Option<String>,
+    pub detected_platform_id: Option<i64>,
+    pub matched_game_id: Option<String>,
+    pub matched_game_title: Option<String>,
+    pub matched_launchbox_db_id: Option<i64>,
+    pub match_method: Option<String>,
+    pub match_confidence: f64,
+    pub region: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanRomsResult {
+    pub roms: Vec<ScannedRom>,
+    pub total_scanned: usize,
+    pub matched_count: usize,
+    pub unmatched_count: usize,
+}
+
+pub async fn scan_and_match_roms(
+    directories: Vec<String>,
+    compute_checksums: bool,
+    platform_hint: Option<String>,
+) -> Result<ScanRomsResult, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        input: ScanInput,
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ScanInput {
+        directories: Vec<String>,
+        compute_checksums: bool,
+        platform_hint: Option<String>,
+    }
+    invoke(
+        "scan_and_match_roms",
+        Args {
+            input: ScanInput {
+                directories,
+                compute_checksums,
+                platform_hint,
+            },
+        },
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RomImportEntry {
+    pub file_path: String,
+    pub launchbox_db_id: i64,
+    pub game_title: String,
+    pub platform: String,
+    pub copy_to_library: bool,
+}
+
+pub async fn confirm_rom_import(roms: Vec<RomImportEntry>) -> Result<usize, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        input: ConfirmInput,
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ConfirmInput {
+        roms: Vec<RomImportEntry>,
+    }
+    invoke("confirm_rom_import", Args { input: ConfirmInput { roms } }).await
+}
+
 // ============ Helpers ============
 
 /// Convert a file path to an asset URL for Tauri's asset protocol
@@ -481,14 +655,27 @@ pub async fn get_all_regions() -> Result<Vec<String>, String> {
 }
 
 /// Get total game count for a platform/search
-pub async fn get_game_count(platform: Option<String>, search: Option<String>) -> Result<i64, String> {
+pub async fn get_game_count(
+    platform: Option<String>,
+    search: Option<String>,
+    filters: Option<GameQueryFilters>,
+) -> Result<i64, String> {
     if is_tauri() {
         #[derive(Serialize)]
         struct Args {
             platform: Option<String>,
             search: Option<String>,
+            filters: Option<GameQueryFilters>,
         }
-        invoke("get_game_count", Args { platform, search }).await
+        invoke(
+            "get_game_count",
+            Args {
+                platform,
+                search,
+                filters,
+            },
+        )
+        .await
     } else {
         let mut query = vec![];
         if let Some(p) = &platform {
@@ -496,6 +683,17 @@ pub async fn get_game_count(platform: Option<String>, search: Option<String>) ->
         }
         if let Some(s) = &search {
             query.push(format!("search={}", urlencoding::encode(s)));
+        }
+        if let Some(f) = filters {
+            if f.installed_only {
+                query.push("installed_only=true".to_string());
+            }
+            if f.hide_homebrew {
+                query.push("hide_homebrew=true".to_string());
+            }
+            if f.hide_adult {
+                query.push("hide_adult=true".to_string());
+            }
         }
         let path = if query.is_empty() {
             "/api/games/count".to_string()
@@ -510,6 +708,7 @@ pub async fn get_game_count(platform: Option<String>, search: Option<String>) ->
 pub async fn get_games(
     platform: Option<String>,
     search: Option<String>,
+    filters: Option<GameQueryFilters>,
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<Game>, String> {
@@ -518,10 +717,21 @@ pub async fn get_games(
         struct Args {
             platform: Option<String>,
             search: Option<String>,
+            filters: Option<GameQueryFilters>,
             limit: Option<i64>,
             offset: Option<i64>,
         }
-        invoke("get_games", Args { platform, search, limit, offset }).await
+        invoke(
+            "get_games",
+            Args {
+                platform,
+                search,
+                filters,
+                limit,
+                offset,
+            },
+        )
+        .await
     } else {
         let mut query = vec![];
         if let Some(p) = &platform {
@@ -529,6 +739,17 @@ pub async fn get_games(
         }
         if let Some(s) = &search {
             query.push(format!("search={}", urlencoding::encode(s)));
+        }
+        if let Some(f) = filters {
+            if f.installed_only {
+                query.push("installed_only=true".to_string());
+            }
+            if f.hide_homebrew {
+                query.push("hide_homebrew=true".to_string());
+            }
+            if f.hide_adult {
+                query.push("hide_adult=true".to_string());
+            }
         }
         if let Some(l) = limit {
             query.push(format!("limit={}", l));
@@ -569,7 +790,11 @@ pub async fn get_game_by_uuid(game_id: String) -> Result<Option<Game>, String> {
 }
 
 /// Get all variants (regions/versions) for a game
-pub async fn get_game_variants(game_id: String, display_title: String, platform_id: i64) -> Result<Vec<GameVariant>, String> {
+pub async fn get_game_variants(
+    game_id: String,
+    display_title: String,
+    platform_id: i64,
+) -> Result<Vec<GameVariant>, String> {
     if is_tauri() {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
@@ -577,7 +802,14 @@ pub async fn get_game_variants(game_id: String, display_title: String, platform_
             display_title: String,
             platform_id: i64,
         }
-        invoke("get_game_variants", Args { display_title, platform_id }).await
+        invoke(
+            "get_game_variants",
+            Args {
+                display_title,
+                platform_id,
+            },
+        )
+        .await
     } else {
         let path = format!("/api/games/{}/variants", urlencoding::encode(&game_id));
         http_get(&path).await
@@ -642,7 +874,10 @@ pub async fn get_collections() -> Result<Vec<Collection>, String> {
 }
 
 /// Create a new collection
-pub async fn create_collection(name: String, description: Option<String>) -> Result<Collection, String> {
+pub async fn create_collection(
+    name: String,
+    description: Option<String>,
+) -> Result<Collection, String> {
     #[derive(Serialize)]
     struct Args {
         name: String,
@@ -652,14 +887,26 @@ pub async fn create_collection(name: String, description: Option<String>) -> Res
 }
 
 /// Update a collection
-pub async fn update_collection(id: String, name: String, description: Option<String>) -> Result<(), String> {
+pub async fn update_collection(
+    id: String,
+    name: String,
+    description: Option<String>,
+) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
         id: String,
         name: String,
         description: Option<String>,
     }
-    invoke("update_collection", Args { id, name, description }).await
+    invoke(
+        "update_collection",
+        Args {
+            id,
+            name,
+            description,
+        },
+    )
+    .await
 }
 
 /// Delete a collection
@@ -687,17 +934,34 @@ pub async fn add_game_to_collection(collection_id: String, game_id: String) -> R
         collection_id: String,
         game_id: String,
     }
-    invoke("add_game_to_collection", Args { collection_id, game_id }).await
+    invoke(
+        "add_game_to_collection",
+        Args {
+            collection_id,
+            game_id,
+        },
+    )
+    .await
 }
 
 /// Remove a game from a collection
-pub async fn remove_game_from_collection(collection_id: String, game_id: String) -> Result<(), String> {
+pub async fn remove_game_from_collection(
+    collection_id: String,
+    game_id: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
         collection_id: String,
         game_id: String,
     }
-    invoke("remove_game_from_collection", Args { collection_id, game_id }).await
+    invoke(
+        "remove_game_from_collection",
+        Args {
+            collection_id,
+            game_id,
+        },
+    )
+    .await
 }
 
 // ============ Play Statistics Types and Commands ============
@@ -714,14 +978,26 @@ pub struct PlayStats {
 }
 
 /// Record a play session (call when launching a game)
-pub async fn record_play_session(launchbox_db_id: i64, game_title: String, platform: String) -> Result<(), String> {
+pub async fn record_play_session(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
         launchbox_db_id: i64,
         game_title: String,
         platform: String,
     }
-    invoke("record_play_session", Args { launchbox_db_id, game_title, platform }).await
+    invoke(
+        "record_play_session",
+        Args {
+            launchbox_db_id,
+            game_title,
+            platform,
+        },
+    )
+    .await
 }
 
 /// Get play statistics for a specific game
@@ -759,14 +1035,26 @@ pub async fn get_most_played(limit: Option<i64>) -> Result<Vec<PlayStats>, Strin
 // ============ Favorites Commands ============
 
 /// Add a game to favorites
-pub async fn add_favorite(launchbox_db_id: i64, game_title: String, platform: String) -> Result<(), String> {
+pub async fn add_favorite(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
         launchbox_db_id: i64,
         game_title: String,
         platform: String,
     }
-    invoke("add_favorite", Args { launchbox_db_id, game_title, platform }).await
+    invoke(
+        "add_favorite",
+        Args {
+            launchbox_db_id,
+            game_title,
+            platform,
+        },
+    )
+    .await
 }
 
 /// Remove a game from favorites
@@ -824,7 +1112,16 @@ pub async fn test_screenscraper_connection(
         user_id: Option<String>,
         user_password: Option<String>,
     }
-    invoke("test_screenscraper_connection", Args { dev_id, dev_password, user_id, user_password }).await
+    invoke(
+        "test_screenscraper_connection",
+        Args {
+            dev_id,
+            dev_password,
+            user_id,
+            user_password,
+        },
+    )
+    .await
 }
 
 /// Test SteamGridDB API connection
@@ -846,7 +1143,14 @@ pub async fn test_igdb_connection(
         client_id: String,
         client_secret: String,
     }
-    invoke("test_igdb_connection", Args { client_id, client_secret }).await
+    invoke(
+        "test_igdb_connection",
+        Args {
+            client_id,
+            client_secret,
+        },
+    )
+    .await
 }
 
 /// Test EmuMovies API connection
@@ -895,14 +1199,24 @@ pub async fn get_game_images(launchbox_db_id: i64) -> Result<Vec<ImageInfo>, Str
 }
 
 /// Get a specific image type for a game
-pub async fn get_game_image(launchbox_db_id: i64, image_type: String) -> Result<Option<ImageInfo>, String> {
+pub async fn get_game_image(
+    launchbox_db_id: i64,
+    image_type: String,
+) -> Result<Option<ImageInfo>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
         image_type: String,
     }
-    invoke("get_game_image", Args { launchbox_db_id, image_type }).await
+    invoke(
+        "get_game_image",
+        Args {
+            launchbox_db_id,
+            image_type,
+        },
+    )
+    .await
 }
 
 /// Get available image types for a game
@@ -936,7 +1250,14 @@ pub async fn download_game_images(
         launchbox_db_id: i64,
         image_types: Option<Vec<String>>,
     }
-    invoke("download_game_images", Args { launchbox_db_id, image_types }).await
+    invoke(
+        "download_game_images",
+        Args {
+            launchbox_db_id,
+            image_types,
+        },
+    )
+    .await
 }
 
 /// Get image cache statistics
@@ -967,12 +1288,16 @@ pub async fn check_cached_media(
         image_type: String,
         launchbox_db_id: Option<i64>,
     }
-    invoke("check_cached_media", Args {
-        game_title,
-        platform,
-        image_type,
-        launchbox_db_id,
-    }).await
+    invoke(
+        "check_cached_media",
+        Args {
+            game_title,
+            platform,
+            image_type,
+            launchbox_db_id,
+        },
+    )
+    .await
 }
 
 /// Download an image with fallback to multiple sources
@@ -992,12 +1317,16 @@ pub async fn download_image_with_fallback(
         image_type: String,
         launchbox_db_id: Option<i64>,
     }
-    invoke("download_image_with_fallback", Args {
-        game_title,
-        platform,
-        image_type,
-        launchbox_db_id,
-    }).await
+    invoke(
+        "download_image_with_fallback",
+        Args {
+            game_title,
+            platform,
+            image_type,
+            launchbox_db_id,
+        },
+    )
+    .await
 }
 
 /// Redownload an image from the next source in rotation
@@ -1018,13 +1347,17 @@ pub async fn redownload_image_from_next_source(
         launchbox_db_id: Option<i64>,
         current_source: String,
     }
-    invoke("redownload_image_from_next_source", Args {
-        game_title,
-        platform,
-        image_type,
-        launchbox_db_id,
-        current_source,
-    }).await
+    invoke(
+        "redownload_image_from_next_source",
+        Args {
+            game_title,
+            platform,
+            image_type,
+            launchbox_db_id,
+            current_source,
+        },
+    )
+    .await
 }
 
 /// Download a thumbnail from libretro-thumbnails
@@ -1040,11 +1373,15 @@ pub async fn download_libretro_thumbnail(
         platform: String,
         image_type: String,
     }
-    invoke("download_libretro_thumbnail", Args {
-        game_title,
-        platform,
-        image_type,
-    }).await
+    invoke(
+        "download_libretro_thumbnail",
+        Args {
+            game_title,
+            platform,
+            image_type,
+        },
+    )
+    .await
 }
 
 // ============ Unified Media Download Commands ============
@@ -1093,10 +1430,7 @@ pub enum MediaEvent {
     },
     /// Download was cancelled
     #[serde(rename_all = "camelCase")]
-    Cancelled {
-        game_id: i64,
-        media_type: String,
-    },
+    Cancelled { game_id: i64, media_type: String },
 }
 
 impl MediaEvent {
@@ -1131,12 +1465,16 @@ pub async fn download_unified_media(
         platform: String,
         media_type: String,
     }
-    invoke("download_unified_media", Args {
-        launchbox_db_id,
-        game_title,
-        platform,
-        media_type,
-    }).await
+    invoke(
+        "download_unified_media",
+        Args {
+            launchbox_db_id,
+            game_title,
+            platform,
+            media_type,
+        },
+    )
+    .await
 }
 
 /// Get the cached path for a media file (if it exists)
@@ -1150,10 +1488,14 @@ pub async fn get_cached_media_path(
         launchbox_db_id: i64,
         media_type: String,
     }
-    invoke("get_cached_media_path", Args {
-        launchbox_db_id,
-        media_type,
-    }).await
+    invoke(
+        "get_cached_media_path",
+        Args {
+            launchbox_db_id,
+            media_type,
+        },
+    )
+    .await
 }
 
 // ============ Video Download Commands ============
@@ -1178,16 +1520,10 @@ pub enum VideoEvent {
     },
     /// Video download completed successfully
     #[serde(rename_all = "camelCase")]
-    Completed {
-        game_id: i64,
-        local_path: String,
-    },
+    Completed { game_id: i64, local_path: String },
     /// Video download failed
     #[serde(rename_all = "camelCase")]
-    Failed {
-        game_id: i64,
-        error: String,
-    },
+    Failed { game_id: i64, error: String },
 }
 
 impl VideoEvent {
@@ -1214,11 +1550,15 @@ pub async fn check_cached_video(
         platform: String,
         launchbox_db_id: Option<i64>,
     }
-    invoke("check_cached_video", Args {
-        game_title,
-        platform,
-        launchbox_db_id,
-    }).await
+    invoke(
+        "check_cached_video",
+        Args {
+            game_title,
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
 }
 
 /// Download a video for a game from EmuMovies
@@ -1234,11 +1574,15 @@ pub async fn download_game_video(
         platform: String,
         launchbox_db_id: Option<i64>,
     }
-    invoke("download_game_video", Args {
-        game_title,
-        platform,
-        launchbox_db_id,
-    }).await
+    invoke(
+        "download_game_video",
+        Args {
+            game_title,
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
 }
 
 // ============ Emulator Commands ============
@@ -1261,7 +1605,9 @@ pub struct EmulatorInfo {
 }
 
 /// Get all emulators for a platform, filtered by current OS
-pub async fn get_emulators_for_platform(platform_name: String) -> Result<Vec<EmulatorInfo>, String> {
+pub async fn get_emulators_for_platform(
+    platform_name: String,
+) -> Result<Vec<EmulatorInfo>, String> {
     invoke("get_emulators_for_platform", platform_name).await
 }
 
@@ -1307,36 +1653,66 @@ pub struct EmulatorPreferences {
 }
 
 /// Get emulator preference for a game (checks game-specific, then platform)
-pub async fn get_emulator_preference(launchbox_db_id: i64, platform_name: String) -> Result<Option<String>, String> {
+pub async fn get_emulator_preference(
+    launchbox_db_id: i64,
+    platform_name: String,
+) -> Result<Option<String>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
         platform_name: String,
     }
-    invoke("get_emulator_preference", Args { launchbox_db_id, platform_name }).await
+    invoke(
+        "get_emulator_preference",
+        Args {
+            launchbox_db_id,
+            platform_name,
+        },
+    )
+    .await
 }
 
 /// Set emulator preference for a specific game
-pub async fn set_game_emulator_preference(launchbox_db_id: i64, emulator_name: String) -> Result<(), String> {
+pub async fn set_game_emulator_preference(
+    launchbox_db_id: i64,
+    emulator_name: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
         emulator_name: String,
     }
-    invoke("set_game_emulator_preference", Args { launchbox_db_id, emulator_name }).await
+    invoke(
+        "set_game_emulator_preference",
+        Args {
+            launchbox_db_id,
+            emulator_name,
+        },
+    )
+    .await
 }
 
 /// Set emulator preference for a platform (all games on that platform)
-pub async fn set_platform_emulator_preference(platform_name: String, emulator_name: String) -> Result<(), String> {
+pub async fn set_platform_emulator_preference(
+    platform_name: String,
+    emulator_name: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         platform_name: String,
         emulator_name: String,
     }
-    invoke("set_platform_emulator_preference", Args { platform_name, emulator_name }).await
+    invoke(
+        "set_platform_emulator_preference",
+        Args {
+            platform_name,
+            emulator_name,
+        },
+    )
+    .await
 }
 
 /// Clear a game-specific preference
@@ -1405,30 +1781,52 @@ pub struct LaunchResult {
 }
 
 /// Get all emulators for a platform with installation status
-pub async fn get_emulators_with_status(platform_name: String) -> Result<Vec<EmulatorWithStatus>, String> {
+pub async fn get_emulators_with_status(
+    platform_name: String,
+) -> Result<Vec<EmulatorWithStatus>, String> {
     invoke("get_emulators_with_status", platform_name).await
 }
 
 /// Install an emulator using the appropriate package manager
-pub async fn install_emulator(emulator_name: String, is_retroarch_core: bool) -> Result<String, String> {
+pub async fn install_emulator(
+    emulator_name: String,
+    is_retroarch_core: bool,
+) -> Result<String, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
         is_retroarch_core: bool,
     }
-    invoke("install_emulator", Args { emulator_name, is_retroarch_core }).await
+    invoke(
+        "install_emulator",
+        Args {
+            emulator_name,
+            is_retroarch_core,
+        },
+    )
+    .await
 }
 
 /// Launch an emulator (without a ROM)
-pub async fn launch_emulator(emulator_name: String, is_retroarch_core: bool) -> Result<LaunchResult, String> {
+pub async fn launch_emulator(
+    emulator_name: String,
+    is_retroarch_core: bool,
+) -> Result<LaunchResult, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
         is_retroarch_core: bool,
     }
-    invoke("launch_emulator", Args { emulator_name, is_retroarch_core }).await
+    invoke(
+        "launch_emulator",
+        Args {
+            emulator_name,
+            is_retroarch_core,
+        },
+    )
+    .await
 }
 
 /// Launch a game with the specified emulator
@@ -1444,7 +1842,15 @@ pub async fn launch_game(
         rom_path: String,
         is_retroarch_core: bool,
     }
-    invoke("launch_game", Args { emulator_name, rom_path, is_retroarch_core }).await
+    invoke(
+        "launch_game",
+        Args {
+            emulator_name,
+            rom_path,
+            is_retroarch_core,
+        },
+    )
+    .await
 }
 
 /// Get the current operating system
@@ -1495,7 +1901,9 @@ pub struct GraboidPrompt {
 pub async fn get_game_file(launchbox_db_id: i64) -> Result<Option<GameFile>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Args { launchbox_db_id: i64 }
+    struct Args {
+        launchbox_db_id: i64,
+    }
     invoke("get_game_file", Args { launchbox_db_id }).await
 }
 
@@ -1503,7 +1911,9 @@ pub async fn get_game_file(launchbox_db_id: i64) -> Result<Option<GameFile>, Str
 pub async fn get_active_import(launchbox_db_id: i64) -> Result<Option<ImportJob>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Args { launchbox_db_id: i64 }
+    struct Args {
+        launchbox_db_id: i64,
+    }
     invoke("get_active_import", Args { launchbox_db_id }).await
 }
 
@@ -1520,14 +1930,24 @@ pub async fn start_graboid_import(
         game_title: String,
         platform: String,
     }
-    invoke("start_graboid_import", Args { launchbox_db_id, game_title, platform }).await
+    invoke(
+        "start_graboid_import",
+        Args {
+            launchbox_db_id,
+            game_title,
+            platform,
+        },
+    )
+    .await
 }
 
 /// Cancel an import job
 pub async fn cancel_import(job_id: String) -> Result<(), String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Args { job_id: String }
+    struct Args {
+        job_id: String,
+    }
     invoke("cancel_import", Args { job_id }).await
 }
 
@@ -1542,7 +1962,14 @@ pub async fn test_graboid_connection(
         server_url: String,
         api_key: String,
     }
-    invoke("test_graboid_connection", Args { server_url, api_key }).await
+    invoke(
+        "test_graboid_connection",
+        Args {
+            server_url,
+            api_key,
+        },
+    )
+    .await
 }
 
 /// Get all graboid prompts
@@ -1565,7 +1992,16 @@ pub async fn save_graboid_prompt(
         launchbox_db_id: Option<i64>,
         prompt: String,
     }
-    invoke("save_graboid_prompt", Args { scope, platform, launchbox_db_id, prompt }).await
+    invoke(
+        "save_graboid_prompt",
+        Args {
+            scope,
+            platform,
+            launchbox_db_id,
+            prompt,
+        },
+    )
+    .await
 }
 
 /// Delete a graboid prompt
@@ -1581,7 +2017,15 @@ pub async fn delete_graboid_prompt(
         platform: Option<String>,
         launchbox_db_id: Option<i64>,
     }
-    invoke("delete_graboid_prompt", Args { scope, platform, launchbox_db_id }).await
+    invoke(
+        "delete_graboid_prompt",
+        Args {
+            scope,
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
 }
 
 /// Get the effective graboid prompt for a game (global + platform + game combined)
@@ -1595,10 +2039,184 @@ pub async fn get_effective_graboid_prompt(
         platform: String,
         launchbox_db_id: i64,
     }
-    invoke("get_effective_graboid_prompt", Args { platform, launchbox_db_id }).await
+    invoke(
+        "get_effective_graboid_prompt",
+        Args {
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
 }
 
 /// Get the SSE endpoint URL for a Graboid job
 pub fn graboid_sse_url(job_id: &str) -> String {
     format!("{}/api/graboid/jobs/{}/events", HTTP_API_BASE, job_id)
+}
+
+// ============================================================================
+// Minerva Archive
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinervaRom {
+    pub id: i64,
+    pub collection: String,
+    pub platform: String,
+    pub filename: String,
+    pub torrent_url: String,
+    pub file_index: i64,
+    pub file_size: i64,
+    pub lunchbox_game_id: Option<String>,
+    pub launchbox_db_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinervaDownloadProgress {
+    pub job_id: String,
+    pub status: String,
+    pub progress_percent: f64,
+    pub download_speed: u64,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub status_message: String,
+}
+
+pub async fn has_minerva_db() -> Result<bool, String> {
+    invoke("has_minerva_db", ()).await
+}
+
+pub async fn get_minerva_rom_for_game(launchbox_db_id: i64) -> Result<Option<MinervaRom>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+    }
+    invoke("get_minerva_rom_for_game", Args { launchbox_db_id }).await
+}
+
+pub async fn search_minerva(
+    launchbox_db_id: Option<i64>,
+    game_title: Option<String>,
+    platform_id: Option<i64>,
+) -> Result<Vec<MinervaRom>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: Option<i64>,
+        game_title: Option<String>,
+        platform_id: Option<i64>,
+    }
+    invoke(
+        "search_minerva",
+        Args {
+            launchbox_db_id,
+            game_title,
+            platform_id,
+        },
+    )
+    .await
+}
+
+pub async fn start_minerva_download(
+    minerva_rom_id: i64,
+    launchbox_db_id: i64,
+    game_title: String,
+    platform: String,
+) -> Result<ImportJob, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        input: StartMinervaDownloadInput,
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct StartMinervaDownloadInput {
+        minerva_rom_id: i64,
+        launchbox_db_id: i64,
+        game_title: String,
+        platform: String,
+    }
+    invoke(
+        "start_minerva_download",
+        Args {
+            input: StartMinervaDownloadInput {
+                minerva_rom_id,
+                launchbox_db_id,
+                game_title,
+                platform,
+            },
+        },
+    )
+    .await
+}
+
+pub async fn get_minerva_download_progress(
+    job_id: String,
+) -> Result<Option<MinervaDownloadProgress>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        job_id: String,
+    }
+    invoke("get_minerva_download_progress", Args { job_id }).await
+}
+
+pub async fn cancel_minerva_download(job_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        job_id: String,
+    }
+    invoke("cancel_minerva_download", Args { job_id }).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TorrentTestResult {
+    pub success: bool,
+    pub message: String,
+}
+
+pub async fn test_torrent_connection() -> Result<TorrentTestResult, String> {
+    invoke("test_torrent_connection", ()).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TorrentFileMatch {
+    pub index: usize,
+    pub filename: String,
+    pub size: u64,
+    pub match_score: f64,
+    pub region: Option<String>,
+}
+
+pub async fn list_torrent_files(
+    torrent_url: String,
+    game_title: String,
+) -> Result<Vec<TorrentFileMatch>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        input: ListTorrentFilesInput,
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ListTorrentFilesInput {
+        torrent_url: String,
+        game_title: String,
+    }
+    invoke(
+        "list_torrent_files",
+        Args {
+            input: ListTorrentFilesInput {
+                torrent_url,
+                game_title,
+            },
+        },
+    )
+    .await
 }
