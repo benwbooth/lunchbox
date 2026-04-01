@@ -1904,15 +1904,12 @@ pub async fn cancel_import(job_id: String) -> Result<(), String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MinervaRom {
-    pub id: i64,
-    pub collection: String,
-    pub platform: String,
-    pub filename: String,
+    pub torrent_id: i64,
     pub torrent_url: String,
-    pub file_index: i64,
-    pub file_size: i64,
-    pub lunchbox_game_id: Option<String>,
-    pub launchbox_db_id: Option<i64>,
+    pub collection: String,
+    pub minerva_platform: String,
+    pub lunchbox_platform_id: i64,
+    pub rom_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1964,7 +1961,8 @@ pub async fn search_minerva(
 }
 
 pub async fn start_minerva_download(
-    minerva_rom_id: i64,
+    torrent_url: String,
+    file_index: usize,
     launchbox_db_id: i64,
     game_title: String,
     platform: String,
@@ -1972,12 +1970,13 @@ pub async fn start_minerva_download(
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
-        input: StartMinervaDownloadInput,
+        input: Input,
     }
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct StartMinervaDownloadInput {
-        minerva_rom_id: i64,
+    struct Input {
+        torrent_url: String,
+        file_index: usize,
         launchbox_db_id: i64,
         game_title: String,
         platform: String,
@@ -1985,8 +1984,9 @@ pub async fn start_minerva_download(
     invoke(
         "start_minerva_download",
         Args {
-            input: StartMinervaDownloadInput {
-                minerva_rom_id,
+            input: Input {
+                torrent_url,
+                file_index,
                 launchbox_db_id,
                 game_title,
                 platform,

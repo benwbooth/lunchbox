@@ -966,24 +966,23 @@ pub async fn get_active_import(
 // Minerva Archive Types & Handlers
 // ============================================================================
 
+/// A minerva torrent available for a platform
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MinervaRom {
-    pub id: i64,
-    pub collection: String,
-    pub platform: String,
-    pub filename: String,
+    pub torrent_id: i64,
     pub torrent_url: String,
-    pub file_index: i64,
-    pub file_size: i64,
-    pub lunchbox_game_id: Option<String>,
-    pub launchbox_db_id: Option<i64>,
+    pub collection: String,
+    pub minerva_platform: String,
+    pub lunchbox_platform_id: i64,
+    pub rom_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartMinervaDownloadInput {
-    pub minerva_rom_id: i64,
+    pub torrent_url: String,
+    pub file_index: usize,
     pub launchbox_db_id: i64,
     pub game_title: String,
     pub platform: String,
@@ -994,7 +993,7 @@ pub fn has_minerva_db(state: &AppState) -> bool {
     state.minerva_db_pool.is_some()
 }
 
-/// Find the best matching minerva ROM for a game
+/// Find a minerva torrent for a game's platform
 pub async fn get_minerva_rom_for_game(
     state: &AppState,
     launchbox_db_id: i64,
@@ -1004,45 +1003,56 @@ pub async fn get_minerva_rom_for_game(
         .as_ref()
         .ok_or_else(|| "Minerva database not available".to_string())?;
 
-    let row: Option<(i64, String, String, String, i64, i64, Option<String>, Option<i64>)> = sqlx::query_as(
-        "SELECT r.id, c.name, p.name, r.filename, r.file_index, r.file_size, r.lunchbox_game_id, r.launchbox_db_id
-         FROM minerva_roms r
-         JOIN minerva_platforms p ON r.platform_id = p.id
-         JOIN minerva_collections c ON p.collection_id = c.id
-         WHERE r.launchbox_db_id = ?
-         ORDER BY c.name ASC
-         LIMIT 1"
+    // Look up the game's platform_id from games.db
+    let games_db = state
+        .games_db_pool
+        .as_ref()
+        .ok_or_else(|| "Games database not available".to_string())?;
+
+    let platform_id: Option<(i64,)> = sqlx::query_as(
+        "SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1"
     )
     .bind(launchbox_db_id)
+    .fetch_optional(games_db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let platform_id = match platform_id {
+        Some((pid,)) => pid,
+        None => return Ok(None),
+    };
+
+    // Find a torrent for this platform
+    let row: Option<(i64, String, String, String, i64)> = sqlx::query_as(
+        "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count
+         FROM minerva_torrent_platforms tp
+         JOIN minerva_torrents t ON tp.torrent_id = t.id
+         WHERE tp.lunchbox_platform_id = ?
+         ORDER BY tp.rom_count DESC
+         LIMIT 1"
+    )
+    .bind(platform_id)
     .fetch_optional(minerva_pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(row.map(|(id, collection, platform, filename, file_index, file_size, game_id, db_id)| {
-        // Build torrent URL from platform info
-        let torrent_url = format!(
-            "https://minerva-archive.org/rom?name={}",
-            urlencoding::encode(&format!("./{collection}/{platform}/"))
-        );
+    Ok(row.map(|(torrent_id, torrent_url, collection, minerva_platform, rom_count)| {
         MinervaRom {
-            id,
-            collection,
-            platform,
-            filename,
+            torrent_id,
             torrent_url,
-            file_index,
-            file_size,
-            lunchbox_game_id: game_id,
-            launchbox_db_id: db_id,
+            collection,
+            minerva_platform,
+            lunchbox_platform_id: platform_id,
+            rom_count,
         }
     }))
 }
 
-/// Search for all minerva ROM variants matching a game
+/// Search for all minerva torrents available for a platform
 pub async fn search_minerva(
     state: &AppState,
-    launchbox_db_id: Option<i64>,
-    game_title: Option<String>,
+    _launchbox_db_id: Option<i64>,
+    _game_title: Option<String>,
     platform_id: Option<i64>,
 ) -> Result<Vec<MinervaRom>, String> {
     let minerva_pool = state
@@ -1050,69 +1060,33 @@ pub async fn search_minerva(
         .as_ref()
         .ok_or_else(|| "Minerva database not available".to_string())?;
 
-    let rows: Vec<(i64, String, String, String, i64, i64, Option<String>, Option<i64>)> =
-        if let Some(db_id) = launchbox_db_id {
-            sqlx::query_as(
-                "SELECT r.id, c.name, p.name, r.filename, r.file_index, r.file_size, r.lunchbox_game_id, r.launchbox_db_id
-                 FROM minerva_roms r
-                 JOIN minerva_platforms p ON r.platform_id = p.id
-                 JOIN minerva_collections c ON p.collection_id = c.id
-                 WHERE r.launchbox_db_id = ?
-                 ORDER BY c.name ASC, r.filename ASC"
-            )
-            .bind(db_id)
-            .fetch_all(minerva_pool)
-            .await
-            .map_err(|e| e.to_string())?
-        } else if let Some(ref title) = game_title {
-            let normalized = crate::tags::normalize_title_for_matching(title);
-            let mut query = String::from(
-                "SELECT r.id, c.name, p.name, r.filename, r.file_index, r.file_size, r.lunchbox_game_id, r.launchbox_db_id
-                 FROM minerva_roms r
-                 JOIN minerva_platforms p ON r.platform_id = p.id
-                 JOIN minerva_collections c ON p.collection_id = c.id
-                 WHERE r.normalized_title = ?"
-            );
-            if let Some(pid) = platform_id {
-                query.push_str(" AND p.lunchbox_platform_id = ?");
-                sqlx::query_as(&query)
-                    .bind(&normalized)
-                    .bind(pid)
-                    .fetch_all(minerva_pool)
-                    .await
-                    .map_err(|e| e.to_string())?
-            } else {
-                query.push_str(" ORDER BY c.name ASC LIMIT 50");
-                sqlx::query_as(&query)
-                    .bind(&normalized)
-                    .fetch_all(minerva_pool)
-                    .await
-                    .map_err(|e| e.to_string())?
-            }
-        } else {
-            return Ok(Vec::new());
-        };
+    let pid = match platform_id {
+        Some(pid) => pid,
+        None => return Ok(Vec::new()),
+    };
 
-    Ok(rows
-        .into_iter()
-        .map(|(id, collection, platform, filename, file_index, file_size, game_id, db_id)| {
-            let torrent_url = format!(
-                "https://minerva-archive.org/rom?name={}",
-                urlencoding::encode(&format!("./{collection}/{platform}/"))
-            );
-            MinervaRom {
-                id,
-                collection,
-                platform,
-                filename,
-                torrent_url,
-                file_index,
-                file_size,
-                lunchbox_game_id: game_id,
-                launchbox_db_id: db_id,
-            }
-        })
-        .collect())
+    let rows: Vec<(i64, String, String, String, i64)> = sqlx::query_as(
+        "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count
+         FROM minerva_torrent_platforms tp
+         JOIN minerva_torrents t ON tp.torrent_id = t.id
+         WHERE tp.lunchbox_platform_id = ?
+         ORDER BY tp.rom_count DESC"
+    )
+    .bind(pid)
+    .fetch_all(minerva_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(torrent_id, torrent_url, collection, minerva_platform, rom_count)| {
+        MinervaRom {
+            torrent_id,
+            torrent_url,
+            collection,
+            minerva_platform,
+            lunchbox_platform_id: pid,
+            rom_count,
+        }
+    }).collect())
 }
 
 /// Start a minerva ROM download via torrent
@@ -1120,30 +1094,8 @@ pub async fn start_minerva_download(
     state: &mut AppState,
     input: StartMinervaDownloadInput,
 ) -> Result<ImportJob, String> {
-    let minerva_pool = state
-        .minerva_db_pool
-        .as_ref()
-        .ok_or_else(|| "Minerva database not available".to_string())?;
-
-    // Look up the minerva ROM entry
-    let rom_row: (String, String, String, i64, i64) = sqlx::query_as(
-        "SELECT p.name, c.name, r.filename, r.file_index, r.file_size
-         FROM minerva_roms r
-         JOIN minerva_platforms p ON r.platform_id = p.id
-         JOIN minerva_collections c ON p.collection_id = c.id
-         WHERE r.id = ?"
-    )
-    .bind(input.minerva_rom_id)
-    .fetch_one(minerva_pool)
-    .await
-    .map_err(|e| format!("Minerva ROM not found: {e}"))?;
-
-    let (platform_name, collection_name, filename, file_index, _file_size) = rom_row;
-
-    let torrent_url = format!(
-        "https://minerva-archive.org/rom?name={}",
-        urlencoding::encode(&format!("./{collection_name}/{platform_name}/"))
-    );
+    let torrent_url = input.torrent_url.clone();
+    let file_index = input.file_index;
 
     // Create import job
     let job_id = uuid::Uuid::new_v4().to_string();

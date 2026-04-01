@@ -705,16 +705,15 @@ pub fn GameDetails(
                                                                 on:click=move |_| {
                                                                     if let (Some(rom), Some(file_idx)) = (minerva_rom.get(), selected_file_index.get()) {
                                                                         if let Some(g) = game.get_untracked() {
-                                                                            let rom_id = rom.id;
+                                                                            let torrent_url = rom.torrent_url.clone();
                                                                             let db_id = g.database_id;
                                                                             let title = g.display_title.clone();
                                                                             let platform = stored_platform.get_value();
                                                                             set_show_file_picker.set(false);
                                                                             set_minerva_downloading.set(true);
                                                                             set_minerva_progress.set(None);
-                                                                            let _ = file_idx; // file_index will be part of the download input in the future
                                                                             spawn_local(async move {
-                                                                                match tauri::start_minerva_download(rom_id, db_id, title, platform).await {
+                                                                                match tauri::start_minerva_download(torrent_url, file_idx, db_id, title, platform).await {
                                                                                     Ok(job) => set_minerva_job_id.set(Some(job.id)),
                                                                                     Err(e) => {
                                                                                         set_minerva_downloading.set(false);
