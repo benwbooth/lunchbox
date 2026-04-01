@@ -623,11 +623,12 @@ pub fn GameDetails(
                                             </Show>
 
                                             <Show when=move || !import_state_loading.get() && game_file.get().is_none() && import_job_id.get().is_none() && !minerva_downloading.get()>
-                                                // Minerva download button — opens file picker
-                                                <Show when=move || minerva_rom.get().is_some() && !show_file_picker.get()>
+                                                // Download button (Minerva torrent) — opens file picker
+                                                <Show when=move || !show_file_picker.get()>
                                                     <button
                                                         class="import-btn-action minerva-download-btn"
-                                                        disabled=move || files_loading.get()
+                                                        disabled=move || files_loading.get() || minerva_rom.get().is_none()
+                                                        title=move || if minerva_rom.get().is_none() { "No minerva.db — run lunchbox-cli minerva-build first".to_string() } else { "Download ROM via torrent".to_string() }
                                                         on:click=move |_| {
                                                             if let Some(rom) = minerva_rom.get() {
                                                                 if let Some(g) = game.get_untracked() {
@@ -639,7 +640,6 @@ pub fn GameDetails(
                                                                     spawn_local(async move {
                                                                         match tauri::list_torrent_files(url, title).await {
                                                                             Ok(files) => {
-                                                                                // Pre-select best match
                                                                                 if let Some(best) = files.first() {
                                                                                     set_selected_file_index.set(Some(best.index));
                                                                                 }
@@ -656,6 +656,11 @@ pub fn GameDetails(
                                                     >
                                                         {move || if files_loading.get() { "Loading..." } else { "Download" }}
                                                     </button>
+                                                    <button
+                                                        class="play-btn"
+                                                        disabled=true
+                                                        title="No ROM file available"
+                                                    >"Play"</button>
                                                 </Show>
 
                                                 // File picker dialog
