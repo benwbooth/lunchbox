@@ -1133,62 +1133,159 @@ pub async fn start_minerva_download(
     let torrent_settings = state.settings.torrent.clone();
 
     tokio::spawn(async move {
-        // Create torrent client
-        let client = match crate::torrent::create_client(&torrent_settings) {
-            Ok(c) => c,
+        // Step 1: Fetch the torrent file
+        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::FetchingTorrent, 0.0, 0, 0, 0, "Fetching torrent file...");
+
+        let torrent_bytes = match crate::torrent::fetch_torrent_file(&torrent_url).await {
+            Ok(bytes) => bytes,
             Err(e) => {
-                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Failed to create torrent client: {e}"));
+                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Failed to fetch torrent: {e}"));
                 return;
             }
         };
 
-        // Fetch torrent file
-        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::FetchingTorrent, 0.0, 0, 0, 0, "Fetching torrent metadata...");
-        let result = client
-            .add_torrent(&torrent_url, &platform_dir, Some(vec![file_index as usize]))
+        // Step 2: Parse torrent to get the target filename
+        let files = match crate::torrent::parse_torrent_metadata(&torrent_bytes) {
+            Ok(f) => f,
+            Err(e) => {
+                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Failed to parse torrent: {e}"));
+                return;
+            }
+        };
+
+        let target_file = files.iter().find(|f| f.index == file_index);
+        let target_filename = target_file.map(|f| f.filename.clone()).unwrap_or_default();
+        let target_size = target_file.map(|f| f.size).unwrap_or(0);
+
+        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Downloading, 5.0, 0, 0, target_size, &format!("Downloading: {target_filename}"));
+
+        // Step 3: Add torrent and start download
+        let client = match crate::torrent::create_client(&torrent_settings) {
+            Ok(c) => c,
+            Err(e) => {
+                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("No torrent client: {e}"));
+                return;
+            }
+        };
+
+        let add_result = client
+            .add_torrent(&torrent_url, &platform_dir, Some(vec![file_index]))
             .await;
 
-        // Update database with result
-        if let Some(db_path) = db_path {
-            if let Ok(pool) = crate::db::init_pool(&db_path).await {
-                match result {
-                    Ok(_client_job_id) => {
-                        // For now, mark as completed once the torrent is added
-                        // TODO: implement real progress polling per-client
-                        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Downloading, 50.0, 0, 0, 0, "Downloading...");
-
-                        // Record the downloaded file (path will be in platform_dir)
-                        let _ = sqlx::query(
-                            "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source)
-                             VALUES (?, ?, ?, ?, 0, 'minerva')"
-                        )
-                        .bind(launchbox_db_id)
-                        .bind(&game_title)
-                        .bind(&platform)
-                        .bind(platform_dir.display().to_string())
-                        .execute(&pool)
-                        .await;
-
-                        // Mark job as completed
-                        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Completed, 100.0, 0, 0, 0, "Download complete");
-                        let _ = sqlx::query(
-                            "UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = 'Download complete', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-                        )
-                        .bind(&job_id_bg)
-                        .execute(&pool)
-                        .await;
-                    }
-                    Err(e) => {
-                        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Download failed: {e}"));
-                        let _ = sqlx::query(
-                            "UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-                        )
+        if let Err(e) = add_result {
+            crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Failed to start download: {e}"));
+            if let Some(ref db_path) = db_path {
+                if let Ok(pool) = crate::db::init_pool(db_path).await {
+                    let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
                         .bind(format!("Download failed: {e}"))
                         .bind(&job_id_bg)
                         .execute(&pool)
                         .await;
+                }
+            }
+            return;
+        }
+
+        // Step 4: Wait for the file to appear on disk (poll every 2 seconds, timeout 2 hours)
+        let expected_path = platform_dir.join(
+            std::path::Path::new(&target_filename)
+                .file_name()
+                .unwrap_or(std::ffi::OsStr::new(&target_filename))
+        );
+
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(7200);
+        let mut last_size = 0u64;
+
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            if start.elapsed() > timeout {
+                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, "Download timed out after 2 hours");
+                return;
+            }
+
+            // Check if file exists and is growing
+            if let Ok(meta) = tokio::fs::metadata(&expected_path).await {
+                let current_size = meta.len();
+                let pct = if target_size > 0 {
+                    (current_size as f64 / target_size as f64 * 100.0).min(99.9)
+                } else {
+                    50.0
+                };
+                let speed = if current_size > last_size { current_size - last_size } else { 0 } / 2; // bytes per second (rough)
+                last_size = current_size;
+
+                crate::torrent::update_progress(
+                    &job_id_bg, crate::torrent::DownloadStatus::Downloading,
+                    pct, speed, current_size, target_size,
+                    &format!("Downloading: {:.1}%", pct),
+                );
+
+                // Check if download is complete (file size matches or exceeds expected)
+                if target_size > 0 && current_size >= target_size {
+                    break;
+                }
+            }
+
+            // Also check all files in the platform dir for the target filename
+            // (torrent might create subdirectories)
+            if !expected_path.exists() {
+                // Search recursively for the file
+                if let Ok(mut entries) = tokio::fs::read_dir(&platform_dir).await {
+                    while let Ok(Some(entry)) = entries.next_entry().await {
+                        if entry.file_name().to_string_lossy().contains(
+                            std::path::Path::new(&target_filename)
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_str()
+                                .unwrap_or("")
+                        ) {
+                            if let Ok(meta) = entry.metadata().await {
+                                if target_size > 0 && meta.len() >= target_size {
+                                    // Found completed file in a subdirectory
+                                    let found_path = entry.path();
+                                    crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Completed, 100.0, 0, target_size, target_size, "Download complete");
+
+                                    if let Some(ref db_path) = db_path {
+                                        if let Ok(pool) = crate::db::init_pool(db_path).await {
+                                            let _ = sqlx::query(
+                                                "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')"
+                                            )
+                                            .bind(launchbox_db_id).bind(&game_title).bind(&platform)
+                                            .bind(found_path.display().to_string()).bind(meta.len() as i64)
+                                            .execute(&pool).await;
+                                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = 'Download complete', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                                                .bind(&job_id_bg).execute(&pool).await;
+                                        }
+                                    }
+                                    return;
+                                }
+                            }
+                        }
                     }
                 }
+            }
+        }
+
+        // Step 5: Download complete
+        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Completed, 100.0, 0, target_size, target_size, "Download complete");
+
+        if let Some(ref db_path) = db_path {
+            if let Ok(pool) = crate::db::init_pool(db_path).await {
+                let file_path = if expected_path.exists() {
+                    expected_path.display().to_string()
+                } else {
+                    platform_dir.display().to_string()
+                };
+                let _ = sqlx::query(
+                    "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')"
+                )
+                .bind(launchbox_db_id).bind(&game_title).bind(&platform)
+                .bind(&file_path).bind(target_size as i64)
+                .execute(&pool).await;
+                let _ = sqlx::query("UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = 'Download complete', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                    .bind(&job_id_bg).execute(&pool).await;
             }
         }
     });
