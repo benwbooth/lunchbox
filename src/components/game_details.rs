@@ -143,7 +143,6 @@ pub fn GameDetails(
             set_game_file.set(None);
             set_import_job_id.set(None);
             set_import_state_loading.set(false);
-            set_auto_play_on_complete.set(false);
         }
     });
 
@@ -394,70 +393,6 @@ pub fn GameDetails(
         }
     });
 
-    // Check if Graboid is configured
-    Effect::new(move || {
-        spawn_local(async move {
-            if let Ok(settings) = tauri::get_settings().await {
-                set_graboid_configured.set(!settings.graboid.server_url.is_empty());
-            }
-        });
-    });
-
-    // Handle import completion
-    Effect::new(move || {
-        if let Some(file_path) = import_complete.get() {
-            set_import_job_id.set(None);
-            if let Some(g) = display_game.get_untracked() {
-                let db_id = g.database_id;
-                let platform = g.platform.clone();
-                let game_title = g.title.clone();
-                let file_path_for_fallback = file_path.clone();
-                let should_auto_play = auto_play_on_complete.get_untracked();
-                let game_snapshot = g.clone();
-                spawn_local(async move {
-                    let file_from_db = resolve_game_file_for_display(&game_snapshot).await;
-                    let resolved_file = file_from_db.or_else(|| {
-                        if file_path_for_fallback.trim().is_empty() {
-                            None
-                        } else {
-                            Some(tauri::GameFile {
-                                launchbox_db_id: db_id,
-                                game_title,
-                                platform: platform.clone(),
-                                file_path: file_path_for_fallback.clone(),
-                                file_size: None,
-                                imported_at: String::new(),
-                                import_source: "graboid".to_string(),
-                                graboid_job_id: None,
-                            })
-                        }
-                    });
-                    set_game_file.set(resolved_file);
-                    if should_auto_play {
-                        set_auto_play_on_complete.set(false);
-                        set_emulators_loading.set(true);
-                        set_show_emulator_picker.set(true);
-                        match tauri::get_emulators_with_status(platform).await {
-                            Ok(emu_list) => set_emulators.set(emu_list),
-                            Err(_) => set_emulators.set(Vec::new()),
-                        }
-                        set_emulators_loading.set(false);
-                    }
-                });
-            }
-            set_import_complete.set(None);
-        }
-    });
-
-    // Handle import failure
-    Effect::new(move || {
-        if let Some(err) = import_failed.get() {
-            set_import_job_id.set(None);
-            set_auto_play_on_complete.set(false);
-            set_import_error.set(Some(err));
-            set_import_failed.set(None);
-        }
-    });
 
     view! {
         <Show when=move || display_game.get().is_some()>
@@ -793,40 +728,6 @@ pub fn GameDetails(
                                                         </div>
                                                     </div>
                                                 </Show>
-                                                <Show when=move || graboid_configured.get()>
-                                                    <div class="import-prompt-field">
-                                                        <textarea
-                                                            class="import-prompt-textarea"
-                                                            placeholder="Additional instructions for agent (optional)"
-                                                            rows="2"
-                                                            prop:value=move || import_prompt.get()
-                                                            on:input=move |ev| import_prompt.set(event_target_value(&ev))
-                                                        />
-                                                    </div>
-                                                </Show>
-                                                <button
-                                                    class="import-btn-action"
-                                                    on:click=on_import
-                                                    disabled=move || !graboid_configured.get()
-                                                >"Import"</button>
-                                                <button
-                                                    class="import-play-btn"
-                                                    on:click=on_import_and_play
-                                                    disabled=move || !graboid_configured.get()
-                                                >"Import & Play"</button>
-                                                <Show when=move || !graboid_configured.get()>
-                                                    <div class="graboid-setup-hint">
-                                                        "Configure "
-                                                        <a href="#" class="graboid-settings-link" on:click=move |e| {
-                                                            e.prevent_default();
-                                                            if let Some(setter) = set_show_settings {
-                                                                setter.set(true);
-                                                            }
-                                                        }>"Graboid in Settings"</a>
-                                                        " to import and play games"
-                                                    </div>
-                                                </Show>
-                                            </Show>
 
                                             // Import error message
                                             <Show when=move || import_error.get().is_some()>
@@ -882,26 +783,6 @@ pub fn GameDetails(
                                             />
                                         </Show>
 
-                                        // Import Prompts management section
-                                        {let platform_for_prompts = g.platform.clone(); view! {
-                                        <Show when=move || graboid_configured.get()>
-                                            <ImportPromptsSection
-                                                db_id=db_id
-                                                platform=platform_for_prompts.clone()
-                                                prompts=prompts
-                                                prompts_expanded=prompts_expanded
-                                                set_prompts_expanded=set_prompts_expanded
-                                                platform_prompt_editing=platform_prompt_editing
-                                                set_platform_prompt_editing=set_platform_prompt_editing
-                                                game_prompt_editing=game_prompt_editing
-                                                set_game_prompt_editing=set_game_prompt_editing
-                                                platform_prompt_text=platform_prompt_text
-                                                game_prompt_text=game_prompt_text
-                                                global_prompt_text=global_prompt_text
-                                                set_show_settings=set_show_settings
-                                            />
-                                        </Show>
-                                        }}
                                     </div>
 
                                 // Video player, full width
