@@ -2735,9 +2735,13 @@ async fn rspc_start_minerva_download(
 
     let input: handlers::StartMinervaDownloadInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => {
-            return rspc_err::<handlers::ImportJob>(format!("Invalid input: {}", e))
-                .into_response()
+        Err(_) => {
+            #[derive(Deserialize)]
+            struct W { input: handlers::StartMinervaDownloadInput }
+            match serde_json::from_str::<W>(input_str) {
+                Ok(w) => w.input,
+                Err(e) => return rspc_err::<handlers::ImportJob>(format!("Invalid input: {}", e)).into_response(),
+            }
         }
     };
 
@@ -2848,11 +2852,17 @@ async fn rspc_list_torrent_files(
         }
     };
 
+    // Try parsing directly, then try unwrapping an "input" wrapper (Tauri IPC sends wrapped)
     let input: handlers::ListTorrentFilesInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => {
-            return rspc_err::<Vec<handlers::TorrentFileMatch>>(format!("Invalid input: {}", e))
-                .into_response()
+        Err(_) => {
+            // Try unwrapping { "input": { ... } } wrapper
+            #[derive(Deserialize)]
+            struct Wrapped { input: handlers::ListTorrentFilesInput }
+            match serde_json::from_str::<Wrapped>(input_str) {
+                Ok(w) => w.input,
+                Err(e) => return rspc_err::<Vec<handlers::TorrentFileMatch>>(format!("Invalid input: {}", e)).into_response(),
+            }
         }
     };
 
@@ -2881,9 +2891,13 @@ async fn rspc_scan_and_match_roms(
 
     let input: handlers::ScanRomsInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => {
-            return rspc_err::<handlers::ScanRomsResult>(format!("Invalid input: {}", e))
-                .into_response()
+        Err(_) => {
+            #[derive(Deserialize)]
+            struct W { input: handlers::ScanRomsInput }
+            match serde_json::from_str::<W>(input_str) {
+                Ok(w) => w.input,
+                Err(e) => return rspc_err::<handlers::ScanRomsResult>(format!("Invalid input: {}", e)).into_response(),
+            }
         }
     };
 
@@ -2907,8 +2921,13 @@ async fn rspc_confirm_rom_import(
 
     let input: handlers::ConfirmImportInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => {
-            return rspc_err::<usize>(format!("Invalid input: {}", e)).into_response()
+        Err(_) => {
+            #[derive(Deserialize)]
+            struct W { input: handlers::ConfirmImportInput }
+            match serde_json::from_str::<W>(input_str) {
+                Ok(w) => w.input,
+                Err(e) => return rspc_err::<usize>(format!("Invalid input: {}", e)).into_response(),
+            }
         }
     };
 

@@ -2045,22 +2045,13 @@ pub async fn list_torrent_files(
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
-        input: ListTorrentFilesInput,
+        input: Inner,
     }
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct ListTorrentFilesInput {
+    struct Inner {
         torrent_url: String,
         game_title: String,
     }
-    invoke(
-        "list_torrent_files",
-        Args {
-            input: ListTorrentFilesInput {
-                torrent_url,
-                game_title,
-            },
-        },
-    )
-    .await
+    invoke("list_torrent_files", Args { input: Inner { torrent_url, game_title } }).await
 }
