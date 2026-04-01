@@ -753,16 +753,32 @@ pub fn GameDetails(
                                                                             set_minerva_downloading.set(true);
                                                                             set_minerva_progress.set(None);
                                                                             spawn_local(async move {
-                                                                                // Test torrent client first
+                                                                                // Check if torrent client is configured
+                                                                                match tauri::get_settings().await {
+                                                                                    Ok(settings) => {
+                                                                                        let client = &settings.torrent.client;
+                                                                                        if client == "auto" || client.is_empty() {
+                                                                                            set_minerva_downloading.set(false);
+                                                                                            set_import_error.set(Some("No torrent client selected. Go to Settings > Downloads / Torrent and choose a client.".to_string()));
+                                                                                            return;
+                                                                                        }
+                                                                                    }
+                                                                                    Err(e) => {
+                                                                                        set_minerva_downloading.set(false);
+                                                                                        set_import_error.set(Some(format!("Failed to check settings: {e}")));
+                                                                                        return;
+                                                                                    }
+                                                                                }
+                                                                                // Test the configured client
                                                                                 match tauri::test_torrent_connection().await {
                                                                                     Ok(result) if !result.success => {
                                                                                         set_minerva_downloading.set(false);
-                                                                                        set_import_error.set(Some(format!("Torrent client not configured: {}. Go to Settings > Downloads / Torrent to set up.", result.message)));
+                                                                                        set_import_error.set(Some(format!("Torrent client error: {}. Check Settings > Downloads / Torrent.", result.message)));
                                                                                         return;
                                                                                     }
                                                                                     Err(e) => {
                                                                                         set_minerva_downloading.set(false);
-                                                                                        set_import_error.set(Some(format!("Torrent client error: {e}. Go to Settings > Downloads / Torrent to configure.")));
+                                                                                        set_import_error.set(Some(format!("Torrent client error: {e}. Check Settings > Downloads / Torrent.")));
                                                                                         return;
                                                                                     }
                                                                                     _ => {}
