@@ -728,6 +728,7 @@ pub fn GameDetails(
                                                         </div>
                                                     </div>
                                                 </Show>
+                                            </Show>
 
                                             // Import error message
                                             <Show when=move || import_error.get().is_some()>

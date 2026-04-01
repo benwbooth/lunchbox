@@ -167,7 +167,7 @@ pub fn RomImport(
                 </div>
 
                 // Status bar
-                <Show when=move || total_scanned.get() > 0>
+                <Show when=move || { total_scanned.get() > 0 }>
                     <div class="rom-import-status">
                         {move || format!(
                             "{} scanned, {} matched, {} unmatched",
