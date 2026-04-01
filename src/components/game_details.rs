@@ -587,34 +587,41 @@ pub fn GameDetails(
 
                                             // Minerva torrent download progress
                                             <Show when=move || minerva_downloading.get()>
-                                                {move || minerva_progress.get().map(|p| {
-                                                    let pct = p.progress_percent;
-                                                    let msg = p.status_message.clone();
-                                                    let speed = if p.download_speed > 0 {
-                                                        format!(" ({:.1} MB/s)", p.download_speed as f64 / 1_000_000.0)
-                                                    } else {
-                                                        String::new()
-                                                    };
-                                                    view! {
-                                                        <div class="import-section">
-                                                            <div class="minerva-progress">
-                                                                <div class="minerva-progress-bar">
-                                                                    <div class="minerva-progress-fill" style=format!("width: {:.1}%", pct)></div>
-                                                                </div>
-                                                                <div class="minerva-progress-text">{format!("{msg}{speed}")}</div>
-                                                            </div>
-                                                            <button class="cancel-import-btn" on:click=move |_| {
-                                                                if let Some(jid) = minerva_job_id.get() {
-                                                                    set_minerva_downloading.set(false);
-                                                                    set_minerva_job_id.set(None);
-                                                                    spawn_local(async move {
-                                                                        let _ = tauri::cancel_minerva_download(jid).await;
-                                                                    });
-                                                                }
-                                                            }>"Cancel"</button>
+                                                <div class="import-section">
+                                                    <div class="minerva-progress">
+                                                        <div class="minerva-progress-bar">
+                                                            <div class="minerva-progress-fill" style=move || {
+                                                                let pct = minerva_progress.get().map(|p| p.progress_percent).unwrap_or(0.0);
+                                                                format!("width: {:.1}%", pct)
+                                                            }></div>
                                                         </div>
-                                                    }
-                                                })}
+                                                        <div class="minerva-progress-text">
+                                                            {move || {
+                                                                if let Some(p) = minerva_progress.get() {
+                                                                    let speed = if p.download_speed > 0 {
+                                                                        format!(" ({:.1} MB/s)", p.download_speed as f64 / 1_000_000.0)
+                                                                    } else {
+                                                                        String::new()
+                                                                    };
+                                                                    format!("{}{speed}", p.status_message)
+                                                                } else {
+                                                                    "Starting download...".to_string()
+                                                                }
+                                                            }}
+                                                        </div>
+                                                    </div>
+                                                    <button class="cancel-import-btn" on:click=move |_| {
+                                                        if let Some(jid) = minerva_job_id.get() {
+                                                            set_minerva_downloading.set(false);
+                                                            set_minerva_job_id.set(None);
+                                                            spawn_local(async move {
+                                                                let _ = tauri::cancel_minerva_download(jid).await;
+                                                            });
+                                                        } else {
+                                                            set_minerva_downloading.set(false);
+                                                        }
+                                                    }>"Cancel"</button>
+                                                </div>
                                             </Show>
 
                                             // Import prompt and buttons when no file and not importing
@@ -746,6 +753,20 @@ pub fn GameDetails(
                                                                             set_minerva_downloading.set(true);
                                                                             set_minerva_progress.set(None);
                                                                             spawn_local(async move {
+                                                                                // Test torrent client first
+                                                                                match tauri::test_torrent_connection().await {
+                                                                                    Ok(result) if !result.success => {
+                                                                                        set_minerva_downloading.set(false);
+                                                                                        set_import_error.set(Some(format!("Torrent client not configured: {}. Go to Settings > Downloads / Torrent to set up.", result.message)));
+                                                                                        return;
+                                                                                    }
+                                                                                    Err(e) => {
+                                                                                        set_minerva_downloading.set(false);
+                                                                                        set_import_error.set(Some(format!("Torrent client error: {e}. Go to Settings > Downloads / Torrent to configure.")));
+                                                                                        return;
+                                                                                    }
+                                                                                    _ => {}
+                                                                                }
                                                                                 match tauri::start_minerva_download(torrent_url, file_idx, db_id, title, platform).await {
                                                                                     Ok(job) => set_minerva_job_id.set(Some(job.id)),
                                                                                     Err(e) => {
