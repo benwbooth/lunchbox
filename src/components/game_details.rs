@@ -754,12 +754,16 @@ pub fn GameDetails(
                                                                             set_minerva_progress.set(None);
                                                                             spawn_local(async move {
                                                                                 // Check if torrent client is configured
+                                                                                // Check if torrent client is configured
                                                                                 match tauri::get_settings().await {
                                                                                     Ok(settings) => {
                                                                                         let client = &settings.torrent.client;
                                                                                         if client == "auto" || client.is_empty() {
                                                                                             set_minerva_downloading.set(false);
-                                                                                            set_import_error.set(Some("No torrent client selected. Go to Settings > Downloads / Torrent and choose a client.".to_string()));
+                                                                                            if let Some(setter) = set_show_settings {
+                                                                                                setter.set(true);
+                                                                                            }
+                                                                                            set_import_error.set(Some("Please select a torrent client in Settings > Downloads / Torrent first.".to_string()));
                                                                                             return;
                                                                                         }
                                                                                     }
@@ -773,12 +777,18 @@ pub fn GameDetails(
                                                                                 match tauri::test_torrent_connection().await {
                                                                                     Ok(result) if !result.success => {
                                                                                         set_minerva_downloading.set(false);
-                                                                                        set_import_error.set(Some(format!("Torrent client error: {}. Check Settings > Downloads / Torrent.", result.message)));
+                                                                                        if let Some(setter) = set_show_settings {
+                                                                                            setter.set(true);
+                                                                                        }
+                                                                                        set_import_error.set(Some(format!("Torrent client error: {}", result.message)));
                                                                                         return;
                                                                                     }
                                                                                     Err(e) => {
                                                                                         set_minerva_downloading.set(false);
-                                                                                        set_import_error.set(Some(format!("Torrent client error: {e}. Check Settings > Downloads / Torrent.")));
+                                                                                        if let Some(setter) = set_show_settings {
+                                                                                            setter.set(true);
+                                                                                        }
+                                                                                        set_import_error.set(Some(format!("Torrent client error: {e}")));
                                                                                         return;
                                                                                     }
                                                                                     _ => {}
