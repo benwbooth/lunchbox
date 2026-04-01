@@ -2,12 +2,12 @@
 
 use super::ImageSourcesWizard;
 use crate::tauri::{
-    clear_game_emulator_preference, clear_platform_emulator_preference, delete_graboid_prompt,
+    clear_game_emulator_preference, clear_platform_emulator_preference,
     get_all_emulator_preferences, get_all_regions, get_credential_storage_name,
-    get_emulators_for_platform, get_graboid_prompts, get_platforms, get_settings, save_settings,
-    set_platform_emulator_preference, test_graboid_connection, test_igdb_connection,
+    get_emulators_for_platform, get_platforms, get_settings, save_settings,
+    set_platform_emulator_preference, test_igdb_connection,
     test_screenscraper_connection, test_steamgriddb_connection, test_torrent_connection,
-    AppSettings, EmulatorInfo, EmulatorPreferences, GraboidPrompt,
+    AppSettings, EmulatorInfo, EmulatorPreferences,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -35,8 +35,6 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
     let (sgdb_test_result, set_sgdb_test_result) = signal::<Option<(bool, String)>>(None);
     let (testing_igdb, set_testing_igdb) = signal(false);
     let (igdb_test_result, set_igdb_test_result) = signal::<Option<(bool, String)>>(None);
-    let (testing_graboid, set_testing_graboid) = signal(false);
-    let (graboid_test_result, set_graboid_test_result) = signal::<Option<(bool, String)>>(None);
     let (testing_torrent, set_testing_torrent) = signal(false);
     let (torrent_test_result, set_torrent_test_result) = signal::<Option<(bool, String)>>(None);
 
@@ -50,11 +48,10 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
         RwSignal::new(false), // 2: SteamGridDB API key
         RwSignal::new(false), // 3: IGDB client secret
         RwSignal::new(false), // 4: EmuMovies password
-        RwSignal::new(false), // 5: Graboid API key
-        RwSignal::new(false), // 6: qBittorrent password
-        RwSignal::new(false), // 7: Transmission password
-        RwSignal::new(false), // 8: Deluge password
-        RwSignal::new(false), // 9: aria2 secret
+        RwSignal::new(false), // 5: qBittorrent password
+        RwSignal::new(false), // 6: Transmission password
+        RwSignal::new(false), // 7: Deluge password
+        RwSignal::new(false), // 8: aria2 secret
     ];
 
     // Region priority state
@@ -493,107 +490,6 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                 </label>
                             </div>
 
-                            // Graboid Import Section
-                            <div class="settings-section">
-                                <h3>"Graboid (Game Import)"</h3>
-                                <p class="settings-help">
-                                    "AI-powered game import service. Configure your Graboid server to import games directly."
-                                </p>
-                                <label class="settings-label">
-                                    "Server URL"
-                                    <span class="settings-input-wrapper">
-                                        <input
-                                            type="text"
-                                            class="settings-input"
-                                            placeholder="http://localhost:6749"
-                                            prop:value=move || settings.get().graboid.server_url
-                                            on:input=move |ev| settings.update(|s| s.graboid.server_url = event_target_value(&ev))
-                                        />
-                                        <Show when=move || !saving.get() && settings.get().graboid.server_url == saved_settings.get().graboid.server_url>
-                                            <span class="settings-saved-check">"✓"</span>
-                                        </Show>
-                                    </span>
-                                </label>
-                                <label class="settings-label">
-                                    "API Key"
-                                    <span class="settings-input-wrapper">
-                                        <input
-                                            type=move || if show_pw[5].get() { "text" } else { "password" }
-                                            class="settings-input"
-                                            placeholder="Your Graboid API key"
-                                            prop:value=move || settings.get().graboid.api_key
-                                            on:input=move |ev| settings.update(|s| s.graboid.api_key = event_target_value(&ev))
-                                        />
-                                        <button type="button" class="password-eye-btn" on:click=move |_| show_pw[5].update(|v| *v = !*v) title="Toggle visibility">
-                                            <PasswordEyeIcon visible=show_pw[5] />
-                                        </button>
-                                        <Show when=move || !saving.get() && settings.get().graboid.api_key == saved_settings.get().graboid.api_key>
-                                            <span class="settings-saved-check">"✓"</span>
-                                        </Show>
-                                    </span>
-                                </label>
-                                <label class="settings-label">
-                                    "Import Directory (optional)"
-                                    <span class="settings-input-wrapper">
-                                        <input
-                                            type="text"
-                                            class="settings-input"
-                                            placeholder="Default: ~/.local/share/lunchbox/roms"
-                                            prop:value=move || settings.get().graboid.import_directory.unwrap_or_default()
-                                            on:input=move |ev| {
-                                                let val = event_target_value(&ev);
-                                                settings.update(|s| s.graboid.import_directory = if val.is_empty() { None } else { Some(val) });
-                                            }
-                                        />
-                                    </span>
-                                </label>
-                                <label class="settings-label">
-                                    "Default Prompt (optional)"
-                                    <span class="settings-input-wrapper">
-                                        <input
-                                            type="text"
-                                            class="settings-input"
-                                            placeholder="Additional instructions for all imports"
-                                            prop:value=move || settings.get().graboid.default_prompt
-                                            on:input=move |ev| settings.update(|s| s.graboid.default_prompt = event_target_value(&ev))
-                                        />
-                                    </span>
-                                </label>
-                                <div class="connection-test">
-                                    <button
-                                        class="test-btn"
-                                        disabled=move || testing_graboid.get() || settings.get().graboid.server_url.is_empty()
-                                        on:click=move |_| {
-                                            let url = settings.get().graboid.server_url.clone();
-                                            let key = settings.get().graboid.api_key.clone();
-                                            set_testing_graboid.set(true);
-                                            set_graboid_test_result.set(None);
-                                            spawn_local(async move {
-                                                let result = test_graboid_connection(url, key).await;
-                                                match result {
-                                                    Ok(r) => set_graboid_test_result.set(Some((r.success, r.message))),
-                                                    Err(e) => set_graboid_test_result.set(Some((false, e))),
-                                                }
-                                                set_testing_graboid.set(false);
-                                            });
-                                        }
-                                    >
-                                        {move || if testing_graboid.get() { "Testing..." } else { "Test Connection" }}
-                                    </button>
-                                    <Show when=move || graboid_test_result.get().is_some()>
-                                        <span class=move || {
-                                            if graboid_test_result.get().map(|(s, _)| s).unwrap_or(false) {
-                                                "test-result test-success"
-                                            } else {
-                                                "test-result test-failure"
-                                            }
-                                        }>
-                                            {move || graboid_test_result.get().map(|(_, m)| m).unwrap_or_default()}
-                                        </span>
-                                    </Show>
-                                </div>
-                                <GraboidPromptsList />
-                            </div>
 
                             // Torrent / Downloads Section
                             <div class="settings-section">
@@ -653,12 +549,12 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                         <div class="password-field">
                                             <input
                                                 class="settings-input"
-                                                type=move || if show_pw[6].get() { "text" } else { "password" }
+                                                type=move || if show_pw[5].get() { "text" } else { "password" }
                                                 prop:value=move || settings.get().torrent.qbittorrent_password
                                                 on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_password = event_target_value(&ev))
                                             />
-                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[6].update(|v| *v = !*v)>
-                                                {move || if show_pw[6].get() { "Hide" } else { "Show" }}
+                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[5].update(|v| *v = !*v)>
+                                                {move || if show_pw[5].get() { "Hide" } else { "Show" }}
                                             </button>
                                         </div>
                                     </div>
@@ -698,12 +594,12 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                         <div class="password-field">
                                             <input
                                                 class="settings-input"
-                                                type=move || if show_pw[7].get() { "text" } else { "password" }
+                                                type=move || if show_pw[6].get() { "text" } else { "password" }
                                                 prop:value=move || settings.get().torrent.transmission_password
                                                 on:input=move |ev| settings.update(|s| s.torrent.transmission_password = event_target_value(&ev))
                                             />
-                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[7].update(|v| *v = !*v)>
-                                                {move || if show_pw[7].get() { "Hide" } else { "Show" }}
+                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[6].update(|v| *v = !*v)>
+                                                {move || if show_pw[6].get() { "Hide" } else { "Show" }}
                                             </button>
                                         </div>
                                     </div>
@@ -735,12 +631,12 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                         <div class="password-field">
                                             <input
                                                 class="settings-input"
-                                                type=move || if show_pw[9].get() { "text" } else { "password" }
+                                                type=move || if show_pw[8].get() { "text" } else { "password" }
                                                 prop:value=move || settings.get().torrent.aria2_secret
                                                 on:input=move |ev| settings.update(|s| s.torrent.aria2_secret = event_target_value(&ev))
                                             />
-                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[9].update(|v| *v = !*v)>
-                                                {move || if show_pw[9].get() { "Hide" } else { "Show" }}
+                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[8].update(|v| *v = !*v)>
+                                                {move || if show_pw[8].get() { "Hide" } else { "Show" }}
                                             </button>
                                         </div>
                                     </div>
@@ -1274,79 +1170,3 @@ fn EmulatorPreferencesSection() -> impl IntoView {
     }
 }
 
-/// List of graboid prompts (platform and game level) in settings
-#[component]
-fn GraboidPromptsList() -> impl IntoView {
-    let (prompt_list, set_prompt_list) = signal::<Vec<GraboidPrompt>>(Vec::new());
-    let (loading, set_loading) = signal(true);
-
-    let load_prompts = move || {
-        set_loading.set(true);
-        spawn_local(async move {
-            match get_graboid_prompts().await {
-                Ok(prompts) => {
-                    // Only show platform and game prompts (global is handled by the settings field)
-                    let filtered: Vec<GraboidPrompt> = prompts
-                        .into_iter()
-                        .filter(|p| p.scope == "platform" || p.scope == "game")
-                        .collect();
-                    set_prompt_list.set(filtered);
-                }
-                Err(_) => set_prompt_list.set(Vec::new()),
-            }
-            set_loading.set(false);
-        });
-    };
-
-    Effect::new(move || {
-        load_prompts();
-    });
-
-    view! {
-        <Show when=move || !loading.get() && !prompt_list.get().is_empty()>
-            <div class="graboid-prompts-list">
-                <h4>"Custom Prompts"</h4>
-                <div class="graboid-prompts-items">
-                    {move || {
-                        prompt_list.get().into_iter().map(|prompt| {
-                            let scope = prompt.scope.clone();
-                            let scope_for_delete = prompt.scope.clone();
-                            let platform = prompt.platform.clone();
-                            let platform_for_delete = prompt.platform.clone();
-                            let db_id = prompt.launchbox_db_id;
-                            let text = prompt.prompt.clone();
-                            let label = match scope.as_str() {
-                                "platform" => format!("Platform: {}", platform.as_deref().unwrap_or("?")),
-                                "game" => format!("Game #{}", db_id.unwrap_or(0)),
-                                _ => scope.clone(),
-                            };
-                            let truncated = if text.len() > 60 {
-                                format!("{}...", &text[..60])
-                            } else {
-                                text.clone()
-                            };
-
-                            view! {
-                                <div class="graboid-prompt-row">
-                                    <span class=format!("import-prompt-scope-badge scope-{}", scope)>{label}</span>
-                                    <span class="graboid-prompt-text">{truncated}</span>
-                                    <button
-                                        class="graboid-prompt-delete"
-                                        on:click=move |_| {
-                                            let scope = scope_for_delete.clone();
-                                            let platform = platform_for_delete.clone();
-                                            spawn_local(async move {
-                                                let _ = delete_graboid_prompt(scope, platform, db_id).await;
-                                                load_prompts();
-                                            });
-                                        }
-                                    >"×"</button>
-                                </div>
-                            }
-                        }).collect_view()
-                    }}
-                </div>
-            </div>
-        </Show>
-    }
-}
