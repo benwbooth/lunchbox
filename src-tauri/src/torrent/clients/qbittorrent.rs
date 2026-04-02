@@ -86,6 +86,14 @@ impl TorrentClient for QBittorrentClient {
         // Parse to get the info hash for later reference
         let info_hash = torrent_info_hash(&torrent_bytes);
 
+        // Delete any existing torrent with same hash (avoids "error" state from stale entries)
+        let _ = client
+            .post(format!("{}/api/v2/torrents/delete", self.base_url()))
+            .form(&[("hashes", info_hash.as_str()), ("deleteFiles", "false")])
+            .send()
+            .await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
         // Add torrent paused (so we can set file priorities before it starts)
         let should_pause = file_indices.is_some();
         let part = multipart::Part::bytes(torrent_bytes)
