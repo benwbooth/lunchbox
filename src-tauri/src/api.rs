@@ -2775,13 +2775,19 @@ async fn rspc_get_minerva_download_progress(
         }
     };
 
-    let job_id: String = match serde_json::from_str(input_str) {
-        Ok(id) => id,
-        Err(e) => {
-            return rspc_err::<Option<serde_json::Value>>(format!("Invalid input: {}", e))
-                .into_response()
-        }
-    };
+    // Parse job_id from either "raw-string" or {"jobId":"..."} format
+    let job_id: String = serde_json::from_str::<String>(input_str)
+        .or_else(|_| {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct W { job_id: String }
+            serde_json::from_str::<W>(input_str).map(|w| w.job_id)
+        })
+        .unwrap_or_default();
+
+    if job_id.is_empty() {
+        return rspc_ok::<Option<serde_json::Value>>(None).into_response();
+    }
 
     #[cfg(feature = "minerva-torrent")]
     {
