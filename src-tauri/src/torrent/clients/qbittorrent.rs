@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
+use reqwest::multipart;
 
 use super::TorrentClient;
 use crate::torrent::{DownloadProgress, TorrentFileInfo};
@@ -33,7 +34,7 @@ impl QBittorrentClient {
     async fn authenticated_client(&self) -> Result<reqwest::Client> {
         let client = reqwest::Client::builder()
             .cookie_store(true)
-            .timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(30))
             .build()?;
 
         let login_resp = client
@@ -79,13 +80,26 @@ impl TorrentClient for QBittorrentClient {
     ) -> Result<String> {
         let client = self.authenticated_client().await?;
 
+        // Download the torrent file first so we can upload it
+        let torrent_bytes = crate::torrent::fetch_torrent_file(source).await?;
+
+        // Parse to get the info hash for later reference
+        let info_hash = torrent_info_hash(&torrent_bytes);
+
+        // Add torrent paused (so we can set file priorities before it starts)
+        let should_pause = file_indices.is_some();
+        let part = multipart::Part::bytes(torrent_bytes)
+            .file_name("torrent.torrent")
+            .mime_str("application/x-bittorrent")?;
+        let form = multipart::Form::new()
+            .part("torrents", part)
+            .text("savepath", download_dir.display().to_string())
+            .text("category", "lunchbox")
+            .text("paused", if should_pause { "true" } else { "false" });
+
         let resp = client
             .post(format!("{}/api/v2/torrents/add", self.base_url()))
-            .form(&[
-                ("urls", source),
-                ("savepath", &download_dir.display().to_string()),
-                ("category", "lunchbox"),
-            ])
+            .multipart(form)
             .send()
             .await
             .context("qBittorrent add torrent failed")?;
@@ -94,53 +108,82 @@ impl TorrentClient for QBittorrentClient {
             bail!("qBittorrent add torrent failed: HTTP {}", resp.status());
         }
 
-        // qBittorrent doesn't return a torrent ID directly — use the source hash
-        let job_id = format!("qbt:{}", hash_source(source));
-
-        // If file_indices specified, set file priority after a brief delay
+        // Set file priorities if specific files requested
         if let Some(indices) = file_indices {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            // Set unwanted files to priority 0, wanted to priority 7
-            let hash = hash_source(source);
-            if let Ok(files_resp) = client
+            // Wait for qBittorrent to process the torrent metadata
+            tokio::time::sleep(Duration::from_secs(3)).await;
+
+            let hash = &info_hash;
+
+            // Get file count
+            let files_resp = client
                 .get(format!("{}/api/v2/torrents/files?hash={hash}", self.base_url()))
                 .send()
-                .await
-            {
+                .await;
+
+            if let Ok(files_resp) = files_resp {
                 if let Ok(files) = files_resp.json::<Vec<serde_json::Value>>().await {
                     let wanted: std::collections::HashSet<usize> = indices.into_iter().collect();
-                    for (i, _) in files.iter().enumerate() {
-                        let priority = if wanted.contains(&i) { "7" } else { "0" };
+
+                    // Set all unwanted files to priority 0 in bulk
+                    let unwanted_ids: Vec<String> = (0..files.len())
+                        .filter(|i| !wanted.contains(i))
+                        .map(|i| i.to_string())
+                        .collect();
+
+                    if !unwanted_ids.is_empty() {
+                        // qBittorrent accepts pipe-separated IDs
                         let _ = client
                             .post(format!("{}/api/v2/torrents/filePrio", self.base_url()))
                             .form(&[
                                 ("hash", hash.as_str()),
-                                ("id", &i.to_string()),
-                                ("priority", priority),
+                                ("id", &unwanted_ids.join("|")),
+                                ("priority", "0"),
+                            ])
+                            .send()
+                            .await;
+                    }
+
+                    // Set wanted files to high priority
+                    let wanted_ids: Vec<String> = wanted.iter().map(|i| i.to_string()).collect();
+                    if !wanted_ids.is_empty() {
+                        let _ = client
+                            .post(format!("{}/api/v2/torrents/filePrio", self.base_url()))
+                            .form(&[
+                                ("hash", hash.as_str()),
+                                ("id", &wanted_ids.join("|")),
+                                ("priority", "7"),
                             ])
                             .send()
                             .await;
                     }
                 }
             }
+
+            // Resume the torrent now that priorities are set
+            let _ = client
+                .post(format!("{}/api/v2/torrents/resume", self.base_url()))
+                .form(&[("hashes", hash.as_str())])
+                .send()
+                .await;
         }
 
-        Ok(job_id)
+        Ok(format!("qbt:{info_hash}"))
     }
 
     async fn get_progress(&self, job_id: &str) -> Result<Option<DownloadProgress>> {
-        // Check local progress map first
         Ok(crate::torrent::get_progress(job_id))
     }
 
     async fn cancel(&self, job_id: &str) -> Result<()> {
         let hash = job_id.strip_prefix("qbt:").unwrap_or(job_id);
-        let client = self.authenticated_client().await?;
-        let _ = client
-            .post(format!("{}/api/v2/torrents/delete", self.base_url()))
-            .form(&[("hashes", hash), ("deleteFiles", "true")])
-            .send()
-            .await;
+        if let Ok(client) = self.authenticated_client().await {
+            let _ = client
+                .post(format!("{}/api/v2/torrents/delete", self.base_url()))
+                .form(&[("hashes", hash), ("deleteFiles", "true")])
+                .send()
+                .await;
+        }
         Ok(())
     }
 
@@ -158,8 +201,16 @@ impl TorrentClient for QBittorrentClient {
     }
 }
 
-fn hash_source(source: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let hash = Sha256::digest(source.as_bytes());
-    hex::encode(&hash[..8])
+/// Extract the info hash from a .torrent file for qBittorrent API calls
+fn torrent_info_hash(torrent_bytes: &[u8]) -> String {
+    use sha1::Digest;
+
+    // Parse bencode to find the "info" dictionary and hash it
+    if let Ok(torrent) = lava_torrent::torrent::v1::Torrent::read_from_bytes(torrent_bytes) {
+        return torrent.info_hash().to_lowercase();
+    }
+
+    // Fallback: hash the whole torrent bytes (not ideal but better than nothing)
+    let hash = sha1::Sha1::digest(torrent_bytes);
+    hex::encode(hash)
 }

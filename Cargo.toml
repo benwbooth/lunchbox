@@ -96,7 +96,7 @@ hex = "0.4"
 rayon = "1"
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "cookies", "gzip", "brotli", "deflate", "stream"] }
+reqwest = { version = "0.12", features = ["json", "cookies", "gzip", "brotli", "deflate", "stream", "multipart"] }
 
 # Logging
 tracing = "0.1"
