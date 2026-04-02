@@ -86,13 +86,26 @@ impl TorrentClient for QBittorrentClient {
         // Parse to get the info hash for later reference
         let info_hash = torrent_info_hash(&torrent_bytes);
 
-        // Delete any existing torrent with same hash (avoids "error" state from stale entries)
-        let _ = client
-            .post(format!("{}/api/v2/torrents/delete", self.base_url()))
-            .form(&[("hashes", info_hash.as_str()), ("deleteFiles", "false")])
+        // Check if torrent already exists and is errored — delete and re-add if so
+        if let Ok(resp) = client
+            .get(format!("{}/api/v2/torrents/info?hashes={}", self.base_url(), &info_hash))
             .send()
-            .await;
-        tokio::time::sleep(Duration::from_secs(1)).await;
+            .await
+        {
+            if let Ok(torrents) = resp.json::<Vec<serde_json::Value>>().await {
+                if let Some(t) = torrents.first() {
+                    let state = t["state"].as_str().unwrap_or("");
+                    if state == "error" || state == "missingFiles" {
+                        let _ = client
+                            .post(format!("{}/api/v2/torrents/delete", self.base_url()))
+                            .form(&[("hashes", info_hash.as_str()), ("deleteFiles", "true")])
+                            .send()
+                            .await;
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        }
 
         // Add torrent paused (so we can set file priorities before it starts)
         let should_pause = file_indices.is_some();
