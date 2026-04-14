@@ -64,6 +64,8 @@
 
             # Compression
             zstd
+            p7zip
+            gnutar
           ];
 
           nativeBuildInputs = with pkgs; [

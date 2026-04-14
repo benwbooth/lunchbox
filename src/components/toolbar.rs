@@ -241,7 +241,7 @@ pub fn Toolbar(
                                 />
                                 <span class="filter-item-title">"Installed"</span>
                             </label>
-                            <label class="filter-item" title="Hide games marked as Homebrew or ROM Hack">
+                            <label class="filter-item" title="Hide non-retail games such as homebrew, ROM hacks, unlicensed releases, and pirate carts">
                                 <input
                                     type="checkbox"
                                     prop:checked=move || game_filters.get().hide_homebrew
@@ -250,7 +250,7 @@ pub fn Toolbar(
                                         set_game_filters.update(|f| f.hide_homebrew = checked);
                                     }
                                 />
-                                <span class="filter-item-title">"Hide Homebrew/Hacks"</span>
+                                <span class="filter-item-title">"Hide Non-Retail"</span>
                             </label>
                             <label class="filter-item" title="Hide games marked as adult-only">
                                 <input

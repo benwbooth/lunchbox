@@ -1602,6 +1602,53 @@ fn GameCard(
         }
     };
 
+    let on_card_click = {
+        let card_ref = card_ref.clone();
+        let set_is_hovered = set_is_hovered;
+        let set_hover_preview_armed = set_hover_preview_armed;
+        let set_hover_video_loading = set_hover_video_loading;
+        let set_hover_video_playing = set_hover_video_playing;
+        let hover_token = hover_token.clone();
+        let game_for_click = game_for_click.clone();
+        move |_| {
+            set_is_hovered.set(false);
+            set_hover_preview_armed.set(false);
+            set_hover_video_loading.set(false);
+            set_hover_video_playing.set(false);
+            hover_token.set(hover_token.get().wrapping_add(1));
+
+            if let Some(card) = card_ref.get() {
+                if let Ok(Some(video_el)) = card.query_selector(".cover-preview-video") {
+                    let pause_value = js_sys::Reflect::get(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("pause"),
+                    );
+                    if let Ok(pause_fn) = pause_value {
+                        if let Some(pause_fn) = pause_fn.dyn_ref::<js_sys::Function>() {
+                            let _ = pause_fn.call0(video_el.as_ref());
+                        }
+                    }
+                    let _ = js_sys::Reflect::set(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("currentTime"),
+                        &wasm_bindgen::JsValue::from_f64(0.0),
+                    );
+                    let _ = js_sys::Reflect::set(
+                        video_el.as_ref(),
+                        &wasm_bindgen::JsValue::from_str("muted"),
+                        &wasm_bindgen::JsValue::TRUE,
+                    );
+                }
+                let _ = card.set_attribute("style", "--hover-dodge-x: 0px; --hover-dodge-y: 0px;");
+                if let Ok(Some(wrapper)) = card.closest(".virtual-item") {
+                    let _ = wrapper.remove_attribute("data-hovered-card");
+                }
+            }
+
+            on_select.set(Some(game_for_click.clone()));
+        }
+    };
+
     // Start playback only when we are actually showing the preview layer.
     Effect::new(move || {
         let should_play = is_hovered.get()
@@ -1690,7 +1737,7 @@ fn GameCard(
             node_ref=card_ref
             on:mouseenter=on_mouse_enter
             on:mouseleave=on_mouse_leave
-            on:click=move |_| on_select.set(Some(game_for_click.clone()))
+            on:click=on_card_click
         >
             <div class="game-cover">
                 <div class="cover-art-layer" class:faded=show_hover_video>

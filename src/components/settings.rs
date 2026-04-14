@@ -5,9 +5,9 @@ use crate::tauri::{
     clear_game_emulator_preference, clear_platform_emulator_preference,
     get_all_emulator_preferences, get_all_regions, get_credential_storage_name,
     get_emulators_for_platform, get_platforms, get_settings, save_settings,
-    set_platform_emulator_preference, test_igdb_connection,
-    test_screenscraper_connection, test_steamgriddb_connection, test_torrent_connection,
-    AppSettings, EmulatorInfo, EmulatorPreferences,
+    set_platform_emulator_preference, test_igdb_connection, test_screenscraper_connection,
+    test_steamgriddb_connection, test_torrent_connection, AppSettings, EmulatorInfo,
+    EmulatorPreferences,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -49,9 +49,6 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
         RwSignal::new(false), // 3: IGDB client secret
         RwSignal::new(false), // 4: EmuMovies password
         RwSignal::new(false), // 5: qBittorrent password
-        RwSignal::new(false), // 6: Transmission password
-        RwSignal::new(false), // 7: Deluge password
-        RwSignal::new(false), // 8: aria2 secret
     ];
 
     // Region priority state
@@ -495,165 +492,54 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                             <div class="settings-section">
                                 <h3>"Downloads / Torrent"</h3>
                                 <p class="settings-help">
-                                    "Configure torrent client for downloading ROMs from Minerva Archive."
+                                    "Configure qBittorrent Web UI for downloading ROMs from Minerva Archive."
                                 </p>
+                                <p class="settings-hint">
+                                    "Only qBittorrent Web UI is supported for Minerva downloads."
+                                </p>
+
                                 <div class="settings-field">
-                                    <label class="settings-label">"Torrent Client"</label>
-                                    <select
+                                    <label class="settings-label">"qBittorrent Host"</label>
+                                    <input
                                         class="settings-input"
-                                        prop:value=move || settings.get().torrent.client
-                                        on:change=move |ev| settings.update(|s| s.torrent.client = event_target_value(&ev))
-                                    >
-                                        <option value="auto">"Auto (try embedded, then external)"</option>
-                                        <option value="embedded">"Embedded (librqbit)"</option>
-                                        <option value="qbittorrent">"qBittorrent"</option>
-                                        <option value="transmission">"Transmission"</option>
-                                        <option value="deluge">"Deluge"</option>
-                                        <option value="rtorrent">"rTorrent"</option>
-                                        <option value="aria2">"aria2"</option>
-                                    </select>
+                                        placeholder="localhost"
+                                        prop:value=move || settings.get().torrent.qbittorrent_host
+                                        on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_host = event_target_value(&ev))
+                                    />
                                 </div>
-
-                                // qBittorrent fields
-                                <Show when=move || matches!(settings.get().torrent.client.as_str(), "qbittorrent" | "auto")>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"qBittorrent Host"</label>
+                                <div class="settings-field">
+                                    <label class="settings-label">"qBittorrent Port"</label>
+                                    <input
+                                        class="settings-input"
+                                        type="number"
+                                        placeholder="8080"
+                                        prop:value=move || settings.get().torrent.qbittorrent_port.to_string()
+                                        on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_port = event_target_value(&ev).parse().unwrap_or(8080))
+                                    />
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label">"qBittorrent Username"</label>
+                                    <input
+                                        class="settings-input"
+                                        placeholder="admin"
+                                        prop:value=move || settings.get().torrent.qbittorrent_username
+                                        on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_username = event_target_value(&ev))
+                                    />
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label">"qBittorrent Password"</label>
+                                    <div class="password-field">
                                         <input
                                             class="settings-input"
-                                            placeholder="localhost"
-                                            prop:value=move || settings.get().torrent.qbittorrent_host
-                                            on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_host = event_target_value(&ev))
+                                            type=move || if show_pw[5].get() { "text" } else { "password" }
+                                            prop:value=move || settings.get().torrent.qbittorrent_password
+                                            on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_password = event_target_value(&ev))
                                         />
+                                        <button class="toggle-pw-btn" on:click=move |_| show_pw[5].update(|v| *v = !*v)>
+                                            {move || if show_pw[5].get() { "Hide" } else { "Show" }}
+                                        </button>
                                     </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"qBittorrent Port"</label>
-                                        <input
-                                            class="settings-input"
-                                            type="number"
-                                            placeholder="8080"
-                                            prop:value=move || settings.get().torrent.qbittorrent_port.to_string()
-                                            on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_port = event_target_value(&ev).parse().unwrap_or(8080))
-                                        />
-                                    </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"qBittorrent Username"</label>
-                                        <input
-                                            class="settings-input"
-                                            placeholder="admin"
-                                            prop:value=move || settings.get().torrent.qbittorrent_username
-                                            on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_username = event_target_value(&ev))
-                                        />
-                                    </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"qBittorrent Password"</label>
-                                        <div class="password-field">
-                                            <input
-                                                class="settings-input"
-                                                type=move || if show_pw[5].get() { "text" } else { "password" }
-                                                prop:value=move || settings.get().torrent.qbittorrent_password
-                                                on:input=move |ev| settings.update(|s| s.torrent.qbittorrent_password = event_target_value(&ev))
-                                            />
-                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[5].update(|v| *v = !*v)>
-                                                {move || if show_pw[5].get() { "Hide" } else { "Show" }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Show>
-
-                                // Transmission fields
-                                <Show when=move || settings.get().torrent.client == "transmission">
-                                    <div class="settings-field">
-                                        <label class="settings-label">"Transmission Host"</label>
-                                        <input
-                                            class="settings-input"
-                                            placeholder="localhost"
-                                            prop:value=move || settings.get().torrent.transmission_host
-                                            on:input=move |ev| settings.update(|s| s.torrent.transmission_host = event_target_value(&ev))
-                                        />
-                                    </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"Transmission Port"</label>
-                                        <input
-                                            class="settings-input"
-                                            type="number"
-                                            placeholder="9091"
-                                            prop:value=move || settings.get().torrent.transmission_port.to_string()
-                                            on:input=move |ev| settings.update(|s| s.torrent.transmission_port = event_target_value(&ev).parse().unwrap_or(9091))
-                                        />
-                                    </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"Transmission Username"</label>
-                                        <input
-                                            class="settings-input"
-                                            prop:value=move || settings.get().torrent.transmission_username
-                                            on:input=move |ev| settings.update(|s| s.torrent.transmission_username = event_target_value(&ev))
-                                        />
-                                    </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"Transmission Password"</label>
-                                        <div class="password-field">
-                                            <input
-                                                class="settings-input"
-                                                type=move || if show_pw[6].get() { "text" } else { "password" }
-                                                prop:value=move || settings.get().torrent.transmission_password
-                                                on:input=move |ev| settings.update(|s| s.torrent.transmission_password = event_target_value(&ev))
-                                            />
-                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[6].update(|v| *v = !*v)>
-                                                {move || if show_pw[6].get() { "Hide" } else { "Show" }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Show>
-
-                                // aria2 fields
-                                <Show when=move || settings.get().torrent.client == "aria2">
-                                    <div class="settings-field">
-                                        <label class="settings-label">"aria2 Host"</label>
-                                        <input
-                                            class="settings-input"
-                                            placeholder="localhost"
-                                            prop:value=move || settings.get().torrent.aria2_host
-                                            on:input=move |ev| settings.update(|s| s.torrent.aria2_host = event_target_value(&ev))
-                                        />
-                                    </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"aria2 Port"</label>
-                                        <input
-                                            class="settings-input"
-                                            type="number"
-                                            placeholder="6800"
-                                            prop:value=move || settings.get().torrent.aria2_port.to_string()
-                                            on:input=move |ev| settings.update(|s| s.torrent.aria2_port = event_target_value(&ev).parse().unwrap_or(6800))
-                                        />
-                                    </div>
-                                    <div class="settings-field">
-                                        <label class="settings-label">"aria2 Secret"</label>
-                                        <div class="password-field">
-                                            <input
-                                                class="settings-input"
-                                                type=move || if show_pw[8].get() { "text" } else { "password" }
-                                                prop:value=move || settings.get().torrent.aria2_secret
-                                                on:input=move |ev| settings.update(|s| s.torrent.aria2_secret = event_target_value(&ev))
-                                            />
-                                            <button class="toggle-pw-btn" on:click=move |_| show_pw[8].update(|v| *v = !*v)>
-                                                {move || if show_pw[8].get() { "Hide" } else { "Show" }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Show>
-
-                                // rTorrent field
-                                <Show when=move || settings.get().torrent.client == "rtorrent">
-                                    <div class="settings-field">
-                                        <label class="settings-label">"rTorrent XML-RPC URL"</label>
-                                        <input
-                                            class="settings-input"
-                                            placeholder="http://localhost:8000/RPC2"
-                                            prop:value=move || settings.get().torrent.rtorrent_url
-                                            on:input=move |ev| settings.update(|s| s.torrent.rtorrent_url = event_target_value(&ev))
-                                        />
-                                    </div>
-                                </Show>
+                                </div>
 
                                 // Test connection button
                                 <div class="connection-test">
@@ -697,6 +583,19 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                     />
                                 </div>
                                 <div class="settings-field">
+                                    <label class="settings-label">"qBittorrent Container ROM Directory"</label>
+                                    <input
+                                        class="settings-input"
+                                        placeholder="Optional: e.g. /downloads/roms"
+                                        prop:value=move || settings.get().torrent.qbittorrent_container_rom_directory.clone().unwrap_or_default()
+                                        on:input=move |ev| {
+                                            let v = event_target_value(&ev);
+                                            settings.update(|s| s.torrent.qbittorrent_container_rom_directory = if v.is_empty() { None } else { Some(v) });
+                                        }
+                                    />
+                                    <p class="settings-hint">"Use this when qBittorrent runs in Docker or another container and sees a different ROM path than Lunchbox."</p>
+                                </div>
+                                <div class="settings-field">
                                     <label class="settings-label">"Torrent Library Directory"</label>
                                     <input
                                         class="settings-input"
@@ -708,17 +607,18 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                         }
                                     />
                                 </div>
-
-                                // Download options
                                 <div class="settings-field">
-                                    <label class="settings-label">
-                                        <input
-                                            type="checkbox"
-                                            prop:checked=move || settings.get().torrent.download_entire_torrent
-                                            on:change=move |ev| settings.update(|s| s.torrent.download_entire_torrent = event_target_checked(&ev))
-                                        />
-                                        " Download entire torrent (not just selected file)"
-                                    </label>
+                                    <label class="settings-label">"qBittorrent Container Torrent Library Directory"</label>
+                                    <input
+                                        class="settings-input"
+                                        placeholder="Optional: e.g. /downloads/torrent-library"
+                                        prop:value=move || settings.get().torrent.qbittorrent_container_torrent_library_directory.clone().unwrap_or_default()
+                                        on:input=move |ev| {
+                                            let v = event_target_value(&ev);
+                                            settings.update(|s| s.torrent.qbittorrent_container_torrent_library_directory = if v.is_empty() { None } else { Some(v) });
+                                        }
+                                    />
+                                    <p class="settings-hint">"Use this when full-torrent downloads should be stored at a different path inside the qBittorrent runtime."</p>
                                 </div>
                                 <div class="settings-field">
                                     <label class="settings-label">"File Link Mode"</label>
@@ -733,7 +633,7 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                         <option value="copy">"Copy"</option>
                                         <option value="leave_in_place">"Leave in place"</option>
                                     </select>
-                                    <p class="settings-hint">"How to link ROM files from torrent library to ROM directory when downloading entire torrents."</p>
+                                    <p class="settings-hint">"Used when you choose a whole-torrent download from the Minerva picker and Lunchbox links the selected game back into the ROM directory."</p>
                                 </div>
                             </div>
 
@@ -1169,4 +1069,3 @@ fn EmulatorPreferencesSection() -> impl IntoView {
         </div>
     }
 }
-

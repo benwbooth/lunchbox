@@ -1,9 +1,10 @@
 //! Game details panel
 
-use super::{Box3DViewer, LazyImage, VideoPlayer};
+use super::{preload_video_state, Box3DViewer, LazyImage, VideoPlayer, VideoState};
 use crate::tauri::{
     self, file_to_asset_url, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats,
 };
+use futures::stream::{self, StreamExt};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashSet;
@@ -15,17 +16,19 @@ async fn launch_game_with_resolved_rom(
     emulator_name: String,
     is_retroarch_core: bool,
 ) -> Result<tauri::LaunchResult, String> {
-    let rom_path = match tauri::get_game_file(launchbox_db_id).await {
-        Ok(Some(file)) if !file.file_path.trim().is_empty() => file.file_path,
-        _ => fallback_rom_path
-            .and_then(|path| {
-                if path.trim().is_empty() {
-                    None
-                } else {
-                    Some(path)
-                }
-            })
-            .ok_or_else(|| "No ROM file path is available for this game".to_string())?,
+    let rom_path = if let Some(path) = fallback_rom_path.and_then(|path| {
+        if path.trim().is_empty() {
+            None
+        } else {
+            Some(path)
+        }
+    }) {
+        path
+    } else {
+        match tauri::get_game_file(launchbox_db_id).await {
+            Ok(Some(file)) if !file.file_path.trim().is_empty() => file.file_path,
+            _ => return Err("No ROM file path is available for this game".to_string()),
+        }
     };
 
     tauri::launch_game(emulator_name, rom_path, is_retroarch_core).await
@@ -85,6 +88,239 @@ fn pause_game_details_video() {
     let _ = pause_fn.call0(video_el.as_ref());
 }
 
+fn is_transient_progress_fetch_error(err: &str) -> bool {
+    err.contains("Failed to fetch")
+        || err.contains("NetworkError")
+        || err.contains("Load failed")
+        || err.contains("error sending request")
+}
+
+async fn delay_ms(ms: i32) {
+    wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
+        web_sys::window()
+            .unwrap()
+            .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms)
+            .unwrap();
+    }))
+    .await
+    .unwrap();
+}
+
+#[derive(Clone, Debug)]
+struct MinervaTorrentGroup {
+    rom: tauri::MinervaRom,
+    files: Vec<tauri::TorrentFileMatch>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum MinervaDownloadSelection {
+    WholeTorrent {
+        torrent_url: String,
+        representative_file_index: Option<usize>,
+    },
+    File {
+        torrent_url: String,
+        file_index: usize,
+    },
+}
+
+// Keep this fallback order in sync with src-tauri/src/region_priority.rs.
+const DEFAULT_DOWNLOAD_REGION_PRIORITY: &[&str] = &[
+    "USA",
+    "Japan",
+    "Asia",
+    "World",
+    "Europe",
+    "Australia",
+    "Canada",
+    "Brazil",
+    "Korea",
+    "China",
+    "France",
+    "Germany",
+    "Italy",
+    "Spain",
+    "United Kingdom",
+    "UK",
+    "Taiwan",
+    "Netherlands",
+    "Belgium",
+    "Greece",
+    "Portugal",
+    "Austria",
+    "Sweden",
+    "Finland",
+    "Russia",
+    "Switzerland",
+    "Hong Kong",
+    "Scandinavia",
+    "Denmark",
+    "Poland",
+    "Norway",
+    "New Zealand",
+    "Latin America",
+    "Unknown",
+    "",
+];
+
+fn effective_download_region_priority(custom_order: &[String]) -> Vec<String> {
+    let mut order = if custom_order.is_empty() {
+        Vec::new()
+    } else {
+        custom_order.to_vec()
+    };
+
+    for region in DEFAULT_DOWNLOAD_REGION_PRIORITY {
+        if !order
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(region))
+        {
+            order.push((*region).to_string());
+        }
+    }
+
+    order
+}
+
+fn grouped_torrent_region_priority(region: Option<&str>, custom_order: &[String]) -> i32 {
+    let order = effective_download_region_priority(custom_order);
+    let Some(region) = region.map(str::trim) else {
+        return order.len() as i32;
+    };
+
+    if region.is_empty() {
+        return order
+            .iter()
+            .position(|candidate| candidate.is_empty())
+            .unwrap_or(order.len()) as i32;
+    }
+
+    let region_parts: Vec<String> = region
+        .split([',', '/', '&', '+'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| part.to_ascii_lowercase())
+        .collect();
+
+    for (priority, candidate) in order.iter().enumerate() {
+        if candidate.is_empty() {
+            continue;
+        }
+
+        let candidate_lower = candidate.to_ascii_lowercase();
+        let matches_candidate = region_parts
+            .iter()
+            .any(|part| match candidate_lower.as_str() {
+                "usa" => matches!(part.as_str(), "usa" | "united states" | "north america"),
+                "uk" | "united kingdom" => matches!(part.as_str(), "uk" | "united kingdom"),
+                other => part == other,
+            });
+
+        if matches_candidate {
+            return priority as i32;
+        }
+    }
+
+    order.len() as i32
+}
+
+fn minerva_collection_compatibility_priority(rom: &tauri::MinervaRom) -> i32 {
+    let haystack = format!("{} {}", rom.collection, rom.minerva_platform).to_ascii_lowercase();
+
+    if haystack.contains("headered") && !haystack.contains("headerless") {
+        0
+    } else if haystack.contains("headerless") {
+        2
+    } else {
+        1
+    }
+}
+
+fn file_picker_display_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn minerva_torrent_groups_request_key(
+    launchbox_db_id: i64,
+    game_title: &str,
+    platform_id: i64,
+) -> String {
+    format!("{launchbox_db_id}:{platform_id}:{game_title}")
+}
+
+async fn load_minerva_torrent_groups(
+    launchbox_db_id: i64,
+    game_title: String,
+    platform_id: i64,
+    region_priority: Vec<String>,
+) -> Result<Vec<MinervaTorrentGroup>, String> {
+    let roms = tauri::search_minerva(
+        Some(launchbox_db_id),
+        Some(game_title.clone()),
+        Some(platform_id),
+    )
+    .await?;
+    let mut groups = Vec::new();
+    let mut last_error = None;
+
+    let group_results = stream::iter(roms.into_iter().map(|rom| {
+        let game_title = game_title.clone();
+        async move {
+            let result = tauri::list_torrent_files(rom.torrent_url.clone(), game_title).await;
+            (rom, result)
+        }
+    }))
+    .buffer_unordered(6)
+    .collect::<Vec<_>>()
+    .await;
+
+    for (rom, result) in group_results {
+        match result {
+            Ok(files) if !files.is_empty() => groups.push(MinervaTorrentGroup { rom, files }),
+            Ok(_) => {}
+            Err(err) => last_error = Some(err),
+        }
+    }
+
+    groups.sort_by(|a, b| {
+        let a_top_score = a.files.first().map(|file| file.match_score).unwrap_or(0.0);
+        let b_top_score = b.files.first().map(|file| file.match_score).unwrap_or(0.0);
+        minerva_collection_compatibility_priority(&a.rom)
+            .cmp(&minerva_collection_compatibility_priority(&b.rom))
+            .then_with(|| {
+                b_top_score
+                    .partial_cmp(&a_top_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                grouped_torrent_region_priority(
+                    a.files.first().and_then(|file| file.region.as_deref()),
+                    &region_priority,
+                )
+                .cmp(&grouped_torrent_region_priority(
+                    b.files.first().and_then(|file| file.region.as_deref()),
+                    &region_priority,
+                ))
+            })
+            .then_with(|| b.rom.rom_count.cmp(&a.rom.rom_count))
+            .then_with(|| a.rom.collection.cmp(&b.rom.collection))
+    });
+
+    if groups.is_empty() {
+        if let Some(err) = last_error {
+            Err(err)
+        } else {
+            Ok(groups)
+        }
+    } else {
+        Ok(groups)
+    }
+}
+
 #[component]
 pub fn GameDetails(
     game: ReadSignal<Option<Game>>,
@@ -108,30 +344,56 @@ pub fn GameDetails(
     // Import state
     let (game_file, set_game_file) = signal::<Option<GameFile>>(None);
     let (import_state_loading, set_import_state_loading) = signal(false);
+    let (show_import_loading_hint, set_show_import_loading_hint) = signal(false);
     let (import_job_id, set_import_job_id) = signal::<Option<String>>(None);
     let (import_error, set_import_error) = signal::<Option<String>>(None);
+    let (details_ready, set_details_ready) = signal(false);
+    let (details_min_delay_elapsed, set_details_min_delay_elapsed) = signal(false);
+    let (preloaded_video_state, set_preloaded_video_state) = signal::<Option<VideoState>>(None);
     // Minerva download state
     let (minerva_rom, set_minerva_rom) = signal::<Option<tauri::MinervaRom>>(None);
     let (minerva_downloading, set_minerva_downloading) = signal(false);
-    let (minerva_progress, set_minerva_progress) = signal::<Option<tauri::MinervaDownloadProgress>>(None);
+    let (minerva_progress, set_minerva_progress) =
+        signal::<Option<tauri::MinervaDownloadProgress>>(None);
     let (minerva_job_id, set_minerva_job_id) = signal::<Option<String>>(None);
+    let (minerva_missing_progress_polls, set_minerva_missing_progress_polls) = signal(0u8);
     // Torrent file picker state
     let (show_file_picker, set_show_file_picker) = signal(false);
-    let (torrent_files, set_torrent_files) = signal::<Vec<tauri::TorrentFileMatch>>(Vec::new());
-    let (selected_file_index, set_selected_file_index) = signal::<Option<usize>>(None);
+    let (torrent_groups, set_torrent_groups) = signal::<Vec<MinervaTorrentGroup>>(Vec::new());
+    let (selected_download, set_selected_download) =
+        signal::<Option<MinervaDownloadSelection>>(None);
     let (files_loading, set_files_loading) = signal(false);
+    let (torrent_groups_request_key, set_torrent_groups_request_key) =
+        signal::<Option<String>>(None);
 
     // Initialize display_game from prop when game changes
     Effect::new(move || {
         if let Some(g) = game.get() {
             set_display_game.set(Some(g));
+            set_play_stats.set(None);
+            set_is_fav.set(false);
+            set_variants.set(Vec::new());
+            set_selected_variant.set(None);
+            set_pending_variant_load.set(None);
+            set_game_emulator_pref.set(None);
             set_game_file.set(None);
             set_import_job_id.set(None);
             set_import_state_loading.set(true);
+            set_show_import_loading_hint.set(false);
+            set_import_error.set(None);
+            set_details_ready.set(false);
+            set_details_min_delay_elapsed.set(false);
+            set_preloaded_video_state.set(None);
             set_minerva_rom.set(None);
             set_minerva_downloading.set(false);
             set_minerva_progress.set(None);
             set_minerva_job_id.set(None);
+            set_minerva_missing_progress_polls.set(0);
+            set_files_loading.set(false);
+            set_torrent_groups.set(Vec::new());
+            set_selected_download.set(None);
+            set_show_file_picker.set(false);
+            set_torrent_groups_request_key.set(None);
         } else {
             set_display_game.set(None);
             set_play_stats.set(None);
@@ -143,8 +405,133 @@ pub fn GameDetails(
             set_game_file.set(None);
             set_import_job_id.set(None);
             set_import_state_loading.set(false);
+            set_show_import_loading_hint.set(false);
+            set_details_ready.set(false);
+            set_details_min_delay_elapsed.set(false);
+            set_preloaded_video_state.set(None);
+            set_minerva_missing_progress_polls.set(0);
+            set_torrent_groups.set(Vec::new());
+            set_selected_download.set(None);
+            set_show_file_picker.set(false);
+            set_torrent_groups_request_key.set(None);
         }
     });
+
+    Effect::new(move || {
+        if let Some(g) = display_game.get() {
+            let expected_game_id = g.id.clone();
+            let video_title = g.title.clone();
+            let video_platform = g.platform.clone();
+            let video_db_id = g.database_id;
+
+            set_details_ready.set(false);
+            set_details_min_delay_elapsed.set(false);
+            set_preloaded_video_state.set(None);
+
+            let expected_game_id_for_min_delay = expected_game_id.clone();
+            spawn_local(async move {
+                delay_ms(200).await;
+                let still_current = display_game
+                    .get_untracked()
+                    .as_ref()
+                    .map(|current| current.id.as_str() == expected_game_id_for_min_delay.as_str())
+                    .unwrap_or(false);
+                if still_current {
+                    set_details_min_delay_elapsed.set(true);
+                }
+            });
+
+            spawn_local(async move {
+                let video_state =
+                    preload_video_state(video_title, video_platform, video_db_id).await;
+
+                let still_current = display_game
+                    .get_untracked()
+                    .as_ref()
+                    .map(|current| current.id.as_str() == expected_game_id.as_str())
+                    .unwrap_or(false);
+                if still_current {
+                    set_preloaded_video_state.set(Some(video_state));
+                    set_details_ready.set(true);
+                }
+            });
+        }
+    });
+
+    let request_minerva_torrent_groups =
+        move |launchbox_db_id: i64,
+              game_title: String,
+              platform_id: i64,
+              open_picker_immediately: bool,
+              surface_errors: bool| {
+            let request_key =
+                minerva_torrent_groups_request_key(launchbox_db_id, &game_title, platform_id);
+            let current_request_key = torrent_groups_request_key.get_untracked();
+            let current_groups = torrent_groups.get_untracked();
+            let currently_loading = files_loading.get_untracked();
+
+            if current_request_key.as_deref() == Some(request_key.as_str()) {
+                if open_picker_immediately {
+                    set_show_file_picker.set(true);
+                }
+
+                if currently_loading || !current_groups.is_empty() {
+                    return;
+                }
+            }
+
+            set_torrent_groups_request_key.set(Some(request_key.clone()));
+            set_files_loading.set(true);
+            set_selected_download.set(None);
+
+            if open_picker_immediately {
+                set_show_file_picker.set(true);
+                set_import_error.set(None);
+            }
+
+            let region_priority = effective_download_region_priority(&[]);
+            spawn_local(async move {
+                let result = load_minerva_torrent_groups(
+                    launchbox_db_id,
+                    game_title,
+                    platform_id,
+                    region_priority,
+                )
+                .await;
+
+                if torrent_groups_request_key.get_untracked().as_deref()
+                    != Some(request_key.as_str())
+                {
+                    return;
+                }
+
+                match result {
+                    Ok(groups) if groups.is_empty() => {
+                        set_torrent_groups.set(Vec::new());
+                        if surface_errors {
+                            set_import_error.set(Some(
+                                "No matching ROM files were found in Minerva torrents for this platform."
+                                    .to_string(),
+                            ));
+                            set_show_file_picker.set(false);
+                        }
+                    }
+                    Ok(groups) => {
+                        set_torrent_groups.set(groups);
+                    }
+                    Err(e) => {
+                        set_torrent_groups.set(Vec::new());
+                        set_torrent_groups_request_key.set(None);
+                        if surface_errors {
+                            set_import_error.set(Some(e));
+                            set_show_file_picker.set(false);
+                        }
+                    }
+                }
+
+                set_files_loading.set(false);
+            });
+        };
 
     // Load per-game emulator preference
     Effect::new(move || {
@@ -161,6 +548,29 @@ pub fn GameDetails(
                     set_game_emulator_pref.set(game_pref);
                 }
             });
+        }
+    });
+
+    // Avoid flashing the import check hint for fast resolves.
+    Effect::new(move || {
+        if import_state_loading.get() {
+            set_show_import_loading_hint.set(false);
+            spawn_local(async move {
+                wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
+                    web_sys::window()
+                        .unwrap()
+                        .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 250)
+                        .unwrap();
+                }))
+                .await
+                .unwrap();
+
+                if import_state_loading.get_untracked() {
+                    set_show_import_loading_hint.set(true);
+                }
+            });
+        } else {
+            set_show_import_loading_hint.set(false);
         }
     });
 
@@ -233,14 +643,27 @@ pub fn GameDetails(
                                 return;
                             }
                             web_sys::console::log_1(&format!("Got {} variants", vars.len()).into());
-                            // Prefer first variant only when it has a valid LaunchBox DB id.
-                            // Some region-specific rows carry no launchbox_db_id (0) and break
-                            // import/file lookup if auto-selected.
-                            let preferred_variant_id = vars.first().map(|v| v.id.clone());
                             set_variants.set(vars);
 
-                            if let Some(preferred_id) = preferred_variant_id {
-                                if preferred_id != game_id {
+                            if !is_current_game() {
+                                return;
+                            }
+                            set_selected_variant.set(Some(game_id.clone()));
+
+                            // Only swap away from the clicked row when it has no usable DB id.
+                            if db_id <= 0 {
+                                let fallback_variant_id = variants
+                                    .get_untracked()
+                                    .iter()
+                                    .find_map(|variant| {
+                                        if variant.id != game_id {
+                                            Some(variant.id.clone())
+                                        } else {
+                                            None
+                                        }
+                                    });
+
+                                if let Some(preferred_id) = fallback_variant_id {
                                     match tauri::get_game_by_uuid(preferred_id.clone()).await {
                                         Ok(Some(preferred_game))
                                             if preferred_game.database_id > 0 =>
@@ -251,24 +674,9 @@ pub fn GameDetails(
                                             set_selected_variant.set(Some(preferred_id.clone()));
                                             set_pending_variant_load.set(Some(preferred_id));
                                         }
-                                        _ => {
-                                            if !is_current_game() {
-                                                return;
-                                            }
-                                            set_selected_variant.set(Some(game_id.clone()));
-                                        }
+                                        _ => {}
                                     }
-                                } else {
-                                    if !is_current_game() {
-                                        return;
-                                    }
-                                    set_selected_variant.set(Some(game_id.clone()));
                                 }
-                            } else {
-                                if !is_current_game() {
-                                    return;
-                                }
-                                set_selected_variant.set(Some(game_id.clone()));
                             }
                         }
                         Err(_) => {
@@ -307,7 +715,8 @@ pub fn GameDetails(
                 }
                 // Check minerva ROM availability
                 {
-                    if let Ok(rom) = tauri::get_minerva_rom_for_game(db_id, Some(platform_id)).await {
+                    if let Ok(rom) = tauri::get_minerva_rom_for_game(db_id, Some(platform_id)).await
+                    {
                         if is_current_game() {
                             set_minerva_rom.set(rom);
                         }
@@ -329,7 +738,10 @@ pub fn GameDetails(
                 loop {
                     match tauri::get_minerva_download_progress(jid_clone.clone()).await {
                         Ok(Some(progress)) => {
-                            let done = progress.status == "completed" || progress.status == "failed" || progress.status == "cancelled";
+                            set_minerva_missing_progress_polls.set(0);
+                            let done = progress.status == "completed"
+                                || progress.status == "failed"
+                                || progress.status == "cancelled";
                             set_minerva_progress.set(Some(progress.clone()));
                             if done {
                                 set_minerva_downloading.set(false);
@@ -337,27 +749,113 @@ pub fn GameDetails(
                                 if progress.status == "completed" {
                                     // Refresh game file
                                     if let Some(g) = game.get_untracked() {
-                                        if let Ok(Some(file)) = tauri::get_game_file(g.database_id).await {
+                                        if let Ok(Some(file)) =
+                                            tauri::get_game_file(g.database_id).await
+                                        {
                                             set_game_file.set(Some(file));
                                         }
                                     }
+                                } else {
+                                    set_import_error.set(Some(progress.status_message.clone()));
                                 }
                                 break;
                             }
                         }
                         Ok(None) => {
-                            set_minerva_downloading.set(false);
-                            set_minerva_job_id.set(None);
-                            break;
+                            let missing_polls = minerva_missing_progress_polls
+                                .get_untracked()
+                                .saturating_add(1);
+                            set_minerva_missing_progress_polls.set(missing_polls);
+                            if missing_polls >= 3 {
+                                set_minerva_downloading.set(false);
+                                set_minerva_job_id.set(None);
+                                if let Some(last_progress) = minerva_progress.get_untracked() {
+                                    if last_progress.status != "completed" {
+                                        set_import_error.set(Some(last_progress.status_message));
+                                    }
+                                } else {
+                                    set_import_error.set(Some(
+                                        "Download stopped unexpectedly before Lunchbox received a final status."
+                                            .to_string(),
+                                    ));
+                                }
+                                break;
+                            }
                         }
-                        Err(_) => break,
+                        Err(err) => {
+                            let err_string = err.to_string();
+                            if is_transient_progress_fetch_error(&err_string) {
+                                let missing_polls = minerva_missing_progress_polls
+                                    .get_untracked()
+                                    .saturating_add(1);
+                                set_minerva_missing_progress_polls.set(missing_polls);
+
+                                if let Some(mut last_progress) = minerva_progress.get_untracked() {
+                                    last_progress.status_message =
+                                        "Waiting for Lunchbox backend to reconnect...".to_string();
+                                    set_minerva_progress.set(Some(last_progress));
+                                }
+
+                                if missing_polls >= 15 {
+                                    set_minerva_downloading.set(false);
+                                    set_minerva_job_id.set(None);
+                                    set_import_error.set(Some(format!(
+                                        "Lost connection while checking download progress: {err_string}"
+                                    )));
+                                    break;
+                                }
+                            } else {
+                                set_minerva_downloading.set(false);
+                                set_minerva_job_id.set(None);
+                                set_import_error
+                                    .set(Some(format!("Failed to read download progress: {err_string}")));
+                                break;
+                            }
+                        }
                     }
-                    wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
-                        web_sys::window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 1000).unwrap();
-                    })).await.unwrap();
+                    wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(
+                        &mut |resolve, _| {
+                            web_sys::window()
+                                .unwrap()
+                                .set_timeout_with_callback_and_timeout_and_arguments_0(
+                                    &resolve, 1000,
+                                )
+                                .unwrap();
+                        },
+                    ))
+                    .await
+                    .unwrap();
                 }
             });
         }
+    });
+
+    // Preload Minerva torrent matches when the details panel resolves a Minerva source.
+    Effect::new(move || {
+        let Some(current_game) = display_game.get() else {
+            return;
+        };
+
+        if minerva_rom.get().is_none() {
+            return;
+        }
+
+        let request_key = minerva_torrent_groups_request_key(
+            current_game.database_id,
+            &current_game.display_title,
+            current_game.platform_id,
+        );
+        if torrent_groups_request_key.get_untracked().as_deref() == Some(request_key.as_str()) {
+            return;
+        }
+
+        request_minerva_torrent_groups(
+            current_game.database_id,
+            current_game.display_title.clone(),
+            current_game.platform_id,
+            false,
+            false,
+        );
     });
 
     // Load variant game when pending_variant_load changes
@@ -393,11 +891,23 @@ pub fn GameDetails(
         }
     });
 
-
     view! {
         <Show when=move || display_game.get().is_some()>
             {move || {
                 display_game.get().map(|g| {
+                    let show_details_panel =
+                        details_min_delay_elapsed.get() && details_ready.get();
+
+                    if !show_details_panel {
+                        return view! {
+                            <div
+                                class="game-details-overlay game-details-overlay-pending"
+                                on:click=move |_| on_close.set(None)
+                            ></div>
+                        }
+                        .into_any();
+                    }
+
                     let display_title = g.display_title.clone();
                     let first_char = display_title.chars().next().unwrap_or('?').to_string();
                     let platform = g.platform.clone();
@@ -614,54 +1124,57 @@ pub fn GameDetails(
                                                         if let Some(jid) = minerva_job_id.get() {
                                                             set_minerva_downloading.set(false);
                                                             set_minerva_job_id.set(None);
+                                                            set_minerva_missing_progress_polls.set(0);
                                                             spawn_local(async move {
                                                                 let _ = tauri::cancel_minerva_download(jid).await;
                                                             });
                                                         } else {
                                                             set_minerva_downloading.set(false);
+                                                            set_minerva_missing_progress_polls.set(0);
                                                         }
                                                     }>"Cancel"</button>
                                                 </div>
                                             </Show>
 
                                             // Import prompt and buttons when no file and not importing
-                                            <Show when=move || import_state_loading.get() && import_job_id.get().is_none()>
+                                            <Show when=move || {
+                                                import_state_loading.get()
+                                                    && show_import_loading_hint.get()
+                                                    && import_job_id.get().is_none()
+                                                    && game_file.get().is_none()
+                                                    && !display_game.get().map(|g| g.has_game_file).unwrap_or(false)
+                                            }>
                                                 <div class="import-status-hint">"Checking imported file…"</div>
                                             </Show>
 
-                                            <Show when=move || !import_state_loading.get() && game_file.get().is_none() && import_job_id.get().is_none() && !minerva_downloading.get()>
+                                            <Show when=move || {
+                                                !import_state_loading.get()
+                                                    && game_file.get().is_none()
+                                                    && !display_game.get().map(|g| g.has_game_file).unwrap_or(false)
+                                                    && import_job_id.get().is_none()
+                                                    && !minerva_downloading.get()
+                                            }>
                                                 // Download button (Minerva torrent) — opens file picker
                                                 <Show when=move || !show_file_picker.get()>
                                                     <button
                                                         class="import-btn-action minerva-download-btn"
-                                                        disabled=move || files_loading.get() || minerva_rom.get().is_none()
+                                                        disabled=move || minerva_rom.get().is_none()
                                                         title=move || if minerva_rom.get().is_none() { "No minerva.db — run lunchbox-cli minerva-build first".to_string() } else { "Download ROM via torrent".to_string() }
                                                         on:click=move |_| {
-                                                            if let Some(rom) = minerva_rom.get() {
-                                                                if let Some(g) = game.get_untracked() {
-                                                                    let url = rom.torrent_url.clone();
-                                                                    let title = g.display_title.clone();
-                                                                    set_files_loading.set(true);
-                                                                    set_torrent_files.set(Vec::new());
-                                                                    set_selected_file_index.set(None);
-                                                                    spawn_local(async move {
-                                                                        match tauri::list_torrent_files(url, title).await {
-                                                                            Ok(files) => {
-                                                                                if let Some(best) = files.first() {
-                                                                                    set_selected_file_index.set(Some(best.index));
-                                                                                }
-                                                                                set_torrent_files.set(files);
-                                                                                set_show_file_picker.set(true);
-                                                                            }
-                                                                            Err(e) => set_import_error.set(Some(e)),
-                                                                        }
-                                                                        set_files_loading.set(false);
-                                                                    });
+                                                            if minerva_rom.get().is_some() {
+                                                                if let Some(g) = display_game.get_untracked() {
+                                                                    request_minerva_torrent_groups(
+                                                                        g.database_id,
+                                                                        g.display_title.clone(),
+                                                                        g.platform_id,
+                                                                        true,
+                                                                        true,
+                                                                    );
                                                                 }
                                                             }
                                                         }
                                                     >
-                                                        {move || if files_loading.get() { "Loading..." } else { "Download" }}
+                                                        "Download"
                                                     </button>
                                                     <button
                                                         class="import-btn-action"
@@ -703,115 +1216,167 @@ pub fn GameDetails(
                                                     >"Import"</button>
                                                 </Show>
 
-                                                // File picker dialog
-                                                <Show when=move || show_file_picker.get()>
-                                                    <div class="file-picker-dialog">
-                                                        <div class="file-picker-header">
-                                                            <h4>"Select ROM to download"</h4>
-                                                            <button class="file-picker-close" on:click=move |_| set_show_file_picker.set(false)>"X"</button>
-                                                        </div>
-                                                        <div class="file-picker-list">
-                                                            {move || torrent_files.get().into_iter().map(|file| {
-                                                                let idx = file.index;
-                                                                let name = file.filename.clone();
-                                                                let size_mb = file.size as f64 / (1024.0 * 1024.0);
-                                                                let score = file.match_score;
-                                                                let region = file.region.clone().unwrap_or_default();
-                                                                let is_selected = move || selected_file_index.get() == Some(idx);
-                                                                view! {
+                                            </Show>
+
+                                            // File picker dialog
+                                            <Show when=move || show_file_picker.get()>
+                                                <div class="file-picker-dialog">
+                                                    <div class="file-picker-header">
+                                                        <h4>"Select Minerva download"</h4>
+                                                        <button class="file-picker-close" on:click=move |_| set_show_file_picker.set(false)>"X"</button>
+                                                    </div>
+                                                    <div class="import-status-hint">
+                                                        "Each Minerva torrent shows a highlighted whole-torrent row first, followed by matching game files. Whole-torrent rows download the full set to your torrent library; file rows only download the selected game."
+                                                    </div>
+                                                    <div class="file-picker-list">
+                                                        <Show when=move || files_loading.get() && torrent_groups.get().is_empty()>
+                                                            <div class="import-status-hint">"Loading Minerva download options..."</div>
+                                                        </Show>
+                                                        {move || torrent_groups.get().into_iter().map(|group| {
+                                                            let torrent_url = group.rom.torrent_url.clone();
+                                                            let collection = group.rom.collection.clone();
+                                                            let minerva_platform = group.rom.minerva_platform.clone();
+                                                            let rom_count = group.rom.rom_count;
+                                                            let match_count = group.files.len();
+                                                            let whole_torrent_selection = MinervaDownloadSelection::WholeTorrent {
+                                                                torrent_url: torrent_url.clone(),
+                                                                representative_file_index: group.files.first().map(|file| file.index),
+                                                            };
+                                                            let whole_torrent_selected = {
+                                                                let whole_torrent_selection = whole_torrent_selection.clone();
+                                                                move || selected_download.get() == Some(whole_torrent_selection.clone())
+                                                            };
+                                                            let whole_torrent_click = whole_torrent_selection.clone();
+
+                                                            view! {
+                                                                <div class="file-picker-group">
+                                                                    <div class="file-picker-group-label">
+                                                                        {format!("{collection} / {minerva_platform}")}
+                                                                    </div>
                                                                     <div
-                                                                        class="file-picker-row"
-                                                                        class:selected=is_selected
-                                                                        on:click=move |_| set_selected_file_index.set(Some(idx))
+                                                                        class="file-picker-row file-picker-row-torrent"
+                                                                        class:selected=whole_torrent_selected
+                                                                        on:click=move |_| set_selected_download.set(Some(whole_torrent_click.clone()))
                                                                     >
-                                                                        <div class="file-picker-name">{name}</div>
+                                                                        <div class="file-picker-name">
+                                                                            <span class="file-picker-type-badge">"Full Torrent"</span>
+                                                                            <span class="file-picker-type-title">"Download Full Torrent"</span>
+                                                                        </div>
                                                                         <div class="file-picker-meta">
-                                                                            <span class="file-picker-size">{format!("{size_mb:.1} MB")}</span>
-                                                                            {(!region.is_empty()).then(|| view! {
-                                                                                <span class="file-picker-region">{region}</span>
-                                                                            })}
-                                                                            {(score > 0.5).then(|| view! {
-                                                                                <span class="file-picker-match">{format!("{:.0}% match", score * 100.0)}</span>
-                                                                            })}
+                                                                            <span class="file-picker-size">{format!("{rom_count} ROMs total")}</span>
+                                                                            <span class="file-picker-match">{format!("{match_count} matching file(s)")}</span>
                                                                         </div>
                                                                     </div>
-                                                                }
-                                                            }).collect::<Vec<_>>()}
-                                                        </div>
-                                                        <div class="file-picker-actions">
-                                                            <button
-                                                                class="import-btn-action"
-                                                                disabled=move || selected_file_index.get().is_none()
-                                                                on:click=move |_| {
-                                                                    if let (Some(rom), Some(file_idx)) = (minerva_rom.get(), selected_file_index.get()) {
-                                                                        if let Some(g) = game.get_untracked() {
-                                                                            let torrent_url = rom.torrent_url.clone();
-                                                                            let db_id = g.database_id;
-                                                                            let title = g.display_title.clone();
-                                                                            let platform = stored_platform.get_value();
-                                                                            set_show_file_picker.set(false);
-                                                                            set_minerva_downloading.set(true);
-                                                                            set_minerva_progress.set(None);
-                                                                            spawn_local(async move {
-                                                                                // Check if torrent client is configured
-                                                                                // Check if torrent client is configured
-                                                                                match tauri::get_settings().await {
-                                                                                    Ok(settings) => {
-                                                                                        let client = &settings.torrent.client;
-                                                                                        if client == "auto" || client.is_empty() {
-                                                                                            set_minerva_downloading.set(false);
-                                                                                            if let Some(setter) = set_show_settings {
-                                                                                                setter.set(true);
-                                                                                            }
-                                                                                            set_import_error.set(Some("Please select a torrent client in Settings > Downloads / Torrent first.".to_string()));
-                                                                                            return;
-                                                                                        }
-                                                                                    }
-                                                                                    Err(e) => {
-                                                                                        set_minerva_downloading.set(false);
-                                                                                        set_import_error.set(Some(format!("Failed to check settings: {e}")));
-                                                                                        return;
-                                                                                    }
-                                                                                }
-                                                                                // Test the configured client
-                                                                                match tauri::test_torrent_connection().await {
-                                                                                    Ok(result) if !result.success => {
-                                                                                        set_minerva_downloading.set(false);
-                                                                                        if let Some(setter) = set_show_settings {
-                                                                                            setter.set(true);
-                                                                                        }
-                                                                                        set_import_error.set(Some(format!("Torrent client error: {}", result.message)));
-                                                                                        return;
-                                                                                    }
-                                                                                    Err(e) => {
-                                                                                        set_minerva_downloading.set(false);
-                                                                                        if let Some(setter) = set_show_settings {
-                                                                                            setter.set(true);
-                                                                                        }
-                                                                                        set_import_error.set(Some(format!("Torrent client error: {e}")));
-                                                                                        return;
-                                                                                    }
-                                                                                    _ => {}
-                                                                                }
-                                                                                match tauri::start_minerva_download(torrent_url, file_idx, db_id, title, platform).await {
-                                                                                    Ok(job) => set_minerva_job_id.set(Some(job.id)),
-                                                                                    Err(e) => {
-                                                                                        set_minerva_downloading.set(false);
-                                                                                        set_import_error.set(Some(e));
-                                                                                    }
-                                                                                }
-                                                                            });
+                                                                    {group.files.into_iter().map(|file| {
+                                                                        let idx = file.index;
+                                                                        let name = file_picker_display_name(&file.filename);
+                                                                        let size_mb = file.size as f64 / (1024.0 * 1024.0);
+                                                                        let score = file.match_score;
+                                                                        let region = file.region.clone().unwrap_or_default();
+                                                                        let selection = MinervaDownloadSelection::File {
+                                                                            torrent_url: torrent_url.clone(),
+                                                                            file_index: idx,
+                                                                        };
+                                                                        let is_selected = {
+                                                                            let selection = selection.clone();
+                                                                            move || selected_download.get() == Some(selection.clone())
+                                                                        };
+                                                                        let click_selection = selection.clone();
+                                                                        view! {
+                                                                            <div
+                                                                                class="file-picker-row file-picker-row-file"
+                                                                                class:selected=is_selected
+                                                                                on:click=move |_| set_selected_download.set(Some(click_selection.clone()))
+                                                                            >
+                                                                                <div class="file-picker-name">{name}</div>
+                                                                                <div class="file-picker-meta">
+                                                                                    <span class="file-picker-size">{format!("{size_mb:.1} MB")}</span>
+                                                                                    {(!region.is_empty()).then(|| view! {
+                                                                                        <span class="file-picker-region">{region}</span>
+                                                                                    })}
+                                                                                    {(score > 0.5).then(|| view! {
+                                                                                        <span class="file-picker-match">{format!("{:.0}% match", score * 100.0)}</span>
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
                                                                         }
-                                                                    }
-                                                                }
-                                                            >"Download Selected"</button>
-                                                            <button
-                                                                class="cancel-import-btn"
-                                                                on:click=move |_| set_show_file_picker.set(false)
-                                                            >"Cancel"</button>
-                                                        </div>
+                                                                    }).collect::<Vec<_>>()}
+                                                                </div>
+                                                            }
+                                                        }).collect::<Vec<_>>()}
                                                     </div>
-                                                </Show>
+                                                    <div class="file-picker-actions">
+                                                        <button
+                                                            class="import-btn-action"
+                                                            disabled=move || selected_download.get().is_none()
+                                                            on:click=move |_| {
+                                                                if let (Some(selection), Some(g)) = (selected_download.get(), display_game.get_untracked()) {
+                                                                    let db_id = g.database_id;
+                                                                    let title = g.display_title.clone();
+                                                                    let platform = stored_platform.get_value();
+                                                                    let (torrent_url, file_index, download_mode) = match selection {
+                                                                        MinervaDownloadSelection::WholeTorrent { torrent_url, representative_file_index } => {
+                                                                            (torrent_url, representative_file_index, tauri::MinervaDownloadMode::FullTorrent)
+                                                                        }
+                                                                        MinervaDownloadSelection::File { torrent_url, file_index } => {
+                                                                            (torrent_url, Some(file_index), tauri::MinervaDownloadMode::GameOnly)
+                                                                        }
+                                                                    };
+                                                                    set_show_file_picker.set(false);
+                                                                    set_minerva_downloading.set(true);
+                                                                    set_minerva_progress.set(None);
+                                                                    set_minerva_missing_progress_polls.set(0);
+                                                                    set_import_error.set(None);
+                                                                    spawn_local(async move {
+                                                                        match tauri::test_torrent_connection().await {
+                                                                            Ok(result) if !result.success => {
+                                                                                set_minerva_downloading.set(false);
+                                                                                if let Some(setter) = set_show_settings {
+                                                                                    setter.set(true);
+                                                                                }
+                                                                                set_import_error.set(Some(format!("qBittorrent error: {}", result.message)));
+                                                                                return;
+                                                                            }
+                                                                            Err(e) => {
+                                                                                set_minerva_downloading.set(false);
+                                                                                if let Some(setter) = set_show_settings {
+                                                                                    setter.set(true);
+                                                                                }
+                                                                                set_import_error.set(Some(format!("qBittorrent error: {e}")));
+                                                                                return;
+                                                                            }
+                                                                            _ => {}
+                                                                        }
+                                                                        match tauri::start_minerva_download(
+                                                                            torrent_url,
+                                                                            file_index,
+                                                                            db_id,
+                                                                            title,
+                                                                            platform,
+                                                                            download_mode,
+                                                                        ).await {
+                                                                            Ok(job) => set_minerva_job_id.set(Some(job.id)),
+                                                                            Err(e) => {
+                                                                                set_minerva_downloading.set(false);
+                                                                                set_import_error.set(Some(e));
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                }
+                                                            }
+                                                        >
+                                                            {move || match selected_download.get() {
+                                                                Some(MinervaDownloadSelection::WholeTorrent { .. }) => "Download Full Torrent",
+                                                                Some(MinervaDownloadSelection::File { .. }) => "Download Selected File",
+                                                                None => "Choose a Download",
+                                                            }}
+                                                        </button>
+                                                        <button
+                                                            class="cancel-import-btn"
+                                                            on:click=move |_| set_show_file_picker.set(false)
+                                                        >"Cancel"</button>
+                                                    </div>
+                                                </div>
                                             </Show>
 
                                             // Import error message
@@ -825,7 +1390,11 @@ pub fn GameDetails(
                                             </Show>
 
                                             // Play button only when game file exists and not importing
-                                            <Show when=move || !import_state_loading.get() && game_file.get().is_some() && import_job_id.get().is_none()>
+                                            <Show when=move || {
+                                                (game_file.get().is_some()
+                                                    || display_game.get().map(|g| g.has_game_file).unwrap_or(false))
+                                                    && import_job_id.get().is_none()
+                                            }>
                                                 <button class="play-btn" on:click=move |_| {
                                                     let platform = stored_platform.get_value();
                                                     set_emulators_loading.set(true);
@@ -841,9 +1410,25 @@ pub fn GameDetails(
                                                         set_emulators_loading.set(false);
                                                     });
                                                 }>"Play"</button>
-                                                <span class="game-details-ready-badge" title="ROM downloaded - ready to play">
-                                                    "Ready to Play"
-                                                </span>
+                                                <Show when=move || minerva_rom.get().is_some()>
+                                                    <button
+                                                        class="select-another-file-btn"
+                                                        title="Pick a different Minerva file for this game"
+                                                        on:click=move |_| {
+                                                            if let Some(g) = display_game.get_untracked() {
+                                                                request_minerva_torrent_groups(
+                                                                    g.database_id,
+                                                                    g.display_title.clone(),
+                                                                    g.platform_id,
+                                                                    true,
+                                                                    true,
+                                                                );
+                                                            }
+                                                        }
+                                                    >
+                                                        "Select Another File"
+                                                    </button>
+                                                </Show>
                                             </Show>
 
                                             <button
@@ -875,6 +1460,7 @@ pub fn GameDetails(
                                     game_title=g.title.clone()
                                     platform=g.platform.clone()
                                     launchbox_db_id=db_id
+                                    initial_state=preloaded_video_state.get().unwrap_or(VideoState::Initial)
                                 />
 
                                 // Media carousel with arrows, full width
@@ -889,75 +1475,13 @@ pub fn GameDetails(
                                     <h2>"Description"</h2>
                                     <p>{description}</p>
                                 </div>
-
-                                // Variants section
-                                <VariantsSection
-                                    variants=variants
-                                    selected_variant=selected_variant
-                                    set_selected_variant=set_pending_variant_load
-                                />
                             </div>
                         </div>
                     }
+                    .into_any()
                 })
             }}
         </Show>
-    }
-}
-
-#[component]
-fn VariantsSection(
-    variants: ReadSignal<Vec<GameVariant>>,
-    selected_variant: ReadSignal<Option<String>>,
-    set_selected_variant: WriteSignal<Option<String>>,
-) -> impl IntoView {
-    // Use the actual variants list length, not the game's variant_count
-    // This prevents flashing when switching between variants
-    view! {
-        <Show when=move || { variants.get().len() > 1 }>
-            <div class="game-variants-section">
-                <h2>"Versions"</h2>
-                <p class="variants-hint">"Select a version to play:"</p>
-                <div class="variants-list">
-                    <For
-                        each=move || variants.get()
-                        key=|v| v.id.clone()
-                        let:variant
-                    >
-                        <VariantItem
-                            variant=variant
-                            selected_variant=selected_variant
-                            set_selected_variant=set_selected_variant
-                        />
-                    </For>
-                </div>
-            </div>
-        </Show>
-    }
-}
-
-#[component]
-fn VariantItem(
-    variant: GameVariant,
-    selected_variant: ReadSignal<Option<String>>,
-    set_selected_variant: WriteSignal<Option<String>>,
-) -> impl IntoView {
-    let variant_id = variant.id.clone();
-    let variant_title = variant.title.clone();
-    let variant_region = variant.region.clone();
-    let variant_id_for_click = variant_id.clone();
-
-    view! {
-        <button
-            class="variant-item"
-            class:selected=move || selected_variant.get().as_ref() == Some(&variant_id)
-            on:click=move |_| set_selected_variant.set(Some(variant_id_for_click.clone()))
-        >
-            <span class="variant-title">{variant_title}</span>
-            {variant_region.map(|r| view! {
-                <span class="variant-region">{r}</span>
-            })}
-        </button>
     }
 }
 
@@ -1161,6 +1685,28 @@ fn EmulatorPickerModal(
     let (progress_state, set_progress_state) = signal::<Option<String>>(None);
     // Track error state
     let (error_state, set_error_state) = signal::<Option<String>>(None);
+    // Track success state
+    let (success_state, set_success_state) = signal::<Option<String>>(None);
+
+    let show_launch_success = move |emulator_name: String| {
+        set_progress_state.set(None);
+        set_error_state.set(None);
+        set_success_state.set(Some(format!(
+            "Launched {emulator_name}. If no window surfaced, check another workspace or an existing emulator window."
+        )));
+        spawn_local(async move {
+            wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
+                web_sys::window()
+                    .unwrap()
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 1800)
+                    .unwrap();
+            }))
+            .await
+            .ok();
+            set_success_state.set(None);
+            set_show_emulator_picker.set(false);
+        });
+    };
 
     // Load current preference when modal opens
     Effect::new(move || {
@@ -1214,6 +1760,12 @@ fn EmulatorPickerModal(
                                 <span>{err}</span>
                                 <button class="error-dismiss" on:click=move |_| set_error_state.set(None)>"Dismiss"</button>
                             </div>
+                        })}
+                    </Show>
+
+                    <Show when=move || success_state.get().is_some()>
+                        {move || success_state.get().map(|msg| view! {
+                            <div class="emulator-pref-indicator">{msg}</div>
                         })}
                     </Show>
 
@@ -1281,8 +1833,7 @@ fn EmulatorPickerModal(
                                                     ).await {
                                                         Ok(result) => {
                                                             if result.success {
-                                                                set_progress_state.set(None);
-                                                                set_show_emulator_picker.set(false);
+                                                                show_launch_success(emulator_name.clone());
                                                             } else {
                                                                 set_progress_state.set(None);
                                                                 set_error_state.set(result.error);
@@ -1313,8 +1864,7 @@ fn EmulatorPickerModal(
                                                             ).await {
                                                                 Ok(result) => {
                                                                     if result.success {
-                                                                        set_progress_state.set(None);
-                                                                        set_show_emulator_picker.set(false);
+                                                                        show_launch_success(emulator_for_install.clone());
                                                                     } else {
                                                                         set_progress_state.set(None);
                                                                         set_error_state.set(result.error);
@@ -1358,8 +1908,7 @@ fn EmulatorPickerModal(
                                                     ).await {
                                                         Ok(result) => {
                                                             if result.success {
-                                                                set_progress_state.set(None);
-                                                                set_show_emulator_picker.set(false);
+                                                                show_launch_success(emulator_name.clone());
                                                             } else {
                                                                 set_progress_state.set(None);
                                                                 set_error_state.set(result.error);
@@ -1388,8 +1937,7 @@ fn EmulatorPickerModal(
                                                             ).await {
                                                                 Ok(result) => {
                                                                     if result.success {
-                                                                        set_progress_state.set(None);
-                                                                        set_show_emulator_picker.set(false);
+                                                                        show_launch_success(emu_for_install.clone());
                                                                     } else {
                                                                         set_progress_state.set(None);
                                                                         set_error_state.set(result.error);
@@ -1433,8 +1981,7 @@ fn EmulatorPickerModal(
                                                     ).await {
                                                         Ok(result) => {
                                                             if result.success {
-                                                                set_progress_state.set(None);
-                                                                set_show_emulator_picker.set(false);
+                                                                show_launch_success(emulator_name.clone());
                                                             } else {
                                                                 set_progress_state.set(None);
                                                                 set_error_state.set(result.error);
@@ -1463,8 +2010,7 @@ fn EmulatorPickerModal(
                                                             ).await {
                                                                 Ok(result) => {
                                                                     if result.success {
-                                                                        set_progress_state.set(None);
-                                                                        set_show_emulator_picker.set(false);
+                                                                        show_launch_success(emu_for_install.clone());
                                                                     } else {
                                                                         set_progress_state.set(None);
                                                                         set_error_state.set(result.error);
@@ -1549,4 +2095,3 @@ fn EmulatorPickerModal(
         </div>
     }
 }
-

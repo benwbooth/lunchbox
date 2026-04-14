@@ -1076,6 +1076,48 @@ impl EmuMoviesClient {
         Ok(output_path)
     }
 
+    /// Check whether a matching video exists for a game without downloading it.
+    pub fn has_video_match(&self, platform: &str, game_name: &str) -> Result<bool> {
+        let system_folder = get_emumovies_system_folder(platform)
+            .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
+
+        let video_folders = self.find_video_folders(platform)?;
+        if video_folders.is_empty() {
+            return Ok(false);
+        }
+
+        for (source_order, video_folder) in video_folders.iter().enumerate() {
+            let index = match self.get_video_index(video_folder) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to build video index for {} during availability probe: {}",
+                        video_folder,
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            if let Some((_, kind, score)) = find_best_video_match(index.as_slice(), game_name) {
+                let folder_rank =
+                    video_folder_match_rank(video_folder, system_folder).unwrap_or(2);
+                tracing::info!(
+                    "Video availability probe matched '{}' in {} using {:?} match (score {:.2}, folder_rank={}, source_order={})",
+                    game_name,
+                    video_folder,
+                    kind,
+                    score,
+                    folder_rank,
+                    source_order
+                );
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
     /// Download media to the unified cache structure
     pub fn download_to_path(
         &self,

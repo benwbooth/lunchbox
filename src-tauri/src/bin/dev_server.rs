@@ -7,7 +7,10 @@
 
 use lunchbox_lib::{
     api,
-    db::{self, APP_DATA_DIR, EMULATORS_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, MINERVA_DB_NAME, USER_DB_NAME},
+    db::{
+        self, APP_DATA_DIR, EMULATORS_DB_NAME, GAMES_DB_NAME, IMAGES_DB_NAME, MINERVA_DB_NAME,
+        USER_DB_NAME,
+    },
     logging, router,
     state::AppState,
 };
@@ -227,7 +230,11 @@ async fn main() -> anyhow::Result<()> {
                     let db_url = format!("sqlite:{}?mode=ro", path.display());
                     SqlitePoolOptions::new()
                         .max_connections(4)
-                        .connect_with(SqliteConnectOptions::from_str(&db_url).unwrap().read_only(true))
+                        .connect_with(
+                            SqliteConnectOptions::from_str(&db_url)
+                                .unwrap()
+                                .read_only(true),
+                        )
                         .await
                         .ok()
                 }

@@ -118,10 +118,20 @@ fn contains_token(text: &str, token: &str) -> bool {
         .any(|part| part.eq_ignore_ascii_case(token))
 }
 
+const NON_RETAIL_RELEASE_TYPES: &[&str] = &["homebrew", "rom hack", "unlicensed"];
+const NON_RETAIL_LICENSE_TAGS: &[&str] = &[
+    "homebrew",
+    "hack",
+    "pirate",
+    "bootleg",
+    "unl",
+    "aftermarket",
+];
+
 fn is_homebrew_game(title: &str, release_type: Option<&str>) -> bool {
     if let Some(release_type) = release_type {
         let rt = release_type.trim().to_ascii_lowercase();
-        if rt == "homebrew" || rt == "rom hack" {
+        if NON_RETAIL_RELEASE_TYPES.contains(&rt.as_str()) {
             return true;
         }
     }
@@ -129,7 +139,9 @@ fn is_homebrew_game(title: &str, release_type: Option<&str>) -> bool {
     let (_, tags) = crate::tags::parse_title_tags(title);
     tags.into_iter().any(|tag| {
         tag.category == crate::tags::TagCategory::License
-            && tag.text.eq_ignore_ascii_case("homebrew")
+            && NON_RETAIL_LICENSE_TAGS
+                .iter()
+                .any(|license| tag.text.eq_ignore_ascii_case(license))
     })
 }
 
@@ -744,74 +756,11 @@ pub async fn get_game_by_uuid(
     Ok(None)
 }
 
-/// Default region priority order
-const DEFAULT_REGION_PRIORITY: &[&str] = &[
-    "", // No region (unspecified/plain version)
-    "USA",
-    "World",
-    "Japan",
-    "Europe",
-    "Australia",
-    "Canada",
-    "Brazil",
-    "Korea",
-    "Asia",
-    "China",
-    "France",
-    "Germany",
-    "Italy",
-    "Spain",
-    "United Kingdom",
-];
-
 /// Calculate region priority for sorting (lower = better)
 /// Uses custom region order if provided, falls back to default
 /// Public wrapper for use from api.rs
 pub fn region_priority_for_title(title: &str, custom_order: &[String]) -> i32 {
-    region_priority(title, custom_order)
-}
-
-/// Calculate region priority for sorting (lower = better)
-/// Uses custom region order if provided, falls back to default
-fn region_priority(title: &str, custom_order: &[String]) -> i32 {
-    let title_lower = title.to_lowercase();
-
-    // No region info (plain version) - check first
-    if !title_lower.contains("(") {
-        // If custom order includes "" (empty/plain), use its position
-        if let Some(pos) = custom_order.iter().position(|r| r.is_empty()) {
-            return pos as i32;
-        }
-        return 0; // Default: plain versions first
-    }
-
-    // Check each region in custom order (or default)
-    let regions: Vec<&str> = if custom_order.is_empty() {
-        DEFAULT_REGION_PRIORITY.to_vec()
-    } else {
-        custom_order.iter().map(|s| s.as_str()).collect()
-    };
-
-    for (priority, region) in regions.iter().enumerate() {
-        if region.is_empty() {
-            continue; // Already handled plain versions above
-        }
-        let region_lower = region.to_lowercase();
-        // Match patterns like (USA), (USA, Europe), (Europe, USA)
-        let pattern1 = format!("({})", region_lower);
-        let pattern2 = format!("({},", region_lower);
-        let pattern3 = format!(", {})", region_lower);
-
-        if title_lower.contains(&pattern1)
-            || title_lower.contains(&pattern2)
-            || title_lower.contains(&pattern3)
-        {
-            return priority as i32;
-        }
-    }
-
-    // Everything else
-    regions.len() as i32
+    crate::region_priority::priority_for_title(title, custom_order)
 }
 
 /// Get all unique regions from the games database
@@ -832,10 +781,15 @@ pub async fn get_all_regions(
 
         let mut regions: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        // Add explicit regions from region column
+        // Add explicit regions from region column, splitting combined regions
         for (region,) in explicit_regions {
             if let Some(r) = region {
-                regions.insert(r);
+                for part in r.split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        regions.insert(trimmed.to_string());
+                    }
+                }
             }
         }
 
@@ -848,31 +802,27 @@ pub async fn get_all_regions(
 
         for (title,) in titles {
             if let Some(extracted) = extract_region_from_title(&title) {
-                regions.insert(extracted);
+                for part in extracted.split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        regions.insert(trimmed.to_string());
+                    }
+                }
             }
         }
+
+        regions.insert(String::new());
 
         // Sort by default priority order first, then alphabetically for unknown regions
         let mut result: Vec<String> = regions.into_iter().collect();
         result.sort_by(|a, b| {
-            let pos_a = DEFAULT_REGION_PRIORITY
-                .iter()
-                .position(|&r| r == a.as_str());
-            let pos_b = DEFAULT_REGION_PRIORITY
-                .iter()
-                .position(|&r| r == b.as_str());
+            let pos_a = crate::region_priority::priority_for_region(Some(a.as_str()), &[]);
+            let pos_b = crate::region_priority::priority_for_region(Some(b.as_str()), &[]);
             match (pos_a, pos_b) {
-                (Some(pa), Some(pb)) => pa.cmp(&pb),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => a.cmp(b),
+                (pa, pb) if pa != pb => pa.cmp(&pb),
+                _ => a.cmp(b),
             }
         });
-
-        // Add empty string for "plain/no region" at the start if not present
-        if !result.iter().any(|r| r.is_empty()) {
-            result.insert(0, String::new());
-        }
 
         return Ok(result);
     }
@@ -931,8 +881,10 @@ pub async fn get_game_variants(
         // Convert to vec and sort by region priority (uses user's preference if set)
         let mut variants: Vec<GameVariant> = seen_titles.into_values().collect();
         variants.sort_by(|a, b| {
-            let priority_a = region_priority(&a.title, &custom_region_order);
-            let priority_b = region_priority(&b.title, &custom_region_order);
+            let priority_a =
+                crate::region_priority::priority_for_title(&a.title, &custom_region_order);
+            let priority_b =
+                crate::region_priority::priority_for_title(&b.title, &custom_region_order);
             priority_a
                 .cmp(&priority_b)
                 .then_with(|| a.title.cmp(&b.title))
@@ -2226,6 +2178,55 @@ pub async fn check_cached_video(
     }
 }
 
+/// Check whether a video is available from EmuMovies for a game without downloading it.
+#[tauri::command]
+pub async fn probe_game_video_available(
+    game_title: String,
+    platform: String,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<bool, String> {
+    const VIDEO_PROBE_TIMEOUT_SECS: u64 = 8;
+
+    let state_guard = state.read().await;
+    if state_guard.settings.emumovies.username.is_empty()
+        || state_guard.settings.emumovies.password.is_empty()
+    {
+        return Ok(false);
+    }
+
+    let cache_dir = get_cache_dir(&state_guard.settings);
+    let client = crate::images::EmuMoviesClient::new(
+        crate::images::EmuMoviesConfig {
+            username: state_guard.settings.emumovies.username.clone(),
+            password: state_guard.settings.emumovies.password.clone(),
+        },
+        cache_dir,
+    );
+
+    drop(state_guard);
+
+    let platform_for_task = platform.clone();
+    let game_title_for_task = game_title.clone();
+    let task = tokio::task::spawn_blocking(move || {
+        client.has_video_match(&platform_for_task, &game_title_for_task)
+    });
+
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(VIDEO_PROBE_TIMEOUT_SECS),
+        task,
+    )
+    .await
+    {
+        Ok(Ok(Ok(found))) => Ok(found),
+        Ok(Ok(Err(e))) => Err(e.to_string()),
+        Ok(Err(e)) => Err(format!("Video availability task failed: {}", e)),
+        Err(_) => Err(format!(
+            "Video availability check timed out after {} seconds",
+            VIDEO_PROBE_TIMEOUT_SECS
+        )),
+    }
+}
+
 /// Download a video for a game from EmuMovies
 #[tauri::command]
 pub async fn download_game_video(
@@ -2539,9 +2540,7 @@ pub async fn cancel_import(
 
 /// Check if the minerva database is available
 #[tauri::command]
-pub async fn has_minerva_db(
-    state: tauri::State<'_, AppStateHandle>,
-) -> Result<bool, String> {
+pub async fn has_minerva_db(state: tauri::State<'_, AppStateHandle>) -> Result<bool, String> {
     let state_guard = state.read().await;
     Ok(handlers::has_minerva_db(&state_guard))
 }
@@ -2597,7 +2596,7 @@ pub async fn cancel_minerva_download(
     handlers::cancel_minerva_download(&state_guard, &job_id).await
 }
 
-/// Test torrent client connection
+/// Test qBittorrent Web UI connection
 #[tauri::command]
 pub async fn test_torrent_connection(
     state: tauri::State<'_, AppStateHandle>,

@@ -7,8 +7,9 @@
 
 use crate::db::schema::EmulatorInfo;
 use serde::{Deserialize, Serialize};
-use std::io::Read;
-use std::path::PathBuf;
+use std::collections::{BTreeSet, HashSet};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// Emulator with installation status for frontend display
@@ -62,6 +63,32 @@ pub struct LaunchResult {
     pub success: bool,
     pub pid: Option<u32>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct PreparedRomLaunch {
+    rom_path: Option<String>,
+    cleanup_paths: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchiveKind {
+    Zip,
+    SevenZip,
+    Rar,
+    Tar,
+    TarGz,
+    TarBz2,
+    TarXz,
+    Gz,
+    Bz2,
+    Xz,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct ArchiveEntry {
+    path: PathBuf,
+    is_dir: bool,
 }
 
 // ============================================================================
@@ -646,7 +673,11 @@ fn get_libretro_core_url(core_name: &str) -> String {
 
 /// Spawn a command and check if it crashes immediately.
 /// Returns the pid on success, or an error message if it fails/crashes.
-fn spawn_and_verify(mut cmd: Command, name: &str) -> Result<u32, String> {
+fn spawn_and_verify(
+    mut cmd: Command,
+    name: &str,
+    cleanup_paths: Vec<PathBuf>,
+) -> Result<u32, String> {
     // Capture stdout/stderr so we can provide useful diagnostics when startup fails.
     cmd.stderr(Stdio::piped());
     cmd.stdout(Stdio::piped());
@@ -708,28 +739,33 @@ fn spawn_and_verify(mut cmd: Command, name: &str) -> Result<u32, String> {
             }
 
             tracing::error!(error = %error_msg, "Process crashed immediately");
+            cleanup_extracted_roms(&cleanup_paths);
             Err(error_msg)
         }
         Ok(None) => {
-            // Process is still running - success!
-            // Drain pipes in the background so verbose processes do not block on full buffers.
-            if let Some(mut stdout) = child.stdout.take() {
-                std::thread::spawn(move || {
-                    let mut sink = std::io::sink();
-                    let _ = std::io::copy(&mut stdout, &mut sink);
-                });
-            }
-            if let Some(mut stderr) = child.stderr.take() {
-                std::thread::spawn(move || {
-                    let mut sink = std::io::sink();
-                    let _ = std::io::copy(&mut stderr, &mut sink);
-                });
-            }
             tracing::debug!(pid = pid, "Process is running");
+            std::thread::spawn(move || {
+                if let Some(mut stdout) = child.stdout.take() {
+                    std::thread::spawn(move || {
+                        let mut sink = std::io::sink();
+                        let _ = std::io::copy(&mut stdout, &mut sink);
+                    });
+                }
+                if let Some(mut stderr) = child.stderr.take() {
+                    std::thread::spawn(move || {
+                        let mut sink = std::io::sink();
+                        let _ = std::io::copy(&mut stderr, &mut sink);
+                    });
+                }
+
+                let _ = child.wait();
+                cleanup_extracted_roms(&cleanup_paths);
+            });
             Ok(pid)
         }
         Err(e) => {
             tracing::error!(error = %e, "Failed to check process status");
+            cleanup_extracted_roms(&cleanup_paths);
             Err(format!("Failed to check {} status: {}", name, e))
         }
     }
@@ -772,6 +808,1001 @@ fn retroarch_startup_hint(output: &str) -> String {
     String::new()
 }
 
+fn cleanup_extracted_roms(paths: &[PathBuf]) {
+    for path in paths {
+        if let Err(error) = std::fs::remove_file(path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(path = %path.display(), error = %error, "Failed to remove extracted ROM");
+            }
+        }
+    }
+}
+
+fn prepare_rom_for_launch(rom_path: Option<&str>) -> Result<PreparedRomLaunch, String> {
+    let Some(rom_path) = rom_path else {
+        return Ok(PreparedRomLaunch::default());
+    };
+
+    let path = Path::new(rom_path);
+    let Some(kind) = archive_kind_for_path(path) else {
+        return Ok(PreparedRomLaunch {
+            rom_path: Some(rom_path.to_string()),
+            cleanup_paths: Vec::new(),
+        });
+    };
+
+    extract_launchable_content_from_archive(path, kind)
+}
+
+fn archive_kind_for_path(path: &Path) -> Option<ArchiveKind> {
+    let name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
+    if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        return Some(ArchiveKind::TarGz);
+    }
+    if name.ends_with(".tar.bz2") || name.ends_with(".tbz2") || name.ends_with(".tbz") {
+        return Some(ArchiveKind::TarBz2);
+    }
+    if name.ends_with(".tar.xz") || name.ends_with(".txz") {
+        return Some(ArchiveKind::TarXz);
+    }
+
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("zip") => Some(ArchiveKind::Zip),
+        Some("7z") => Some(ArchiveKind::SevenZip),
+        Some("rar") => Some(ArchiveKind::Rar),
+        Some("tar") => Some(ArchiveKind::Tar),
+        Some("gz") => Some(ArchiveKind::Gz),
+        Some("bz2") => Some(ArchiveKind::Bz2),
+        Some("xz") => Some(ArchiveKind::Xz),
+        _ => None,
+    }
+}
+
+fn extract_launchable_content_from_archive(
+    archive_path: &Path,
+    kind: ArchiveKind,
+) -> Result<PreparedRomLaunch, String> {
+    match kind {
+        ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => {
+            return extract_single_file_archive(archive_path, kind);
+        }
+        _ => {}
+    }
+
+    let parent_dir = archive_path.parent().ok_or_else(|| {
+        format!(
+            "ROM archive {} does not have a parent directory",
+            archive_path.display()
+        )
+    })?;
+
+    let entries = list_archive_entries(archive_path, kind)?;
+    let launch_entry = select_launch_entry(&entries).ok_or_else(|| {
+        format!(
+            "ROM archive {} does not contain a supported ROM file",
+            archive_path.display()
+        )
+    })?;
+    let selected_entries =
+        collect_entries_needed_for_launch(archive_path, kind, &entries, &launch_entry)?;
+    let extracted_paths =
+        extract_archive_entries(archive_path, kind, parent_dir, &selected_entries)?;
+    let launch_path = if selected_entries.len() == 1 {
+        extracted_paths[0].clone()
+    } else {
+        parent_dir.join(&launch_entry)
+    };
+
+    tracing::info!(
+        archive = %archive_path.display(),
+        launch = %launch_path.display(),
+        extracted_count = extracted_paths.len(),
+        "Prepared archive-backed ROM launch"
+    );
+
+    Ok(PreparedRomLaunch {
+        rom_path: Some(launch_path.to_string_lossy().to_string()),
+        cleanup_paths: extracted_paths,
+    })
+}
+
+fn list_archive_entries(
+    archive_path: &Path,
+    kind: ArchiveKind,
+) -> Result<Vec<ArchiveEntry>, String> {
+    match kind {
+        ArchiveKind::Zip => list_zip_entries(archive_path),
+        ArchiveKind::SevenZip | ArchiveKind::Rar => list_7z_entries(archive_path),
+        ArchiveKind::Tar | ArchiveKind::TarGz | ArchiveKind::TarBz2 | ArchiveKind::TarXz => {
+            list_tar_entries(archive_path)
+        }
+        ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => Err(format!(
+            "Archive {} should be handled as a single-file compressed ROM",
+            archive_path.display()
+        )),
+    }
+}
+
+fn list_zip_entries(archive_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+    let archive_file = std::fs::File::open(archive_path).map_err(|e| {
+        format!(
+            "Failed to open ROM archive {}: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+    let mut archive = zip::ZipArchive::new(archive_file).map_err(|e| {
+        format!(
+            "Failed to read ROM archive {}: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+
+    let mut entries = Vec::new();
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|e| {
+            format!(
+                "Failed to read entry {} from ROM archive {}: {}",
+                index,
+                archive_path.display(),
+                e
+            )
+        })?;
+        let Some(enclosed) = entry.enclosed_name() else {
+            continue;
+        };
+        if enclosed.as_os_str().is_empty() {
+            continue;
+        }
+        entries.push(ArchiveEntry {
+            path: enclosed.to_path_buf(),
+            is_dir: entry.is_dir(),
+        });
+    }
+    Ok(entries)
+}
+
+fn list_tar_entries(archive_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+    let output = Command::new("tar")
+        .arg("-tf")
+        .arg(archive_path)
+        .output()
+        .map_err(|e| {
+            format!(
+                "Failed to list archive {} with tar: {}",
+                archive_path.display(),
+                e
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to list archive {} with tar: {}",
+            archive_path.display(),
+            stderr.trim()
+        ));
+    }
+
+    let mut entries = Vec::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let is_dir = trimmed.ends_with('/');
+        let raw = trimmed.trim_end_matches('/');
+        if let Some(path) = normalize_archive_relative_path(Path::new(raw)) {
+            entries.push(ArchiveEntry { path, is_dir });
+        }
+    }
+    Ok(entries)
+}
+
+fn list_7z_entries(archive_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+    let output = Command::new("7z")
+        .args(["l", "-slt"])
+        .arg(archive_path)
+        .output()
+        .map_err(|e| {
+            format!(
+                "Failed to list archive {} with 7z: {}",
+                archive_path.display(),
+                e
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to list archive {} with 7z: {}",
+            archive_path.display(),
+            stderr.trim()
+        ));
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut entries = Vec::new();
+    let mut current_path: Option<String> = None;
+    let mut current_is_dir = false;
+    let mut in_entries = false;
+
+    for line in text.lines() {
+        if line.starts_with("----------") {
+            in_entries = true;
+            current_path = None;
+            current_is_dir = false;
+            continue;
+        }
+        if !in_entries {
+            continue;
+        }
+        if line.is_empty() {
+            if let Some(path) = current_path.take() {
+                if let Some(path) = normalize_archive_relative_path(Path::new(&path)) {
+                    entries.push(ArchiveEntry {
+                        path,
+                        is_dir: current_is_dir,
+                    });
+                }
+            }
+            current_is_dir = false;
+            continue;
+        }
+        if let Some(path) = line.strip_prefix("Path = ") {
+            current_path = Some(path.to_string());
+            continue;
+        }
+        if let Some(folder) = line.strip_prefix("Attributes = ") {
+            current_is_dir = folder.starts_with("D_");
+            continue;
+        }
+    }
+
+    if let Some(path) = current_path.take() {
+        if let Some(path) = normalize_archive_relative_path(Path::new(&path)) {
+            entries.push(ArchiveEntry {
+                path,
+                is_dir: current_is_dir,
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
+fn normalize_archive_relative_path(path: &Path) -> Option<PathBuf> {
+    if path.as_os_str().is_empty() || path.is_absolute() {
+        return None;
+    }
+
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => normalized.push(part),
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => return None,
+        }
+    }
+
+    if normalized.as_os_str().is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn select_launch_entry(entries: &[ArchiveEntry]) -> Option<PathBuf> {
+    entries
+        .iter()
+        .filter(|entry| !entry.is_dir)
+        .filter_map(|entry| {
+            launch_entry_priority(&entry.path).map(|priority| (priority, entry.path.clone()))
+        })
+        .min_by(|(priority_a, path_a), (priority_b, path_b)| {
+            priority_a
+                .cmp(priority_b)
+                .then_with(|| {
+                    path_a
+                        .components()
+                        .count()
+                        .cmp(&path_b.components().count())
+                })
+                .then_with(|| path_a.cmp(path_b))
+        })
+        .map(|(_, path)| path)
+}
+
+fn launch_entry_priority(path: &Path) -> Option<u8> {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())?
+        .to_ascii_lowercase();
+
+    if matches!(ext.as_str(), "cue" | "m3u" | "gdi" | "ccd" | "mds") {
+        return Some(0);
+    }
+    if !crate::scanner::file_scanner::is_recognized_rom_extension(&ext) {
+        return None;
+    }
+
+    Some(match ext.as_str() {
+        "chd" | "iso" | "cso" | "gcz" | "rvz" | "wbfs" | "pbp" | "pkg" => 1,
+        "bin" | "img" | "sub" | "mdf" => 3,
+        _ => 2,
+    })
+}
+
+fn collect_entries_needed_for_launch(
+    archive_path: &Path,
+    kind: ArchiveKind,
+    entries: &[ArchiveEntry],
+    launch_entry: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    let available: HashSet<PathBuf> = entries
+        .iter()
+        .filter(|entry| !entry.is_dir)
+        .map(|entry| entry.path.clone())
+        .collect();
+    let mut selected = BTreeSet::new();
+    let mut pending = vec![launch_entry.to_path_buf()];
+
+    while let Some(entry_path) = pending.pop() {
+        if !selected.insert(entry_path.clone()) {
+            continue;
+        }
+
+        let ext = entry_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .unwrap_or_default();
+
+        match ext.as_str() {
+            "cue" => {
+                let content = read_archive_entry_text(archive_path, kind, &entry_path)?;
+                for reference in parse_cue_references(&content, &entry_path) {
+                    push_entry_reference(&available, &mut pending, &entry_path, reference)?;
+                }
+            }
+            "m3u" => {
+                let content = read_archive_entry_text(archive_path, kind, &entry_path)?;
+                for reference in parse_m3u_references(&content, &entry_path) {
+                    push_entry_reference(&available, &mut pending, &entry_path, reference)?;
+                }
+            }
+            "gdi" => {
+                let content = read_archive_entry_text(archive_path, kind, &entry_path)?;
+                for reference in parse_gdi_references(&content, &entry_path) {
+                    push_entry_reference(&available, &mut pending, &entry_path, reference)?;
+                }
+            }
+            "ccd" => {
+                add_same_stem_sidecars(&available, &mut pending, &entry_path, &["img", "sub"]);
+            }
+            "mds" => {
+                add_same_stem_sidecars(&available, &mut pending, &entry_path, &["mdf"]);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(selected.into_iter().collect())
+}
+
+fn push_entry_reference(
+    available: &HashSet<PathBuf>,
+    pending: &mut Vec<PathBuf>,
+    owner_entry: &Path,
+    reference: PathBuf,
+) -> Result<(), String> {
+    if !available.contains(&reference) {
+        return Err(format!(
+            "Archive entry {} references missing sidecar {}",
+            owner_entry.display(),
+            reference.display()
+        ));
+    }
+    pending.push(reference);
+    Ok(())
+}
+
+fn add_same_stem_sidecars(
+    available: &HashSet<PathBuf>,
+    pending: &mut Vec<PathBuf>,
+    entry_path: &Path,
+    extensions: &[&str],
+) {
+    for ext in extensions {
+        let candidate = entry_path.with_extension(ext);
+        if available.contains(&candidate) {
+            pending.push(candidate);
+        }
+    }
+}
+
+fn parse_cue_references(content: &str, entry_path: &Path) -> Vec<PathBuf> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if !trimmed.to_ascii_uppercase().starts_with("FILE ") {
+                return None;
+            }
+            let remainder = trimmed[4..].trim();
+            let file_name = if let Some(rest) = remainder.strip_prefix('"') {
+                let end = rest.find('"')?;
+                &rest[..end]
+            } else {
+                remainder.split_whitespace().next()?
+            };
+            normalize_archive_reference(entry_path, file_name)
+        })
+        .collect()
+}
+
+fn parse_m3u_references(content: &str, entry_path: &Path) -> Vec<PathBuf> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            normalize_archive_reference(entry_path, trimmed)
+        })
+        .collect()
+}
+
+fn parse_gdi_references(content: &str, entry_path: &Path) -> Vec<PathBuf> {
+    content
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            let file_name = parts.get(4)?.trim_matches('"');
+            normalize_archive_reference(entry_path, file_name)
+        })
+        .collect()
+}
+
+fn normalize_archive_reference(owner_entry: &Path, reference: &str) -> Option<PathBuf> {
+    let base_dir = owner_entry.parent().unwrap_or_else(|| Path::new(""));
+    normalize_archive_relative_path(&base_dir.join(reference))
+}
+
+fn read_archive_entry_text(
+    archive_path: &Path,
+    kind: ArchiveKind,
+    entry_path: &Path,
+) -> Result<String, String> {
+    let bytes = read_archive_entry_bytes(archive_path, kind, entry_path)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn read_archive_entry_bytes(
+    archive_path: &Path,
+    kind: ArchiveKind,
+    entry_path: &Path,
+) -> Result<Vec<u8>, String> {
+    match kind {
+        ArchiveKind::Zip => read_zip_entry_bytes(archive_path, entry_path),
+        ArchiveKind::SevenZip | ArchiveKind::Rar => read_7z_entry_bytes(archive_path, entry_path),
+        ArchiveKind::Tar | ArchiveKind::TarGz | ArchiveKind::TarBz2 | ArchiveKind::TarXz => {
+            read_tar_entry_bytes(archive_path, entry_path)
+        }
+        ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => Err(format!(
+            "Archive {} does not expose multiple named entries",
+            archive_path.display()
+        )),
+    }
+}
+
+fn read_zip_entry_bytes(archive_path: &Path, entry_path: &Path) -> Result<Vec<u8>, String> {
+    let archive_file = std::fs::File::open(archive_path).map_err(|e| {
+        format!(
+            "Failed to open ROM archive {}: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+    let mut archive = zip::ZipArchive::new(archive_file).map_err(|e| {
+        format!(
+            "Failed to read ROM archive {}: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+    let mut entry = archive
+        .by_name(&path_to_archive_name(entry_path))
+        .map_err(|e| {
+            format!(
+                "Failed to read {} from {}: {}",
+                entry_path.display(),
+                archive_path.display(),
+                e
+            )
+        })?;
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).map_err(|e| {
+        format!(
+            "Failed to read ROM archive entry {} from {}: {}",
+            entry_path.display(),
+            archive_path.display(),
+            e
+        )
+    })?;
+    Ok(bytes)
+}
+
+fn read_tar_entry_bytes(archive_path: &Path, entry_path: &Path) -> Result<Vec<u8>, String> {
+    let output = Command::new("tar")
+        .arg("-xOf")
+        .arg(archive_path)
+        .arg(path_to_archive_name(entry_path))
+        .output()
+        .map_err(|e| {
+            format!(
+                "Failed to read {} from {} with tar: {}",
+                entry_path.display(),
+                archive_path.display(),
+                e
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to read {} from {} with tar: {}",
+            entry_path.display(),
+            archive_path.display(),
+            stderr.trim()
+        ));
+    }
+
+    Ok(output.stdout)
+}
+
+fn read_7z_entry_bytes(archive_path: &Path, entry_path: &Path) -> Result<Vec<u8>, String> {
+    let output = Command::new("7z")
+        .args(["x", "-bd", "-y", "-so"])
+        .arg(archive_path)
+        .arg(path_to_archive_name(entry_path))
+        .output()
+        .map_err(|e| {
+            format!(
+                "Failed to read {} from {} with 7z: {}",
+                entry_path.display(),
+                archive_path.display(),
+                e
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to read {} from {} with 7z: {}",
+            entry_path.display(),
+            archive_path.display(),
+            stderr.trim()
+        ));
+    }
+
+    Ok(output.stdout)
+}
+
+fn extract_archive_entries(
+    archive_path: &Path,
+    kind: ArchiveKind,
+    parent_dir: &Path,
+    entry_paths: &[PathBuf],
+) -> Result<Vec<PathBuf>, String> {
+    if entry_paths.is_empty() {
+        return Err(format!(
+            "Archive {} did not provide any entries to extract",
+            archive_path.display()
+        ));
+    }
+
+    if entry_paths.len() == 1 {
+        let entry_path = &entry_paths[0];
+        let bytes = read_archive_entry_bytes(archive_path, kind, entry_path)?;
+        let output_path = write_single_extracted_entry(parent_dir, entry_path, &bytes)?;
+        return Ok(vec![output_path]);
+    }
+
+    let output_paths = planned_output_paths(parent_dir, entry_paths, false)?;
+    match kind {
+        ArchiveKind::Zip => extract_zip_entries(archive_path, parent_dir, entry_paths)?,
+        ArchiveKind::SevenZip | ArchiveKind::Rar => {
+            extract_7z_entries(archive_path, parent_dir, entry_paths)?
+        }
+        ArchiveKind::Tar | ArchiveKind::TarGz | ArchiveKind::TarBz2 | ArchiveKind::TarXz => {
+            extract_tar_entries(archive_path, parent_dir, entry_paths)?
+        }
+        ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => unreachable!(),
+    }
+    Ok(output_paths)
+}
+
+fn extract_zip_entries(
+    archive_path: &Path,
+    parent_dir: &Path,
+    entry_paths: &[PathBuf],
+) -> Result<(), String> {
+    let archive_file = std::fs::File::open(archive_path).map_err(|e| {
+        format!(
+            "Failed to open ROM archive {}: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+    let mut archive = zip::ZipArchive::new(archive_file).map_err(|e| {
+        format!(
+            "Failed to read ROM archive {}: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+
+    for entry_path in entry_paths {
+        let mut entry = archive
+            .by_name(&path_to_archive_name(entry_path))
+            .map_err(|e| {
+                format!(
+                    "Failed to read {} from {}: {}",
+                    entry_path.display(),
+                    archive_path.display(),
+                    e
+                )
+            })?;
+        let output_path = prepare_output_path(parent_dir, entry_path, false)?;
+        let mut output_file = std::fs::File::create(&output_path).map_err(|e| {
+            format!(
+                "Failed to create extracted ROM {}: {}",
+                output_path.display(),
+                e
+            )
+        })?;
+        std::io::copy(&mut entry, &mut output_file).map_err(|e| {
+            format!(
+                "Failed to extract ROM {} from {}: {}",
+                entry_path.display(),
+                archive_path.display(),
+                e
+            )
+        })?;
+        output_file.flush().map_err(|e| {
+            format!(
+                "Failed to flush extracted ROM {}: {}",
+                output_path.display(),
+                e
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+fn extract_tar_entries(
+    archive_path: &Path,
+    parent_dir: &Path,
+    entry_paths: &[PathBuf],
+) -> Result<(), String> {
+    let mut cmd = Command::new("tar");
+    cmd.arg("-xf")
+        .arg(archive_path)
+        .arg("-C")
+        .arg(parent_dir)
+        .arg("--");
+    for entry_path in entry_paths {
+        cmd.arg(path_to_archive_name(entry_path));
+    }
+    let output = cmd.output().map_err(|e| {
+        format!(
+            "Failed to extract {} with tar: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to extract {} with tar: {}",
+            archive_path.display(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+fn extract_7z_entries(
+    archive_path: &Path,
+    parent_dir: &Path,
+    entry_paths: &[PathBuf],
+) -> Result<(), String> {
+    let mut cmd = Command::new("7z");
+    cmd.args(["x", "-bd", "-y", &format!("-o{}", parent_dir.display())])
+        .arg(archive_path);
+    for entry_path in entry_paths {
+        cmd.arg(path_to_archive_name(entry_path));
+    }
+    let output = cmd.output().map_err(|e| {
+        format!(
+            "Failed to extract {} with 7z: {}",
+            archive_path.display(),
+            e
+        )
+    })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to extract {} with 7z: {}",
+            archive_path.display(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+fn extract_single_file_archive(
+    archive_path: &Path,
+    kind: ArchiveKind,
+) -> Result<PreparedRomLaunch, String> {
+    let parent_dir = archive_path.parent().ok_or_else(|| {
+        format!(
+            "ROM archive {} does not have a parent directory",
+            archive_path.display()
+        )
+    })?;
+    let output_name = stripped_single_file_archive_name(archive_path, kind)?;
+    let output_rel = PathBuf::from(output_name);
+    let ext = output_rel
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .ok_or_else(|| {
+            format!(
+                "Cannot determine ROM type after decompressing {}",
+                archive_path.display()
+            )
+        })?;
+    if !crate::scanner::file_scanner::is_recognized_rom_extension(ext)
+        && !matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "cue" | "m3u" | "gdi" | "ccd" | "mds"
+        )
+    {
+        return Err(format!(
+            "Decompressed file {} from {} is not a supported ROM type",
+            output_rel.display(),
+            archive_path.display()
+        ));
+    }
+
+    let output_path = prepare_output_path(parent_dir, &output_rel, true)?;
+    let output_file = std::fs::File::create(&output_path).map_err(|e| {
+        format!(
+            "Failed to create extracted ROM {}: {}",
+            output_path.display(),
+            e
+        )
+    })?;
+
+    match kind {
+        ArchiveKind::Gz => {
+            let input = std::fs::File::open(archive_path).map_err(|e| {
+                format!(
+                    "Failed to open ROM archive {}: {}",
+                    archive_path.display(),
+                    e
+                )
+            })?;
+            let mut decoder = flate2::read::GzDecoder::new(input);
+            let mut writer = std::io::BufWriter::new(output_file);
+            std::io::copy(&mut decoder, &mut writer)
+                .map_err(|e| format!("Failed to decompress {}: {}", archive_path.display(), e))?;
+            writer.flush().map_err(|e| {
+                format!(
+                    "Failed to flush extracted ROM {}: {}",
+                    output_path.display(),
+                    e
+                )
+            })?;
+        }
+        ArchiveKind::Bz2 => {
+            let input = std::fs::File::open(archive_path).map_err(|e| {
+                format!(
+                    "Failed to open ROM archive {}: {}",
+                    archive_path.display(),
+                    e
+                )
+            })?;
+            let mut decoder = bzip2::read::BzDecoder::new(input);
+            let mut writer = std::io::BufWriter::new(output_file);
+            std::io::copy(&mut decoder, &mut writer)
+                .map_err(|e| format!("Failed to decompress {}: {}", archive_path.display(), e))?;
+            writer.flush().map_err(|e| {
+                format!(
+                    "Failed to flush extracted ROM {}: {}",
+                    output_path.display(),
+                    e
+                )
+            })?;
+        }
+        ArchiveKind::Xz => {
+            let input = std::fs::File::open(archive_path).map_err(|e| {
+                format!(
+                    "Failed to open ROM archive {}: {}",
+                    archive_path.display(),
+                    e
+                )
+            })?;
+            let mut decoder = xz2::read::XzDecoder::new(input);
+            let mut writer = std::io::BufWriter::new(output_file);
+            std::io::copy(&mut decoder, &mut writer)
+                .map_err(|e| format!("Failed to decompress {}: {}", archive_path.display(), e))?;
+            writer.flush().map_err(|e| {
+                format!(
+                    "Failed to flush extracted ROM {}: {}",
+                    output_path.display(),
+                    e
+                )
+            })?;
+        }
+        _ => unreachable!(),
+    }
+
+    Ok(PreparedRomLaunch {
+        rom_path: Some(output_path.to_string_lossy().to_string()),
+        cleanup_paths: vec![output_path],
+    })
+}
+
+fn stripped_single_file_archive_name(
+    archive_path: &Path,
+    kind: ArchiveKind,
+) -> Result<String, String> {
+    let file_name = archive_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("Invalid archive path {}", archive_path.display()))?;
+    let stripped = match kind {
+        ArchiveKind::Gz => file_name.strip_suffix(".gz"),
+        ArchiveKind::Bz2 => file_name.strip_suffix(".bz2"),
+        ArchiveKind::Xz => file_name.strip_suffix(".xz"),
+        _ => None,
+    }
+    .ok_or_else(|| {
+        format!(
+            "Could not derive output name from {}",
+            archive_path.display()
+        )
+    })?;
+    Ok(stripped.to_string())
+}
+
+fn planned_output_paths(
+    parent_dir: &Path,
+    entry_paths: &[PathBuf],
+    allow_unique_single: bool,
+) -> Result<Vec<PathBuf>, String> {
+    entry_paths
+        .iter()
+        .map(|entry_path| prepare_output_path(parent_dir, entry_path, allow_unique_single))
+        .collect()
+}
+
+fn write_single_extracted_entry(
+    parent_dir: &Path,
+    entry_path: &Path,
+    bytes: &[u8],
+) -> Result<PathBuf, String> {
+    let output_path = prepare_output_path(parent_dir, entry_path, true)?;
+    let mut output_file = std::fs::File::create(&output_path).map_err(|e| {
+        format!(
+            "Failed to create extracted ROM {}: {}",
+            output_path.display(),
+            e
+        )
+    })?;
+    output_file.write_all(bytes).map_err(|e| {
+        format!(
+            "Failed to write extracted ROM {}: {}",
+            output_path.display(),
+            e
+        )
+    })?;
+    output_file.flush().map_err(|e| {
+        format!(
+            "Failed to flush extracted ROM {}: {}",
+            output_path.display(),
+            e
+        )
+    })?;
+    Ok(output_path)
+}
+
+fn prepare_output_path(
+    parent_dir: &Path,
+    entry_path: &Path,
+    allow_unique_single: bool,
+) -> Result<PathBuf, String> {
+    let relative_parent = entry_path.parent().unwrap_or_else(|| Path::new(""));
+    let output_dir = parent_dir.join(relative_parent);
+    std::fs::create_dir_all(&output_dir).map_err(|e| {
+        format!(
+            "Failed to create extracted ROM directory {}: {}",
+            output_dir.display(),
+            e
+        )
+    })?;
+
+    let file_name = entry_path.file_name().ok_or_else(|| {
+        format!(
+            "Archive entry {} does not have a file name",
+            entry_path.display()
+        )
+    })?;
+    let base_output = output_dir.join(file_name);
+    if !base_output.exists() {
+        return Ok(base_output);
+    }
+    if allow_unique_single {
+        return Ok(unique_extracted_rom_path(&output_dir, Path::new(file_name)));
+    }
+    Err(format!(
+        "Refusing to extract archive over existing file {}",
+        base_output.display()
+    ))
+}
+
+fn path_to_archive_name(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn unique_extracted_rom_path(parent_dir: &Path, entry_name: &Path) -> PathBuf {
+    let candidate = parent_dir.join(entry_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let stem = entry_name
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("rom");
+    let ext = entry_name
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default();
+    let suffix = uuid::Uuid::new_v4().to_string();
+
+    let filename = if ext.is_empty() {
+        format!("{}.lunchbox-{}", stem, suffix)
+    } else {
+        format!("{}.lunchbox-{}.{}", stem, suffix, ext)
+    };
+
+    parent_dir.join(filename)
+}
+
 /// Launch an emulator (optionally with a ROM)
 /// If `as_retroarch_core` is true, launch via RetroArch; otherwise launch standalone
 pub fn launch_emulator(
@@ -786,16 +1817,27 @@ pub fn launch_emulator(
         "Launching emulator"
     );
 
+    let prepared_rom = prepare_rom_for_launch(rom_path)?;
+
     let result = if as_retroarch_core {
         if let Some(ref core_name) = emulator.retroarch_core {
-            launch_retroarch(core_name, rom_path)
+            launch_retroarch(
+                core_name,
+                prepared_rom.rom_path.as_deref(),
+                prepared_rom.cleanup_paths,
+            )
         } else {
+            cleanup_extracted_roms(&prepared_rom.cleanup_paths);
             let err = format!("{} does not have a RetroArch core", emulator.name);
             tracing::error!(error = %err);
             return Err(err);
         }
     } else {
-        launch_standalone(emulator, rom_path)
+        launch_standalone(
+            emulator,
+            prepared_rom.rom_path.as_deref(),
+            prepared_rom.cleanup_paths,
+        )
     };
 
     match &result {
@@ -875,7 +1917,11 @@ fn map_path_for_flatpak(path: &str) -> String {
 }
 
 /// Launch RetroArch with a specific core (optionally with a ROM)
-fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, String> {
+fn launch_retroarch(
+    core_name: &str,
+    rom_path: Option<&str>,
+    cleanup_paths: Vec<PathBuf>,
+) -> Result<u32, String> {
     let core_path = check_retroarch_core_installed(core_name)
         .ok_or_else(|| format!("RetroArch core '{}' is not installed", core_name))?;
     let core_path_str = core_path.to_string_lossy().to_string();
@@ -904,7 +1950,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                     rom = ?rom_path,
                     "Spawning RetroArch via flatpak"
                 );
-                spawn_and_verify(cmd, "RetroArch")
+                spawn_and_verify(cmd, "RetroArch", cleanup_paths)
             } else {
                 let retroarch_path = find_retroarch_binary()
                     .ok_or_else(|| "Could not find RetroArch executable".to_string())?;
@@ -920,7 +1966,7 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
                     rom = ?rom_path,
                     "Spawning RetroArch native"
                 );
-                spawn_and_verify(cmd, "RetroArch")
+                spawn_and_verify(cmd, "RetroArch", cleanup_paths)
             }
         }
         "Windows" | "macOS" => {
@@ -932,14 +1978,18 @@ fn launch_retroarch(core_name: &str, rom_path: Option<&str>) -> Result<u32, Stri
             if let Some(rom) = rom_path {
                 cmd.arg(rom);
             }
-            spawn_and_verify(cmd, "RetroArch")
+            spawn_and_verify(cmd, "RetroArch", cleanup_paths)
         }
         _ => Err("Unsupported operating system".to_string()),
     }
 }
 
 /// Launch a standalone emulator (optionally with a ROM)
-fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<u32, String> {
+fn launch_standalone(
+    emulator: &EmulatorInfo,
+    rom_path: Option<&str>,
+    cleanup_paths: Vec<PathBuf>,
+) -> Result<u32, String> {
     tracing::debug!(emulator = %emulator.name, rom = ?rom_path, "Launching standalone emulator");
 
     // Use check_standalone_installation to skip RetroArch core check
@@ -960,7 +2010,7 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
             cmd.arg(map_path_for_flatpak(rom));
         }
         tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
-        spawn_and_verify(cmd, &emulator.name)
+        spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else if current_os() == "macOS" && exe_path.extension().map(|e| e == "app").unwrap_or(false) {
         // macOS .app bundle
         let mut cmd = Command::new("open");
@@ -969,7 +2019,7 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
             cmd.arg(rom);
         }
         tracing::info!(command = ?cmd, "Spawning macOS app");
-        spawn_and_verify(cmd, &emulator.name)
+        spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else {
         // Regular executable
         let mut cmd = Command::new(&exe_path);
@@ -977,7 +2027,7 @@ fn launch_standalone(emulator: &EmulatorInfo, rom_path: Option<&str>) -> Result<
             cmd.arg(rom);
         }
         tracing::info!(command = ?cmd, "Spawning native executable");
-        spawn_and_verify(cmd, &emulator.name)
+        spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     }
 }
 
@@ -1090,4 +2140,105 @@ pub fn filter_installable(emulators: Vec<EmulatorInfo>) -> Vec<EmulatorInfo> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+
+    #[test]
+    fn extracts_zip_rom_into_same_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let archive_path = temp_dir.path().join("game.zip");
+
+        let archive_file = File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(archive_file);
+        writer
+            .start_file::<_, ()>(
+                "Super Mario Bros. 3 (USA).nes",
+                zip::write::FileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"NES ROM").unwrap();
+        writer.finish().unwrap();
+
+        let prepared =
+            extract_launchable_content_from_archive(&archive_path, ArchiveKind::Zip).unwrap();
+        let extracted_path = PathBuf::from(prepared.rom_path.unwrap());
+
+        assert_eq!(extracted_path.parent(), archive_path.parent());
+        assert_eq!(
+            extracted_path.file_name().and_then(|name| name.to_str()),
+            Some("Super Mario Bros. 3 (USA).nes")
+        );
+        assert_eq!(std::fs::read(&extracted_path).unwrap(), b"NES ROM");
+        assert_eq!(prepared.cleanup_paths, vec![extracted_path]);
+    }
+
+    #[test]
+    fn avoids_overwriting_existing_rom_when_extracting_zip() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let archive_path = temp_dir.path().join("game.zip");
+        let existing_path = temp_dir.path().join("Existing Game.nes");
+        std::fs::write(&existing_path, b"existing").unwrap();
+
+        let archive_file = File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(archive_file);
+        writer
+            .start_file::<_, ()>("Existing Game.nes", zip::write::FileOptions::default())
+            .unwrap();
+        writer.write_all(b"new").unwrap();
+        writer.finish().unwrap();
+
+        let prepared =
+            extract_launchable_content_from_archive(&archive_path, ArchiveKind::Zip).unwrap();
+        let extracted_path = PathBuf::from(prepared.rom_path.unwrap());
+
+        assert_ne!(extracted_path, existing_path);
+        assert!(extracted_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap()
+            .starts_with("Existing Game.lunchbox-"));
+        assert_eq!(std::fs::read(&existing_path).unwrap(), b"existing");
+        assert_eq!(std::fs::read(&extracted_path).unwrap(), b"new");
+        assert_eq!(prepared.cleanup_paths, vec![extracted_path]);
+    }
+
+    #[test]
+    fn extracts_cue_with_referenced_bin_from_zip_without_deleting_sidecars_blindly() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let archive_path = temp_dir.path().join("disc.zip");
+
+        let archive_file = File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(archive_file);
+        writer
+            .start_file::<_, ()>("Disc/Game.cue", zip::write::FileOptions::default())
+            .unwrap();
+        writer
+            .write_all(b"FILE \"Game (Track 1).bin\" BINARY\n  TRACK 01 MODE1/2352\n")
+            .unwrap();
+        writer
+            .start_file::<_, ()>(
+                "Disc/Game (Track 1).bin",
+                zip::write::FileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"TRACK").unwrap();
+        writer.finish().unwrap();
+
+        let prepared =
+            extract_launchable_content_from_archive(&archive_path, ArchiveKind::Zip).unwrap();
+        let rom_path = PathBuf::from(prepared.rom_path.unwrap());
+        let cleanup_paths = prepared.cleanup_paths;
+
+        assert_eq!(rom_path, temp_dir.path().join("Disc/Game.cue"));
+        assert!(cleanup_paths.contains(&temp_dir.path().join("Disc/Game.cue")));
+        assert!(cleanup_paths.contains(&temp_dir.path().join("Disc/Game (Track 1).bin")));
+        assert_eq!(
+            std::fs::read(temp_dir.path().join("Disc/Game (Track 1).bin")).unwrap(),
+            b"TRACK"
+        );
+    }
 }

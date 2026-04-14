@@ -65,6 +65,9 @@ urlencoding = "2"
 keyring = { version = "3", features = ["linux-native", "apple-native", "windows-native"] }
 zstd = "0.13"
 zip = "2"
+flate2 = "1.1.5"
+bzip2 = "0.5.2"
+xz2 = "0.1.7"
 
 # HTTP API for dev mode
 axum = "0.7"
@@ -85,11 +88,11 @@ which = "7"
 shellexpand = "3"
 dirs = "5"
 
-# BitTorrent (embedded engine for ROM downloads)
-librqbit = { version = "8.1.0", optional = true, default-features = false, features = ["rust-tls"] }
 lava_torrent = "0.7"
 
 [features]
-default = ["custom-protocol", "minerva-torrent"]
+default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-minerva-torrent = ["dep:librqbit"]
+
+[dev-dependencies]
+tempfile = "3"

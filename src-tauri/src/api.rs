@@ -152,6 +152,10 @@ pub fn create_router(state: SharedState) -> Router {
         )
         // rspc-style endpoints for video handling
         .route("/rspc/check_cached_video", get(rspc_check_cached_video))
+        .route(
+            "/rspc/probe_game_video_available",
+            get(rspc_probe_game_video_available),
+        )
         .route("/rspc/download_game_video", get(rspc_download_game_video))
         // rspc-style endpoints for emulator handling
         .route(
@@ -206,12 +210,27 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/cancel_import", get(rspc_cancel_import))
         // Minerva archive routes
         .route("/rspc/has_minerva_db", get(rspc_has_minerva_db))
-        .route("/rspc/get_minerva_rom_for_game", get(rspc_get_minerva_rom_for_game))
+        .route(
+            "/rspc/get_minerva_rom_for_game",
+            get(rspc_get_minerva_rom_for_game),
+        )
         .route("/rspc/search_minerva", get(rspc_search_minerva))
-        .route("/rspc/start_minerva_download", get(rspc_start_minerva_download))
-        .route("/rspc/get_minerva_download_progress", get(rspc_get_minerva_download_progress))
-        .route("/rspc/cancel_minerva_download", get(rspc_cancel_minerva_download))
-        .route("/rspc/test_torrent_connection", get(rspc_test_torrent_connection))
+        .route(
+            "/rspc/start_minerva_download",
+            get(rspc_start_minerva_download),
+        )
+        .route(
+            "/rspc/get_minerva_download_progress",
+            get(rspc_get_minerva_download_progress),
+        )
+        .route(
+            "/rspc/cancel_minerva_download",
+            get(rspc_cancel_minerva_download),
+        )
+        .route(
+            "/rspc/test_torrent_connection",
+            get(rspc_test_torrent_connection),
+        )
         .route("/rspc/list_torrent_files", get(rspc_list_torrent_files))
         // ROM import routes
         .route("/rspc/scan_and_match_roms", get(rspc_scan_and_match_roms))
@@ -293,12 +312,15 @@ async fn get_all_regions(
             }
         }
 
-        // Sort by default region priority (USA first, then Japan, Europe, etc.)
-        let mut result: Vec<String> = regions.into_iter().collect();
-        result.sort_by_key(|r| crate::tags::region_priority(r));
+        regions.insert(String::new());
 
-        // Add empty string for "plain/no region" at the start
-        result.insert(0, String::new());
+        // Sort by default region priority (USA, Japan, Asia, then the rest)
+        let mut result: Vec<String> = regions.into_iter().collect();
+        result.sort_by(|a, b| {
+            let pos_a = crate::region_priority::priority_for_region(Some(a.as_str()), &[]);
+            let pos_b = crate::region_priority::priority_for_region(Some(b.as_str()), &[]);
+            pos_a.cmp(&pos_b).then_with(|| a.cmp(b))
+        });
 
         return Ok(Json(result));
     }
@@ -411,10 +433,20 @@ fn contains_token(text: &str, token: &str) -> bool {
         .any(|part| part.eq_ignore_ascii_case(token))
 }
 
+const NON_RETAIL_RELEASE_TYPES: &[&str] = &["homebrew", "rom hack", "unlicensed"];
+const NON_RETAIL_LICENSE_TAGS: &[&str] = &[
+    "homebrew",
+    "hack",
+    "pirate",
+    "bootleg",
+    "unl",
+    "aftermarket",
+];
+
 fn is_homebrew_game(title: &str, release_type: Option<&str>) -> bool {
     if let Some(release_type) = release_type {
         let rt = release_type.trim().to_ascii_lowercase();
-        if rt == "homebrew" || rt == "rom hack" {
+        if NON_RETAIL_RELEASE_TYPES.contains(&rt.as_str()) {
             return true;
         }
     }
@@ -422,7 +454,9 @@ fn is_homebrew_game(title: &str, release_type: Option<&str>) -> bool {
     let (_, tags) = crate::tags::parse_title_tags(title);
     tags.into_iter().any(|tag| {
         tag.category == crate::tags::TagCategory::License
-            && tag.text.eq_ignore_ascii_case("homebrew")
+            && NON_RETAIL_LICENSE_TAGS
+                .iter()
+                .any(|license| tag.text.eq_ignore_ascii_case(license))
     })
 }
 
@@ -1904,6 +1938,70 @@ struct DownloadGameVideoInput {
     launchbox_db_id: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProbeGameVideoAvailableInput {
+    game_title: String,
+    platform: String,
+}
+
+async fn rspc_probe_game_video_available(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    const VIDEO_PROBE_TIMEOUT_SECS: u64 = 8;
+
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<bool>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: ProbeGameVideoAvailableInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<bool>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    if state_guard.settings.emumovies.username.is_empty()
+        || state_guard.settings.emumovies.password.is_empty()
+    {
+        return rspc_ok(false).into_response();
+    }
+
+    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let client = crate::images::EmuMoviesClient::new(
+        crate::images::EmuMoviesConfig {
+            username: state_guard.settings.emumovies.username.clone(),
+            password: state_guard.settings.emumovies.password.clone(),
+        },
+        cache_dir,
+    );
+
+    drop(state_guard);
+
+    let platform_for_task = input.platform.clone();
+    let game_title_for_task = input.game_title.clone();
+    let task = tokio::task::spawn_blocking(move || {
+        client.has_video_match(&platform_for_task, &game_title_for_task)
+    });
+
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(VIDEO_PROBE_TIMEOUT_SECS),
+        task,
+    )
+    .await
+    {
+        Ok(Ok(Ok(found))) => rspc_ok(found).into_response(),
+        Ok(Ok(Err(e))) => rspc_err::<bool>(e.to_string()).into_response(),
+        Ok(Err(e)) => rspc_err::<bool>(format!("Video availability task failed: {}", e)).into_response(),
+        Err(_) => rspc_err::<bool>(format!(
+            "Video availability check timed out after {} seconds",
+            VIDEO_PROBE_TIMEOUT_SECS
+        ))
+        .into_response(),
+    }
+}
+
 async fn rspc_download_game_video(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -2546,7 +2644,9 @@ async fn rspc_get_current_os() -> impl IntoResponse {
 enum LaunchboxDbIdInput {
     Raw(i64),
     #[serde(rename_all = "camelCase")]
-    Wrapped { launchbox_db_id: i64 },
+    Wrapped {
+        launchbox_db_id: i64,
+    },
 }
 
 impl LaunchboxDbIdInput {
@@ -2563,7 +2663,9 @@ impl LaunchboxDbIdInput {
 enum JobIdInput {
     Raw(String),
     #[serde(rename_all = "camelCase")]
-    Wrapped { job_id: String },
+    Wrapped {
+        job_id: String,
+    },
 }
 
 impl JobIdInput {
@@ -2581,11 +2683,17 @@ async fn rspc_get_game_file(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<handlers::GameFile>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<handlers::GameFile>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
     let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
         Ok(input) => input.into_value(),
-        Err(e) => return rspc_err::<Option<handlers::GameFile>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<handlers::GameFile>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
     };
     let state_guard = state.read().await;
     match handlers::get_game_file(&state_guard, launchbox_db_id).await {
@@ -2600,11 +2708,17 @@ async fn rspc_get_active_import(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => return rspc_err::<Option<handlers::ImportJob>>("Missing 'input' parameter".to_string()).into_response(),
+        None => {
+            return rspc_err::<Option<handlers::ImportJob>>("Missing 'input' parameter".to_string())
+                .into_response()
+        }
     };
     let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
         Ok(input) => input.into_value(),
-        Err(e) => return rspc_err::<Option<handlers::ImportJob>>(format!("Invalid input: {}", e)).into_response(),
+        Err(e) => {
+            return rspc_err::<Option<handlers::ImportJob>>(format!("Invalid input: {}", e))
+                .into_response()
+        }
     };
     let state_guard = state.read().await;
     match handlers::get_active_import(&state_guard, launchbox_db_id).await {
@@ -2636,9 +2750,7 @@ async fn rspc_cancel_import(
 // Minerva Archive HTTP Handlers
 // ============================================================================
 
-async fn rspc_has_minerva_db(
-    State(state): State<SharedState>,
-) -> impl IntoResponse {
+async fn rspc_has_minerva_db(State(state): State<SharedState>) -> impl IntoResponse {
     let state_guard = state.read().await;
     rspc_ok(handlers::has_minerva_db(&state_guard)).into_response()
 }
@@ -2650,8 +2762,10 @@ async fn rspc_get_minerva_rom_for_game(
     let input_str = match params.get("input") {
         Some(s) => s,
         None => {
-            return rspc_err::<Option<handlers::MinervaRom>>("Missing 'input' parameter".to_string())
-                .into_response()
+            return rspc_err::<Option<handlers::MinervaRom>>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response()
         }
     };
 
@@ -2660,12 +2774,18 @@ async fn rspc_get_minerva_rom_for_game(
     enum MinervaGameInput {
         Simple(i64),
         #[serde(rename_all = "camelCase")]
-        Full { launchbox_db_id: i64, platform_id: Option<i64> },
+        Full {
+            launchbox_db_id: i64,
+            platform_id: Option<i64>,
+        },
     }
 
     let (launchbox_db_id, platform_id) = match serde_json::from_str::<MinervaGameInput>(input_str) {
         Ok(MinervaGameInput::Simple(id)) => (id, None),
-        Ok(MinervaGameInput::Full { launchbox_db_id, platform_id }) => (launchbox_db_id, platform_id),
+        Ok(MinervaGameInput::Full {
+            launchbox_db_id,
+            platform_id,
+        }) => (launchbox_db_id, platform_id),
         Err(e) => {
             return rspc_err::<Option<handlers::MinervaRom>>(format!("Invalid input: {}", e))
                 .into_response()
@@ -2737,30 +2857,23 @@ async fn rspc_start_minerva_download(
         Ok(i) => i,
         Err(_) => {
             #[derive(Deserialize)]
-            struct W { input: handlers::StartMinervaDownloadInput }
+            struct W {
+                input: handlers::StartMinervaDownloadInput,
+            }
             match serde_json::from_str::<W>(input_str) {
                 Ok(w) => w.input,
-                Err(e) => return rspc_err::<handlers::ImportJob>(format!("Invalid input: {}", e)).into_response(),
+                Err(e) => {
+                    return rspc_err::<handlers::ImportJob>(format!("Invalid input: {}", e))
+                        .into_response()
+                }
             }
         }
     };
 
-    #[cfg(feature = "minerva-torrent")]
-    {
-        let mut state_guard = state.write().await;
-        match handlers::start_minerva_download(&mut state_guard, input).await {
-            Ok(job) => rspc_ok(job).into_response(),
-            Err(e) => rspc_err::<handlers::ImportJob>(e).into_response(),
-        }
-    }
-
-    #[cfg(not(feature = "minerva-torrent"))]
-    {
-        let _ = input;
-        rspc_err::<handlers::ImportJob>(
-            "Torrent downloads not available (minerva-torrent feature disabled)".to_string(),
-        )
-        .into_response()
+    let mut state_guard = state.write().await;
+    match handlers::start_minerva_download(&mut state_guard, input).await {
+        Ok(job) => rspc_ok(job).into_response(),
+        Err(e) => rspc_err::<handlers::ImportJob>(e).into_response(),
     }
 }
 
@@ -2780,7 +2893,9 @@ async fn rspc_get_minerva_download_progress(
         .or_else(|_| {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase")]
-            struct W { job_id: String }
+            struct W {
+                job_id: String,
+            }
             serde_json::from_str::<W>(input_str).map(|w| w.job_id)
         })
         .unwrap_or_default();
@@ -2789,17 +2904,8 @@ async fn rspc_get_minerva_download_progress(
         return rspc_ok::<Option<serde_json::Value>>(None).into_response();
     }
 
-    #[cfg(feature = "minerva-torrent")]
-    {
-        let progress = handlers::get_minerva_download_progress(&job_id);
-        rspc_ok(progress).into_response()
-    }
-
-    #[cfg(not(feature = "minerva-torrent"))]
-    {
-        let _ = job_id;
-        rspc_ok::<Option<serde_json::Value>>(None).into_response()
-    }
+    let progress = handlers::get_minerva_download_progress(&job_id);
+    rspc_ok(progress).into_response()
 }
 
 async fn rspc_cancel_minerva_download(
@@ -2808,40 +2914,27 @@ async fn rspc_cancel_minerva_download(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => {
-            return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response()
-        }
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
     };
 
     let job_id: String = match serde_json::from_str(input_str) {
         Ok(id) => id,
-        Err(e) => {
-            return rspc_err::<()>(format!("Invalid input: {}", e)).into_response()
-        }
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    #[cfg(feature = "minerva-torrent")]
-    {
-        let state_guard = state.read().await;
-        match handlers::cancel_minerva_download(&state_guard, &job_id).await {
-            Ok(()) => rspc_ok(()).into_response(),
-            Err(e) => rspc_err::<()>(e).into_response(),
-        }
-    }
-
-    #[cfg(not(feature = "minerva-torrent"))]
-    {
-        let _ = (state, job_id);
-        rspc_err::<()>("Torrent downloads not available".to_string()).into_response()
+    let state_guard = state.read().await;
+    match handlers::cancel_minerva_download(&state_guard, &job_id).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
     }
 }
 
-async fn rspc_test_torrent_connection(
-    State(state): State<SharedState>,
-) -> impl IntoResponse {
+async fn rspc_test_torrent_connection(State(state): State<SharedState>) -> impl IntoResponse {
     let state_guard = state.read().await;
     match handlers::test_torrent_connection(&state_guard).await {
-        Ok((success, msg)) => rspc_ok(serde_json::json!({"success": success, "message": msg})).into_response(),
+        Ok((success, msg)) => {
+            rspc_ok(serde_json::json!({"success": success, "message": msg})).into_response()
+        }
         Err(e) => rspc_err::<serde_json::Value>(e).into_response(),
     }
 }
@@ -2853,8 +2946,10 @@ async fn rspc_list_torrent_files(
     let input_str = match params.get("input") {
         Some(s) => s,
         None => {
-            return rspc_err::<Vec<handlers::TorrentFileMatch>>("Missing 'input' parameter".to_string())
-                .into_response()
+            return rspc_err::<Vec<handlers::TorrentFileMatch>>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response()
         }
     };
 
@@ -2864,10 +2959,18 @@ async fn rspc_list_torrent_files(
         Err(_) => {
             // Try unwrapping { "input": { ... } } wrapper
             #[derive(Deserialize)]
-            struct Wrapped { input: handlers::ListTorrentFilesInput }
+            struct Wrapped {
+                input: handlers::ListTorrentFilesInput,
+            }
             match serde_json::from_str::<Wrapped>(input_str) {
                 Ok(w) => w.input,
-                Err(e) => return rspc_err::<Vec<handlers::TorrentFileMatch>>(format!("Invalid input: {}", e)).into_response(),
+                Err(e) => {
+                    return rspc_err::<Vec<handlers::TorrentFileMatch>>(format!(
+                        "Invalid input: {}",
+                        e
+                    ))
+                    .into_response()
+                }
             }
         }
     };
@@ -2899,10 +3002,15 @@ async fn rspc_scan_and_match_roms(
         Ok(i) => i,
         Err(_) => {
             #[derive(Deserialize)]
-            struct W { input: handlers::ScanRomsInput }
+            struct W {
+                input: handlers::ScanRomsInput,
+            }
             match serde_json::from_str::<W>(input_str) {
                 Ok(w) => w.input,
-                Err(e) => return rspc_err::<handlers::ScanRomsResult>(format!("Invalid input: {}", e)).into_response(),
+                Err(e) => {
+                    return rspc_err::<handlers::ScanRomsResult>(format!("Invalid input: {}", e))
+                        .into_response()
+                }
             }
         }
     };
@@ -2920,19 +3028,21 @@ async fn rspc_confirm_rom_import(
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
         Some(s) => s,
-        None => {
-            return rspc_err::<usize>("Missing 'input' parameter".to_string()).into_response()
-        }
+        None => return rspc_err::<usize>("Missing 'input' parameter".to_string()).into_response(),
     };
 
     let input: handlers::ConfirmImportInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
         Err(_) => {
             #[derive(Deserialize)]
-            struct W { input: handlers::ConfirmImportInput }
+            struct W {
+                input: handlers::ConfirmImportInput,
+            }
             match serde_json::from_str::<W>(input_str) {
                 Ok(w) => w.input,
-                Err(e) => return rspc_err::<usize>(format!("Invalid input: {}", e)).into_response(),
+                Err(e) => {
+                    return rspc_err::<usize>(format!("Invalid input: {}", e)).into_response()
+                }
             }
         }
     };

@@ -116,21 +116,26 @@ pub struct EmuMoviesSettings {
     pub password: String,
 }
 
-
 /// Torrent client and download settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentSettings {
-    /// Client type: "auto", "embedded", "qbittorrent", "transmission", "deluge", "rtorrent", "aria2"
-    #[serde(default = "default_torrent_client")]
-    pub client: String,
     /// Directory for downloaded ROM files, organized by platform subdirs.
     /// Defaults to data_directory/roms.
     #[serde(default)]
     pub rom_directory: Option<PathBuf>,
+    /// Path to the ROM directory as seen by qBittorrent when it runs in a container.
+    /// Optional; when unset, Lunchbox assumes qBittorrent can access the host path directly.
+    #[serde(default)]
+    pub qbittorrent_container_rom_directory: Option<PathBuf>,
     /// Separate directory for full-torrent downloads.
     /// Defaults to data_directory/torrent-library.
     #[serde(default)]
     pub torrent_library_directory: Option<PathBuf>,
+    /// Path to the full-torrent library directory as seen by qBittorrent when it runs
+    /// in a container. Optional; when unset, Lunchbox assumes qBittorrent can access the
+    /// host path directly.
+    #[serde(default)]
+    pub qbittorrent_container_torrent_library_directory: Option<PathBuf>,
     /// Download entire torrent (not just the selected file)
     #[serde(default)]
     pub download_entire_torrent: bool,
@@ -148,72 +153,31 @@ pub struct TorrentSettings {
     pub qbittorrent_username: String,
     #[serde(default)]
     pub qbittorrent_password: String,
-
-    // -- Transmission --
-    #[serde(default = "default_localhost")]
-    pub transmission_host: String,
-    #[serde(default = "default_transmission_port")]
-    pub transmission_port: u16,
-    #[serde(default)]
-    pub transmission_username: String,
-    #[serde(default)]
-    pub transmission_password: String,
-
-    // -- Deluge --
-    #[serde(default = "default_localhost")]
-    pub deluge_host: String,
-    #[serde(default = "default_deluge_port")]
-    pub deluge_port: u16,
-    #[serde(default)]
-    pub deluge_username: String,
-    #[serde(default)]
-    pub deluge_password: String,
-
-    // -- rTorrent --
-    #[serde(default)]
-    pub rtorrent_url: String,
-
-    // -- aria2 --
-    #[serde(default = "default_localhost")]
-    pub aria2_host: String,
-    #[serde(default = "default_aria2_port")]
-    pub aria2_port: u16,
-    #[serde(default)]
-    pub aria2_secret: String,
 }
 
-fn default_torrent_client() -> String { "auto".to_string() }
-fn default_file_link_mode() -> String { "symlink".to_string() }
-fn default_localhost() -> String { "localhost".to_string() }
-fn default_qbittorrent_port() -> u16 { 8080 }
-fn default_transmission_port() -> u16 { 9091 }
-fn default_deluge_port() -> u16 { 58846 }
-fn default_aria2_port() -> u16 { 6800 }
+fn default_file_link_mode() -> String {
+    "symlink".to_string()
+}
+fn default_localhost() -> String {
+    "localhost".to_string()
+}
+fn default_qbittorrent_port() -> u16 {
+    8080
+}
 
 impl Default for TorrentSettings {
     fn default() -> Self {
         Self {
-            client: default_torrent_client(),
             rom_directory: None,
+            qbittorrent_container_rom_directory: None,
             torrent_library_directory: None,
+            qbittorrent_container_torrent_library_directory: None,
             download_entire_torrent: false,
             file_link_mode: default_file_link_mode(),
             qbittorrent_host: default_localhost(),
             qbittorrent_port: default_qbittorrent_port(),
             qbittorrent_username: String::new(),
             qbittorrent_password: String::new(),
-            transmission_host: default_localhost(),
-            transmission_port: default_transmission_port(),
-            transmission_username: String::new(),
-            transmission_password: String::new(),
-            deluge_host: default_localhost(),
-            deluge_port: default_deluge_port(),
-            deluge_username: String::new(),
-            deluge_password: String::new(),
-            rtorrent_url: String::new(),
-            aria2_host: default_localhost(),
-            aria2_port: default_aria2_port(),
-            aria2_secret: String::new(),
         }
     }
 }
@@ -606,28 +570,41 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
 
     // Load credentials from system keyring
     let creds = crate::keyring_store::load_image_source_credentials();
-    settings.steamgriddb.api_key = creds.steamgriddb_api_key;
-    settings.igdb.client_id = creds.igdb_client_id;
-    settings.igdb.client_secret = creds.igdb_client_secret;
-    settings.emumovies.username = creds.emumovies_username;
-    settings.emumovies.password = creds.emumovies_password;
-    settings.screenscraper.dev_id = creds.screenscraper_dev_id;
-    settings.screenscraper.dev_password = creds.screenscraper_dev_password;
-    settings.screenscraper.user_id = creds.screenscraper_user_id;
-    settings.screenscraper.user_password = creds.screenscraper_user_password;
+    if !creds.steamgriddb_api_key.is_empty() {
+        settings.steamgriddb.api_key = creds.steamgriddb_api_key;
+    }
+    if !creds.igdb_client_id.is_empty() {
+        settings.igdb.client_id = creds.igdb_client_id;
+    }
+    if !creds.igdb_client_secret.is_empty() {
+        settings.igdb.client_secret = creds.igdb_client_secret;
+    }
+    if !creds.emumovies_username.is_empty() {
+        settings.emumovies.username = creds.emumovies_username;
+    }
+    if !creds.emumovies_password.is_empty() {
+        settings.emumovies.password = creds.emumovies_password;
+    }
+    if !creds.screenscraper_dev_id.is_empty() {
+        settings.screenscraper.dev_id = creds.screenscraper_dev_id;
+    }
+    if !creds.screenscraper_dev_password.is_empty() {
+        settings.screenscraper.dev_password = creds.screenscraper_dev_password;
+    }
+    if creds.screenscraper_user_id.is_some() {
+        settings.screenscraper.user_id = creds.screenscraper_user_id;
+    }
+    if creds.screenscraper_user_password.is_some() {
+        settings.screenscraper.user_password = creds.screenscraper_user_password;
+    }
 
-    // Load torrent client passwords from keyring
-    if let Ok(Some(v)) = crate::keyring_store::get_credential(crate::keyring_store::keys::QBITTORRENT_PASSWORD) {
-        settings.torrent.qbittorrent_password = v;
-    }
-    if let Ok(Some(v)) = crate::keyring_store::get_credential(crate::keyring_store::keys::TRANSMISSION_PASSWORD) {
-        settings.torrent.transmission_password = v;
-    }
-    if let Ok(Some(v)) = crate::keyring_store::get_credential(crate::keyring_store::keys::DELUGE_PASSWORD) {
-        settings.torrent.deluge_password = v;
-    }
-    if let Ok(Some(v)) = crate::keyring_store::get_credential(crate::keyring_store::keys::ARIA2_SECRET) {
-        settings.torrent.aria2_secret = v;
+    // Load qBittorrent password from keyring
+    if let Ok(Some(v)) =
+        crate::keyring_store::get_credential(crate::keyring_store::keys::QBITTORRENT_PASSWORD)
+    {
+        if !v.is_empty() {
+            settings.torrent.qbittorrent_password = v;
+        }
     }
 
     Ok(settings)
@@ -648,36 +625,86 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         settings.screenscraper.user_password.as_deref(),
     )?;
 
-    // Store torrent client passwords in keyring
+    // Store qBittorrent password in keyring
     crate::keyring_store::store_credential(
         crate::keyring_store::keys::QBITTORRENT_PASSWORD,
         &settings.torrent.qbittorrent_password,
-    )?;
-    crate::keyring_store::store_credential(
-        crate::keyring_store::keys::TRANSMISSION_PASSWORD,
-        &settings.torrent.transmission_password,
-    )?;
-    crate::keyring_store::store_credential(
-        crate::keyring_store::keys::DELUGE_PASSWORD,
-        &settings.torrent.deluge_password,
-    )?;
-    crate::keyring_store::store_credential(
-        crate::keyring_store::keys::ARIA2_SECRET,
-        &settings.torrent.aria2_secret,
     )?;
 
     // If keyring is available, clear credentials from DB copy
     // If not, store them in DB as fallback
     let settings_for_db = if crate::keyring_store::is_keyring_available() {
         let mut s = settings.clone();
-        s.steamgriddb = SteamGridDBSettings::default();
-        s.igdb = IGDBSettings::default();
-        s.emumovies = EmuMoviesSettings::default();
-        s.screenscraper = ScreenScraperSettings::default();
-        s.torrent.qbittorrent_password = String::new();
-        s.torrent.transmission_password = String::new();
-        s.torrent.deluge_password = String::new();
-        s.torrent.aria2_secret = String::new();
+
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::STEAMGRIDDB_API_KEY,
+            &settings.steamgriddb.api_key,
+        ) {
+            s.steamgriddb.api_key = String::new();
+        }
+
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::IGDB_CLIENT_ID,
+            &settings.igdb.client_id,
+        ) {
+            s.igdb.client_id = String::new();
+        }
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::IGDB_CLIENT_SECRET,
+            &settings.igdb.client_secret,
+        ) {
+            s.igdb.client_secret = String::new();
+        }
+
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::EMUMOVIES_USERNAME,
+            &settings.emumovies.username,
+        ) {
+            s.emumovies.username = String::new();
+        }
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::EMUMOVIES_PASSWORD,
+            &settings.emumovies.password,
+        ) {
+            s.emumovies.password = String::new();
+        }
+
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::SCREENSCRAPER_DEV_ID,
+            &settings.screenscraper.dev_id,
+        ) {
+            s.screenscraper.dev_id = String::new();
+        }
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::SCREENSCRAPER_DEV_PASSWORD,
+            &settings.screenscraper.dev_password,
+        ) {
+            s.screenscraper.dev_password = String::new();
+        }
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::SCREENSCRAPER_USER_ID,
+            settings.screenscraper.user_id.as_deref().unwrap_or(""),
+        ) {
+            s.screenscraper.user_id = None;
+        }
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::SCREENSCRAPER_USER_PASSWORD,
+            settings
+                .screenscraper
+                .user_password
+                .as_deref()
+                .unwrap_or(""),
+        ) {
+            s.screenscraper.user_password = None;
+        }
+
+        if crate::keyring_store::credential_matches(
+            crate::keyring_store::keys::QBITTORRENT_PASSWORD,
+            &settings.torrent.qbittorrent_password,
+        ) {
+            s.torrent.qbittorrent_password = String::new();
+        }
+
         s
     } else {
         settings.clone()

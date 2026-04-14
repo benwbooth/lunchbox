@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub const PLATFORM_SELECTION_MINIGAMES: &str = "__minigames__";
 pub const PLATFORM_SELECTION_ALL_GAMES: &str = "__all_games__";
 const APP_UI_STATE_KEY: &str = "lunchbox.ui.app.v1";
+const FILTER_DEFAULTS_VERSION_NON_RETAIL: u8 = 1;
 
 /// Artwork type to display in grid view
 #[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -64,11 +65,21 @@ impl ArtworkDisplayType {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameFilters {
     pub installed_only: bool,
     pub hide_homebrew: bool,
     pub hide_adult: bool,
+}
+
+impl Default for GameFilters {
+    fn default() -> Self {
+        Self {
+            installed_only: false,
+            hide_homebrew: true,
+            hide_adult: false,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -79,7 +90,10 @@ struct AppUiState {
     search_query: String,
     artwork_type: ArtworkDisplayType,
     zoom_level: f64,
+    #[serde(default)]
     game_filters: GameFilters,
+    #[serde(default)]
+    filter_defaults_version: u8,
 }
 
 impl Default for AppUiState {
@@ -92,6 +106,7 @@ impl Default for AppUiState {
             artwork_type: ArtworkDisplayType::BoxFront,
             zoom_level: 1.0,
             game_filters: GameFilters::default(),
+            filter_defaults_version: FILTER_DEFAULTS_VERSION_NON_RETAIL,
         }
     }
 }
@@ -105,6 +120,10 @@ pub fn App() -> impl IntoView {
     }
     if persisted.selected_platform.is_none() && persisted.selected_collection.is_none() {
         persisted.selected_platform = Some(PLATFORM_SELECTION_MINIGAMES.to_string());
+    }
+    if persisted.filter_defaults_version < FILTER_DEFAULTS_VERSION_NON_RETAIL {
+        persisted.game_filters.hide_homebrew = true;
+        persisted.filter_defaults_version = FILTER_DEFAULTS_VERSION_NON_RETAIL;
     }
 
     // State for selected platform (now uses platform name)
@@ -141,12 +160,13 @@ pub fn App() -> impl IntoView {
                 artwork_type: artwork_type.get(),
                 zoom_level: zoom_level.get().clamp(0.5, 2.0),
                 game_filters: game_filters.get(),
+                filter_defaults_version: FILTER_DEFAULTS_VERSION_NON_RETAIL,
             },
         );
     });
 
     view! {
-        <div class="app-container">
+        <div class="app-container" class:details-modal-open=move || selected_game.get().is_some()>
             <Toolbar
                 view_mode=view_mode
                 set_view_mode=set_view_mode

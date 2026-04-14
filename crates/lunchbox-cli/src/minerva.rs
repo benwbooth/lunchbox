@@ -52,9 +52,11 @@ async fn create_minerva_db(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_mtp_lunchbox ON minerva_torrent_platforms(lunchbox_platform_id)")
         .execute(pool)
         .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_mtp_torrent ON minerva_torrent_platforms(torrent_id)")
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_mtp_torrent ON minerva_torrent_platforms(torrent_id)",
+    )
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
@@ -63,7 +65,10 @@ async fn create_minerva_db(pool: &SqlitePool) -> Result<()> {
 // Platform name mapping
 // ============================================================================
 
-fn map_platform_name(minerva_name: &str, platform_lookup: &HashMap<String, (i64, String)>) -> Option<String> {
+fn map_platform_name(
+    minerva_name: &str,
+    platform_lookup: &HashMap<String, (i64, String)>,
+) -> Option<String> {
     let aliases = crate::unified_import::get_platform_aliases();
     let lower = minerva_name.to_lowercase();
 
@@ -229,16 +234,15 @@ pub async fn cmd_minerva_build(
             Some(
                 SqlitePoolOptions::new()
                     .max_connections(1)
-                    .connect_with(
-                        SqliteConnectOptions::new()
-                            .filename(path)
-                            .read_only(true),
-                    )
+                    .connect_with(SqliteConnectOptions::new().filename(path).read_only(true))
                     .await
                     .context("failed to open games database")?,
             )
         } else {
-            println!("Games database not found at {}, skipping platform linking", path.display());
+            println!(
+                "Games database not found at {}, skipping platform linking",
+                path.display()
+            );
             None
         }
     } else {
@@ -261,9 +265,8 @@ pub async fn cmd_minerva_build(
     };
 
     // Filter collections
-    let filter_names: Option<Vec<String>> = collections_filter.map(|f| {
-        f.split(',').map(|s| s.trim().to_string()).collect()
-    });
+    let filter_names: Option<Vec<String>> =
+        collections_filter.map(|f| f.split(',').map(|s| s.trim().to_string()).collect());
 
     // Extract unique (collection, platform, torrent_file) tuples with stats
     println!("Extracting torrent-to-platform mapping...");
@@ -274,7 +277,7 @@ pub async fn cmd_minerva_build(
             CAST(size AS INTEGER) as file_size,
             1 as cnt
          FROM files
-         WHERE torrents IS NOT NULL AND torrents != ''"
+         WHERE torrents IS NOT NULL AND torrents != ''",
     )
     .fetch_all(&hashes_pool)
     .await?;
@@ -321,13 +324,15 @@ pub async fn cmd_minerva_build(
         }
 
         let key = (torrent_file.clone(), platform.to_string());
-        let entry = torrent_platforms.entry(key).or_insert_with(|| PlatformStats {
-            collection: collection.to_string(),
-            platform: platform.to_string(),
-            torrent_file: torrent_file.clone(),
-            rom_count: 0,
-            total_size: 0,
-        });
+        let entry = torrent_platforms
+            .entry(key)
+            .or_insert_with(|| PlatformStats {
+                collection: collection.to_string(),
+                platform: platform.to_string(),
+                torrent_file: torrent_file.clone(),
+                rom_count: 0,
+                total_size: 0,
+            });
         entry.rom_count += 1;
         entry.total_size += file_size;
     }
@@ -337,7 +342,9 @@ pub async fn cmd_minerva_build(
     // Create output database
     let output_abs = output.canonicalize().unwrap_or_else(|_| {
         let parent = output.parent().unwrap_or(Path::new("."));
-        let parent = parent.canonicalize().unwrap_or_else(|_| std::env::current_dir().unwrap());
+        let parent = parent
+            .canonicalize()
+            .unwrap_or_else(|_| std::env::current_dir().unwrap());
         parent.join(output.file_name().unwrap())
     });
     if output_abs.exists() {
@@ -353,7 +360,9 @@ pub async fn cmd_minerva_build(
         .await
         .context("failed to create output database")?;
 
-    sqlx::query("PRAGMA journal_mode=WAL").execute(&out_pool).await?;
+    sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&out_pool)
+        .await?;
     create_minerva_db(&out_pool).await?;
 
     // Group by torrent file to get torrent-level stats
@@ -397,8 +406,14 @@ pub async fn cmd_minerva_build(
         let file = std::fs::File::create(csv_path)?;
         let mut wtr = csv::Writer::from_writer(file);
         wtr.write_record([
-            "collection", "minerva_platform", "torrent_file", "torrent_url",
-            "rom_count", "total_size", "lunchbox_platform_id", "lunchbox_platform_name",
+            "collection",
+            "minerva_platform",
+            "torrent_file",
+            "torrent_url",
+            "rom_count",
+            "total_size",
+            "lunchbox_platform_id",
+            "lunchbox_platform_name",
         ])?;
         Some(wtr)
     } else {
@@ -412,18 +427,19 @@ pub async fn cmd_minerva_build(
         };
 
         // Match to lunchbox platform
-        let (lunchbox_id, lunchbox_name) = if let Some(canonical) = map_platform_name(&stats.platform, &platform_lookup) {
-            if let Some((id, name)) = platform_lookup.get(&canonical.to_lowercase()) {
-                matched += 1;
-                (Some(*id), Some(name.clone()))
+        let (lunchbox_id, lunchbox_name) =
+            if let Some(canonical) = map_platform_name(&stats.platform, &platform_lookup) {
+                if let Some((id, name)) = platform_lookup.get(&canonical.to_lowercase()) {
+                    matched += 1;
+                    (Some(*id), Some(name.clone()))
+                } else {
+                    unmatched += 1;
+                    (None, None)
+                }
             } else {
                 unmatched += 1;
                 (None, None)
-            }
-        } else {
-            unmatched += 1;
-            (None, None)
-        };
+            };
 
         sqlx::query(
             "INSERT OR IGNORE INTO minerva_torrent_platforms (torrent_id, minerva_platform, lunchbox_platform_id, lunchbox_platform_name, rom_count) VALUES (?, ?, ?, ?, ?)"
@@ -463,7 +479,14 @@ pub async fn cmd_minerva_build(
     println!("\nMinerva torrent index built:");
     println!("  Torrents:   {total_torrents}");
     println!("  Platforms:  {total_platforms}");
-    println!("  Matched:    {matched} ({:.1}%)", if total_platforms > 0 { matched as f64 / total_platforms as f64 * 100.0 } else { 0.0 });
+    println!(
+        "  Matched:    {matched} ({:.1}%)",
+        if total_platforms > 0 {
+            matched as f64 / total_platforms as f64 * 100.0
+        } else {
+            0.0
+        }
+    );
     println!("  Unmatched:  {unmatched}");
     println!("  Output:     {}", output_abs.display());
     if let Some(csv_path) = csv_output {

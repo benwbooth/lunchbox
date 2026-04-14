@@ -255,13 +255,16 @@ pub fn normalize_for_matching(name: &str) -> String {
 
 /// Non-archive ROM extensions (for checking files inside archives)
 const ROM_EXTENSIONS_NO_ARCHIVE: &[&str] = &[
-    "nes", "fds", "unf", "unif", "sfc", "smc", "fig", "swc", "bs",
-    "n64", "z64", "v64", "gb", "gbc", "sgb", "gba", "nds", "dsi",
-    "3ds", "cia", "gcm", "gcz", "iso", "ciso", "rvz", "wbfs", "wad",
-    "sms", "gg", "md", "gen", "bin", "smd", "32x", "cue", "chd",
-    "pbp", "cso", "pkg", "a26", "a52", "a78", "lnx", "jag", "j64",
-    "pce", "sgx", "ngp", "ngc", "ws", "wsc", "vec", "col", "int",
+    "nes", "fds", "unf", "unif", "sfc", "smc", "fig", "swc", "bs", "n64", "z64", "v64", "gb",
+    "gbc", "sgb", "gba", "nds", "dsi", "3ds", "cia", "gcm", "gcz", "iso", "ciso", "rvz", "wbfs",
+    "wad", "sms", "gg", "md", "gen", "bin", "smd", "32x", "cue", "chd", "pbp", "cso", "pkg", "a26",
+    "a52", "a78", "lnx", "jag", "j64", "pce", "sgx", "ngp", "ngc", "ws", "wsc", "vec", "col",
+    "int",
 ];
+
+pub fn is_recognized_rom_extension(ext: &str) -> bool {
+    ROM_EXTENSIONS_NO_ARCHIVE.contains(&ext.to_ascii_lowercase().as_str())
+}
 
 /// Peek inside a .zip archive to find the extension of the first ROM file inside.
 /// Returns None if the archive can't be read or contains no recognized ROM files.
@@ -273,7 +276,7 @@ pub fn peek_archive_extension(path: &Path) -> Option<String> {
             let name = entry.name().to_string();
             if let Some(ext) = name.rsplit('.').next() {
                 let ext_lower = ext.to_lowercase();
-                if ROM_EXTENSIONS_NO_ARCHIVE.contains(&ext_lower.as_str()) {
+                if is_recognized_rom_extension(&ext_lower) {
                     return Some(ext_lower);
                 }
             }

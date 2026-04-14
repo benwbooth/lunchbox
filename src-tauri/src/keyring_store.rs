@@ -94,9 +94,6 @@ pub mod keys {
     pub const SCREENSCRAPER_USER_ID: &str = "screenscraper_user_id";
     pub const SCREENSCRAPER_USER_PASSWORD: &str = "screenscraper_user_password";
     pub const QBITTORRENT_PASSWORD: &str = "qbittorrent_password";
-    pub const TRANSMISSION_PASSWORD: &str = "transmission_password";
-    pub const DELUGE_PASSWORD: &str = "deluge_password";
-    pub const ARIA2_SECRET: &str = "aria2_secret";
 }
 
 /// Store a credential in the system keyring (if available)
@@ -244,6 +241,20 @@ pub fn delete_credential(key: &str) -> Result<()> {
 /// Check if keyring storage is being used
 pub fn is_keyring_available() -> bool {
     keyring_available()
+}
+
+/// Check whether a credential round-trips through the configured keyring backend.
+///
+/// Empty values are treated as already-satisfied because there is no secret to persist.
+pub fn credential_matches(key: &str, expected: &str) -> bool {
+    if expected.is_empty() {
+        return true;
+    }
+    if !keyring_available() {
+        return false;
+    }
+
+    matches!(get_credential(key), Ok(Some(value)) if value == expected)
 }
 
 /// Get the name of the credential storage being used

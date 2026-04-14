@@ -443,15 +443,16 @@ pub struct EmuMoviesSettings {
     pub password: String,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TorrentSettings {
     #[serde(default)]
-    pub client: String,
-    #[serde(default)]
     pub rom_directory: Option<String>,
     #[serde(default)]
+    pub qbittorrent_container_rom_directory: Option<String>,
+    #[serde(default)]
     pub torrent_library_directory: Option<String>,
+    #[serde(default)]
+    pub qbittorrent_container_torrent_library_directory: Option<String>,
     #[serde(default)]
     pub download_entire_torrent: bool,
     #[serde(default)]
@@ -464,56 +465,21 @@ pub struct TorrentSettings {
     pub qbittorrent_username: String,
     #[serde(default)]
     pub qbittorrent_password: String,
-    #[serde(default)]
-    pub transmission_host: String,
-    #[serde(default)]
-    pub transmission_port: u16,
-    #[serde(default)]
-    pub transmission_username: String,
-    #[serde(default)]
-    pub transmission_password: String,
-    #[serde(default)]
-    pub deluge_host: String,
-    #[serde(default)]
-    pub deluge_port: u16,
-    #[serde(default)]
-    pub deluge_username: String,
-    #[serde(default)]
-    pub deluge_password: String,
-    #[serde(default)]
-    pub rtorrent_url: String,
-    #[serde(default)]
-    pub aria2_host: String,
-    #[serde(default)]
-    pub aria2_port: u16,
-    #[serde(default)]
-    pub aria2_secret: String,
 }
 
 impl Default for TorrentSettings {
     fn default() -> Self {
         Self {
-            client: "auto".to_string(),
             rom_directory: None,
+            qbittorrent_container_rom_directory: None,
             torrent_library_directory: None,
+            qbittorrent_container_torrent_library_directory: None,
             download_entire_torrent: false,
             file_link_mode: "symlink".to_string(),
             qbittorrent_host: "localhost".to_string(),
             qbittorrent_port: 8080,
             qbittorrent_username: String::new(),
             qbittorrent_password: String::new(),
-            transmission_host: "localhost".to_string(),
-            transmission_port: 9091,
-            transmission_username: String::new(),
-            transmission_password: String::new(),
-            deluge_host: "localhost".to_string(),
-            deluge_port: 58846,
-            deluge_username: String::new(),
-            deluge_password: String::new(),
-            rtorrent_url: String::new(),
-            aria2_host: "localhost".to_string(),
-            aria2_port: 6800,
-            aria2_secret: String::new(),
         }
     }
 }
@@ -598,7 +564,13 @@ pub async fn confirm_rom_import(roms: Vec<RomImportEntry>) -> Result<usize, Stri
     struct ConfirmInput {
         roms: Vec<RomImportEntry>,
     }
-    invoke("confirm_rom_import", Args { input: ConfirmInput { roms } }).await
+    invoke(
+        "confirm_rom_import",
+        Args {
+            input: ConfirmInput { roms },
+        },
+    )
+    .await
 }
 
 // ============ Helpers ============
@@ -1548,6 +1520,24 @@ pub async fn check_cached_video(
     .await
 }
 
+/// Probe whether a game video is available from EmuMovies without downloading it.
+pub async fn probe_game_video_available(game_title: String, platform: String) -> Result<bool, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+    }
+    invoke(
+        "probe_game_video_available",
+        Args {
+            game_title,
+            platform,
+        },
+    )
+    .await
+}
+
 /// Download a video for a game from EmuMovies
 pub async fn download_game_video(
     game_title: String,
@@ -1879,21 +1869,27 @@ pub struct ImportJob {
 pub async fn get_game_file(launchbox_db_id: i64) -> Result<Option<GameFile>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Args { launchbox_db_id: i64 }
+    struct Args {
+        launchbox_db_id: i64,
+    }
     invoke("get_game_file", Args { launchbox_db_id }).await
 }
 
 pub async fn get_active_import(launchbox_db_id: i64) -> Result<Option<ImportJob>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Args { launchbox_db_id: i64 }
+    struct Args {
+        launchbox_db_id: i64,
+    }
     invoke("get_active_import", Args { launchbox_db_id }).await
 }
 
 pub async fn cancel_import(job_id: String) -> Result<(), String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Args { job_id: String }
+    struct Args {
+        job_id: String,
+    }
     invoke("cancel_import", Args { job_id }).await
 }
 
@@ -1912,6 +1908,14 @@ pub struct MinervaRom {
     pub rom_count: i64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MinervaDownloadMode {
+    #[default]
+    GameOnly,
+    FullTorrent,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MinervaDownloadProgress {
@@ -1928,14 +1932,24 @@ pub async fn has_minerva_db() -> Result<bool, String> {
     invoke("has_minerva_db", ()).await
 }
 
-pub async fn get_minerva_rom_for_game(launchbox_db_id: i64, platform_id: Option<i64>) -> Result<Option<MinervaRom>, String> {
+pub async fn get_minerva_rom_for_game(
+    launchbox_db_id: i64,
+    platform_id: Option<i64>,
+) -> Result<Option<MinervaRom>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
         platform_id: Option<i64>,
     }
-    invoke("get_minerva_rom_for_game", Args { launchbox_db_id, platform_id }).await
+    invoke(
+        "get_minerva_rom_for_game",
+        Args {
+            launchbox_db_id,
+            platform_id,
+        },
+    )
+    .await
 }
 
 pub async fn search_minerva(
@@ -1963,10 +1977,11 @@ pub async fn search_minerva(
 
 pub async fn start_minerva_download(
     torrent_url: String,
-    file_index: usize,
+    file_index: Option<usize>,
     launchbox_db_id: i64,
     game_title: String,
     platform: String,
+    download_mode: MinervaDownloadMode,
 ) -> Result<ImportJob, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -1977,10 +1992,11 @@ pub async fn start_minerva_download(
     #[serde(rename_all = "camelCase")]
     struct Input {
         torrent_url: String,
-        file_index: usize,
+        file_index: Option<usize>,
         launchbox_db_id: i64,
         game_title: String,
         platform: String,
+        download_mode: MinervaDownloadMode,
     }
     invoke(
         "start_minerva_download",
@@ -1991,6 +2007,7 @@ pub async fn start_minerva_download(
                 launchbox_db_id,
                 game_title,
                 platform,
+                download_mode,
             },
         },
     )
@@ -2053,5 +2070,14 @@ pub async fn list_torrent_files(
         torrent_url: String,
         game_title: String,
     }
-    invoke("list_torrent_files", Args { input: Inner { torrent_url, game_title } }).await
+    invoke(
+        "list_torrent_files",
+        Args {
+            input: Inner {
+                torrent_url,
+                game_title,
+            },
+        },
+    )
+    .await
 }

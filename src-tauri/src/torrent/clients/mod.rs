@@ -1,20 +1,16 @@
 //! Torrent client implementations
 //!
 //! Each client implements adding torrents, tracking progress, and cancellation.
-//! The `create_client` factory selects the right implementation based on settings.
+//! The `create_client` factory returns the qBittorrent Web UI implementation.
 
-#[cfg(feature = "minerva-torrent")]
-mod embedded;
 mod qbittorrent;
-mod transmission;
-mod aria2;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 
 use super::{DownloadProgress, TorrentFileInfo};
-use crate::state::TorrentSettings;
+use crate::state::AppSettings;
 
 /// Trait for torrent client implementations
 #[async_trait]
@@ -52,48 +48,18 @@ pub trait TorrentClient: Send + Sync {
     ) -> Result<Option<PathBuf>>;
 }
 
-/// Create a torrent client based on settings
-pub fn create_client(settings: &TorrentSettings) -> Result<Box<dyn TorrentClient>> {
-    match settings.client.as_str() {
-        "embedded" => create_embedded(settings),
-        "qbittorrent" => Ok(Box::new(qbittorrent::QBittorrentClient::new(settings))),
-        "transmission" => Ok(Box::new(transmission::TransmissionClient::new(settings))),
-        "aria2" => Ok(Box::new(aria2::Aria2Client::new(settings))),
-        "deluge" => bail!("Deluge client not yet implemented — use qBittorrent or Transmission"),
-        "rtorrent" => bail!("rTorrent client not yet implemented — use qBittorrent or Transmission"),
-        "auto" => create_auto(settings),
-        other => bail!("Unknown torrent client: {other}"),
+/// Create the configured torrent client.
+///
+/// Lunchbox only supports qBittorrent Web UI for Minerva downloads.
+pub fn create_client(settings: &AppSettings) -> Result<Box<dyn TorrentClient>> {
+    if settings.torrent.qbittorrent_host.trim().is_empty() {
+        bail!("qBittorrent host is required");
     }
-}
-
-fn create_embedded(_settings: &TorrentSettings) -> Result<Box<dyn TorrentClient>> {
-    #[cfg(feature = "minerva-torrent")]
-    {
-        Ok(Box::new(embedded::EmbeddedClient::new()))
+    if settings.torrent.qbittorrent_username.trim().is_empty() {
+        bail!("qBittorrent username is required");
     }
-    #[cfg(not(feature = "minerva-torrent"))]
-    {
-        bail!("Embedded torrent client not available (compile with minerva-torrent feature)")
+    if settings.torrent.qbittorrent_password.trim().is_empty() {
+        bail!("qBittorrent password is required");
     }
-}
-
-fn create_auto(settings: &TorrentSettings) -> Result<Box<dyn TorrentClient>> {
-    // Try embedded first
-    if let Ok(client) = create_embedded(settings) {
-        return Ok(client);
-    }
-    // Fall back to qBittorrent if configured
-    if !settings.qbittorrent_host.is_empty() {
-        return Ok(Box::new(qbittorrent::QBittorrentClient::new(settings)));
-    }
-    // Fall back to Transmission
-    if !settings.transmission_host.is_empty() {
-        return Ok(Box::new(transmission::TransmissionClient::new(settings)));
-    }
-    // Fall back to aria2
-    if !settings.aria2_host.is_empty() {
-        return Ok(Box::new(aria2::Aria2Client::new(settings)));
-    }
-    // Default to embedded (will error if feature not enabled)
-    create_embedded(settings)
+    Ok(Box::new(qbittorrent::QBittorrentClient::new(settings)))
 }

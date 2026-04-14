@@ -6,9 +6,7 @@ use leptos::task::spawn_local;
 use std::collections::HashSet;
 
 #[component]
-pub fn RomImport(
-    #[prop(into)] on_close: Callback<()>,
-) -> impl IntoView {
+pub fn RomImport(#[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (scan_results, set_scan_results) = signal::<Vec<tauri::ScannedRom>>(Vec::new());
     let (scanning, set_scanning) = signal(false);
     let (importing, set_importing) = signal(false);
@@ -37,8 +35,18 @@ pub fn RomImport(
                     return true;
                 }
                 rom.file_name.to_lowercase().contains(&query)
-                    || rom.matched_game_title.as_deref().unwrap_or("").to_lowercase().contains(&query)
-                    || rom.detected_platform.as_deref().unwrap_or("").to_lowercase().contains(&query)
+                    || rom
+                        .matched_game_title
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&query)
+                    || rom
+                        .detected_platform
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&query)
             })
             .collect();
 
@@ -48,9 +56,16 @@ pub fn RomImport(
                 "platform" => a.detected_platform.cmp(&b.detected_platform),
                 "game" => a.matched_game_title.cmp(&b.matched_game_title),
                 "size" => a.file_size.cmp(&b.file_size),
-                _ => b.match_confidence.partial_cmp(&a.match_confidence).unwrap_or(std::cmp::Ordering::Equal),
+                _ => b
+                    .match_confidence
+                    .partial_cmp(&a.match_confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal),
             };
-            if asc { ord } else { ord.reverse() }
+            if asc {
+                ord
+            } else {
+                ord.reverse()
+            }
         });
 
         results

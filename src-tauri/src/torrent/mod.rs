@@ -1,20 +1,13 @@
-//! Torrent client abstraction for downloading ROMs from Minerva Archive
+//! Torrent support for downloading ROMs from Minerva Archive.
 //!
-//! Supports multiple torrent clients:
-//! - **embedded** (librqbit, requires `minerva-torrent` feature)
-//! - **qbittorrent** (HTTP API)
-//! - **transmission** (RPC)
-//! - **deluge** (CLI via deluge-console)
-//! - **rtorrent** (XML-RPC)
-//! - **aria2** (JSON-RPC)
-//! - **auto** (try embedded first, then probe external clients)
+//! Lunchbox only supports qBittorrent Web UI for torrent operations.
 
 mod clients;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
 pub use clients::create_client;
@@ -60,9 +53,28 @@ pub struct TorrentFileInfo {
 
 static ACTIVE_DOWNLOADS: std::sync::OnceLock<std::sync::RwLock<HashMap<String, DownloadProgress>>> =
     std::sync::OnceLock::new();
+static CLIENT_JOB_IDS: std::sync::OnceLock<std::sync::RwLock<HashMap<String, String>>> =
+    std::sync::OnceLock::new();
+static TORRENT_BYTES_CACHE: std::sync::OnceLock<std::sync::RwLock<HashMap<String, Vec<u8>>>> =
+    std::sync::OnceLock::new();
+static TORRENT_FILE_LIST_CACHE: std::sync::OnceLock<
+    std::sync::RwLock<HashMap<String, Vec<TorrentFileInfo>>>,
+> = std::sync::OnceLock::new();
 
 fn downloads_map() -> &'static std::sync::RwLock<HashMap<String, DownloadProgress>> {
     ACTIVE_DOWNLOADS.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
+}
+
+fn client_job_map() -> &'static std::sync::RwLock<HashMap<String, String>> {
+    CLIENT_JOB_IDS.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
+}
+
+fn torrent_bytes_cache() -> &'static std::sync::RwLock<HashMap<String, Vec<u8>>> {
+    TORRENT_BYTES_CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
+}
+
+fn torrent_file_list_cache() -> &'static std::sync::RwLock<HashMap<String, Vec<TorrentFileInfo>>> {
+    TORRENT_FILE_LIST_CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
 }
 
 pub fn update_progress(
@@ -95,10 +107,28 @@ pub fn get_progress(job_id: &str) -> Option<DownloadProgress> {
     guard.get(job_id).cloned()
 }
 
+pub fn set_client_job_id(job_id: &str, client_job_id: &str) {
+    if let Ok(mut guard) = client_job_map().write() {
+        guard.insert(job_id.to_string(), client_job_id.to_string());
+    }
+}
+
+pub fn get_client_job_id(job_id: &str) -> Option<String> {
+    let guard = client_job_map().read().ok()?;
+    guard.get(job_id).cloned()
+}
+
+pub fn clear_client_job_id(job_id: &str) {
+    if let Ok(mut guard) = client_job_map().write() {
+        guard.remove(job_id);
+    }
+}
+
 pub fn clear_progress(job_id: &str) {
     if let Ok(mut guard) = downloads_map().write() {
         guard.remove(job_id);
     }
+    clear_client_job_id(job_id);
 }
 
 // ============================================================================
@@ -144,6 +174,12 @@ pub fn parse_torrent_metadata(torrent_bytes: &[u8]) -> Result<Vec<TorrentFileInf
 
 /// Fetch a .torrent file from a URL with retry/backoff
 pub async fn fetch_torrent_file(torrent_url: &str) -> Result<Vec<u8>> {
+    if let Ok(guard) = torrent_bytes_cache().read() {
+        if let Some(cached) = guard.get(torrent_url) {
+            return Ok(cached.clone());
+        }
+    }
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .user_agent("Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0")
@@ -155,7 +191,11 @@ pub async fn fetch_torrent_file(torrent_url: &str) -> Result<Vec<u8>> {
         let response = client.get(torrent_url).send().await?;
         let status = response.status();
         if status.is_success() {
-            return Ok(response.bytes().await?.to_vec());
+            let bytes = response.bytes().await?.to_vec();
+            if let Ok(mut guard) = torrent_bytes_cache().write() {
+                guard.insert(torrent_url.to_string(), bytes.clone());
+            }
+            return Ok(bytes);
         }
         if (status.as_u16() == 429 || status.as_u16() == 503) && attempts <= 5 {
             let backoff = std::time::Duration::from_secs(2u64.pow(attempts));
@@ -167,18 +207,28 @@ pub async fn fetch_torrent_file(torrent_url: &str) -> Result<Vec<u8>> {
     }
 }
 
+pub async fn get_torrent_file_listing(torrent_url: &str) -> Result<Vec<TorrentFileInfo>> {
+    if let Ok(guard) = torrent_file_list_cache().read() {
+        if let Some(cached) = guard.get(torrent_url) {
+            return Ok(cached.clone());
+        }
+    }
+
+    let torrent_bytes = fetch_torrent_file(torrent_url).await?;
+    let files = parse_torrent_metadata(&torrent_bytes)?;
+    if let Ok(mut guard) = torrent_file_list_cache().write() {
+        guard.insert(torrent_url.to_string(), files.clone());
+    }
+    Ok(files)
+}
+
 // ============================================================================
 // File linking utility
 // ============================================================================
 
 /// Link/copy a ROM file from source to the rom directory, organized by platform.
 /// Returns the path to the linked/copied file.
-pub fn link_rom_file(
-    source: &Path,
-    rom_dir: &Path,
-    platform: &str,
-    mode: &str,
-) -> Result<PathBuf> {
+pub fn link_rom_file(source: &Path, rom_dir: &Path, platform: &str, mode: &str) -> Result<PathBuf> {
     let target_dir = rom_dir.join(platform);
     std::fs::create_dir_all(&target_dir)?;
     let target = target_dir.join(source.file_name().unwrap_or_default());

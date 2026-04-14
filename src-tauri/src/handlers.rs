@@ -940,14 +940,42 @@ pub async fn get_active_import(
     .await
     .map_err(|e| e.to_string())?;
 
-    if let Some((id, db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at)) = row {
+    if let Some((
+        id,
+        db_id,
+        game_title,
+        platform,
+        status,
+        progress_percent,
+        status_message,
+        created_at,
+        updated_at,
+    )) = row
+    {
+        let missing_live_progress = crate::torrent::get_progress(&id).is_none();
+
         // Auto-fail stale jobs (no updates for 30+ minutes)
         let stale_minutes = chrono::NaiveDateTime::parse_from_str(&updated_at, "%Y-%m-%d %H:%M:%S")
             .ok()
-            .map(|dt| chrono::Utc::now().naive_utc().signed_duration_since(dt).num_minutes())
+            .map(|dt| {
+                chrono::Utc::now()
+                    .naive_utc()
+                    .signed_duration_since(dt)
+                    .num_minutes()
+            })
             .unwrap_or(0);
-        if stale_minutes >= 30 {
-            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = 'Stale job auto-failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+
+        let stale_message = if stale_minutes >= 30 {
+            Some("Stale job auto-failed")
+        } else if missing_live_progress && stale_minutes >= 1 {
+            Some("Lost live download state; retry the download")
+        } else {
+            None
+        };
+
+        if let Some(message) = stale_message {
+            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(message)
                 .bind(&id)
                 .execute(db_pool)
                 .await;
@@ -955,7 +983,15 @@ pub async fn get_active_import(
         }
 
         return Ok(Some(ImportJob {
-            id, launchbox_db_id: db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at,
+            id,
+            launchbox_db_id: db_id,
+            game_title,
+            platform,
+            status,
+            progress_percent,
+            status_message,
+            created_at,
+            updated_at,
         }));
     }
 
@@ -982,10 +1018,62 @@ pub struct MinervaRom {
 #[serde(rename_all = "camelCase")]
 pub struct StartMinervaDownloadInput {
     pub torrent_url: String,
-    pub file_index: usize,
+    pub file_index: Option<usize>,
     pub launchbox_db_id: i64,
     pub game_title: String,
     pub platform: String,
+    #[serde(default)]
+    pub download_mode: MinervaDownloadMode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MinervaDownloadMode {
+    #[default]
+    GameOnly,
+    FullTorrent,
+}
+
+fn sanitize_download_directory_component(value: &str) -> String {
+    let sanitized: String = value
+        .chars()
+        .map(|ch| match ch {
+            'a'..='z' | 'A'..='Z' | '0'..='9' => ch,
+            _ => '-',
+        })
+        .collect();
+
+    let trimmed = sanitized.trim_matches('-');
+    if trimmed.is_empty() {
+        "download".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn locate_downloaded_file(
+    download_dir: &std::path::Path,
+    target_filename: &str,
+) -> Option<std::path::PathBuf> {
+    let target_name = std::path::Path::new(target_filename)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_ascii_lowercase())?;
+
+    walkdir::WalkDir::new(download_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .find_map(|entry| {
+            if !entry.file_type().is_file() {
+                return None;
+            }
+
+            let candidate_name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            if candidate_name == target_name {
+                Some(entry.into_path())
+            } else {
+                None
+            }
+        })
 }
 
 /// Check if the minerva database is available
@@ -1014,11 +1102,14 @@ pub async fn get_minerva_rom_for_game(
     let resolved_platform_id = if let Some(pid) = platform_id {
         pid
     } else if launchbox_db_id > 0 {
-        match sqlx::query_as::<_, (i64,)>("SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1")
-            .bind(launchbox_db_id)
-            .fetch_optional(games_db)
-            .await
-            .map_err(|e| e.to_string())? {
+        match sqlx::query_as::<_, (i64,)>(
+            "SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1",
+        )
+        .bind(launchbox_db_id)
+        .fetch_optional(games_db)
+        .await
+        .map_err(|e| e.to_string())?
+        {
             Some((pid,)) => pid,
             None => return Ok(None),
         }
@@ -1034,23 +1125,23 @@ pub async fn get_minerva_rom_for_game(
          JOIN minerva_torrents t ON tp.torrent_id = t.id
          WHERE tp.lunchbox_platform_id = ?
          ORDER BY tp.rom_count DESC
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(platform_id)
     .fetch_optional(minerva_pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(row.map(|(torrent_id, torrent_url, collection, minerva_platform, rom_count)| {
-        MinervaRom {
+    Ok(row.map(
+        |(torrent_id, torrent_url, collection, minerva_platform, rom_count)| MinervaRom {
             torrent_id,
             torrent_url,
             collection,
             minerva_platform,
             lunchbox_platform_id: platform_id,
             rom_count,
-        }
-    }))
+        },
+    ))
 }
 
 /// Search for all minerva torrents available for a platform
@@ -1075,23 +1166,26 @@ pub async fn search_minerva(
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
          WHERE tp.lunchbox_platform_id = ?
-         ORDER BY tp.rom_count DESC"
+         ORDER BY tp.rom_count DESC",
     )
     .bind(pid)
     .fetch_all(minerva_pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(torrent_id, torrent_url, collection, minerva_platform, rom_count)| {
-        MinervaRom {
-            torrent_id,
-            torrent_url,
-            collection,
-            minerva_platform,
-            lunchbox_platform_id: pid,
-            rom_count,
-        }
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(
+            |(torrent_id, torrent_url, collection, minerva_platform, rom_count)| MinervaRom {
+                torrent_id,
+                torrent_url,
+                collection,
+                minerva_platform,
+                lunchbox_platform_id: pid,
+                rom_count,
+            },
+        )
+        .collect())
 }
 
 /// Start a minerva ROM download via torrent
@@ -1101,6 +1195,7 @@ pub async fn start_minerva_download(
 ) -> Result<ImportJob, String> {
     let torrent_url = input.torrent_url.clone();
     let file_index = input.file_index;
+    let download_mode = input.download_mode;
 
     // Create import job
     let job_id = uuid::Uuid::new_v4().to_string();
@@ -1120,9 +1215,23 @@ pub async fn start_minerva_download(
     .await
     .map_err(|e| e.to_string())?;
 
-    let import_dir = state.settings.get_import_directory();
-    let platform_dir = import_dir.join(&input.platform);
-    std::fs::create_dir_all(&platform_dir).map_err(|e| e.to_string())?;
+    let rom_dir = state.settings.get_rom_directory();
+    let file_link_mode = state.settings.torrent.file_link_mode.clone();
+    let download_dir = match download_mode {
+        MinervaDownloadMode::GameOnly => {
+            state.settings.get_import_directory().join(&input.platform)
+        }
+        MinervaDownloadMode::FullTorrent => {
+            let title_component = sanitize_download_directory_component(&input.game_title);
+            let job_suffix = job_id.chars().take(8).collect::<String>();
+            state
+                .settings
+                .get_torrent_library_directory()
+                .join(&input.platform)
+                .join(format!("{title_component}-{job_suffix}"))
+        }
+    };
+    std::fs::create_dir_all(&download_dir).map_err(|e| e.to_string())?;
 
     // Spawn background download task
     let job_id_bg = job_id.clone();
@@ -1130,54 +1239,57 @@ pub async fn start_minerva_download(
     let platform = input.platform.clone();
     let launchbox_db_id = input.launchbox_db_id;
     let db_path = state.user_db_path.clone();
-    let torrent_settings = state.settings.torrent.clone();
+    let app_settings = state.settings.clone();
+    let file_link_mode_bg = file_link_mode.clone();
+    let rom_dir_bg = rom_dir.clone();
+    let download_dir_bg = download_dir.clone();
 
     tokio::spawn(async move {
         // Step 1: Fetch the torrent file
-        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::FetchingTorrent, 0.0, 0, 0, 0, "Fetching torrent file...");
-
-        let torrent_bytes = match crate::torrent::fetch_torrent_file(&torrent_url).await {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Failed to fetch torrent: {e}"));
-                return;
-            }
-        };
+        crate::torrent::update_progress(
+            &job_id_bg,
+            crate::torrent::DownloadStatus::FetchingTorrent,
+            0.0,
+            0,
+            0,
+            0,
+            "Fetching torrent file...",
+        );
 
         // Step 2: Parse torrent to get the target filename
-        let files = match crate::torrent::parse_torrent_metadata(&torrent_bytes) {
+        let files = match crate::torrent::get_torrent_file_listing(&torrent_url).await {
             Ok(f) => f,
             Err(e) => {
-                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Failed to parse torrent: {e}"));
+                crate::torrent::update_progress(
+                    &job_id_bg,
+                    crate::torrent::DownloadStatus::Failed,
+                    0.0,
+                    0,
+                    0,
+                    0,
+                    &format!("Failed to parse torrent: {e}"),
+                );
                 return;
             }
         };
 
-        let target_file = files.iter().find(|f| f.index == file_index);
+        let target_file = file_index.and_then(|idx| files.iter().find(|f| f.index == idx));
         let target_filename = target_file.map(|f| f.filename.clone()).unwrap_or_default();
         let target_size = target_file.map(|f| f.size).unwrap_or(0);
 
-        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Downloading, 5.0, 0, 0, target_size, &format!("Downloading: {target_filename}"));
-
-        // Step 3: Add torrent and start download
-        let client = match crate::torrent::create_client(&torrent_settings) {
-            Ok(c) => c,
-            Err(e) => {
-                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("No torrent client: {e}"));
-                return;
-            }
-        };
-
-        let add_result = client
-            .add_torrent(&torrent_url, &platform_dir, Some(vec![file_index]))
-            .await;
-
-        if let Err(e) = add_result {
-            crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, &format!("Failed to start download: {e}"));
+        if matches!(download_mode, MinervaDownloadMode::GameOnly) && target_file.is_none() {
+            crate::torrent::update_progress(
+                &job_id_bg,
+                crate::torrent::DownloadStatus::Failed,
+                0.0,
+                0,
+                0,
+                0,
+                "No matching file was selected for this Minerva torrent.",
+            );
             if let Some(ref db_path) = db_path {
                 if let Ok(pool) = crate::db::init_pool(db_path).await {
-                    let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                        .bind(format!("Download failed: {e}"))
+                    let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = 'No matching file was selected for this Minerva torrent.', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
                         .bind(&job_id_bg)
                         .execute(&pool)
                         .await;
@@ -1186,108 +1298,295 @@ pub async fn start_minerva_download(
             return;
         }
 
-        // Step 4: Wait for the file to appear on disk (poll every 2 seconds, timeout 2 hours)
-        let expected_path = platform_dir.join(
-            std::path::Path::new(&target_filename)
-                .file_name()
-                .unwrap_or(std::ffi::OsStr::new(&target_filename))
+        let status_message = match download_mode {
+            MinervaDownloadMode::GameOnly => format!("Downloading: {target_filename}"),
+            MinervaDownloadMode::FullTorrent => {
+                format!("Downloading full torrent for {game_title}")
+            }
+        };
+        let progress_total = match download_mode {
+            MinervaDownloadMode::GameOnly => target_size,
+            MinervaDownloadMode::FullTorrent => files.iter().map(|file| file.size).sum(),
+        };
+
+        crate::torrent::update_progress(
+            &job_id_bg,
+            crate::torrent::DownloadStatus::Downloading,
+            5.0,
+            0,
+            0,
+            progress_total,
+            &status_message,
         );
 
+        // Step 3: Add torrent and start download
+        let client = match crate::torrent::create_client(&app_settings) {
+            Ok(c) => c,
+            Err(e) => {
+                crate::torrent::update_progress(
+                    &job_id_bg,
+                    crate::torrent::DownloadStatus::Failed,
+                    0.0,
+                    0,
+                    0,
+                    0,
+                    &format!("qBittorrent configuration error: {e}"),
+                );
+                return;
+            }
+        };
+
+        let requested_indices = match download_mode {
+            MinervaDownloadMode::GameOnly => file_index.map(|idx| vec![idx]),
+            MinervaDownloadMode::FullTorrent => None,
+        };
+
+        let add_result = client
+            .add_torrent(&torrent_url, &download_dir_bg, requested_indices)
+            .await;
+
+        let client_job_id = match add_result {
+            Ok(job_id) => job_id,
+            Err(e) => {
+                crate::torrent::update_progress(
+                    &job_id_bg,
+                    crate::torrent::DownloadStatus::Failed,
+                    0.0,
+                    0,
+                    0,
+                    0,
+                    &format!("Failed to start download: {e}"),
+                );
+                if let Some(ref db_path) = db_path {
+                    if let Ok(pool) = crate::db::init_pool(db_path).await {
+                        let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                            .bind(format!("Download failed: {e}"))
+                            .bind(&job_id_bg)
+                            .execute(&pool)
+                            .await;
+                    }
+                }
+                return;
+            }
+        };
+        crate::torrent::set_client_job_id(&job_id_bg, &client_job_id);
+
+        // Step 4: Poll qBittorrent progress until the requested download completes.
         let start = std::time::Instant::now();
         let timeout = std::time::Duration::from_secs(7200);
-        let mut last_size = 0u64;
 
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
             if start.elapsed() > timeout {
-                crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Failed, 0.0, 0, 0, 0, "Download timed out after 2 hours");
+                crate::torrent::update_progress(
+                    &job_id_bg,
+                    crate::torrent::DownloadStatus::Failed,
+                    0.0,
+                    0,
+                    0,
+                    progress_total,
+                    "Download timed out after 2 hours",
+                );
+                if let Some(ref db_path) = db_path {
+                    if let Ok(pool) = crate::db::init_pool(db_path).await {
+                        let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = 'Download timed out after 2 hours', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                            .bind(&job_id_bg)
+                            .execute(&pool)
+                            .await;
+                    }
+                }
                 return;
             }
 
-            // Check if file exists and is growing
-            if let Ok(meta) = tokio::fs::metadata(&expected_path).await {
-                let current_size = meta.len();
-                let pct = if target_size > 0 {
-                    (current_size as f64 / target_size as f64 * 100.0).min(99.9)
-                } else {
-                    50.0
-                };
-                let speed = if current_size > last_size { current_size - last_size } else { 0 } / 2; // bytes per second (rough)
-                last_size = current_size;
-
-                crate::torrent::update_progress(
-                    &job_id_bg, crate::torrent::DownloadStatus::Downloading,
-                    pct, speed, current_size, target_size,
-                    &format!("Downloading: {:.1}%", pct),
-                );
-
-                // Check if download is complete (file size matches or exceeds expected)
-                if target_size > 0 && current_size >= target_size {
-                    break;
-                }
-            }
-
-            // Also check all files in the platform dir for the target filename
-            // (torrent might create subdirectories)
-            if !expected_path.exists() {
-                // Search recursively for the file
-                if let Ok(mut entries) = tokio::fs::read_dir(&platform_dir).await {
-                    while let Ok(Some(entry)) = entries.next_entry().await {
-                        if entry.file_name().to_string_lossy().contains(
-                            std::path::Path::new(&target_filename)
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_str()
-                                .unwrap_or("")
-                        ) {
-                            if let Ok(meta) = entry.metadata().await {
-                                if target_size > 0 && meta.len() >= target_size {
-                                    // Found completed file in a subdirectory
-                                    let found_path = entry.path();
-                                    crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Completed, 100.0, 0, target_size, target_size, "Download complete");
-
-                                    if let Some(ref db_path) = db_path {
-                                        if let Ok(pool) = crate::db::init_pool(db_path).await {
-                                            let _ = sqlx::query(
-                                                "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')"
-                                            )
-                                            .bind(launchbox_db_id).bind(&game_title).bind(&platform)
-                                            .bind(found_path.display().to_string()).bind(meta.len() as i64)
-                                            .execute(&pool).await;
-                                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = 'Download complete', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                                                .bind(&job_id_bg).execute(&pool).await;
-                                        }
-                                    }
-                                    return;
-                                }
-                            }
+            let progress = match client.get_progress(&client_job_id).await {
+                Ok(Some(progress)) => progress,
+                Ok(None) => continue,
+                Err(e) => {
+                    crate::torrent::update_progress(
+                        &job_id_bg,
+                        crate::torrent::DownloadStatus::Failed,
+                        0.0,
+                        0,
+                        0,
+                        progress_total,
+                        &format!("Failed to read qBittorrent progress: {e}"),
+                    );
+                    if let Some(ref db_path) = db_path {
+                        if let Ok(pool) = crate::db::init_pool(db_path).await {
+                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                                .bind(format!("Failed to read qBittorrent progress: {e}"))
+                                .bind(&job_id_bg)
+                                .execute(&pool)
+                                .await;
                         }
                     }
+                    return;
                 }
+            };
+
+            crate::torrent::update_progress(
+                &job_id_bg,
+                progress.status,
+                progress.progress_percent,
+                progress.download_speed,
+                progress.downloaded_bytes,
+                progress.total_bytes,
+                &progress.status_message,
+            );
+
+            match progress.status {
+                crate::torrent::DownloadStatus::Completed => break,
+                crate::torrent::DownloadStatus::Failed => {
+                    if let Some(ref db_path) = db_path {
+                        if let Ok(pool) = crate::db::init_pool(db_path).await {
+                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                                .bind(progress.status_message)
+                                .bind(&job_id_bg)
+                                .execute(&pool)
+                                .await;
+                        }
+                    }
+                    crate::torrent::clear_client_job_id(&job_id_bg);
+                    return;
+                }
+                crate::torrent::DownloadStatus::Cancelled => {
+                    if let Some(ref db_path) = db_path {
+                        if let Ok(pool) = crate::db::init_pool(db_path).await {
+                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'cancelled', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                                .bind(progress.status_message)
+                                .bind(&job_id_bg)
+                                .execute(&pool)
+                                .await;
+                        }
+                    }
+                    crate::torrent::clear_client_job_id(&job_id_bg);
+                    return;
+                }
+                _ => {}
             }
         }
 
-        // Step 5: Download complete
-        crate::torrent::update_progress(&job_id_bg, crate::torrent::DownloadStatus::Completed, 100.0, 0, target_size, target_size, "Download complete");
+        let representative_path = if let Some(file) = target_file {
+            if let Some(path) = locate_downloaded_file(&download_dir_bg, &file.filename) {
+                Some(path)
+            } else {
+                client
+                    .get_downloaded_file_path(&client_job_id, file.index, &download_dir_bg)
+                    .await
+                    .ok()
+                    .flatten()
+            }
+        } else {
+            None
+        };
+
+        let (stored_path, stored_size, completion_message) = match download_mode {
+            MinervaDownloadMode::GameOnly => {
+                let Some(found_path) = representative_path else {
+                    crate::torrent::update_progress(
+                        &job_id_bg,
+                        crate::torrent::DownloadStatus::Failed,
+                        100.0,
+                        0,
+                        target_size,
+                        target_size,
+                        "Download finished, but the selected ROM file could not be found on disk.",
+                    );
+                    if let Some(ref db_path) = db_path {
+                        if let Ok(pool) = crate::db::init_pool(db_path).await {
+                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = 'Download finished, but the selected ROM file could not be found on disk.', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                                .bind(&job_id_bg)
+                                .execute(&pool)
+                                .await;
+                        }
+                    }
+                    return;
+                };
+
+                let file_size = std::fs::metadata(&found_path)
+                    .map(|meta| meta.len() as i64)
+                    .unwrap_or(target_size as i64);
+                (
+                    found_path.display().to_string(),
+                    file_size,
+                    "Download complete".to_string(),
+                )
+            }
+            MinervaDownloadMode::FullTorrent => {
+                let Some(found_path) = representative_path else {
+                    crate::torrent::update_progress(
+                        &job_id_bg,
+                        crate::torrent::DownloadStatus::Failed,
+                        100.0,
+                        0,
+                        progress_total,
+                        progress_total,
+                        "Full torrent finished, but Lunchbox could not locate the selected game inside it.",
+                    );
+                    if let Some(ref db_path) = db_path {
+                        if let Ok(pool) = crate::db::init_pool(db_path).await {
+                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = 'Full torrent finished, but Lunchbox could not locate the selected game inside it.', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                                .bind(&job_id_bg)
+                                .execute(&pool)
+                                .await;
+                        }
+                    }
+                    return;
+                };
+
+                let linked_path = match crate::torrent::link_rom_file(
+                    &found_path,
+                    &rom_dir_bg,
+                    &platform,
+                    &file_link_mode_bg,
+                ) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to link {} into the ROM library after a full torrent download: {e}",
+                            found_path.display()
+                        );
+                        found_path.clone()
+                    }
+                };
+
+                let file_size = std::fs::metadata(&found_path)
+                    .map(|meta| meta.len() as i64)
+                    .unwrap_or(target_size as i64);
+                (
+                    linked_path.display().to_string(),
+                    file_size,
+                    "Full torrent download complete".to_string(),
+                )
+            }
+        };
+
+        crate::torrent::update_progress(
+            &job_id_bg,
+            crate::torrent::DownloadStatus::Completed,
+            100.0,
+            0,
+            progress_total,
+            progress_total,
+            &completion_message,
+        );
 
         if let Some(ref db_path) = db_path {
             if let Ok(pool) = crate::db::init_pool(db_path).await {
-                let file_path = if expected_path.exists() {
-                    expected_path.display().to_string()
-                } else {
-                    platform_dir.display().to_string()
-                };
                 let _ = sqlx::query(
                     "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')"
                 )
                 .bind(launchbox_db_id).bind(&game_title).bind(&platform)
-                .bind(&file_path).bind(target_size as i64)
+                .bind(&stored_path).bind(stored_size)
                 .execute(&pool).await;
-                let _ = sqlx::query("UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = 'Download complete', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                    .bind(&job_id_bg).execute(&pool).await;
+                let _ = sqlx::query("UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                    .bind(&completion_message)
+                    .bind(&job_id_bg)
+                    .execute(&pool).await;
             }
         }
+        crate::torrent::clear_client_job_id(&job_id_bg);
     });
 
     Ok(ImportJob {
@@ -1304,29 +1603,30 @@ pub async fn start_minerva_download(
 }
 
 /// Get download progress for a minerva download
-pub fn get_minerva_download_progress(
-    job_id: &str,
-) -> Option<crate::torrent::DownloadProgress> {
+pub fn get_minerva_download_progress(job_id: &str) -> Option<crate::torrent::DownloadProgress> {
     crate::torrent::get_progress(job_id)
 }
 
 /// Cancel an active minerva download
-pub async fn cancel_minerva_download(
-    state: &AppState,
-    job_id: &str,
-) -> Result<(), String> {
+pub async fn cancel_minerva_download(state: &AppState, job_id: &str) -> Result<(), String> {
     // Cancel via client
-    if let Ok(client) = crate::torrent::create_client(&state.settings.torrent) {
-        let _ = client.cancel(job_id).await;
+    if let Ok(client) = crate::torrent::create_client(&state.settings) {
+        if let Some(client_job_id) = crate::torrent::get_client_job_id(job_id) {
+            let _ = client.cancel(&client_job_id).await;
+        }
     }
 
     // Also update local progress tracking
     crate::torrent::update_progress(
         job_id,
         crate::torrent::DownloadStatus::Cancelled,
-        0.0, 0, 0, 0,
+        0.0,
+        0,
+        0,
+        0,
         "Cancelled",
     );
+    crate::torrent::clear_client_job_id(job_id);
 
     // Update job status in database
     if let Some(db_pool) = state.db_pool.as_ref() {
@@ -1341,12 +1641,9 @@ pub async fn cancel_minerva_download(
     Ok(())
 }
 
-/// Test the configured torrent client connection
-pub async fn test_torrent_connection(
-    state: &AppState,
-) -> Result<(bool, String), String> {
-    let client = crate::torrent::create_client(&state.settings.torrent)
-        .map_err(|e| e.to_string())?;
+/// Test the configured qBittorrent Web UI connection
+pub async fn test_torrent_connection(state: &AppState) -> Result<(bool, String), String> {
+    let client = crate::torrent::create_client(&state.settings).map_err(|e| e.to_string())?;
     match client.test_connection().await {
         Ok(msg) => Ok((true, msg)),
         Err(e) => Ok((false, e.to_string())),
@@ -1374,78 +1671,211 @@ pub struct ListTorrentFilesInput {
     pub game_title: String,
 }
 
-/// Fetch a torrent file and list its contents with fuzzy matching against a game title
-pub async fn list_torrent_files(
-    _state: &AppState,
-    input: ListTorrentFilesInput,
-) -> Result<Vec<TorrentFileMatch>, String> {
-    // Fetch the .torrent file
-    let torrent_bytes = crate::torrent::fetch_torrent_file(&input.torrent_url)
-        .await
-        .map_err(|e| format!("Failed to fetch torrent: {e}"))?;
+const TORRENT_MATCH_STOP_WORDS: &[&str] = &[
+    "a", "an", "and", "for", "in", "of", "on", "or", "the", "to", "with",
+];
 
-    // Parse metadata to get file listing
-    let files = crate::torrent::parse_torrent_metadata(&torrent_bytes)
-        .map_err(|e| format!("Failed to parse torrent: {e}"))?;
+#[derive(Debug)]
+struct TorrentMatchCandidate {
+    file_match: TorrentFileMatch,
+    exact_match: bool,
+    full_query_match: bool,
+    all_significant_words_match: bool,
+}
 
-    // Normalize the game title for matching
-    let normalized_query = crate::tags::normalize_title_for_matching(&input.game_title);
-    let query_words: Vec<&str> = normalized_query.split_whitespace().collect();
+fn basename_without_extension(path: &str) -> String {
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path);
 
-    // Score each file against the game title
-    let mut matches: Vec<TorrentFileMatch> = files
+    filename
+        .rsplit_once('.')
+        .map(|(base, _)| base)
+        .unwrap_or(filename)
+        .to_string()
+}
+
+fn significant_match_words<'a>(normalized_title: &'a str) -> Vec<&'a str> {
+    let words: Vec<&str> = normalized_title.split_whitespace().collect();
+    let significant_words: Vec<&str> = words
+        .iter()
+        .copied()
+        .filter(|word| word.len() > 1 && !TORRENT_MATCH_STOP_WORDS.contains(word))
+        .collect();
+
+    if significant_words.is_empty() {
+        words
+    } else {
+        significant_words
+    }
+}
+
+fn build_torrent_match_candidate(
+    file: crate::torrent::TorrentFileInfo,
+    normalized_query: &str,
+    query_words: &[&str],
+    significant_query_words: &[&str],
+) -> Option<TorrentMatchCandidate> {
+    let name = basename_without_extension(&file.filename);
+    let normalized_file = crate::tags::normalize_title_for_matching(&name);
+    if normalized_file.is_empty() {
+        return None;
+    }
+
+    let file_words: Vec<&str> = normalized_file.split_whitespace().collect();
+    if file_words.is_empty() {
+        return None;
+    }
+
+    let exact_match = normalized_file == normalized_query;
+    let full_query_match =
+        !normalized_query.is_empty() && normalized_file.contains(normalized_query);
+    let matching_query_words = query_words
+        .iter()
+        .filter(|query_word| file_words.iter().any(|file_word| file_word == *query_word))
+        .count();
+    let matching_significant_words = significant_query_words
+        .iter()
+        .filter(|query_word| file_words.iter().any(|file_word| file_word == *query_word))
+        .count();
+    let all_significant_words_match = !significant_query_words.is_empty()
+        && matching_significant_words == significant_query_words.len();
+
+    let score = if exact_match {
+        1.0
+    } else if full_query_match {
+        0.97
+    } else if all_significant_words_match {
+        let query_overlap = if query_words.is_empty() {
+            0.0
+        } else {
+            matching_query_words as f64 / query_words.len() as f64
+        };
+        0.85 + (query_overlap * 0.1)
+    } else if !significant_query_words.is_empty() && matching_significant_words > 0 {
+        let significant_overlap =
+            matching_significant_words as f64 / significant_query_words.len() as f64;
+        let query_overlap = if query_words.is_empty() {
+            0.0
+        } else {
+            matching_query_words as f64 / query_words.len() as f64
+        };
+        (significant_overlap * 0.75) + (query_overlap * 0.2)
+    } else if matching_query_words > 0 && !query_words.is_empty() {
+        matching_query_words as f64 / query_words.len() as f64 * 0.5
+    } else {
+        0.0
+    };
+
+    let region = crate::tags::get_region_tags(&file.filename)
         .into_iter()
-        .map(|file| {
-            // Strip extension for matching
-            let name = file.filename
-                .rsplit_once('.')
-                .map(|(base, _)| base)
-                .unwrap_or(&file.filename);
+        .next();
 
-            let normalized_file = crate::tags::normalize_title_for_matching(name);
+    Some(TorrentMatchCandidate {
+        file_match: TorrentFileMatch {
+            index: file.index,
+            filename: file.filename,
+            size: file.size,
+            match_score: score,
+            region,
+        },
+        exact_match,
+        full_query_match,
+        all_significant_words_match,
+    })
+}
 
-            // Calculate match score
-            let score = if normalized_file == normalized_query {
-                1.0
-            } else {
-                // Word overlap scoring
-                let file_words: Vec<&str> = normalized_file.split_whitespace().collect();
-                if query_words.is_empty() || file_words.is_empty() {
-                    0.0
-                } else {
-                    let matching_words = query_words.iter()
-                        .filter(|qw| file_words.iter().any(|fw| fw == *qw))
-                        .count();
-                    let total = query_words.len().max(file_words.len());
-                    matching_words as f64 / total as f64
-                }
-            };
+fn select_torrent_file_matches(
+    files: Vec<crate::torrent::TorrentFileInfo>,
+    game_title: &str,
+    region_priority: &[String],
+) -> Vec<TorrentFileMatch> {
+    let normalized_query = crate::tags::normalize_title_for_matching(game_title);
+    let query_words: Vec<&str> = normalized_query.split_whitespace().collect();
+    let significant_query_words = significant_match_words(&normalized_query);
 
-            // Extract region from original filename
-            let region = crate::tags::get_region_tags(&file.filename)
-                .into_iter()
-                .next();
-
-            TorrentFileMatch {
-                index: file.index,
-                filename: file.filename,
-                size: file.size,
-                match_score: score,
-                region,
-            }
+    let mut candidates: Vec<TorrentMatchCandidate> = files
+        .into_iter()
+        .filter_map(|file| {
+            build_torrent_match_candidate(
+                file,
+                &normalized_query,
+                &query_words,
+                &significant_query_words,
+            )
         })
         .collect();
 
-    // Sort by match score (best first), then by filename
-    matches.sort_by(|a, b| {
-        b.match_score.partial_cmp(&a.match_score).unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.filename.cmp(&b.filename))
+    candidates.sort_by(|a, b| {
+        b.exact_match
+            .cmp(&a.exact_match)
+            .then_with(|| b.full_query_match.cmp(&a.full_query_match))
+            .then_with(|| {
+                b.all_significant_words_match
+                    .cmp(&a.all_significant_words_match)
+            })
+            .then_with(|| {
+                b.file_match
+                    .match_score
+                    .partial_cmp(&a.file_match.match_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                crate::region_priority::priority_for_region(
+                    a.file_match.region.as_deref(),
+                    region_priority,
+                )
+                .cmp(&crate::region_priority::priority_for_region(
+                    b.file_match.region.as_deref(),
+                    region_priority,
+                ))
+            })
+            .then_with(|| a.file_match.filename.cmp(&b.file_match.filename))
     });
 
-    // Return top matches (limit to 50 to avoid overwhelming the UI)
-    matches.truncate(50);
+    let has_exact_match = candidates.iter().any(|candidate| candidate.exact_match);
+    let has_full_query_match = candidates
+        .iter()
+        .any(|candidate| candidate.full_query_match);
+    let has_significant_match = candidates
+        .iter()
+        .any(|candidate| candidate.all_significant_words_match);
 
-    Ok(matches)
+    if has_exact_match {
+        candidates.retain(|candidate| candidate.exact_match);
+        candidates.truncate(15);
+    } else if has_full_query_match {
+        candidates.retain(|candidate| candidate.full_query_match);
+        candidates.truncate(15);
+    } else if has_significant_match {
+        candidates.retain(|candidate| candidate.all_significant_words_match);
+        candidates.truncate(15);
+    } else {
+        candidates.retain(|candidate| candidate.file_match.match_score > 0.0);
+        candidates.truncate(10);
+    }
+
+    candidates
+        .into_iter()
+        .map(|candidate| candidate.file_match)
+        .collect()
+}
+
+/// Fetch a torrent file and list its contents with fuzzy matching against a game title
+pub async fn list_torrent_files(
+    state: &AppState,
+    input: ListTorrentFilesInput,
+) -> Result<Vec<TorrentFileMatch>, String> {
+    let files = crate::torrent::get_torrent_file_listing(&input.torrent_url)
+        .await
+        .map_err(|e| format!("Failed to load torrent metadata: {e}"))?;
+
+    Ok(select_torrent_file_matches(
+        files,
+        &input.game_title,
+        &state.settings.region_priority,
+    ))
 }
 
 // ============================================================================
@@ -1514,12 +1944,11 @@ pub async fn scan_and_match_roms(
         .ok_or_else(|| "Games database not available".to_string())?;
 
     // Load platform data for extension matching
-    let platforms: Vec<(i64, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, name, file_extensions FROM platforms",
-    )
-    .fetch_all(games_db)
-    .await
-    .map_err(|e| e.to_string())?;
+    let platforms: Vec<(i64, String, Option<String>)> =
+        sqlx::query_as("SELECT id, name, file_extensions FROM platforms")
+            .fetch_all(games_db)
+            .await
+            .map_err(|e| e.to_string())?;
 
     // Build extension → platform(s) lookup
     let mut ext_to_platforms: std::collections::HashMap<String, Vec<(i64, String)>> =
@@ -1527,7 +1956,11 @@ pub async fn scan_and_match_roms(
     for (id, name, exts) in &platforms {
         if let Some(exts_str) = exts {
             for ext in exts_str.split(|c: char| c == ',' || c == ' ' || c == ';') {
-                let ext = ext.trim().to_lowercase().trim_start_matches('.').to_string();
+                let ext = ext
+                    .trim()
+                    .to_lowercase()
+                    .trim_start_matches('.')
+                    .to_string();
                 if !ext.is_empty() {
                     ext_to_platforms
                         .entry(ext)
@@ -1575,9 +2008,10 @@ pub async fn scan_and_match_roms(
 
         // Detect platform
         let effective_ext = inner_ext.as_deref().unwrap_or(&ext);
-        let parent_dir = rom.path.parent().and_then(|p| {
-            p.file_name().map(|n| n.to_string_lossy().to_string())
-        });
+        let parent_dir = rom
+            .path
+            .parent()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
 
         // Platform from hint, parent dir, or extension
         let detected = if let Some(ref hint) = input.platform_hint {
@@ -1593,15 +2027,13 @@ pub async fn scan_and_match_roms(
             });
             from_dir.or_else(|| {
                 // Try file extension
-                ext_to_platforms
-                    .get(effective_ext)
-                    .and_then(|plats| {
-                        if plats.len() == 1 {
-                            Some(plats[0].clone())
-                        } else {
-                            None // ambiguous
-                        }
-                    })
+                ext_to_platforms.get(effective_ext).and_then(|plats| {
+                    if plats.len() == 1 {
+                        Some(plats[0].clone())
+                    } else {
+                        None // ambiguous
+                    }
+                })
             })
         };
 
@@ -1668,10 +2100,12 @@ pub async fn scan_and_match_roms(
 
                         let game_words: Vec<&str> = normalized_game.split_whitespace().collect();
                         if !game_words.is_empty() && !rom_words.is_empty() {
-                            let matching = rom_words.iter()
+                            let matching = rom_words
+                                .iter()
                                 .filter(|w| game_words.iter().any(|gw| gw == *w))
                                 .count();
-                            let score = matching as f64 / rom_words.len().max(game_words.len()) as f64;
+                            let score =
+                                matching as f64 / rom_words.len().max(game_words.len()) as f64;
                             if score > best_score && score >= 0.5 {
                                 best_score = score;
                                 matched_game_id = Some(gid.clone());
@@ -1690,7 +2124,9 @@ pub async fn scan_and_match_roms(
             matched_count += 1;
         }
 
-        let region = crate::tags::get_region_tags(&rom.file_name).into_iter().next();
+        let region = crate::tags::get_region_tags(&rom.file_name)
+            .into_iter()
+            .next();
 
         results.push(ScannedRom {
             file_path: rom.path.display().to_string(),
@@ -1735,7 +2171,8 @@ pub async fn confirm_rom_import(
     for entry in &input.roms {
         let file_path = if entry.copy_to_library {
             let source = std::path::Path::new(&entry.file_path);
-            match crate::torrent::link_rom_file(source, &rom_dir, &entry.platform, &file_link_mode) {
+            match crate::torrent::link_rom_file(source, &rom_dir, &entry.platform, &file_link_mode)
+            {
                 Ok(target) => target.display().to_string(),
                 Err(e) => {
                     tracing::warn!("Failed to link {}: {e}", entry.file_path);
@@ -1768,4 +2205,136 @@ pub async fn confirm_rom_import(
     }
 
     Ok(imported)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_torrent_file_matches;
+    use crate::torrent::TorrentFileInfo;
+
+    #[test]
+    fn prefers_exact_title_matches_over_partial_word_overlap() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "Nintendo - Nintendo Entertainment System/The Legend of Zelda (USA).zip"
+                    .to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Nintendo - Nintendo Entertainment System/Zelda II - The Adventure of Link (USA).zip"
+                    .to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename: "Nintendo - Nintendo Entertainment System/Random Platformer (USA).zip"
+                    .to_string(),
+                size: 1,
+            },
+        ];
+
+        let matches = select_torrent_file_matches(files, "The Legend of Zelda", &[]);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].filename,
+            "Nintendo - Nintendo Entertainment System/The Legend of Zelda (USA).zip"
+        );
+        assert_eq!(matches[0].match_score, 1.0);
+    }
+
+    #[test]
+    fn falls_back_to_full_significant_word_matches_when_exact_title_is_missing() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "Collection/Super Mario Bros. 3 (USA) (Rev 1).zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Collection/Super Mario All-Stars (USA).zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename: "Collection/Mario Bros. (World).zip".to_string(),
+                size: 1,
+            },
+        ];
+
+        let matches = select_torrent_file_matches(files, "Super Mario Bros. 3", &[]);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].filename,
+            "Collection/Super Mario Bros. 3 (USA) (Rev 1).zip"
+        );
+        assert!(matches[0].match_score >= 0.85);
+    }
+
+    #[test]
+    fn sorts_matching_regions_as_usa_then_japan_then_asia_then_rest() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "Collection/The Legend of Zelda (Europe).zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Collection/The Legend of Zelda (Asia).zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename: "Collection/The Legend of Zelda (USA).zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 3,
+                filename: "Collection/The Legend of Zelda (Japan).zip".to_string(),
+                size: 1,
+            },
+        ];
+
+        let matches = select_torrent_file_matches(files, "The Legend of Zelda", &[]);
+
+        assert_eq!(matches.len(), 4);
+        assert_eq!(matches[0].region.as_deref(), Some("USA"));
+        assert_eq!(matches[1].region.as_deref(), Some("Japan"));
+        assert_eq!(matches[2].region.as_deref(), Some("Asia"));
+        assert_eq!(matches[3].region.as_deref(), Some("Europe"));
+    }
+
+    #[test]
+    fn sorts_matching_regions_using_custom_region_priority() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "Collection/The Legend of Zelda (USA).zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Collection/The Legend of Zelda (Japan).zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename: "Collection/The Legend of Zelda (Asia).zip".to_string(),
+                size: 1,
+            },
+        ];
+
+        let custom_order = vec!["Japan".to_string(), "USA".to_string(), "Asia".to_string()];
+        let matches = select_torrent_file_matches(files, "The Legend of Zelda", &custom_order);
+
+        assert_eq!(matches.len(), 3);
+        assert_eq!(matches[0].region.as_deref(), Some("Japan"));
+        assert_eq!(matches[1].region.as_deref(), Some("USA"));
+        assert_eq!(matches[2].region.as_deref(), Some("Asia"));
+    }
 }

@@ -8,6 +8,7 @@ pub mod images;
 pub mod import;
 pub mod keyring_store;
 pub mod logging;
+pub mod region_priority;
 pub mod router;
 pub mod scanner;
 pub mod scraper;
@@ -87,6 +88,7 @@ pub fn run() {
             commands::get_cached_media_path,
             // Video download commands
             commands::check_cached_video,
+            commands::probe_game_video_available,
             commands::download_game_video,
             // Emulator commands
             commands::get_emulators_for_platform,
