@@ -143,6 +143,8 @@ def import_csv(conn: sqlite3.Connection, csv_path: Path) -> tuple[int, int]:
             # Record platform mapping
             emulator_id = emulator_ids[name]
             platform_mappings.append((platform, emulator_id))
+            if platform == "ScummVM":
+                platform_mappings.append(("MS-DOS", emulator_id))
 
     # Insert platform mappings
     for platform, emulator_id in platform_mappings:

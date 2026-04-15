@@ -69,8 +69,23 @@ fn map_platform_name(
     minerva_name: &str,
     platform_lookup: &HashMap<String, (i64, String)>,
 ) -> Option<String> {
-    let aliases = crate::unified_import::get_platform_aliases();
     let lower = minerva_name.to_lowercase();
+
+    // Minerva's eXo collections are the curated PC-targeted sets we want to use.
+    // Keep these explicit so we don't accidentally map the much noisier generic
+    // IBM-PC / digital storefront buckets onto the same Lunchbox platforms.
+    if let Some(canonical) = match lower.as_str() {
+        "exodos" => Some("MS-DOS"),
+        "exowin3x" => Some("Windows 3.X"),
+        "exowin9x" => Some("Windows"),
+        "exoappleiigs" => Some("Apple IIGS"),
+        "exoscummvm" => Some("ScummVM"),
+        _ => None,
+    } {
+        return Some(canonical.to_string());
+    }
+
+    let aliases = crate::unified_import::get_platform_aliases();
 
     // 1. Direct alias lookup on full name
     if let Some(canonical) = aliases.get(lower.as_str()) {
@@ -143,6 +158,57 @@ fn strip_parens(s: &str) -> &str {
     match s.find('(') {
         Some(pos) => s[..pos].trim(),
         None => s,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_platform_name;
+    use std::collections::HashMap;
+
+    fn platform_lookup() -> HashMap<String, (i64, String)> {
+        [
+            (81, "MS-DOS"),
+            (182, "Windows"),
+            (183, "Windows 3.X"),
+            (12, "Apple IIGS"),
+            (122, "ScummVM"),
+        ]
+        .into_iter()
+        .map(|(id, name)| (name.to_lowercase(), (id, name.to_string())))
+        .collect()
+    }
+
+    #[test]
+    fn maps_exo_platforms_to_curated_lunchbox_targets() {
+        let lookup = platform_lookup();
+
+        assert_eq!(map_platform_name("eXoDOS", &lookup), Some("MS-DOS".into()));
+        assert_eq!(
+            map_platform_name("eXoWin3x", &lookup),
+            Some("Windows 3.X".into())
+        );
+        assert_eq!(
+            map_platform_name("eXoWin9x", &lookup),
+            Some("Windows".into())
+        );
+        assert_eq!(
+            map_platform_name("eXoAppleIIGS", &lookup),
+            Some("Apple IIGS".into())
+        );
+        assert_eq!(
+            map_platform_name("eXoScummVM", &lookup),
+            Some("ScummVM".into())
+        );
+    }
+
+    #[test]
+    fn leaves_unmatched_exo_buckets_unmapped() {
+        let lookup = platform_lookup();
+
+        assert_eq!(map_platform_name("eXoDREAMM", &lookup), None);
+        assert_eq!(map_platform_name("eXoIF", &lookup), None);
+        assert_eq!(map_platform_name("eXoDemoScene", &lookup), None);
     }
 }
 

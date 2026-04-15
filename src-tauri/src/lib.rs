@@ -3,6 +3,7 @@ mod commands;
 pub mod db;
 pub mod emulator;
 pub mod endpoints;
+pub mod exo;
 pub mod handlers;
 pub mod images;
 pub mod import;

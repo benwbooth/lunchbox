@@ -1100,8 +1100,7 @@ impl EmuMoviesClient {
             };
 
             if let Some((_, kind, score)) = find_best_video_match(index.as_slice(), game_name) {
-                let folder_rank =
-                    video_folder_match_rank(video_folder, system_folder).unwrap_or(2);
+                let folder_rank = video_folder_match_rank(video_folder, system_folder).unwrap_or(2);
                 tracing::info!(
                     "Video availability probe matched '{}' in {} using {:?} match (score {:.2}, folder_rank={}, source_order={})",
                     game_name,

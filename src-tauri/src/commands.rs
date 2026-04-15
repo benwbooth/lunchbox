@@ -2463,18 +2463,28 @@ pub async fn install_emulator(
 #[tauri::command]
 pub async fn launch_game(
     emulator_name: String,
-    rom_path: String,
+    rom_path: Option<String>,
+    launchbox_db_id: Option<i64>,
+    platform: Option<String>,
     is_retroarch_core: Option<bool>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<LaunchResult, String> {
-    let state_guard = state.read().await;
+    let mut state_guard = state.write().await;
 
     // Look up the emulator by name
     let emulator = handlers::get_emulator(&state_guard, &emulator_name)
         .await?
         .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
 
-    handlers::launch_game_with_emulator(&emulator, &rom_path, is_retroarch_core)
+    handlers::launch_game_with_emulator(
+        &mut state_guard,
+        &emulator,
+        rom_path.as_deref(),
+        launchbox_db_id,
+        platform.as_deref(),
+        is_retroarch_core,
+    )
+    .await
 }
 
 /// Launch an emulator (without a ROM)

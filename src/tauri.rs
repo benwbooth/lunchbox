@@ -1521,7 +1521,10 @@ pub async fn check_cached_video(
 }
 
 /// Probe whether a game video is available from EmuMovies without downloading it.
-pub async fn probe_game_video_available(game_title: String, platform: String) -> Result<bool, String> {
+pub async fn probe_game_video_available(
+    game_title: String,
+    platform: String,
+) -> Result<bool, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
@@ -1809,14 +1812,18 @@ pub async fn launch_emulator(
 /// Launch a game with the specified emulator
 pub async fn launch_game(
     emulator_name: String,
-    rom_path: String,
+    rom_path: Option<String>,
+    launchbox_db_id: Option<i64>,
+    platform: Option<String>,
     is_retroarch_core: bool,
 ) -> Result<LaunchResult, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
-        rom_path: String,
+        rom_path: Option<String>,
+        launchbox_db_id: Option<i64>,
+        platform: Option<String>,
         is_retroarch_core: bool,
     }
     invoke(
@@ -1824,6 +1831,8 @@ pub async fn launch_game(
         Args {
             emulator_name,
             rom_path,
+            launchbox_db_id,
+            platform,
             is_retroarch_core,
         },
     )
@@ -1906,6 +1915,7 @@ pub struct MinervaRom {
     pub minerva_platform: String,
     pub lunchbox_platform_id: i64,
     pub rom_count: i64,
+    pub total_size: i64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -2058,6 +2068,7 @@ pub struct TorrentFileMatch {
 pub async fn list_torrent_files(
     torrent_url: String,
     game_title: String,
+    platform: Option<String>,
 ) -> Result<Vec<TorrentFileMatch>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -2069,6 +2080,7 @@ pub async fn list_torrent_files(
     struct Inner {
         torrent_url: String,
         game_title: String,
+        platform: Option<String>,
     }
     invoke(
         "list_torrent_files",
@@ -2076,6 +2088,7 @@ pub async fn list_torrent_files(
             input: Inner {
                 torrent_url,
                 game_title,
+                platform,
             },
         },
     )

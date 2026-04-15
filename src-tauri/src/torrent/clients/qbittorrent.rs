@@ -34,18 +34,30 @@ pub struct QBittorrentClient {
 impl QBittorrentClient {
     pub fn new(settings: &crate::state::AppSettings) -> Self {
         let mut path_mappings = Vec::new();
+        let rom_host_root = settings.get_rom_directory();
+        let rom_container_root = settings.torrent.qbittorrent_container_rom_directory.clone();
+        let torrent_host_root = settings.get_torrent_library_directory();
+        let torrent_container_root = settings
+            .torrent
+            .qbittorrent_container_torrent_library_directory
+            .clone();
+
         Self::push_path_mapping(
             &mut path_mappings,
-            settings.get_rom_directory(),
-            settings.torrent.qbittorrent_container_rom_directory.clone(),
+            rom_host_root.clone(),
+            rom_container_root.clone(),
         );
         Self::push_path_mapping(
             &mut path_mappings,
-            settings.get_torrent_library_directory(),
-            settings
-                .torrent
-                .qbittorrent_container_torrent_library_directory
-                .clone(),
+            torrent_host_root.clone(),
+            torrent_container_root.clone(),
+        );
+        Self::push_common_parent_mapping(
+            &mut path_mappings,
+            &rom_host_root,
+            rom_container_root.as_deref(),
+            &torrent_host_root,
+            torrent_container_root.as_deref(),
         );
 
         Self {
@@ -76,6 +88,62 @@ impl QBittorrentClient {
             host_root,
             container_root,
         });
+    }
+
+    fn push_common_parent_mapping(
+        path_mappings: &mut Vec<PathMapping>,
+        host_a: &Path,
+        container_a: Option<&Path>,
+        host_b: &Path,
+        container_b: Option<&Path>,
+    ) {
+        let (Some(container_a), Some(container_b)) = (container_a, container_b) else {
+            return;
+        };
+        let Some(host_common) = Self::common_parent(host_a, host_b) else {
+            return;
+        };
+        let Some(container_common) = Self::common_parent(container_a, container_b) else {
+            return;
+        };
+
+        if host_common == host_a
+            || host_common == host_b
+            || container_common == container_a
+            || container_common == container_b
+            || host_common.as_os_str().is_empty()
+            || container_common.as_os_str().is_empty()
+        {
+            return;
+        }
+
+        if path_mappings.iter().any(|mapping| {
+            mapping.host_root == host_common && mapping.container_root == container_common
+        }) {
+            return;
+        }
+
+        path_mappings.push(PathMapping {
+            host_root: host_common,
+            container_root: container_common,
+        });
+    }
+
+    fn common_parent(a: &Path, b: &Path) -> Option<PathBuf> {
+        let a_components = a.components().collect::<Vec<_>>();
+        let b_components = b.components().collect::<Vec<_>>();
+        let mut common = PathBuf::new();
+        let mut matched = 0usize;
+
+        for (left, right) in a_components.iter().zip(b_components.iter()) {
+            if left != right {
+                break;
+            }
+            common.push(left.as_os_str());
+            matched += 1;
+        }
+
+        (matched > 0).then_some(common)
     }
 
     fn remap_path(
@@ -257,7 +325,10 @@ impl QBittorrentClient {
             .context("qBittorrent torrent info request failed")?;
 
         if !resp.status().is_success() {
-            bail!("qBittorrent torrent info request failed: HTTP {}", resp.status());
+            bail!(
+                "qBittorrent torrent info request failed: HTTP {}",
+                resp.status()
+            );
         }
 
         let torrents = resp
@@ -322,7 +393,11 @@ impl QBittorrentClient {
 
             let resp = client
                 .post(format!("{}/api/v2/torrents/filePrio", self.base_url()))
-                .form(&[("hash", hash), ("id", id_list.as_str()), ("priority", priority)])
+                .form(&[
+                    ("hash", hash),
+                    ("id", id_list.as_str()),
+                    ("priority", priority),
+                ])
                 .send()
                 .await
                 .context("qBittorrent file priority request failed")?;
@@ -364,7 +439,8 @@ impl QBittorrentClient {
     }
 
     fn active_selected_indices(files: &[serde_json::Value]) -> HashSet<usize> {
-        files.iter()
+        files
+            .iter()
             .enumerate()
             .filter_map(|(idx, file)| {
                 let priority = file["priority"].as_i64().unwrap_or(0);
@@ -387,7 +463,9 @@ impl QBittorrentClient {
     ) -> Result<String> {
         let category = existing_torrent["category"].as_str().unwrap_or("");
         if category != "lunchbox" {
-            let torrent_name = existing_torrent["name"].as_str().unwrap_or("unknown torrent");
+            let torrent_name = existing_torrent["name"]
+                .as_str()
+                .unwrap_or("unknown torrent");
             let save_path = existing_torrent["save_path"].as_str().unwrap_or("");
             let category_label = if category.is_empty() {
                 "(none)"
@@ -399,7 +477,9 @@ impl QBittorrentClient {
             );
         }
 
-        let files = self.fetch_torrent_files_with_retry(client, hash, 15).await?;
+        let files = self
+            .fetch_torrent_files_with_retry(client, hash, 15)
+            .await?;
         let wanted = if let Some(ref requested_indices) = file_indices {
             let mut wanted = Self::active_selected_indices(&files);
             wanted.extend(requested_indices.iter().copied());
@@ -410,21 +490,16 @@ impl QBittorrentClient {
 
         self.apply_file_priorities(client, hash, files.len(), &wanted)
             .await?;
-
-        let resp = client
-            .post(format!("{}/api/v2/torrents/resume", self.base_url()))
-            .form(&[("hashes", hash)])
-            .send()
-            .await
-            .context("qBittorrent resume request failed")?;
-        if !resp.status().is_success() {
-            bail!("qBittorrent resume request failed: HTTP {}", resp.status());
-        }
+        self.start_torrent(client, hash).await?;
 
         Ok(Self::encode_job_id(hash, file_indices.as_deref()))
     }
 
-    fn selection_display_name(file_name: &str, torrent_name: &str, selected_count: usize) -> String {
+    fn selection_display_name(
+        file_name: &str,
+        torrent_name: &str,
+        selected_count: usize,
+    ) -> String {
         if selected_count <= 1 {
             Path::new(file_name)
                 .file_name()
@@ -434,6 +509,34 @@ impl QBittorrentClient {
         } else {
             format!("{torrent_name} ({selected_count} files)")
         }
+    }
+}
+
+impl QBittorrentClient {
+    async fn start_torrent(&self, client: &reqwest::Client, hash: &str) -> Result<()> {
+        for endpoint in ["start", "resume"] {
+            let resp = client
+                .post(format!("{}/api/v2/torrents/{endpoint}", self.base_url()))
+                .form(&[("hashes", hash)])
+                .send()
+                .await
+                .with_context(|| {
+                    format!("qBittorrent {endpoint} request failed for torrent {hash}")
+                })?;
+
+            if resp.status().is_success() {
+                return Ok(());
+            }
+
+            if resp.status() != reqwest::StatusCode::NOT_FOUND {
+                bail!(
+                    "qBittorrent {endpoint} request failed: HTTP {}",
+                    resp.status()
+                );
+            }
+        }
+
+        bail!("qBittorrent does not support either /torrents/start or /torrents/resume for torrent {hash}");
     }
 }
 
@@ -508,7 +611,8 @@ impl TorrentClient for QBittorrentClient {
 
         let response_body = resp.text().await.unwrap_or_default();
         if response_body.to_ascii_lowercase().contains("fail") {
-            if let Some(existing_torrent) = self.fetch_existing_torrent(&client, &info_hash).await? {
+            if let Some(existing_torrent) = self.fetch_existing_torrent(&client, &info_hash).await?
+            {
                 return self
                     .resume_existing_torrent(&client, &info_hash, &existing_torrent, file_indices)
                     .await;
@@ -525,17 +629,7 @@ impl TorrentClient for QBittorrentClient {
             let wanted = indices.iter().copied().collect::<HashSet<_>>();
             self.apply_file_priorities(&client, &info_hash, files.len(), &wanted)
                 .await?;
-
-            // Resume the torrent now that priorities are set
-            let resp = client
-                .post(format!("{}/api/v2/torrents/resume", self.base_url()))
-                .form(&[("hashes", info_hash.as_str())])
-                .send()
-                .await
-                .context("qBittorrent resume request failed")?;
-            if !resp.status().is_success() {
-                bail!("qBittorrent resume request failed: HTTP {}", resp.status());
-            }
+            self.start_torrent(&client, &info_hash).await?;
 
             return Ok(Self::encode_job_id(&info_hash, Some(&indices)));
         }
@@ -565,7 +659,9 @@ impl TorrentClient for QBittorrentClient {
 
         let (display_name, progress_percent, downloaded_bytes, total_bytes, status) =
             if let Some(selected_indices) = job_ref.selected_indices.as_ref() {
-                let files = self.fetch_torrent_files_with_retry(&client, hash, 3).await?;
+                let files = self
+                    .fetch_torrent_files_with_retry(&client, hash, 3)
+                    .await?;
                 let mut selected_display_name = None;
                 let mut selected_total_bytes = 0_u64;
                 let mut selected_downloaded_bytes = 0_u64;
@@ -582,7 +678,8 @@ impl TorrentClient for QBittorrentClient {
                     let file_size = file["size"].as_u64().unwrap_or(0);
                     let file_progress = file["progress"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0);
                     selected_total_bytes += file_size;
-                    selected_downloaded_bytes += ((file_size as f64) * file_progress).round() as u64;
+                    selected_downloaded_bytes +=
+                        ((file_size as f64) * file_progress).round() as u64;
                     if file_progress < 0.999 {
                         all_complete = false;
                     }
@@ -611,8 +708,7 @@ impl TorrentClient for QBittorrentClient {
                 };
 
                 (
-                    selected_display_name
-                        .unwrap_or_else(|| torrent_name.to_string()),
+                    selected_display_name.unwrap_or_else(|| torrent_name.to_string()),
                     selected_progress,
                     if selected_total_bytes > 0 {
                         selected_downloaded_bytes
@@ -658,13 +754,16 @@ impl TorrentClient for QBittorrentClient {
                 {
                     let category = existing_torrent["category"].as_str().unwrap_or("");
                     if category == "lunchbox" {
-                        let files = self.fetch_torrent_files_with_retry(&client, &job_ref.hash, 3).await?;
+                        let files = self
+                            .fetch_torrent_files_with_retry(&client, &job_ref.hash, 3)
+                            .await?;
                         let cancel_set = selected_indices.iter().copied().collect::<HashSet<_>>();
                         let cancel_ids = selected_indices
                             .iter()
                             .copied()
                             .filter(|idx| {
-                                files.get(*idx)
+                                files
+                                    .get(*idx)
                                     .map(|file| file["progress"].as_f64().unwrap_or(0.0) < 0.999)
                                     .unwrap_or(true)
                             })
@@ -719,7 +818,9 @@ impl TorrentClient for QBittorrentClient {
             return Ok(None);
         };
 
-        let files = self.fetch_torrent_files_with_retry(&client, hash, 3).await?;
+        let files = self
+            .fetch_torrent_files_with_retry(&client, hash, 3)
+            .await?;
         let Some(file) = files.get(file_index) else {
             return Ok(None);
         };
@@ -839,6 +940,19 @@ mod tests {
             )),
             PathBuf::from(
                 "/mnt/stuff/Downloads/torrent-library/Nintendo Entertainment System/test-job"
+            )
+        );
+    }
+
+    #[test]
+    fn maps_shared_container_parent_paths_back_to_host_paths() {
+        let client = client_with_mappings();
+        assert_eq!(
+            client.map_container_path_to_host(&PathBuf::from(
+                "/downloads/Minerva_Myrient/eXo/eXoDOS/Full Release/eXo/eXoDOS/Commander Blood (1994).zip"
+            )),
+            PathBuf::from(
+                "/mnt/stuff/Downloads/Minerva_Myrient/eXo/eXoDOS/Full Release/eXo/eXoDOS/Commander Blood (1994).zip"
             )
         );
     }

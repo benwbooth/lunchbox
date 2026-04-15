@@ -1993,7 +1993,9 @@ async fn rspc_probe_game_video_available(
     {
         Ok(Ok(Ok(found))) => rspc_ok(found).into_response(),
         Ok(Ok(Err(e))) => rspc_err::<bool>(e.to_string()).into_response(),
-        Ok(Err(e)) => rspc_err::<bool>(format!("Video availability task failed: {}", e)).into_response(),
+        Ok(Err(e)) => {
+            rspc_err::<bool>(format!("Video availability task failed: {}", e)).into_response()
+        }
         Err(_) => rspc_err::<bool>(format!(
             "Video availability check timed out after {} seconds",
             VIDEO_PROBE_TIMEOUT_SECS
@@ -2588,7 +2590,9 @@ async fn rspc_launch_emulator(
 #[serde(rename_all = "camelCase")]
 struct LaunchGameInput {
     emulator_name: String,
-    rom_path: String,
+    rom_path: Option<String>,
+    launchbox_db_id: Option<i64>,
+    platform: Option<String>,
     #[serde(default)]
     is_retroarch_core: Option<bool>,
 }
@@ -2610,7 +2614,7 @@ async fn rspc_launch_game(
         Err(e) => return rspc_err::<LaunchResult>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    let state_guard = state.read().await;
+    let mut state_guard = state.write().await;
 
     // Look up the emulator by name
     let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
@@ -2625,7 +2629,16 @@ async fn rspc_launch_game(
         Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
     };
 
-    match handlers::launch_game_with_emulator(&emulator, &input.rom_path, input.is_retroarch_core) {
+    match handlers::launch_game_with_emulator(
+        &mut state_guard,
+        &emulator,
+        input.rom_path.as_deref(),
+        input.launchbox_db_id,
+        input.platform.as_deref(),
+        input.is_retroarch_core,
+    )
+    .await
+    {
         Ok(result) => rspc_ok(result).into_response(),
         Err(e) => rspc_err::<LaunchResult>(e).into_response(),
     }

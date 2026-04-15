@@ -959,7 +959,7 @@ SYSTEM_EMULATOR_MAPPING = {
     # Computers
     "MS-DOS": {
         "retroarch_cores": ["dosbox_pure"],
-        "standalone": ["DOSBox-X", "DOSBox Staging"],
+        "standalone": ["DOSBox-X", "DOSBox Staging", "ScummVM"],
         "preferred": "DOSBox Staging",
     },
     "Commodore 64": {

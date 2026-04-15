@@ -14,6 +14,7 @@ use crate::db::schema::EmulatorInfo;
 use crate::emulator::{self, EmulatorWithStatus, LaunchResult};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 // ============================================================================
 // Shared types (used by both Tauri and HTTP)
@@ -344,7 +345,7 @@ pub async fn get_emulators_for_platform(
 
     let os = current_os();
 
-    let emulators: Vec<EmulatorInfo> = sqlx::query_as(
+    let mut emulators: Vec<EmulatorInfo> = sqlx::query_as(
         r#"
         SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
                e.homebrew_formula, e.flatpak_id, e.retroarch_core,
@@ -361,6 +362,8 @@ pub async fn get_emulators_for_platform(
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    maybe_append_exodos_scummvm(pool, platform_name, os, false, &mut emulators).await?;
 
     Ok(emulators)
 }
@@ -683,7 +686,7 @@ pub async fn get_emulators_with_status(
 
     // Query emulators for this platform, filtered by OS
     // We get all emulators that have either a RetroArch core OR a standalone installer
-    let emulators: Vec<EmulatorInfo> = sqlx::query_as(
+    let mut emulators: Vec<EmulatorInfo> = sqlx::query_as(
         r#"
         SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
                e.homebrew_formula, e.flatpak_id, e.retroarch_core,
@@ -712,6 +715,8 @@ pub async fn get_emulators_with_status(
     .await
     .map_err(|e| e.to_string())?;
 
+    maybe_append_exodos_scummvm(pool, platform_name, os, true, &mut emulators).await?;
+
     // Create separate entries for RetroArch cores and standalone emulators
     // An emulator with both will appear twice in the list
     let mut results: Vec<EmulatorWithStatus> = Vec::new();
@@ -719,7 +724,8 @@ pub async fn get_emulators_with_status(
     let mut standalone_entries: Vec<EmulatorWithStatus> = Vec::new();
 
     for emulator in emulators {
-        let has_retroarch = emulator.retroarch_core.is_some();
+        let is_exodos_scummvm = platform_name == "MS-DOS" && emulator.name == "ScummVM";
+        let has_retroarch = emulator.retroarch_core.is_some() && !is_exodos_scummvm;
         let has_standalone = match os {
             "Linux" => emulator.flatpak_id.is_some(),
             "Windows" => emulator.winget_id.is_some(),
@@ -741,8 +747,66 @@ pub async fn get_emulators_with_status(
     // RetroArch cores first, then standalone emulators
     results.extend(retroarch_entries);
     results.extend(standalone_entries);
+    sort_emulator_statuses(&mut results);
 
     Ok(results)
+}
+
+fn sort_emulator_statuses(results: &mut [EmulatorWithStatus]) {
+    results.sort_by(|a, b| b.is_installed.cmp(&a.is_installed));
+}
+
+async fn maybe_append_exodos_scummvm(
+    pool: &sqlx::SqlitePool,
+    platform_name: &str,
+    os: &str,
+    require_installable: bool,
+    emulators: &mut Vec<EmulatorInfo>,
+) -> Result<(), String> {
+    if platform_name != "MS-DOS" || emulators.iter().any(|emulator| emulator.name == "ScummVM") {
+        return Ok(());
+    }
+
+    let base_query = if require_installable {
+        r#"
+        SELECT id, name, homepage, supported_os, winget_id,
+               homebrew_formula, flatpak_id, retroarch_core,
+               save_directory, save_extensions, notes
+        FROM emulators
+        WHERE name = 'ScummVM'
+          AND (supported_os IS NULL OR supported_os LIKE '%' || ? || '%')
+          AND (
+              retroarch_core IS NOT NULL
+              OR (? = 'Linux' AND flatpak_id IS NOT NULL)
+              OR (? = 'Windows' AND winget_id IS NOT NULL)
+              OR (? = 'macOS' AND homebrew_formula IS NOT NULL)
+          )
+        "#
+    } else {
+        r#"
+        SELECT id, name, homepage, supported_os, winget_id,
+               homebrew_formula, flatpak_id, retroarch_core,
+               save_directory, save_extensions, notes
+        FROM emulators
+        WHERE name = 'ScummVM'
+          AND (supported_os IS NULL OR supported_os LIKE '%' || ? || '%')
+        "#
+    };
+
+    let mut query = sqlx::query_as::<_, EmulatorInfo>(base_query).bind(os);
+    if require_installable {
+        query = query.bind(os).bind(os).bind(os);
+    }
+
+    if let Some(scummvm) = query
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        emulators.push(scummvm);
+    }
+
+    Ok(())
 }
 
 /// Check if a specific emulator is installed
@@ -761,12 +825,100 @@ pub async fn install_emulator(
 }
 
 /// Launch a game with the specified emulator
-pub fn launch_game_with_emulator(
+pub async fn launch_game_with_emulator(
+    state: &mut AppState,
     emulator: &EmulatorInfo,
-    rom_path: &str,
+    rom_path: Option<&str>,
+    launchbox_db_id: Option<i64>,
+    platform: Option<&str>,
     is_retroarch_core: Option<bool>,
 ) -> Result<LaunchResult, String> {
     let as_retroarch_core = is_retroarch_core.unwrap_or(emulator.retroarch_core.is_some());
+
+    if let (Some(db_id), Some(platform)) = (launchbox_db_id, platform) {
+        let settings = state.settings.clone();
+        let resolved_rom_path = if let Some(path) = rom_path.filter(|path| !path.trim().is_empty())
+        {
+            path.to_string()
+        } else {
+            let db_pool = crate::state::ensure_user_db(state)
+                .await
+                .map_err(|e| e.to_string())?;
+            let row: Option<(String,)> = sqlx::query_as(
+                "SELECT file_path FROM game_files WHERE launchbox_db_id = ? LIMIT 1",
+            )
+            .bind(db_id)
+            .fetch_optional(db_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            match row {
+                Some((path,)) if !path.trim().is_empty() => path,
+                _ => {
+                    return Ok(LaunchResult {
+                        success: false,
+                        pid: None,
+                        error: Some(
+                            "No downloaded eXo archive is available for this game".to_string(),
+                        ),
+                    })
+                }
+            }
+        };
+
+        if crate::exo::should_use_prepared_install(platform, Path::new(&resolved_rom_path)) {
+            let db_pool = crate::state::ensure_user_db(state)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let prepared = match crate::exo::prepare_install_for_game(
+                &settings,
+                db_pool,
+                db_id,
+                platform,
+                Path::new(&resolved_rom_path),
+            )
+            .await
+            {
+                Ok(prepared) => prepared,
+                Err(e) => {
+                    return Ok(LaunchResult {
+                        success: false,
+                        pid: None,
+                        error: Some(e),
+                    })
+                }
+            };
+
+            return match emulator::launch_prepared_install(
+                emulator,
+                prepared.collection,
+                &prepared.install_root,
+                &prepared.launch_config_path,
+                as_retroarch_core,
+            ) {
+                Ok(pid) => Ok(LaunchResult {
+                    success: true,
+                    pid: Some(pid),
+                    error: None,
+                }),
+                Err(e) => Ok(LaunchResult {
+                    success: false,
+                    pid: None,
+                    error: Some(e),
+                }),
+            };
+        }
+    }
+
+    let Some(rom_path) = rom_path.filter(|path| !path.trim().is_empty()) else {
+        return Ok(LaunchResult {
+            success: false,
+            pid: None,
+            error: Some("No ROM file path is available for this game".to_string()),
+        });
+    };
+
     match emulator::launch_emulator(emulator, Some(rom_path), as_retroarch_core) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
@@ -1012,6 +1164,7 @@ pub struct MinervaRom {
     pub minerva_platform: String,
     pub lunchbox_platform_id: i64,
     pub rom_count: i64,
+    pub total_size: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1055,25 +1208,52 @@ fn locate_downloaded_file(
     download_dir: &std::path::Path,
     target_filename: &str,
 ) -> Option<std::path::PathBuf> {
-    let target_name = std::path::Path::new(target_filename)
-        .file_name()
-        .map(|name| name.to_string_lossy().to_ascii_lowercase())?;
+    fn normalized_components_from_str(path: &str) -> Vec<String> {
+        path.split(['/', '\\'])
+            .filter(|component| !component.is_empty())
+            .map(|component| component.to_ascii_lowercase())
+            .collect()
+    }
 
-    walkdir::WalkDir::new(download_dir)
+    fn normalized_components_from_path(path: &std::path::Path) -> Vec<String> {
+        path.components()
+            .filter_map(|component| match component {
+                std::path::Component::Normal(value) => {
+                    Some(value.to_string_lossy().to_ascii_lowercase())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    let target_components = normalized_components_from_str(target_filename);
+    let target_name = target_components.last()?.clone();
+    let mut basename_match = None;
+
+    for entry in walkdir::WalkDir::new(download_dir)
         .into_iter()
         .filter_map(Result::ok)
-        .find_map(|entry| {
-            if !entry.file_type().is_file() {
-                return None;
-            }
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
 
-            let candidate_name = entry.file_name().to_string_lossy().to_ascii_lowercase();
-            if candidate_name == target_name {
-                Some(entry.into_path())
-            } else {
-                None
-            }
-        })
+        let candidate_path = entry.into_path();
+        let candidate_components = normalized_components_from_path(&candidate_path);
+        if candidate_components.is_empty() {
+            continue;
+        }
+
+        if candidate_components.ends_with(&target_components) {
+            return Some(candidate_path);
+        }
+
+        if basename_match.is_none() && candidate_components.last() == Some(&target_name) {
+            basename_match = Some(candidate_path);
+        }
+    }
+
+    basename_match
 }
 
 /// Check if the minerva database is available
@@ -1119,8 +1299,8 @@ pub async fn get_minerva_rom_for_game(
     let platform_id = resolved_platform_id;
 
     // Find a torrent for this platform
-    let row: Option<(i64, String, String, String, i64)> = sqlx::query_as(
-        "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count
+    let row: Option<(i64, String, String, String, i64, i64)> = sqlx::query_as(
+        "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
          WHERE tp.lunchbox_platform_id = ?
@@ -1133,13 +1313,16 @@ pub async fn get_minerva_rom_for_game(
     .map_err(|e| e.to_string())?;
 
     Ok(row.map(
-        |(torrent_id, torrent_url, collection, minerva_platform, rom_count)| MinervaRom {
-            torrent_id,
-            torrent_url,
-            collection,
-            minerva_platform,
-            lunchbox_platform_id: platform_id,
-            rom_count,
+        |(torrent_id, torrent_url, collection, minerva_platform, rom_count, total_size)| {
+            MinervaRom {
+                torrent_id,
+                torrent_url,
+                collection,
+                minerva_platform,
+                lunchbox_platform_id: platform_id,
+                rom_count,
+                total_size,
+            }
         },
     ))
 }
@@ -1161,8 +1344,8 @@ pub async fn search_minerva(
         None => return Ok(Vec::new()),
     };
 
-    let rows: Vec<(i64, String, String, String, i64)> = sqlx::query_as(
-        "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count
+    let rows: Vec<(i64, String, String, String, i64, i64)> = sqlx::query_as(
+        "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
          WHERE tp.lunchbox_platform_id = ?
@@ -1176,13 +1359,16 @@ pub async fn search_minerva(
     Ok(rows
         .into_iter()
         .map(
-            |(torrent_id, torrent_url, collection, minerva_platform, rom_count)| MinervaRom {
-                torrent_id,
-                torrent_url,
-                collection,
-                minerva_platform,
-                lunchbox_platform_id: pid,
-                rom_count,
+            |(torrent_id, torrent_url, collection, minerva_platform, rom_count, total_size)| {
+                MinervaRom {
+                    torrent_id,
+                    torrent_url,
+                    collection,
+                    minerva_platform,
+                    lunchbox_platform_id: pid,
+                    rom_count,
+                    total_size,
+                }
             },
         )
         .collect())
@@ -1273,7 +1459,18 @@ pub async fn start_minerva_download(
             }
         };
 
-        let target_file = file_index.and_then(|idx| files.iter().find(|f| f.index == idx));
+        let selection_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
+            file_index.and_then(|idx| crate::exo::plan_related_downloads(&platform, idx, &files))
+        } else {
+            None
+        };
+
+        let representative_index = selection_plan
+            .as_ref()
+            .map(|plan| plan.representative_index)
+            .or(file_index);
+        let target_file =
+            representative_index.and_then(|idx| files.iter().find(|f| f.index == idx));
         let target_filename = target_file.map(|f| f.filename.clone()).unwrap_or_default();
         let target_size = target_file.map(|f| f.size).unwrap_or(0);
 
@@ -1305,7 +1502,16 @@ pub async fn start_minerva_download(
             }
         };
         let progress_total = match download_mode {
-            MinervaDownloadMode::GameOnly => target_size,
+            MinervaDownloadMode::GameOnly => selection_plan
+                .as_ref()
+                .map(|plan| {
+                    plan.requested_indices
+                        .iter()
+                        .filter_map(|idx| files.iter().find(|file| file.index == *idx))
+                        .map(|file| file.size)
+                        .sum()
+                })
+                .unwrap_or(target_size),
             MinervaDownloadMode::FullTorrent => files.iter().map(|file| file.size).sum(),
         };
 
@@ -1337,7 +1543,10 @@ pub async fn start_minerva_download(
         };
 
         let requested_indices = match download_mode {
-            MinervaDownloadMode::GameOnly => file_index.map(|idx| vec![idx]),
+            MinervaDownloadMode::GameOnly => selection_plan
+                .as_ref()
+                .map(|plan| plan.requested_indices.clone())
+                .or_else(|| file_index.map(|idx| vec![idx])),
             MinervaDownloadMode::FullTorrent => None,
         };
 
@@ -1468,14 +1677,15 @@ pub async fn start_minerva_download(
         }
 
         let representative_path = if let Some(file) = target_file {
-            if let Some(path) = locate_downloaded_file(&download_dir_bg, &file.filename) {
+            if let Some(path) = client
+                .get_downloaded_file_path(&client_job_id, file.index, &download_dir_bg)
+                .await
+                .ok()
+                .flatten()
+            {
                 Some(path)
             } else {
-                client
-                    .get_downloaded_file_path(&client_job_id, file.index, &download_dir_bg)
-                    .await
-                    .ok()
-                    .flatten()
+                locate_downloaded_file(&download_dir_bg, &file.filename)
             }
         } else {
             None
@@ -1669,6 +1879,8 @@ pub struct TorrentFileMatch {
 pub struct ListTorrentFilesInput {
     pub torrent_url: String,
     pub game_title: String,
+    #[serde(default)]
+    pub platform: Option<String>,
 }
 
 const TORRENT_MATCH_STOP_WORDS: &[&str] = &[
@@ -1871,11 +2083,24 @@ pub async fn list_torrent_files(
         .await
         .map_err(|e| format!("Failed to load torrent metadata: {e}"))?;
 
-    Ok(select_torrent_file_matches(
-        files,
-        &input.game_title,
-        &state.settings.region_priority,
-    ))
+    let mut matches =
+        select_torrent_file_matches(files, &input.game_title, &state.settings.region_priority);
+
+    if let Some(ref platform) = input.platform {
+        let mut filtered: Vec<TorrentFileMatch> = matches
+            .iter()
+            .filter(|file| crate::exo::is_primary_download_candidate(platform, &file.filename))
+            .cloned()
+            .collect();
+        if !filtered.is_empty() {
+            filtered.sort_by_key(|file| {
+                crate::exo::primary_download_priority(platform, &file.filename)
+            });
+            matches = filtered;
+        }
+    }
+
+    Ok(matches)
 }
 
 // ============================================================================
@@ -2209,8 +2434,11 @@ pub async fn confirm_rom_import(
 
 #[cfg(test)]
 mod tests {
-    use super::select_torrent_file_matches;
+    use super::{locate_downloaded_file, select_torrent_file_matches, sort_emulator_statuses};
+    use crate::db::schema::EmulatorInfo;
+    use crate::emulator::EmulatorWithStatus;
     use crate::torrent::TorrentFileInfo;
+    use std::fs;
 
     #[test]
     fn prefers_exact_title_matches_over_partial_word_overlap() {
@@ -2336,5 +2564,71 @@ mod tests {
         assert_eq!(matches[0].region.as_deref(), Some("Japan"));
         assert_eq!(matches[1].region.as_deref(), Some("USA"));
         assert_eq!(matches[2].region.as_deref(), Some("Asia"));
+    }
+
+    #[test]
+    fn locate_downloaded_file_prefers_exact_suffix_match_when_basenames_collide() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let root = temp_dir.path().join("Nintendo Entertainment System");
+        let headerless = root
+            .join("Minerva_Myrient/No-Intro/Nintendo - Nintendo Entertainment System (Headerless)");
+        let headered = root
+            .join("Minerva_Myrient/No-Intro/Nintendo - Nintendo Entertainment System (Headered)");
+        fs::create_dir_all(&headerless).unwrap();
+        fs::create_dir_all(&headered).unwrap();
+
+        let filename = "Super Mario Bros. 3 (USA) (Rev 1).zip";
+        let headerless_file = headerless.join(filename);
+        let headered_file = headered.join(filename);
+        fs::write(&headerless_file, b"headerless").unwrap();
+        fs::write(&headered_file, b"headered").unwrap();
+
+        let found = locate_downloaded_file(
+            &root,
+            "No-Intro/Nintendo - Nintendo Entertainment System (Headered)/Super Mario Bros. 3 (USA) (Rev 1).zip",
+        )
+        .unwrap();
+
+        assert_eq!(found, headered_file);
+    }
+
+    #[test]
+    fn sorts_installed_emulators_ahead_of_uninstalled_entries() {
+        fn status(name: &str, is_installed: bool, is_retroarch_core: bool) -> EmulatorWithStatus {
+            EmulatorWithStatus {
+                info: EmulatorInfo {
+                    id: 0,
+                    name: name.to_string(),
+                    homepage: None,
+                    supported_os: None,
+                    winget_id: None,
+                    homebrew_formula: None,
+                    flatpak_id: None,
+                    retroarch_core: is_retroarch_core.then(|| "test_core".to_string()),
+                    save_directory: None,
+                    save_extensions: None,
+                    notes: None,
+                },
+                is_installed,
+                install_method: None,
+                is_retroarch_core,
+                display_name: name.to_string(),
+                executable_path: None,
+            }
+        }
+
+        let mut emulators = vec![
+            status("RetroArch: beetle", false, true),
+            status("DOSBox-X", true, false),
+            status("RetroArch: mesen", true, true),
+            status("ares", false, false),
+        ];
+
+        sort_emulator_statuses(&mut emulators);
+
+        assert_eq!(emulators[0].display_name, "DOSBox-X");
+        assert_eq!(emulators[1].display_name, "RetroArch: mesen");
+        assert!(!emulators[2].is_installed);
+        assert!(!emulators[3].is_installed);
     }
 }

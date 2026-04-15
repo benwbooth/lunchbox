@@ -182,29 +182,31 @@ pub fn VideoPlayer(
                         set_state.set(ready);
                         return;
                     }
-                    Ok(None) => match tauri::probe_game_video_available(title.clone(), plat.clone()).await {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            let no_video = VideoState::NoVideo;
-                            put_cached_video_state(&key, &no_video);
-                            set_state.set(no_video);
-                            return;
-                        }
-                        Err(e) => {
-                            let msg = e.to_lowercase();
-                            if msg.contains("not configured")
-                                || msg.contains("unknown platform")
-                                || msg.contains("no video")
-                            {
+                    Ok(None) => {
+                        match tauri::probe_game_video_available(title.clone(), plat.clone()).await {
+                            Ok(true) => {}
+                            Ok(false) => {
                                 let no_video = VideoState::NoVideo;
                                 put_cached_video_state(&key, &no_video);
                                 set_state.set(no_video);
-                            } else {
-                                set_state.set(VideoState::Error(e));
+                                return;
                             }
-                            return;
+                            Err(e) => {
+                                let msg = e.to_lowercase();
+                                if msg.contains("not configured")
+                                    || msg.contains("unknown platform")
+                                    || msg.contains("no video")
+                                {
+                                    let no_video = VideoState::NoVideo;
+                                    put_cached_video_state(&key, &no_video);
+                                    set_state.set(no_video);
+                                } else {
+                                    set_state.set(VideoState::Error(e));
+                                }
+                                return;
+                            }
                         }
-                    },
+                    }
                     Err(_) => {
                         let no_video = VideoState::NoVideo;
                         put_cached_video_state(&key, &no_video);

@@ -12,6 +12,7 @@ use wasm_bindgen::{JsCast, JsValue};
 
 async fn launch_game_with_resolved_rom(
     launchbox_db_id: i64,
+    platform: String,
     fallback_rom_path: Option<String>,
     emulator_name: String,
     is_retroarch_core: bool,
@@ -31,7 +32,14 @@ async fn launch_game_with_resolved_rom(
         }
     };
 
-    tauri::launch_game(emulator_name, rom_path, is_retroarch_core).await
+    tauri::launch_game(
+        emulator_name,
+        Some(rom_path),
+        Some(launchbox_db_id),
+        Some(platform),
+        is_retroarch_core,
+    )
+    .await
 }
 
 async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
@@ -244,6 +252,28 @@ fn file_picker_display_name(path: &str) -> String {
         .to_string()
 }
 
+fn file_picker_path_detail(path: &str) -> Option<String> {
+    let display_name = file_picker_display_name(path);
+    if display_name == path {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+fn format_picker_bytes(bytes: i64) -> String {
+    let bytes = bytes.max(0) as u64;
+    if bytes >= 1_000_000_000 {
+        format!("{:.1} GB", bytes as f64 / 1_000_000_000.0)
+    } else if bytes >= 1_000_000 {
+        format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+    } else if bytes >= 1_000 {
+        format!("{:.1} KB", bytes as f64 / 1_000.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 fn minerva_torrent_groups_request_key(
     launchbox_db_id: i64,
     game_title: &str,
@@ -255,6 +285,7 @@ fn minerva_torrent_groups_request_key(
 async fn load_minerva_torrent_groups(
     launchbox_db_id: i64,
     game_title: String,
+    platform_name: String,
     platform_id: i64,
     region_priority: Vec<String>,
 ) -> Result<Vec<MinervaTorrentGroup>, String> {
@@ -269,8 +300,11 @@ async fn load_minerva_torrent_groups(
 
     let group_results = stream::iter(roms.into_iter().map(|rom| {
         let game_title = game_title.clone();
+        let platform_name = platform_name.clone();
         async move {
-            let result = tauri::list_torrent_files(rom.torrent_url.clone(), game_title).await;
+            let result =
+                tauri::list_torrent_files(rom.torrent_url.clone(), game_title, Some(platform_name))
+                    .await;
             (rom, result)
         }
     }))
@@ -461,6 +495,7 @@ pub fn GameDetails(
     let request_minerva_torrent_groups =
         move |launchbox_db_id: i64,
               game_title: String,
+              platform_name: String,
               platform_id: i64,
               open_picker_immediately: bool,
               surface_errors: bool| {
@@ -494,6 +529,7 @@ pub fn GameDetails(
                 let result = load_minerva_torrent_groups(
                     launchbox_db_id,
                     game_title,
+                    platform_name,
                     platform_id,
                     region_priority,
                 )
@@ -652,10 +688,8 @@ pub fn GameDetails(
 
                             // Only swap away from the clicked row when it has no usable DB id.
                             if db_id <= 0 {
-                                let fallback_variant_id = variants
-                                    .get_untracked()
-                                    .iter()
-                                    .find_map(|variant| {
+                                let fallback_variant_id =
+                                    variants.get_untracked().iter().find_map(|variant| {
                                         if variant.id != game_id {
                                             Some(variant.id.clone())
                                         } else {
@@ -807,8 +841,9 @@ pub fn GameDetails(
                             } else {
                                 set_minerva_downloading.set(false);
                                 set_minerva_job_id.set(None);
-                                set_import_error
-                                    .set(Some(format!("Failed to read download progress: {err_string}")));
+                                set_import_error.set(Some(format!(
+                                    "Failed to read download progress: {err_string}"
+                                )));
                                 break;
                             }
                         }
@@ -852,6 +887,7 @@ pub fn GameDetails(
         request_minerva_torrent_groups(
             current_game.database_id,
             current_game.display_title.clone(),
+            current_game.platform.clone(),
             current_game.platform_id,
             false,
             false,
@@ -1166,6 +1202,7 @@ pub fn GameDetails(
                                                                     request_minerva_torrent_groups(
                                                                         g.database_id,
                                                                         g.display_title.clone(),
+                                                                        g.platform.clone(),
                                                                         g.platform_id,
                                                                         true,
                                                                         true,
@@ -1237,6 +1274,7 @@ pub fn GameDetails(
                                                             let collection = group.rom.collection.clone();
                                                             let minerva_platform = group.rom.minerva_platform.clone();
                                                             let rom_count = group.rom.rom_count;
+                                                            let total_size = group.rom.total_size;
                                                             let match_count = group.files.len();
                                                             let whole_torrent_selection = MinervaDownloadSelection::WholeTorrent {
                                                                 torrent_url: torrent_url.clone(),
@@ -1264,12 +1302,14 @@ pub fn GameDetails(
                                                                         </div>
                                                                         <div class="file-picker-meta">
                                                                             <span class="file-picker-size">{format!("{rom_count} ROMs total")}</span>
+                                                                            <span class="file-picker-size">{format_picker_bytes(total_size)}</span>
                                                                             <span class="file-picker-match">{format!("{match_count} matching file(s)")}</span>
                                                                         </div>
                                                                     </div>
                                                                     {group.files.into_iter().map(|file| {
                                                                         let idx = file.index;
                                                                         let name = file_picker_display_name(&file.filename);
+                                                                        let path_detail = file_picker_path_detail(&file.filename);
                                                                         let size_mb = file.size as f64 / (1024.0 * 1024.0);
                                                                         let score = file.match_score;
                                                                         let region = file.region.clone().unwrap_or_default();
@@ -1288,7 +1328,12 @@ pub fn GameDetails(
                                                                                 class:selected=is_selected
                                                                                 on:click=move |_| set_selected_download.set(Some(click_selection.clone()))
                                                                             >
-                                                                                <div class="file-picker-name">{name}</div>
+                                                                                <div class="file-picker-name">
+                                                                                    <div class="file-picker-title">{name}</div>
+                                                                                    {path_detail.as_ref().map(|path| view! {
+                                                                                        <div class="file-picker-path">{path.clone()}</div>
+                                                                                    })}
+                                                                                </div>
                                                                                 <div class="file-picker-meta">
                                                                                     <span class="file-picker-size">{format!("{size_mb:.1} MB")}</span>
                                                                                     {(!region.is_empty()).then(|| view! {
@@ -1419,6 +1464,7 @@ pub fn GameDetails(
                                                                 request_minerva_torrent_groups(
                                                                     g.database_id,
                                                                     g.display_title.clone(),
+                                                                    g.platform.clone(),
                                                                     g.platform_id,
                                                                     true,
                                                                     true,
@@ -1823,10 +1869,11 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
                                                 spawn_local(async move {
                                                     // Record play session
-                                                    let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                    let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
                                                     // Launch selected emulator with ROM path
                                                     match launch_game_with_resolved_rom(
                                                         db_id,
+                                                        platform.clone(),
                                                         fallback_rom_path.clone(),
                                                         emulator_name.clone(),
                                                         is_ra,
@@ -1854,10 +1901,11 @@ fn EmulatorPickerModal(
                                                         Ok(_path) => {
                                                             set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
                                                             // Record play session
-                                                            let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                            let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
                                                             // Launch selected emulator with ROM path
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
+                                                                platform.clone(),
                                                                 fallback_rom_path.clone(),
                                                                 emulator_for_install.clone(),
                                                                 is_ra,
@@ -1899,9 +1947,10 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
                                                 spawn_local(async move {
                                                     let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
-                                                    let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                    let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
                                                     match launch_game_with_resolved_rom(
                                                         db_id,
+                                                        platform.clone(),
                                                         fallback_rom_path.clone(),
                                                         emulator_name.clone(),
                                                         is_ra,
@@ -1928,9 +1977,10 @@ fn EmulatorPickerModal(
                                                         Ok(_) => {
                                                             let _ = tauri::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
-                                                            let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                            let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
+                                                                platform.clone(),
                                                                 fallback_rom_path.clone(),
                                                                 emu_for_install.clone(),
                                                                 is_ra,
@@ -1972,9 +2022,10 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
                                                 spawn_local(async move {
                                                     let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
-                                                    let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                    let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
                                                     match launch_game_with_resolved_rom(
                                                         db_id,
+                                                        platform.clone(),
                                                         fallback_rom_path.clone(),
                                                         emulator_name.clone(),
                                                         is_ra,
@@ -2001,9 +2052,10 @@ fn EmulatorPickerModal(
                                                         Ok(_) => {
                                                             let _ = tauri::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
-                                                            let _ = tauri::record_play_session(db_id, title, platform).await;
+                                                            let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
+                                                                platform.clone(),
                                                                 fallback_rom_path.clone(),
                                                                 emu_for_install.clone(),
                                                                 is_ra,

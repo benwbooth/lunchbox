@@ -7,7 +7,7 @@
 
 use crate::db::schema::EmulatorInfo;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -339,6 +339,9 @@ fn get_executable_names(name: &str) -> Vec<String> {
         }
         "ares" => {
             names.push("ares-emu".to_string());
+        }
+        "pcbox" => {
+            names.extend(["PCBox", "pcbox"].iter().map(|s| s.to_string()));
         }
         _ => {}
     }
@@ -1855,6 +1858,780 @@ pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, Strin
     launch_emulator(emulator, Some(rom_path), as_retroarch_core)
 }
 
+const DEFAULT_SCUMMVM_CONFIG: &str = r#"[scummvm]
+filtering=false
+autosave_period=300
+mute=false
+speech_volume=192
+native_mt32=false
+mt32_device=mt32
+kbdmouse_speed=3
+talkspeed=60
+midi_gain=100
+subtitles=false
+multi_midi=false
+fullscreen=false
+updates_check=2628000
+gui_browser_show_hidden=false
+gm_device=null
+sfx_volume=192
+music_volume=192
+speech_mute=false
+music_driver=auto
+opl_driver=auto
+aspect_ratio=false
+gui_theme=SCUMMMODERN
+enable_gs=false
+"#;
+
+pub fn launch_prepared_install(
+    emulator: &EmulatorInfo,
+    collection: crate::exo::ExoCollection,
+    install_root: &Path,
+    launch_config_path: &Path,
+    as_retroarch_core: bool,
+) -> Result<u32, String> {
+    match collection {
+        crate::exo::ExoCollection::Dos | crate::exo::ExoCollection::Win3x => {
+            launch_dosbox_prepared_install(
+                emulator,
+                install_root,
+                launch_config_path,
+                as_retroarch_core,
+            )
+        }
+        crate::exo::ExoCollection::Win9x => launch_win9x_prepared_install(
+            emulator,
+            install_root,
+            launch_config_path,
+            as_retroarch_core,
+        ),
+    }
+}
+
+fn launch_dosbox_prepared_install(
+    emulator: &EmulatorInfo,
+    install_root: &Path,
+    launch_config_path: &Path,
+    as_retroarch_core: bool,
+) -> Result<u32, String> {
+    let exception_script = launch_config_path.parent().and_then(|dir| {
+        let linux = dir.join("exception.bsh");
+        if linux.exists() {
+            Some(linux)
+        } else {
+            let windows = dir.join("exception.bat");
+            windows.exists().then_some(windows)
+        }
+    });
+    let mut cleanup_paths = Vec::new();
+    let mut effective_launch_config_path = launch_config_path.to_path_buf();
+    if let Some(path) = exception_script.as_ref() {
+        let is_linux_exception = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("bsh"))
+            .unwrap_or(false);
+        if is_linux_exception {
+            if let Ok(scummvm_plan) = crate::exo::load_linux_scummvm_exception_plan(path) {
+                return launch_scummvm_install(
+                    emulator,
+                    install_root,
+                    &scummvm_plan,
+                    as_retroarch_core,
+                );
+            }
+            let exception_plan =
+                crate::exo::load_linux_dosbox_exception_plan(path).map_err(|e| {
+                    format!(
+                        "This eXo title uses a Linux-specific exception launcher ({}) that Lunchbox does not support yet: {}",
+                        path.display(),
+                        e
+                    )
+                })?;
+            effective_launch_config_path = path
+                .parent()
+                .map(|dir| dir.join(&exception_plan.launch_config_name))
+                .ok_or_else(|| {
+                    format!(
+                        "Linux eXo exception launcher {} does not have a parent directory.",
+                        path.display()
+                    )
+                })?;
+            if !effective_launch_config_path.exists() {
+                return Err(format!(
+                    "Linux eXo exception launcher {} refers to missing config {}.",
+                    path.display(),
+                    effective_launch_config_path.display()
+                ));
+            }
+        } else {
+            let exception_plan = crate::exo::load_dosbox_exception_plan(path).map_err(|e| {
+                format!(
+                    "This eXo title uses a custom exception launcher ({}) that Lunchbox does not support yet: {}",
+                    path.display(),
+                    e
+                )
+            })?;
+            cleanup_paths.extend(prepare_dosbox_exception_files(
+                install_root,
+                &exception_plan,
+            )?);
+        }
+    }
+
+    if as_retroarch_core {
+        return Err(
+            "eXo DOS/Win3x installs currently require a standalone DOSBox emulator. Use DOSBox-X or DOSBox Staging."
+                .to_string(),
+        );
+    }
+
+    let emulator_name = emulator.name.to_ascii_lowercase();
+    if !emulator_name.contains("dosbox") {
+        return Err(format!(
+            "{} is not supported for eXo DOS/Win3x installs yet. Use DOSBox-X or DOSBox Staging.",
+            emulator.name
+        ));
+    }
+
+    let shared_options_path = if effective_launch_config_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_ascii_lowercase().ends_with("_linux.conf"))
+        .unwrap_or(false)
+    {
+        let linux_options = install_root.join("emulators/dosbox/options_linux.conf");
+        if linux_options.exists() {
+            Some(linux_options)
+        } else {
+            let fallback = install_root.join("emulators/dosbox/options.conf");
+            fallback.exists().then_some(fallback)
+        }
+    } else {
+        let windows_options = install_root.join("emulators/dosbox/options.conf");
+        if windows_options.exists() {
+            Some(windows_options)
+        } else {
+            let fallback = install_root.join("emulators/dosbox/options_linux.conf");
+            fallback.exists().then_some(fallback)
+        }
+    };
+
+    let exe_path = check_standalone_installation(emulator)
+        .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+
+    if exe_path.to_string_lossy().starts_with("flatpak::") {
+        let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
+        let mut cmd = Command::new("flatpak");
+        cmd.arg("run");
+        add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
+        cmd.arg(&app_id);
+        cmd.arg("-conf").arg(map_path_for_flatpak(
+            &effective_launch_config_path.to_string_lossy(),
+        ));
+        if let Some(ref shared_options_path) = shared_options_path {
+            cmd.arg("-conf")
+                .arg(map_path_for_flatpak(&shared_options_path.to_string_lossy()));
+        }
+        cmd.current_dir(install_root);
+        tracing::info!(
+            command = ?cmd,
+            install_root = %install_root.display(),
+            config = %effective_launch_config_path.display(),
+            "Spawning DOSBox install via flatpak"
+        );
+        return spawn_and_verify(cmd, &emulator.name, cleanup_paths);
+    }
+
+    let mut cmd = Command::new(&exe_path);
+    cmd.arg("-conf").arg(&effective_launch_config_path);
+    if let Some(ref shared_options_path) = shared_options_path {
+        cmd.arg("-conf").arg(shared_options_path);
+    }
+    cmd.current_dir(install_root);
+    tracing::info!(
+        command = ?cmd,
+        install_root = %install_root.display(),
+        config = %effective_launch_config_path.display(),
+        "Spawning DOSBox install natively"
+    );
+    spawn_and_verify(cmd, &emulator.name, cleanup_paths)
+}
+
+fn launch_win9x_prepared_install(
+    emulator: &EmulatorInfo,
+    install_root: &Path,
+    launch_config_path: &Path,
+    as_retroarch_core: bool,
+) -> Result<u32, String> {
+    if as_retroarch_core {
+        return Err(
+            "eXoWin9x installs currently require standalone DOSBox-X, not RetroArch.".to_string(),
+        );
+    }
+
+    let launcher_kind =
+        detect_win9x_launcher_kind(launch_config_path.parent().ok_or_else(|| {
+            format!(
+                "Prepared eXoWin9x config {} does not have a parent directory.",
+                launch_config_path.display()
+            )
+        })?)?;
+
+    match launcher_kind {
+        Win9xLauncherKind::DosboxX => {
+            let emulator_name = emulator.name.to_ascii_lowercase();
+            if !emulator_name.contains("dosbox-x") {
+                return Err(format!(
+                    "{} is not supported for this eXoWin9x title. Use DOSBox-X.",
+                    emulator.name
+                ));
+            }
+
+            let shared_options_path = install_root.join("emulators/dosbox/options9x.conf");
+            if !shared_options_path.exists() {
+                return Err(format!(
+                    "Prepared eXoWin9x install is missing {}.",
+                    shared_options_path.display()
+                ));
+            }
+
+            let exe_path = check_standalone_installation(emulator)
+                .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+
+            if exe_path.to_string_lossy().starts_with("flatpak::") {
+                let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
+                let mut cmd = Command::new("flatpak");
+                cmd.arg("run");
+                add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
+                cmd.arg(&app_id);
+                cmd.arg("-conf")
+                    .arg(map_path_for_flatpak(&launch_config_path.to_string_lossy()));
+                cmd.arg("-conf")
+                    .arg(map_path_for_flatpak(&shared_options_path.to_string_lossy()));
+                cmd.arg("-nomenu");
+                cmd.arg("-noconsole");
+                cmd.current_dir(install_root);
+                tracing::info!(
+                    command = ?cmd,
+                    install_root = %install_root.display(),
+                    config = %launch_config_path.display(),
+                    "Spawning eXoWin9x DOSBox-X install via flatpak"
+                );
+                return spawn_and_verify(cmd, &emulator.name, Vec::new());
+            }
+
+            let mut cmd = Command::new(&exe_path);
+            cmd.arg("-conf").arg(launch_config_path);
+            cmd.arg("-conf").arg(&shared_options_path);
+            cmd.arg("-nomenu");
+            cmd.arg("-noconsole");
+            cmd.current_dir(install_root);
+            tracing::info!(
+                command = ?cmd,
+                install_root = %install_root.display(),
+                config = %launch_config_path.display(),
+                "Spawning eXoWin9x DOSBox-X install natively"
+            );
+            spawn_and_verify(cmd, &emulator.name, Vec::new())
+        }
+        Win9xLauncherKind::EightySixBox(plan) => {
+            let emulator_name = emulator.name.to_ascii_lowercase();
+            if !emulator_name.contains("86box") {
+                return Err(format!(
+                    "{} is not supported for this eXoWin9x title. Use 86Box.",
+                    emulator.name
+                ));
+            }
+
+            let vm_root = install_root.join("emulators/86Box98");
+            let vm_config_path = vm_root.join("86box.cfg");
+            prepare_86box_vm_root(
+                install_root,
+                launch_config_path,
+                &plan,
+                &vm_root,
+                &vm_config_path,
+            )?;
+
+            let exe_path = check_standalone_installation(emulator)
+                .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+
+            if exe_path.to_string_lossy().starts_with("flatpak::") {
+                let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
+                let mut cmd = Command::new("flatpak");
+                cmd.arg("run");
+                add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
+                cmd.arg(&app_id);
+                cmd.arg("-P")
+                    .arg(map_path_for_flatpak(&vm_root.to_string_lossy()));
+                cmd.current_dir(install_root);
+                tracing::info!(
+                    command = ?cmd,
+                    install_root = %install_root.display(),
+                    vm_root = %vm_root.display(),
+                    "Spawning eXoWin9x 86Box install via flatpak"
+                );
+                return spawn_and_verify(cmd, &emulator.name, Vec::new());
+            }
+
+            let mut cmd = Command::new(&exe_path);
+            cmd.arg("-P").arg(&vm_root);
+            cmd.current_dir(install_root);
+            tracing::info!(
+                command = ?cmd,
+                install_root = %install_root.display(),
+                vm_root = %vm_root.display(),
+                "Spawning eXoWin9x 86Box install natively"
+            );
+            spawn_and_verify(cmd, &emulator.name, Vec::new())
+        }
+        Win9xLauncherKind::PcBox(plan) => {
+            let emulator_name = emulator.name.to_ascii_lowercase();
+            if !emulator_name.contains("86box") && !emulator_name.contains("pcbox") {
+                return Err(format!(
+                    "{} is not supported for this eXoWin9x title. Use 86Box.",
+                    emulator.name
+                ));
+            }
+
+            let vm_root = install_root.join("emulators/PCBox");
+            let exe_path = check_standalone_installation(emulator)
+                .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+            let use_native_pcbox = emulator_name.contains("pcbox");
+            let vm_config_path = if use_native_pcbox {
+                vm_root.join("play.cfg")
+            } else {
+                vm_root.join("86box.cfg")
+            };
+            prepare_pcbox_vm_root(launch_config_path, &plan, &vm_root, &vm_config_path)?;
+
+            if use_native_pcbox {
+                if exe_path.to_string_lossy().starts_with("flatpak::") {
+                    return Err(
+                        "PCBox launches currently require a native PCBox install, not Flatpak."
+                            .to_string(),
+                    );
+                }
+
+                let mut cmd = Command::new(&exe_path);
+                cmd.arg("-c").arg(&vm_config_path);
+                cmd.current_dir(install_root);
+                tracing::info!(
+                    command = ?cmd,
+                    install_root = %install_root.display(),
+                    vm_root = %vm_root.display(),
+                    "Spawning eXoWin9x PCBox install natively"
+                );
+                return spawn_and_verify(cmd, &emulator.name, Vec::new());
+            }
+
+            if exe_path.to_string_lossy().starts_with("flatpak::") {
+                let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
+                let mut cmd = Command::new("flatpak");
+                cmd.arg("run");
+                add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
+                cmd.arg(&app_id);
+                cmd.arg("-P")
+                    .arg(map_path_for_flatpak(&vm_root.to_string_lossy()));
+                cmd.current_dir(install_root);
+                tracing::info!(
+                    command = ?cmd,
+                    install_root = %install_root.display(),
+                    vm_root = %vm_root.display(),
+                    "Spawning eXoWin9x PCBox-profile install via 86Box flatpak"
+                );
+                return spawn_and_verify(cmd, &emulator.name, Vec::new());
+            }
+
+            let mut cmd = Command::new(&exe_path);
+            cmd.arg("-P").arg(&vm_root);
+            cmd.current_dir(install_root);
+            tracing::info!(
+                command = ?cmd,
+                install_root = %install_root.display(),
+                vm_root = %vm_root.display(),
+                "Spawning eXoWin9x PCBox-profile install via 86Box natively"
+            );
+            spawn_and_verify(cmd, &emulator.name, Vec::new())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Win9xLauncherKind {
+    DosboxX,
+    EightySixBox(Win9xEightySixBoxPlan),
+    PcBox(Win9xPcBoxPlan),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Win9xEightySixBoxPlan {
+    config_name: &'static str,
+    parent_vhd_name: &'static str,
+    child_vhd_name: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Win9xPcBoxPlan {
+    config_name: &'static str,
+    parent_vhd_name: &'static str,
+    child_vhd_name: &'static str,
+}
+
+fn detect_win9x_launcher_kind(metadata_dir: &Path) -> Result<Win9xLauncherKind, String> {
+    let mut launcher_script = None;
+
+    for entry in std::fs::read_dir(metadata_dir)
+        .map_err(|e| format!("Failed to read {}: {}", metadata_dir.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read metadata entry: {}", e))?;
+        let path = entry.path();
+        if !path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("bat"))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if file_name.eq_ignore_ascii_case("install.bat") {
+            continue;
+        }
+
+        launcher_script = Some(path);
+        break;
+    }
+
+    let Some(launcher_script) = launcher_script else {
+        return Ok(Win9xLauncherKind::DosboxX);
+    };
+
+    let contents = std::fs::read_to_string(&launcher_script).map_err(|e| {
+        format!(
+            "Failed to read eXoWin9x launcher {}: {}",
+            launcher_script.display(),
+            e
+        )
+    })?;
+    let lower = contents.replace("\r\n", "\n").to_ascii_lowercase();
+
+    if lower.contains("9xlaunchpcbox") {
+        return Ok(Win9xLauncherKind::PcBox(Win9xPcBoxPlan {
+            config_name: "Play.cfg",
+            parent_vhd_name: "W98-P.vhd",
+            child_vhd_name: "W98-C.vhd",
+        }));
+    }
+
+    if lower.contains("9xlaunch86boxnethost") {
+        return Ok(Win9xLauncherKind::EightySixBox(Win9xEightySixBoxPlan {
+            config_name: "Host.cfg",
+            parent_vhd_name: "W98-NetHost.vhd",
+            child_vhd_name: "W98-Host.vhd",
+        }));
+    }
+
+    if lower.contains("9xlaunch86boxnetjoin") {
+        return Ok(Win9xLauncherKind::EightySixBox(Win9xEightySixBoxPlan {
+            config_name: "Join.cfg",
+            parent_vhd_name: "W98-NetJoin.vhd",
+            child_vhd_name: "W98-Join.vhd",
+        }));
+    }
+
+    if lower.contains("9xlaunch86boxme") {
+        return Ok(Win9xLauncherKind::EightySixBox(Win9xEightySixBoxPlan {
+            config_name: "Play.cfg",
+            parent_vhd_name: "ME-P.vhd",
+            child_vhd_name: "ME-C.vhd",
+        }));
+    }
+
+    if lower.contains("9xlaunch86box") {
+        return Ok(Win9xLauncherKind::EightySixBox(Win9xEightySixBoxPlan {
+            config_name: "Play.cfg",
+            parent_vhd_name: "W98-P.vhd",
+            child_vhd_name: "W98-C.vhd",
+        }));
+    }
+
+    Ok(Win9xLauncherKind::DosboxX)
+}
+
+fn prepare_86box_vm_root(
+    _install_root: &Path,
+    launch_config_path: &Path,
+    plan: &Win9xEightySixBoxPlan,
+    vm_root: &Path,
+    vm_config_path: &Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(vm_root)
+        .map_err(|e| format!("Failed to create {}: {}", vm_root.display(), e))?;
+
+    let parent_vhd_path = vm_root.join("parent").join(plan.parent_vhd_name);
+    if !parent_vhd_path.exists() {
+        return Err(format!(
+            "Prepared eXoWin9x install is missing 86Box parent disk {}.",
+            parent_vhd_path.display()
+        ));
+    }
+
+    let child_vhd_path = vm_root.join(plan.child_vhd_name);
+    if !child_vhd_path.exists() {
+        std::fs::copy(&parent_vhd_path, &child_vhd_path).map_err(|e| {
+            format!(
+                "Failed to create writable 86Box disk {} from {}: {}",
+                child_vhd_path.display(),
+                parent_vhd_path.display(),
+                e
+            )
+        })?;
+    }
+
+    let source_cfg_path = launch_config_path
+        .parent()
+        .map(|dir| dir.join(plan.config_name))
+        .ok_or_else(|| {
+            format!(
+                "Prepared eXoWin9x config {} does not have a parent directory.",
+                launch_config_path.display()
+            )
+        })?;
+    if !source_cfg_path.exists() {
+        return Err(format!(
+            "Prepared eXoWin9x install is missing 86Box config {}.",
+            source_cfg_path.display()
+        ));
+    }
+
+    std::fs::copy(&source_cfg_path, vm_config_path).map_err(|e| {
+        format!(
+            "Failed to copy {} to {}: {}",
+            source_cfg_path.display(),
+            vm_config_path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
+fn prepare_pcbox_vm_root(
+    launch_config_path: &Path,
+    plan: &Win9xPcBoxPlan,
+    vm_root: &Path,
+    vm_config_path: &Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(vm_root)
+        .map_err(|e| format!("Failed to create {}: {}", vm_root.display(), e))?;
+
+    let parent_vhd_path = vm_root.join("parent").join(plan.parent_vhd_name);
+    if !parent_vhd_path.exists() {
+        return Err(format!(
+            "Prepared eXoWin9x install is missing PCBox parent disk {}.",
+            parent_vhd_path.display()
+        ));
+    }
+
+    let child_vhd_path = vm_root.join(plan.child_vhd_name);
+    if !child_vhd_path.exists() {
+        std::fs::copy(&parent_vhd_path, &child_vhd_path).map_err(|e| {
+            format!(
+                "Failed to create writable PCBox disk {} from {}: {}",
+                child_vhd_path.display(),
+                parent_vhd_path.display(),
+                e
+            )
+        })?;
+    }
+
+    let source_cfg_path = launch_config_path
+        .parent()
+        .map(|dir| dir.join(plan.config_name))
+        .ok_or_else(|| {
+            format!(
+                "Prepared eXoWin9x config {} does not have a parent directory.",
+                launch_config_path.display()
+            )
+        })?;
+    if !source_cfg_path.exists() {
+        return Err(format!(
+            "Prepared eXoWin9x install is missing PCBox config {}.",
+            source_cfg_path.display()
+        ));
+    }
+
+    std::fs::copy(&source_cfg_path, vm_config_path).map_err(|e| {
+        format!(
+            "Failed to copy {} to {}: {}",
+            source_cfg_path.display(),
+            vm_config_path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
+fn launch_scummvm_install(
+    emulator: &EmulatorInfo,
+    install_root: &Path,
+    plan: &crate::exo::LinuxScummvmExceptionPlan,
+    as_retroarch_core: bool,
+) -> Result<u32, String> {
+    if as_retroarch_core {
+        return Err(
+            "ScummVM-based eXo installs currently require the standalone ScummVM emulator."
+                .to_string(),
+        );
+    }
+
+    if !emulator.name.to_ascii_lowercase().contains("scummvm") {
+        return Err(format!(
+            "This eXo title uses ScummVM, not DOSBox. Choose ScummVM instead of {}.",
+            emulator.name
+        ));
+    }
+
+    let config_path = ensure_scummvm_config_file(install_root, &plan.config_path)?;
+    let game_path = install_root.join(normalize_prepared_install_relative_path(&plan.game_path));
+    if !game_path.exists() {
+        return Err(format!(
+            "ScummVM game directory {} does not exist in the prepared install.",
+            game_path.display()
+        ));
+    }
+
+    let exe_path = check_standalone_installation(emulator)
+        .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+
+    if exe_path.to_string_lossy().starts_with("flatpak::") {
+        let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
+        let mut cmd = Command::new("flatpak");
+        cmd.arg("run");
+        add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
+        cmd.arg(&app_id);
+        cmd.arg(format!(
+            "--config={}",
+            map_path_for_flatpak(&config_path.to_string_lossy())
+        ));
+        cmd.args(&plan.extra_args);
+        cmd.arg("-p")
+            .arg(map_path_for_flatpak(&game_path.to_string_lossy()));
+        cmd.arg(&plan.game_id);
+        cmd.current_dir(install_root);
+        tracing::info!(
+            command = ?cmd,
+            install_root = %install_root.display(),
+            config = %config_path.display(),
+            game_path = %game_path.display(),
+            game_id = %plan.game_id,
+            "Spawning ScummVM install via flatpak"
+        );
+        return spawn_and_verify(cmd, &emulator.name, Vec::new());
+    }
+
+    let mut cmd = Command::new(&exe_path);
+    cmd.arg(format!("--config={}", config_path.display()));
+    cmd.args(&plan.extra_args);
+    cmd.arg("-p").arg(&game_path);
+    cmd.arg(&plan.game_id);
+    cmd.current_dir(install_root);
+    tracing::info!(
+        command = ?cmd,
+        install_root = %install_root.display(),
+        config = %config_path.display(),
+        game_path = %game_path.display(),
+        game_id = %plan.game_id,
+        "Spawning ScummVM install natively"
+    );
+    spawn_and_verify(cmd, &emulator.name, Vec::new())
+}
+
+fn normalize_prepared_install_relative_path(path: &str) -> PathBuf {
+    let trimmed = path.trim().trim_matches('"').trim_matches('\'');
+    let trimmed = trimmed.strip_prefix("./").unwrap_or(trimmed);
+    PathBuf::from(trimmed)
+}
+
+fn ensure_scummvm_config_file(install_root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let config_path = install_root.join(normalize_prepared_install_relative_path(relative_path));
+    if config_path.exists() {
+        return Ok(config_path);
+    }
+
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+    }
+
+    std::fs::write(&config_path, DEFAULT_SCUMMVM_CONFIG).map_err(|e| {
+        format!(
+            "Failed to create ScummVM config {}: {}",
+            config_path.display(),
+            e
+        )
+    })?;
+
+    Ok(config_path)
+}
+
+fn prepare_dosbox_exception_files(
+    install_root: &Path,
+    plan: &crate::exo::DosboxExceptionPlan,
+) -> Result<Vec<PathBuf>, String> {
+    let mut cleanup_paths = Vec::new();
+
+    if plan.copy_mt32_roms {
+        let mt32_dir = install_root.join("mt32");
+        if !mt32_dir.exists() {
+            return Err(format!(
+                "This eXo exception launcher expects MT-32 ROMs in {}, but that directory is missing.",
+                mt32_dir.display()
+            ));
+        }
+
+        for entry in std::fs::read_dir(&mt32_dir)
+            .map_err(|e| format!("Failed to read {}: {}", mt32_dir.display(), e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read mt32 entry: {}", e))?;
+            let path = entry.path();
+            let is_rom = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("rom"))
+                .unwrap_or(false);
+            if !is_rom {
+                continue;
+            }
+
+            let target_path = install_root.join(entry.file_name());
+            if target_path.exists() {
+                continue;
+            }
+
+            std::fs::copy(&path, &target_path).map_err(|e| {
+                format!(
+                    "Failed to copy {} to {}: {}",
+                    path.display(),
+                    target_path.display(),
+                    e
+                )
+            })?;
+            cleanup_paths.push(target_path);
+        }
+    }
+
+    Ok(cleanup_paths)
+}
+
 /// Find the RetroArch executable path for native launches.
 fn find_retroarch_binary() -> Option<PathBuf> {
     match current_os() {
@@ -1916,6 +2693,47 @@ fn map_path_for_flatpak(path: &str) -> String {
     path.to_string()
 }
 
+fn flatpak_filesystem_mount_point(path: &Path) -> Option<PathBuf> {
+    let normalized = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if normalized.is_dir() {
+        Some(normalized)
+    } else {
+        normalized.parent().map(Path::to_path_buf)
+    }
+}
+
+fn flatpak_filesystem_args(paths: Vec<(&Path, bool)>) -> Vec<String> {
+    let mut mounts: BTreeMap<String, bool> = BTreeMap::new();
+
+    for (path, read_only) in paths {
+        let Some(mount_point) = flatpak_filesystem_mount_point(path) else {
+            continue;
+        };
+        let mapped = map_path_for_flatpak(&mount_point.to_string_lossy());
+        mounts
+            .entry(mapped)
+            .and_modify(|existing_ro| *existing_ro &= read_only)
+            .or_insert(read_only);
+    }
+
+    mounts
+        .into_iter()
+        .map(|(path, read_only)| {
+            if read_only {
+                format!("--filesystem={path}:ro")
+            } else {
+                format!("--filesystem={path}")
+            }
+        })
+        .collect()
+}
+
+fn add_flatpak_filesystem_args(cmd: &mut Command, paths: Vec<(&Path, bool)>) {
+    for arg in flatpak_filesystem_args(paths) {
+        cmd.arg(arg);
+    }
+}
+
 /// Launch RetroArch with a specific core (optionally with a ROM)
 fn launch_retroarch(
     core_name: &str,
@@ -1938,7 +2756,13 @@ fn launch_retroarch(
             let is_flatpak = is_flatpak_installed("org.libretro.RetroArch");
             if is_flatpak {
                 let mut cmd = Command::new("flatpak");
-                cmd.arg("run").arg("org.libretro.RetroArch");
+                cmd.arg("run");
+                let mut filesystem_paths = vec![(core_path.as_path(), true)];
+                if let Some(rom) = rom_path {
+                    filesystem_paths.push((Path::new(rom), false));
+                }
+                add_flatpak_filesystem_args(&mut cmd, filesystem_paths);
+                cmd.arg("org.libretro.RetroArch");
                 cmd.arg("--verbose");
                 cmd.arg("-L").arg(map_path_for_flatpak(&core_path_str));
                 if let Some(rom) = rom_path {
@@ -2005,7 +2829,11 @@ fn launch_standalone(
         // Flatpak app
         let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
         let mut cmd = Command::new("flatpak");
-        cmd.arg("run").arg(&app_id);
+        cmd.arg("run");
+        if let Some(rom) = rom_path {
+            add_flatpak_filesystem_args(&mut cmd, vec![(Path::new(rom), false)]);
+        }
+        cmd.arg(&app_id);
         if let Some(rom) = rom_path {
             cmd.arg(map_path_for_flatpak(rom));
         }
@@ -2239,6 +3067,190 @@ mod tests {
         assert_eq!(
             std::fs::read(temp_dir.path().join("Disc/Game (Track 1).bin")).unwrap(),
             b"TRACK"
+        );
+    }
+
+    #[test]
+    fn flatpak_filesystem_args_mount_rom_directory_writable() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rom_dir = temp_dir.path().join("roms");
+        std::fs::create_dir_all(&rom_dir).unwrap();
+        let rom_path = rom_dir.join("game.nes");
+        std::fs::write(&rom_path, b"rom").unwrap();
+
+        let args = flatpak_filesystem_args(vec![(rom_path.as_path(), false)]);
+
+        assert_eq!(
+            args,
+            vec![format!("--filesystem={}", rom_dir.to_string_lossy())]
+        );
+    }
+
+    #[test]
+    fn flatpak_filesystem_args_deduplicate_and_prefer_writable_mounts() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let shared_dir = temp_dir.path().join("shared");
+        std::fs::create_dir_all(&shared_dir).unwrap();
+        let rom_path = shared_dir.join("game.nes");
+        let helper_path = shared_dir.join("helper.dat");
+        std::fs::write(&rom_path, b"rom").unwrap();
+        std::fs::write(&helper_path, b"helper").unwrap();
+
+        let args = flatpak_filesystem_args(vec![
+            (rom_path.as_path(), false),
+            (helper_path.as_path(), true),
+        ]);
+
+        assert_eq!(
+            args,
+            vec![format!("--filesystem={}", shared_dir.to_string_lossy())]
+        );
+    }
+
+    #[test]
+    fn prepare_dosbox_exception_files_copies_mt32_roms_and_tracks_cleanup() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mt32_dir = temp_dir.path().join("mt32");
+        std::fs::create_dir_all(&mt32_dir).unwrap();
+        std::fs::write(mt32_dir.join("MT32_CONTROL.ROM"), b"control").unwrap();
+        std::fs::write(mt32_dir.join("MT32_PCM.ROM"), b"pcm").unwrap();
+        std::fs::write(mt32_dir.join("SoundCanvas.sf2"), b"sf2").unwrap();
+
+        let cleanup_paths = prepare_dosbox_exception_files(
+            temp_dir.path(),
+            &crate::exo::DosboxExceptionPlan {
+                copy_mt32_roms: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(cleanup_paths.len(), 2);
+        assert!(cleanup_paths.contains(&temp_dir.path().join("MT32_CONTROL.ROM")));
+        assert!(cleanup_paths.contains(&temp_dir.path().join("MT32_PCM.ROM")));
+        assert_eq!(
+            std::fs::read(temp_dir.path().join("MT32_CONTROL.ROM")).unwrap(),
+            b"control"
+        );
+        assert!(!cleanup_paths.contains(&temp_dir.path().join("SoundCanvas.sf2")));
+    }
+
+    #[test]
+    fn detects_win9x_86box_launcher_variants() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let metadata_dir = temp_dir.path().join("Daytona USA (1996)");
+        std::fs::create_dir_all(&metadata_dir).unwrap();
+
+        std::fs::write(
+            metadata_dir.join("Daytona USA (1996).bat"),
+            b"@echo off\r\n.\\util\\9xlaunch86Box.bat\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            detect_win9x_launcher_kind(&metadata_dir).unwrap(),
+            Win9xLauncherKind::EightySixBox(Win9xEightySixBoxPlan {
+                config_name: "Play.cfg",
+                parent_vhd_name: "W98-P.vhd",
+                child_vhd_name: "W98-C.vhd",
+            })
+        );
+    }
+
+    #[test]
+    fn prepares_86box_vm_root_from_parent_disk_and_metadata_cfg() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let install_root = temp_dir.path().join("install");
+        let metadata_dir = install_root.join("eXoWin9x/!win9x/1996/Daytona USA (1996)");
+        let vm_root = install_root.join("emulators/86Box98");
+        std::fs::create_dir_all(metadata_dir.clone()).unwrap();
+        std::fs::create_dir_all(vm_root.join("parent")).unwrap();
+
+        let launch_config_path = metadata_dir.join("Play.cfg");
+        std::fs::write(
+            &launch_config_path,
+            b"[Hard disks]\nhdd_01_fn = W98-C.vhd\n",
+        )
+        .unwrap();
+        std::fs::write(vm_root.join("parent/W98-P.vhd"), b"parent").unwrap();
+
+        prepare_86box_vm_root(
+            &install_root,
+            &launch_config_path,
+            &Win9xEightySixBoxPlan {
+                config_name: "Play.cfg",
+                parent_vhd_name: "W98-P.vhd",
+                child_vhd_name: "W98-C.vhd",
+            },
+            &vm_root,
+            &vm_root.join("86box.cfg"),
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::read(vm_root.join("W98-C.vhd")).unwrap(), b"parent");
+        assert_eq!(
+            std::fs::read(vm_root.join("86box.cfg")).unwrap(),
+            b"[Hard disks]\nhdd_01_fn = W98-C.vhd\n"
+        );
+    }
+
+    #[test]
+    fn detects_win9x_pcbox_launcher_variant() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let metadata_dir = temp_dir.path().join("Need for Speed II SE (1997)");
+        std::fs::create_dir_all(&metadata_dir).unwrap();
+
+        std::fs::write(
+            metadata_dir.join("Need for Speed II SE (1997).bat"),
+            b"@echo off\r\n.\\util\\9xlaunchPCBox.bat\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            detect_win9x_launcher_kind(&metadata_dir).unwrap(),
+            Win9xLauncherKind::PcBox(Win9xPcBoxPlan {
+                config_name: "Play.cfg",
+                parent_vhd_name: "W98-P.vhd",
+                child_vhd_name: "W98-C.vhd",
+            })
+        );
+    }
+
+    #[test]
+    fn prepares_pcbox_vm_root_from_parent_disk_and_metadata_cfg() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let install_root = temp_dir.path().join("install");
+        let metadata_dir = install_root.join("eXoWin9x/!win9x/1997/Need for Speed II SE (1997)");
+        let vm_root = install_root.join("emulators/PCBox");
+        std::fs::create_dir_all(metadata_dir.clone()).unwrap();
+        std::fs::create_dir_all(vm_root.join("parent")).unwrap();
+
+        let launch_config_path = metadata_dir.join("Play.cfg");
+        std::fs::write(
+            &launch_config_path,
+            b"[Hard disks]\nhdd_01_fn = W98-C.vhd\n",
+        )
+        .unwrap();
+        std::fs::write(vm_root.join("parent/W98-P.vhd"), b"pcboxparent").unwrap();
+
+        prepare_pcbox_vm_root(
+            &launch_config_path,
+            &Win9xPcBoxPlan {
+                config_name: "Play.cfg",
+                parent_vhd_name: "W98-P.vhd",
+                child_vhd_name: "W98-C.vhd",
+            },
+            &vm_root,
+            &vm_root.join("play.cfg"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read(vm_root.join("W98-C.vhd")).unwrap(),
+            b"pcboxparent"
+        );
+        assert_eq!(
+            std::fs::read(vm_root.join("play.cfg")).unwrap(),
+            b"[Hard disks]\nhdd_01_fn = W98-C.vhd\n"
         );
     }
 }
