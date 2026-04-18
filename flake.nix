@@ -53,7 +53,7 @@
             # Dev tools
             sqlx-cli
             just
-            nodePackages.tailwindcss
+            tailwindcss
             watchexec
 
             # Browser / desktop shells for development
