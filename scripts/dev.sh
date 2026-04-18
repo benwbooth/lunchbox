@@ -89,6 +89,9 @@ if [ "$MODE" = "tauri" ]; then
 elif [ "$MODE" = "electron" ]; then
     echo "Starting Electron development mode..."
     echo ""
+    echo "Electron defaults to a safer WebGPU profile."
+    echo "Use LUNCHBOX_AGGRESSIVE_GPU=1 for forced Vulkan/Wayland developer flags."
+    echo ""
 
     install_units
     install_desktop_entry

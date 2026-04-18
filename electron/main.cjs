@@ -5,9 +5,29 @@ const DEV_URL = process.env.LUNCHBOX_ELECTRON_URL || 'http://127.0.0.1:1420';
 const WINDOW_TITLE = 'Lunchbox';
 const RETRY_DELAY_MS = 1000;
 const WINDOW_ICON = path.join(__dirname, '..', 'src-tauri', 'icons', 'icon.png');
+const USE_STABLE_CHROMIUM = process.env.LUNCHBOX_STABLE_CHROMIUM === '1';
+const USE_AGGRESSIVE_GPU = process.env.LUNCHBOX_AGGRESSIVE_GPU === '1';
 
 let mainWindow = null;
 let retryTimer = null;
+
+if (USE_STABLE_CHROMIUM) {
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+  app.commandLine.appendSwitch('disable-features', 'Vulkan');
+} else {
+  // Keep WebGPU enabled by default, but do not force the most brittle Linux GPU path.
+  // Electron on Wayland is much more likely to hang the compositor when Vulkan is forced
+  // and software fallback is disabled.
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+  app.commandLine.appendSwitch('enable-unsafe-webgpu');
+  if (USE_AGGRESSIVE_GPU) {
+    app.commandLine.appendSwitch('ozone-platform', 'wayland');
+    app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,Vulkan');
+    app.commandLine.appendSwitch('use-vulkan');
+    app.commandLine.appendSwitch('enable-webgpu-developer-features');
+    app.commandLine.appendSwitch('disable-software-rasterizer');
+  }
+}
 
 function clearRetryTimer() {
   if (retryTimer) {
