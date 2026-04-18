@@ -77,6 +77,9 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
     });
     renderer.setSize(width, height, false);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.18;
 
     // Create OrbitControls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -101,6 +104,7 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
     // Load front texture
     const frontTexture = textureLoader.load(frontUrl,
         () => {
+            frontTexture.colorSpace = THREE.SRGBColorSpace;
             console.log('Box3D: Front texture loaded successfully');
             renderer.render(scene, camera);
         },
@@ -113,6 +117,7 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
     if (backUrl) {
         backTexture = textureLoader.load(backUrl,
             () => {
+                backTexture.colorSpace = THREE.SRGBColorSpace;
                 console.log('Box3D: Back texture loaded successfully');
                 renderer.render(scene, camera);
             },
@@ -155,14 +160,18 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
     scene.add(box);
 
     // Add lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.82);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.15);
     directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
 
-    const backLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.55);
+    fillLight.position.set(-3, 2, 4);
+    scene.add(fillLight);
+
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.4);
     backLight.position.set(-5, -5, -5);
     scene.add(backLight);
 
