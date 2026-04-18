@@ -202,6 +202,7 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
 
 // Prevent multiple threads from downloading/building the same archive at once.
 static ARCHIVE_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+static VIDEO_DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 // Cache discovered video folders per normalized EmuMovies platform folder.
 static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
 // Cache video indices per remote FTP folder path.
@@ -547,6 +548,15 @@ fn get_archive_lock(archive_path: &Path) -> Arc<Mutex<()>> {
     let key = archive_path.to_string_lossy().to_string();
     let locks = ARCHIVE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut map = locks.lock().expect("archive lock map poisoned");
+    map.entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+fn get_video_download_lock(game_cache_dir: &Path) -> Arc<Mutex<()>> {
+    let key = game_cache_dir.to_string_lossy().to_string();
+    let locks = VIDEO_DOWNLOAD_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = locks.lock().expect("video download lock map poisoned");
     map.entry(key)
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
@@ -1043,6 +1053,18 @@ impl EmuMoviesClient {
             .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
 
         // Check cache first
+        if output_path.exists() && is_video_cache_current(game_cache_dir) {
+            return Ok(output_path);
+        }
+
+        let download_lock = get_video_download_lock(game_cache_dir);
+        let _download_guard = download_lock.lock().map_err(|_| {
+            anyhow::anyhow!(
+                "Video download lock poisoned for {}",
+                game_cache_dir.display()
+            )
+        })?;
+
         if output_path.exists() && is_video_cache_current(game_cache_dir) {
             return Ok(output_path);
         }
