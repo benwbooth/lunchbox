@@ -15,15 +15,11 @@ if (USE_STABLE_CHROMIUM) {
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('disable-features', 'Vulkan');
 } else {
-  // Middle ground for Linux/Electron:
-  // - keep WebGPU enabled
-  // - allow Vulkan-backed hardware adapters
-  // - bypass Chromium's conservative GPU blocklist
-  // - avoid forcing Vulkan compositor mode or disabling fallback paths
+  // Default to the least opinionated hardware path that still enables WebGPU.
+  // Electron window creation has been unstable when Vulkan/platform selection is forced here.
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('enable-unsafe-webgpu');
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
-  app.commandLine.appendSwitch('enable-features', 'Vulkan');
   if (USE_AGGRESSIVE_GPU) {
     app.commandLine.appendSwitch('ozone-platform', 'wayland');
     app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,Vulkan');
@@ -58,7 +54,7 @@ function createWindow() {
     height: 980,
     minWidth: 1100,
     minHeight: 720,
-    show: false,
+    show: true,
     autoHideMenuBar: true,
     title: WINDOW_TITLE,
     backgroundColor: '#121212',
@@ -79,9 +75,6 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     clearRetryTimer();
-    if (mainWindow && !mainWindow.isVisible()) {
-      mainWindow.show();
-    }
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
