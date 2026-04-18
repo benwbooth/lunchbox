@@ -56,8 +56,9 @@
             nodePackages.tailwindcss
             watchexec
 
-            # Browser for WebGPU development (hardware-accelerated)
+            # Browser / desktop shells for development
             chromium
+            electron
 
             # Credential storage (secret-tool CLI)
             libsecret

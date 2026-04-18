@@ -577,19 +577,19 @@ pub async fn confirm_rom_import(roms: Vec<RomImportEntry>) -> Result<usize, Stri
 
 /// Convert a file path to an asset URL for Tauri's asset protocol
 pub fn file_to_asset_url(path: &str) -> String {
-    if is_tauri() {
-        // Tauri 2 uses asset://localhost/{path}
-        // The path needs to be URL-encoded
+    // In browser mode and Tauri dev mode, use the HTTP asset endpoint.
+    // This avoids Tauri asset-protocol scope issues for app-data media paths.
+    if !is_tauri() || cfg!(debug_assertions) {
+        let encoded = urlencoding::encode(path);
+        format!("{}/assets/{}", HTTP_API_BASE, encoded)
+    } else {
+        // Tauri release mode: use the asset protocol.
         let encoded = path
             .replace(' ', "%20")
             .replace('#', "%23")
             .replace('?', "%3F")
             .replace('&', "%26");
         format!("asset://localhost/{}", encoded)
-    } else {
-        // Browser mode: use HTTP API to serve assets
-        let encoded = urlencoding::encode(path);
-        format!("{}/assets/{}", HTTP_API_BASE, encoded)
     }
 }
 

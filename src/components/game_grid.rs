@@ -445,6 +445,7 @@ pub fn GameGrid(
     let (games, set_games) = signal::<Vec<Game>>(Vec::new());
     let (total_count, set_total_count) = signal(0i64);
     let (loading, set_loading) = signal(false);
+    let (load_error, set_load_error) = signal::<Option<String>>(None);
     let (loaded_up_to, set_loaded_up_to) = signal(0i64); // How many games we've loaded
 
     // Scroll state
@@ -500,6 +501,7 @@ pub fn GameGrid(
             let offset = current_loaded;
             let query_plat = query_platform(plat);
 
+            set_load_error.set(None);
             set_loading.set(true);
 
             spawn_local(async move {
@@ -527,7 +529,9 @@ pub fn GameGrid(
                         set_loaded_up_to.update(|l| *l += count);
                     }
                     Err(e) => {
-                        console::error_1(&format!("Failed to load games: {}", e).into());
+                        let message = format!("Failed to load more games: {}", e);
+                        console::error_1(&message.clone().into());
+                        set_load_error.set(Some(message));
                     }
                 }
                 set_loading.set(false);
@@ -620,35 +624,61 @@ pub fn GameGrid(
                     return;
                 }
 
-                // Load all games (backend returns deduplicated results)
                 let search_param = if search.is_empty() {
                     None
                 } else {
                     Some(search.clone())
                 };
                 let query_plat = query_platform(plat.clone());
+                let query_filters = tauri::GameQueryFilters {
+                    installed_only: filters.installed_only,
+                    hide_homebrew: filters.hide_homebrew,
+                    hide_adult: filters.hide_adult,
+                };
 
-                match tauri::get_games(
-                    query_plat,
+                match tauri::get_game_count(
+                    query_plat.clone(),
                     search_param.clone(),
-                    Some(tauri::GameQueryFilters {
-                        installed_only: filters.installed_only,
-                        hide_homebrew: filters.hide_homebrew,
-                        hide_adult: filters.hide_adult,
-                    }),
-                    None,
-                    None,
+                    Some(query_filters),
                 )
                 .await
                 {
-                    Ok(all_games) => {
-                        let count = all_games.len() as i64;
-                        set_games.set(all_games);
+                    Ok(count) => {
                         set_total_count.set(count);
-                        set_loaded_up_to.set(count);
+
+                        if count > 0 {
+                            match tauri::get_games(
+                                query_plat,
+                                search_param,
+                                Some(query_filters),
+                                Some(FETCH_CHUNK_SIZE),
+                                Some(0),
+                            )
+                            .await
+                            {
+                                Ok(initial_games) => {
+                                    let loaded = initial_games.len() as i64;
+                                    set_games.set(initial_games);
+                                    set_loaded_up_to.set(loaded);
+                                }
+                                Err(e) => {
+                                    let message = format!("Failed to load games: {}", e);
+                                    console::error_1(&message.clone().into());
+                                    set_games.set(Vec::new());
+                                    set_total_count.set(0);
+                                    set_loaded_up_to.set(0);
+                                    set_load_error.set(Some(message));
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
-                        console::error_1(&format!("Failed to load games: {}", e).into());
+                        let message = format!("Failed to load game count: {}", e);
+                        console::error_1(&message.clone().into());
+                        set_games.set(Vec::new());
+                        set_total_count.set(0);
+                        set_loaded_up_to.set(0);
+                        set_load_error.set(Some(message));
                     }
                 }
                 if is_initial_load && restore_scroll_top > 0 {
@@ -820,9 +850,16 @@ pub fn GameGrid(
                 let total = total_count.get();
                 let platform_selection = platform.get();
                 let is_minigames = platform_selection.as_deref() == Some(PLATFORM_SELECTION_MINIGAMES);
+                let error = load_error.get();
 
                 if is_loading {
                     view! { <div class="loading">"Loading games..."</div> }.into_any()
+                } else if let Some(error_message) = error {
+                    view! {
+                        <div class="empty-state">
+                            <p>{error_message}</p>
+                        </div>
+                    }.into_any()
                 } else if total == 0 && !loading.get() {
                     if collection.get().is_some() {
                         view! {

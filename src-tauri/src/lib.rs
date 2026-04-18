@@ -25,19 +25,15 @@ use tauri::Manager;
 use tokio::sync::RwLock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Initialize logging with rolling file appender
-    // Keep the guard alive for the duration of the app
+pub async fn run() {
     let _log_guard = logging::init_logging();
 
-    // Build rspc router (shared between Tauri IPC and HTTP)
     let rspc_router = router::build_router();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        // rspc plugin for Tauri IPC
         .plugin(rspc_tauri::plugin(rspc_router.clone(), |_| Ctx {
             state: Arc::new(RwLock::new(AppState::default())),
         }))
@@ -74,7 +70,6 @@ pub fn run() {
             commands::test_steamgriddb_connection,
             commands::test_igdb_connection,
             commands::test_emumovies_connection,
-            // Image commands
             commands::get_game_images,
             commands::get_game_image,
             commands::get_available_image_types,
@@ -84,19 +79,15 @@ pub fn run() {
             commands::check_cached_media,
             commands::download_image_with_fallback,
             commands::download_libretro_thumbnail,
-            // Unified media download commands
             commands::get_media_types,
             commands::download_unified_media,
             commands::get_cached_media_path,
-            // Video download commands
             commands::check_cached_video,
             commands::probe_game_video_available,
             commands::download_game_video,
-            // Emulator commands
             commands::get_emulators_for_platform,
             commands::get_emulator,
             commands::get_all_emulators,
-            // Emulator preference commands
             commands::get_emulator_preference,
             commands::set_game_emulator_preference,
             commands::set_platform_emulator_preference,
@@ -104,7 +95,6 @@ pub fn run() {
             commands::clear_platform_emulator_preference,
             commands::get_all_emulator_preferences,
             commands::clear_all_emulator_preferences,
-            // Emulator installation and launch commands
             commands::get_emulators_with_status,
             commands::install_emulator,
             commands::install_firmware,
@@ -112,11 +102,9 @@ pub fn run() {
             commands::launch_emulator,
             commands::launch_game,
             commands::get_current_os,
-            // Game file and import commands
             commands::get_game_file,
             commands::get_active_import,
             commands::cancel_import,
-            // Minerva archive commands
             commands::has_minerva_db,
             commands::get_minerva_rom_for_game,
             commands::search_minerva,
@@ -125,51 +113,41 @@ pub fn run() {
             commands::cancel_minerva_download,
             commands::test_torrent_connection,
             commands::list_torrent_files,
-            // ROM import commands
             commands::scan_and_match_roms,
             commands::confirm_rom_import,
         ])
-        .setup(move |app| {
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = state::initialize_app_state(&handle).await {
-                    tracing::error!("Failed to initialize app state: {}", e);
-                }
-            });
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
 
-            // Start HTTP API server in dev mode for browser-based development
-            #[cfg(debug_assertions)]
-            {
-                let state = app.state::<Arc<RwLock<AppState>>>().inner().clone();
-                let rspc_router_for_http = rspc_router.clone();
-                tauri::async_runtime::spawn(async move {
-                    // Combine legacy API routes with rspc routes
-                    let legacy_router = api::create_router(state.clone());
+    if let Err(e) = state::initialize_app_state(&app.handle()).await {
+        tracing::error!("Failed to initialize app state: {}", e);
+    }
 
-                    // Create rspc Axum endpoint
-                    let rspc_ctx = Ctx { state };
-                    let rspc_axum_router =
-                        rspc_axum::endpoint(rspc_router_for_http, move || rspc_ctx.clone());
+    #[cfg(debug_assertions)]
+    {
+        let state = app.state::<Arc<RwLock<AppState>>>().inner().clone();
+        let rspc_router_for_http = rspc_router.clone();
+        tauri::async_runtime::spawn(async move {
+            let legacy_router = api::create_router(state.clone());
+            let rspc_ctx = Ctx { state };
+            let rspc_axum_router =
+                rspc_axum::endpoint(rspc_router_for_http, move || rspc_ctx.clone());
 
-                    // Merge routers - rspc at /rspc, legacy at /api
-                    let combined_router = axum::Router::new()
-                        .nest("/rspc", rspc_axum_router)
-                        .merge(legacy_router);
+            let combined_router = axum::Router::new()
+                .nest("/rspc", rspc_axum_router)
+                .merge(legacy_router);
 
-                    let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
-                        .await
-                        .expect("Failed to bind HTTP API server");
-                    tracing::info!("HTTP API server running on http://127.0.0.1:3001");
-                    tracing::info!("  - rspc routes: http://127.0.0.1:3001/rspc");
-                    tracing::info!("  - legacy routes: http://127.0.0.1:3001/api");
-                    axum::serve(listener, combined_router)
-                        .await
-                        .expect("HTTP API server error");
-                });
-            }
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
+                .await
+                .expect("Failed to bind HTTP API server");
+            tracing::info!("HTTP API server running on http://127.0.0.1:3001");
+            tracing::info!("  - rspc routes: http://127.0.0.1:3001/rspc");
+            tracing::info!("  - legacy routes: http://127.0.0.1:3001/api");
+            axum::serve(listener, combined_router)
+                .await
+                .expect("HTTP API server error");
+        });
+    }
 
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    app.run(|_, _| {});
 }

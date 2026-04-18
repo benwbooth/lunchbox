@@ -16,7 +16,7 @@
 ## Workflow
 
 - **Only commit when something is actually fixed and working** - don't commit broken or experimental code to git
-- Don't commit after every change - wait until the fix is verified to work
+- After a feature is finished and verified, commit and push it before moving on to the next feature
 - Run the app with `./scripts/dev.sh` to test changes
 
 ## Tools
