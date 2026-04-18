@@ -15,11 +15,15 @@ if (USE_STABLE_CHROMIUM) {
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('disable-features', 'Vulkan');
 } else {
-  // Keep WebGPU enabled by default, but do not force the most brittle Linux GPU path.
-  // Electron on Wayland is much more likely to hang the compositor when Vulkan is forced
-  // and software fallback is disabled.
+  // Middle ground for Linux/Electron:
+  // - keep WebGPU enabled
+  // - allow Vulkan-backed hardware adapters
+  // - bypass Chromium's conservative GPU blocklist
+  // - avoid forcing Vulkan compositor mode or disabling fallback paths
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('enable-unsafe-webgpu');
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('enable-features', 'Vulkan');
   if (USE_AGGRESSIVE_GPU) {
     app.commandLine.appendSwitch('ozone-platform', 'wayland');
     app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,Vulkan');

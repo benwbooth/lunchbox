@@ -385,26 +385,63 @@ pub fn MarioMinigame(
     }
 }
 
-fn compute_canvas_size(window: &web_sys::Window) -> (u32, u32) {
-    let window_width = window
-        .inner_width()
-        .ok()
+fn compute_canvas_size(canvas: &HtmlCanvasElement) -> (u32, u32) {
+    let window = web_sys::window();
+    let fallback_window_width = window
+        .as_ref()
+        .and_then(|window| window.inner_width().ok())
         .and_then(|v| v.as_f64())
         .unwrap_or(1200.0);
-    let window_height = window
-        .inner_height()
-        .ok()
+    let fallback_window_height = window
+        .as_ref()
+        .and_then(|window| window.inner_height().ok())
         .and_then(|v| v.as_f64())
         .unwrap_or(800.0);
 
-    let sidebar_width = 240.0;
-    let toolbar_height = 52.0;
+    let parent = canvas.parent_element();
+    let grandparent = parent.as_ref().and_then(|element| element.parent_element());
+
+    let viewport_width = canvas
+        .client_width()
+        .max(0) as f64;
+    let viewport_height = canvas
+        .client_height()
+        .max(0) as f64;
+    let parent_width = parent
+        .as_ref()
+        .map(|element| element.client_width().max(0) as f64)
+        .unwrap_or(0.0);
+    let parent_height = parent
+        .as_ref()
+        .map(|element| element.client_height().max(0) as f64)
+        .unwrap_or(0.0);
+    let grandparent_width = grandparent
+        .as_ref()
+        .map(|element| element.client_width().max(0) as f64)
+        .unwrap_or(0.0);
+    let grandparent_height = grandparent
+        .as_ref()
+        .map(|element| element.client_height().max(0) as f64)
+        .unwrap_or(0.0);
 
     let max_width = MAX_WORLD_WIDTH as f64;
     let max_height = MAX_WORLD_HEIGHT as f64;
 
-    let mut width = ((window_width - sidebar_width).max(400.0)).min(max_width) as u32;
-    let mut height = ((window_height - toolbar_height).max(300.0)).min(max_height) as u32;
+    let measured_width = viewport_width.max(parent_width).max(grandparent_width);
+    let measured_height = viewport_height.max(parent_height).max(grandparent_height);
+
+    let mut width = if measured_width > 0.0 {
+        measured_width
+    } else {
+        fallback_window_width
+    }
+    .min(max_width) as u32;
+    let mut height = if measured_height > 0.0 {
+        measured_height
+    } else {
+        fallback_window_height
+    }
+    .min(max_height) as u32;
 
     // Align to tile size to keep the grid stable.
     width = width.saturating_sub(width % TILE_PX).max(TILE_PX);
@@ -586,7 +623,7 @@ impl GpuState {
         let gpu = navigator.gpu();
 
         // Set canvas size to match container (capped for perf, aligned to tiles)
-        let (width, height) = compute_canvas_size(&window);
+        let (width, height) = compute_canvas_size(canvas);
 
         canvas.set_width(width);
         canvas.set_height(height);
@@ -653,6 +690,8 @@ impl GpuState {
             egrid_size,
             block_count,
         ) = calculate_grid_dimensions(width, height);
+        let (_, _, max_grid_size, _, _, max_egrid_cells, max_egrid_size, max_block_count) =
+            calculate_grid_dimensions(MAX_WORLD_WIDTH, MAX_WORLD_HEIGHT);
 
         // Create buffers with sizes based on screen dimensions
         let uniform_buffer = create_buffer(
@@ -672,24 +711,24 @@ impl GpuState {
         );
         let block_buffer = create_buffer(
             &device,
-            block_count * 16,
+            max_block_count * 16,
             gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
         );
         // Spatial grid for block collision
         let spatial_grid_buffer = create_buffer(
             &device,
-            grid_size * 4,
+            max_grid_size * 4,
             gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
         );
         // Entity grid for entity-entity collision
         let entity_grid_buffer = create_buffer(
             &device,
-            egrid_size * 4,
+            max_egrid_size * 4,
             gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
         );
         let entity_counts_buffer = create_buffer(
             &device,
-            egrid_cells * 4,
+            max_egrid_cells * 4,
             gpu_buffer_usage_storage() | gpu_buffer_usage_copy_dst(),
         );
 
@@ -861,46 +900,44 @@ impl GpuState {
         // Check for resize - recompute desired canvas size
         // Note: For now we just reinit with the same buffer sizes. Full buffer recreation
         // on resize would require more complex state management.
-        if let Some(window) = web_sys::window() {
-            let (desired_width, desired_height) = compute_canvas_size(&window);
-            if desired_width != self.width || desired_height != self.height {
-                // Canvas resized - trigger full reinit
-                self.canvas.set_width(desired_width);
-                self.canvas.set_height(desired_height);
-                let canvas_config =
-                    web_sys::GpuCanvasConfiguration::new(&self.device, self.preferred_format);
-                let _ = self.context.configure(&canvas_config);
+        let (desired_width, desired_height) = compute_canvas_size(&self.canvas);
+        if desired_width != self.width || desired_height != self.height {
+            // Canvas resized - trigger full reinit
+            self.canvas.set_width(desired_width);
+            self.canvas.set_height(desired_height);
+            let canvas_config =
+                web_sys::GpuCanvasConfiguration::new(&self.device, self.preferred_format);
+            let _ = self.context.configure(&canvas_config);
 
-                self.width = desired_width;
-                self.height = desired_height;
+            self.width = desired_width;
+            self.height = desired_height;
 
-                // Recalculate grid dimensions for the new size
-                let (gw, gh, gs, ew, eh, ec, es, bc) =
-                    calculate_grid_dimensions(desired_width, desired_height);
-                self.grid_width = gw;
-                self.grid_height = gh;
-                self.grid_size = gs;
-                self.egrid_width = ew;
-                self.egrid_height = eh;
-                self.egrid_cells = ec;
-                self.egrid_size = es;
-                self.block_count = bc;
+            // Recalculate grid dimensions for the new size
+            let (gw, gh, gs, ew, eh, ec, es, bc) =
+                calculate_grid_dimensions(desired_width, desired_height);
+            self.grid_width = gw;
+            self.grid_height = gh;
+            self.grid_size = gs;
+            self.egrid_width = ew;
+            self.egrid_height = eh;
+            self.egrid_cells = ec;
+            self.egrid_size = es;
+            self.block_count = bc;
 
-                // Update uniforms with new dimensions
-                self.uniforms.resolution = [desired_width as f32, desired_height as f32];
-                self.uniforms.grid_width = gw;
-                self.uniforms.grid_height = gh;
-                self.uniforms.grid_size = gs;
-                self.uniforms.egrid_width = ew;
-                self.uniforms.egrid_height = eh;
-                self.uniforms.egrid_cells = ec;
-                self.uniforms.egrid_size = es;
-                self.uniforms.block_count = bc;
+            // Update uniforms with new dimensions
+            self.uniforms.resolution = [desired_width as f32, desired_height as f32];
+            self.uniforms.grid_width = gw;
+            self.uniforms.grid_height = gh;
+            self.uniforms.grid_size = gs;
+            self.uniforms.egrid_width = ew;
+            self.uniforms.egrid_height = eh;
+            self.uniforms.egrid_cells = ec;
+            self.uniforms.egrid_size = es;
+            self.uniforms.block_count = bc;
 
-                self.needs_init = true;
-                self.frame = 0;
-                self.start_time = js_sys::Date::now();
-            }
+            self.needs_init = true;
+            self.frame = 0;
+            self.start_time = js_sys::Date::now();
         }
 
         // Update uniforms

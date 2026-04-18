@@ -43,8 +43,18 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
         // Get dimensions from parent if canvas has no size yet
         const parent = canvas.parentElement;
         const grandparent = parent?.parentElement;
-        const width = canvas.clientWidth || parent?.clientWidth || grandparent?.clientWidth || 400;
-        const height = canvas.clientHeight || parent?.clientHeight || grandparent?.clientHeight || 350;
+        const resizeTarget = parent || canvas;
+
+        function getCanvasSize() {
+            const width = resizeTarget?.clientWidth || canvas.clientWidth || grandparent?.clientWidth || 400;
+            const height = resizeTarget?.clientHeight || canvas.clientHeight || grandparent?.clientHeight || 350;
+            return {
+                width: Math.max(1, width),
+                height: Math.max(1, height),
+            };
+        }
+
+        let { width, height } = getCanvasSize();
 
         console.log(`Box3D: Canvas found, dimensions: canvas=${canvas.clientWidth}x${canvas.clientHeight}, parent=${parent?.clientWidth}x${parent?.clientHeight}`);
         console.log(`Box3D: Initializing viewer ${canvasId} at ${width}x${height}`);
@@ -65,7 +75,7 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
         antialias: true,
         alpha: true,
     });
-    renderer.setSize(width, height);
+    renderer.setSize(width, height, false);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     // Create OrbitControls
@@ -170,18 +180,19 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
     // Handle resize
     function handleResize() {
         if (isDestroyed) return;
-        const newWidth = canvas.clientWidth;
-        const newHeight = canvas.clientHeight;
+        const { width: newWidth, height: newHeight } = getCanvasSize();
         if (newWidth !== width || newHeight !== height) {
             camera.aspect = newWidth / newHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(newWidth, newHeight);
+            renderer.setSize(newWidth, newHeight, false);
+            width = newWidth;
+            height = newHeight;
         }
     }
 
     // Create resize observer
     const resizeObserver = new ResizeObserver(handleResize);
-    resizeObserver.observe(canvas);
+    resizeObserver.observe(resizeTarget);
 
     // Start animation
     animate();
