@@ -365,6 +365,72 @@ fn platform_name_to_filename(name: &str) -> String {
         .replace(" ", "_")
 }
 
+fn canonicalize_legacy_platform_name(name: &str) -> &str {
+    match name.trim() {
+        "Arduboy Inc - Arduboy" => "Arduboy",
+        "Atari - 8-bit Family" => "Atari 800",
+        other => other,
+    }
+}
+
+async fn resolve_equivalent_platform_names(
+    games_pool: &sqlx::SqlitePool,
+    platform_name: &str,
+) -> Result<Vec<String>, (StatusCode, String)> {
+    let canonical = canonicalize_legacy_platform_name(platform_name).to_string();
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT name FROM platforms")
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut names = Vec::new();
+    for (name,) in rows {
+        if canonicalize_legacy_platform_name(&name) == canonical {
+            names.push(name);
+        }
+    }
+
+    if names.is_empty() {
+        names.push(canonical);
+    }
+
+    Ok(names)
+}
+
+async fn get_coalesced_platform_info(
+    games_pool: &sqlx::SqlitePool,
+    platform_name: &str,
+) -> Result<(Option<String>, Option<String>), (StatusCode, String)> {
+    let equivalent_names = resolve_equivalent_platform_names(games_pool, platform_name).await?;
+    let placeholders = vec!["?"; equivalent_names.len()].join(", ");
+    let sql = format!(
+        "SELECT launchbox_name, libretro_name FROM platforms WHERE name IN ({})",
+        placeholders
+    );
+
+    let mut query = sqlx::query_as::<_, (Option<String>, Option<String>)>(&sql);
+    for name in &equivalent_names {
+        query = query.bind(name);
+    }
+
+    let rows = query
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let mut launchbox_name = None;
+    let mut libretro_name = None;
+    for (lb, lr) in rows {
+        if launchbox_name.is_none() && lb.is_some() {
+            launchbox_name = lb;
+        }
+        if libretro_name.is_none() && lr.is_some() {
+            libretro_name = lr;
+        }
+    }
+
+    Ok((launchbox_name, libretro_name))
+}
+
 async fn get_platforms(
     State(state): State<SharedState>,
 ) -> Result<Json<Vec<Platform>>, (StatusCode, String)> {
@@ -377,8 +443,19 @@ async fn get_platforms(
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-        let mut result = Vec::new();
+        #[derive(Default)]
+        struct PlatformAggregate {
+            id: i64,
+            aliases: Option<String>,
+            seen_titles: HashSet<String>,
+            has_canonical_row: bool,
+        }
+
+        let mut grouped: std::collections::BTreeMap<String, PlatformAggregate> =
+            std::collections::BTreeMap::new();
+
         for (id, name, aliases) in platforms {
+            let canonical_name = canonicalize_legacy_platform_name(&name).to_string();
             let all_titles: Vec<(String,)> =
                 sqlx::query_as("SELECT title FROM games WHERE platform_id = ?")
                     .bind(id)
@@ -386,20 +463,40 @@ async fn get_platforms(
                     .await
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            let mut seen: HashSet<String> = HashSet::new();
+            let entry =
+                grouped
+                    .entry(canonical_name.clone())
+                    .or_insert_with(|| PlatformAggregate {
+                        id,
+                        aliases: aliases.clone(),
+                        seen_titles: HashSet::new(),
+                        has_canonical_row: name == canonical_name,
+                    });
+
+            if !entry.has_canonical_row && name == canonical_name {
+                entry.id = id;
+                entry.has_canonical_row = true;
+            }
+            if entry.aliases.is_none() {
+                entry.aliases = aliases.clone();
+            }
             for (title,) in all_titles {
                 let normalized = normalize_title_for_dedup(&title);
-                seen.insert(normalized);
+                entry.seen_titles.insert(normalized);
             }
-            // Use database aliases or generate them if not present
-            let aliases = aliases.or_else(|| get_platform_search_aliases(&name));
-            // Build icon URL from platform name (icons are named after canonical platform names)
+        }
+
+        let mut result = Vec::new();
+        for (name, aggregate) in grouped {
+            let aliases = aggregate
+                .aliases
+                .or_else(|| get_platform_search_aliases(&name));
             let filename = platform_name_to_filename(&name);
             let icon_url = Some(format!("/assets/platforms/{}.png", filename));
             result.push(Platform {
-                id,
+                id: aggregate.id,
                 name,
-                game_count: seen.len() as i64,
+                game_count: aggregate.seen_titles.len() as i64,
                 aliases,
                 icon_url,
             });
@@ -500,6 +597,12 @@ async fn get_games(
     let offset = query.offset.unwrap_or(0) as usize;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
+        let platform_names = if let Some(ref platform_name) = query.platform {
+            Some(resolve_equivalent_platform_names(games_pool, platform_name).await?)
+        } else {
+            None
+        };
+
         let raw_rows = if let Some(ref search_query) = query.search {
             // Split search into words for flexible matching
             let patterns = build_search_patterns(search_query);
@@ -510,7 +613,8 @@ async fn get_games(
                 let like_clauses: Vec<&str> = patterns.iter().map(|_| "g.title LIKE ?").collect();
                 let where_clause = like_clauses.join(" AND ");
 
-                if let Some(ref platform_name) = query.platform {
+                if let Some(ref platform_names) = platform_names {
+                    let platform_placeholders = vec!["?"; platform_names.len()].join(", ");
                     let sql = format!(
                         r#"
                         SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
@@ -519,13 +623,15 @@ async fn get_games(
                                g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                         FROM games g
                         JOIN platforms p ON g.platform_id = p.id
-                        WHERE p.name = ? AND ({})
+                        WHERE p.name IN ({}) AND ({})
                         ORDER BY g.title
                         "#,
-                        where_clause
+                        platform_placeholders, where_clause
                     );
                     let mut q = sqlx::query(&sql);
-                    q = q.bind(platform_name);
+                    for platform_name in platform_names {
+                        q = q.bind(platform_name);
+                    }
                     for pattern in &patterns {
                         q = q.bind(pattern);
                     }
@@ -555,8 +661,9 @@ async fn get_games(
                         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
                 }
             }
-        } else if let Some(ref platform_name) = query.platform {
-            sqlx::query(
+        } else if let Some(ref platform_names) = platform_names {
+            let placeholders = vec!["?"; platform_names.len()].join(", ");
+            let sql = format!(
                 r#"
                 SELECT g.id, g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id,
                        g.description, g.release_date, g.release_year, g.developer, g.publisher, g.genre,
@@ -564,14 +671,18 @@ async fn get_games(
                        g.release_type, g.notes, g.sort_title, g.series, g.region, g.play_mode, g.version, g.status, g.steam_app_id
                 FROM games g
                 JOIN platforms p ON g.platform_id = p.id
-                WHERE p.name = ?
+                WHERE p.name IN ({})
                 ORDER BY g.title
-                "#
-            )
-            .bind(platform_name)
-            .fetch_all(games_pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                "#,
+                placeholders
+            );
+            let mut q = sqlx::query(&sql);
+            for platform_name in platform_names {
+                q = q.bind(platform_name);
+            }
+            q.fetch_all(games_pool)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         } else {
             sqlx::query(
                 r#"
@@ -1514,17 +1625,11 @@ async fn rspc_download_image_with_fallback(
     };
 
     // Look up platform info to get launchbox_name and libretro_name
-    let platform_info: Option<(Option<String>, Option<String>)> =
-        sqlx::query_as("SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?")
-            .bind(&input.platform)
-            .fetch_optional(games_pool)
-            .await
-            .ok()
-            .flatten();
-
-    let (launchbox_platform, libretro_platform) = platform_info
-        .map(|(lb, lr)| (lb, lr))
-        .unwrap_or((None, None));
+    let (launchbox_platform, libretro_platform) =
+        match get_coalesced_platform_info(games_pool, &input.platform).await {
+            Ok(info) => info,
+            Err(e) => return rspc_err::<String>(e.1).into_response(),
+        };
 
     // Look up libretro_title if we have a launchbox_db_id
     let libretro_title: Option<String> = if let Some(db_id) = input.launchbox_db_id {
@@ -1684,17 +1789,11 @@ async fn rspc_redownload_image_from_next_source(
     tracing::info!("  Skipping sources: {:?}", skip_sources);
 
     // Look up platform info to get launchbox_name and libretro_name
-    let platform_info: Option<(Option<String>, Option<String>)> =
-        sqlx::query_as("SELECT launchbox_name, libretro_name FROM platforms WHERE name = ?")
-            .bind(&input.platform)
-            .fetch_optional(games_pool)
-            .await
-            .ok()
-            .flatten();
-
-    let (launchbox_platform, libretro_platform) = platform_info
-        .map(|(lb, lr)| (lb, lr))
-        .unwrap_or((None, None));
+    let (launchbox_platform, libretro_platform) =
+        match get_coalesced_platform_info(games_pool, &input.platform).await {
+            Ok(info) => info,
+            Err(e) => return rspc_err::<String>(e.1).into_response(),
+        };
 
     // Look up libretro_title if we have a launchbox_db_id
     let libretro_title: Option<String> = if let Some(db_id) = input.launchbox_db_id {

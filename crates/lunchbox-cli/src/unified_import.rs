@@ -313,6 +313,8 @@ pub fn get_platform_aliases() -> HashMap<&'static str, &'static str> {
     // Atari - 800 / 8-bit
     // =========================================================================
     aliases.insert("atari 8-bit", "Atari 800");
+    aliases.insert("atari 8-bit family", "Atari 800");
+    aliases.insert("atari - 8-bit family", "Atari 800");
     aliases.insert("atari - 800", "Atari 800");
 
     // =========================================================================
