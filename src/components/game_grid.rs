@@ -1442,8 +1442,7 @@ fn GameCard(
     let (hover_video_unavailable, set_hover_video_unavailable) = signal(false);
     let (hover_video_loaded, set_hover_video_loaded) = signal(false);
     let (hover_video_playing, set_hover_video_playing) = signal(false);
-    let (tooltip_align_start, set_tooltip_align_start) = signal(false);
-    let (tooltip_align_end, set_tooltip_align_end) = signal(false);
+    let (tooltip_style, set_tooltip_style) = signal(String::new());
     let hover_token = Rc::new(Cell::new(0u64));
     let hover_progress_poll: Rc<RefCell<Option<Interval>>> = Rc::new(RefCell::new(None));
 
@@ -1483,8 +1482,7 @@ fn GameCard(
         let set_hover_video_progress = set_hover_video_progress;
         let set_hover_video_unavailable = set_hover_video_unavailable;
         let set_hover_video_playing = set_hover_video_playing;
-        let set_tooltip_align_start = set_tooltip_align_start;
-        let set_tooltip_align_end = set_tooltip_align_end;
+        let set_tooltip_style = set_tooltip_style;
         let hover_video_url = hover_video_url;
         let hover_video_unavailable = hover_video_unavailable;
         let hover_token = hover_token.clone();
@@ -1565,18 +1563,16 @@ fn GameCard(
                     dodge_x, dodge_y
                 ),
             );
-            let card_width = f64::from(rect.width());
-            let viewport_width = web_sys::window()
-                .and_then(|window| window.inner_width().ok())
-                .and_then(|width| width.as_f64())
-                .unwrap_or(1440.0);
             let tooltip_width = 198.0;
-            let half_tooltip = tooltip_width / 2.0;
-            let align_start = rect.left() + (card_width / 2.0) - half_tooltip < 24.0;
-            let align_end =
-                rect.right() - (card_width / 2.0) + half_tooltip > viewport_width - 24.0;
-            set_tooltip_align_start.set(align_start);
-            set_tooltip_align_end.set(!align_start && align_end);
+            let tooltip_margin = 24.0;
+            let tooltip_left = (rect.left() + (rect.width() / 2.0) + dodge_x
+                - (tooltip_width / 2.0))
+                .clamp(tooltip_margin, vw - tooltip_width - tooltip_margin);
+            let tooltip_top = projected_bottom + dodge_y - 2.0;
+            set_tooltip_style.set(format!(
+                "top: {:.2}px; left: {:.2}px;",
+                tooltip_top, tooltip_left
+            ));
             if let Ok(Some(wrapper)) = card.closest(".virtual-item") {
                 let _ = wrapper.set_attribute("data-hovered-card", "true");
             }
@@ -1701,8 +1697,7 @@ fn GameCard(
         let set_hover_video_loading = set_hover_video_loading;
         let set_hover_video_progress = set_hover_video_progress;
         let set_hover_video_playing = set_hover_video_playing;
-        let set_tooltip_align_start = set_tooltip_align_start;
-        let set_tooltip_align_end = set_tooltip_align_end;
+        let set_tooltip_style = set_tooltip_style;
         let hover_token = hover_token.clone();
         let hover_progress_poll = hover_progress_poll.clone();
         move |_: web_sys::MouseEvent| {
@@ -1711,8 +1706,7 @@ fn GameCard(
             set_hover_video_loading.set(false);
             set_hover_video_progress.set(None);
             set_hover_video_playing.set(false);
-            set_tooltip_align_start.set(false);
-            set_tooltip_align_end.set(false);
+            set_tooltip_style.set(String::new());
             hover_token.set(hover_token.get().wrapping_add(1));
             hover_progress_poll.borrow_mut().take();
             if let Some(card) = card_ref.get() {
@@ -1872,13 +1866,17 @@ fn GameCard(
     };
 
     view! {
+        <>
         <div
-            class="game-card"
-            node_ref=card_ref
+            class="game-card-anchor"
             on:mouseenter=on_mouse_enter
             on:mouseleave=on_mouse_leave
             on:click=on_card_click
         >
+            <div
+                class="game-card"
+                node_ref=card_ref
+            >
             <div class="game-cover">
                 <div class="cover-art-layer" class:faded=show_hover_video>
                     <LazyImage
@@ -1992,41 +1990,6 @@ fn GameCard(
                     <span class="variant-badge">{variant_count}</span>
                 })}
             </div>
-            <Show when=show_hover_layer>
-                <div
-                    class="game-hover-tooltip active"
-                    class:align-start=move || tooltip_align_start.get()
-                    class:align-end=move || tooltip_align_end.get()
-                    on:click=move |ev| ev.stop_propagation()
-                >
-                    <div class="game-hover-tooltip-art">
-                        <LazyImage
-                            launchbox_db_id=launchbox_db_id
-                            game_title=title_for_img.clone()
-                            platform=platform.clone()
-                            image_type="Box - Front".to_string()
-                            alt=format!("{} box art", tooltip_title.clone())
-                            class="tooltip-box-art".to_string()
-                            placeholder=first_char.clone()
-                            render_index=render_index.saturating_add(10_000_000)
-                            in_viewport=true
-                        />
-                    </div>
-                    <div class="game-hover-tooltip-body">
-                        <div class="game-hover-tooltip-title">{tooltip_title.clone()}</div>
-                        <div class="game-hover-tooltip-meta">{tooltip_meta.clone()}</div>
-                        {tooltip_developer.clone().map(|dev| view! {
-                            <div class="game-hover-tooltip-dev">{dev}</div>
-                        })}
-                        {tooltip_publisher.clone().map(|publisher| view! {
-                            <div class="game-hover-tooltip-publisher">{publisher}</div>
-                        })}
-                        {tooltip_genres.clone().map(|genres| view! {
-                            <div class="game-hover-tooltip-genre">{genres}</div>
-                        })}
-                    </div>
-                </div>
-            </Show>
             <div class="game-info">
                 <h3 class="game-title">
                     <span
@@ -2040,7 +2003,43 @@ fn GameCard(
                 </h3>
                 {developer.map(|d| view! { <p class="game-developer">{d}</p> })}
             </div>
+            </div>
         </div>
+        <Show when=show_hover_layer>
+            <div
+                class="game-hover-tooltip active"
+                style=move || tooltip_style.get()
+                on:click=move |ev| ev.stop_propagation()
+            >
+                <div class="game-hover-tooltip-art">
+                    <LazyImage
+                        launchbox_db_id=launchbox_db_id
+                        game_title=title_for_img.clone()
+                        platform=platform.clone()
+                        image_type="Box - Front".to_string()
+                        alt=format!("{} box art", tooltip_title.clone())
+                        class="tooltip-box-art".to_string()
+                        placeholder=first_char.clone()
+                        render_index=render_index.saturating_add(10_000_000)
+                        in_viewport=true
+                    />
+                </div>
+                <div class="game-hover-tooltip-body">
+                    <div class="game-hover-tooltip-title">{tooltip_title.clone()}</div>
+                    <div class="game-hover-tooltip-meta">{tooltip_meta.clone()}</div>
+                    {tooltip_developer.clone().map(|dev| view! {
+                        <div class="game-hover-tooltip-dev">{dev}</div>
+                    })}
+                    {tooltip_publisher.clone().map(|publisher| view! {
+                        <div class="game-hover-tooltip-publisher">{publisher}</div>
+                    })}
+                    {tooltip_genres.clone().map(|genres| view! {
+                        <div class="game-hover-tooltip-genre">{genres}</div>
+                    })}
+                </div>
+            </div>
+        </Show>
+        </>
     }
 }
 

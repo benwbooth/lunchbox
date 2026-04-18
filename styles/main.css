@@ -645,9 +645,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .game-hover-tooltip {
-    position: absolute;
-    top: calc(100% - 2px);
-    left: 50%;
+    position: fixed;
     width: 198px;
     padding: 7px;
     border-radius: 8px;
@@ -660,7 +658,7 @@ h1, h2, h3, h4, h5, h6 {
     gap: 8px;
     opacity: 0;
     pointer-events: none;
-    transform: translate(-50%, -4px);
+    transform: translateY(-4px);
     transition: opacity 0.16s ease, transform 0.16s ease;
     z-index: 3700;
 }
@@ -668,26 +666,7 @@ h1, h2, h3, h4, h5, h6 {
 .game-hover-tooltip.active {
     opacity: 1;
     pointer-events: auto;
-    transform: translate(-50%, 0);
-}
-
-.game-hover-tooltip.align-start {
-    left: 0;
-    transform: translate(0, -4px);
-}
-
-.game-hover-tooltip.align-start.active {
-    transform: translate(0, 0);
-}
-
-.game-hover-tooltip.align-end {
-    left: auto;
-    right: 0;
-    transform: translate(0, -4px);
-}
-
-.game-hover-tooltip.align-end.active {
-    transform: translate(0, 0);
+    transform: translateY(0);
 }
 
 .game-hover-tooltip-art {
