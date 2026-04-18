@@ -401,34 +401,43 @@ fn compute_canvas_size(canvas: &HtmlCanvasElement) -> (u32, u32) {
     let parent = canvas.parent_element();
     let grandparent = parent.as_ref().and_then(|element| element.parent_element());
 
-    let viewport_width = canvas
-        .client_width()
-        .max(0) as f64;
-    let viewport_height = canvas
-        .client_height()
-        .max(0) as f64;
+    let canvas_rect = canvas.get_bounding_client_rect();
+    let viewport_width = canvas_rect.width().max(0.0);
+    let viewport_height = canvas_rect.height().max(0.0);
     let parent_width = parent
         .as_ref()
-        .map(|element| element.client_width().max(0) as f64)
+        .map(|element| element.get_bounding_client_rect().width().max(0.0))
         .unwrap_or(0.0);
     let parent_height = parent
         .as_ref()
-        .map(|element| element.client_height().max(0) as f64)
+        .map(|element| element.get_bounding_client_rect().height().max(0.0))
         .unwrap_or(0.0);
     let grandparent_width = grandparent
         .as_ref()
-        .map(|element| element.client_width().max(0) as f64)
+        .map(|element| element.get_bounding_client_rect().width().max(0.0))
         .unwrap_or(0.0);
     let grandparent_height = grandparent
         .as_ref()
-        .map(|element| element.client_height().max(0) as f64)
+        .map(|element| element.get_bounding_client_rect().height().max(0.0))
         .unwrap_or(0.0);
 
     let max_width = MAX_WORLD_WIDTH as f64;
     let max_height = MAX_WORLD_HEIGHT as f64;
 
-    let measured_width = viewport_width.max(parent_width).max(grandparent_width);
-    let measured_height = viewport_height.max(parent_height).max(grandparent_height);
+    let measured_width = if parent_width > 0.0 {
+        parent_width
+    } else if grandparent_width > 0.0 {
+        grandparent_width
+    } else {
+        viewport_width
+    };
+    let measured_height = if parent_height > 0.0 {
+        parent_height
+    } else if grandparent_height > 0.0 {
+        grandparent_height
+    } else {
+        viewport_height
+    };
 
     let mut width = if measured_width > 0.0 {
         measured_width

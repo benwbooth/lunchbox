@@ -459,6 +459,7 @@ pub fn GameGrid(
     let (current_search, set_current_search) = signal(String::new());
     let (current_filters, set_current_filters) = signal(GameFilters::default());
     let (did_initial_load, set_did_initial_load) = signal(false);
+    let resize_listener_attached = Rc::new(Cell::new(false));
 
     // Column configuration for list view
     let (visible_columns, set_visible_columns) = signal(initial_visible_columns);
@@ -566,6 +567,53 @@ pub fn GameGrid(
             }
         }
     };
+
+    Effect::new({
+        let container_ref = container_ref.clone();
+        let resize_listener_attached = resize_listener_attached.clone();
+        move || {
+            let Some(container) = container_ref.get() else {
+                return;
+            };
+
+            let w = container.client_width();
+            let h = container.client_height();
+            if w > 0 {
+                set_container_width.set(w);
+            }
+            if h > 0 {
+                set_container_height.set(h);
+            }
+
+            if resize_listener_attached.get() {
+                return;
+            }
+            resize_listener_attached.set(true);
+
+            let callback = wasm_bindgen::closure::Closure::wrap(Box::new(
+                move |_event: web_sys::Event| {
+                    if let Some(container) = container_ref.get() {
+                        let width = container.client_width();
+                        let height = container.client_height();
+                        if width > 0 {
+                            set_container_width.set(width);
+                        }
+                        if height > 0 {
+                            set_container_height.set(height);
+                        }
+                    }
+                },
+            ) as Box<dyn FnMut(web_sys::Event)>);
+
+            if let Some(window) = web_sys::window() {
+                let _ = window
+                    .add_event_listener_with_callback("resize", callback.as_ref().unchecked_ref());
+                callback.forget();
+            } else {
+                resize_listener_attached.set(false);
+            }
+        }
+    });
 
     // Watch for filter changes and reset
     Effect::new(move || {
