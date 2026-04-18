@@ -144,15 +144,11 @@ export function initBox3DViewer(canvasId, frontUrl, backUrl = null) {
     materials.push(spineMaterial); // Left side
     materials.push(edgeMaterial);  // Top
     materials.push(edgeMaterial);  // Bottom
-    materials.push(new THREE.MeshStandardMaterial({ // Front cover
+    materials.push(new THREE.MeshBasicMaterial({ // Front cover
         map: frontTexture,
-        roughness: 0.5,
-        metalness: 0.1,
     }));
-    materials.push(new THREE.MeshStandardMaterial({ // Back cover
+    materials.push(new THREE.MeshBasicMaterial({ // Back cover
         map: backTexture || frontTexture, // Use front as fallback
-        roughness: 0.5,
-        metalness: 0.1,
     }));
 
     // Create mesh
