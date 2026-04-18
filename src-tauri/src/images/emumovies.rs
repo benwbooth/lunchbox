@@ -19,6 +19,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use suppaftp::FtpStream;
@@ -205,8 +207,76 @@ static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceL
 // Cache video indices per remote FTP folder path.
 static VIDEO_INDEX_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<VideoIndexEntry>>>>> =
     OnceLock::new();
+static VIDEO_DOWNLOAD_PROGRESS: OnceLock<
+    std::sync::RwLock<HashMap<String, VideoDownloadProgress>>,
+> = OnceLock::new();
 
 const VIDEO_MATCH_CACHE_VERSION: &str = "3";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoDownloadProgress {
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub progress: Option<f32>,
+}
+
+fn video_download_progress_map(
+) -> &'static std::sync::RwLock<HashMap<String, VideoDownloadProgress>> {
+    VIDEO_DOWNLOAD_PROGRESS.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
+}
+
+fn video_progress_key(game_cache_dir: &Path) -> Option<String> {
+    game_cache_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_string())
+}
+
+pub fn get_video_download_progress(game_cache_dir: &Path) -> Option<VideoDownloadProgress> {
+    let key = video_progress_key(game_cache_dir)?;
+    video_download_progress_map()
+        .read()
+        .ok()?
+        .get(&key)
+        .cloned()
+}
+
+pub fn clear_video_download_progress(game_cache_dir: &Path) {
+    let Some(key) = video_progress_key(game_cache_dir) else {
+        return;
+    };
+    if let Ok(mut progress_map) = video_download_progress_map().write() {
+        progress_map.remove(&key);
+    }
+}
+
+fn update_video_download_progress(
+    game_cache_dir: &Path,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) {
+    let Some(key) = video_progress_key(game_cache_dir) else {
+        return;
+    };
+    let progress = total_bytes.map(|total| {
+        if total == 0 {
+            0.0
+        } else {
+            (downloaded_bytes as f32 / total as f32).clamp(0.0, 1.0)
+        }
+    });
+    if let Ok(mut progress_map) = video_download_progress_map().write() {
+        progress_map.insert(
+            key,
+            VideoDownloadProgress {
+                downloaded_bytes,
+                total_bytes,
+                progress,
+            },
+        );
+    }
+}
 
 fn video_cache_version_path(game_cache_dir: &Path) -> PathBuf {
     game_cache_dir.join("emumovies").join("video.match-version")
@@ -1050,26 +1120,54 @@ impl EmuMoviesClient {
         let mut ftp = self.connect()?;
         ftp.transfer_type(suppaftp::types::FileType::Binary)?;
 
-        let file_size = ftp.size(&video_path).ok();
+        let file_size = ftp.size(&video_path).ok().map(|size| size as u64);
         tracing::info!("Video size: {:?} bytes", file_size);
 
-        let data = ftp
-            .retr_as_buffer(&video_path)
+        // Write to file
+        let temp_path = output_path.with_extension("tmp");
+        let temp_file = File::create(&temp_path)?;
+        let mut writer = BufWriter::new(temp_file);
+
+        update_video_download_progress(game_cache_dir, 0, file_size);
+
+        let mut stream = ftp
+            .retr_as_stream(&video_path)
             .context(format!("Failed to download: {}", video_path))?;
+        let mut buffer = [0u8; 64 * 1024];
+        let mut downloaded_bytes = 0u64;
+        loop {
+            let bytes_read = stream
+                .read(&mut buffer)
+                .context(format!("Failed while reading: {}", video_path))?;
+            if bytes_read == 0 {
+                break;
+            }
 
+            writer.write_all(&buffer[..bytes_read])?;
+            downloaded_bytes += bytes_read as u64;
+            update_video_download_progress(game_cache_dir, downloaded_bytes, file_size);
+
+            if let Some(progress_fn) = progress {
+                if let Some(total_bytes) = file_size {
+                    if total_bytes > 0 {
+                        progress_fn((downloaded_bytes as f32 / total_bytes as f32).clamp(0.0, 1.0));
+                    }
+                }
+            }
+        }
+
+        writer.flush()?;
+        ftp.finalize_retr_stream(stream)
+            .context(format!("Failed to finalize download: {}", video_path))?;
         let _ = ftp.quit();
-
-        let bytes = data.into_inner();
 
         if let Some(progress_fn) = progress {
             progress_fn(1.0);
         }
 
-        // Write to file
-        let temp_path = output_path.with_extension("tmp");
-        std::fs::write(&temp_path, &bytes)?;
         std::fs::rename(&temp_path, &output_path)?;
         write_video_cache_version(game_cache_dir)?;
+        clear_video_download_progress(game_cache_dir);
 
         tracing::info!("Downloaded video to {}", output_path.display());
 

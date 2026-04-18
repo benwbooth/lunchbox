@@ -85,6 +85,7 @@ pub async fn run() {
             commands::check_cached_video,
             commands::probe_game_video_available,
             commands::download_game_video,
+            commands::get_video_download_progress,
             commands::get_emulators_for_platform,
             commands::get_emulator,
             commands::get_all_emulators,

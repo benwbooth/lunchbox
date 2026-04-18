@@ -6,11 +6,12 @@ use crate::app::{
 };
 use crate::tauri::{self, Game};
 use chrono::{Datelike, NaiveDate};
+use gloo_timers::callback::Interval;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -590,8 +591,8 @@ pub fn GameGrid(
             }
             resize_listener_attached.set(true);
 
-            let callback = wasm_bindgen::closure::Closure::wrap(Box::new(
-                move |_event: web_sys::Event| {
+            let callback =
+                wasm_bindgen::closure::Closure::wrap(Box::new(move |_event: web_sys::Event| {
                     if let Some(container) = container_ref.get() {
                         let width = container.client_width();
                         let height = container.client_height();
@@ -602,8 +603,8 @@ pub fn GameGrid(
                             set_container_height.set(height);
                         }
                     }
-                },
-            ) as Box<dyn FnMut(web_sys::Event)>);
+                })
+                    as Box<dyn FnMut(web_sys::Event)>);
 
             if let Some(window) = web_sys::window() {
                 let _ = window
@@ -1437,10 +1438,14 @@ fn GameCard(
     let (hover_preview_armed, set_hover_preview_armed) = signal(false);
     let (hover_video_url, set_hover_video_url) = signal::<Option<String>>(None);
     let (hover_video_loading, set_hover_video_loading) = signal(false);
+    let (hover_video_progress, set_hover_video_progress) = signal::<Option<f32>>(None);
     let (hover_video_unavailable, set_hover_video_unavailable) = signal(false);
     let (hover_video_loaded, set_hover_video_loaded) = signal(false);
     let (hover_video_playing, set_hover_video_playing) = signal(false);
+    let (tooltip_align_start, set_tooltip_align_start) = signal(false);
+    let (tooltip_align_end, set_tooltip_align_end) = signal(false);
     let hover_token = Rc::new(Cell::new(0u64));
+    let hover_progress_poll: Rc<RefCell<Option<Interval>>> = Rc::new(RefCell::new(None));
 
     let game_for_click = game.clone();
 
@@ -1475,11 +1480,15 @@ fn GameCard(
         let set_hover_video_url = set_hover_video_url;
         let set_hover_preview_armed = set_hover_preview_armed;
         let set_hover_video_loading = set_hover_video_loading;
+        let set_hover_video_progress = set_hover_video_progress;
         let set_hover_video_unavailable = set_hover_video_unavailable;
         let set_hover_video_playing = set_hover_video_playing;
+        let set_tooltip_align_start = set_tooltip_align_start;
+        let set_tooltip_align_end = set_tooltip_align_end;
         let hover_video_url = hover_video_url;
         let hover_video_unavailable = hover_video_unavailable;
         let hover_token = hover_token.clone();
+        let hover_progress_poll = hover_progress_poll.clone();
         move |_: web_sys::MouseEvent| {
             const HOVER_SCALE: f64 = 1.95;
             const HOVER_LIFT_PX: f64 = 10.0;
@@ -1556,6 +1565,18 @@ fn GameCard(
                     dodge_x, dodge_y
                 ),
             );
+            let card_width = f64::from(rect.width());
+            let viewport_width = web_sys::window()
+                .and_then(|window| window.inner_width().ok())
+                .and_then(|width| width.as_f64())
+                .unwrap_or(1440.0);
+            let tooltip_width = 198.0;
+            let half_tooltip = tooltip_width / 2.0;
+            let align_start = rect.left() + (card_width / 2.0) - half_tooltip < 24.0;
+            let align_end =
+                rect.right() - (card_width / 2.0) + half_tooltip > viewport_width - 24.0;
+            set_tooltip_align_start.set(align_start);
+            set_tooltip_align_end.set(!align_start && align_end);
             if let Ok(Some(wrapper)) = card.closest(".virtual-item") {
                 let _ = wrapper.set_attribute("data-hovered-card", "true");
             }
@@ -1578,11 +1599,13 @@ fn GameCard(
                 let title_async = title.clone();
                 let platform_async = platform.clone();
                 let hover_token_async = hover_token_prefetch.clone();
+                let hover_progress_poll_for_task = hover_progress_poll.clone();
                 spawn_local(async move {
                     if hover_token_async.get() != token {
                         return;
                     }
                     set_hover_video_loading.set(true);
+                    set_hover_video_progress.set(None);
 
                     match tauri::check_cached_video(
                         title_async.clone(),
@@ -1608,6 +1631,31 @@ fn GameCard(
                         return;
                     }
 
+                    let progress_poll = hover_progress_poll_for_task.clone();
+                    {
+                        let title_for_poll = title_async.clone();
+                        let platform_for_poll = platform_async.clone();
+                        let hover_token_poll = hover_token_async.clone();
+                        let interval = Interval::new(180, move || {
+                            let title = title_for_poll.clone();
+                            let platform = platform_for_poll.clone();
+                            let hover_token_poll_inner = hover_token_poll.clone();
+                            spawn_local(async move {
+                                if hover_token_poll_inner.get() != token {
+                                    return;
+                                }
+                                if let Ok(Some(progress)) =
+                                    tauri::get_video_download_progress(title, platform, db_id_opt)
+                                        .await
+                                {
+                                    set_hover_video_progress
+                                        .set(progress.progress.map(|value| value.clamp(0.0, 1.0)));
+                                }
+                            });
+                        });
+                        *progress_poll.borrow_mut() = Some(interval);
+                    }
+
                     match tauri::download_game_video(
                         title_async.clone(),
                         platform_async.clone(),
@@ -1620,6 +1668,7 @@ fn GameCard(
                                 let url = tauri::file_to_asset_url(&local_path);
                                 set_hover_video_loaded.set(false);
                                 set_hover_video_url.set(Some(url));
+                                set_hover_video_progress.set(Some(1.0));
                             }
                         }
                         Err(e) => {
@@ -1637,6 +1686,7 @@ fn GameCard(
                     }
 
                     if hover_token_async.get() == token {
+                        hover_progress_poll_for_task.borrow_mut().take();
                         set_hover_video_loading.set(false);
                     }
                 });
@@ -1649,14 +1699,22 @@ fn GameCard(
         let set_is_hovered = set_is_hovered;
         let set_hover_preview_armed = set_hover_preview_armed;
         let set_hover_video_loading = set_hover_video_loading;
+        let set_hover_video_progress = set_hover_video_progress;
         let set_hover_video_playing = set_hover_video_playing;
+        let set_tooltip_align_start = set_tooltip_align_start;
+        let set_tooltip_align_end = set_tooltip_align_end;
         let hover_token = hover_token.clone();
+        let hover_progress_poll = hover_progress_poll.clone();
         move |_: web_sys::MouseEvent| {
             set_is_hovered.set(false);
             set_hover_preview_armed.set(false);
             set_hover_video_loading.set(false);
+            set_hover_video_progress.set(None);
             set_hover_video_playing.set(false);
+            set_tooltip_align_start.set(false);
+            set_tooltip_align_end.set(false);
             hover_token.set(hover_token.get().wrapping_add(1));
+            hover_progress_poll.borrow_mut().take();
             if let Some(card) = card_ref.get() {
                 if let Ok(Some(video_el)) = card.query_selector(".cover-preview-video") {
                     let pause_value = js_sys::Reflect::get(
@@ -1804,9 +1862,6 @@ fn GameCard(
                 || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get()))
     };
 
-    let show_hover_unavailable =
-        move || is_hovered.get() && hover_preview_armed.get() && hover_video_unavailable.get();
-
     let show_hover_layer = move || {
         is_hovered.get()
             && hover_preview_armed.get()
@@ -1898,9 +1953,25 @@ fn GameCard(
                             .unwrap_or_else(|| view! { <></> }.into_any())
                     }}
                     <div class="cover-video-loading" class:active=show_hover_loading>
-                        <span>"Loading preview..."</span>
+                        <span>
+                            {move || {
+                                hover_video_progress
+                                    .get()
+                                    .map(|value| format!("Loading preview... {}%", (value * 100.0).round() as i32))
+                                    .unwrap_or_else(|| "Loading preview...".to_string())
+                            }}
+                        </span>
                         <div class="download-progress">
-                            <div class="progress-bar indeterminate"></div>
+                            <div
+                                class="progress-bar"
+                                class:indeterminate=move || hover_video_progress.get().is_none()
+                                style:width=move || {
+                                    hover_video_progress
+                                        .get()
+                                        .map(|value| format!("{:.1}%", value.clamp(0.0, 1.0) * 100.0))
+                                        .unwrap_or_else(|| "100%".to_string())
+                                }
+                            ></div>
                         </div>
                     </div>
                 </div>
@@ -1924,6 +1995,8 @@ fn GameCard(
             <Show when=show_hover_layer>
                 <div
                     class="game-hover-tooltip active"
+                    class:align-start=move || tooltip_align_start.get()
+                    class:align-end=move || tooltip_align_end.get()
                     on:click=move |ev| ev.stop_propagation()
                 >
                     <div class="game-hover-tooltip-art">

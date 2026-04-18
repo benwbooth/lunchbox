@@ -9,11 +9,12 @@
 //! - Full width display at top of details panel
 
 use crate::tauri::{self, file_to_asset_url};
-use gloo_timers::callback::Timeout;
+use gloo_timers::callback::{Interval, Timeout};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use wasm_bindgen::JsCast;
 
 /// Loading state for a video
@@ -24,7 +25,7 @@ pub enum VideoState {
     /// Checking if video exists
     Checking,
     /// Video is being downloaded
-    Downloading,
+    Downloading(Option<f32>),
     /// Video is ready to play
     Ready(String),
     /// No video available for this game
@@ -68,6 +69,14 @@ fn video_asset_url(path: &str, bust_cache: bool) -> String {
     url
 }
 
+fn normalized_video_progress(progress: Option<f32>) -> Option<f32> {
+    progress.map(|value| value.clamp(0.0, 1.0))
+}
+
+fn video_progress_percent(progress: Option<f32>) -> i32 {
+    (normalized_video_progress(progress).unwrap_or(0.0) * 100.0).round() as i32
+}
+
 pub async fn preload_video_state(
     game_title: String,
     platform: String,
@@ -99,7 +108,7 @@ pub async fn preload_video_state(
     }
 
     match tauri::probe_game_video_available(game_title, platform).await {
-        Ok(true) => VideoState::Downloading,
+        Ok(true) => VideoState::Downloading(None),
         Ok(false) => {
             let no_video = VideoState::NoVideo;
             put_cached_video_state(&key, &no_video);
@@ -142,6 +151,7 @@ pub fn VideoPlayer(
     let (load_retry_count, set_load_retry_count) = signal(0u8);
     let cache_key = StoredValue::new(cache_key_str);
     let video_ref: NodeRef<leptos::html::Video> = NodeRef::new();
+    let progress_poll: Rc<RefCell<Option<Interval>>> = Rc::new(RefCell::new(None));
 
     // Store props in signals to avoid closure capture issues
     let title = StoredValue::new(game_title);
@@ -157,7 +167,7 @@ pub fn VideoPlayer(
         }
 
         let current_state = state.get_untracked();
-        let should_skip_cache_probe = matches!(current_state, VideoState::Downloading);
+        let should_skip_cache_probe = matches!(current_state, VideoState::Downloading(_));
         if matches!(
             current_state,
             VideoState::Ready(_) | VideoState::NoVideo | VideoState::Error(_)
@@ -216,7 +226,7 @@ pub fn VideoPlayer(
                 }
             }
 
-            set_state.set(VideoState::Downloading);
+            set_state.set(VideoState::Downloading(None));
 
             match tauri::download_game_video(title.clone(), plat.clone(), db_id_opt).await {
                 Ok(local_path) => {
@@ -262,17 +272,67 @@ pub fn VideoPlayer(
         .forget();
     });
 
+    Effect::new(move || {
+        let current_state = state.get();
+        if !matches!(current_state, VideoState::Downloading(_)) {
+            progress_poll.borrow_mut().take();
+            return;
+        }
+
+        if progress_poll.borrow().is_some() {
+            return;
+        }
+
+        let title = title.get_value();
+        let plat = plat.get_value();
+        let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
+        let progress_poll = progress_poll.clone();
+
+        let interval = Interval::new(180, move || {
+            let title = title.clone();
+            let plat = plat.clone();
+            spawn_local(async move {
+                if let Ok(Some(progress)) =
+                    tauri::get_video_download_progress(title, plat, db_id_opt).await
+                {
+                    set_state.set(VideoState::Downloading(normalized_video_progress(
+                        progress.progress,
+                    )));
+                }
+            });
+        });
+
+        *progress_poll.borrow_mut() = Some(interval);
+    });
+
     view! {
         <div class="video-player-section">
             {move || match state.get() {
                 VideoState::Initial | VideoState::Checking => view! {
                     <div class="video-not-available"></div>
                 }.into_any(),
-                VideoState::Downloading => view! {
+                VideoState::Downloading(progress) => view! {
                     <div class="video-downloading">
                         <div class="loading-spinner"></div>
                         <span>"Downloading video..."</span>
-                        <span class="video-hint">"This may take a few seconds."</span>
+                        <div class="download-progress">
+                            <div
+                                class="progress-bar"
+                                class:indeterminate=move || normalized_video_progress(progress).is_none()
+                                style:width=move || {
+                                    normalized_video_progress(progress)
+                                        .map(|value| format!("{:.1}%", value * 100.0))
+                                        .unwrap_or_else(|| "100%".to_string())
+                                }
+                            ></div>
+                        </div>
+                        <span class="video-hint">
+                            {move || {
+                                normalized_video_progress(progress)
+                                    .map(|value| format!("{}%", video_progress_percent(Some(value))))
+                                    .unwrap_or_else(|| "Preparing download...".to_string())
+                            }}
+                        </span>
                     </div>
                 }.into_any(),
                 VideoState::Ready(url) => view! {

@@ -2165,12 +2165,11 @@ pub async fn check_cached_video(
     };
 
     let video_path = cache_dir
-        .join("media")
         .join(game_id.directory_name())
         .join("emumovies")
         .join("video.mp4");
 
-    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
+    let game_cache_dir = cache_dir.join(game_id.directory_name());
     if video_path.exists() && crate::images::emumovies::is_video_cache_current(&game_cache_dir) {
         Ok(Some(video_path.to_string_lossy().to_string()))
     } else {
@@ -2273,7 +2272,7 @@ pub async fn download_game_video(
         }
     };
 
-    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
+    let game_cache_dir = cache_dir.join(game_id.directory_name());
 
     // Create EmuMovies client
     let client = crate::images::EmuMoviesClient::new(
@@ -2307,9 +2306,16 @@ pub async fn download_game_video(
     .await
     {
         Ok(Ok(Ok(path))) => path,
-        Ok(Ok(Err(e))) => return Err(e.to_string()),
-        Ok(Err(e)) => return Err(format!("Video download task failed: {}", e)),
+        Ok(Ok(Err(e))) => {
+            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
+            return Err(e.to_string());
+        }
+        Ok(Err(e)) => {
+            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
+            return Err(format!("Video download task failed: {}", e));
+        }
         Err(_) => {
+            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             return Err(format!(
                 "Video download timed out after {} seconds",
                 VIDEO_DOWNLOAD_TIMEOUT_SECS
@@ -2318,6 +2324,43 @@ pub async fn download_game_video(
     };
 
     Ok(video_path.to_string_lossy().to_string())
+}
+
+/// Get in-flight video download progress for a game, if any.
+#[tauri::command]
+pub async fn get_video_download_progress(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Option<crate::images::emumovies::VideoDownloadProgress>, String> {
+    let state_guard = state.read().await;
+    let cache_dir = get_cache_dir(&state_guard.settings);
+
+    let game_id = match launchbox_db_id {
+        Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
+        None => {
+            let games_pool = state_guard
+                .games_db_pool
+                .as_ref()
+                .ok_or_else(|| "Games database not initialized".to_string())?;
+
+            let platform_id: Option<(i64,)> =
+                sqlx::query_as("SELECT id FROM platforms WHERE name = ?")
+                    .bind(&platform)
+                    .fetch_optional(games_pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &game_title)
+        }
+    };
+
+    let game_cache_dir = cache_dir.join(game_id.directory_name());
+    Ok(crate::images::emumovies::get_video_download_progress(
+        &game_cache_dir,
+    ))
 }
 
 // ============ Emulator Commands ============

@@ -1694,7 +1694,6 @@ fn MediaCarousel(
     }
 }
 
-
 fn format_date(date_str: &str) -> String {
     use chrono::{DateTime, NaiveDate, NaiveDateTime};
 
@@ -1955,7 +1954,7 @@ fn EmulatorPickerModal(
                                                     .join(", "),
                                             )
                                         };
-                                        
+
                                         let launch_scoped_firmware_summary = if launch_scoped_firmware.is_empty() {
                                             None
                                         } else {
@@ -1967,7 +1966,7 @@ fn EmulatorPickerModal(
                                                     .join(", "),
                                             )
                                         };
-                                        
+
                                         let firmware_source_summary = summarize_firmware_sources(&required_firmware);
                                         let firmware_runtime_path = required_firmware
                                             .first()

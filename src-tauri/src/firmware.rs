@@ -665,7 +665,7 @@ const BUILTIN_FIRMWARE_RULES: &[BuiltinFirmwareRule] = &[
         required: true,
         notes: "Standalone melonDS DSi mode requires manually dumped DSi BIOS, firmware, and NAND files; Lunchbox does not have a Minerva source package for these yet.",
     },
-    
+
     BuiltinFirmwareRule {
         rule_key: "m88kai:M88kai:NEC PC-8801",
         runtime_kind: "m88kai",
@@ -1673,7 +1673,7 @@ fn resolve_runtime_context_for_launch(
                 .to_string(),
             launch_scoped: false,
         }),
-        
+
         "M88kai" if platform_name == "NEC PC-8801" => Some(FirmwareRuntimeContext {
             runtime_kind: "m88kai".to_string(),
             runtime_name: "M88kai".to_string(),
@@ -2073,7 +2073,12 @@ pub async fn open_firmware_directory(
         let manual_dir = manual_firmware_drop_directory(settings, &runtime, platform_name);
         std::fs::create_dir_all(&manual_dir)
             .map_err(|e| format!("Failed to create {}: {}", manual_dir.display(), e))?;
-        write_manual_firmware_readme(&manual_dir.join("README.txt"), &runtime, platform_name, &rules)?;
+        write_manual_firmware_readme(
+            &manual_dir.join("README.txt"),
+            &runtime,
+            platform_name,
+            &rules,
+        )?;
         manual_dir
     } else if let Some(runtime_dir) = runtime.runtime_dir.as_ref() {
         std::fs::create_dir_all(runtime_dir)

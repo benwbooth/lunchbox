@@ -1496,6 +1496,14 @@ impl VideoEvent {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoDownloadProgress {
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub progress: Option<f32>,
+}
+
 /// Check if a video is cached for a game
 pub async fn check_cached_video(
     game_title: String,
@@ -1556,6 +1564,29 @@ pub async fn download_game_video(
     }
     invoke(
         "download_game_video",
+        Args {
+            game_title,
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
+}
+
+pub async fn get_video_download_progress(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+) -> Result<Option<VideoDownloadProgress>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke(
+        "get_video_download_progress",
         Args {
             game_title,
             platform,

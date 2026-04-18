@@ -156,6 +156,10 @@ pub fn create_router(state: SharedState) -> Router {
             "/rspc/probe_game_video_available",
             get(rspc_probe_game_video_available),
         )
+        .route(
+            "/rspc/get_video_download_progress",
+            get(rspc_get_video_download_progress),
+        )
         .route("/rspc/download_game_video", get(rspc_download_game_video))
         // rspc-style endpoints for emulator handling
         .route(
@@ -201,7 +205,10 @@ pub fn create_router(state: SharedState) -> Router {
             get(rspc_get_emulators_with_status),
         )
         .route("/rspc/install_firmware", get(rspc_install_firmware))
-        .route("/rspc/open_firmware_directory", get(rspc_open_firmware_directory))
+        .route(
+            "/rspc/open_firmware_directory",
+            get(rspc_open_firmware_directory),
+        )
         .route("/rspc/install_emulator", get(rspc_install_emulator))
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
@@ -1919,12 +1926,11 @@ async fn rspc_check_cached_video(
     };
 
     let video_path = cache_dir
-        .join("media")
         .join(game_id.directory_name())
         .join("emumovies")
         .join("video.mp4");
 
-    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
+    let game_cache_dir = cache_dir.join(game_id.directory_name());
     if video_path.exists() && crate::images::emumovies::is_video_cache_current(&game_cache_dir) {
         rspc_ok(Some(video_path.to_string_lossy().to_string())).into_response()
     } else {
@@ -1945,6 +1951,74 @@ struct DownloadGameVideoInput {
 struct ProbeGameVideoAvailableInput {
     game_title: String,
     platform: String,
+}
+
+async fn rspc_get_video_download_progress(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Option<crate::images::emumovies::VideoDownloadProgress>>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response();
+        }
+    };
+
+    let input: DownloadGameVideoInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<Option<crate::images::emumovies::VideoDownloadProgress>>(format!(
+                "Invalid input: {}",
+                e
+            ))
+            .into_response();
+        }
+    };
+
+    let state_guard = state.read().await;
+    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+
+    let game_id = match input.launchbox_db_id {
+        Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
+        None => {
+            let games_pool = match state_guard.games_db_pool.as_ref() {
+                Some(p) => p,
+                None => {
+                    return rspc_err::<Option<crate::images::emumovies::VideoDownloadProgress>>(
+                        "Games database not initialized".to_string(),
+                    )
+                    .into_response();
+                }
+            };
+
+            let platform_id: Option<(i64,)> =
+                match sqlx::query_as("SELECT id FROM platforms WHERE name = ?")
+                    .bind(&input.platform)
+                    .fetch_optional(games_pool)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        return rspc_err::<Option<crate::images::emumovies::VideoDownloadProgress>>(
+                            e.to_string(),
+                        )
+                        .into_response();
+                    }
+                };
+
+            let platform_id = platform_id.map(|(id,)| id).unwrap_or(0);
+            crate::images::GameMediaId::compute_hash(platform_id, &input.game_title)
+        }
+    };
+
+    let game_cache_dir = cache_dir.join(game_id.directory_name());
+    rspc_ok(crate::images::emumovies::get_video_download_progress(
+        &game_cache_dir,
+    ))
+    .into_response()
 }
 
 async fn rspc_probe_game_video_available(
@@ -2073,7 +2147,7 @@ async fn rspc_download_game_video(
         }
     };
 
-    let game_cache_dir = cache_dir.join("media").join(game_id.directory_name());
+    let game_cache_dir = cache_dir.join(game_id.directory_name());
 
     // Create EmuMovies client
     let client = crate::images::EmuMoviesClient::new(
@@ -2111,15 +2185,18 @@ async fn rspc_download_game_video(
             rspc_ok(video_path.to_string_lossy().to_string()).into_response()
         }
         Ok(Ok(Err(e))) => {
+            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             tracing::warn!("  Video download failed: {}", e);
             rspc_err::<String>(e.to_string()).into_response()
         }
         Ok(Err(e)) => {
+            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             let msg = format!("Video download task failed: {}", e);
             tracing::warn!("  {}", msg);
             rspc_err::<String>(msg).into_response()
         }
         Err(_) => {
+            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             let msg = format!(
                 "Video download timed out after {} seconds",
                 VIDEO_DOWNLOAD_TIMEOUT_SECS
