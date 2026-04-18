@@ -1285,6 +1285,46 @@ pub struct MinervaRom {
     pub total_size: i64,
 }
 
+fn canonicalize_legacy_platform_name(name: &str) -> &str {
+    match name.trim() {
+        "Arduboy Inc - Arduboy" => "Arduboy",
+        "Atari - 8-bit Family" => "Atari 800",
+        other => other,
+    }
+}
+
+async fn resolve_equivalent_platform_ids(
+    games_db: &sqlx::SqlitePool,
+    platform_id: i64,
+) -> Result<Vec<i64>, String> {
+    let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, name FROM platforms")
+        .fetch_all(games_db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let selected_name = rows
+        .iter()
+        .find_map(|(id, name)| (*id == platform_id).then_some(name.clone()));
+
+    let Some(selected_name) = selected_name else {
+        return Ok(vec![platform_id]);
+    };
+
+    let canonical = canonicalize_legacy_platform_name(&selected_name).to_string();
+    let mut equivalent_ids = Vec::new();
+    for (id, name) in rows {
+        if canonicalize_legacy_platform_name(&name) == canonical {
+            equivalent_ids.push(id);
+        }
+    }
+
+    if equivalent_ids.is_empty() {
+        equivalent_ids.push(platform_id);
+    }
+
+    Ok(equivalent_ids)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartMinervaDownloadInput {
@@ -1415,20 +1455,27 @@ pub async fn get_minerva_rom_for_game(
         return Ok(None);
     };
     let platform_id = resolved_platform_id;
+    let equivalent_platform_ids = resolve_equivalent_platform_ids(games_db, platform_id).await?;
+    let placeholders = vec!["?"; equivalent_platform_ids.len()].join(", ");
 
     // Find a torrent for this platform
-    let row: Option<(i64, String, String, String, i64, i64)> = sqlx::query_as(
+    let sql = format!(
         "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
-         WHERE tp.lunchbox_platform_id = ?
+         WHERE tp.lunchbox_platform_id IN ({})
          ORDER BY tp.rom_count DESC
          LIMIT 1",
-    )
-    .bind(platform_id)
-    .fetch_optional(minerva_pool)
-    .await
-    .map_err(|e| e.to_string())?;
+        placeholders
+    );
+    let mut query = sqlx::query_as::<_, (i64, String, String, String, i64, i64)>(&sql);
+    for pid in &equivalent_platform_ids {
+        query = query.bind(pid);
+    }
+    let row = query
+        .fetch_optional(minerva_pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(row.map(
         |(torrent_id, torrent_url, collection, minerva_platform, rom_count, total_size)| {
@@ -1461,18 +1508,29 @@ pub async fn search_minerva(
         Some(pid) => pid,
         None => return Ok(Vec::new()),
     };
+    let games_db = state
+        .games_db_pool
+        .as_ref()
+        .ok_or_else(|| "Games database not available".to_string())?;
+    let equivalent_platform_ids = resolve_equivalent_platform_ids(games_db, pid).await?;
+    let placeholders = vec!["?"; equivalent_platform_ids.len()].join(", ");
 
-    let rows: Vec<(i64, String, String, String, i64, i64)> = sqlx::query_as(
+    let sql = format!(
         "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
-         WHERE tp.lunchbox_platform_id = ?
+         WHERE tp.lunchbox_platform_id IN ({})
          ORDER BY tp.rom_count DESC",
-    )
-    .bind(pid)
-    .fetch_all(minerva_pool)
-    .await
-    .map_err(|e| e.to_string())?;
+        placeholders
+    );
+    let mut query = sqlx::query_as::<_, (i64, String, String, String, i64, i64)>(&sql);
+    for platform_id in &equivalent_platform_ids {
+        query = query.bind(platform_id);
+    }
+    let rows = query
+        .fetch_all(minerva_pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(rows
         .into_iter()
