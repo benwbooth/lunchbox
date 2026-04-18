@@ -6,6 +6,7 @@
 //! - Launching games with the appropriate emulator
 
 use crate::db::schema::EmulatorInfo;
+use crate::firmware::FirmwareStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::{Read, Write};
@@ -29,6 +30,9 @@ pub struct EmulatorWithStatus {
     pub display_name: String,
     /// Path to the installed emulator executable
     pub executable_path: Option<String>,
+    /// Firmware requirements/status for this runtime, if any
+    #[serde(default)]
+    pub firmware_statuses: Vec<FirmwareStatus>,
 }
 
 /// Progress event for emulator installation/launch
@@ -63,6 +67,12 @@ pub struct LaunchResult {
     pub success: bool,
     pub pid: Option<u32>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LaunchArg {
+    Literal(String),
+    Path(String),
 }
 
 #[derive(Debug, Default)]
@@ -1812,6 +1822,7 @@ pub fn launch_emulator(
     emulator: &EmulatorInfo,
     rom_path: Option<&str>,
     as_retroarch_core: bool,
+    launch_args: &[LaunchArg],
 ) -> Result<u32, String> {
     tracing::info!(
         emulator = %emulator.name,
@@ -1828,6 +1839,7 @@ pub fn launch_emulator(
                 core_name,
                 prepared_rom.rom_path.as_deref(),
                 prepared_rom.cleanup_paths,
+                launch_args,
             )
         } else {
             cleanup_extracted_roms(&prepared_rom.cleanup_paths);
@@ -1840,6 +1852,7 @@ pub fn launch_emulator(
             emulator,
             prepared_rom.rom_path.as_deref(),
             prepared_rom.cleanup_paths,
+            launch_args,
         )
     };
 
@@ -1855,7 +1868,7 @@ pub fn launch_emulator(
 /// Defaults to using RetroArch core if available
 pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, String> {
     let as_retroarch_core = emulator.retroarch_core.is_some();
-    launch_emulator(emulator, Some(rom_path), as_retroarch_core)
+    launch_emulator(emulator, Some(rom_path), as_retroarch_core, &[])
 }
 
 const DEFAULT_SCUMMVM_CONFIG: &str = r#"[scummvm]
@@ -2739,6 +2752,7 @@ fn launch_retroarch(
     core_name: &str,
     rom_path: Option<&str>,
     cleanup_paths: Vec<PathBuf>,
+    launch_args: &[LaunchArg],
 ) -> Result<u32, String> {
     let core_path = check_retroarch_core_installed(core_name)
         .ok_or_else(|| format!("RetroArch core '{}' is not installed", core_name))?;
@@ -2761,10 +2775,16 @@ fn launch_retroarch(
                 if let Some(rom) = rom_path {
                     filesystem_paths.push((Path::new(rom), false));
                 }
+                for arg in launch_args {
+                    if let LaunchArg::Path(path) = arg {
+                        filesystem_paths.push((Path::new(path), false));
+                    }
+                }
                 add_flatpak_filesystem_args(&mut cmd, filesystem_paths);
                 cmd.arg("org.libretro.RetroArch");
                 cmd.arg("--verbose");
                 cmd.arg("-L").arg(map_path_for_flatpak(&core_path_str));
+                append_launch_args_for_flatpak(&mut cmd, launch_args);
                 if let Some(rom) = rom_path {
                     cmd.arg(map_path_for_flatpak(rom));
                 }
@@ -2781,6 +2801,7 @@ fn launch_retroarch(
                 let mut cmd = Command::new(retroarch_path);
                 cmd.arg("--verbose");
                 cmd.arg("-L").arg(&core_path_str);
+                append_launch_args_native(&mut cmd, launch_args);
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
                 }
@@ -2799,6 +2820,7 @@ fn launch_retroarch(
             let mut cmd = Command::new(retroarch_path);
             cmd.arg("--verbose");
             cmd.arg("-L").arg(&core_path_str);
+            append_launch_args_native(&mut cmd, launch_args);
             if let Some(rom) = rom_path {
                 cmd.arg(rom);
             }
@@ -2813,6 +2835,7 @@ fn launch_standalone(
     emulator: &EmulatorInfo,
     rom_path: Option<&str>,
     cleanup_paths: Vec<PathBuf>,
+    launch_args: &[LaunchArg],
 ) -> Result<u32, String> {
     tracing::debug!(emulator = %emulator.name, rom = ?rom_path, "Launching standalone emulator");
 
@@ -2830,30 +2853,33 @@ fn launch_standalone(
         let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
         let mut cmd = Command::new("flatpak");
         cmd.arg("run");
+        let mut filesystem_paths = Vec::new();
         if let Some(rom) = rom_path {
-            add_flatpak_filesystem_args(&mut cmd, vec![(Path::new(rom), false)]);
+            filesystem_paths.push((Path::new(rom), false));
+        }
+        for arg in launch_args {
+            if let LaunchArg::Path(path) = arg {
+                filesystem_paths.push((Path::new(path), false));
+            }
+        }
+        if !filesystem_paths.is_empty() {
+            add_flatpak_filesystem_args(&mut cmd, filesystem_paths);
         }
         cmd.arg(&app_id);
-        if let Some(rom) = rom_path {
-            cmd.arg(map_path_for_flatpak(rom));
-        }
+        append_standalone_rom_and_args_for_flatpak(&mut cmd, &emulator.name, rom_path, launch_args);
         tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else if current_os() == "macOS" && exe_path.extension().map(|e| e == "app").unwrap_or(false) {
         // macOS .app bundle
         let mut cmd = Command::new("open");
         cmd.arg("-a").arg(exe_path.to_str().unwrap_or_default());
-        if let Some(rom) = rom_path {
-            cmd.arg(rom);
-        }
+        append_standalone_rom_and_args_native(&mut cmd, &emulator.name, rom_path, launch_args);
         tracing::info!(command = ?cmd, "Spawning macOS app");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else {
         // Regular executable
         let mut cmd = Command::new(&exe_path);
-        if let Some(rom) = rom_path {
-            cmd.arg(rom);
-        }
+        append_standalone_rom_and_args_native(&mut cmd, &emulator.name, rom_path, launch_args);
         tracing::info!(command = ?cmd, "Spawning native executable");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     }
@@ -2883,6 +2909,68 @@ pub fn add_status(emulator: EmulatorInfo) -> EmulatorWithStatus {
         is_retroarch_core,
         display_name,
         executable_path: install_path.map(|p| p.to_string_lossy().to_string()),
+        firmware_statuses: Vec::new(),
+    }
+}
+
+fn append_launch_args_native(cmd: &mut Command, args: &[LaunchArg]) {
+    for arg in args {
+        match arg {
+            LaunchArg::Literal(value) | LaunchArg::Path(value) => {
+                cmd.arg(value);
+            }
+        }
+    }
+}
+
+fn append_standalone_rom_and_args_native(
+    cmd: &mut Command,
+    emulator_name: &str,
+    rom_path: Option<&str>,
+    args: &[LaunchArg],
+) {
+    if emulator_name == "LoopyMSE" {
+        if let Some(rom) = rom_path {
+            cmd.arg(rom);
+        }
+        append_launch_args_native(cmd, args);
+    } else {
+        append_launch_args_native(cmd, args);
+        if let Some(rom) = rom_path {
+            cmd.arg(rom);
+        }
+    }
+}
+
+fn append_launch_args_for_flatpak(cmd: &mut Command, args: &[LaunchArg]) {
+    for arg in args {
+        match arg {
+            LaunchArg::Literal(value) => {
+                cmd.arg(value);
+            }
+            LaunchArg::Path(path) => {
+                cmd.arg(map_path_for_flatpak(path));
+            }
+        }
+    }
+}
+
+fn append_standalone_rom_and_args_for_flatpak(
+    cmd: &mut Command,
+    emulator_name: &str,
+    rom_path: Option<&str>,
+    args: &[LaunchArg],
+) {
+    if emulator_name == "LoopyMSE" {
+        if let Some(rom) = rom_path {
+            cmd.arg(map_path_for_flatpak(rom));
+        }
+        append_launch_args_for_flatpak(cmd, args);
+    } else {
+        append_launch_args_for_flatpak(cmd, args);
+        if let Some(rom) = rom_path {
+            cmd.arg(map_path_for_flatpak(rom));
+        }
     }
 }
 
@@ -2908,6 +2996,7 @@ pub fn add_status_as_retroarch(emulator: EmulatorInfo) -> EmulatorWithStatus {
         } else {
             None
         },
+        firmware_statuses: Vec::new(),
     }
 }
 
@@ -2925,6 +3014,7 @@ pub fn add_status_as_standalone(emulator: EmulatorInfo) -> EmulatorWithStatus {
         is_retroarch_core: false,
         display_name,
         executable_path: install_path.map(|p| p.to_string_lossy().to_string()),
+        firmware_statuses: Vec::new(),
     }
 }
 
@@ -3104,6 +3194,34 @@ mod tests {
         assert_eq!(
             args,
             vec![format!("--filesystem={}", shared_dir.to_string_lossy())]
+        );
+    }
+
+    #[test]
+    fn loopymse_places_rom_before_firmware_args() {
+        let mut cmd = Command::new("echo");
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            "LoopyMSE",
+            Some("/roms/game.bin"),
+            &[
+                LaunchArg::Path("/firmware/main.bin".to_string()),
+                LaunchArg::Path("/firmware/sound.bin".to_string()),
+            ],
+        );
+
+        let args = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            vec![
+                "/roms/game.bin".to_string(),
+                "/firmware/main.bin".to_string(),
+                "/firmware/sound.bin".to_string(),
+            ]
         );
     }
 

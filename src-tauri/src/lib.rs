@@ -4,6 +4,7 @@ pub mod db;
 pub mod emulator;
 pub mod endpoints;
 pub mod exo;
+pub mod firmware;
 pub mod handlers;
 pub mod images;
 pub mod import;
@@ -106,6 +107,8 @@ pub fn run() {
             // Emulator installation and launch commands
             commands::get_emulators_with_status,
             commands::install_emulator,
+            commands::install_firmware,
+            commands::open_firmware_directory,
             commands::launch_emulator,
             commands::launch_game,
             commands::get_current_os,

@@ -2459,6 +2459,72 @@ pub async fn install_emulator(
     handlers::install_emulator(&emulator, is_retroarch_core).await
 }
 
+#[tauri::command]
+pub async fn install_firmware(
+    emulator_name: String,
+    platform_name: String,
+    is_retroarch_core: bool,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<Vec<crate::firmware::FirmwareStatus>, String> {
+    let (emulator, settings, minerva_pool, db_pool) = {
+        let mut state_guard = state.write().await;
+
+        let emulator = handlers::get_emulator(&state_guard, &emulator_name)
+            .await?
+            .ok_or_else(|| format!("Emulator '{}' not found", emulator_name.clone()))?;
+        let settings = state_guard.settings.clone();
+        let minerva_pool = state_guard.minerva_db_pool.clone();
+        let db_pool = crate::state::ensure_user_db(&mut state_guard)
+            .await
+            .map_err(|e| e.to_string())?
+            .clone();
+
+        (emulator, settings, minerva_pool, db_pool)
+    };
+
+    handlers::install_firmware_for_emulator_with_context(
+        &settings,
+        &db_pool,
+        minerva_pool.as_ref(),
+        &emulator,
+        &platform_name,
+        is_retroarch_core,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn open_firmware_directory(
+    emulator_name: String,
+    platform_name: String,
+    is_retroarch_core: bool,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<String, String> {
+    let (emulator, settings, db_pool) = {
+        let mut state_guard = state.write().await;
+
+        let emulator = handlers::get_emulator(&state_guard, &emulator_name)
+            .await?
+            .ok_or_else(|| format!("Emulator '{}' not found", emulator_name.clone()))?;
+        let settings = state_guard.settings.clone();
+        let db_pool = crate::state::ensure_user_db(&mut state_guard)
+            .await
+            .map_err(|e| e.to_string())?
+            .clone();
+
+        (emulator, settings, db_pool)
+    };
+
+    crate::firmware::open_firmware_directory(
+        &settings,
+        &db_pool,
+        &emulator,
+        &platform_name,
+        is_retroarch_core,
+    )
+    .await
+}
+
 /// Launch a game with the specified emulator
 #[tauri::command]
 pub async fn launch_game(

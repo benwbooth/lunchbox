@@ -12,7 +12,7 @@
 
 use crate::db::schema::EmulatorInfo;
 use crate::emulator::{self, EmulatorWithStatus, LaunchResult};
-use crate::state::AppState;
+use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -749,6 +749,19 @@ pub async fn get_emulators_with_status(
     results.extend(standalone_entries);
     sort_emulator_statuses(&mut results);
 
+    if let Some(db_pool) = state.db_pool.as_ref() {
+        for emulator in &mut results {
+            emulator.firmware_statuses = crate::firmware::get_firmware_status(
+                &state.settings,
+                db_pool,
+                &emulator.info,
+                platform_name,
+                emulator.is_retroarch_core,
+            )
+            .await?;
+        }
+    }
+
     Ok(results)
 }
 
@@ -822,6 +835,58 @@ pub async fn install_emulator(
 ) -> Result<String, String> {
     let path = emulator::install_emulator(emulator, is_retroarch_core).await?;
     Ok(path.to_string_lossy().to_string())
+}
+
+pub async fn install_firmware_for_emulator(
+    state: &mut AppState,
+    emulator: &EmulatorInfo,
+    platform_name: &str,
+    is_retroarch_core: bool,
+) -> Result<Vec<crate::firmware::FirmwareStatus>, String> {
+    let settings = state.settings.clone();
+    let minerva_pool = state.minerva_db_pool.clone();
+    let db_pool = crate::state::ensure_user_db(state)
+        .await
+        .map_err(|e| e.to_string())?
+        .clone();
+
+    install_firmware_for_emulator_with_context(
+        &settings,
+        &db_pool,
+        minerva_pool.as_ref(),
+        emulator,
+        platform_name,
+        is_retroarch_core,
+    )
+    .await
+}
+
+pub async fn install_firmware_for_emulator_with_context(
+    settings: &AppSettings,
+    db_pool: &sqlx::SqlitePool,
+    minerva_pool: Option<&sqlx::SqlitePool>,
+    emulator: &EmulatorInfo,
+    platform_name: &str,
+    is_retroarch_core: bool,
+) -> Result<Vec<crate::firmware::FirmwareStatus>, String> {
+    crate::firmware::ensure_runtime_firmware(
+        settings,
+        db_pool,
+        minerva_pool,
+        emulator,
+        platform_name,
+        is_retroarch_core,
+    )
+    .await?;
+
+    crate::firmware::get_firmware_status(
+        settings,
+        db_pool,
+        emulator,
+        platform_name,
+        is_retroarch_core,
+    )
+    .await
 }
 
 /// Launch a game with the specified emulator
@@ -909,6 +974,59 @@ pub async fn launch_game_with_emulator(
                 }),
             };
         }
+
+        let minerva_pool = state.minerva_db_pool.clone();
+        let db_pool = crate::state::ensure_user_db(state)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Err(e) = crate::firmware::ensure_runtime_firmware_for_launch(
+            &settings,
+            db_pool,
+            minerva_pool.as_ref(),
+            emulator,
+            platform,
+            as_retroarch_core,
+            Path::new(&resolved_rom_path),
+        )
+        .await
+        {
+            return Ok(LaunchResult {
+                success: false,
+                pid: None,
+                error: Some(e),
+            });
+        }
+
+        let firmware_launch_args = crate::firmware::get_launch_firmware_args(
+            db_pool,
+            emulator,
+            platform,
+            as_retroarch_core,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+        match emulator::launch_emulator(
+            emulator,
+            Some(&resolved_rom_path),
+            as_retroarch_core,
+            &firmware_launch_args,
+        ) {
+            Ok(pid) => {
+                return Ok(LaunchResult {
+                    success: true,
+                    pid: Some(pid),
+                    error: None,
+                })
+            }
+            Err(e) => {
+                return Ok(LaunchResult {
+                    success: false,
+                    pid: None,
+                    error: Some(e),
+                })
+            }
+        }
     }
 
     let Some(rom_path) = rom_path.filter(|path| !path.trim().is_empty()) else {
@@ -919,7 +1037,7 @@ pub async fn launch_game_with_emulator(
         });
     };
 
-    match emulator::launch_emulator(emulator, Some(rom_path), as_retroarch_core) {
+    match emulator::launch_emulator(emulator, Some(rom_path), as_retroarch_core, &[]) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),
@@ -939,7 +1057,7 @@ pub fn launch_emulator_only(
     emulator: &EmulatorInfo,
     is_retroarch_core: bool,
 ) -> Result<LaunchResult, String> {
-    match emulator::launch_emulator(emulator, None, is_retroarch_core) {
+    match emulator::launch_emulator(emulator, None, is_retroarch_core, &[]) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),
@@ -2614,6 +2732,7 @@ mod tests {
                 is_retroarch_core,
                 display_name: name.to_string(),
                 executable_path: None,
+                firmware_statuses: Vec::new(),
             }
         }
 

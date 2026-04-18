@@ -1749,6 +1749,23 @@ pub struct EmulatorWithStatus {
     pub is_retroarch_core: bool,
     pub display_name: String,
     pub executable_path: Option<String>,
+    #[serde(default)]
+    pub firmware_statuses: Vec<FirmwareStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareStatus {
+    pub rule_key: String,
+    pub source: String,
+    pub package_name: String,
+    pub required: bool,
+    pub supports_hle_fallback: bool,
+    pub target_strategy: String,
+    pub imported: bool,
+    pub synced: bool,
+    pub launch_scoped: bool,
+    pub runtime_path: String,
 }
 
 /// Result of launching a game
@@ -1782,6 +1799,54 @@ pub async fn install_emulator(
         "install_emulator",
         Args {
             emulator_name,
+            is_retroarch_core,
+        },
+    )
+    .await
+}
+
+pub async fn install_firmware(
+    emulator_name: String,
+    platform_name: String,
+    is_retroarch_core: bool,
+) -> Result<Vec<FirmwareStatus>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        platform_name: String,
+        is_retroarch_core: bool,
+    }
+
+    invoke(
+        "install_firmware",
+        Args {
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+        },
+    )
+    .await
+}
+
+pub async fn open_firmware_directory(
+    emulator_name: String,
+    platform_name: String,
+    is_retroarch_core: bool,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        platform_name: String,
+        is_retroarch_core: bool,
+    }
+
+    invoke(
+        "open_firmware_directory",
+        Args {
+            emulator_name,
+            platform_name,
             is_retroarch_core,
         },
     )

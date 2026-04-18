@@ -226,6 +226,21 @@ impl AppSettings {
             .unwrap_or_else(|| self.get_data_directory().join("programs"))
     }
 
+    /// Get the canonical firmware store directory.
+    pub fn get_firmware_directory(&self) -> PathBuf {
+        self.get_data_directory().join("firmware")
+    }
+
+    /// Get the directory used to store imported firmware packages.
+    pub fn get_firmware_packages_directory(&self) -> PathBuf {
+        self.get_firmware_directory().join("packages")
+    }
+
+    /// Get the directory used for manual firmware drop-in folders.
+    pub fn get_manual_firmware_directory(&self) -> PathBuf {
+        self.get_firmware_directory().join("manual")
+    }
+
     /// Get the saves directory (save game backups)
     pub fn get_saves_directory(&self) -> PathBuf {
         self.saves_directory
@@ -378,7 +393,11 @@ pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
     // This avoids creating empty database files
     let user_pool = if user_db_path.exists() {
         tracing::info!("Found user database at: {}", user_db_path.display());
-        Some(db::init_pool(&user_db_path).await?)
+        let pool = db::init_pool(&user_db_path).await?;
+        crate::firmware::sync_builtin_rules(&pool)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        Some(pool)
     } else {
         tracing::info!("No user database yet (will be created on first write)");
         None
@@ -550,6 +569,9 @@ pub async fn ensure_user_db(state: &mut AppState) -> Result<&SqlitePool> {
 
     tracing::info!("Creating user database at: {}", path.display());
     let pool = db::init_pool(path).await?;
+    crate::firmware::sync_builtin_rules(&pool)
+        .await
+        .map_err(anyhow::Error::msg)?;
     state.db_pool = Some(pool);
 
     Ok(state.db_pool.as_ref().unwrap())

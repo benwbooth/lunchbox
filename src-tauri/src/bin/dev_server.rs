@@ -118,7 +118,11 @@ async fn main() -> anyhow::Result<()> {
     let user_db_path = data_dir.join(USER_DB_NAME);
     let db_pool = if user_db_path.exists() {
         tracing::info!("Found user database at: {}", user_db_path.display());
-        Some(db::init_pool(&user_db_path).await?)
+        let pool = db::init_pool(&user_db_path).await?;
+        lunchbox_lib::firmware::sync_builtin_rules(&pool)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        Some(pool)
     } else {
         tracing::info!("No user database yet (will be created on first write)");
         None

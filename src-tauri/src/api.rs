@@ -200,6 +200,8 @@ pub fn create_router(state: SharedState) -> Router {
             "/rspc/get_emulators_with_status",
             get(rspc_get_emulators_with_status),
         )
+        .route("/rspc/install_firmware", get(rspc_install_firmware))
+        .route("/rspc/open_firmware_directory", get(rspc_open_firmware_directory))
         .route("/rspc/install_emulator", get(rspc_install_emulator))
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
@@ -2508,6 +2510,24 @@ struct InstallEmulatorInput {
     is_retroarch_core: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallFirmwareInput {
+    emulator_name: String,
+    platform_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenFirmwareDirectoryInput {
+    emulator_name: String,
+    platform_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
 async fn rspc_install_emulator(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -2535,6 +2555,123 @@ async fn rspc_install_emulator(
     };
 
     match handlers::install_emulator(&emulator, input.is_retroarch_core).await {
+        Ok(path) => rspc_ok(path).into_response(),
+        Err(e) => rspc_err::<String>(e).into_response(),
+    }
+}
+
+async fn rspc_install_firmware(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response()
+        }
+    };
+
+    let input: InstallFirmwareInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(format!(
+                "Invalid input: {}",
+                e
+            ))
+            .into_response()
+        }
+    };
+
+    let (emulator, settings, minerva_pool, db_pool) = {
+        let mut state_guard = state.write().await;
+
+        let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(format!(
+                    "Emulator '{}' not found",
+                    input.emulator_name
+                ))
+                .into_response()
+            }
+            Err(e) => return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(e).into_response(),
+        };
+
+        let settings = state_guard.settings.clone();
+        let minerva_pool = state_guard.minerva_db_pool.clone();
+        let db_pool = match crate::state::ensure_user_db(&mut state_guard).await {
+            Ok(pool) => pool.clone(),
+            Err(e) => {
+                return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(e.to_string())
+                    .into_response()
+            }
+        };
+
+        (emulator, settings, minerva_pool, db_pool)
+    };
+
+    match handlers::install_firmware_for_emulator_with_context(
+        &settings,
+        &db_pool,
+        minerva_pool.as_ref(),
+        &emulator,
+        &input.platform_name,
+        input.is_retroarch_core,
+    )
+    .await
+    {
+        Ok(statuses) => rspc_ok(statuses).into_response(),
+        Err(e) => rspc_err::<Vec<crate::firmware::FirmwareStatus>>(e).into_response(),
+    }
+}
+
+async fn rspc_open_firmware_directory(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<String>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: OpenFirmwareDirectoryInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let (emulator, settings, db_pool) = {
+        let mut state_guard = state.write().await;
+
+        let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
+                    .into_response()
+            }
+            Err(e) => return rspc_err::<String>(e).into_response(),
+        };
+
+        let settings = state_guard.settings.clone();
+        let db_pool = match crate::state::ensure_user_db(&mut state_guard).await {
+            Ok(pool) => pool.clone(),
+            Err(e) => return rspc_err::<String>(e.to_string()).into_response(),
+        };
+
+        (emulator, settings, db_pool)
+    };
+
+    match crate::firmware::open_firmware_directory(
+        &settings,
+        &db_pool,
+        &emulator,
+        &input.platform_name,
+        input.is_retroarch_core,
+    )
+    .await
+    {
         Ok(path) => rspc_ok(path).into_response(),
         Err(e) => rspc_err::<String>(e).into_response(),
     }

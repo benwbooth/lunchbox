@@ -1490,6 +1490,7 @@ pub fn GameDetails(
                                         <Show when=move || show_emulator_picker.get()>
                                             <EmulatorPickerModal
                                                 emulators=emulators
+                                                set_emulators=set_emulators
                                                 emulators_loading=emulators_loading
                                                 game_file=game_file
                                                 stored_title=stored_title
@@ -1693,31 +1694,56 @@ fn MediaCarousel(
     }
 }
 
+
 fn format_date(date_str: &str) -> String {
     use chrono::{DateTime, NaiveDate, NaiveDateTime};
 
-    // Try parsing as ISO 8601 with timezone (e.g., "2026-01-11T00:00:00+00:00")
     if let Ok(dt) = DateTime::parse_from_rfc3339(date_str) {
         return dt.format("%b %-d, %Y").to_string();
     }
 
-    // Try parsing as datetime without timezone (e.g., "2026-01-11 23:21:43")
     if let Ok(dt) = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
         return dt.format("%b %-d, %Y").to_string();
     }
 
-    // Try parsing as date only (e.g., "2026-01-11")
     if let Ok(d) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
         return d.format("%b %-d, %Y").to_string();
     }
 
-    // Fallback to original string if parsing fails
     date_str.to_string()
+}
+
+fn firmware_source_label(source: &str) -> &'static str {
+    if source.starts_with("manual:") {
+        "Manual import"
+    } else if source.starts_with("minerva:") {
+        "Minerva"
+    } else if source.starts_with("github:") {
+        "GitHub"
+    } else if source == "user-import" {
+        "User import"
+    } else {
+        "Other"
+    }
+}
+
+fn summarize_firmware_sources(statuses: &[tauri::FirmwareStatus]) -> Option<String> {
+    let sources = statuses
+        .iter()
+        .map(|status| firmware_source_label(&status.source))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    if sources.is_empty() {
+        None
+    } else {
+        Some(sources.into_iter().collect::<Vec<_>>().join(", "))
+    }
 }
 
 #[component]
 fn EmulatorPickerModal(
     emulators: ReadSignal<Vec<EmulatorWithStatus>>,
+    set_emulators: WriteSignal<Vec<EmulatorWithStatus>>,
     emulators_loading: ReadSignal<bool>,
     game_file: ReadSignal<Option<GameFile>>,
     stored_title: StoredValue<String>,
@@ -1845,14 +1871,138 @@ fn EmulatorPickerModal(
                                     children=move |emu: EmulatorWithStatus| {
                                         let name = emu.name.clone();
                                         let display_name = emu.display_name.clone();
+                                        let firmware_display_name =
+                                            StoredValue::new(emu.display_name.clone());
                                         let is_installed = emu.is_installed;
                                         let is_retroarch_core = emu.is_retroarch_core;
                                         let install_method = emu.install_method.clone();
                                         let name_for_click = emu.name.clone();
                                         let name_for_game_pref = emu.name.clone();
                                         let name_for_platform_pref = emu.name.clone();
+                                        let firmware_emulator_name =
+                                            StoredValue::new(emu.name.clone());
                                         let homepage = emu.homepage.clone();
                                         let notes = emu.notes.clone();
+                                        let required_firmware = emu
+                                            .firmware_statuses
+                                            .into_iter()
+                                            .filter(|status| status.required)
+                                            .collect::<Vec<_>>();
+                                        let manual_missing_firmware = required_firmware
+                                            .iter()
+                                            .filter(|status| {
+                                                !status.imported
+                                                    && status.source.starts_with("manual:")
+                                            })
+                                            .cloned()
+                                            .collect::<Vec<_>>();
+                                        let missing_firmware = required_firmware
+                                            .iter()
+                                            .filter(|status| {
+                                                !status.imported
+                                                    && !status.source.starts_with("manual:")
+                                            })
+                                            .cloned()
+                                            .collect::<Vec<_>>();
+                                        let unsynced_firmware = required_firmware
+                                            .iter()
+                                            .filter(|status| {
+                                                status.imported
+                                                    && !status.synced
+                                                    && !status.launch_scoped
+                                            })
+                                            .cloned()
+                                            .collect::<Vec<_>>();
+                                        let launch_scoped_firmware = required_firmware
+                                            .iter()
+                                            .filter(|status| {
+                                                status.imported
+                                                    && !status.synced
+                                                    && status.launch_scoped
+                                            })
+                                            .cloned()
+                                            .collect::<Vec<_>>();
+                                        let missing_firmware_summary = if missing_firmware.is_empty() {
+                                            None
+                                        } else {
+                                            Some(
+                                                missing_firmware
+                                                    .iter()
+                                                    .map(|status| status.package_name.clone())
+                                                    .collect::<Vec<_>>()
+                                                    .join(", "),
+                                            )
+                                        };
+                                        let manual_missing_firmware_summary = if manual_missing_firmware.is_empty() {
+                                            None
+                                        } else {
+                                            Some(
+                                                manual_missing_firmware
+                                                    .iter()
+                                                    .map(|status| status.package_name.clone())
+                                                    .collect::<Vec<_>>()
+                                                    .join(", "),
+                                            )
+                                        };
+                                        let unsynced_firmware_summary = if unsynced_firmware.is_empty() {
+                                            None
+                                        } else {
+                                            Some(
+                                                unsynced_firmware
+                                                    .iter()
+                                                    .map(|status| status.package_name.clone())
+                                                    .collect::<Vec<_>>()
+                                                    .join(", "),
+                                            )
+                                        };
+                                        
+                                        let launch_scoped_firmware_summary = if launch_scoped_firmware.is_empty() {
+                                            None
+                                        } else {
+                                            Some(
+                                                launch_scoped_firmware
+                                                    .iter()
+                                                    .map(|status| status.package_name.clone())
+                                                    .collect::<Vec<_>>()
+                                                    .join(", "),
+                                            )
+                                        };
+                                        
+                                        let firmware_source_summary = summarize_firmware_sources(&required_firmware);
+                                        let firmware_runtime_path = required_firmware
+                                            .first()
+                                            .map(|status| status.runtime_path.clone());
+                                        let needs_firmware_action =
+                                            !missing_firmware.is_empty() || !unsynced_firmware.is_empty();
+                                        let has_repairable_firmware = is_installed
+                                            && required_firmware
+                                                .iter()
+                                                .any(|status| {
+                                                    status.imported
+                                                        && !status.launch_scoped
+                                                        && !status.source.starts_with("manual:")
+                                                });
+                                        let show_firmware_warning = needs_firmware_action
+                                            || !launch_scoped_firmware.is_empty()
+                                            || !manual_missing_firmware.is_empty()
+                                            || has_repairable_firmware;
+                                        let firmware_action_label = if !missing_firmware.is_empty() {
+                                            "Install Firmware"
+                                        } else if !unsynced_firmware.is_empty() {
+                                            "Sync Firmware"
+                                        } else {
+                                            "Repair Firmware"
+                                        };
+                                        let can_open_firmware_folder = !manual_missing_firmware.is_empty()
+                                            || (is_installed
+                                                && required_firmware
+                                                    .iter()
+                                                    .any(|status| !status.launch_scoped));
+                                        let firmware_open_label = if !manual_missing_firmware.is_empty() {
+                                            "Open Import Folder"
+                                        } else {
+                                            "Open Firmware Folder"
+                                        };
 
                                         // Handler for launch/install+launch
                                         let on_launch = move |_| {
@@ -2090,6 +2240,162 @@ fn EmulatorPickerModal(
 
                                         // Determine the action button text
                                         let action_text = if is_installed { "Play" } else { "Install & Play" };
+                                        let firmware_warning = if show_firmware_warning {
+                                            Some(view! {
+                                                <div class="emulator-firmware-warning">
+                                                    <div class="emulator-firmware-title">
+                                                        {if !manual_missing_firmware.is_empty() && missing_firmware.is_empty() && unsynced_firmware.is_empty() {
+                                                            "Manual firmware required"
+                                                        } else if !missing_firmware.is_empty() {
+                                                            "Missing required firmware"
+                                                        } else if !unsynced_firmware.is_empty() {
+                                                            "Firmware needs sync"
+                                                        } else {
+                                                            "Firmware will be staged at launch"
+                                                        }}
+                                                    </div>
+                                                    {missing_firmware_summary.clone().map(|summary| view! {
+                                                        <div class="emulator-firmware-packages">
+                                                            "Packages: " {summary}
+                                                        </div>
+                                                    })}
+                                                    {manual_missing_firmware_summary.clone().map(|summary| view! {
+                                                        <div class="emulator-firmware-packages">
+                                                            "Manual import required: " {summary}
+                                                        </div>
+                                                    })}
+                                                    {unsynced_firmware_summary.clone().map(|summary| view! {
+                                                        <div class="emulator-firmware-packages">
+                                                            "Not yet synced: " {summary}
+                                                        </div>
+                                                    })}
+                                                    {launch_scoped_firmware_summary.clone().map(|summary| view! {
+                                                        <div class="emulator-firmware-packages">
+                                                            "Copied beside the ROM at launch: " {summary}
+                                                        </div>
+                                                    })}
+                                                    {firmware_source_summary.clone().map(|summary| view! {
+                                                        <div class="emulator-firmware-source">
+                                                            "Source: " {summary}
+                                                        </div>
+                                                    })}
+                                                    {firmware_runtime_path.clone().map(|path| view! {
+                                                        <div class="emulator-firmware-path">
+                                                            {if launch_scoped_firmware.is_empty() && missing_firmware.iter().all(|status| !status.launch_scoped) {
+                                                                "Runtime path: "
+                                                            } else {
+                                                                "Launch path: "
+                                                            }}
+                                                            {path}
+                                                        </div>
+                                                    })}
+                                                    <div class="emulator-firmware-actions">
+                                                        <Show when=move || is_installed && (needs_firmware_action || has_repairable_firmware)>
+                                                            <button
+                                                                class="emulator-firmware-btn"
+                                                                on:click=move |e: web_sys::MouseEvent| {
+                                                                    e.stop_propagation();
+                                                                    let emulator_name = firmware_emulator_name.get_value();
+                                                                    let display_name = firmware_display_name.get_value();
+                                                                    let platform = stored_platform.get_value();
+                                                                    let is_ra = is_retroarch_core;
+
+                                                                    set_progress_state.set(Some(format!(
+                                                                        "Installing firmware for {}...",
+                                                                        display_name
+                                                                    )));
+                                                                    set_error_state.set(None);
+                                                                    set_success_state.set(None);
+
+                                                                    spawn_local(async move {
+                                                                        match tauri::install_firmware(
+                                                                            emulator_name.clone(),
+                                                                            platform.clone(),
+                                                                            is_ra,
+                                                                        )
+                                                                        .await
+                                                                        {
+                                                                            Ok(_) => {
+                                                                                match tauri::get_emulators_with_status(platform).await {
+                                                                                    Ok(emu_list) => {
+                                                                                        set_emulators.set(emu_list);
+                                                                                        set_progress_state.set(None);
+                                                                                        set_error_state.set(None);
+                                                                                        set_success_state.set(Some(format!(
+                                                                                            "Firmware is ready for {}.",
+                                                                                            display_name
+                                                                                        )));
+                                                                                    }
+                                                                                    Err(e) => {
+                                                                                        set_progress_state.set(None);
+                                                                                        set_error_state.set(Some(format!(
+                                                                                            "Firmware installed, but emulator status refresh failed: {}",
+                                                                                            e
+                                                                                        )));
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            Err(e) => {
+                                                                                set_progress_state.set(None);
+                                                                                set_error_state.set(Some(format!(
+                                                                                    "Firmware install failed: {}",
+                                                                                    e
+                                                                                )));
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                }
+                                                            >
+                                                                {firmware_action_label}
+                                                            </button>
+                                                        </Show>
+                                                        <Show when=move || can_open_firmware_folder>
+                                                            <button
+                                                                class="emulator-firmware-btn secondary"
+                                                                on:click=move |e: web_sys::MouseEvent| {
+                                                                    e.stop_propagation();
+                                                                    let emulator_name = firmware_emulator_name.get_value();
+                                                                    let display_name = firmware_display_name.get_value();
+                                                                    let platform = stored_platform.get_value();
+                                                                    let is_ra = is_retroarch_core;
+
+                                                                    set_error_state.set(None);
+                                                                    set_success_state.set(None);
+
+                                                                    spawn_local(async move {
+                                                                        match tauri::open_firmware_directory(
+                                                                            emulator_name,
+                                                                            platform,
+                                                                            is_ra,
+                                                                        )
+                                                                        .await
+                                                                        {
+                                                                            Ok(opened_path) => {
+                                                                                set_success_state.set(Some(format!(
+                                                                                    "Opened firmware folder for {}: {}",
+                                                                                    display_name,
+                                                                                    opened_path
+                                                                                )));
+                                                                            }
+                                                                            Err(e) => {
+                                                                                set_error_state.set(Some(format!(
+                                                                                    "Failed to open firmware folder: {}",
+                                                                                    e
+                                                                                )));
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                }
+                                                            >
+                                                                {firmware_open_label}
+                                                            </button>
+                                                        </Show>
+                                                    </div>
+                                                </div>
+                                            })
+                                        } else {
+                                            None
+                                        };
 
                                         view! {
                                             <li class="emulator-item" class:is-installed=is_installed>
@@ -2113,6 +2419,7 @@ fn EmulatorPickerModal(
                                                 {notes.clone().map(|n| view! {
                                                     <div class="emulator-notes">{n}</div>
                                                 })}
+                                                {firmware_warning}
                                                 <div class="emulator-pref-buttons">
                                                     <button
                                                         class="emulator-pref-btn emulator-play-btn"

@@ -1818,9 +1818,6 @@ fn GameCard(
                             <div class="progress-bar indeterminate"></div>
                         </div>
                     </div>
-                    <div class="cover-video-unavailable" class:active=show_hover_unavailable>
-                        "No preview available"
-                    </div>
                 </div>
                 {has_game_file.then(|| view! {
                     <span class="play-ready-badge" title="Ready to play" aria-label="Ready to play">
