@@ -1293,6 +1293,37 @@ fn canonicalize_legacy_platform_name(name: &str) -> &str {
     }
 }
 
+#[derive(Clone, Copy)]
+struct MinervaPlatformFallback {
+    minerva_platform: &'static str,
+    collection: Option<&'static str>,
+}
+
+const ATARI_800_MINERVA_FALLBACKS: &[MinervaPlatformFallback] = &[MinervaPlatformFallback {
+    minerva_platform: "Atari",
+    collection: Some("TOSEC"),
+}];
+
+fn minerva_platform_fallbacks(platform_name: &str) -> &'static [MinervaPlatformFallback] {
+    match canonicalize_legacy_platform_name(platform_name) {
+        "Atari 800" => ATARI_800_MINERVA_FALLBACKS,
+        _ => &[],
+    }
+}
+
+async fn resolve_canonical_platform_name(
+    games_db: &sqlx::SqlitePool,
+    platform_id: i64,
+) -> Result<Option<String>, String> {
+    let row = sqlx::query_scalar::<_, String>("SELECT name FROM platforms WHERE id = ?")
+        .bind(platform_id)
+        .fetch_optional(games_db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(row.map(|name| canonicalize_legacy_platform_name(&name).to_string()))
+}
+
 async fn resolve_equivalent_platform_ids(
     games_db: &sqlx::SqlitePool,
     platform_id: i64,
@@ -1456,19 +1487,45 @@ pub async fn get_minerva_rom_for_game(
     };
     let platform_id = resolved_platform_id;
     let equivalent_platform_ids = resolve_equivalent_platform_ids(games_db, platform_id).await?;
+    let canonical_platform_name = resolve_canonical_platform_name(games_db, platform_id)
+        .await?
+        .unwrap_or_default();
+    let fallback_specs = minerva_platform_fallbacks(&canonical_platform_name);
     let placeholders = vec!["?"; equivalent_platform_ids.len()].join(", ");
+    let fallback_clause = if fallback_specs.is_empty() {
+        String::new()
+    } else {
+        let mut clauses = Vec::with_capacity(fallback_specs.len());
+        for spec in fallback_specs {
+            if spec.collection.is_some() {
+                clauses.push("(tp.minerva_platform = ? AND COALESCE(t.collection, '') = ?)");
+            } else {
+                clauses.push("(tp.minerva_platform = ?)");
+            }
+        }
+        format!(" OR {}", clauses.join(" OR "))
+    };
 
     // Find a torrent for this platform
     let sql = format!(
         "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
-         WHERE tp.lunchbox_platform_id IN ({})
-         ORDER BY tp.rom_count DESC
+         WHERE tp.lunchbox_platform_id IN ({}){}
+         ORDER BY CASE WHEN tp.lunchbox_platform_id IN ({}) THEN 0 ELSE 1 END, tp.rom_count DESC
          LIMIT 1",
-        placeholders
+        placeholders, fallback_clause, placeholders
     );
     let mut query = sqlx::query_as::<_, (i64, String, String, String, i64, i64)>(&sql);
+    for pid in &equivalent_platform_ids {
+        query = query.bind(pid);
+    }
+    for spec in fallback_specs {
+        query = query.bind(spec.minerva_platform);
+        if let Some(collection) = spec.collection {
+            query = query.bind(collection);
+        }
+    }
     for pid in &equivalent_platform_ids {
         query = query.bind(pid);
     }
@@ -1513,17 +1570,43 @@ pub async fn search_minerva(
         .as_ref()
         .ok_or_else(|| "Games database not available".to_string())?;
     let equivalent_platform_ids = resolve_equivalent_platform_ids(games_db, pid).await?;
+    let canonical_platform_name = resolve_canonical_platform_name(games_db, pid)
+        .await?
+        .unwrap_or_default();
+    let fallback_specs = minerva_platform_fallbacks(&canonical_platform_name);
     let placeholders = vec!["?"; equivalent_platform_ids.len()].join(", ");
+    let fallback_clause = if fallback_specs.is_empty() {
+        String::new()
+    } else {
+        let mut clauses = Vec::with_capacity(fallback_specs.len());
+        for spec in fallback_specs {
+            if spec.collection.is_some() {
+                clauses.push("(tp.minerva_platform = ? AND COALESCE(t.collection, '') = ?)");
+            } else {
+                clauses.push("(tp.minerva_platform = ?)");
+            }
+        }
+        format!(" OR {}", clauses.join(" OR "))
+    };
 
     let sql = format!(
         "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
-         WHERE tp.lunchbox_platform_id IN ({})
-         ORDER BY tp.rom_count DESC",
-        placeholders
+         WHERE tp.lunchbox_platform_id IN ({}){}
+         ORDER BY CASE WHEN tp.lunchbox_platform_id IN ({}) THEN 0 ELSE 1 END, tp.rom_count DESC",
+        placeholders, fallback_clause, placeholders
     );
     let mut query = sqlx::query_as::<_, (i64, String, String, String, i64, i64)>(&sql);
+    for platform_id in &equivalent_platform_ids {
+        query = query.bind(platform_id);
+    }
+    for spec in fallback_specs {
+        query = query.bind(spec.minerva_platform);
+        if let Some(collection) = spec.collection {
+            query = query.bind(collection);
+        }
+    }
     for platform_id in &equivalent_platform_ids {
         query = query.bind(platform_id);
     }
@@ -2250,14 +2333,38 @@ fn select_torrent_file_matches(
         .collect()
 }
 
+fn is_platform_specific_torrent_candidate(platform: &str, filename: &str) -> bool {
+    let normalized_platform = canonicalize_legacy_platform_name(platform);
+    let lowercase_filename = filename.to_lowercase();
+
+    match normalized_platform {
+        "Atari 800" => {
+            lowercase_filename.contains("/atari - 8-bit family/")
+                || lowercase_filename.contains("/atari/8bit/")
+        }
+        _ => true,
+    }
+}
+
 /// Fetch a torrent file and list its contents with fuzzy matching against a game title
 pub async fn list_torrent_files(
     state: &AppState,
     input: ListTorrentFilesInput,
 ) -> Result<Vec<TorrentFileMatch>, String> {
-    let files = crate::torrent::get_torrent_file_listing(&input.torrent_url)
+    let mut files = crate::torrent::get_torrent_file_listing(&input.torrent_url)
         .await
         .map_err(|e| format!("Failed to load torrent metadata: {e}"))?;
+
+    if let Some(ref platform) = input.platform {
+        let filtered_files: Vec<_> = files
+            .iter()
+            .filter(|file| is_platform_specific_torrent_candidate(platform, &file.filename))
+            .cloned()
+            .collect();
+        if !filtered_files.is_empty() {
+            files = filtered_files;
+        }
+    }
 
     let mut matches =
         select_torrent_file_matches(files, &input.game_title, &state.settings.region_priority);
@@ -2610,7 +2717,10 @@ pub async fn confirm_rom_import(
 
 #[cfg(test)]
 mod tests {
-    use super::{locate_downloaded_file, select_torrent_file_matches, sort_emulator_statuses};
+    use super::{
+        is_platform_specific_torrent_candidate, locate_downloaded_file, minerva_platform_fallbacks,
+        select_torrent_file_matches, sort_emulator_statuses,
+    };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
     use crate::torrent::TorrentFileInfo;
@@ -2807,5 +2917,68 @@ mod tests {
         assert_eq!(emulators[1].display_name, "RetroArch: mesen");
         assert!(!emulators[2].is_installed);
         assert!(!emulators[3].is_installed);
+    }
+
+    #[test]
+    fn atari_800_platform_uses_tosec_fallback_torrent() {
+        let fallback_specs = minerva_platform_fallbacks("Atari 800");
+        assert_eq!(fallback_specs.len(), 1);
+        assert_eq!(fallback_specs[0].minerva_platform, "Atari");
+        assert_eq!(fallback_specs[0].collection, Some("TOSEC"));
+    }
+
+    #[test]
+    fn atari_800_platform_filter_keeps_only_8bit_subtree() {
+        assert!(is_platform_specific_torrent_candidate(
+            "Atari 800",
+            "TOSEC/Atari/8bit/Games/[ATR]/Kennedy Approach (1985)(MicroProse)(US).zip"
+        ));
+        assert!(is_platform_specific_torrent_candidate(
+            "Atari 800",
+            "No-Intro/Atari - 8-bit Family/Coco Notes (USA).zip"
+        ));
+        assert!(!is_platform_specific_torrent_candidate(
+            "Atari 800",
+            "TOSEC/Atari/2600 & VCS/Games/Frogger.zip"
+        ));
+        assert!(!is_platform_specific_torrent_candidate(
+            "Atari 800",
+            "TOSEC/Atari/ST/Games/Kennedy Approach (1988)(MicroProse).zip"
+        ));
+    }
+
+    #[test]
+    fn atari_800_matching_finds_game_inside_tosec_atari_torrent() {
+        let files: Vec<TorrentFileInfo> = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "TOSEC/Atari/2600 & VCS/Games/Kennedy Approach (1985)(MicroProse).zip"
+                    .to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "TOSEC/Atari/ST/Games/Kennedy Approach (1988)(MicroProse).zip"
+                    .to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename:
+                    "TOSEC/Atari/8bit/Games/[ATR]/Kennedy Approach (1985)(MicroProse)(US)[cr].zip"
+                        .to_string(),
+                size: 1,
+            },
+        ]
+        .into_iter()
+        .filter(|file| is_platform_specific_torrent_candidate("Atari 800", &file.filename))
+        .collect();
+
+        let matches = select_torrent_file_matches(files, "Kennedy Approach...", &[]);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].filename,
+            "TOSEC/Atari/8bit/Games/[ATR]/Kennedy Approach (1985)(MicroProse)(US)[cr].zip"
+        );
     }
 }
