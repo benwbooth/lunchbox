@@ -658,7 +658,8 @@ h1, h2, h3, h4, h5, h6 {
     gap: 8px;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-4px);
+    transform: translateY(-4px) scale(var(--tooltip-scale, 1));
+    transform-origin: top left;
     transition: opacity 0.16s ease, transform 0.16s ease;
     z-index: 3700;
 }
@@ -666,7 +667,7 @@ h1, h2, h3, h4, h5, h6 {
 .game-hover-tooltip.active {
     opacity: 1;
     pointer-events: auto;
-    transform: translateY(0);
+    transform: translateY(0) scale(var(--tooltip-scale, 1));
 }
 
 .game-hover-tooltip-art {

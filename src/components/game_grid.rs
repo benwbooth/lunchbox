@@ -1491,6 +1491,7 @@ fn GameCard(
             const HOVER_SCALE: f64 = 1.95;
             const HOVER_LIFT_PX: f64 = 10.0;
             const EDGE_MARGIN_PX: f64 = 8.0;
+            const TOOLTIP_SCALE: f64 = HOVER_SCALE;
 
             set_is_hovered.set(true);
             set_hover_preview_armed.set(true);
@@ -1564,14 +1565,15 @@ fn GameCard(
                 ),
             );
             let tooltip_width = 198.0;
+            let tooltip_visual_width = tooltip_width * TOOLTIP_SCALE;
             let tooltip_margin = 24.0;
             let tooltip_left = (rect.left() + (rect.width() / 2.0) + dodge_x
-                - (tooltip_width / 2.0))
-                .clamp(tooltip_margin, vw - tooltip_width - tooltip_margin);
+                - (tooltip_visual_width / 2.0))
+                .clamp(tooltip_margin, vw - tooltip_visual_width - tooltip_margin);
             let tooltip_top = projected_bottom + dodge_y - 2.0;
             set_tooltip_style.set(format!(
-                "top: {:.2}px; left: {:.2}px;",
-                tooltip_top, tooltip_left
+                "top: {:.2}px; left: {:.2}px; --tooltip-scale: {:.3};",
+                tooltip_top, tooltip_left, TOOLTIP_SCALE
             ));
             if let Ok(Some(wrapper)) = card.closest(".virtual-item") {
                 let _ = wrapper.set_attribute("data-hovered-card", "true");
