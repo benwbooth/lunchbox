@@ -1374,10 +1374,25 @@ const ATARI_800_MINERVA_FALLBACKS: &[MinervaPlatformFallback] = &[MinervaPlatfor
     minerva_platform: "Atari",
     collection: Some("TOSEC"),
 }];
+const ARCADE_MINERVA_FALLBACKS: &[MinervaPlatformFallback] = &[
+    MinervaPlatformFallback {
+        minerva_platform: "ROMs (merged)",
+        collection: Some("MAME"),
+    },
+    MinervaPlatformFallback {
+        minerva_platform: "ROMs (split)",
+        collection: Some("MAME"),
+    },
+    MinervaPlatformFallback {
+        minerva_platform: "ROMs (non-merged)",
+        collection: Some("MAME"),
+    },
+];
 
 fn minerva_platform_fallbacks(platform_name: &str) -> &'static [MinervaPlatformFallback] {
     match canonicalize_legacy_platform_name(platform_name) {
         "Atari 800" => ATARI_800_MINERVA_FALLBACKS,
+        "Arcade" => ARCADE_MINERVA_FALLBACKS,
         _ => &[],
     }
 }
@@ -2440,10 +2455,11 @@ pub async fn list_torrent_files(
     }
 
     let lookup_title = if let Some(ref platform) = input.platform {
-        crate::images::emumovies::resolve_arcade_download_lookup_name(
+        crate::images::emumovies::resolve_arcade_download_lookup_name_for_torrent(
             platform,
             &input.game_title,
             input.launchbox_db_id,
+            &input.torrent_url,
         )
         .into_owned()
     } else {

@@ -237,6 +237,44 @@ pub fn resolve_arcade_download_lookup_name<'a>(
     Cow::Borrowed(game_name)
 }
 
+pub fn resolve_arcade_download_lookup_name_for_torrent<'a>(
+    platform: &str,
+    game_name: &'a str,
+    launchbox_db_id: Option<i64>,
+    torrent_url: &str,
+) -> Cow<'a, str> {
+    let Some(launchbox_db_id) = launchbox_db_id else {
+        return Cow::Borrowed(game_name);
+    };
+
+    let Some(system_folder) = get_emumovies_system_folder(platform) else {
+        return Cow::Borrowed(game_name);
+    };
+
+    if system_folder != "MAME" {
+        return Cow::Borrowed(game_name);
+    }
+
+    if let Ok(index) = ARCADE_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _, _)| *id) {
+        let use_parent_lookup = torrent_url.contains("MAME - ROMs (merged).torrent");
+        let lookup = if use_parent_lookup {
+            ARCADE_LOOKUP[index].2
+        } else {
+            ARCADE_LOOKUP[index].1
+        };
+        tracing::info!(
+            "Resolved arcade download lookup '{}' -> '{}' for LaunchBox DB id {} using torrent {}",
+            game_name,
+            lookup,
+            launchbox_db_id,
+            torrent_url
+        );
+        return Cow::Borrowed(lookup);
+    }
+
+    Cow::Borrowed(game_name)
+}
+
 pub fn resolve_video_lookup_name<'a>(
     platform: &str,
     game_name: &'a str,
@@ -1816,6 +1854,28 @@ mod tests {
                 Some(8729)
             ),
             "ddtodu"
+        );
+    }
+
+    #[test]
+    fn test_resolve_arcade_download_lookup_for_merged_mame_uses_parent_set() {
+        assert_eq!(
+            resolve_arcade_download_lookup_name_for_torrent(
+                "Arcade",
+                "Dungeons & Dragons: Shadow Over Mystara",
+                Some(8727),
+                "https://minerva-archive.org/assets/Minerva_Myrient_v0.3/Minerva_Myrient - MAME - ROMs (merged).torrent"
+            ),
+            "ddsom"
+        );
+        assert_eq!(
+            resolve_arcade_download_lookup_name_for_torrent(
+                "Arcade",
+                "Dungeons & Dragons: Shadow Over Mystara",
+                Some(8727),
+                "https://minerva-archive.org/assets/Minerva_Myrient_v0.3/Minerva_Myrient - MAME - ROMs (non-merged).torrent"
+            ),
+            "ddsomu"
         );
     }
 
