@@ -226,15 +226,13 @@ pub async fn get_torrent_file_listing(torrent_url: &str) -> Result<Vec<TorrentFi
 // File linking utility
 // ============================================================================
 
-/// Link/copy a ROM file from source to the rom directory, organized by platform.
-/// Returns the path to the linked/copied file.
-pub fn link_rom_file(source: &Path, rom_dir: &Path, platform: &str, mode: &str) -> Result<PathBuf> {
-    let target_dir = rom_dir.join(platform);
-    std::fs::create_dir_all(&target_dir)?;
-    let target = target_dir.join(source.file_name().unwrap_or_default());
-
+pub fn link_file_to_target(source: &Path, target: &Path, mode: &str) -> Result<PathBuf> {
     if target.exists() {
-        return Ok(target);
+        return Ok(target.to_path_buf());
+    }
+
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
     }
 
     match mode {
@@ -269,7 +267,17 @@ pub fn link_rom_file(source: &Path, rom_dir: &Path, platform: &str, mode: &str) 
         }
     }
 
-    Ok(target)
+    Ok(target.to_path_buf())
+}
+
+/// Link/copy a ROM file from source to the rom directory, organized by platform.
+/// Returns the path to the linked/copied file.
+pub fn link_rom_file(source: &Path, rom_dir: &Path, platform: &str, mode: &str) -> Result<PathBuf> {
+    let target_dir = rom_dir.join(platform);
+    std::fs::create_dir_all(&target_dir)?;
+    let target = target_dir.join(source.file_name().unwrap_or_default());
+
+    link_file_to_target(source, &target, mode)
 }
 
 /// Attempt a reflink (copy-on-write) copy. Falls back to regular copy.

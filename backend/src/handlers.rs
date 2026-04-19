@@ -14,7 +14,7 @@ use crate::db::schema::EmulatorInfo;
 use crate::emulator::{self, EmulatorUpdate, EmulatorWithStatus, LaunchResult};
 use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // ============================================================================
 // Shared types (used by both rspc and HTTP)
@@ -1221,12 +1221,13 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
         .await
         .map_err(|e| e.to_string())?;
 
-    let game_file_row: Option<(String, String)> =
-        sqlx::query_as("SELECT file_path, import_source FROM game_files WHERE launchbox_db_id = ?")
-            .bind(launchbox_db_id)
-            .fetch_optional(db_pool)
-            .await
-            .map_err(|e| e.to_string())?;
+    let game_file_row: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT platform, file_path, import_source FROM game_files WHERE launchbox_db_id = ?",
+    )
+    .bind(launchbox_db_id)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     let pc_install_row: Option<(String,)> =
         sqlx::query_as("SELECT install_root FROM pc_game_installs WHERE launchbox_db_id = ?")
@@ -1237,9 +1238,10 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
 
     let mut removed_anything = false;
 
-    if let Some((file_path, import_source)) = game_file_row {
+    if let Some((platform, file_path, import_source)) = game_file_row {
         if import_source == "minerva" {
             remove_path_if_exists(std::path::Path::new(&file_path)).await?;
+            remove_arcade_mame_laserdisc_companion_assets(&platform, &file_path).await?;
             sqlx::query("DELETE FROM game_files WHERE launchbox_db_id = ?")
                 .bind(launchbox_db_id)
                 .execute(db_pool)
@@ -1269,6 +1271,31 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
     } else {
         Err("No Lunchbox-managed installation was found for this game".to_string())
     }
+}
+
+async fn remove_arcade_mame_laserdisc_companion_assets(
+    platform: &str,
+    file_path: &str,
+) -> Result<(), String> {
+    if canonicalize_legacy_platform_name(platform) != "Arcade" {
+        return Ok(());
+    }
+
+    let path = Path::new(file_path);
+    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return Ok(());
+    };
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+
+    let companion_dir = parent.join(stem);
+    let companion_chd = companion_dir.join(format!("{stem}.chd"));
+    if companion_chd.exists() {
+        remove_path_if_exists(&companion_dir).await?;
+    }
+
+    Ok(())
 }
 
 async fn remove_path_if_exists(path: &std::path::Path) -> Result<(), String> {
@@ -1487,6 +1514,361 @@ pub enum MinervaDownloadMode {
     #[default]
     GameOnly,
     FullTorrent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArcadeMameLaserdiscAssetKind {
+    RomZip,
+    Chd,
+}
+
+#[derive(Debug, Clone)]
+struct ArcadeMameLaserdiscAsset {
+    torrent_url: String,
+    file_index: usize,
+    filename: String,
+    size: u64,
+}
+
+#[derive(Debug, Clone)]
+struct ArcadeMameLaserdiscPlan {
+    romset_name: String,
+    primary_asset: ArcadeMameLaserdiscAsset,
+    chd_asset: ArcadeMameLaserdiscAsset,
+}
+
+#[derive(Debug)]
+enum MinervaBatchDownloadError {
+    Failed(String),
+    Cancelled(String),
+}
+
+fn normalize_torrent_listing_path(path: &str) -> String {
+    path.trim_start_matches("./")
+        .replace('\\', "/")
+        .to_ascii_lowercase()
+}
+
+fn arcade_mame_laserdisc_rom_suffix(romset_name: &str) -> String {
+    format!("laserdisc collection/mame/roms/{romset_name}.zip")
+}
+
+fn arcade_mame_laserdisc_chd_suffix(romset_name: &str) -> String {
+    format!("laserdisc collection/mame/chd/{romset_name}/{romset_name}.chd")
+}
+
+fn parse_arcade_mame_laserdisc_asset(path: &str) -> Option<(String, ArcadeMameLaserdiscAssetKind)> {
+    let normalized = normalize_torrent_listing_path(path);
+
+    if let Some(file_name) = normalized
+        .strip_prefix("laserdisc collection/mame/roms/")
+        .filter(|remainder| !remainder.contains('/'))
+    {
+        let romset_name = file_name.strip_suffix(".zip")?;
+        if !romset_name.is_empty() {
+            return Some((
+                romset_name.to_string(),
+                ArcadeMameLaserdiscAssetKind::RomZip,
+            ));
+        }
+    }
+
+    if let Some(remainder) = normalized.strip_prefix("laserdisc collection/mame/chd/") {
+        let mut parts = remainder.split('/');
+        let romset_name = parts.next()?;
+        let file_name = parts.next()?;
+        if parts.next().is_none() && file_name == format!("{romset_name}.chd") {
+            return Some((romset_name.to_string(), ArcadeMameLaserdiscAssetKind::Chd));
+        }
+    }
+
+    None
+}
+
+fn find_torrent_file_by_suffix(
+    files: &[crate::torrent::TorrentFileInfo],
+    expected_suffix: &str,
+) -> Option<crate::torrent::TorrentFileInfo> {
+    let expected = normalize_torrent_listing_path(expected_suffix);
+    files
+        .iter()
+        .find(|file| normalize_torrent_listing_path(&file.filename).ends_with(&expected))
+        .cloned()
+}
+
+async fn resolve_game_platform_id(
+    games_db: &sqlx::SqlitePool,
+    launchbox_db_id: i64,
+) -> Result<Option<i64>, String> {
+    sqlx::query_scalar::<_, i64>("SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1")
+        .bind(launchbox_db_id)
+        .fetch_optional(games_db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn find_arcade_mame_laserdisc_asset(
+    state: &AppState,
+    launchbox_db_id: i64,
+    selected_torrent_url: &str,
+    current_files: &[crate::torrent::TorrentFileInfo],
+    expected_suffix: &str,
+    _expected_kind: ArcadeMameLaserdiscAssetKind,
+) -> Result<Option<ArcadeMameLaserdiscAsset>, String> {
+    if let Some(file) = find_torrent_file_by_suffix(current_files, expected_suffix) {
+        return Ok(Some(ArcadeMameLaserdiscAsset {
+            torrent_url: selected_torrent_url.to_string(),
+            file_index: file.index,
+            filename: file.filename,
+            size: file.size,
+        }));
+    }
+
+    let games_db = state
+        .games_db_pool
+        .as_ref()
+        .ok_or_else(|| "Games database not available".to_string())?;
+    let Some(platform_id) = resolve_game_platform_id(games_db, launchbox_db_id).await? else {
+        return Ok(None);
+    };
+
+    let candidates = search_minerva(state, Some(launchbox_db_id), None, Some(platform_id)).await?;
+    for rom in candidates {
+        if rom.torrent_url == selected_torrent_url {
+            continue;
+        }
+
+        let files = crate::torrent::get_torrent_file_listing(&rom.torrent_url)
+            .await
+            .map_err(|e| format!("Failed to inspect Minerva torrent contents: {e}"))?;
+        if let Some(file) = find_torrent_file_by_suffix(&files, expected_suffix) {
+            return Ok(Some(ArcadeMameLaserdiscAsset {
+                torrent_url: rom.torrent_url,
+                file_index: file.index,
+                filename: file.filename,
+                size: file.size,
+            }));
+        }
+    }
+
+    Ok(None)
+}
+
+async fn build_arcade_mame_laserdisc_plan(
+    state: &AppState,
+    launchbox_db_id: i64,
+    selected_torrent_url: &str,
+    current_files: &[crate::torrent::TorrentFileInfo],
+    selected_file: &crate::torrent::TorrentFileInfo,
+) -> Result<Option<ArcadeMameLaserdiscPlan>, String> {
+    let Some((romset_name, selected_kind)) =
+        parse_arcade_mame_laserdisc_asset(&selected_file.filename)
+    else {
+        return Ok(None);
+    };
+
+    let rom_suffix = arcade_mame_laserdisc_rom_suffix(&romset_name);
+    let chd_suffix = arcade_mame_laserdisc_chd_suffix(&romset_name);
+
+    let primary_asset = match selected_kind {
+        ArcadeMameLaserdiscAssetKind::RomZip => ArcadeMameLaserdiscAsset {
+            torrent_url: selected_torrent_url.to_string(),
+            file_index: selected_file.index,
+            filename: selected_file.filename.clone(),
+            size: selected_file.size,
+        },
+        ArcadeMameLaserdiscAssetKind::Chd => find_arcade_mame_laserdisc_asset(
+            state,
+            launchbox_db_id,
+            selected_torrent_url,
+            current_files,
+            &rom_suffix,
+            ArcadeMameLaserdiscAssetKind::RomZip,
+        )
+        .await?
+        .ok_or_else(|| {
+            format!(
+                "This MAME laserdisc title needs both {}.zip and {}.chd, but Lunchbox could not find the ROM zip in Minerva.",
+                romset_name, romset_name
+            )
+        })?,
+    };
+
+    let chd_asset = match selected_kind {
+        ArcadeMameLaserdiscAssetKind::Chd => ArcadeMameLaserdiscAsset {
+            torrent_url: selected_torrent_url.to_string(),
+            file_index: selected_file.index,
+            filename: selected_file.filename.clone(),
+            size: selected_file.size,
+        },
+        ArcadeMameLaserdiscAssetKind::RomZip => find_arcade_mame_laserdisc_asset(
+            state,
+            launchbox_db_id,
+            selected_torrent_url,
+            current_files,
+            &chd_suffix,
+            ArcadeMameLaserdiscAssetKind::Chd,
+        )
+        .await?
+        .ok_or_else(|| {
+            format!(
+                "This MAME laserdisc title needs both {}.zip and {}.chd, but Lunchbox could not find the companion CHD in Minerva.",
+                romset_name, romset_name
+            )
+        })?,
+    };
+
+    Ok(Some(ArcadeMameLaserdiscPlan {
+        romset_name,
+        primary_asset,
+        chd_asset,
+    }))
+}
+
+async fn download_minerva_batch(
+    settings: &AppSettings,
+    job_id: &str,
+    download_dir: &Path,
+    torrent_url: &str,
+    file_index: usize,
+    target_filename: &str,
+    target_size: u64,
+    progress_offset: u64,
+    progress_total: u64,
+    status_message: &str,
+) -> Result<PathBuf, MinervaBatchDownloadError> {
+    let client = crate::torrent::create_client(settings).map_err(|e| {
+        MinervaBatchDownloadError::Failed(format!("qBittorrent configuration error: {e}"))
+    })?;
+    let client_job_id = client
+        .add_torrent(torrent_url, download_dir, Some(vec![file_index]))
+        .await
+        .map_err(|e| MinervaBatchDownloadError::Failed(format!("Failed to start download: {e}")))?;
+    crate::torrent::set_client_job_id(job_id, &client_job_id);
+
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(7200);
+
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        if start.elapsed() > timeout {
+            return Err(MinervaBatchDownloadError::Failed(
+                "Download timed out after 2 hours".to_string(),
+            ));
+        }
+
+        let progress = match client.get_progress(&client_job_id).await {
+            Ok(Some(progress)) => progress,
+            Ok(None) => continue,
+            Err(e) => {
+                return Err(MinervaBatchDownloadError::Failed(format!(
+                    "Failed to read qBittorrent progress: {e}"
+                )))
+            }
+        };
+
+        let downloaded = progress_offset.saturating_add(progress.downloaded_bytes.min(target_size));
+        let progress_percent = if progress_total == 0 {
+            progress.progress_percent
+        } else {
+            (downloaded as f64 / progress_total as f64) * 100.0
+        };
+
+        crate::torrent::update_progress(
+            job_id,
+            match progress.status {
+                crate::torrent::DownloadStatus::Completed => {
+                    crate::torrent::DownloadStatus::Downloading
+                }
+                other => other,
+            },
+            progress_percent.min(99.9),
+            progress.download_speed,
+            downloaded,
+            progress_total,
+            status_message,
+        );
+
+        match progress.status {
+            crate::torrent::DownloadStatus::Completed => break,
+            crate::torrent::DownloadStatus::Failed => {
+                return Err(MinervaBatchDownloadError::Failed(progress.status_message))
+            }
+            crate::torrent::DownloadStatus::Cancelled => {
+                return Err(MinervaBatchDownloadError::Cancelled(
+                    progress.status_message,
+                ))
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(path) = client
+        .get_downloaded_file_path(&client_job_id, file_index, download_dir)
+        .await
+        .map_err(|e| {
+            MinervaBatchDownloadError::Failed(format!(
+                "Failed to locate downloaded file on disk: {e}"
+            ))
+        })?
+    {
+        return Ok(path);
+    }
+
+    locate_downloaded_file(download_dir, target_filename).ok_or_else(|| {
+        MinervaBatchDownloadError::Failed(
+            "Download finished, but the selected ROM file could not be found on disk.".to_string(),
+        )
+    })
+}
+
+async fn persist_graboid_job_status(
+    db_path: Option<&PathBuf>,
+    job_id: &str,
+    status: &str,
+    message: &str,
+) {
+    if let Some(db_path) = db_path {
+        if let Ok(pool) = crate::db::init_pool(db_path).await {
+            let _ = sqlx::query(
+                "UPDATE graboid_jobs SET status = ?, status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(status)
+            .bind(message)
+            .bind(job_id)
+            .execute(&pool)
+            .await;
+        }
+    }
+}
+
+fn staging_link_mode(mode: &str) -> &str {
+    match mode {
+        "leave_in_place" => "symlink",
+        other => other,
+    }
+}
+
+fn stage_arcade_mame_laserdisc_layout(
+    download_dir: &Path,
+    plan: &ArcadeMameLaserdiscPlan,
+    primary_source: &Path,
+    chd_source: &Path,
+    file_link_mode: &str,
+) -> Result<PathBuf, String> {
+    let primary_target = download_dir.join(format!("{}.zip", plan.romset_name));
+    let chd_target = download_dir
+        .join(&plan.romset_name)
+        .join(format!("{}.chd", plan.romset_name));
+    let link_mode = staging_link_mode(file_link_mode);
+
+    crate::torrent::link_file_to_target(primary_source, &primary_target, link_mode)
+        .map_err(|e| format!("Failed to stage {}: {}", primary_target.display(), e))?;
+    crate::torrent::link_file_to_target(chd_source, &chd_target, link_mode)
+        .map_err(|e| format!("Failed to stage {}: {}", chd_target.display(), e))?;
+
+    Ok(primary_target)
 }
 
 fn sanitize_download_directory_component(value: &str) -> String {
@@ -1754,6 +2136,47 @@ pub async fn start_minerva_download(
     let torrent_url = input.torrent_url.clone();
     let file_index = input.file_index;
     let download_mode = input.download_mode;
+    let files = crate::torrent::get_torrent_file_listing(&torrent_url)
+        .await
+        .map_err(|e| format!("Failed to parse torrent: {e}"))?;
+    let selection_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
+        file_index.and_then(|idx| crate::exo::plan_related_downloads(&input.platform, idx, &files))
+    } else {
+        None
+    };
+    let representative_index = selection_plan
+        .as_ref()
+        .map(|plan| plan.representative_index)
+        .or(file_index);
+    let target_file = representative_index
+        .and_then(|idx| files.iter().find(|f| f.index == idx))
+        .cloned();
+    let target_filename = target_file
+        .as_ref()
+        .map(|f| f.filename.clone())
+        .unwrap_or_default();
+    let target_size = target_file.as_ref().map(|f| f.size).unwrap_or(0);
+
+    if matches!(download_mode, MinervaDownloadMode::GameOnly) && target_file.is_none() {
+        return Err("No matching file was selected for this Minerva torrent.".to_string());
+    }
+
+    let arcade_laserdisc_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
+        if let Some(target_file) = target_file.as_ref() {
+            build_arcade_mame_laserdisc_plan(
+                state,
+                input.launchbox_db_id,
+                &torrent_url,
+                &files,
+                target_file,
+            )
+            .await?
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     // Create import job
     let job_id = uuid::Uuid::new_v4().to_string();
@@ -1763,7 +2186,7 @@ pub async fn start_minerva_download(
 
     sqlx::query(
         "INSERT INTO graboid_jobs (id, launchbox_db_id, game_title, platform, status, progress_percent, status_message)
-         VALUES (?, ?, ?, ?, 'in_progress', 0, 'Starting torrent download...')"
+         VALUES (?, ?, ?, ?, 'in_progress', 0, 'Preparing download...')"
     )
     .bind(&job_id)
     .bind(input.launchbox_db_id)
@@ -1801,9 +2224,15 @@ pub async fn start_minerva_download(
     let file_link_mode_bg = file_link_mode.clone();
     let rom_dir_bg = rom_dir.clone();
     let download_dir_bg = download_dir.clone();
+    let files_bg = files.clone();
+    let selection_plan_bg = selection_plan.clone();
+    let target_file_bg = target_file.clone();
+    let target_filename_bg = target_filename.clone();
+    let target_size_bg = target_size;
+    let arcade_laserdisc_plan_bg = arcade_laserdisc_plan.clone();
 
     tokio::spawn(async move {
-        // Step 1: Fetch the torrent file
+        // Step 1: Initialize the prepared download plan
         crate::torrent::update_progress(
             &job_id_bg,
             crate::torrent::DownloadStatus::FetchingTorrent,
@@ -1811,40 +2240,15 @@ pub async fn start_minerva_download(
             0,
             0,
             0,
-            "Fetching torrent file...",
+            "Preparing download...",
         );
 
-        // Step 2: Parse torrent to get the target filename
-        let files = match crate::torrent::get_torrent_file_listing(&torrent_url).await {
-            Ok(f) => f,
-            Err(e) => {
-                crate::torrent::update_progress(
-                    &job_id_bg,
-                    crate::torrent::DownloadStatus::Failed,
-                    0.0,
-                    0,
-                    0,
-                    0,
-                    &format!("Failed to parse torrent: {e}"),
-                );
-                return;
-            }
-        };
-
-        let selection_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
-            file_index.and_then(|idx| crate::exo::plan_related_downloads(&platform, idx, &files))
-        } else {
-            None
-        };
-
-        let representative_index = selection_plan
-            .as_ref()
-            .map(|plan| plan.representative_index)
-            .or(file_index);
-        let target_file =
-            representative_index.and_then(|idx| files.iter().find(|f| f.index == idx));
-        let target_filename = target_file.map(|f| f.filename.clone()).unwrap_or_default();
-        let target_size = target_file.map(|f| f.size).unwrap_or(0);
+        let files = files_bg;
+        let selection_plan = selection_plan_bg;
+        let target_file = target_file_bg;
+        let target_filename = target_filename_bg;
+        let target_size = target_size_bg;
+        let arcade_laserdisc_plan = arcade_laserdisc_plan_bg;
 
         if matches!(download_mode, MinervaDownloadMode::GameOnly) && target_file.is_none() {
             crate::torrent::update_progress(
@@ -1867,14 +2271,21 @@ pub async fn start_minerva_download(
             return;
         }
 
-        let status_message = match download_mode {
-            MinervaDownloadMode::GameOnly => format!("Downloading: {target_filename}"),
-            MinervaDownloadMode::FullTorrent => {
+        let status_message = match (&download_mode, arcade_laserdisc_plan.as_ref()) {
+            (MinervaDownloadMode::GameOnly, Some(plan)) => format!(
+                "Downloading required MAME laserdisc files for {}",
+                plan.romset_name
+            ),
+            (MinervaDownloadMode::GameOnly, None) => format!("Downloading: {target_filename}"),
+            (MinervaDownloadMode::FullTorrent, _) => {
                 format!("Downloading full torrent for {game_title}")
             }
         };
-        let progress_total = match download_mode {
-            MinervaDownloadMode::GameOnly => selection_plan
+        let progress_total = match (&download_mode, arcade_laserdisc_plan.as_ref()) {
+            (MinervaDownloadMode::GameOnly, Some(plan)) => {
+                plan.primary_asset.size.saturating_add(plan.chd_asset.size)
+            }
+            (MinervaDownloadMode::GameOnly, None) => selection_plan
                 .as_ref()
                 .map(|plan| {
                     plan.requested_indices
@@ -1884,7 +2295,7 @@ pub async fn start_minerva_download(
                         .sum()
                 })
                 .unwrap_or(target_size),
-            MinervaDownloadMode::FullTorrent => files.iter().map(|file| file.size).sum(),
+            (MinervaDownloadMode::FullTorrent, _) => files.iter().map(|file| file.size).sum(),
         };
 
         crate::torrent::update_progress(
@@ -1896,6 +2307,145 @@ pub async fn start_minerva_download(
             progress_total,
             &status_message,
         );
+
+        if let Some(plan) = arcade_laserdisc_plan.as_ref() {
+            let primary_status = format!("Downloading {}.zip...", plan.romset_name);
+            let primary_source = match download_minerva_batch(
+                &app_settings,
+                &job_id_bg,
+                &download_dir_bg,
+                &plan.primary_asset.torrent_url,
+                plan.primary_asset.file_index,
+                &plan.primary_asset.filename,
+                plan.primary_asset.size,
+                0,
+                progress_total,
+                &primary_status,
+            )
+            .await
+            {
+                Ok(path) => path,
+                Err(MinervaBatchDownloadError::Failed(message)) => {
+                    crate::torrent::update_progress(
+                        &job_id_bg,
+                        crate::torrent::DownloadStatus::Failed,
+                        0.0,
+                        0,
+                        0,
+                        progress_total,
+                        &message,
+                    );
+                    persist_graboid_job_status(db_path.as_ref(), &job_id_bg, "failed", &message)
+                        .await;
+                    crate::torrent::clear_client_job_id(&job_id_bg);
+                    return;
+                }
+                Err(MinervaBatchDownloadError::Cancelled(message)) => {
+                    persist_graboid_job_status(db_path.as_ref(), &job_id_bg, "cancelled", &message)
+                        .await;
+                    crate::torrent::clear_client_job_id(&job_id_bg);
+                    return;
+                }
+            };
+
+            let chd_status = format!("Downloading {}.chd...", plan.romset_name);
+            let chd_source = match download_minerva_batch(
+                &app_settings,
+                &job_id_bg,
+                &download_dir_bg,
+                &plan.chd_asset.torrent_url,
+                plan.chd_asset.file_index,
+                &plan.chd_asset.filename,
+                plan.chd_asset.size,
+                plan.primary_asset.size,
+                progress_total,
+                &chd_status,
+            )
+            .await
+            {
+                Ok(path) => path,
+                Err(MinervaBatchDownloadError::Failed(message)) => {
+                    crate::torrent::update_progress(
+                        &job_id_bg,
+                        crate::torrent::DownloadStatus::Failed,
+                        0.0,
+                        0,
+                        0,
+                        progress_total,
+                        &message,
+                    );
+                    persist_graboid_job_status(db_path.as_ref(), &job_id_bg, "failed", &message)
+                        .await;
+                    crate::torrent::clear_client_job_id(&job_id_bg);
+                    return;
+                }
+                Err(MinervaBatchDownloadError::Cancelled(message)) => {
+                    persist_graboid_job_status(db_path.as_ref(), &job_id_bg, "cancelled", &message)
+                        .await;
+                    crate::torrent::clear_client_job_id(&job_id_bg);
+                    return;
+                }
+            };
+
+            let staged_primary = match stage_arcade_mame_laserdisc_layout(
+                &download_dir_bg,
+                plan,
+                &primary_source,
+                &chd_source,
+                &file_link_mode_bg,
+            ) {
+                Ok(path) => path,
+                Err(message) => {
+                    crate::torrent::update_progress(
+                        &job_id_bg,
+                        crate::torrent::DownloadStatus::Failed,
+                        100.0,
+                        0,
+                        progress_total,
+                        progress_total,
+                        &message,
+                    );
+                    persist_graboid_job_status(db_path.as_ref(), &job_id_bg, "failed", &message)
+                        .await;
+                    crate::torrent::clear_client_job_id(&job_id_bg);
+                    return;
+                }
+            };
+
+            let completion_message = format!("Download complete ({} ROM + CHD)", plan.romset_name);
+            crate::torrent::update_progress(
+                &job_id_bg,
+                crate::torrent::DownloadStatus::Completed,
+                100.0,
+                0,
+                progress_total,
+                progress_total,
+                &completion_message,
+            );
+
+            if let Some(ref db_path) = db_path {
+                if let Ok(pool) = crate::db::init_pool(db_path).await {
+                    let _ = sqlx::query(
+                        "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')"
+                    )
+                    .bind(launchbox_db_id)
+                    .bind(&game_title)
+                    .bind(&platform)
+                    .bind(staged_primary.display().to_string())
+                    .bind(progress_total as i64)
+                    .execute(&pool)
+                    .await;
+                    let _ = sqlx::query("UPDATE graboid_jobs SET status = 'completed', progress_percent = 100, status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                        .bind(&completion_message)
+                        .bind(&job_id_bg)
+                        .execute(&pool)
+                        .await;
+                }
+            }
+
+            crate::torrent::clear_client_job_id(&job_id_bg);
+            return;
+        }
 
         // Step 3: Add torrent and start download
         let client = match crate::torrent::create_client(&app_settings) {
@@ -2178,7 +2728,7 @@ pub async fn start_minerva_download(
         platform: input.platform,
         status: "in_progress".to_string(),
         progress_percent: 0.0,
-        status_message: Some("Starting torrent download...".to_string()),
+        status_message: Some("Preparing download...".to_string()),
         created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         updated_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     })
@@ -2456,6 +3006,14 @@ fn is_platform_specific_torrent_candidate(platform: &str, filename: &str) -> boo
         "Atari 800" => {
             lowercase_filename.contains("/atari - 8-bit family/")
                 || lowercase_filename.contains("/atari/8bit/")
+        }
+        "Arcade" => {
+            if lowercase_filename.contains("/laserdisc collection/") {
+                lowercase_filename.contains("/laserdisc collection/mame/roms/")
+                    || lowercase_filename.contains("/laserdisc collection/mame/chd/")
+            } else {
+                true
+            }
         }
         _ => true,
     }
@@ -2846,7 +3404,8 @@ pub async fn confirm_rom_import(
 mod tests {
     use super::{
         is_platform_specific_torrent_candidate, locate_downloaded_file, minerva_platform_fallbacks,
-        select_torrent_file_matches, sort_emulator_statuses,
+        parse_arcade_mame_laserdisc_asset, select_torrent_file_matches, sort_emulator_statuses,
+        ArcadeMameLaserdiscAssetKind,
     };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
@@ -3107,6 +3666,44 @@ mod tests {
         assert_eq!(
             matches[0].filename,
             "TOSEC/Atari/8bit/Games/[ATR]/Kennedy Approach (1985)(MicroProse)(US)[cr].zip"
+        );
+    }
+
+    #[test]
+    fn arcade_platform_hides_non_mame_laserdisc_reference_assets() {
+        assert!(is_platform_specific_torrent_candidate(
+            "Arcade",
+            "Laserdisc Collection/MAME/ROMs/dlair.zip"
+        ));
+        assert!(is_platform_specific_torrent_candidate(
+            "Arcade",
+            "Laserdisc Collection/MAME/CHD/dlair/dlair.chd"
+        ));
+        assert!(!is_platform_specific_torrent_candidate(
+            "Arcade",
+            "Laserdisc Collection/Various - Video - Archived/Reference Videos/Dragon's Lair (MAME 7-disc stacked CHD, reference)/dlair.m2v"
+        ));
+        assert!(!is_platform_specific_torrent_candidate(
+            "Arcade",
+            "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.ogg"
+        ));
+    }
+
+    #[test]
+    fn parses_arcade_mame_laserdisc_rom_and_chd_paths() {
+        assert_eq!(
+            parse_arcade_mame_laserdisc_asset("Laserdisc Collection/MAME/ROMs/dlair.zip"),
+            Some(("dlair".to_string(), ArcadeMameLaserdiscAssetKind::RomZip))
+        );
+        assert_eq!(
+            parse_arcade_mame_laserdisc_asset("Laserdisc Collection/MAME/CHD/dlair/dlair.chd"),
+            Some(("dlair".to_string(), ArcadeMameLaserdiscAssetKind::Chd))
+        );
+        assert_eq!(
+            parse_arcade_mame_laserdisc_asset(
+                "Laserdisc Collection/Various - Video - Archived/Reference Videos/Dragon's Lair/dlair.m2v"
+            ),
+            None
         );
     }
 }
