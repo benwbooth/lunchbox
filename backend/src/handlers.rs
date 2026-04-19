@@ -1425,6 +1425,31 @@ pub struct MinervaRom {
     pub total_size: i64,
 }
 
+fn expand_arcade_laserdisc_roms(roms: Vec<MinervaRom>, canonical_platform_name: &str) -> Vec<MinervaRom> {
+    if canonical_platform_name != "Arcade" {
+        return roms;
+    }
+
+    let mut expanded = roms;
+    let has_hypseus_row = expanded.iter().any(|rom| {
+        rom.collection.eq_ignore_ascii_case("Laserdisc Collection")
+            && rom.minerva_platform.eq_ignore_ascii_case("Hypseus Singe")
+    });
+
+    if !has_hypseus_row {
+        if let Some(template) = expanded.iter().find(|rom| {
+            rom.collection.eq_ignore_ascii_case("Laserdisc Collection")
+                && rom.minerva_platform.eq_ignore_ascii_case("MAME")
+        }) {
+            let mut hypseus = template.clone();
+            hypseus.minerva_platform = "Hypseus Singe".to_string();
+            expanded.push(hypseus);
+        }
+    }
+
+    expanded
+}
+
 fn canonicalize_legacy_platform_name(name: &str) -> &str {
     match name.trim() {
         "Arduboy Inc - Arduboy" => "Arduboy",
@@ -2244,7 +2269,7 @@ pub async fn search_minerva(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(rows
+    let roms = rows
         .into_iter()
         .map(
             |(torrent_id, torrent_url, collection, minerva_platform, rom_count, total_size)| {
@@ -2259,7 +2284,9 @@ pub async fn search_minerva(
                 }
             },
         )
-        .collect())
+        .collect();
+
+    Ok(expand_arcade_laserdisc_roms(roms, &canonical_platform_name))
 }
 
 /// Start a minerva ROM download via torrent
@@ -3967,6 +3994,26 @@ mod tests {
             Some("Hypseus Singe"),
             "Laserdisc Collection/Hypseus Singe/dlair/dlair.txt"
         ));
+    }
+
+    #[test]
+    fn arcade_search_synthesizes_hypseus_laserdisc_row_from_mame_row() {
+        let roms = vec![MinervaRom {
+            torrent_id: 1,
+            torrent_url: "https://example.invalid/laserdisc.torrent".to_string(),
+            collection: "Laserdisc Collection".to_string(),
+            minerva_platform: "MAME".to_string(),
+            lunchbox_platform_id: 15,
+            rom_count: 1,
+            total_size: 1,
+        }];
+
+        let expanded = expand_arcade_laserdisc_roms(roms, "Arcade");
+        assert_eq!(expanded.len(), 2);
+        assert!(expanded.iter().any(|rom| rom.collection == "Laserdisc Collection"
+            && rom.minerva_platform == "MAME"));
+        assert!(expanded.iter().any(|rom| rom.collection == "Laserdisc Collection"
+            && rom.minerva_platform == "Hypseus Singe"));
     }
 
     #[test]
