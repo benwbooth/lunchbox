@@ -3420,7 +3420,7 @@ fn append_standalone_rom_and_args_native(
     } else if emulator_name == "Altirra" {
         append_launch_args_native(cmd, args);
         if let Some(rom) = rom_path {
-            cmd.arg("/run");
+            cmd.arg(altirra_media_switch(rom));
             cmd.arg(rom);
         }
     } else {
@@ -3458,7 +3458,7 @@ fn append_standalone_rom_and_args_for_flatpak(
     } else if emulator_name == "Altirra" {
         append_launch_args_for_flatpak(cmd, args);
         if let Some(rom) = rom_path {
-            cmd.arg("/run");
+            cmd.arg(altirra_media_switch(rom));
             cmd.arg(map_path_for_flatpak(rom));
         }
     } else {
@@ -3466,6 +3466,20 @@ fn append_standalone_rom_and_args_for_flatpak(
         if let Some(rom) = rom_path {
             cmd.arg(map_path_for_flatpak(rom));
         }
+    }
+}
+
+fn altirra_media_switch(path: &str) -> &'static str {
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+
+    match extension.as_deref() {
+        Some("atr" | "atx" | "xfd" | "dcm" | "pro" | "atz") => "/disk",
+        Some("cas" | "wav") => "/tape",
+        Some("car" | "rom" | "bin" | "a52") => "/cart",
+        _ => "/run",
     }
 }
 
@@ -3528,7 +3542,7 @@ fn append_standalone_rom_and_args_for_wine(
     } else if emulator_name == "Altirra" {
         append_launch_args_for_wine(cmd, prefix_dir, args)?;
         if let Some(rom) = rom_path {
-            cmd.arg("/run");
+            cmd.arg(altirra_media_switch(rom));
             cmd.arg(map_path_for_wine(prefix_dir, rom)?);
         }
     } else {
@@ -3796,7 +3810,7 @@ mod tests {
     }
 
     #[test]
-    fn altirra_uses_run_switch_before_rom() {
+    fn altirra_uses_disk_switch_for_disk_images() {
         let mut cmd = Command::new("echo");
         append_standalone_rom_and_args_native(
             &mut cmd,
@@ -3814,8 +3828,33 @@ mod tests {
             args,
             vec![
                 "/portable".to_string(),
-                "/run".to_string(),
+                "/disk".to_string(),
                 "/roms/game.atr".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn altirra_uses_run_switch_for_executables() {
+        let mut cmd = Command::new("echo");
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            "Altirra",
+            Some("/roms/game.xex"),
+            &[LaunchArg::Literal("/portable".to_string())],
+        );
+
+        let args = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            vec![
+                "/portable".to_string(),
+                "/run".to_string(),
+                "/roms/game.xex".to_string(),
             ]
         );
     }
