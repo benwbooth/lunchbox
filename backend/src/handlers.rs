@@ -3162,6 +3162,40 @@ fn select_torrent_file_matches(
         .collect()
 }
 
+fn torrent_match_lookup_titles(
+    platform: Option<&str>,
+    game_title: &str,
+    resolved_lookup_title: &str,
+    collection: Option<&str>,
+    minerva_platform: Option<&str>,
+) -> Vec<String> {
+    let mut titles = Vec::new();
+
+    let is_hypseus_laserdisc = platform
+        .map(canonicalize_legacy_platform_name)
+        .is_some_and(|platform| platform == "Arcade")
+        && collection
+            .map(str::trim)
+            .is_some_and(|value| value.eq_ignore_ascii_case("Laserdisc Collection"))
+        && minerva_platform
+            .map(str::trim)
+            .is_some_and(|value| !value.eq_ignore_ascii_case("MAME"));
+
+    if is_hypseus_laserdisc {
+        titles.push(game_title.to_string());
+        if resolved_lookup_title != game_title {
+            titles.push(resolved_lookup_title.to_string());
+        }
+        return titles;
+    }
+
+    titles.push(resolved_lookup_title.to_string());
+    if resolved_lookup_title != game_title {
+        titles.push(game_title.to_string());
+    }
+    titles
+}
+
 fn is_platform_specific_torrent_candidate(
     platform: &str,
     collection: Option<&str>,
@@ -3231,7 +3265,7 @@ pub async fn list_torrent_files(
         }
     }
 
-    let lookup_title = if let Some(ref platform) = input.platform {
+    let resolved_lookup_title = if let Some(ref platform) = input.platform {
         crate::images::emumovies::resolve_arcade_download_lookup_name_for_torrent(
             platform,
             &input.game_title,
@@ -3243,8 +3277,23 @@ pub async fn list_torrent_files(
         input.game_title.clone()
     };
 
-    let mut matches =
-        select_torrent_file_matches(files, &lookup_title, &state.settings.region_priority);
+    let lookup_titles = torrent_match_lookup_titles(
+        input.platform.as_deref(),
+        &input.game_title,
+        &resolved_lookup_title,
+        input.collection.as_deref(),
+        input.minerva_platform.as_deref(),
+    );
+
+    let mut matches = Vec::new();
+    for lookup_title in lookup_titles {
+        let candidates =
+            select_torrent_file_matches(files.clone(), &lookup_title, &state.settings.region_priority);
+        if !candidates.is_empty() {
+            matches = candidates;
+            break;
+        }
+    }
 
     if let Some(ref platform) = input.platform {
         let mut filtered: Vec<TorrentFileMatch> = matches
@@ -3918,6 +3967,34 @@ mod tests {
             Some("Hypseus Singe"),
             "Laserdisc Collection/Hypseus Singe/dlair/dlair.txt"
         ));
+    }
+
+    #[test]
+    fn hypseus_laserdisc_prefers_real_game_title_for_matching() {
+        assert_eq!(
+            torrent_match_lookup_titles(
+                Some("Arcade"),
+                "Dragon's Lair",
+                "dlair",
+                Some("Laserdisc Collection"),
+                Some("Hypseus Singe"),
+            ),
+            vec!["Dragon's Lair".to_string(), "dlair".to_string()]
+        );
+    }
+
+    #[test]
+    fn mame_laserdisc_keeps_shortname_first_for_matching() {
+        assert_eq!(
+            torrent_match_lookup_titles(
+                Some("Arcade"),
+                "Dragon's Lair",
+                "dlair",
+                Some("Laserdisc Collection"),
+                Some("MAME"),
+            ),
+            vec!["dlair".to_string(), "Dragon's Lair".to_string()]
+        );
     }
 
     #[test]
