@@ -2211,6 +2211,8 @@ pub struct ListTorrentFilesInput {
     pub game_title: String,
     #[serde(default)]
     pub platform: Option<String>,
+    #[serde(default)]
+    pub launchbox_db_id: Option<i64>,
 }
 
 const TORRENT_MATCH_STOP_WORDS: &[&str] = &[
@@ -2437,8 +2439,19 @@ pub async fn list_torrent_files(
         }
     }
 
+    let lookup_title = if let Some(ref platform) = input.platform {
+        crate::images::emumovies::resolve_arcade_download_lookup_name(
+            platform,
+            &input.game_title,
+            input.launchbox_db_id,
+        )
+        .into_owned()
+    } else {
+        input.game_title.clone()
+    };
+
     let mut matches =
-        select_torrent_file_matches(files, &input.game_title, &state.settings.region_priority);
+        select_torrent_file_matches(files, &lookup_title, &state.settings.region_priority);
 
     if let Some(ref platform) = input.platform {
         let mut filtered: Vec<TorrentFileMatch> = matches

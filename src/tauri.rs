@@ -2200,6 +2200,7 @@ pub async fn list_torrent_files(
     torrent_url: String,
     game_title: String,
     platform: Option<String>,
+    launchbox_db_id: Option<i64>,
 ) -> Result<Vec<TorrentFileMatch>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -2212,6 +2213,7 @@ pub async fn list_torrent_files(
         torrent_url: String,
         game_title: String,
         platform: Option<String>,
+        launchbox_db_id: Option<i64>,
     }
     invoke(
         "list_torrent_files",
@@ -2220,6 +2222,7 @@ pub async fn list_torrent_files(
                 torrent_url,
                 game_title,
                 platform,
+                launchbox_db_id,
             },
         },
     )

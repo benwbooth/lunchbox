@@ -302,9 +302,13 @@ async fn load_minerva_torrent_groups(
         let game_title = game_title.clone();
         let platform_name = platform_name.clone();
         async move {
-            let result =
-                tauri::list_torrent_files(rom.torrent_url.clone(), game_title, Some(platform_name))
-                    .await;
+            let result = tauri::list_torrent_files(
+                rom.torrent_url.clone(),
+                game_title,
+                Some(platform_name),
+                Some(launchbox_db_id),
+            )
+            .await;
             (rom, result)
         }
     }))

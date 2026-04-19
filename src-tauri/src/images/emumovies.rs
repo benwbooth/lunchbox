@@ -206,6 +206,37 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
 
 include!(concat!(env!("OUT_DIR"), "/arcade_video_lookup.rs"));
 
+pub fn resolve_arcade_download_lookup_name<'a>(
+    platform: &str,
+    game_name: &'a str,
+    launchbox_db_id: Option<i64>,
+) -> Cow<'a, str> {
+    let Some(launchbox_db_id) = launchbox_db_id else {
+        return Cow::Borrowed(game_name);
+    };
+
+    let Some(system_folder) = get_emumovies_system_folder(platform) else {
+        return Cow::Borrowed(game_name);
+    };
+
+    if system_folder != "MAME" {
+        return Cow::Borrowed(game_name);
+    }
+
+    if let Ok(index) = ARCADE_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _, _)| *id) {
+        let lookup = ARCADE_LOOKUP[index].1;
+        tracing::info!(
+            "Resolved arcade download lookup '{}' -> '{}' for LaunchBox DB id {}",
+            game_name,
+            lookup,
+            launchbox_db_id
+        );
+        return Cow::Borrowed(lookup);
+    }
+
+    Cow::Borrowed(game_name)
+}
+
 pub fn resolve_video_lookup_name<'a>(
     platform: &str,
     game_name: &'a str,
@@ -223,8 +254,8 @@ pub fn resolve_video_lookup_name<'a>(
         return Cow::Borrowed(game_name);
     }
 
-    if let Ok(index) = ARCADE_VIDEO_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _)| *id) {
-        let lookup = ARCADE_VIDEO_LOOKUP[index].1;
+    if let Ok(index) = ARCADE_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _, _)| *id) {
+        let lookup = ARCADE_LOOKUP[index].2;
         tracing::info!(
             "Resolved arcade video lookup '{}' -> '{}' for LaunchBox DB id {}",
             game_name,
@@ -1753,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_arcade_video_lookup_uses_generated_shortname() {
+    fn test_resolve_arcade_video_lookup_uses_generated_parent_shortname() {
         assert_eq!(
             resolve_video_lookup_name(
                 "Arcade",
@@ -1765,6 +1796,26 @@ mod tests {
         assert_eq!(
             resolve_video_lookup_name("Arcade", "Dungeons & Dragons: Tower of Doom", Some(8729)),
             "ddtod"
+        );
+    }
+
+    #[test]
+    fn test_resolve_arcade_download_lookup_uses_exact_romset() {
+        assert_eq!(
+            resolve_arcade_download_lookup_name(
+                "Arcade",
+                "Dungeons & Dragons: Shadow Over Mystara",
+                Some(8727)
+            ),
+            "ddsomu"
+        );
+        assert_eq!(
+            resolve_arcade_download_lookup_name(
+                "Arcade",
+                "Dungeons & Dragons: Tower of Doom",
+                Some(8729)
+            ),
+            "ddtodu"
         );
     }
 

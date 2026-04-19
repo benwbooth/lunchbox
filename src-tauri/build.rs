@@ -56,7 +56,7 @@ fn generate_arcade_video_lookup() {
     let output_path = Path::new(&out_dir).join("arcade_video_lookup.rs");
 
     let Ok(file) = fs::File::open(source_path) else {
-        let empty = "pub static ARCADE_VIDEO_LOOKUP: &[(i64, &str)] = &[];\n";
+        let empty = "pub static ARCADE_LOOKUP: &[(i64, &str, &str)] = &[];\n";
         fs::write(&output_path, empty).expect("failed to write empty arcade lookup");
         return;
     };
@@ -67,7 +67,7 @@ fn generate_arcade_video_lookup() {
     let mut buf = Vec::new();
     let mut current_game: Option<GameFields> = None;
     let mut current_field: Option<String> = None;
-    let mut entries: HashMap<i64, (u8, String)> = HashMap::new();
+    let mut entries: HashMap<i64, (u8, String, String)> = HashMap::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -85,11 +85,16 @@ fn generate_arcade_video_lookup() {
                 if tag_name == "Game" {
                     if let Some(game) = current_game.take() {
                         if let Some(database_id) = game.database_id {
-                            if let Some((rank, lookup)) = choose_arcade_lookup(&game) {
+                            if let Some((rank, preferred_lookup, video_lookup)) =
+                                choose_arcade_lookup(&game)
+                            {
                                 match entries.get(&database_id) {
-                                    Some((existing_rank, _)) if *existing_rank >= rank => {}
+                                    Some((existing_rank, _, _)) if *existing_rank >= rank => {}
                                     _ => {
-                                        entries.insert(database_id, (rank, lookup));
+                                        entries.insert(
+                                            database_id,
+                                            (rank, preferred_lookup, video_lookup),
+                                        );
                                     }
                                 }
                             }
@@ -128,43 +133,52 @@ fn generate_arcade_video_lookup() {
         buf.clear();
     }
 
-    let mut rows: Vec<(i64, String)> = entries
+    let mut rows: Vec<(i64, String, String)> = entries
         .into_iter()
-        .map(|(database_id, (_, lookup))| (database_id, lookup))
+        .map(|(database_id, (_, preferred_lookup, video_lookup))| {
+            (database_id, preferred_lookup, video_lookup)
+        })
         .collect();
-    rows.sort_by_key(|(database_id, _)| *database_id);
+    rows.sort_by_key(|(database_id, _, _)| *database_id);
 
-    let mut generated = String::from("pub static ARCADE_VIDEO_LOOKUP: &[(i64, &str)] = &[\n");
-    for (database_id, lookup) in rows {
-        generated.push_str(&format!("    ({}, {:?}),\n", database_id, lookup));
+    let mut generated = String::from("pub static ARCADE_LOOKUP: &[(i64, &str, &str)] = &[\n");
+    for (database_id, preferred_lookup, video_lookup) in rows {
+        generated.push_str(&format!(
+            "    ({}, {:?}, {:?}),\n",
+            database_id, preferred_lookup, video_lookup
+        ));
     }
     generated.push_str("];\n");
 
     fs::write(&output_path, generated).expect("failed to write arcade video lookup");
 }
 
-fn choose_arcade_lookup(game: &impl ArcadeLookupFields) -> Option<(u8, String)> {
-    if let Some(clone_of) = game.clone_of() {
-        let clone_of = clone_of.trim();
-        if !clone_of.is_empty() {
-            return Some((3, clone_of.to_ascii_lowercase()));
-        }
-    }
+fn choose_arcade_lookup(game: &impl ArcadeLookupFields) -> Option<(u8, String, String)> {
+    let preferred_lookup = game
+        .application_path()
+        .and_then(rom_stem_from_path)
+        .map(|stem| (3, stem.to_ascii_lowercase()))
+        .or_else(|| {
+            game.version().and_then(|version| {
+                let version = version.trim();
+                looks_like_romset_id(version).then(|| (2, version.to_ascii_lowercase()))
+            })
+        })
+        .or_else(|| {
+            game.clone_of().and_then(|clone_of| {
+                let clone_of = clone_of.trim();
+                (!clone_of.is_empty()).then(|| (1, clone_of.to_ascii_lowercase()))
+            })
+        })?;
 
-    if let Some(application_path) = game.application_path() {
-        if let Some(stem) = rom_stem_from_path(application_path) {
-            return Some((2, stem.to_ascii_lowercase()));
-        }
-    }
+    let video_lookup = game
+        .clone_of()
+        .map(str::trim)
+        .filter(|clone_of| !clone_of.is_empty())
+        .map(|clone_of| clone_of.to_ascii_lowercase())
+        .unwrap_or_else(|| preferred_lookup.1.clone());
 
-    if let Some(version) = game.version() {
-        let version = version.trim();
-        if looks_like_romset_id(version) {
-            return Some((1, version.to_ascii_lowercase()));
-        }
-    }
-
-    None
+    Some((preferred_lookup.0, preferred_lookup.1, video_lookup))
 }
 
 trait ArcadeLookupFields {
