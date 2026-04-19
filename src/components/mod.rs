@@ -1,4 +1,5 @@
 mod box_3d_viewer;
+mod emulator_updates;
 mod game_details;
 mod game_grid;
 mod image_sources_wizard;
@@ -13,6 +14,7 @@ mod toolbar;
 mod video_player;
 
 pub use box_3d_viewer::Box3DViewer;
+pub use emulator_updates::EmulatorUpdates;
 pub use game_details::GameDetails;
 pub use game_grid::GameGrid;
 pub use image_sources_wizard::ImageSourcesWizard;

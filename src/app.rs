@@ -1,6 +1,7 @@
-use crate::components::{GameDetails, GameGrid, Settings, Sidebar, Toolbar};
 use crate::backend_api::Game;
+use crate::components::{EmulatorUpdates, GameDetails, GameGrid, Settings, Sidebar, Toolbar};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 
 pub const PLATFORM_SELECTION_MINIGAMES: &str = "__minigames__";
@@ -140,6 +141,9 @@ pub fn App() -> impl IntoView {
     let (selected_game, set_selected_game) = signal::<Option<Game>>(None);
     // State for settings panel
     let (show_settings, set_show_settings) = signal(false);
+    // State for emulator updates pane and available update count
+    let (show_emulator_updates, set_show_emulator_updates) = signal(false);
+    let (emulator_update_count, set_emulator_update_count) = signal::<Option<usize>>(None);
     // Trigger for refreshing collections
     let (collections_refresh, set_collections_refresh) = signal(0u32);
     // State for artwork display type in grid
@@ -165,6 +169,21 @@ pub fn App() -> impl IntoView {
         );
     });
 
+    Effect::new(move || {
+        spawn_local(async move {
+            match crate::backend_api::get_emulator_updates().await {
+                Ok(updates) => set_emulator_update_count.set(Some(updates.len())),
+                Err(err) => {
+                    crate::backend_api::log_to_backend(
+                        "warn",
+                        &format!("Failed to check emulator updates: {}", err),
+                    );
+                    set_emulator_update_count.set(Some(0));
+                }
+            }
+        });
+    });
+
     view! {
         <div class="app-container" class:details-modal-open=move || selected_game.get().is_some()>
             <Toolbar
@@ -179,6 +198,8 @@ pub fn App() -> impl IntoView {
                 set_zoom_level=set_zoom_level
                 game_filters=game_filters
                 set_game_filters=set_game_filters
+                emulator_update_count=emulator_update_count
+                set_show_emulator_updates=set_show_emulator_updates
             />
             <div class="main-content">
                 <Sidebar
@@ -209,6 +230,11 @@ pub fn App() -> impl IntoView {
             <Settings
                 show=show_settings
                 on_close=set_show_settings
+            />
+            <EmulatorUpdates
+                show=show_emulator_updates
+                on_close=set_show_emulator_updates
+                set_update_count=set_emulator_update_count
             />
         </div>
     }

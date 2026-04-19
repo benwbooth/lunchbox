@@ -11,7 +11,7 @@
 //! 4. Register in router.rs if the frontend needs an rspc procedure
 
 use crate::db::schema::EmulatorInfo;
-use crate::emulator::{self, EmulatorWithStatus, LaunchResult};
+use crate::emulator::{self, EmulatorUpdate, EmulatorWithStatus, LaunchResult};
 use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -832,6 +832,32 @@ pub async fn uninstall_emulator(
     is_retroarch_core: bool,
 ) -> Result<(), String> {
     emulator::uninstall_emulator(emulator, is_retroarch_core).await
+}
+
+pub async fn get_emulator_updates(state: &AppState) -> Result<Vec<EmulatorUpdate>, String> {
+    let pool = state
+        .emulators_db_pool
+        .as_ref()
+        .ok_or_else(|| "Emulators database not initialized".to_string())?;
+
+    let emulators: Vec<EmulatorInfo> = sqlx::query_as(
+        r#"
+        SELECT id, name, homepage, supported_os, winget_id,
+               homebrew_formula, flatpak_id, retroarch_core,
+               save_directory, save_extensions, notes
+        FROM emulators
+        ORDER BY name
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    emulator::get_available_updates(&emulators).await
+}
+
+pub async fn update_emulator(update_key: &str) -> Result<(), String> {
+    emulator::apply_update(update_key).await
 }
 
 pub async fn install_firmware_for_emulator(

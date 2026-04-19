@@ -1627,6 +1627,17 @@ pub struct EmulatorWithStatus {
     pub firmware_statuses: Vec<FirmwareStatus>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorUpdate {
+    pub key: String,
+    pub display_name: String,
+    pub install_method: String,
+    pub source_label: String,
+    pub current_version: Option<String>,
+    pub available_version: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FirmwareStatus {
@@ -1656,6 +1667,10 @@ pub async fn get_emulators_with_status(
     platform_name: String,
 ) -> Result<Vec<EmulatorWithStatus>, String> {
     invoke("get_emulators_with_status", platform_name).await
+}
+
+pub async fn get_emulator_updates() -> Result<Vec<EmulatorUpdate>, String> {
+    invoke_no_args("get_emulator_updates").await
 }
 
 /// Install an emulator using the appropriate package manager
@@ -1697,6 +1712,15 @@ pub async fn uninstall_emulator(
         },
     )
     .await
+}
+
+pub async fn update_emulator(update_key: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        update_key: String,
+    }
+    invoke("update_emulator", Args { update_key }).await
 }
 
 pub async fn install_firmware(

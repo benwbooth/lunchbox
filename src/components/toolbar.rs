@@ -156,6 +156,8 @@ pub fn Toolbar(
     search_query: ReadSignal<String>,
     set_search_query: WriteSignal<String>,
     set_show_settings: WriteSignal<bool>,
+    emulator_update_count: ReadSignal<Option<usize>>,
+    set_show_emulator_updates: WriteSignal<bool>,
     artwork_type: ReadSignal<ArtworkDisplayType>,
     set_artwork_type: WriteSignal<ArtworkDisplayType>,
     zoom_level: ReadSignal<f64>,
@@ -317,6 +319,26 @@ pub fn Toolbar(
                 </div>
                 <button class="import-btn" title="Import ROMs">
                     "Import"
+                </button>
+                <button
+                    class="updates-btn"
+                    class:has-updates=move || { emulator_update_count.get().unwrap_or(0) > 0 }
+                    disabled=move || { emulator_update_count.get().unwrap_or(0) == 0 }
+                    title=move || {
+                        match emulator_update_count.get() {
+                            None => "Checking for emulator updates...".to_string(),
+                            Some(0) => "No emulator updates available".to_string(),
+                            Some(count) => format!("{} emulator update(s) available", count),
+                        }
+                    }
+                    on:click=move |_| set_show_emulator_updates.set(true)
+                >
+                    "Update Emulators"
+                    <Show when=move || { emulator_update_count.get().unwrap_or(0) > 0 }>
+                        <span class="updates-btn-count">
+                            {move || emulator_update_count.get().unwrap_or(0)}
+                        </span>
+                    </Show>
                 </button>
                 <button
                     class="settings-btn"

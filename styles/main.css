@@ -206,7 +206,7 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--text-highlight);
 }
 
-.import-btn, .settings-btn {
+.import-btn, .settings-btn, .updates-btn {
     padding: 6px 12px;
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-color);
@@ -216,8 +216,37 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 13px;
 }
 
-.import-btn:hover, .settings-btn:hover {
+.import-btn:hover, .settings-btn:hover, .updates-btn:hover:not(:disabled) {
     background-color: var(--bg-hover);
+}
+
+.updates-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.updates-btn.has-updates {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--text-highlight);
+    opacity: 1;
+    cursor: pointer;
+}
+
+.updates-btn-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background-color: rgba(0, 0, 0, 0.22);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
 }
 
 /* Zoom Controls */
@@ -2337,6 +2366,135 @@ h1, h2, h3, h4, h5, h6 {
 
 .dialog-confirm:hover {
     background-color: var(--accent-hover);
+}
+
+.emulator-updates-panel {
+    background-color: var(--bg-secondary);
+    border-radius: 12px;
+    max-width: 720px;
+    width: min(92vw, 720px);
+    max-height: 88vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    padding: 24px;
+}
+
+.emulator-updates-intro {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+
+.emulator-updates-empty,
+.emulator-updates-error {
+    padding: 16px;
+    border-radius: 8px;
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.emulator-updates-error {
+    border: 1px solid rgba(220, 80, 80, 0.5);
+    color: #ffb3b3;
+}
+
+.emulator-updates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.emulator-update-row {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.emulator-update-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.emulator-update-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-highlight);
+}
+
+.emulator-update-source {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.emulator-update-version,
+.emulator-update-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.emulator-update-progress {
+    position: relative;
+    height: 8px;
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+}
+
+.emulator-update-progress-fill {
+    height: 100%;
+    width: 0;
+    background-color: var(--accent-color);
+    transition: width 0.2s ease;
+}
+
+.emulator-update-progress-fill.pending {
+    width: 0;
+}
+
+.emulator-update-progress-fill.updating {
+    width: 100%;
+    background-image: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.16) 0,
+        rgba(255, 255, 255, 0.32) 32%,
+        rgba(255, 255, 255, 0.12) 64%,
+        rgba(255, 255, 255, 0.24) 100%
+    );
+    background-size: 220px 100%;
+    animation: emulator-update-progress-stripes 1.1s linear infinite;
+}
+
+.emulator-update-progress-fill.success {
+    width: 100%;
+    background-color: #31b86b;
+}
+
+.emulator-update-progress-fill.failed {
+    width: 100%;
+    background-color: #c74b4b;
+}
+
+.emulator-updates-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+@keyframes emulator-update-progress-stripes {
+    0% {
+        background-position-x: 0;
+    }
+    100% {
+        background-position-x: 220px;
+    }
 }
 
 /* Play Statistics */

@@ -23,6 +23,55 @@ struct WineInstallInfo {
     executable_candidates: &'static [&'static str],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum FlatpakScope {
+    User,
+    System,
+}
+
+impl FlatpakScope {
+    fn flag(self) -> &'static str {
+        match self {
+            Self::User => "--user",
+            Self::System => "--system",
+        }
+    }
+
+    fn key_prefix(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::System => "system",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::User => "Flatpak (user)",
+            Self::System => "Flatpak (system)",
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ManagedUpdateTarget {
+    display_names: BTreeSet<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NixProfileList {
+    elements: BTreeMap<String, NixProfileListElement>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NixProfileListElement {
+    active: bool,
+    #[serde(default)]
+    attr_path: Option<String>,
+    #[serde(default)]
+    store_paths: Vec<String>,
+}
+
 /// Emulator with installation status for frontend display
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +94,24 @@ pub struct EmulatorWithStatus {
     /// Firmware requirements/status for this runtime, if any
     #[serde(default)]
     pub firmware_statuses: Vec<FirmwareStatus>,
+}
+
+/// An explicit update available for a Lunchbox-managed emulator install.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorUpdate {
+    /// Stable key used to perform the update.
+    pub key: String,
+    /// User-facing emulator name for the update pane.
+    pub display_name: String,
+    /// Backend handling the update (flatpak, nix).
+    pub install_method: String,
+    /// User-facing backend/scope label.
+    pub source_label: String,
+    /// Currently installed version, when available.
+    pub current_version: Option<String>,
+    /// Available version, when available.
+    pub available_version: Option<String>,
 }
 
 /// Progress event for emulator installation/launch
@@ -885,6 +952,383 @@ pub async fn uninstall_emulator(
     }
 }
 
+pub async fn get_available_updates(
+    emulators: &[EmulatorInfo],
+) -> Result<Vec<EmulatorUpdate>, String> {
+    let mut updates = Vec::new();
+
+    #[cfg(target_os = "linux")]
+    {
+        match get_flatpak_updates(emulators).await {
+            Ok(flatpak_updates) => updates.extend(flatpak_updates),
+            Err(err) => tracing::warn!(error = %err, "Flatpak emulator update check failed"),
+        }
+        match get_nix_updates(emulators).await {
+            Ok(nix_updates) => updates.extend(nix_updates),
+            Err(err) => tracing::warn!(error = %err, "Nix emulator update check failed"),
+        }
+        updates.sort_by(|a, b| {
+            a.display_name
+                .cmp(&b.display_name)
+                .then(a.source_label.cmp(&b.source_label))
+        });
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = emulators;
+    }
+
+    Ok(updates)
+}
+
+pub async fn apply_update(update_key: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(rest) = update_key.strip_prefix("flatpak:") {
+            let (scope, app_id) = parse_flatpak_update_key(rest)?;
+            return update_flatpak(app_id, scope).await;
+        }
+
+        if let Some(profile_name) = update_key.strip_prefix("nix:") {
+            return update_nix_package(profile_name).await;
+        }
+
+        Err(format!("Unsupported emulator update key '{}'", update_key))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = update_key;
+        Err("Emulator updates are currently implemented for Linux backends only".to_string())
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn get_flatpak_updates(emulators: &[EmulatorInfo]) -> Result<Vec<EmulatorUpdate>, String> {
+    if !is_flatpak_available() {
+        return Ok(Vec::new());
+    }
+
+    let mut targets_by_app_id: BTreeMap<String, ManagedUpdateTarget> = BTreeMap::new();
+    for emulator in emulators {
+        let Some(app_id) = emulator.flatpak_id.clone() else {
+            continue;
+        };
+        targets_by_app_id
+            .entry(app_id)
+            .or_default()
+            .display_names
+            .insert(emulator.name.clone());
+    }
+
+    let installed = flatpak_installed_versions().await?;
+    let available = flatpak_available_updates().await?;
+    let mut updates = Vec::new();
+
+    for ((scope, app_id), current_version) in installed {
+        let Some(target) = targets_by_app_id.get(&app_id) else {
+            continue;
+        };
+        let Some(available_version) = available.get(&(scope, app_id.clone())).cloned() else {
+            continue;
+        };
+
+        updates.push(EmulatorUpdate {
+            key: format!("flatpak:{}:{}", scope.key_prefix(), app_id),
+            display_name: summarize_update_display_names(&target.display_names),
+            install_method: "flatpak".to_string(),
+            source_label: scope.label().to_string(),
+            current_version,
+            available_version,
+        });
+    }
+
+    Ok(updates)
+}
+
+#[cfg(target_os = "linux")]
+async fn get_nix_updates(emulators: &[EmulatorInfo]) -> Result<Vec<EmulatorUpdate>, String> {
+    if !is_nix_available() {
+        return Ok(Vec::new());
+    }
+
+    let profile_entries = nix_profile_list().await?;
+    if profile_entries.elements.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut targets_by_package: BTreeMap<String, ManagedUpdateTarget> = BTreeMap::new();
+    for emulator in emulators {
+        let Some(package) = nix_package_for_emulator(emulator) else {
+            continue;
+        };
+        targets_by_package
+            .entry(package.to_string())
+            .or_default()
+            .display_names
+            .insert(emulator.name.clone());
+    }
+
+    let mut updates = Vec::new();
+    for (package, target) in targets_by_package {
+        let Some((profile_name, entry)) = find_nix_profile_entry(&profile_entries, &package) else {
+            continue;
+        };
+        if !entry.active {
+            continue;
+        }
+
+        let current_version = entry
+            .store_paths
+            .iter()
+            .find_map(|path| parse_nix_store_version(path, &package));
+        let available_version = match nix_available_version(&package).await {
+            Ok(version) => version,
+            Err(err) => {
+                tracing::warn!(package = %package, error = %err, "Skipping nix emulator update because version lookup failed");
+                continue;
+            }
+        };
+        let Some(available_version) = available_version else {
+            continue;
+        };
+
+        if current_version.as_deref() == Some(available_version.as_str()) {
+            continue;
+        }
+
+        updates.push(EmulatorUpdate {
+            key: format!("nix:{}", profile_name),
+            display_name: summarize_update_display_names(&target.display_names),
+            install_method: "nix".to_string(),
+            source_label: "Nix profile".to_string(),
+            current_version,
+            available_version: Some(available_version),
+        });
+    }
+
+    Ok(updates)
+}
+
+#[cfg(target_os = "linux")]
+fn summarize_update_display_names(names: &BTreeSet<String>) -> String {
+    if names.is_empty() {
+        return "Unknown Emulator".to_string();
+    }
+
+    if let Some(primary) = names.iter().find(|name| !name.contains('(')) {
+        if names.len() == 1 {
+            return primary.clone();
+        }
+        return format!("{} (+{} variants)", primary, names.len() - 1);
+    }
+
+    names.iter().cloned().collect::<Vec<_>>().join(", ")
+}
+
+#[cfg(target_os = "linux")]
+fn parse_flatpak_update_key(rest: &str) -> Result<(FlatpakScope, &str), String> {
+    let (scope_text, app_id) = rest
+        .split_once(':')
+        .ok_or_else(|| format!("Invalid flatpak update key '{}'", rest))?;
+    let scope = match scope_text {
+        "user" => FlatpakScope::User,
+        "system" => FlatpakScope::System,
+        _ => return Err(format!("Unknown flatpak update scope '{}'", scope_text)),
+    };
+    Ok((scope, app_id))
+}
+
+#[cfg(target_os = "linux")]
+async fn flatpak_installed_versions(
+) -> Result<BTreeMap<(FlatpakScope, String), Option<String>>, String> {
+    let mut installed = BTreeMap::new();
+    for scope in [FlatpakScope::System, FlatpakScope::User] {
+        let output = tokio::process::Command::new("flatpak")
+            .args([
+                "list",
+                scope.flag(),
+                "--app",
+                "--columns=application,version",
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run flatpak list: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr_trimmed = stderr.trim();
+            if scope == FlatpakScope::User && stderr_trimmed.contains("No installations") {
+                continue;
+            }
+            return Err(format!("Flatpak list failed: {}", stderr_trimmed));
+        }
+
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let mut fields = trimmed.split('\t');
+            let Some(app_id) = fields
+                .next()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            let version = fields
+                .next()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+            installed.insert((scope, app_id.to_string()), version);
+        }
+    }
+    Ok(installed)
+}
+
+#[cfg(target_os = "linux")]
+async fn flatpak_available_updates(
+) -> Result<BTreeMap<(FlatpakScope, String), Option<String>>, String> {
+    let mut updates = BTreeMap::new();
+    for scope in [FlatpakScope::System, FlatpakScope::User] {
+        let output = tokio::process::Command::new("flatpak")
+            .args([
+                "remote-ls",
+                scope.flag(),
+                "--updates",
+                "--app",
+                "--columns=application,version",
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run flatpak remote-ls: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr_trimmed = stderr.trim();
+            if scope == FlatpakScope::User && stderr_trimmed.contains("No installations") {
+                continue;
+            }
+            return Err(format!("Flatpak update check failed: {}", stderr_trimmed));
+        }
+
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let mut fields = trimmed.split('\t');
+            let Some(app_id) = fields
+                .next()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            let version = fields
+                .next()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+            updates.insert((scope, app_id.to_string()), version);
+        }
+    }
+    Ok(updates)
+}
+
+#[cfg(target_os = "linux")]
+async fn nix_profile_list() -> Result<NixProfileList, String> {
+    let profile_path = lunchbox_nix_profile_path();
+    let output = tokio::process::Command::new("nix")
+        .args([
+            "profile",
+            "list",
+            "--profile",
+            profile_path.to_string_lossy().as_ref(),
+            "--json",
+            "--no-pretty",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run nix profile list: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr_trimmed = stderr.trim();
+        if stderr_trimmed.contains("does not exist") || stderr_trimmed.contains("No such file") {
+            return Ok(NixProfileList {
+                elements: BTreeMap::new(),
+            });
+        }
+        return Err(format!("Nix profile list failed: {}", stderr_trimmed));
+    }
+
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse nix profile list output: {}", e))
+}
+
+#[cfg(target_os = "linux")]
+fn find_nix_profile_entry<'a>(
+    profile: &'a NixProfileList,
+    package: &str,
+) -> Option<(String, &'a NixProfileListElement)> {
+    profile.elements.iter().find_map(|(name, entry)| {
+        let attr_matches = entry
+            .attr_path
+            .as_deref()
+            .map(|attr| attr.ends_with(&format!(".{}", package)) || attr == package)
+            .unwrap_or(false);
+        if name == package || attr_matches {
+            Some((name.clone(), entry))
+        } else {
+            None
+        }
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn parse_nix_store_version(store_path: &str, package: &str) -> Option<String> {
+    let file_name = Path::new(store_path).file_name()?.to_str()?;
+    let after_hash = file_name.split_once('-')?.1;
+    if let Some(version) = after_hash.strip_prefix(&format!("{}-", package)) {
+        return Some(version.to_string());
+    }
+    after_hash
+        .rsplit_once('-')
+        .map(|(_, version)| version.to_string())
+}
+
+#[cfg(target_os = "linux")]
+async fn nix_available_version(package: &str) -> Result<Option<String>, String> {
+    let attr = format!("nixpkgs#{}.version", package);
+    let output = tokio::process::Command::new("nix")
+        .args(["eval", "--raw", &attr])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run nix eval for {}: {}", package, e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr_trimmed = stderr.trim();
+        if stderr_trimmed.is_empty() {
+            return Ok(None);
+        }
+        return Err(format!(
+            "Nix update check failed for {}: {}",
+            package, stderr_trimmed
+        ));
+    }
+
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(version))
+    }
+}
+
 /// Install a flatpak package
 async fn install_flatpak(app_id: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
@@ -928,6 +1372,29 @@ async fn uninstall_flatpak(app_id: &str) -> Result<(), String> {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = app_id;
+        Err("Flatpak is only available on Linux".to_string())
+    }
+}
+
+async fn update_flatpak(app_id: &str, scope: FlatpakScope) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let output = tokio::process::Command::new("flatpak")
+            .args(["update", "-y", scope.flag(), app_id])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run flatpak update: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Flatpak update failed: {}", stderr.trim()))
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app_id, scope);
         Err("Flatpak is only available on Linux".to_string())
     }
 }
@@ -997,6 +1464,36 @@ async fn uninstall_nix_package(package: &str) -> Result<(), String> {
     {
         let _ = package;
         Err("Nix profile uninstalls are only available on Linux".to_string())
+    }
+}
+
+async fn update_nix_package(profile_name: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let profile_path = lunchbox_nix_profile_path();
+        let output = tokio::process::Command::new("nix")
+            .args([
+                "profile",
+                "upgrade",
+                "--profile",
+                profile_path.to_string_lossy().as_ref(),
+                profile_name,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run nix profile upgrade: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Nix profile upgrade failed: {}", stderr.trim()))
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = profile_name;
+        Err("Nix profile updates are only available on Linux".to_string())
     }
 }
 

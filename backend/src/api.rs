@@ -203,6 +203,7 @@ pub fn create_router(state: SharedState) -> Router {
             "/rspc/get_emulators_with_status",
             get(rspc_get_emulators_with_status),
         )
+        .route("/rspc/get_emulator_updates", get(rspc_get_emulator_updates))
         .route("/rspc/install_firmware", get(rspc_install_firmware))
         .route(
             "/rspc/open_firmware_directory",
@@ -210,6 +211,7 @@ pub fn create_router(state: SharedState) -> Router {
         )
         .route("/rspc/install_emulator", get(rspc_install_emulator))
         .route("/rspc/uninstall_emulator", get(rspc_uninstall_emulator))
+        .route("/rspc/update_emulator", get(rspc_update_emulator))
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
         .route("/rspc/get_current_os", get(rspc_get_current_os))
@@ -2702,6 +2704,12 @@ struct UninstallEmulatorInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct UpdateEmulatorInput {
+    update_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UninstallGameInput {
     launchbox_db_id: i64,
 }
@@ -2747,6 +2755,14 @@ async fn rspc_install_emulator(
     }
 }
 
+async fn rspc_get_emulator_updates(State(state): State<SharedState>) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::get_emulator_updates(&state_guard).await {
+        Ok(updates) => rspc_ok(updates).into_response(),
+        Err(e) => rspc_err::<Vec<crate::emulator::EmulatorUpdate>>(e).into_response(),
+    }
+}
+
 async fn rspc_uninstall_emulator(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -2773,6 +2789,27 @@ async fn rspc_uninstall_emulator(
     };
 
     match handlers::uninstall_emulator(&emulator, input.is_retroarch_core).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+async fn rspc_update_emulator(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: UpdateEmulatorInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let _state_guard = state.read().await;
+    match handlers::update_emulator(&input.update_key).await {
         Ok(()) => rspc_ok(()).into_response(),
         Err(e) => rspc_err::<()>(e).into_response(),
     }
