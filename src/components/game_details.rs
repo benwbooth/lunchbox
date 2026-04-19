@@ -117,7 +117,7 @@ async fn delay_ms(ms: i32) {
 #[derive(Clone, Debug)]
 struct MinervaTorrentGroup {
     rom: backend_api::MinervaRom,
-    files: Vec<backend_api::TorrentFileMatch>,
+    items: Vec<MinervaPickerItem>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,6 +130,18 @@ enum MinervaDownloadSelection {
         torrent_url: String,
         file_index: usize,
     },
+}
+
+#[derive(Clone, Debug)]
+struct MinervaPickerItem {
+    selection: MinervaDownloadSelection,
+    display_name: String,
+    path_detail: Option<String>,
+    size: u64,
+    match_score: f64,
+    region: Option<String>,
+    suggested_emulator: Option<String>,
+    type_badge: Option<String>,
 }
 
 // Keep this fallback order in sync with backend/src/region_priority.rs.
@@ -261,6 +273,190 @@ fn file_picker_path_detail(path: &str) -> Option<String> {
     }
 }
 
+fn normalized_listing_path(path: &str) -> String {
+    path.trim_start_matches("./")
+        .replace('\\', "/")
+        .to_ascii_lowercase()
+}
+
+fn is_arcade_mame_merged_or_split_rom(rom: &backend_api::MinervaRom) -> bool {
+    if !rom.collection.eq_ignore_ascii_case("MAME") {
+        return false;
+    }
+
+    let platform = rom.minerva_platform.to_ascii_lowercase();
+    (platform.contains("merged") || platform.contains("split")) && !platform.contains("non-merged")
+}
+
+fn is_laserdisc_collection_rom(rom: &backend_api::MinervaRom) -> bool {
+    rom.collection.eq_ignore_ascii_case("Laserdisc Collection")
+}
+
+fn parse_mame_laserdisc_bundle(path: &str) -> Option<(String, &'static str)> {
+    let normalized = normalized_listing_path(path);
+    if let Some(file_name) = normalized
+        .strip_prefix("laserdisc collection/mame/roms/")
+        .filter(|remainder| !remainder.contains('/'))
+    {
+        let romset = file_name.strip_suffix(".zip")?;
+        if !romset.is_empty() {
+            return Some((romset.to_string(), "zip"));
+        }
+    }
+
+    if let Some(remainder) = normalized.strip_prefix("laserdisc collection/mame/chd/") {
+        let mut parts = remainder.split('/');
+        let romset = parts.next()?;
+        let file_name = parts.next()?;
+        if parts.next().is_none() && file_name == format!("{romset}.chd") {
+            return Some((romset.to_string(), "chd"));
+        }
+    }
+
+    None
+}
+
+fn parse_hypseus_laserdisc_bundle(path: &str) -> Option<(String, &'static str)> {
+    let normalized = normalized_listing_path(path);
+    if !normalized.starts_with("laserdisc collection/") || normalized.contains("/mame/") {
+        return None;
+    }
+
+    let path = std::path::Path::new(&normalized);
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())?;
+    let kind = match ext.as_str() {
+        "m2v" => "m2v",
+        "ogg" => "ogg",
+        "txt" => "txt",
+        _ => return None,
+    };
+    let stem = path.file_stem()?.to_str()?;
+    let parent = path.parent()?.to_string_lossy();
+    Some((format!("{parent}/{stem}"), kind))
+}
+
+fn laserdisc_bundle_title(bundle_key: &str) -> String {
+    std::path::Path::new(bundle_key)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or(bundle_key)
+        .to_string()
+}
+
+fn build_minerva_picker_items(
+    rom: &backend_api::MinervaRom,
+    files: Vec<backend_api::TorrentFileMatch>,
+) -> Vec<MinervaPickerItem> {
+    if !is_laserdisc_collection_rom(rom) {
+        return files
+            .into_iter()
+            .map(|file| MinervaPickerItem {
+                selection: MinervaDownloadSelection::File {
+                    torrent_url: rom.torrent_url.clone(),
+                    file_index: file.index,
+                },
+                display_name: file_picker_display_name(&file.filename),
+                path_detail: file_picker_path_detail(&file.filename),
+                size: file.size,
+                match_score: file.match_score,
+                region: file.region,
+                suggested_emulator: None,
+                type_badge: None,
+            })
+            .collect();
+    }
+
+    if rom.minerva_platform.eq_ignore_ascii_case("MAME") {
+        let mut bundles: std::collections::BTreeMap<
+            String,
+            (Option<backend_api::TorrentFileMatch>, Option<backend_api::TorrentFileMatch>),
+        > = std::collections::BTreeMap::new();
+        for file in files {
+            if let Some((romset, kind)) = parse_mame_laserdisc_bundle(&file.filename) {
+                let entry = bundles.entry(romset).or_insert((None, None));
+                match kind {
+                    "zip" => entry.0 = Some(file),
+                    "chd" => entry.1 = Some(file),
+                    _ => {}
+                }
+            }
+        }
+
+        return bundles
+            .into_iter()
+            .filter_map(|(romset, (zip, chd))| {
+                let (zip, chd) = (zip?, chd?);
+                Some(MinervaPickerItem {
+                    selection: MinervaDownloadSelection::File {
+                        torrent_url: rom.torrent_url.clone(),
+                        file_index: zip.index,
+                    },
+                    display_name: format!("{romset}.zip + {romset}.chd"),
+                    path_detail: Some("Laserdisc Collection / MAME".to_string()),
+                    size: zip.size.saturating_add(chd.size),
+                    match_score: zip.match_score.max(chd.match_score),
+                    region: zip.region.or(chd.region),
+                    suggested_emulator: Some("MAME".to_string()),
+                    type_badge: Some("Bundle".to_string()),
+                })
+            })
+            .collect();
+    }
+
+    let mut bundles: std::collections::BTreeMap<String, Vec<backend_api::TorrentFileMatch>> =
+        std::collections::BTreeMap::new();
+    for file in files {
+        if let Some((bundle_key, _)) = parse_hypseus_laserdisc_bundle(&file.filename) {
+            bundles.entry(bundle_key).or_default().push(file);
+        }
+    }
+
+    bundles
+        .into_iter()
+        .filter_map(|(bundle_key, members)| {
+            let mut text = None;
+            let mut video = None;
+            let mut audio = None;
+            for member in members {
+                match parse_hypseus_laserdisc_bundle(&member.filename)
+                    .map(|(_, kind)| kind)
+                    .unwrap_or_default()
+                {
+                    "txt" => text = Some(member),
+                    "m2v" => video = Some(member),
+                    "ogg" => audio = Some(member),
+                    _ => {}
+                }
+            }
+
+            let (text, video, audio) = (text?, video?, audio?);
+            Some(MinervaPickerItem {
+                selection: MinervaDownloadSelection::File {
+                    torrent_url: rom.torrent_url.clone(),
+                    file_index: text.index,
+                },
+                display_name: format!(
+                    "{}.m2v + {}.ogg + {}.txt",
+                    laserdisc_bundle_title(&bundle_key),
+                    laserdisc_bundle_title(&bundle_key),
+                    laserdisc_bundle_title(&bundle_key)
+                ),
+                path_detail: std::path::Path::new(&bundle_key)
+                    .parent()
+                    .map(|path| path.display().to_string()),
+                size: text.size.saturating_add(video.size).saturating_add(audio.size),
+                match_score: text.match_score.max(video.match_score).max(audio.match_score),
+                region: text.region.or(video.region).or(audio.region),
+                suggested_emulator: Some("Hypseus Singe".to_string()),
+                type_badge: Some("Bundle".to_string()),
+            })
+        })
+        .collect()
+}
+
 fn format_picker_bytes(bytes: i64) -> String {
     let bytes = bytes.max(0) as u64;
     if bytes >= 1_000_000_000 {
@@ -289,12 +485,15 @@ async fn load_minerva_torrent_groups(
     platform_id: i64,
     region_priority: Vec<String>,
 ) -> Result<Vec<MinervaTorrentGroup>, String> {
-    let roms = backend_api::search_minerva(
+    let mut roms = backend_api::search_minerva(
         Some(launchbox_db_id),
         Some(game_title.clone()),
         Some(platform_id),
     )
     .await?;
+    if platform_name == "Arcade" {
+        roms.retain(|rom| !is_arcade_mame_merged_or_split_rom(rom));
+    }
     let mut groups = Vec::new();
     let mut last_error = None;
 
@@ -307,6 +506,8 @@ async fn load_minerva_torrent_groups(
                 game_title,
                 Some(platform_name),
                 Some(launchbox_db_id),
+                Some(rom.collection.clone()),
+                Some(rom.minerva_platform.clone()),
             )
             .await;
             (rom, result)
@@ -318,17 +519,31 @@ async fn load_minerva_torrent_groups(
 
     for (rom, result) in group_results {
         match result {
-            Ok(files) if !files.is_empty() => groups.push(MinervaTorrentGroup { rom, files }),
-            Ok(_) => {}
+            Ok(files) => {
+                let items = build_minerva_picker_items(&rom, files);
+                if !items.is_empty() {
+                    groups.push(MinervaTorrentGroup { rom, items });
+                }
+            }
             Err(err) => last_error = Some(err),
         }
     }
 
+    if platform_name == "Arcade" && groups.iter().any(|group| is_laserdisc_collection_rom(&group.rom))
+    {
+        groups.retain(|group| is_laserdisc_collection_rom(&group.rom));
+    }
+
     groups.sort_by(|a, b| {
-        let a_top_score = a.files.first().map(|file| file.match_score).unwrap_or(0.0);
-        let b_top_score = b.files.first().map(|file| file.match_score).unwrap_or(0.0);
+        let a_top_score = a.items.first().map(|file| file.match_score).unwrap_or(0.0);
+        let b_top_score = b.items.first().map(|file| file.match_score).unwrap_or(0.0);
         minerva_collection_compatibility_priority(&a.rom)
             .cmp(&minerva_collection_compatibility_priority(&b.rom))
+            .then_with(|| {
+                b.rom.collection
+                    .eq_ignore_ascii_case("Laserdisc Collection")
+                    .cmp(&a.rom.collection.eq_ignore_ascii_case("Laserdisc Collection"))
+            })
             .then_with(|| {
                 b_top_score
                     .partial_cmp(&a_top_score)
@@ -336,11 +551,11 @@ async fn load_minerva_torrent_groups(
             })
             .then_with(|| {
                 grouped_torrent_region_priority(
-                    a.files.first().and_then(|file| file.region.as_deref()),
+                    a.items.first().and_then(|file| file.region.as_deref()),
                     &region_priority,
                 )
                 .cmp(&grouped_torrent_region_priority(
-                    b.files.first().and_then(|file| file.region.as_deref()),
+                    b.items.first().and_then(|file| file.region.as_deref()),
                     &region_priority,
                 ))
             })
@@ -704,7 +919,8 @@ pub fn GameDetails(
                                     });
 
                                 if let Some(preferred_id) = fallback_variant_id {
-                                    match backend_api::get_game_by_uuid(preferred_id.clone()).await {
+                                    match backend_api::get_game_by_uuid(preferred_id.clone()).await
+                                    {
                                         Ok(Some(preferred_game))
                                             if preferred_game.database_id > 0 =>
                                         {
@@ -755,7 +971,8 @@ pub fn GameDetails(
                 }
                 // Check minerva ROM availability
                 {
-                    if let Ok(rom) = backend_api::get_minerva_rom_for_game(db_id, Some(platform_id)).await
+                    if let Ok(rom) =
+                        backend_api::get_minerva_rom_for_game(db_id, Some(platform_id)).await
                     {
                         if is_current_game() {
                             set_minerva_rom.set(rom);
@@ -1281,10 +1498,13 @@ pub fn GameDetails(
                                                             let minerva_platform = group.rom.minerva_platform.clone();
                                                             let rom_count = group.rom.rom_count;
                                                             let total_size = group.rom.total_size;
-                                                            let match_count = group.files.len();
+                                                            let match_count = group.items.len();
                                                             let whole_torrent_selection = MinervaDownloadSelection::WholeTorrent {
                                                                 torrent_url: torrent_url.clone(),
-                                                                representative_file_index: group.files.first().map(|file| file.index),
+                                                                representative_file_index: group.items.first().map(|item| match item.selection {
+                                                                    MinervaDownloadSelection::File { file_index, .. } => file_index,
+                                                                    MinervaDownloadSelection::WholeTorrent { representative_file_index, .. } => representative_file_index.unwrap_or(0),
+                                                                }),
                                                             };
                                                             let whole_torrent_selected = {
                                                                 let whole_torrent_selection = whole_torrent_selection.clone();
@@ -1312,17 +1532,11 @@ pub fn GameDetails(
                                                                             <span class="file-picker-match">{format!("{match_count} matching file(s)")}</span>
                                                                         </div>
                                                                     </div>
-                                                                    {group.files.into_iter().map(|file| {
-                                                                        let idx = file.index;
-                                                                        let name = file_picker_display_name(&file.filename);
-                                                                        let path_detail = file_picker_path_detail(&file.filename);
-                                                                        let size_mb = file.size as f64 / (1024.0 * 1024.0);
-                                                                        let score = file.match_score;
-                                                                        let region = file.region.clone().unwrap_or_default();
-                                                                        let selection = MinervaDownloadSelection::File {
-                                                                            torrent_url: torrent_url.clone(),
-                                                                            file_index: idx,
-                                                                        };
+                                                                    {group.items.into_iter().map(|item| {
+                                                                        let size_mb = item.size as f64 / (1024.0 * 1024.0);
+                                                                        let score = item.match_score;
+                                                                        let region = item.region.clone().unwrap_or_default();
+                                                                        let selection = item.selection.clone();
                                                                         let is_selected = {
                                                                             let selection = selection.clone();
                                                                             move || selected_download.get() == Some(selection.clone())
@@ -1335,13 +1549,21 @@ pub fn GameDetails(
                                                                                 on:click=move |_| set_selected_download.set(Some(click_selection.clone()))
                                                                             >
                                                                                 <div class="file-picker-name">
-                                                                                    <div class="file-picker-title">{name}</div>
-                                                                                    {path_detail.as_ref().map(|path| view! {
+                                                                                    <div class="file-picker-title">
+                                                                                        {item.type_badge.as_ref().map(|badge| view! {
+                                                                                            <span class="file-picker-type-badge">{badge.clone()}</span>
+                                                                                        })}
+                                                                                        <span>{item.display_name.clone()}</span>
+                                                                                    </div>
+                                                                                    {item.path_detail.as_ref().map(|path| view! {
                                                                                         <div class="file-picker-path">{path.clone()}</div>
                                                                                     })}
                                                                                 </div>
                                                                                 <div class="file-picker-meta">
                                                                                     <span class="file-picker-size">{format!("{size_mb:.1} MB")}</span>
+                                                                                    {item.suggested_emulator.as_ref().map(|emulator| view! {
+                                                                                        <span class="file-picker-match">{format!("Use {}", emulator)}</span>
+                                                                                    })}
                                                                                     {(!region.is_empty()).then(|| view! {
                                                                                         <span class="file-picker-region">{region}</span>
                                                                                     })}

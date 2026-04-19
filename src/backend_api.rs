@@ -2062,6 +2062,8 @@ pub async fn list_torrent_files(
     game_title: String,
     platform: Option<String>,
     launchbox_db_id: Option<i64>,
+    collection: Option<String>,
+    minerva_platform: Option<String>,
 ) -> Result<Vec<TorrentFileMatch>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -2070,12 +2072,14 @@ pub async fn list_torrent_files(
     }
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Inner {
-        torrent_url: String,
-        game_title: String,
-        platform: Option<String>,
-        launchbox_db_id: Option<i64>,
-    }
+        struct Inner {
+            torrent_url: String,
+            game_title: String,
+            platform: Option<String>,
+            launchbox_db_id: Option<i64>,
+            collection: Option<String>,
+            minerva_platform: Option<String>,
+        }
     invoke(
         "list_torrent_files",
         Args {
@@ -2084,6 +2088,8 @@ pub async fn list_torrent_files(
                 game_title,
                 platform,
                 launchbox_db_id,
+                collection,
+                minerva_platform,
             },
         },
     )

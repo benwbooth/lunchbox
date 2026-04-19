@@ -1241,7 +1241,7 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
     if let Some((platform, file_path, import_source)) = game_file_row {
         if import_source == "minerva" {
             remove_path_if_exists(std::path::Path::new(&file_path)).await?;
-            remove_arcade_mame_laserdisc_companion_assets(&platform, &file_path).await?;
+            remove_arcade_laserdisc_companion_assets(&platform, &file_path).await?;
             sqlx::query("DELETE FROM game_files WHERE launchbox_db_id = ?")
                 .bind(launchbox_db_id)
                 .execute(db_pool)
@@ -1273,7 +1273,7 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
     }
 }
 
-async fn remove_arcade_mame_laserdisc_companion_assets(
+async fn remove_arcade_laserdisc_companion_assets(
     platform: &str,
     file_path: &str,
 ) -> Result<(), String> {
@@ -1293,6 +1293,21 @@ async fn remove_arcade_mame_laserdisc_companion_assets(
     let companion_chd = companion_dir.join(format!("{stem}.chd"));
     if companion_chd.exists() {
         remove_path_if_exists(&companion_dir).await?;
+    }
+
+    if matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref(),
+        Some("txt" | "m2v" | "ogg")
+    ) {
+        for extension in ["txt", "m2v", "ogg"] {
+            let sibling = parent.join(format!("{stem}.{extension}"));
+            if sibling != path && sibling.exists() {
+                remove_path_if_exists(&sibling).await?;
+            }
+        }
     }
 
     Ok(())
@@ -1522,6 +1537,13 @@ enum ArcadeMameLaserdiscAssetKind {
     Chd,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArcadeHypseusLaserdiscAssetKind {
+    FrameText,
+    Video,
+    Audio,
+}
+
 #[derive(Debug, Clone)]
 struct ArcadeMameLaserdiscAsset {
     torrent_url: String,
@@ -1535,6 +1557,19 @@ struct ArcadeMameLaserdiscPlan {
     romset_name: String,
     primary_asset: ArcadeMameLaserdiscAsset,
     chd_asset: ArcadeMameLaserdiscAsset,
+}
+
+#[derive(Debug, Clone)]
+struct ArcadeHypseusLaserdiscPlan {
+    bundle_name: String,
+    representative_asset: ArcadeMameLaserdiscAsset,
+    assets: Vec<ArcadeMameLaserdiscAsset>,
+}
+
+#[derive(Debug, Clone)]
+enum ArcadeLaserdiscPlan {
+    Mame(ArcadeMameLaserdiscPlan),
+    Hypseus(ArcadeHypseusLaserdiscPlan),
 }
 
 #[derive(Debug)]
@@ -1583,6 +1618,30 @@ fn parse_arcade_mame_laserdisc_asset(path: &str) -> Option<(String, ArcadeMameLa
     }
 
     None
+}
+
+fn parse_arcade_hypseus_laserdisc_asset(
+    path: &str,
+) -> Option<(String, ArcadeHypseusLaserdiscAssetKind)> {
+    let normalized = normalize_torrent_listing_path(path);
+    if !normalized.starts_with("laserdisc collection/") || normalized.contains("/mame/") {
+        return None;
+    }
+
+    let path = Path::new(&normalized);
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())?;
+    let kind = match extension.as_str() {
+        "txt" => ArcadeHypseusLaserdiscAssetKind::FrameText,
+        "m2v" => ArcadeHypseusLaserdiscAssetKind::Video,
+        "ogg" => ArcadeHypseusLaserdiscAssetKind::Audio,
+        _ => return None,
+    };
+    let stem = path.file_stem()?.to_str()?;
+    let parent = path.parent()?.to_string_lossy();
+    Some((format!("{parent}/{stem}"), kind))
 }
 
 fn find_torrent_file_by_suffix(
@@ -1723,6 +1782,81 @@ async fn build_arcade_mame_laserdisc_plan(
         primary_asset,
         chd_asset,
     }))
+}
+
+fn build_arcade_hypseus_laserdisc_plan(
+    selected_torrent_url: &str,
+    current_files: &[crate::torrent::TorrentFileInfo],
+    selected_file: &crate::torrent::TorrentFileInfo,
+) -> Option<ArcadeHypseusLaserdiscPlan> {
+    let (bundle_key, _) = parse_arcade_hypseus_laserdisc_asset(&selected_file.filename)?;
+
+    let mut text_asset = None;
+    let mut video_asset = None;
+    let mut audio_asset = None;
+
+    for file in current_files {
+        let Some((candidate_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&file.filename)
+        else {
+            continue;
+        };
+        if candidate_key != bundle_key {
+            continue;
+        }
+
+        let asset = ArcadeMameLaserdiscAsset {
+            torrent_url: selected_torrent_url.to_string(),
+            file_index: file.index,
+            filename: file.filename.clone(),
+            size: file.size,
+        };
+        match kind {
+            ArcadeHypseusLaserdiscAssetKind::FrameText => text_asset = Some(asset),
+            ArcadeHypseusLaserdiscAssetKind::Video => video_asset = Some(asset),
+            ArcadeHypseusLaserdiscAssetKind::Audio => audio_asset = Some(asset),
+        }
+    }
+
+    let representative_asset = text_asset.clone().or_else(|| video_asset.clone()).or_else(|| audio_asset.clone())?;
+    let assets = vec![text_asset?, video_asset?, audio_asset?];
+    let bundle_name = Path::new(&bundle_key)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or(&bundle_key)
+        .to_string();
+
+    Some(ArcadeHypseusLaserdiscPlan {
+        bundle_name,
+        representative_asset,
+        assets,
+    })
+}
+
+async fn build_arcade_laserdisc_plan(
+    state: &AppState,
+    launchbox_db_id: i64,
+    selected_torrent_url: &str,
+    current_files: &[crate::torrent::TorrentFileInfo],
+    selected_file: &crate::torrent::TorrentFileInfo,
+) -> Result<Option<ArcadeLaserdiscPlan>, String> {
+    if let Some(plan) = build_arcade_mame_laserdisc_plan(
+        state,
+        launchbox_db_id,
+        selected_torrent_url,
+        current_files,
+        selected_file,
+    )
+    .await?
+    {
+        return Ok(Some(ArcadeLaserdiscPlan::Mame(plan)));
+    }
+
+    Ok(build_arcade_hypseus_laserdisc_plan(
+        selected_torrent_url,
+        current_files,
+        selected_file,
+    )
+    .map(ArcadeLaserdiscPlan::Hypseus))
 }
 
 async fn download_minerva_batch(
@@ -2163,7 +2297,7 @@ pub async fn start_minerva_download(
 
     let arcade_laserdisc_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
         if let Some(target_file) = target_file.as_ref() {
-            build_arcade_mame_laserdisc_plan(
+            build_arcade_laserdisc_plan(
                 state,
                 input.launchbox_db_id,
                 &torrent_url,
@@ -2272,19 +2406,26 @@ pub async fn start_minerva_download(
         }
 
         let status_message = match (&download_mode, arcade_laserdisc_plan.as_ref()) {
-            (MinervaDownloadMode::GameOnly, Some(plan)) => format!(
-                "Downloading required MAME laserdisc files for {}",
-                plan.romset_name
-            ),
+            (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Mame(plan))) => {
+                format!("Downloading required MAME laserdisc files for {}", plan.romset_name)
+            }
+            (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Hypseus(plan))) => {
+                format!("Downloading Hypseus laserdisc bundle for {}", plan.bundle_name)
+            }
             (MinervaDownloadMode::GameOnly, None) => format!("Downloading: {target_filename}"),
             (MinervaDownloadMode::FullTorrent, _) => {
                 format!("Downloading full torrent for {game_title}")
             }
         };
         let progress_total = match (&download_mode, arcade_laserdisc_plan.as_ref()) {
-            (MinervaDownloadMode::GameOnly, Some(plan)) => {
+            (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Mame(plan))) => {
                 plan.primary_asset.size.saturating_add(plan.chd_asset.size)
             }
+            (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Hypseus(plan))) => plan
+                .assets
+                .iter()
+                .map(|asset| asset.size)
+                .sum(),
             (MinervaDownloadMode::GameOnly, None) => selection_plan
                 .as_ref()
                 .map(|plan| {
@@ -2308,7 +2449,7 @@ pub async fn start_minerva_download(
             &status_message,
         );
 
-        if let Some(plan) = arcade_laserdisc_plan.as_ref() {
+        if let Some(ArcadeLaserdiscPlan::Mame(plan)) = arcade_laserdisc_plan.as_ref() {
             let primary_status = format!("Downloading {}.zip...", plan.romset_name);
             let primary_source = match download_minerva_batch(
                 &app_settings,
@@ -2465,10 +2606,16 @@ pub async fn start_minerva_download(
         };
 
         let requested_indices = match download_mode {
-            MinervaDownloadMode::GameOnly => selection_plan
-                .as_ref()
-                .map(|plan| plan.requested_indices.clone())
-                .or_else(|| file_index.map(|idx| vec![idx])),
+            MinervaDownloadMode::GameOnly => {
+                if let Some(ArcadeLaserdiscPlan::Hypseus(plan)) = arcade_laserdisc_plan.as_ref() {
+                    Some(plan.assets.iter().map(|asset| asset.file_index).collect())
+                } else {
+                    selection_plan
+                        .as_ref()
+                        .map(|plan| plan.requested_indices.clone())
+                        .or_else(|| file_index.map(|idx| vec![idx]))
+                }
+            }
             MinervaDownloadMode::FullTorrent => None,
         };
 
@@ -2599,15 +2746,22 @@ pub async fn start_minerva_download(
         }
 
         let representative_path = if let Some(file) = target_file {
+            let representative_index = arcade_laserdisc_plan.as_ref().and_then(|plan| match plan {
+                ArcadeLaserdiscPlan::Mame(plan) => Some(plan.primary_asset.file_index),
+                ArcadeLaserdiscPlan::Hypseus(plan) => Some(plan.representative_asset.file_index),
+            });
+            let representative_file = representative_index
+                .and_then(|idx| files.iter().find(|candidate| candidate.index == idx))
+                .unwrap_or(&file);
             if let Some(path) = client
-                .get_downloaded_file_path(&client_job_id, file.index, &download_dir_bg)
+                .get_downloaded_file_path(&client_job_id, representative_file.index, &download_dir_bg)
                 .await
                 .ok()
                 .flatten()
             {
                 Some(path)
             } else {
-                locate_downloaded_file(&download_dir_bg, &file.filename)
+                locate_downloaded_file(&download_dir_bg, &representative_file.filename)
             }
         } else {
             None
@@ -2639,11 +2793,17 @@ pub async fn start_minerva_download(
                 let file_size = std::fs::metadata(&found_path)
                     .map(|meta| meta.len() as i64)
                     .unwrap_or(target_size as i64);
-                (
-                    found_path.display().to_string(),
-                    file_size,
-                    "Download complete".to_string(),
-                )
+                let stored_size = match arcade_laserdisc_plan.as_ref() {
+                    Some(ArcadeLaserdiscPlan::Hypseus(_)) => progress_total as i64,
+                    _ => file_size,
+                };
+                let completion_message = match arcade_laserdisc_plan.as_ref() {
+                    Some(ArcadeLaserdiscPlan::Hypseus(plan)) => {
+                        format!("Download complete (Hypseus bundle for {})", plan.bundle_name)
+                    }
+                    _ => "Download complete".to_string(),
+                };
+                (found_path.display().to_string(), stored_size, completion_message)
             }
             MinervaDownloadMode::FullTorrent => {
                 let Some(found_path) = representative_path else {
@@ -2805,6 +2965,10 @@ pub struct ListTorrentFilesInput {
     pub platform: Option<String>,
     #[serde(default)]
     pub launchbox_db_id: Option<i64>,
+    #[serde(default)]
+    pub collection: Option<String>,
+    #[serde(default)]
+    pub minerva_platform: Option<String>,
 }
 
 const TORRENT_MATCH_STOP_WORDS: &[&str] = &[
@@ -2998,7 +3162,12 @@ fn select_torrent_file_matches(
         .collect()
 }
 
-fn is_platform_specific_torrent_candidate(platform: &str, filename: &str) -> bool {
+fn is_platform_specific_torrent_candidate(
+    platform: &str,
+    collection: Option<&str>,
+    minerva_platform: Option<&str>,
+    filename: &str,
+) -> bool {
     let normalized_platform = canonicalize_legacy_platform_name(platform);
     let lowercase_filename = filename.to_lowercase();
 
@@ -3008,6 +3177,22 @@ fn is_platform_specific_torrent_candidate(platform: &str, filename: &str) -> boo
                 || lowercase_filename.contains("/atari/8bit/")
         }
         "Arcade" => {
+            if collection
+                .map(str::trim)
+                .is_some_and(|value| value.eq_ignore_ascii_case("Laserdisc Collection"))
+            {
+                let normalized_filename = normalize_torrent_listing_path(filename);
+                if let Some(platform_name) = minerva_platform
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    let expected_prefix =
+                        format!("laserdisc collection/{}/", platform_name.to_ascii_lowercase());
+                    return normalized_filename.starts_with(&expected_prefix);
+                }
+                return normalized_filename.starts_with("laserdisc collection/");
+            }
+
             if lowercase_filename.contains("/laserdisc collection/") {
                 lowercase_filename.contains("/laserdisc collection/mame/roms/")
                     || lowercase_filename.contains("/laserdisc collection/mame/chd/")
@@ -3031,7 +3216,14 @@ pub async fn list_torrent_files(
     if let Some(ref platform) = input.platform {
         let filtered_files: Vec<_> = files
             .iter()
-            .filter(|file| is_platform_specific_torrent_candidate(platform, &file.filename))
+            .filter(|file| {
+                is_platform_specific_torrent_candidate(
+                    platform,
+                    input.collection.as_deref(),
+                    input.minerva_platform.as_deref(),
+                    &file.filename,
+                )
+            })
             .cloned()
             .collect();
         if !filtered_files.is_empty() {
@@ -3404,7 +3596,8 @@ pub async fn confirm_rom_import(
 mod tests {
     use super::{
         is_platform_specific_torrent_candidate, locate_downloaded_file, minerva_platform_fallbacks,
-        parse_arcade_mame_laserdisc_asset, select_torrent_file_matches, sort_emulator_statuses,
+        parse_arcade_hypseus_laserdisc_asset, parse_arcade_mame_laserdisc_asset,
+        select_torrent_file_matches, sort_emulator_statuses, ArcadeHypseusLaserdiscAssetKind,
         ArcadeMameLaserdiscAssetKind,
     };
     use crate::db::schema::EmulatorInfo;
@@ -3618,18 +3811,26 @@ mod tests {
     fn atari_800_platform_filter_keeps_only_8bit_subtree() {
         assert!(is_platform_specific_torrent_candidate(
             "Atari 800",
+            None,
+            None,
             "TOSEC/Atari/8bit/Games/[ATR]/Kennedy Approach (1985)(MicroProse)(US).zip"
         ));
         assert!(is_platform_specific_torrent_candidate(
             "Atari 800",
+            None,
+            None,
             "No-Intro/Atari - 8-bit Family/Coco Notes (USA).zip"
         ));
         assert!(!is_platform_specific_torrent_candidate(
             "Atari 800",
+            None,
+            None,
             "TOSEC/Atari/2600 & VCS/Games/Frogger.zip"
         ));
         assert!(!is_platform_specific_torrent_candidate(
             "Atari 800",
+            None,
+            None,
             "TOSEC/Atari/ST/Games/Kennedy Approach (1988)(MicroProse).zip"
         ));
     }
@@ -3658,7 +3859,7 @@ mod tests {
             },
         ]
         .into_iter()
-        .filter(|file| is_platform_specific_torrent_candidate("Atari 800", &file.filename))
+        .filter(|file| is_platform_specific_torrent_candidate("Atari 800", None, None, &file.filename))
         .collect();
 
         let matches = select_torrent_file_matches(files, "Kennedy Approach...", &[]);
@@ -3673,19 +3874,49 @@ mod tests {
     fn arcade_platform_hides_non_mame_laserdisc_reference_assets() {
         assert!(is_platform_specific_torrent_candidate(
             "Arcade",
+            None,
+            None,
             "Laserdisc Collection/MAME/ROMs/dlair.zip"
         ));
         assert!(is_platform_specific_torrent_candidate(
             "Arcade",
+            None,
+            None,
             "Laserdisc Collection/MAME/CHD/dlair/dlair.chd"
         ));
         assert!(!is_platform_specific_torrent_candidate(
             "Arcade",
+            None,
+            None,
             "Laserdisc Collection/Various - Video - Archived/Reference Videos/Dragon's Lair (MAME 7-disc stacked CHD, reference)/dlair.m2v"
         ));
         assert!(!is_platform_specific_torrent_candidate(
             "Arcade",
+            None,
+            None,
             "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.ogg"
+        ));
+    }
+
+    #[test]
+    fn arcade_platform_filters_laserdisc_collection_by_minerva_subplatform() {
+        assert!(is_platform_specific_torrent_candidate(
+            "Arcade",
+            Some("Laserdisc Collection"),
+            Some("MAME"),
+            "Laserdisc Collection/MAME/ROMs/dlair.zip"
+        ));
+        assert!(!is_platform_specific_torrent_candidate(
+            "Arcade",
+            Some("Laserdisc Collection"),
+            Some("MAME"),
+            "Laserdisc Collection/Hypseus Singe/dlair/dlair.txt"
+        ));
+        assert!(is_platform_specific_torrent_candidate(
+            "Arcade",
+            Some("Laserdisc Collection"),
+            Some("Hypseus Singe"),
+            "Laserdisc Collection/Hypseus Singe/dlair/dlair.txt"
         ));
     }
 
@@ -3704,6 +3935,37 @@ mod tests {
                 "Laserdisc Collection/Various - Video - Archived/Reference Videos/Dragon's Lair/dlair.m2v"
             ),
             None
+        );
+    }
+
+    #[test]
+    fn parses_arcade_hypseus_laserdisc_paths() {
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Dragon's Lair/dlair.txt"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/dragon's lair/dlair".to_string(),
+                ArcadeHypseusLaserdiscAssetKind::FrameText
+            ))
+        );
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Dragon's Lair/dlair.m2v"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/dragon's lair/dlair".to_string(),
+                ArcadeHypseusLaserdiscAssetKind::Video
+            ))
+        );
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Dragon's Lair/dlair.ogg"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/dragon's lair/dlair".to_string(),
+                ArcadeHypseusLaserdiscAssetKind::Audio
+            ))
         );
     }
 }
