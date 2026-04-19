@@ -112,6 +112,15 @@ codegen-units = 256
 [profile.dev.package."*"]
 opt-level = 3
 
+[profile.dev-backend]
+inherits = "dev"
+opt-level = 0
+lto = "off"
+codegen-units = 256
+
+[profile.dev-backend.package."*"]
+opt-level = 1
+
 [profile.release]
 lto = true
 codegen-units = 1
