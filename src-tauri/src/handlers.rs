@@ -353,15 +353,15 @@ pub async fn get_emulators_for_platform(
         FROM emulators e
         JOIN platform_emulators pe ON e.id = pe.emulator_id
         WHERE pe.platform_name = ?
-          AND (e.supported_os IS NULL OR e.supported_os LIKE '%' || ? || '%')
         ORDER BY pe.is_recommended DESC, e.name
         "#,
     )
     .bind(platform_name)
-    .bind(os)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    emulators.retain(emulator::is_emulator_visible_on_current_os);
 
     maybe_append_exodos_scummvm(pool, platform_name, os, false, &mut emulators).await?;
 
@@ -403,21 +403,23 @@ pub async fn get_all_emulators(
         .ok_or_else(|| "Emulators database not initialized".to_string())?;
 
     let emulators: Vec<EmulatorInfo> = if filter_os {
-        let os = current_os();
-        sqlx::query_as(
+        let emulators: Vec<EmulatorInfo> = sqlx::query_as(
             r#"
             SELECT id, name, homepage, supported_os, winget_id,
                    homebrew_formula, flatpak_id, retroarch_core,
                    save_directory, save_extensions, notes
             FROM emulators
-            WHERE supported_os IS NULL OR supported_os LIKE '%' || ? || '%'
             ORDER BY name
             "#,
         )
-        .bind(os)
         .fetch_all(pool)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+        emulators
+            .into_iter()
+            .filter(emulator::is_emulator_visible_on_current_os)
+            .collect()
     } else {
         sqlx::query_as(
             r#"
@@ -696,17 +698,17 @@ pub async fn get_emulators_with_status(
         FROM emulators e
         JOIN platform_emulators pe ON e.id = pe.emulator_id
         WHERE pe.platform_name = ?
-          AND (e.supported_os IS NULL OR e.supported_os LIKE '%' || ? || '%')
         ORDER BY
             pe.is_recommended DESC,
             e.name
         "#,
     )
     .bind(platform_name)
-    .bind(os)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    emulators.retain(emulator::is_emulator_visible_on_current_os);
 
     maybe_append_exodos_scummvm(pool, platform_name, os, true, &mut emulators).await?;
 

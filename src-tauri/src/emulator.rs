@@ -467,6 +467,21 @@ fn wine_install_for_emulator(emulator: &EmulatorInfo) -> Option<WineInstallInfo>
     }
 }
 
+pub fn is_emulator_visible_on_current_os(emulator: &EmulatorInfo) -> bool {
+    let os = current_os();
+    let supported = emulator
+        .supported_os
+        .as_deref()
+        .map(|supported_os| supported_os.split(';').any(|entry| entry.trim() == os))
+        .unwrap_or(true);
+
+    if supported {
+        return true;
+    }
+
+    matches!(os, "Linux") && wine_install_for_emulator(emulator).is_some()
+}
+
 fn wine_install_root(info: &WineInstallInfo) -> PathBuf {
     lunchbox_wine_root().join(info.slug)
 }
@@ -3845,6 +3860,27 @@ mod tests {
             info.executable_candidates,
             &["Altirra64.exe", "Altirra.exe"]
         );
+    }
+
+    #[test]
+    fn linux_visibility_includes_wine_backed_windows_emulator() {
+        let altirra = EmulatorInfo {
+            id: 1,
+            name: "Altirra".to_string(),
+            homepage: None,
+            supported_os: Some("Windows".to_string()),
+            winget_id: None,
+            homebrew_formula: None,
+            flatpak_id: None,
+            retroarch_core: None,
+            save_directory: None,
+            save_extensions: None,
+            notes: None,
+        };
+
+        if current_os() == "Linux" {
+            assert!(is_emulator_visible_on_current_os(&altirra));
+        }
     }
 
     #[test]
