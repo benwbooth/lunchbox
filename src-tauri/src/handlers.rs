@@ -1194,21 +1194,19 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
         .await
         .map_err(|e| e.to_string())?;
 
-    let game_file_row: Option<(String, String)> = sqlx::query_as(
-        "SELECT file_path, import_source FROM game_files WHERE launchbox_db_id = ?",
-    )
-    .bind(launchbox_db_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let game_file_row: Option<(String, String)> =
+        sqlx::query_as("SELECT file_path, import_source FROM game_files WHERE launchbox_db_id = ?")
+            .bind(launchbox_db_id)
+            .fetch_optional(db_pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
-    let pc_install_row: Option<(String,)> = sqlx::query_as(
-        "SELECT install_root FROM pc_game_installs WHERE launchbox_db_id = ?",
-    )
-    .bind(launchbox_db_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let pc_install_row: Option<(String,)> =
+        sqlx::query_as("SELECT install_root FROM pc_game_installs WHERE launchbox_db_id = ?")
+            .bind(launchbox_db_id)
+            .fetch_optional(db_pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let mut removed_anything = false;
 

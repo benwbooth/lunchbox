@@ -2334,8 +2334,6 @@ pub async fn download_game_video(
     launchbox_db_id: Option<i64>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<String, String> {
-    const VIDEO_DOWNLOAD_TIMEOUT_SECS: u64 = 120;
-
     let state_guard = state.read().await;
 
     // Check if EmuMovies is configured
@@ -2386,7 +2384,8 @@ pub async fn download_game_video(
     // Release shared state lock before blocking FTP work.
     drop(state_guard);
 
-    // Download the video with timeout so UI doesn't hang indefinitely.
+    // Download the video. FTP data reads now use stall timeouts and progress
+    // updates, so we avoid a fixed wall-clock timeout here.
     let platform_for_task = platform.clone();
     let game_title_for_task = game_title.clone();
     let game_cache_dir_for_task = game_cache_dir.clone();
@@ -2399,27 +2398,15 @@ pub async fn download_game_video(
         )
     });
 
-    let video_path = match tokio::time::timeout(
-        std::time::Duration::from_secs(VIDEO_DOWNLOAD_TIMEOUT_SECS),
-        task,
-    )
-    .await
-    {
-        Ok(Ok(Ok(path))) => path,
-        Ok(Ok(Err(e))) => {
+    let video_path = match task.await {
+        Ok(Ok(path)) => path,
+        Ok(Err(e)) => {
             crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             return Err(e.to_string());
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             return Err(format!("Video download task failed: {}", e));
-        }
-        Err(_) => {
-            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
-            return Err(format!(
-                "Video download timed out after {} seconds",
-                VIDEO_DOWNLOAD_TIMEOUT_SECS
-            ));
         }
     };
 

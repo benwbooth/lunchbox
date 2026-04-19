@@ -31,6 +31,24 @@ fn format_number(n: i64) -> String {
     result.chars().rev().collect()
 }
 
+fn format_hover_video_progress_label(progress: &tauri::VideoDownloadProgress) -> String {
+    let status = progress
+        .status
+        .clone()
+        .unwrap_or_else(|| "Loading preview...".to_string());
+
+    progress
+        .progress
+        .map(|value| {
+            format!(
+                "{} {}%",
+                status,
+                (value.clamp(0.0, 1.0) * 100.0).round() as i32
+            )
+        })
+        .unwrap_or(status)
+}
+
 // Virtual scroll configuration
 const ITEM_HEIGHT: i32 = 280; // Height of each game card in grid
 
@@ -1439,6 +1457,7 @@ fn GameCard(
     let (hover_video_url, set_hover_video_url) = signal::<Option<String>>(None);
     let (hover_video_loading, set_hover_video_loading) = signal(false);
     let (hover_video_progress, set_hover_video_progress) = signal::<Option<f32>>(None);
+    let (hover_video_status, set_hover_video_status) = signal("Loading preview...".to_string());
     let (hover_video_unavailable, set_hover_video_unavailable) = signal(false);
     let (hover_video_loaded, set_hover_video_loaded) = signal(false);
     let (hover_video_playing, set_hover_video_playing) = signal(false);
@@ -1604,6 +1623,7 @@ fn GameCard(
                     }
                     set_hover_video_loading.set(true);
                     set_hover_video_progress.set(None);
+                    set_hover_video_status.set("Loading preview...".to_string());
 
                     match tauri::check_cached_video(
                         title_async.clone(),
@@ -1646,6 +1666,8 @@ fn GameCard(
                                     tauri::get_video_download_progress(title, platform, db_id_opt)
                                         .await
                                 {
+                                    set_hover_video_status
+                                        .set(format_hover_video_progress_label(&progress));
                                     set_hover_video_progress
                                         .set(progress.progress.map(|value| value.clamp(0.0, 1.0)));
                                 }
@@ -1667,6 +1689,7 @@ fn GameCard(
                                 set_hover_video_loaded.set(false);
                                 set_hover_video_url.set(Some(url));
                                 set_hover_video_progress.set(Some(1.0));
+                                set_hover_video_status.set("Loading preview... 100%".to_string());
                             }
                         }
                         Err(e) => {
@@ -1698,6 +1721,7 @@ fn GameCard(
         let set_hover_preview_armed = set_hover_preview_armed;
         let set_hover_video_loading = set_hover_video_loading;
         let set_hover_video_progress = set_hover_video_progress;
+        let set_hover_video_status = set_hover_video_status;
         let set_hover_video_playing = set_hover_video_playing;
         let set_tooltip_style = set_tooltip_style;
         let hover_token = hover_token.clone();
@@ -1707,6 +1731,7 @@ fn GameCard(
             set_hover_preview_armed.set(false);
             set_hover_video_loading.set(false);
             set_hover_video_progress.set(None);
+            set_hover_video_status.set("Loading preview...".to_string());
             set_hover_video_playing.set(false);
             set_tooltip_style.set(String::new());
             hover_token.set(hover_token.get().wrapping_add(1));
@@ -1746,6 +1771,7 @@ fn GameCard(
         let set_is_hovered = set_is_hovered;
         let set_hover_preview_armed = set_hover_preview_armed;
         let set_hover_video_loading = set_hover_video_loading;
+        let set_hover_video_status = set_hover_video_status;
         let set_hover_video_playing = set_hover_video_playing;
         let hover_token = hover_token.clone();
         let game_for_click = game_for_click.clone();
@@ -1753,6 +1779,7 @@ fn GameCard(
             set_is_hovered.set(false);
             set_hover_preview_armed.set(false);
             set_hover_video_loading.set(false);
+            set_hover_video_status.set("Loading preview...".to_string());
             set_hover_video_playing.set(false);
             hover_token.set(hover_token.get().wrapping_add(1));
 
@@ -1954,12 +1981,7 @@ fn GameCard(
                     }}
                     <div class="cover-video-loading" class:active=show_hover_loading>
                         <span>
-                            {move || {
-                                hover_video_progress
-                                    .get()
-                                    .map(|value| format!("Loading preview... {}%", (value * 100.0).round() as i32))
-                                    .unwrap_or_else(|| "Loading preview...".to_string())
-                            }}
+                            {move || hover_video_status.get()}
                         </span>
                         <div class="download-progress">
                             <div

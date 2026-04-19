@@ -18,13 +18,14 @@ use crate::tags;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::hash::{Hash, Hasher};
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use suppaftp::FtpStream;
 
 /// EmuMovies FTP configuration
@@ -211,11 +212,13 @@ static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceL
 static VIDEO_INDEX_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<VideoIndexEntry>>>>> =
     OnceLock::new();
 static VIDEO_DOWNLOAD_PROGRESS: OnceLock<
-    std::sync::RwLock<HashMap<String, VideoDownloadProgress>>,
+    std::sync::RwLock<HashMap<String, VideoDownloadProgressState>>,
 > = OnceLock::new();
 
 const VIDEO_MATCH_CACHE_VERSION: &str = "3";
 const VIDEO_INDEX_CACHE_VERSION: &str = "1";
+const FTP_CONTROL_STALL_TIMEOUT: Duration = Duration::from_secs(45);
+const FTP_DATA_STALL_TIMEOUT: Duration = Duration::from_secs(45);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -223,10 +226,18 @@ pub struct VideoDownloadProgress {
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
     pub progress: Option<f32>,
+    pub stage: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct VideoDownloadProgressState {
+    progress: VideoDownloadProgress,
+    last_updated: Instant,
 }
 
 fn video_download_progress_map(
-) -> &'static std::sync::RwLock<HashMap<String, VideoDownloadProgress>> {
+) -> &'static std::sync::RwLock<HashMap<String, VideoDownloadProgressState>> {
     VIDEO_DOWNLOAD_PROGRESS.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
 }
 
@@ -243,7 +254,7 @@ pub fn get_video_download_progress(game_cache_dir: &Path) -> Option<VideoDownloa
         .read()
         .ok()?
         .get(&key)
-        .cloned()
+        .map(|state| state.progress.clone())
 }
 
 pub fn clear_video_download_progress(game_cache_dir: &Path) {
@@ -260,9 +271,6 @@ fn update_video_download_progress(
     downloaded_bytes: u64,
     total_bytes: Option<u64>,
 ) {
-    let Some(key) = video_progress_key(game_cache_dir) else {
-        return;
-    };
     let progress = total_bytes.map(|total| {
         if total == 0 {
             0.0
@@ -270,16 +278,57 @@ fn update_video_download_progress(
             (downloaded_bytes as f32 / total as f32).clamp(0.0, 1.0)
         }
     });
+    set_video_download_progress(
+        game_cache_dir,
+        VideoDownloadProgress {
+            downloaded_bytes,
+            total_bytes,
+            progress,
+            stage: Some("downloading".to_string()),
+            status: Some("Downloading video...".to_string()),
+        },
+    );
+}
+
+pub fn get_video_download_progress_age(game_cache_dir: &Path) -> Option<Duration> {
+    let Some(key) = video_progress_key(game_cache_dir) else {
+        return None;
+    };
+    let progress_map = video_download_progress_map().read().ok()?;
+    let state = progress_map.get(&key)?;
+    Some(state.last_updated.elapsed())
+}
+
+fn set_video_download_progress(game_cache_dir: &Path, progress: VideoDownloadProgress) {
+    let Some(key) = video_progress_key(game_cache_dir) else {
+        return;
+    };
     if let Ok(mut progress_map) = video_download_progress_map().write() {
         progress_map.insert(
             key,
-            VideoDownloadProgress {
-                downloaded_bytes,
-                total_bytes,
+            VideoDownloadProgressState {
                 progress,
+                last_updated: Instant::now(),
             },
         );
     }
+}
+
+fn update_video_download_status(
+    game_cache_dir: &Path,
+    stage: impl Into<String>,
+    status: impl Into<String>,
+) {
+    set_video_download_progress(
+        game_cache_dir,
+        VideoDownloadProgress {
+            downloaded_bytes: 0,
+            total_bytes: None,
+            progress: None,
+            stage: Some(stage.into()),
+            status: Some(status.into()),
+        },
+    );
 }
 
 fn video_cache_version_path(game_cache_dir: &Path) -> PathBuf {
@@ -694,6 +743,12 @@ impl EmuMoviesClient {
         let addr = format!("{}:{}", FTP_HOST, FTP_PORT);
         let mut ftp =
             FtpStream::connect(&addr).context("Failed to connect to EmuMovies FTP server")?;
+        ftp.get_ref()
+            .set_read_timeout(Some(FTP_CONTROL_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies FTP read timeout")?;
+        ftp.get_ref()
+            .set_write_timeout(Some(FTP_CONTROL_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies FTP write timeout")?;
 
         ftp.login(&self.config.username, &self.config.password)
             .context("FTP login failed - check username/password")?;
@@ -703,8 +758,58 @@ impl EmuMoviesClient {
 
     /// List files in a directory
     pub fn list_files(&self, path: &str) -> Result<Vec<String>> {
+        self.list_files_with_progress(path, |_count| {})
+    }
+
+    fn list_files_with_progress<F>(&self, path: &str, mut on_progress: F) -> Result<Vec<String>>
+    where
+        F: FnMut(usize),
+    {
         let mut ftp = self.connect()?;
-        let files = ftp.nlst(Some(path)).context("Failed to list directory")?;
+        let (_response, data_stream) = ftp
+            .custom_data_command(
+                format!("NLST {}", path),
+                &[suppaftp::Status::AboutToSend, suppaftp::Status::AlreadyOpen],
+            )
+            .context("Failed to list directory")?;
+        data_stream
+            .get_ref()
+            .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies FTP data read timeout")?;
+        data_stream
+            .get_ref()
+            .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies FTP data write timeout")?;
+
+        let mut data_stream = BufReader::new(data_stream);
+        let mut files = Vec::new();
+        loop {
+            let mut line_buf = vec![];
+            match data_stream.read_until(b'\n', &mut line_buf) {
+                Ok(0) => break,
+                Ok(len) => {
+                    let mut line = String::from_utf8_lossy(&line_buf[..len]).to_string();
+                    if line.ends_with('\n') {
+                        line.pop();
+                    }
+                    if line.ends_with('\r') {
+                        line.pop();
+                    }
+                    if line.is_empty() {
+                        continue;
+                    }
+                    files.push(line);
+                    on_progress(files.len());
+                }
+                Err(err) => {
+                    let _ = ftp.close_data_connection(data_stream);
+                    let _ = ftp.quit();
+                    return Err(anyhow::anyhow!("Failed to list directory: {}", err));
+                }
+            }
+        }
+        ftp.close_data_connection(data_stream)
+            .context("Failed to finalize directory listing")?;
         let _ = ftp.quit();
         Ok(files)
     }
@@ -953,7 +1058,11 @@ impl EmuMoviesClient {
 
     /// Find candidate video folders for a platform, in priority order.
     /// We prefer HQ, then fall back to SQ when HQ doesn't contain a title.
-    pub fn find_video_folders(&self, platform: &str) -> Result<Vec<String>> {
+    pub fn find_video_folders(
+        &self,
+        platform: &str,
+        game_cache_dir: Option<&Path>,
+    ) -> Result<Vec<String>> {
         let system_folder = get_emumovies_system_folder(platform)
             .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
         let cache_key = system_folder.to_ascii_lowercase();
@@ -972,12 +1081,44 @@ impl EmuMoviesClient {
         let mut matches: Vec<VideoFolderCandidate> = Vec::new();
 
         for (source_order, video_base) in bases.iter().enumerate() {
+            let base_label = if video_base.contains("(HQ)") {
+                "HQ video folders"
+            } else {
+                "SQ video folders"
+            };
+            if let Some(game_cache_dir) = game_cache_dir {
+                update_video_download_status(
+                    game_cache_dir,
+                    "finding-folder",
+                    format!("Scanning {} for {} videos...", base_label, system_folder),
+                );
+            }
             tracing::info!(
                 "Searching for video folder for {} in {}",
                 system_folder,
                 video_base
             );
-            let folders = match self.list_files(video_base) {
+            let mut last_progress_update = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or_else(Instant::now);
+            let folders = match self.list_files_with_progress(video_base, |count| {
+                if count == 1
+                    || count % 250 == 0
+                    || last_progress_update.elapsed() >= Duration::from_millis(500)
+                {
+                    if let Some(game_cache_dir) = game_cache_dir {
+                        update_video_download_status(
+                            game_cache_dir,
+                            "finding-folder",
+                            format!(
+                                "Scanning {} for {} videos... {} entries",
+                                base_label, system_folder, count
+                            ),
+                        );
+                    }
+                    last_progress_update = Instant::now();
+                }
+            }) {
                 Ok(f) => f,
                 Err(e) => {
                     tracing::warn!("Failed to list {}: {}", video_base, e);
@@ -1023,7 +1164,11 @@ impl EmuMoviesClient {
     }
 
     /// Build or load a cached video index for a specific FTP folder.
-    fn get_video_index(&self, video_folder: &str) -> Result<Arc<Vec<VideoIndexEntry>>> {
+    fn get_video_index(
+        &self,
+        video_folder: &str,
+        game_cache_dir: Option<&Path>,
+    ) -> Result<Arc<Vec<VideoIndexEntry>>> {
         if let Some(index) = VIDEO_INDEX_CACHE
             .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()
@@ -1039,6 +1184,13 @@ impl EmuMoviesClient {
             if let Ok(content) = std::fs::read_to_string(&cache_path) {
                 if let Ok(cache) = serde_json::from_str::<VideoIndexCache>(&content) {
                     if cache.version == VIDEO_INDEX_CACHE_VERSION {
+                        if let Some(game_cache_dir) = game_cache_dir {
+                            update_video_download_status(
+                                game_cache_dir,
+                                "index-ready",
+                                "Using cached video index...",
+                            );
+                        }
                         let index = Arc::new(cache.entries);
                         VIDEO_INDEX_CACHE
                             .get_or_init(|| Mutex::new(HashMap::new()))
@@ -1052,10 +1204,60 @@ impl EmuMoviesClient {
             }
         }
 
-        let videos = self.list_files(video_folder)?;
+        if let Some(game_cache_dir) = game_cache_dir {
+            update_video_download_status(
+                game_cache_dir,
+                "listing-folder",
+                format!(
+                    "Listing {}...",
+                    video_folder.rsplit('/').next().unwrap_or(video_folder)
+                ),
+            );
+        }
+        let mut last_listing_update = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+        let videos = self.list_files_with_progress(video_folder, |count| {
+            if count == 1
+                || count % 250 == 0
+                || last_listing_update.elapsed() >= Duration::from_millis(500)
+            {
+                if let Some(game_cache_dir) = game_cache_dir {
+                    update_video_download_status(
+                        game_cache_dir,
+                        "listing-folder",
+                        format!(
+                            "Listing {}... {} files found",
+                            video_folder.rsplit('/').next().unwrap_or(video_folder),
+                            count
+                        ),
+                    );
+                }
+                last_listing_update = Instant::now();
+            }
+        })?;
+        if let Some(game_cache_dir) = game_cache_dir {
+            update_video_download_status(
+                game_cache_dir,
+                "indexing-folder",
+                format!("Indexing {} video entries...", videos.len()),
+            );
+        }
         let entries: Vec<VideoIndexEntry> = videos
             .into_iter()
+            .enumerate()
             .filter_map(|video| {
+                let index_position = video.0 + 1;
+                let video = video.1;
+                if (index_position == 1 || index_position % 500 == 0) && game_cache_dir.is_some() {
+                    if let Some(game_cache_dir) = game_cache_dir {
+                        update_video_download_status(
+                            game_cache_dir,
+                            "indexing-folder",
+                            format!("Indexing video entries... {} processed", index_position),
+                        );
+                    }
+                }
                 let filename = video.rsplit('/').next().unwrap_or(&video);
                 if !filename.ends_with(".mp4") {
                     return None;
@@ -1126,7 +1328,12 @@ impl EmuMoviesClient {
         }
 
         // Find candidate video folders (HQ first, then SQ fallback)
-        let video_folders = self.find_video_folders(platform)?;
+        update_video_download_status(
+            game_cache_dir,
+            "finding-folder",
+            "Finding matching video folder...",
+        );
+        let video_folders = self.find_video_folders(platform, Some(game_cache_dir))?;
         if video_folders.is_empty() {
             anyhow::bail!("No video folder found for platform {}", platform);
         }
@@ -1135,7 +1342,7 @@ impl EmuMoviesClient {
         let mut selected_video: Option<(String, String, VideoMatchKind, f32, u8, usize)> = None;
 
         for (source_order, video_folder) in video_folders.iter().enumerate() {
-            let index = match self.get_video_index(video_folder) {
+            let index = match self.get_video_index(video_folder, Some(game_cache_dir)) {
                 Ok(v) => v,
                 Err(e) => {
                     tracing::warn!("Failed to build video index for {}: {}", video_folder, e);
@@ -1211,6 +1418,14 @@ impl EmuMoviesClient {
         let mut stream = ftp
             .retr_as_stream(&video_path)
             .context(format!("Failed to download: {}", video_path))?;
+        stream
+            .get_ref()
+            .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies video data read timeout")?;
+        stream
+            .get_ref()
+            .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies video data write timeout")?;
         let mut buffer = [0u8; 64 * 1024];
         let mut downloaded_bytes = 0u64;
         loop {
@@ -1257,13 +1472,13 @@ impl EmuMoviesClient {
         let system_folder = get_emumovies_system_folder(platform)
             .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
 
-        let video_folders = self.find_video_folders(platform)?;
+        let video_folders = self.find_video_folders(platform, None)?;
         if video_folders.is_empty() {
             return Ok(false);
         }
 
         for (source_order, video_folder) in video_folders.iter().enumerate() {
-            let index = match self.get_video_index(video_folder) {
+            let index = match self.get_video_index(video_folder, None) {
                 Ok(v) => v,
                 Err(e) => {
                     tracing::warn!(

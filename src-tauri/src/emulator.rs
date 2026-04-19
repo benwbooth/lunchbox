@@ -858,10 +858,9 @@ pub async fn uninstall_emulator(
 
             match get_uninstall_method_for_path(&installed_path).as_deref() {
                 Some("flatpak") => {
-                    let app_id = emulator
-                        .flatpak_id
-                        .as_deref()
-                        .ok_or_else(|| format!("{} does not define a Flatpak app id", emulator.name))?;
+                    let app_id = emulator.flatpak_id.as_deref().ok_or_else(|| {
+                        format!("{} does not define a Flatpak app id", emulator.name)
+                    })?;
                     uninstall_flatpak(app_id).await
                 }
                 Some("nix") => {
@@ -3535,7 +3534,9 @@ pub fn add_status(emulator: EmulatorInfo) -> EmulatorWithStatus {
     let uninstall_method = if is_retroarch_core {
         None
     } else {
-        install_path.as_deref().and_then(get_uninstall_method_for_path)
+        install_path
+            .as_deref()
+            .and_then(get_uninstall_method_for_path)
     };
 
     let display_name = if let Some(ref core) = emulator.retroarch_core {

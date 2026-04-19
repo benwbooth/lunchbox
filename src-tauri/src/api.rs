@@ -2126,7 +2126,7 @@ async fn rspc_probe_game_video_available(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    const VIDEO_PROBE_TIMEOUT_SECS: u64 = 8;
+    const VIDEO_PROBE_TIMEOUT_SECS: u64 = 45;
 
     let input_str = match params.get("input") {
         Some(s) => s,
@@ -2185,8 +2185,6 @@ async fn rspc_download_game_video(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    const VIDEO_DOWNLOAD_TIMEOUT_SECS: u64 = 20;
-
     // Parse the input parameter (JSON-encoded)
     let input_str = match params.get("input") {
         Some(s) => s,
@@ -2262,7 +2260,8 @@ async fn rspc_download_game_video(
     // Release shared state lock before blocking FTP work.
     drop(state_guard);
 
-    // Download the video with timeout so frontend doesn't stall indefinitely.
+    // Download the video. FTP reads now use stall timeouts and report listing
+    // progress, so we avoid a fixed wall-clock timeout here.
     let platform_for_task = input.platform.clone();
     let game_title_for_task = input.game_title.clone();
     let game_cache_dir_for_task = game_cache_dir.clone();
@@ -2275,33 +2274,19 @@ async fn rspc_download_game_video(
         )
     });
 
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(VIDEO_DOWNLOAD_TIMEOUT_SECS),
-        task,
-    )
-    .await
-    {
-        Ok(Ok(Ok(video_path))) => {
+    match task.await {
+        Ok(Ok(video_path)) => {
             tracing::info!("  Video download succeeded: {}", video_path.display());
             rspc_ok(video_path.to_string_lossy().to_string()).into_response()
         }
-        Ok(Ok(Err(e))) => {
+        Ok(Err(e)) => {
             crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             tracing::warn!("  Video download failed: {}", e);
             rspc_err::<String>(e.to_string()).into_response()
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
             let msg = format!("Video download task failed: {}", e);
-            tracing::warn!("  {}", msg);
-            rspc_err::<String>(msg).into_response()
-        }
-        Err(_) => {
-            crate::images::emumovies::clear_video_download_progress(&game_cache_dir);
-            let msg = format!(
-                "Video download timed out after {} seconds",
-                VIDEO_DOWNLOAD_TIMEOUT_SECS
-            );
             tracing::warn!("  {}", msg);
             rspc_err::<String>(msg).into_response()
         }

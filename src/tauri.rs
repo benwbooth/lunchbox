@@ -1502,6 +1502,8 @@ pub struct VideoDownloadProgress {
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
     pub progress: Option<f32>,
+    pub stage: Option<String>,
+    pub status: Option<String>,
 }
 
 /// Check if a video is cached for a game

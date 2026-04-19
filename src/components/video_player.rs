@@ -77,6 +77,17 @@ fn video_progress_percent(progress: Option<f32>) -> i32 {
     (normalized_video_progress(progress).unwrap_or(0.0) * 100.0).round() as i32
 }
 
+fn format_video_progress_label(progress: &tauri::VideoDownloadProgress) -> String {
+    let status = progress
+        .status
+        .clone()
+        .unwrap_or_else(|| "Preparing video lookup...".to_string());
+
+    normalized_video_progress(progress.progress)
+        .map(|value| format!("{} {}%", status, video_progress_percent(Some(value))))
+        .unwrap_or(status)
+}
+
 pub async fn preload_video_state(
     game_title: String,
     platform: String,
@@ -150,6 +161,7 @@ pub fn VideoPlayer(
         .or_else(|| get_cached_video_state(&cache_key_str))
         .unwrap_or(VideoState::Initial);
     let (state, set_state) = signal(initial_state);
+    let (download_status, set_download_status) = signal("Preparing video lookup...".to_string());
     let (load_retry_count, set_load_retry_count) = signal(0u8);
     let cache_key = StoredValue::new(cache_key_str);
     let video_ref: NodeRef<leptos::html::Video> = NodeRef::new();
@@ -234,6 +246,7 @@ pub fn VideoPlayer(
                 }
             }
 
+            set_download_status.set("Preparing video lookup...".to_string());
             set_state.set(VideoState::Downloading(None));
 
             match tauri::download_game_video(title.clone(), plat.clone(), db_id_opt).await {
@@ -303,6 +316,7 @@ pub fn VideoPlayer(
                 if let Ok(Some(progress)) =
                     tauri::get_video_download_progress(title, plat, db_id_opt).await
                 {
+                    set_download_status.set(format_video_progress_label(&progress));
                     set_state.set(VideoState::Downloading(normalized_video_progress(
                         progress.progress,
                     )));
@@ -335,11 +349,7 @@ pub fn VideoPlayer(
                             ></div>
                         </div>
                         <span class="video-hint">
-                            {move || {
-                                normalized_video_progress(progress)
-                                    .map(|value| format!("{}%", video_progress_percent(Some(value))))
-                                    .unwrap_or_else(|| "Preparing download...".to_string())
-                            }}
+                            {move || download_status.get()}
                         </span>
                     </div>
                 }.into_any(),
