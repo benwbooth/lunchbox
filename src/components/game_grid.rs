@@ -1701,6 +1701,9 @@ fn GameCard(
                                     || msg.contains("not configured")
                                 {
                                     set_hover_video_unavailable.set(true);
+                                    set_hover_video_status.set("Preview unavailable".to_string());
+                                } else {
+                                    set_hover_video_status.set(format!("Preview failed: {}", e));
                                 }
                             }
                         }

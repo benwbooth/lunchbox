@@ -411,8 +411,11 @@ pub fn VideoPlayer(
                 VideoState::NoVideo => view! {
                     <div class="video-not-available"></div>
                 }.into_any(),
-                VideoState::Error(_) => view! {
-                    <div class="video-not-available"></div>
+                VideoState::Error(err) => view! {
+                    <div class="video-downloading">
+                        <span>"Video lookup failed"</span>
+                        <span class="video-hint">{err}</span>
+                    </div>
                 }.into_any(),
             }}
         </div>
