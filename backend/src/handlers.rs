@@ -3018,6 +3018,14 @@ struct TorrentMatchCandidate {
     all_significant_words_match: bool,
 }
 
+#[derive(Debug)]
+struct NamedMatchScore {
+    exact_match: bool,
+    full_query_match: bool,
+    all_significant_words_match: bool,
+    score: f64,
+}
+
 fn basename_without_extension(path: &str) -> String {
     let filename = std::path::Path::new(path)
         .file_name()
@@ -3046,14 +3054,13 @@ fn significant_match_words<'a>(normalized_title: &'a str) -> Vec<&'a str> {
     }
 }
 
-fn build_torrent_match_candidate(
-    file: crate::torrent::TorrentFileInfo,
+fn score_match_name(
+    candidate_name: &str,
     normalized_query: &str,
     query_words: &[&str],
     significant_query_words: &[&str],
-) -> Option<TorrentMatchCandidate> {
-    let name = basename_without_extension(&file.filename);
-    let normalized_file = crate::tags::normalize_title_for_matching(&name);
+) -> Option<NamedMatchScore> {
+    let normalized_file = crate::tags::normalize_title_for_matching(candidate_name);
     if normalized_file.is_empty() {
         return None;
     }
@@ -3103,6 +3110,23 @@ fn build_torrent_match_candidate(
         0.0
     };
 
+    Some(NamedMatchScore {
+        exact_match,
+        full_query_match,
+        all_significant_words_match,
+        score,
+    })
+}
+
+fn build_torrent_match_candidate(
+    file: crate::torrent::TorrentFileInfo,
+    normalized_query: &str,
+    query_words: &[&str],
+    significant_query_words: &[&str],
+) -> Option<TorrentMatchCandidate> {
+    let name = basename_without_extension(&file.filename);
+    let score = score_match_name(&name, normalized_query, query_words, significant_query_words)?;
+
     let region = crate::tags::get_region_tags(&file.filename)
         .into_iter()
         .next();
@@ -3112,13 +3136,152 @@ fn build_torrent_match_candidate(
             index: file.index,
             filename: file.filename,
             size: file.size,
-            match_score: score,
+            match_score: score.score,
             region,
         },
-        exact_match,
-        full_query_match,
-        all_significant_words_match,
+        exact_match: score.exact_match,
+        full_query_match: score.full_query_match,
+        all_significant_words_match: score.all_significant_words_match,
     })
+}
+
+fn is_hypseus_laserdisc_request(
+    platform: Option<&str>,
+    collection: Option<&str>,
+    minerva_platform: Option<&str>,
+) -> bool {
+    platform
+        .map(canonicalize_legacy_platform_name)
+        .is_some_and(|platform| platform == "Arcade")
+        && collection
+            .map(str::trim)
+            .is_some_and(|value| value.eq_ignore_ascii_case("Laserdisc Collection"))
+        && minerva_platform
+            .map(str::trim)
+            .is_some_and(|value| value.eq_ignore_ascii_case("Hypseus Singe"))
+}
+
+fn select_arcade_hypseus_laserdisc_matches(
+    files: Vec<crate::torrent::TorrentFileInfo>,
+    game_title: &str,
+    region_priority: &[String],
+) -> Vec<TorrentFileMatch> {
+    #[derive(Debug)]
+    struct BundleCandidate {
+        members: Vec<crate::torrent::TorrentFileInfo>,
+        exact_match: bool,
+        full_query_match: bool,
+        all_significant_words_match: bool,
+        match_score: f64,
+    }
+
+    let normalized_query = crate::tags::normalize_title_for_matching(game_title);
+    let query_words: Vec<&str> = normalized_query.split_whitespace().collect();
+    let significant_query_words = significant_match_words(&normalized_query);
+
+    let mut bundles: std::collections::BTreeMap<
+        String,
+        (
+            Option<crate::torrent::TorrentFileInfo>,
+            Option<crate::torrent::TorrentFileInfo>,
+            Option<crate::torrent::TorrentFileInfo>,
+        ),
+    > = std::collections::BTreeMap::new();
+
+    for file in files {
+        let Some((bundle_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&file.filename) else {
+            continue;
+        };
+        let entry = bundles.entry(bundle_key).or_insert((None, None, None));
+        match kind {
+            ArcadeHypseusLaserdiscAssetKind::FrameText => entry.0 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::Video => entry.1 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::Audio => entry.2 = Some(file),
+        }
+    }
+
+    let mut candidates: Vec<BundleCandidate> = bundles
+        .into_iter()
+        .filter_map(|(bundle_key, (text, video, audio))| {
+            let members = vec![text?, video?, audio?];
+            let score =
+                score_match_name(&bundle_key, &normalized_query, &query_words, &significant_query_words)?;
+            Some(BundleCandidate {
+                members,
+                exact_match: score.exact_match,
+                full_query_match: score.full_query_match,
+                all_significant_words_match: score.all_significant_words_match,
+                match_score: score.score,
+            })
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| {
+        b.exact_match
+            .cmp(&a.exact_match)
+            .then_with(|| b.full_query_match.cmp(&a.full_query_match))
+            .then_with(|| {
+                b.all_significant_words_match
+                    .cmp(&a.all_significant_words_match)
+            })
+            .then_with(|| {
+                b.match_score
+                    .partial_cmp(&a.match_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                let a_region = a
+                    .members
+                    .iter()
+                    .find_map(|file| crate::tags::get_region_tags(&file.filename).into_iter().next());
+                let b_region = b
+                    .members
+                    .iter()
+                    .find_map(|file| crate::tags::get_region_tags(&file.filename).into_iter().next());
+                crate::region_priority::priority_for_region(a_region.as_deref(), region_priority)
+                    .cmp(&crate::region_priority::priority_for_region(
+                        b_region.as_deref(),
+                        region_priority,
+                    ))
+            })
+            .then_with(|| {
+                let a_size: u64 = a.members.iter().map(|file| file.size).sum();
+                let b_size: u64 = b.members.iter().map(|file| file.size).sum();
+                b_size.cmp(&a_size)
+            })
+    });
+
+    let has_exact_match = candidates.iter().any(|candidate| candidate.exact_match);
+    let has_full_query_match = candidates
+        .iter()
+        .any(|candidate| candidate.full_query_match);
+    let has_significant_match = candidates
+        .iter()
+        .any(|candidate| candidate.all_significant_words_match);
+
+    if has_exact_match {
+        candidates.retain(|candidate| candidate.exact_match);
+    } else if has_full_query_match {
+        candidates.retain(|candidate| candidate.full_query_match);
+    } else if has_significant_match {
+        candidates.retain(|candidate| candidate.all_significant_words_match);
+    } else {
+        candidates.retain(|candidate| candidate.match_score > 0.0);
+    }
+
+    candidates
+        .into_iter()
+        .take(3)
+        .flat_map(|candidate| {
+            candidate.members.into_iter().map(move |file| TorrentFileMatch {
+                index: file.index,
+                filename: file.filename.clone(),
+                size: file.size,
+                match_score: candidate.match_score,
+                region: crate::tags::get_region_tags(&file.filename).into_iter().next(),
+            })
+        })
+        .collect()
 }
 
 fn select_torrent_file_matches(
@@ -3221,6 +3384,11 @@ fn torrent_match_lookup_titles(
         if resolved_lookup_title != game_title {
             titles.push(resolved_lookup_title.to_string());
         }
+        if let Some(stripped) = resolved_lookup_title.strip_prefix('d') {
+            if stripped != resolved_lookup_title && !stripped.is_empty() {
+                titles.push(stripped.to_string());
+            }
+        }
         return titles;
     }
 
@@ -3255,6 +3423,11 @@ fn is_platform_specific_torrent_candidate(
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                 {
+                    if platform_name.eq_ignore_ascii_case("Hypseus Singe") {
+                        return normalized_filename
+                            .starts_with("laserdisc collection/hypseus singe/")
+                            && parse_arcade_hypseus_laserdisc_asset(filename).is_some();
+                    }
                     let expected_prefix =
                         format!("laserdisc collection/{}/", platform_name.to_ascii_lowercase());
                     return normalized_filename.starts_with(&expected_prefix);
@@ -3322,8 +3495,19 @@ pub async fn list_torrent_files(
 
     let mut matches = Vec::new();
     for lookup_title in lookup_titles {
-        let candidates =
-            select_torrent_file_matches(files.clone(), &lookup_title, &state.settings.region_priority);
+        let candidates = if is_hypseus_laserdisc_request(
+            input.platform.as_deref(),
+            input.collection.as_deref(),
+            input.minerva_platform.as_deref(),
+        ) {
+            select_arcade_hypseus_laserdisc_matches(
+                files.clone(),
+                &lookup_title,
+                &state.settings.region_priority,
+            )
+        } else {
+            select_torrent_file_matches(files.clone(), &lookup_title, &state.settings.region_priority)
+        };
         if !candidates.is_empty() {
             matches = candidates;
             break;
@@ -4002,6 +4186,18 @@ mod tests {
             Some("Hypseus Singe"),
             "Laserdisc Collection/Hypseus Singe/dlair/dlair.txt"
         ));
+        assert!(!is_platform_specific_torrent_candidate(
+            "Arcade",
+            Some("Laserdisc Collection"),
+            Some("Hypseus Singe"),
+            "Laserdisc Collection/Hypseus Singe/!Game Artwork/Background/Dragon's Lair.jpg"
+        ));
+        assert!(!is_platform_specific_torrent_candidate(
+            "Arcade",
+            Some("Laserdisc Collection"),
+            Some("Hypseus Singe"),
+            "Laserdisc Collection/Various - Video - Archived/Reference Videos/Dragon's Lair (MAME 7-disc stacked CHD, reference)/dlair.m2v"
+        ));
     }
 
     #[test]
@@ -4034,7 +4230,11 @@ mod tests {
                 Some("Laserdisc Collection"),
                 Some("Hypseus Singe"),
             ),
-            vec!["Dragon's Lair".to_string(), "dlair".to_string()]
+            vec![
+                "Dragon's Lair".to_string(),
+                "dlair".to_string(),
+                "lair".to_string()
+            ]
         );
     }
 
@@ -4133,5 +4333,42 @@ mod tests {
                 ArcadeHypseusLaserdiscAssetKind::Audio
             ))
         );
+    }
+
+    #[test]
+    fn hypseus_laserdisc_match_prefers_real_bundle_over_artwork_and_docs() {
+        let files = vec![
+            crate::torrent::TorrentFileInfo {
+                index: 1,
+                filename: "Laserdisc Collection/Hypseus Singe/!Game Artwork/Background/Dragon's Lair.jpg".to_string(),
+                size: 100,
+            },
+            crate::torrent::TorrentFileInfo {
+                index: 2,
+                filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/lair.txt".to_string(),
+                size: 100,
+            },
+            crate::torrent::TorrentFileInfo {
+                index: 3,
+                filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.m2v".to_string(),
+                size: 1000,
+            },
+            crate::torrent::TorrentFileInfo {
+                index: 4,
+                filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.ogg".to_string(),
+                size: 1000,
+            },
+            crate::torrent::TorrentFileInfo {
+                index: 5,
+                filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Assets/Dragon's Lair nitpick.txt".to_string(),
+                size: 10,
+            },
+        ];
+
+        let matches = select_arcade_hypseus_laserdisc_matches(files, "Dragon's Lair", &[]);
+        assert_eq!(matches.len(), 3);
+        assert!(matches.iter().any(|m| m.filename.ends_with("/lair.txt")));
+        assert!(matches.iter().any(|m| m.filename.ends_with("/lair.m2v")));
+        assert!(matches.iter().any(|m| m.filename.ends_with("/lair.ogg")));
     }
 }
