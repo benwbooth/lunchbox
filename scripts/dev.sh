@@ -69,6 +69,32 @@ start_units() {
     systemctl --user start lunchbox-backend.service
 }
 
+wait_for_url() {
+    local name="$1"
+    local url="$2"
+    local timeout="${3:-120}"
+    local elapsed=0
+
+    printf "Waiting for %s" "$name"
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if curl -fsS "$url" >/dev/null 2>&1; then
+            echo " ready"
+            return 0
+        fi
+        printf "."
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    echo " timeout"
+    return 1
+}
+
+wait_for_services() {
+    wait_for_url "frontend" "http://127.0.0.1:1420" 180
+    wait_for_url "backend" "http://127.0.0.1:3001/api/games?limit=1" 180
+}
+
 stop_units() {
     echo ""
     echo "Shutting down..."
@@ -100,7 +126,7 @@ if [ "$MODE" = "electron" ]; then
     echo "Starting backend API server on http://127.0.0.1:3001..."
     start_units
 
-    sleep 3
+    wait_for_services
 
     echo "Opening Electron shell..."
     env -u NO_COLOR nix develop "$PROJECT_DIR" --command electron "$PROJECT_DIR/electron" &
@@ -115,7 +141,7 @@ if [ "$MODE" = "electron" ]; then
     echo "═══════════════════════════════════════════════════════"
     echo ""
 
-    journalctl --user -f -u lunchbox-trunk.service -u lunchbox-backend.service
+    journalctl --user -n 0 -f -u lunchbox-trunk.service -u lunchbox-backend.service
 
 elif [ "$MODE" = "browser" ]; then
     echo "Starting browser development mode..."
@@ -133,8 +159,7 @@ elif [ "$MODE" = "browser" ]; then
     echo "Starting backend API server on http://127.0.0.1:3001..."
     start_units
 
-    # Wait a moment for services to start
-    sleep 3
+    wait_for_services
 
     # Open browser with WebGPU/Vulkan enabled by default.
     # If Chromium becomes unstable on a specific system/session, use:
@@ -168,7 +193,7 @@ elif [ "$MODE" = "browser" ]; then
     echo ""
 
     # Follow the logs until interrupted
-    journalctl --user -f -u lunchbox-trunk.service -u lunchbox-backend.service
+    journalctl --user -n 0 -f -u lunchbox-trunk.service -u lunchbox-backend.service
 
 else
     echo "Unknown mode: $MODE"
