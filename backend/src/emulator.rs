@@ -857,10 +857,15 @@ fn select_github_appimage_asset_with_terms<'a>(
         .filter(|asset| {
             let name = asset.name.to_ascii_lowercase();
             name.ends_with(".appimage")
+                || (archive_kind_for_path(Path::new(&asset.name)).is_some()
+                    && name.contains("appimage"))
         })
         .max_by_key(|asset| {
             let name = asset.name.to_ascii_lowercase();
             let mut score = 100i32;
+            if name.ends_with(".appimage") {
+                score += 100;
+            }
             for term in preferred_asset_terms {
                 if name.contains(&term.to_ascii_lowercase()) {
                     score += 25;
@@ -971,6 +976,9 @@ fn get_executable_names(name: &str) -> Vec<String> {
         }
         "ares" => {
             names.push("ares-emu".to_string());
+        }
+        "hypseus singe" => {
+            names.extend(["hypseus", "singe"].iter().map(|s| s.to_string()));
         }
         "pcbox" => {
             names.extend(["PCBox", "pcbox"].iter().map(|s| s.to_string()));
@@ -1782,6 +1790,60 @@ fn select_updated_appimage(work_dir: &Path, staged_input: &Path) -> Result<PathB
 }
 
 #[cfg(target_os = "linux")]
+fn select_appimage_payload_entry(entries: &[ArchiveEntry]) -> Option<PathBuf> {
+    entries
+        .iter()
+        .filter(|entry| !entry.is_dir)
+        .filter_map(|entry| {
+            let name = entry
+                .path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(|value| value.to_ascii_lowercase())?;
+            if !name.ends_with(".appimage") {
+                return None;
+            }
+
+            let mut score = 100i32;
+            if name.contains("steamdeck") || name.contains("x86_64") || name.contains("amd64") {
+                score += 50;
+            }
+            Some((score, entry.path.clone()))
+        })
+        .max_by(|(score_a, path_a), (score_b, path_b)| {
+            score_a.cmp(score_b).then_with(|| path_a.cmp(path_b))
+        })
+        .map(|(_, path)| path)
+}
+
+#[cfg(target_os = "linux")]
+fn extract_appimage_payload_from_archive(
+    archive_path: &Path,
+    output_dir: &Path,
+) -> Result<PathBuf, String> {
+    let kind = archive_kind_for_path(archive_path).ok_or_else(|| {
+        format!(
+            "Asset {} is not a supported AppImage archive",
+            archive_path.display()
+        )
+    })?;
+    let entries = list_archive_entries(archive_path, kind)?;
+    let appimage_entry = select_appimage_payload_entry(&entries).ok_or_else(|| {
+        format!(
+            "Archive {} does not contain an AppImage payload",
+            archive_path.display()
+        )
+    })?;
+    let extracted = extract_archive_entries(archive_path, kind, output_dir, &[appimage_entry])?;
+    extracted.into_iter().next().ok_or_else(|| {
+        format!(
+            "Archive {} did not produce an extracted AppImage",
+            archive_path.display()
+        )
+    })
+}
+
+#[cfg(target_os = "linux")]
 async fn install_appimage_release_asset(
     info: &AppImageInstallInfo,
     version: &str,
@@ -1802,8 +1864,16 @@ async fn install_appimage_release_asset(
         download_github_asset_to_path(&asset.browser_download_url, &asset_path).await?;
     }
 
-    set_executable_permissions(&asset_path)?;
-    let update_transport = read_appimage_update_information(&asset_path)
+    let installed_path = if asset.name.to_ascii_lowercase().ends_with(".appimage") {
+        asset_path.clone()
+    } else {
+        let extracted_path = extract_appimage_payload_from_archive(&asset_path, &version_dir)?;
+        let _ = tokio::fs::remove_file(&asset_path).await;
+        extracted_path
+    };
+
+    set_executable_permissions(&installed_path)?;
+    let update_transport = read_appimage_update_information(&installed_path)
         .await?
         .as_deref()
         .and_then(normalize_appimage_update_transport);
@@ -1814,7 +1884,11 @@ async fn install_appimage_release_asset(
         slug: info.slug.to_string(),
         version: version.to_string(),
         github_repo: info.github_repo.to_string(),
-        asset_name: asset.name.clone(),
+        asset_name: installed_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&asset.name)
+            .to_string(),
         download_url: asset.browser_download_url.clone(),
         installed_at: chrono::Utc::now().to_rfc3339(),
         update_transport,
@@ -2171,7 +2245,10 @@ async fn update_appimage_emulator(slug: &str) -> Result<(), String> {
             .await?
             .is_some()
         {
-            if try_delta_update_appimage(&info, &version, &asset).await.is_ok() {
+            if try_delta_update_appimage(&info, &version, &asset)
+                .await
+                .is_ok()
+            {
                 return Ok(());
             }
         }
@@ -5570,6 +5647,31 @@ mod tests {
     }
 
     #[test]
+    fn selects_wrapped_appimage_release_asset() {
+        let release = GitHubRelease {
+            tag_name: "v2.11.7".to_string(),
+            assets: vec![
+                GitHubReleaseAsset {
+                    name: "hypseus-singe-v2.11.7-src.tar.gz".to_string(),
+                    browser_download_url: "https://example.invalid/src.tar.gz".to_string(),
+                },
+                GitHubReleaseAsset {
+                    name: "Hypseus.Singe-v2.11.7-win64.zip".to_string(),
+                    browser_download_url: "https://example.invalid/win64.zip".to_string(),
+                },
+                GitHubReleaseAsset {
+                    name: "hypseus-singe_v2.11.7_AppImage.tar.gz".to_string(),
+                    browser_download_url: "https://example.invalid/appimage.tar.gz".to_string(),
+                },
+            ],
+        };
+        let info = appimage_install_for_slug("hypseus-singe").unwrap();
+
+        let asset = select_github_appimage_asset(&release, &info).expect("asset should match");
+        assert_eq!(asset.name, "hypseus-singe_v2.11.7_AppImage.tar.gz");
+    }
+
+    #[test]
     fn parses_zsync_update_transport() {
         assert_eq!(
             normalize_appimage_update_transport("zsync|https://example.invalid/app.zsync"),
@@ -5811,6 +5913,8 @@ mod tests {
         assert!(get_executable_names("Atari++").contains(&"ataripp".to_string()));
         assert!(get_executable_names("FS-UAE").contains(&"fs-uae-launcher".to_string()));
         assert!(get_executable_names("DeSmuME").contains(&"desmume-gtk".to_string()));
+        assert!(get_executable_names("Hypseus Singe").contains(&"hypseus".to_string()));
+        assert!(get_executable_names("Hypseus Singe").contains(&"singe".to_string()));
         assert!(get_executable_names("VICE").contains(&"x64sc".to_string()));
         assert!(get_executable_names("VICE (xpet)").contains(&"xpet".to_string()));
         assert!(get_executable_names("VICE (xvic)").contains(&"xvic".to_string()));
