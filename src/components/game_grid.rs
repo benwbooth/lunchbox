@@ -1889,8 +1889,8 @@ fn GameCard(
         is_hovered.get()
             && hover_preview_armed.get()
             && !hover_video_playing.get()
+            && !hover_video_unavailable.get()
             && (hover_video_loading.get()
-                || hover_video_unavailable.get()
                 || hover_video_status.get() != "Loading preview..."
                 || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get()))
     };
@@ -1904,10 +1904,11 @@ fn GameCard(
     let show_hover_layer = move || {
         is_hovered.get()
             && hover_preview_armed.get()
+            && !hover_video_unavailable.get()
             && (hover_video_playing.get()
-                || hover_video_unavailable.get()
                 || hover_video_loading.get()
-                || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get()))
+                || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get())
+                || hover_video_status.get().starts_with("Preview failed"))
     };
 
     view! {
