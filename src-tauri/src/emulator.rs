@@ -34,6 +34,8 @@ pub struct EmulatorWithStatus {
     pub is_installed: bool,
     /// The install method that would be used (flatpak, winget, homebrew)
     pub install_method: Option<String>,
+    /// The uninstall method available for the current installed instance, if Lunchbox owns it
+    pub uninstall_method: Option<String>,
     /// Whether this is a RetroArch core
     pub is_retroarch_core: bool,
     /// Display name (e.g., "RetroArch: mesen" for cores)
@@ -181,6 +183,19 @@ fn get_retroarch_install_method() -> Option<String> {
         "Windows" => Some("winget".to_string()),
         "macOS" => Some("homebrew".to_string()),
         _ => None,
+    }
+}
+
+fn get_uninstall_method_for_path(path: &Path) -> Option<String> {
+    let path_text = path.to_string_lossy();
+    if path_text.starts_with(FLATPAK_INSTALL_PREFIX) {
+        Some("flatpak".to_string())
+    } else if path_text.starts_with(WINE_INSTALL_PREFIX) {
+        Some("wine".to_string())
+    } else if path.starts_with(lunchbox_nix_profile_bin_dir()) {
+        Some("nix".to_string())
+    } else {
+        None
     }
 }
 
@@ -818,6 +833,59 @@ pub async fn install_emulator(
     result
 }
 
+pub async fn uninstall_emulator(
+    emulator: &EmulatorInfo,
+    as_retroarch_core: bool,
+) -> Result<(), String> {
+    tracing::info!(
+        emulator = %emulator.name,
+        as_retroarch_core = as_retroarch_core,
+        os = current_os(),
+        "Uninstalling emulator"
+    );
+
+    if as_retroarch_core {
+        return Err(format!(
+            "RetroArch core uninstall is not supported yet for {} because core ownership is not tracked",
+            emulator.name
+        ));
+    }
+
+    match current_os() {
+        "Linux" => {
+            let installed_path = check_standalone_installation(emulator)
+                .ok_or_else(|| format!("{} is not installed", emulator.name))?;
+
+            match get_uninstall_method_for_path(&installed_path).as_deref() {
+                Some("flatpak") => {
+                    let app_id = emulator
+                        .flatpak_id
+                        .as_deref()
+                        .ok_or_else(|| format!("{} does not define a Flatpak app id", emulator.name))?;
+                    uninstall_flatpak(app_id).await
+                }
+                Some("nix") => {
+                    let package = nix_package_for_emulator(emulator).ok_or_else(|| {
+                        format!("{} does not define a Nix package mapping", emulator.name)
+                    })?;
+                    uninstall_nix_package(package).await
+                }
+                Some("wine") => {
+                    let info = wine_install_for_emulator(emulator).ok_or_else(|| {
+                        format!("{} does not define a Wine install mapping", emulator.name)
+                    })?;
+                    uninstall_wine_emulator(info).await
+                }
+                _ => Err(format!(
+                    "{} is installed outside Lunchbox-managed Linux backends",
+                    emulator.name
+                )),
+            }
+        }
+        _ => Err("Emulator uninstall is currently implemented for Linux backends only".to_string()),
+    }
+}
+
 /// Install a flatpak package
 async fn install_flatpak(app_id: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
@@ -833,6 +901,29 @@ async fn install_flatpak(app_id: &str) -> Result<(), String> {
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(format!("Flatpak install failed: {}", stderr))
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app_id;
+        Err("Flatpak is only available on Linux".to_string())
+    }
+}
+
+async fn uninstall_flatpak(app_id: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let output = tokio::process::Command::new("flatpak")
+            .args(["uninstall", "-y", app_id])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run flatpak: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Flatpak uninstall failed: {}", stderr))
         }
     }
     #[cfg(not(target_os = "linux"))]
@@ -876,6 +967,37 @@ async fn install_nix_package(package: &str) -> Result<(), String> {
     {
         let _ = package;
         Err("Nix profile installs are only available on Linux".to_string())
+    }
+}
+
+async fn uninstall_nix_package(package: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let profile_path = lunchbox_nix_profile_path();
+        let package_ref = format!("nixpkgs#{}", package);
+        let output = tokio::process::Command::new("nix")
+            .args([
+                "profile",
+                "remove",
+                "--profile",
+                profile_path.to_string_lossy().as_ref(),
+                &package_ref,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run nix profile remove: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Nix profile remove failed: {}", stderr))
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = package;
+        Err("Nix profile uninstalls are only available on Linux".to_string())
     }
 }
 
@@ -947,6 +1069,38 @@ async fn install_wine_emulator(info: WineInstallInfo) -> Result<(), String> {
     {
         let _ = info;
         Err("Wine installs are only available on Linux".to_string())
+    }
+}
+
+async fn uninstall_wine_emulator(info: WineInstallInfo) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let install_root = wine_install_root(&info);
+        remove_path_if_exists(&install_root).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = info;
+        Err("Wine emulator uninstall is only available on Linux".to_string())
+    }
+}
+
+async fn remove_path_if_exists(path: &Path) -> Result<(), String> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => {
+            let file_type = metadata.file_type();
+            if file_type.is_dir() && !file_type.is_symlink() {
+                tokio::fs::remove_dir_all(path)
+                    .await
+                    .map_err(|e| format!("Failed to remove {}: {}", path.display(), e))
+            } else {
+                tokio::fs::remove_file(path)
+                    .await
+                    .map_err(|e| format!("Failed to remove {}: {}", path.display(), e))
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!("Failed to inspect {}: {}", path.display(), err)),
     }
 }
 
@@ -3378,6 +3532,11 @@ pub fn add_status(emulator: EmulatorInfo) -> EmulatorWithStatus {
     let install_path = check_installation(&emulator);
     let is_installed = install_path.is_some();
     let install_method = get_install_method(&emulator);
+    let uninstall_method = if is_retroarch_core {
+        None
+    } else {
+        install_path.as_deref().and_then(get_uninstall_method_for_path)
+    };
 
     let display_name = if let Some(ref core) = emulator.retroarch_core {
         format!("RetroArch: {}", core)
@@ -3389,6 +3548,7 @@ pub fn add_status(emulator: EmulatorInfo) -> EmulatorWithStatus {
         info: emulator,
         is_installed,
         install_method,
+        uninstall_method,
         is_retroarch_core,
         display_name,
         executable_path: install_path.map(|p| p.to_string_lossy().to_string()),
@@ -3570,6 +3730,7 @@ pub fn add_status_as_retroarch(emulator: EmulatorInfo) -> EmulatorWithStatus {
         info: emulator,
         is_installed,
         install_method: get_retroarch_install_method(),
+        uninstall_method: None,
         is_retroarch_core: true,
         display_name,
         executable_path: if is_installed {
@@ -3586,12 +3747,16 @@ pub fn add_status_as_standalone(emulator: EmulatorInfo) -> EmulatorWithStatus {
     let install_method = get_install_method(&emulator);
     let install_path = check_standalone_installation(&emulator);
     let is_installed = install_path.is_some();
+    let uninstall_method = install_path
+        .as_deref()
+        .and_then(get_uninstall_method_for_path);
     let display_name = emulator.name.clone();
 
     EmulatorWithStatus {
         info: emulator,
         is_installed,
         install_method,
+        uninstall_method,
         is_retroarch_core: false,
         display_name,
         executable_path: install_path.map(|p| p.to_string_lossy().to_string()),

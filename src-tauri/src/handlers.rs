@@ -827,6 +827,13 @@ pub async fn install_emulator(
     Ok(path.to_string_lossy().to_string())
 }
 
+pub async fn uninstall_emulator(
+    emulator: &EmulatorInfo,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    emulator::uninstall_emulator(emulator, is_retroarch_core).await
+}
+
 pub async fn install_firmware_for_emulator(
     state: &mut AppState,
     emulator: &EmulatorInfo,
@@ -1180,6 +1187,82 @@ pub async fn get_game_file(
             graboid_job_id,
         },
     ))
+}
+
+pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Result<(), String> {
+    let db_pool = crate::state::ensure_user_db(state)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let game_file_row: Option<(String, String)> = sqlx::query_as(
+        "SELECT file_path, import_source FROM game_files WHERE launchbox_db_id = ?",
+    )
+    .bind(launchbox_db_id)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let pc_install_row: Option<(String,)> = sqlx::query_as(
+        "SELECT install_root FROM pc_game_installs WHERE launchbox_db_id = ?",
+    )
+    .bind(launchbox_db_id)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut removed_anything = false;
+
+    if let Some((file_path, import_source)) = game_file_row {
+        if import_source == "minerva" {
+            remove_path_if_exists(std::path::Path::new(&file_path)).await?;
+            sqlx::query("DELETE FROM game_files WHERE launchbox_db_id = ?")
+                .bind(launchbox_db_id)
+                .execute(db_pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            removed_anything = true;
+        } else {
+            return Err(
+                "This game file was not installed by Lunchbox and will not be deleted automatically"
+                    .to_string(),
+            );
+        }
+    }
+
+    if let Some((install_root,)) = pc_install_row {
+        remove_path_if_exists(std::path::Path::new(&install_root)).await?;
+        sqlx::query("DELETE FROM pc_game_installs WHERE launchbox_db_id = ?")
+            .bind(launchbox_db_id)
+            .execute(db_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        removed_anything = true;
+    }
+
+    if removed_anything {
+        Ok(())
+    } else {
+        Err("No Lunchbox-managed installation was found for this game".to_string())
+    }
+}
+
+async fn remove_path_if_exists(path: &std::path::Path) -> Result<(), String> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => {
+            let file_type = metadata.file_type();
+            if file_type.is_dir() && !file_type.is_symlink() {
+                tokio::fs::remove_dir_all(path)
+                    .await
+                    .map_err(|e| format!("Failed to remove {}: {}", path.display(), e))
+            } else {
+                tokio::fs::remove_file(path)
+                    .await
+                    .map_err(|e| format!("Failed to remove {}: {}", path.display(), e))
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!("Failed to inspect {}: {}", path.display(), err)),
+    }
 }
 
 /// Get an active (pending/in_progress) import job for a game

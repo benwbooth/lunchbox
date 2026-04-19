@@ -1777,6 +1777,7 @@ pub struct EmulatorWithStatus {
     // Additional status fields
     pub is_installed: bool,
     pub install_method: Option<String>,
+    pub uninstall_method: Option<String>,
     pub is_retroarch_core: bool,
     pub display_name: String,
     pub executable_path: Option<String>,
@@ -1828,6 +1829,26 @@ pub async fn install_emulator(
     }
     invoke(
         "install_emulator",
+        Args {
+            emulator_name,
+            is_retroarch_core,
+        },
+    )
+    .await
+}
+
+pub async fn uninstall_emulator(
+    emulator_name: String,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        is_retroarch_core: bool,
+    }
+    invoke(
+        "uninstall_emulator",
         Args {
             emulator_name,
             is_retroarch_core,
@@ -1978,6 +1999,15 @@ pub async fn get_game_file(launchbox_db_id: i64) -> Result<Option<GameFile>, Str
         launchbox_db_id: i64,
     }
     invoke("get_game_file", Args { launchbox_db_id }).await
+}
+
+pub async fn uninstall_game(launchbox_db_id: i64) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+    }
+    invoke("uninstall_game", Args { launchbox_db_id }).await
 }
 
 pub async fn get_active_import(launchbox_db_id: i64) -> Result<Option<ImportJob>, String> {

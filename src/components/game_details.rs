@@ -381,6 +381,7 @@ pub fn GameDetails(
     let (show_import_loading_hint, set_show_import_loading_hint) = signal(false);
     let (import_job_id, set_import_job_id) = signal::<Option<String>>(None);
     let (import_error, set_import_error) = signal::<Option<String>>(None);
+    let (game_uninstalling, set_game_uninstalling) = signal(false);
     let (details_ready, set_details_ready) = signal(false);
     let (details_min_delay_elapsed, set_details_min_delay_elapsed) = signal(false);
     let (preloaded_video_state, set_preloaded_video_state) = signal::<Option<VideoState>>(None);
@@ -415,6 +416,7 @@ pub fn GameDetails(
             set_import_state_loading.set(true);
             set_show_import_loading_hint.set(false);
             set_import_error.set(None);
+            set_game_uninstalling.set(false);
             set_details_ready.set(false);
             set_details_min_delay_elapsed.set(false);
             set_preloaded_video_state.set(None);
@@ -1440,7 +1442,7 @@ pub fn GameDetails(
                                                     || display_game.get().map(|g| g.has_game_file).unwrap_or(false))
                                                     && import_job_id.get().is_none()
                                             }>
-                                                <button class="play-btn" on:click=move |_| {
+                                                <button class="play-btn" disabled=move || game_uninstalling.get() on:click=move |_| {
                                                     let platform = stored_platform.get_value();
                                                     set_emulators_loading.set(true);
                                                     set_show_emulator_picker.set(true);
@@ -1455,9 +1457,61 @@ pub fn GameDetails(
                                                         set_emulators_loading.set(false);
                                                     });
                                                 }>"Play"</button>
+                                                <Show when=move || {
+                                                    game_file
+                                                        .get()
+                                                        .map(|file| file.import_source == "minerva")
+                                                        .unwrap_or(false)
+                                                }>
+                                                    <button
+                                                        class="uninstall-btn"
+                                                        disabled=move || game_uninstalling.get()
+                                                        on:click=move |_| {
+                                                            let Some(current_game) = display_game.get_untracked() else {
+                                                                return;
+                                                            };
+                                                            let window = web_sys::window().unwrap();
+                                                            let confirmed = window
+                                                                .confirm_with_message(&format!(
+                                                                    "Uninstall {} and remove its Lunchbox-managed files?",
+                                                                    current_game.display_title
+                                                                ))
+                                                                .unwrap_or(false);
+                                                            if !confirmed {
+                                                                return;
+                                                            }
+
+                                                            set_game_uninstalling.set(true);
+                                                            set_import_error.set(None);
+                                                            let db_id = current_game.database_id;
+                                                            spawn_local(async move {
+                                                                match tauri::uninstall_game(db_id).await {
+                                                                    Ok(()) => {
+                                                                        set_game_file.set(None);
+                                                                        set_display_game.update(|game| {
+                                                                            if let Some(game) = game.as_mut() {
+                                                                                game.has_game_file = false;
+                                                                            }
+                                                                        });
+                                                                    }
+                                                                    Err(e) => {
+                                                                        set_import_error.set(Some(format!(
+                                                                            "Uninstall failed: {}",
+                                                                            e
+                                                                        )));
+                                                                    }
+                                                                }
+                                                                set_game_uninstalling.set(false);
+                                                            });
+                                                        }
+                                                    >
+                                                        {move || if game_uninstalling.get() { "Uninstalling..." } else { "Uninstall" }}
+                                                    </button>
+                                                </Show>
                                                 <Show when=move || minerva_rom.get().is_some()>
                                                     <button
                                                         class="select-another-file-btn"
+                                                        disabled=move || game_uninstalling.get()
                                                         title="Pick a different Minerva file for this game"
                                                         on:click=move |_| {
                                                             if let Some(g) = display_game.get_untracked() {
@@ -1872,12 +1926,17 @@ fn EmulatorPickerModal(
                                         let display_name = emu.display_name.clone();
                                         let firmware_display_name =
                                             StoredValue::new(emu.display_name.clone());
+                                        let uninstall_display_name =
+                                            StoredValue::new(emu.display_name.clone());
                                         let is_installed = emu.is_installed;
                                         let is_retroarch_core = emu.is_retroarch_core;
                                         let install_method = emu.install_method.clone();
+                                        let uninstall_method = emu.uninstall_method.clone();
                                         let name_for_click = emu.name.clone();
                                         let name_for_game_pref = emu.name.clone();
                                         let name_for_platform_pref = emu.name.clone();
+                                        let uninstall_emulator_name =
+                                            StoredValue::new(emu.name.clone());
                                         let firmware_emulator_name =
                                             StoredValue::new(emu.name.clone());
                                         let homepage = emu.homepage.clone();
@@ -2238,6 +2297,7 @@ fn EmulatorPickerModal(
                                         };
 
                                         let can_auto_install = install_method.is_some();
+                                        let can_uninstall = uninstall_method.is_some();
                                         let action_text = if is_installed {
                                             "Play"
                                         } else if can_auto_install {
@@ -2437,6 +2497,73 @@ fn EmulatorPickerModal(
                                                     >
                                                         {action_text}
                                                     </button>
+                                                    <Show when=move || is_installed && can_uninstall>
+                                                        <button
+                                                            class="emulator-pref-btn emulator-uninstall-btn"
+                                                            on:click=move |e: web_sys::MouseEvent| {
+                                                                e.stop_propagation();
+                                                                let window = web_sys::window().unwrap();
+                                                                let uninstall_display_name =
+                                                                    uninstall_display_name.get_value();
+                                                                let confirmed = window
+                                                                    .confirm_with_message(&format!(
+                                                                        "Uninstall {}?",
+                                                                        uninstall_display_name
+                                                                    ))
+                                                                    .unwrap_or(false);
+                                                                if !confirmed {
+                                                                    return;
+                                                                }
+
+                                                                let emulator_name =
+                                                                    uninstall_emulator_name.get_value();
+                                                                let platform = stored_platform.get_value();
+                                                                let display_name = uninstall_display_name;
+                                                                set_progress_state.set(Some(format!(
+                                                                    "Uninstalling {}...",
+                                                                    display_name
+                                                                )));
+                                                                set_error_state.set(None);
+                                                                set_success_state.set(None);
+
+                                                                spawn_local(async move {
+                                                                    match tauri::uninstall_emulator(
+                                                                        emulator_name,
+                                                                        is_retroarch_core,
+                                                                    )
+                                                                    .await
+                                                                    {
+                                                                        Ok(()) => match tauri::get_emulators_with_status(platform).await {
+                                                                            Ok(emu_list) => {
+                                                                                set_emulators.set(emu_list);
+                                                                                set_progress_state.set(None);
+                                                                                set_success_state.set(Some(format!(
+                                                                                    "Uninstalled {}.",
+                                                                                    display_name
+                                                                                )));
+                                                                            }
+                                                                            Err(e) => {
+                                                                                set_progress_state.set(None);
+                                                                                set_error_state.set(Some(format!(
+                                                                                    "Uninstalled {}, but emulator status refresh failed: {}",
+                                                                                    display_name, e
+                                                                                )));
+                                                                            }
+                                                                        },
+                                                                        Err(e) => {
+                                                                            set_progress_state.set(None);
+                                                                            set_error_state.set(Some(format!(
+                                                                                "Uninstall failed: {}",
+                                                                                e
+                                                                            )));
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
+                                                        >
+                                                            "Uninstall"
+                                                        </button>
+                                                    </Show>
                                                     <button
                                                         class="emulator-pref-btn"
                                                         class:active=is_preferred

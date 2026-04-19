@@ -1471,6 +1471,29 @@ h1, h2, h3, h4, h5, h6 {
     background-color: var(--accent-hover);
 }
 
+.uninstall-btn {
+    padding: 12px 18px;
+    background-color: rgba(214, 92, 92, 0.14);
+    border: 1px solid rgba(214, 92, 92, 0.4);
+    border-radius: 6px;
+    color: #f09a9a;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.uninstall-btn:hover:not(:disabled) {
+    background-color: rgba(214, 92, 92, 0.24);
+    border-color: rgba(214, 92, 92, 0.7);
+    color: #ffd0d0;
+}
+
+.uninstall-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
 .select-another-file-btn {
     padding: 12px 18px;
     background-color: var(--bg-tertiary);
@@ -3660,6 +3683,18 @@ body.sidebar-resizing * {
 .emulator-play-btn:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
+}
+
+.emulator-uninstall-btn {
+    background: rgba(214, 92, 92, 0.14);
+    border-color: rgba(214, 92, 92, 0.4);
+    color: #f09a9a;
+}
+
+.emulator-uninstall-btn:hover {
+    background: rgba(214, 92, 92, 0.24);
+    border-color: rgba(214, 92, 92, 0.7);
+    color: #ffd0d0;
 }
 
 /* Emulator preference indicator */

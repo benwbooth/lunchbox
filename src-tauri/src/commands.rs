@@ -2603,6 +2603,21 @@ pub async fn install_emulator(
 }
 
 #[tauri::command]
+pub async fn uninstall_emulator(
+    emulator_name: String,
+    is_retroarch_core: bool,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let state_guard = state.read().await;
+
+    let emulator = handlers::get_emulator(&state_guard, &emulator_name)
+        .await?
+        .ok_or_else(|| format!("Emulator '{}' not found", emulator_name))?;
+
+    handlers::uninstall_emulator(&emulator, is_retroarch_core).await
+}
+
+#[tauri::command]
 pub async fn install_firmware(
     emulator_name: String,
     platform_name: String,
@@ -2731,6 +2746,15 @@ pub async fn get_game_file(
 ) -> Result<Option<handlers::GameFile>, String> {
     let state_guard = state.read().await;
     handlers::get_game_file(&state_guard, launchbox_db_id).await
+}
+
+#[tauri::command]
+pub async fn uninstall_game(
+    launchbox_db_id: i64,
+    state: tauri::State<'_, AppStateHandle>,
+) -> Result<(), String> {
+    let mut state_guard = state.write().await;
+    handlers::uninstall_game(&mut state_guard, launchbox_db_id).await
 }
 
 /// Get an active import job for a game

@@ -210,11 +210,13 @@ pub fn create_router(state: SharedState) -> Router {
             get(rspc_open_firmware_directory),
         )
         .route("/rspc/install_emulator", get(rspc_install_emulator))
+        .route("/rspc/uninstall_emulator", get(rspc_uninstall_emulator))
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
         .route("/rspc/get_current_os", get(rspc_get_current_os))
         // Game file and import endpoints
         .route("/rspc/get_game_file", get(rspc_get_game_file))
+        .route("/rspc/uninstall_game", get(rspc_uninstall_game))
         .route("/rspc/get_active_import", get(rspc_get_active_import))
         .route("/rspc/cancel_import", get(rspc_cancel_import))
         // Minerva archive routes
@@ -2697,6 +2699,20 @@ struct InstallFirmwareInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct UninstallEmulatorInput {
+    emulator_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UninstallGameInput {
+    launchbox_db_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OpenFirmwareDirectoryInput {
     emulator_name: String,
     platform_name: String,
@@ -2733,6 +2749,37 @@ async fn rspc_install_emulator(
     match handlers::install_emulator(&emulator, input.is_retroarch_core).await {
         Ok(path) => rspc_ok(path).into_response(),
         Err(e) => rspc_err::<String>(e).into_response(),
+    }
+}
+
+async fn rspc_uninstall_emulator(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: UninstallEmulatorInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+
+    let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+        Ok(Some(e)) => e,
+        Ok(None) => {
+            return rspc_err::<()>(format!("Emulator '{}' not found", input.emulator_name))
+                .into_response()
+        }
+        Err(e) => return rspc_err::<()>(e).into_response(),
+    };
+
+    match handlers::uninstall_emulator(&emulator, input.is_retroarch_core).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
     }
 }
 
@@ -3025,6 +3072,27 @@ async fn rspc_get_game_file(
     match handlers::get_game_file(&state_guard, launchbox_db_id).await {
         Ok(file) => rspc_ok(file).into_response(),
         Err(e) => rspc_err::<Option<handlers::GameFile>>(e).into_response(),
+    }
+}
+
+async fn rspc_uninstall_game(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: UninstallGameInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let mut state_guard = state.write().await;
+    match handlers::uninstall_game(&mut state_guard, input.launchbox_db_id).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
     }
 }
 
