@@ -13,6 +13,7 @@ enum UpdateRowStatus {
 #[derive(Clone, PartialEq, Eq)]
 struct UpdateRow {
     update: EmulatorUpdate,
+    selected: bool,
     status: UpdateRowStatus,
 }
 
@@ -41,6 +42,7 @@ pub fn EmulatorUpdates(
                             .into_iter()
                             .map(|update| UpdateRow {
                                 update,
+                                selected: true,
                                 status: UpdateRowStatus::Pending,
                             })
                             .collect(),
@@ -73,7 +75,7 @@ pub fn EmulatorUpdates(
                 .enumerate()
                 .filter_map(|(idx, row)| match row.status {
                     UpdateRowStatus::Pending | UpdateRowStatus::Failed(_) => {
-                        Some((idx, row.update.key.clone()))
+                        row.selected.then_some((idx, row.update.key.clone()))
                     }
                     UpdateRowStatus::Updating | UpdateRowStatus::Success => None,
                 })
@@ -181,10 +183,14 @@ pub fn EmulatorUpdates(
                                             each=move || rows.get()
                                             key=|row| row.update.key.clone()
                                             children=move |row| {
+                                                let row_key = row.update.key.clone();
                                                 let version_summary = match (
                                                     row.update.current_version.clone(),
                                                     row.update.available_version.clone(),
                                                 ) {
+                                                    (Some(current), Some(available)) if current == available => {
+                                                        format!("Build update available ({})", current)
+                                                    }
                                                     (Some(current), Some(available)) => {
                                                         format!("{} -> {}", current, available)
                                                     }
@@ -201,15 +207,32 @@ pub fn EmulatorUpdates(
                                                     UpdateRowStatus::Pending => ("Ready to update".to_string(), "pending"),
                                                     UpdateRowStatus::Updating => ("Updating...".to_string(), "updating"),
                                                     UpdateRowStatus::Success => ("Updated".to_string(), "success"),
-                                                    UpdateRowStatus::Failed(err) => (format!("Update failed: {}", err), "failed"),
+                                                    UpdateRowStatus::Failed(ref err) => (format!("Update failed: {}", err), "failed"),
                                                 };
 
                                                 view! {
                                                     <div class="emulator-update-row">
                                                         <div class="emulator-update-header">
-                                                            <div>
+                                                            <div class="emulator-update-main">
+                                                                <label class="emulator-update-select">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        prop:checked=row.selected
+                                                                        disabled=move || matches!(row.status, UpdateRowStatus::Updating | UpdateRowStatus::Success)
+                                                                        on:change=move |ev| {
+                                                                            let checked = event_target_checked(&ev);
+                                                                            rows.update(|current| {
+                                                                                if let Some(item) = current.iter_mut().find(|item| item.update.key == row_key) {
+                                                                                    item.selected = checked;
+                                                                                }
+                                                                            });
+                                                                        }
+                                                                    />
+                                                                </label>
+                                                                <div>
                                                                 <div class="emulator-update-name">{row.update.display_name}</div>
                                                                 <div class="emulator-update-source">{row.update.source_label}</div>
+                                                            </div>
                                                             </div>
                                                             <div class="emulator-update-version">{version_summary}</div>
                                                         </div>
@@ -231,6 +254,21 @@ pub fn EmulatorUpdates(
                     <div class="emulator-updates-actions">
                         <button
                             class="dialog-cancel"
+                            on:click=move |_| {
+                                rows.update(|current| {
+                                    for row in current {
+                                        if matches!(row.status, UpdateRowStatus::Pending | UpdateRowStatus::Failed(_)) {
+                                            row.selected = true;
+                                        }
+                                    }
+                                });
+                            }
+                            disabled=move || loading.get() || updating.get() || rows.get().is_empty()
+                        >
+                            "Select All"
+                        </button>
+                        <button
+                            class="dialog-cancel"
                             on:click=move |_| load_updates.run(())
                             disabled=move || loading.get() || updating.get()
                         >
@@ -239,9 +277,18 @@ pub fn EmulatorUpdates(
                         <button
                             class="dialog-confirm"
                             on:click=update_all
-                            disabled=move || loading.get() || updating.get() || rows.get().is_empty()
+                            disabled=move || {
+                                loading.get()
+                                    || updating.get()
+                                    || rows.get().is_empty()
+                                    || !rows
+                                        .get()
+                                        .iter()
+                                        .any(|row| row.selected
+                                            && matches!(row.status, UpdateRowStatus::Pending | UpdateRowStatus::Failed(_)))
+                            }
                         >
-                            {move || if updating.get() { "Updating..." } else { "Update All" }}
+                            {move || if updating.get() { "Updating..." } else { "Update Selected" }}
                         </button>
                     </div>
                 </div>

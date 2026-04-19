@@ -1011,6 +1011,11 @@ async fn get_flatpak_updates(emulators: &[EmulatorInfo]) -> Result<Vec<EmulatorU
 
     let mut targets_by_app_id: BTreeMap<String, ManagedUpdateTarget> = BTreeMap::new();
     for emulator in emulators {
+        if emulator.flatpak_id.as_deref() == Some("org.libretro.RetroArch")
+            && emulator.name != "RetroArch"
+        {
+            continue;
+        }
         let Some(app_id) = emulator.flatpak_id.clone() else {
             continue;
         };
