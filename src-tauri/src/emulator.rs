@@ -13,6 +13,16 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+const FLATPAK_INSTALL_PREFIX: &str = "flatpak::";
+const WINE_INSTALL_PREFIX: &str = "wine::";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WineInstallInfo {
+    slug: &'static str,
+    download_page_url: &'static str,
+    executable_candidates: &'static [&'static str],
+}
+
 /// Emulator with installation status for frontend display
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +143,8 @@ fn get_install_method(emulator: &EmulatorInfo) -> Option<String> {
                 Some("flatpak".to_string())
             } else if nix_package_for_emulator(emulator).is_some() && is_nix_available() {
                 Some("nix".to_string())
+            } else if wine_install_for_emulator(emulator).is_some() && is_wine_available() {
+                Some("wine".to_string())
             } else {
                 None
             }
@@ -203,7 +215,20 @@ fn check_linux_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
     if let Some(ref flatpak_id) = emulator.flatpak_id {
         if is_flatpak_installed(flatpak_id) {
             // Return a pseudo-path for flatpak apps
-            return Some(PathBuf::from(format!("flatpak::{}", flatpak_id)));
+            return Some(PathBuf::from(format!(
+                "{FLATPAK_INSTALL_PREFIX}{flatpak_id}"
+            )));
+        }
+    }
+
+    if let Some(info) = wine_install_for_emulator(emulator) {
+        if is_wine_available() {
+            if let Some(path) = find_wine_install_executable(&info) {
+                return Some(PathBuf::from(format!(
+                    "{WINE_INSTALL_PREFIX}{}",
+                    path.to_string_lossy()
+                )));
+            }
         }
     }
 
@@ -351,6 +376,34 @@ fn is_nix_available() -> bool {
     }
 }
 
+fn find_wine_command() -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        which::which("wine")
+            .or_else(|_| which::which("wine64"))
+            .ok()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+fn find_winepath_command() -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        which::which("winepath").ok()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+fn is_wine_available() -> bool {
+    find_wine_command().is_some() && find_winepath_command().is_some()
+}
+
 /// Check if a flatpak app is installed
 fn is_flatpak_installed(app_id: &str) -> bool {
     #[cfg(target_os = "linux")]
@@ -391,6 +444,116 @@ fn find_in_lunchbox_nix_profile(names: &[String]) -> Option<PathBuf> {
     names
         .iter()
         .find_map(|name| find_lunchbox_nix_profile_executable(name))
+}
+
+fn lunchbox_programs_dir() -> PathBuf {
+    directories::ProjectDirs::from("", "", crate::db::APP_DATA_DIR)
+        .map(|dirs| dirs.data_dir().join("programs"))
+        .unwrap_or_else(|| PathBuf::from(".").join("programs"))
+}
+
+fn lunchbox_wine_root() -> PathBuf {
+    lunchbox_programs_dir().join("wine")
+}
+
+fn wine_install_for_emulator(emulator: &EmulatorInfo) -> Option<WineInstallInfo> {
+    match emulator.name.to_ascii_lowercase().as_str() {
+        "altirra" => Some(WineInstallInfo {
+            slug: "altirra",
+            download_page_url: "https://www.virtualdub.org/altirra.html",
+            executable_candidates: &["Altirra64.exe", "Altirra.exe"],
+        }),
+        _ => None,
+    }
+}
+
+fn wine_install_root(info: &WineInstallInfo) -> PathBuf {
+    lunchbox_wine_root().join(info.slug)
+}
+
+fn wine_app_dir(info: &WineInstallInfo) -> PathBuf {
+    wine_install_root(info).join("app")
+}
+
+fn wine_prefix_dir(info: &WineInstallInfo) -> PathBuf {
+    wine_install_root(info).join("prefix")
+}
+
+fn find_wine_install_executable(info: &WineInstallInfo) -> Option<PathBuf> {
+    find_file_by_name_recursive(&wine_app_dir(info), info.executable_candidates)
+}
+
+fn find_file_by_name_recursive(root: &Path, candidates: &[&str]) -> Option<PathBuf> {
+    if !root.exists() {
+        return None;
+    }
+
+    let wanted = candidates
+        .iter()
+        .map(|name| name.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if wanted.contains(&file_name.to_ascii_lowercase()) {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+fn extract_altirra_download_href(html: &str) -> Option<String> {
+    let start = html.find("downloads/Altirra-")?;
+    let suffix = &html[start..];
+    let end = suffix.find(".zip")?;
+    Some(suffix[..end + 4].to_string())
+}
+
+async fn resolve_altirra_download_url(page_url: &str) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get(page_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch Altirra download page: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to fetch Altirra download page: HTTP {}",
+            response.status()
+        ));
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read Altirra download page: {}", e))?;
+    let href = extract_altirra_download_href(&body).ok_or_else(|| {
+        "Could not find the latest Altirra x86/x64 ZIP on the official site".to_string()
+    })?;
+
+    let page = reqwest::Url::parse(page_url)
+        .map_err(|e| format!("Invalid Altirra download page URL: {}", e))?;
+    page.join(&href)
+        .map(|url| url.to_string())
+        .map_err(|e| format!("Failed to resolve Altirra download URL: {}", e))
 }
 
 fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
@@ -567,30 +730,29 @@ pub async fn install_emulator(
     // Install standalone version
     let result = match current_os() {
         "Linux" => {
-            if is_flatpak_available() {
-                if let Some(ref flatpak_id) = emulator.flatpak_id {
-                    tracing::info!(flatpak_id = flatpak_id, "Installing via flatpak");
-                    install_flatpak(flatpak_id).await?;
-                    Ok(PathBuf::from(format!("flatpak::{}", flatpak_id)))
-                } else if let Some(package) =
-                    nix_package_for_emulator(emulator).filter(|_| is_nix_available())
-                {
-                    tracing::info!(package = package, "Installing via nix profile");
-                    install_nix_package(package).await?;
-                    check_linux_installation(emulator).ok_or_else(|| {
-                        format!("Installed {} but could not find executable", emulator.name)
-                    })
-                } else {
-                    Err(format!(
-                        "No installation method available for {} on Linux",
-                        emulator.name
-                    ))
-                }
+            if let Some(flatpak_id) = emulator
+                .flatpak_id
+                .as_deref()
+                .filter(|_| is_flatpak_available())
+            {
+                tracing::info!(flatpak_id = flatpak_id, "Installing via flatpak");
+                install_flatpak(flatpak_id).await?;
+                Ok(PathBuf::from(format!(
+                    "{FLATPAK_INSTALL_PREFIX}{flatpak_id}"
+                )))
             } else if let Some(package) =
                 nix_package_for_emulator(emulator).filter(|_| is_nix_available())
             {
                 tracing::info!(package = package, "Installing via nix profile");
                 install_nix_package(package).await?;
+                check_linux_installation(emulator).ok_or_else(|| {
+                    format!("Installed {} but could not find executable", emulator.name)
+                })
+            } else if let Some(info) =
+                wine_install_for_emulator(emulator).filter(|_| is_wine_available())
+            {
+                tracing::info!(emulator = %emulator.name, "Installing via Wine backend");
+                install_wine_emulator(info).await?;
                 check_linux_installation(emulator).ok_or_else(|| {
                     format!("Installed {} but could not find executable", emulator.name)
                 })
@@ -699,6 +861,77 @@ async fn install_nix_package(package: &str) -> Result<(), String> {
     {
         let _ = package;
         Err("Nix profile installs are only available on Linux".to_string())
+    }
+}
+
+async fn install_wine_emulator(info: WineInstallInfo) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let install_root = wine_install_root(&info);
+        let app_dir = wine_app_dir(&info);
+        tokio::fs::create_dir_all(&install_root)
+            .await
+            .map_err(|e| format!("Failed to create Wine install directory: {}", e))?;
+
+        let download_url = resolve_altirra_download_url(info.download_page_url).await?;
+        let archive_path = install_root.join("download.zip");
+        let response = reqwest::Client::new()
+            .get(&download_url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to download Altirra: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "Failed to download Altirra: HTTP {}",
+                response.status()
+            ));
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read Altirra download: {}", e))?;
+        tokio::fs::write(&archive_path, &bytes)
+            .await
+            .map_err(|e| format!("Failed to write Altirra archive: {}", e))?;
+
+        if app_dir.exists() {
+            tokio::fs::remove_dir_all(&app_dir)
+                .await
+                .map_err(|e| format!("Failed to replace existing Altirra install: {}", e))?;
+        }
+        tokio::fs::create_dir_all(&app_dir)
+            .await
+            .map_err(|e| format!("Failed to create Altirra app directory: {}", e))?;
+
+        let archive_path_clone = archive_path.clone();
+        let app_dir_clone = app_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let file = std::fs::File::open(&archive_path_clone)
+                .map_err(|e| format!("Failed to open Altirra archive: {}", e))?;
+            let mut archive = zip::ZipArchive::new(file)
+                .map_err(|e| format!("Failed to read Altirra archive: {}", e))?;
+            archive
+                .extract(&app_dir_clone)
+                .map_err(|e| format!("Failed to extract Altirra archive: {}", e))?;
+            Ok::<_, String>(())
+        })
+        .await
+        .map_err(|e| format!("Altirra extraction task failed: {}", e))??;
+
+        let _ = tokio::fs::remove_file(&archive_path).await;
+
+        if find_wine_install_executable(&info).is_some() {
+            Ok(())
+        } else {
+            Err("Altirra was downloaded, but Lunchbox could not find Altirra64.exe or Altirra.exe after extraction".to_string())
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = info;
+        Err("Wine installs are only available on Linux".to_string())
     }
 }
 
@@ -3042,9 +3275,14 @@ fn launch_standalone(
 
     tracing::debug!(exe_path = ?exe_path, "Found emulator executable");
 
-    if exe_path.to_string_lossy().starts_with("flatpak::") {
+    if exe_path
+        .to_string_lossy()
+        .starts_with(FLATPAK_INSTALL_PREFIX)
+    {
         // Flatpak app
-        let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
+        let app_id = exe_path
+            .to_string_lossy()
+            .replace(FLATPAK_INSTALL_PREFIX, "");
         let mut cmd = Command::new("flatpak");
         cmd.arg("run");
         let mut filesystem_paths = Vec::new();
@@ -3062,6 +3300,42 @@ fn launch_standalone(
         cmd.arg(&app_id);
         append_standalone_rom_and_args_for_flatpak(&mut cmd, &emulator.name, rom_path, launch_args);
         tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
+        spawn_and_verify(cmd, &emulator.name, cleanup_paths)
+    } else if let Some(wine_executable) = exe_path
+        .to_string_lossy()
+        .strip_prefix(WINE_INSTALL_PREFIX)
+        .map(|path| path.to_string())
+    {
+        let info = wine_install_for_emulator(emulator)
+            .ok_or_else(|| format!("{} does not have a Wine launch profile", emulator.name))?;
+        let prefix_dir = wine_prefix_dir(&info);
+        let prefix_exists = prefix_dir.exists();
+        if let Some(parent) = prefix_dir.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create Wine prefix parent directory: {}", e))?;
+        }
+
+        let wine_command = find_wine_command()
+            .ok_or_else(|| "Wine is not installed or not available on PATH".to_string())?;
+        let mut cmd = Command::new(wine_command);
+        cmd.env("WINEPREFIX", &prefix_dir);
+        if !prefix_exists {
+            cmd.env("WINEARCH", "win64");
+        }
+        cmd.arg(&wine_executable);
+        append_standalone_rom_and_args_for_wine(
+            &mut cmd,
+            &emulator.name,
+            &prefix_dir,
+            rom_path,
+            launch_args,
+        )?;
+        tracing::info!(
+            command = ?cmd,
+            prefix = %prefix_dir.display(),
+            executable = %wine_executable,
+            "Spawning via wine"
+        );
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else if current_os() == "macOS" && exe_path.extension().map(|e| e == "app").unwrap_or(false) {
         // macOS .app bundle
@@ -3128,6 +3402,12 @@ fn append_standalone_rom_and_args_native(
             cmd.arg(rom);
         }
         append_launch_args_native(cmd, args);
+    } else if emulator_name == "Altirra" {
+        append_launch_args_native(cmd, args);
+        if let Some(rom) = rom_path {
+            cmd.arg("/run");
+            cmd.arg(rom);
+        }
     } else {
         append_launch_args_native(cmd, args);
         if let Some(rom) = rom_path {
@@ -3160,12 +3440,90 @@ fn append_standalone_rom_and_args_for_flatpak(
             cmd.arg(map_path_for_flatpak(rom));
         }
         append_launch_args_for_flatpak(cmd, args);
+    } else if emulator_name == "Altirra" {
+        append_launch_args_for_flatpak(cmd, args);
+        if let Some(rom) = rom_path {
+            cmd.arg("/run");
+            cmd.arg(map_path_for_flatpak(rom));
+        }
     } else {
         append_launch_args_for_flatpak(cmd, args);
         if let Some(rom) = rom_path {
             cmd.arg(map_path_for_flatpak(rom));
         }
     }
+}
+
+fn map_path_for_wine(prefix_dir: &Path, path: &str) -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let winepath = find_winepath_command()
+            .ok_or_else(|| "winepath is not installed or not available on PATH".to_string())?;
+        let output = Command::new(winepath)
+            .env("WINEPREFIX", prefix_dir)
+            .args(["-w", path])
+            .output()
+            .map_err(|e| format!("Failed to run winepath: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("winepath failed: {}", stderr.trim()));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = prefix_dir;
+        Ok(path.to_string())
+    }
+}
+
+fn append_launch_args_for_wine(
+    cmd: &mut Command,
+    prefix_dir: &Path,
+    args: &[LaunchArg],
+) -> Result<(), String> {
+    for arg in args {
+        match arg {
+            LaunchArg::Literal(value) => {
+                cmd.arg(value);
+            }
+            LaunchArg::Path(path) => {
+                cmd.arg(map_path_for_wine(prefix_dir, path)?);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn append_standalone_rom_and_args_for_wine(
+    cmd: &mut Command,
+    emulator_name: &str,
+    prefix_dir: &Path,
+    rom_path: Option<&str>,
+    args: &[LaunchArg],
+) -> Result<(), String> {
+    if emulator_name == "LoopyMSE" {
+        if let Some(rom) = rom_path {
+            cmd.arg(map_path_for_wine(prefix_dir, rom)?);
+        }
+        append_launch_args_for_wine(cmd, prefix_dir, args)?;
+    } else if emulator_name == "Altirra" {
+        append_launch_args_for_wine(cmd, prefix_dir, args)?;
+        if let Some(rom) = rom_path {
+            cmd.arg("/run");
+            cmd.arg(map_path_for_wine(prefix_dir, rom)?);
+        }
+    } else {
+        append_launch_args_for_wine(cmd, prefix_dir, args)?;
+        if let Some(rom) = rom_path {
+            cmd.arg(map_path_for_wine(prefix_dir, rom)?);
+        }
+    }
+
+    Ok(())
 }
 
 /// Add status for an emulator as a RetroArch core entry
@@ -3247,6 +3605,7 @@ pub fn filter_installable(emulators: Vec<EmulatorInfo>) -> Vec<EmulatorInfo> {
                 "Linux" => {
                     (e.flatpak_id.is_some() && is_flatpak_available())
                         || (nix_package_for_emulator(e).is_some() && is_nix_available())
+                        || (wine_install_for_emulator(e).is_some() && is_wine_available())
                 }
                 "Windows" => e.winget_id.is_some(),
                 "macOS" => e.homebrew_formula.is_some(),
@@ -3418,6 +3777,73 @@ mod tests {
                 "/firmware/main.bin".to_string(),
                 "/firmware/sound.bin".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn altirra_uses_run_switch_before_rom() {
+        let mut cmd = Command::new("echo");
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            "Altirra",
+            Some("/roms/game.atr"),
+            &[LaunchArg::Literal("/portable".to_string())],
+        );
+
+        let args = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            vec![
+                "/portable".to_string(),
+                "/run".to_string(),
+                "/roms/game.atr".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_altirra_download_href_prefers_latest_x86_x64_zip() {
+        let html = r#"
+            <a href="downloads/Altirra-4.40.zip">4.40 (x86/x64)</a>
+            <a href="downloads/AltirraARM64-4.40.zip">4.40 (ARM64)</a>
+            <a href="downloads/Altirra-4.40-src.7z">source</a>
+        "#;
+
+        assert_eq!(
+            extract_altirra_download_href(html),
+            Some("downloads/Altirra-4.40.zip".to_string())
+        );
+    }
+
+    #[test]
+    fn wine_install_mapping_covers_altirra() {
+        let base = EmulatorInfo {
+            id: 1,
+            name: "Altirra".to_string(),
+            homepage: None,
+            supported_os: None,
+            winget_id: None,
+            homebrew_formula: None,
+            flatpak_id: None,
+            retroarch_core: None,
+            save_directory: None,
+            save_extensions: None,
+            notes: None,
+        };
+
+        let info = wine_install_for_emulator(&base).expect("Altirra should have Wine metadata");
+        assert_eq!(info.slug, "altirra");
+        assert_eq!(
+            info.download_page_url,
+            "https://www.virtualdub.org/altirra.html"
+        );
+        assert_eq!(
+            info.executable_candidates,
+            &["Altirra64.exe", "Altirra.exe"]
         );
     }
 
