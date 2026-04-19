@@ -103,6 +103,7 @@ pub fn EmulatorUpdates(
                         rows.update(|current| {
                             if let Some(row) = current.get_mut(idx) {
                                 row.status = UpdateRowStatus::Success;
+                                row.selected = false;
                             }
                         });
                     }
@@ -288,7 +289,20 @@ pub fn EmulatorUpdates(
                                             && matches!(row.status, UpdateRowStatus::Pending | UpdateRowStatus::Failed(_)))
                             }
                         >
-                            {move || if updating.get() { "Updating..." } else { "Update Selected" }}
+                            {move || {
+                                if updating.get() {
+                                    "Updating..."
+                                } else if rows
+                                    .get()
+                                    .iter()
+                                    .any(|row| row.selected
+                                        && matches!(row.status, UpdateRowStatus::Pending | UpdateRowStatus::Failed(_)))
+                                {
+                                    "Update Selected"
+                                } else {
+                                    "All Selected Updated"
+                                }
+                            }}
                         </button>
                     </div>
                 </div>

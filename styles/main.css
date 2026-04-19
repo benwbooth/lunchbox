@@ -2368,6 +2368,20 @@ h1, h2, h3, h4, h5, h6 {
     background-color: var(--accent-hover);
 }
 
+.dialog-confirm:disabled,
+.dialog-cancel:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.dialog-confirm:disabled:hover,
+.dialog-cancel:disabled:hover {
+    background-color: var(--bg-tertiary);
+}
+
 .emulator-updates-panel {
     background-color: var(--bg-secondary);
     border-radius: 12px;
@@ -2459,16 +2473,15 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .emulator-update-progress-fill.updating {
-    width: 100%;
+    width: 36%;
     background-image: linear-gradient(
         90deg,
-        rgba(255, 255, 255, 0.16) 0,
-        rgba(255, 255, 255, 0.32) 32%,
-        rgba(255, 255, 255, 0.12) 64%,
-        rgba(255, 255, 255, 0.24) 100%
+        rgba(255, 255, 255, 0.12) 0,
+        rgba(255, 255, 255, 0.46) 48%,
+        rgba(255, 255, 255, 0.14) 100%
     );
-    background-size: 220px 100%;
-    animation: emulator-update-progress-stripes 1.1s linear infinite;
+    box-shadow: 0 0 14px rgba(94, 180, 255, 0.28);
+    animation: emulator-update-progress-slide 1.1s ease-in-out infinite;
 }
 
 .emulator-update-progress-fill.success {
@@ -2488,12 +2501,12 @@ h1, h2, h3, h4, h5, h6 {
     margin-top: 18px;
 }
 
-@keyframes emulator-update-progress-stripes {
+@keyframes emulator-update-progress-slide {
     0% {
-        background-position-x: 0;
+        transform: translateX(-105%);
     }
     100% {
-        background-position-x: 220px;
+        transform: translateX(285%);
     }
 }
 
