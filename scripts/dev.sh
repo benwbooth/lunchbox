@@ -3,7 +3,6 @@
 #
 # Usage:
 #   ./scripts/dev.sh          # Browser mode (default) - opens in your browser
-#   ./scripts/dev.sh tauri    # Tauri mode - embedded webview
 #   ./scripts/dev.sh electron # Electron mode - Chromium desktop shell
 
 set -e
@@ -41,7 +40,7 @@ Description=Lunchbox Backend (dev_server)
 Type=simple
 WorkingDirectory=$PROJECT_DIR
 Environment=CARGO_TARGET_DIR=$PROJECT_DIR/target/dev-backend
-ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command watchexec -r -w src-tauri/src -w src-tauri/Cargo.toml -w Cargo.toml -- cargo run --profile dev-backend -p lunchbox --bin dev_server
+ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command watchexec -r -w backend/src -w backend/Cargo.toml -w Cargo.toml -- cargo run --profile dev-backend -p lunchbox --bin dev_server
 Restart=on-failure
 RestartSec=2
 EOF2
@@ -58,7 +57,7 @@ Type=Application
 Name=Lunchbox
 Comment=Lunchbox Electron Development Shell
 Exec=/nix/var/nix/profiles/system/sw/bin/nix develop $PROJECT_DIR --command electron $PROJECT_DIR/electron
-Icon=$PROJECT_DIR/src-tauri/icons/icon.png
+Icon=$PROJECT_DIR/backend/icons/icon.png
 StartupWMClass=Lunchbox
 Categories=Game;
 Terminal=false
@@ -84,11 +83,7 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM SIGPIPE EXIT
 
-if [ "$MODE" = "tauri" ]; then
-    echo "Starting Tauri development mode..."
-    env -u NO_COLOR nix develop "$PROJECT_DIR" --command cargo tauri dev
-
-elif [ "$MODE" = "electron" ]; then
+if [ "$MODE" = "electron" ]; then
     echo "Starting Electron development mode..."
     echo ""
     echo "Electron defaults to a safer WebGPU profile."
@@ -180,7 +175,6 @@ else
     echo ""
     echo "Usage:"
     echo "  ./scripts/dev.sh          # Browser mode (default)"
-    echo "  ./scripts/dev.sh tauri    # Tauri mode"
     echo "  ./scripts/dev.sh electron # Electron mode"
     exit 1
 fi

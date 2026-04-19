@@ -1,7 +1,7 @@
 //! Game details panel
 
 use super::{preload_video_state, Box3DViewer, LazyImage, VideoPlayer, VideoState};
-use crate::tauri::{
+use crate::backend_api::{
     self, file_to_asset_url, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats,
 };
 use futures::stream::{self, StreamExt};
@@ -16,7 +16,7 @@ async fn launch_game_with_resolved_rom(
     fallback_rom_path: Option<String>,
     emulator_name: String,
     is_retroarch_core: bool,
-) -> Result<tauri::LaunchResult, String> {
+) -> Result<backend_api::LaunchResult, String> {
     let rom_path = if let Some(path) = fallback_rom_path.and_then(|path| {
         if path.trim().is_empty() {
             None
@@ -26,13 +26,13 @@ async fn launch_game_with_resolved_rom(
     }) {
         path
     } else {
-        match tauri::get_game_file(launchbox_db_id).await {
+        match backend_api::get_game_file(launchbox_db_id).await {
             Ok(Some(file)) if !file.file_path.trim().is_empty() => file.file_path,
             _ => return Err("No ROM file path is available for this game".to_string()),
         }
     };
 
-    tauri::launch_game(
+    backend_api::launch_game(
         emulator_name,
         Some(rom_path),
         Some(launchbox_db_id),
@@ -44,14 +44,14 @@ async fn launch_game_with_resolved_rom(
 
 async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
     if game.database_id > 0 {
-        if let Ok(Some(file)) = tauri::get_game_file(game.database_id).await {
+        if let Ok(Some(file)) = backend_api::get_game_file(game.database_id).await {
             return Some(file);
         }
     }
 
     let mut checked_ids: HashSet<i64> = HashSet::new();
 
-    let variants = tauri::get_game_variants(
+    let variants = backend_api::get_game_variants(
         game.id.clone(),
         game.display_title.clone(),
         game.platform_id,
@@ -60,14 +60,14 @@ async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
     .ok()?;
 
     for variant in variants {
-        let variant_game = match tauri::get_game_by_uuid(variant.id).await {
+        let variant_game = match backend_api::get_game_by_uuid(variant.id).await {
             Ok(Some(g)) => g,
             _ => continue,
         };
         if variant_game.database_id <= 0 || !checked_ids.insert(variant_game.database_id) {
             continue;
         }
-        if let Ok(Some(file)) = tauri::get_game_file(variant_game.database_id).await {
+        if let Ok(Some(file)) = backend_api::get_game_file(variant_game.database_id).await {
             return Some(file);
         }
     }
@@ -116,8 +116,8 @@ async fn delay_ms(ms: i32) {
 
 #[derive(Clone, Debug)]
 struct MinervaTorrentGroup {
-    rom: tauri::MinervaRom,
-    files: Vec<tauri::TorrentFileMatch>,
+    rom: backend_api::MinervaRom,
+    files: Vec<backend_api::TorrentFileMatch>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -132,7 +132,7 @@ enum MinervaDownloadSelection {
     },
 }
 
-// Keep this fallback order in sync with src-tauri/src/region_priority.rs.
+// Keep this fallback order in sync with backend/src/region_priority.rs.
 const DEFAULT_DOWNLOAD_REGION_PRIORITY: &[&str] = &[
     "USA",
     "Japan",
@@ -232,7 +232,7 @@ fn grouped_torrent_region_priority(region: Option<&str>, custom_order: &[String]
     order.len() as i32
 }
 
-fn minerva_collection_compatibility_priority(rom: &tauri::MinervaRom) -> i32 {
+fn minerva_collection_compatibility_priority(rom: &backend_api::MinervaRom) -> i32 {
     let haystack = format!("{} {}", rom.collection, rom.minerva_platform).to_ascii_lowercase();
 
     if haystack.contains("headered") && !haystack.contains("headerless") {
@@ -289,7 +289,7 @@ async fn load_minerva_torrent_groups(
     platform_id: i64,
     region_priority: Vec<String>,
 ) -> Result<Vec<MinervaTorrentGroup>, String> {
-    let roms = tauri::search_minerva(
+    let roms = backend_api::search_minerva(
         Some(launchbox_db_id),
         Some(game_title.clone()),
         Some(platform_id),
@@ -302,7 +302,7 @@ async fn load_minerva_torrent_groups(
         let game_title = game_title.clone();
         let platform_name = platform_name.clone();
         async move {
-            let result = tauri::list_torrent_files(
+            let result = backend_api::list_torrent_files(
                 rom.torrent_url.clone(),
                 game_title,
                 Some(platform_name),
@@ -390,10 +390,10 @@ pub fn GameDetails(
     let (details_min_delay_elapsed, set_details_min_delay_elapsed) = signal(false);
     let (preloaded_video_state, set_preloaded_video_state) = signal::<Option<VideoState>>(None);
     // Minerva download state
-    let (minerva_rom, set_minerva_rom) = signal::<Option<tauri::MinervaRom>>(None);
+    let (minerva_rom, set_minerva_rom) = signal::<Option<backend_api::MinervaRom>>(None);
     let (minerva_downloading, set_minerva_downloading) = signal(false);
     let (minerva_progress, set_minerva_progress) =
-        signal::<Option<tauri::MinervaDownloadProgress>>(None);
+        signal::<Option<backend_api::MinervaDownloadProgress>>(None);
     let (minerva_job_id, set_minerva_job_id) = signal::<Option<String>>(None);
     let (minerva_missing_progress_polls, set_minerva_missing_progress_polls) = signal(0u8);
     // Torrent file picker state
@@ -581,7 +581,7 @@ pub fn GameDetails(
             let db_id = g.database_id;
             spawn_local(async move {
                 // Get game-specific preference (not platform default)
-                if let Ok(prefs) = tauri::get_all_emulator_preferences().await {
+                if let Ok(prefs) = backend_api::get_all_emulator_preferences().await {
                     let game_pref = prefs
                         .game_preferences
                         .into_iter()
@@ -647,14 +647,14 @@ pub fn GameDetails(
                 };
 
                 // Load play stats
-                if let Ok(stats) = tauri::get_play_stats(db_id).await {
+                if let Ok(stats) = backend_api::get_play_stats(db_id).await {
                     if !is_current_game() {
                         return;
                     }
                     set_play_stats.set(stats);
                 }
                 // Check favorite status
-                if let Ok(fav) = tauri::is_favorite(db_id).await {
+                if let Ok(fav) = backend_api::is_favorite(db_id).await {
                     if !is_current_game() {
                         return;
                     }
@@ -673,7 +673,7 @@ pub fn GameDetails(
                     web_sys::console::log_1(
                         &format!("Fetching variants for game_id={}", game_id).into(),
                     );
-                    match tauri::get_game_variants(
+                    match backend_api::get_game_variants(
                         game_id.clone(),
                         display_title.clone(),
                         platform_id,
@@ -704,7 +704,7 @@ pub fn GameDetails(
                                     });
 
                                 if let Some(preferred_id) = fallback_variant_id {
-                                    match tauri::get_game_by_uuid(preferred_id.clone()).await {
+                                    match backend_api::get_game_by_uuid(preferred_id.clone()).await {
                                         Ok(Some(preferred_game))
                                             if preferred_game.database_id > 0 =>
                                         {
@@ -739,7 +739,7 @@ pub fn GameDetails(
                     return;
                 }
                 set_game_file.set(resolved_file);
-                match tauri::get_active_import(db_id).await {
+                match backend_api::get_active_import(db_id).await {
                     Ok(Some(job)) => {
                         if !is_current_game() {
                             return;
@@ -755,7 +755,7 @@ pub fn GameDetails(
                 }
                 // Check minerva ROM availability
                 {
-                    if let Ok(rom) = tauri::get_minerva_rom_for_game(db_id, Some(platform_id)).await
+                    if let Ok(rom) = backend_api::get_minerva_rom_for_game(db_id, Some(platform_id)).await
                     {
                         if is_current_game() {
                             set_minerva_rom.set(rom);
@@ -776,7 +776,7 @@ pub fn GameDetails(
             let jid_clone = jid.clone();
             spawn_local(async move {
                 loop {
-                    match tauri::get_minerva_download_progress(jid_clone.clone()).await {
+                    match backend_api::get_minerva_download_progress(jid_clone.clone()).await {
                         Ok(Some(progress)) => {
                             set_minerva_missing_progress_polls.set(0);
                             let done = progress.status == "completed"
@@ -790,7 +790,7 @@ pub fn GameDetails(
                                     // Refresh game file
                                     if let Some(g) = game.get_untracked() {
                                         if let Ok(Some(file)) =
-                                            tauri::get_game_file(g.database_id).await
+                                            backend_api::get_game_file(g.database_id).await
                                         {
                                             set_game_file.set(Some(file));
                                         }
@@ -915,7 +915,7 @@ pub fn GameDetails(
             spawn_local(async move {
                 let requested_variant_id = variant_id.clone();
                 if let Ok(Some(new_game)) =
-                    tauri::get_game_by_uuid(requested_variant_id.clone()).await
+                    backend_api::get_game_by_uuid(requested_variant_id.clone()).await
                 {
                     if pending_variant_load.get_untracked().as_deref()
                         == Some(requested_variant_id.as_str())
@@ -985,11 +985,11 @@ pub fn GameDetails(
                         let currently_fav = is_fav.get();
                         spawn_local(async move {
                             if currently_fav {
-                                if tauri::remove_favorite(db_id).await.is_ok() {
+                                if backend_api::remove_favorite(db_id).await.is_ok() {
                                     set_is_fav.set(false);
                                 }
                             } else {
-                                if tauri::add_favorite(db_id, title, platform).await.is_ok() {
+                                if backend_api::add_favorite(db_id, title, platform).await.is_ok() {
                                     set_is_fav.set(true);
                                 }
                             }
@@ -1121,7 +1121,7 @@ pub fn GameDetails(
                                                             class="pref-reset-btn"
                                                             on:click=move |_| {
                                                                 spawn_local(async move {
-                                                                    if tauri::clear_game_emulator_preference(db_id).await.is_ok() {
+                                                                    if backend_api::clear_game_emulator_preference(db_id).await.is_ok() {
                                                                         set_game_emulator_pref.set(None);
                                                                     }
                                                                 });
@@ -1168,7 +1168,7 @@ pub fn GameDetails(
                                                             set_minerva_job_id.set(None);
                                                             set_minerva_missing_progress_polls.set(0);
                                                             spawn_local(async move {
-                                                                let _ = tauri::cancel_minerva_download(jid).await;
+                                                                let _ = backend_api::cancel_minerva_download(jid).await;
                                                             });
                                                         } else {
                                                             set_minerva_downloading.set(false);
@@ -1227,24 +1227,24 @@ pub fn GameDetails(
                                                                 let db_id = g.database_id;
                                                                 let title = g.display_title.clone();
                                                                 let platform = stored_platform.get_value();
-                                                                // Prompt for file path (in Tauri mode, would use native dialog)
+                                                                // Prompt for file path in the browser/Electron shell.
                                                                 let window = web_sys::window().unwrap();
                                                                 if let Some(path) = window.prompt_with_message("Enter path to ROM file:").ok().flatten() {
                                                                     if !path.trim().is_empty() {
                                                                         let path = path.trim().to_string();
                                                                         spawn_local(async move {
-                                                                            let entries = vec![tauri::RomImportEntry {
+                                                                            let entries = vec![backend_api::RomImportEntry {
                                                                                 file_path: path,
                                                                                 launchbox_db_id: db_id,
                                                                                 game_title: title,
                                                                                 platform,
                                                                                 copy_to_library: false,
                                                                             }];
-                                                                            match tauri::confirm_rom_import(entries).await {
+                                                                            match backend_api::confirm_rom_import(entries).await {
                                                                                 Ok(count) => {
                                                                                     if count > 0 {
                                                                                         // Refresh game file
-                                                                                        if let Ok(Some(file)) = tauri::get_game_file(db_id).await {
+                                                                                        if let Ok(Some(file)) = backend_api::get_game_file(db_id).await {
                                                                                             set_game_file.set(Some(file));
                                                                                         }
                                                                                     }
@@ -1367,10 +1367,10 @@ pub fn GameDetails(
                                                                     let platform = stored_platform.get_value();
                                                                     let (torrent_url, file_index, download_mode) = match selection {
                                                                         MinervaDownloadSelection::WholeTorrent { torrent_url, representative_file_index } => {
-                                                                            (torrent_url, representative_file_index, tauri::MinervaDownloadMode::FullTorrent)
+                                                                            (torrent_url, representative_file_index, backend_api::MinervaDownloadMode::FullTorrent)
                                                                         }
                                                                         MinervaDownloadSelection::File { torrent_url, file_index } => {
-                                                                            (torrent_url, Some(file_index), tauri::MinervaDownloadMode::GameOnly)
+                                                                            (torrent_url, Some(file_index), backend_api::MinervaDownloadMode::GameOnly)
                                                                         }
                                                                     };
                                                                     set_show_file_picker.set(false);
@@ -1379,7 +1379,7 @@ pub fn GameDetails(
                                                                     set_minerva_missing_progress_polls.set(0);
                                                                     set_import_error.set(None);
                                                                     spawn_local(async move {
-                                                                        match tauri::test_torrent_connection().await {
+                                                                        match backend_api::test_torrent_connection().await {
                                                                             Ok(result) if !result.success => {
                                                                                 set_minerva_downloading.set(false);
                                                                                 if let Some(setter) = set_show_settings {
@@ -1398,7 +1398,7 @@ pub fn GameDetails(
                                                                             }
                                                                             _ => {}
                                                                         }
-                                                                        match tauri::start_minerva_download(
+                                                                        match backend_api::start_minerva_download(
                                                                             torrent_url,
                                                                             file_index,
                                                                             db_id,
@@ -1451,7 +1451,7 @@ pub fn GameDetails(
                                                     set_emulators_loading.set(true);
                                                     set_show_emulator_picker.set(true);
                                                     spawn_local(async move {
-                                                        match tauri::get_emulators_with_status(platform).await {
+                                                        match backend_api::get_emulators_with_status(platform).await {
                                                             Ok(emu_list) => set_emulators.set(emu_list),
                                                             Err(e) => {
                                                                 web_sys::console::error_1(&format!("Failed to fetch emulators: {}", e).into());
@@ -1489,7 +1489,7 @@ pub fn GameDetails(
                                                             set_import_error.set(None);
                                                             let db_id = current_game.database_id;
                                                             spawn_local(async move {
-                                                                match tauri::uninstall_game(db_id).await {
+                                                                match backend_api::uninstall_game(db_id).await {
                                                                     Ok(()) => {
                                                                         set_game_file.set(None);
                                                                         set_display_game.update(|game| {
@@ -1627,7 +1627,7 @@ fn MediaCarousel(
 
         spawn_local(async move {
             // Pre-load box front URL for 3D viewer
-            if let Ok(path) = tauri::download_image_with_fallback(
+            if let Ok(path) = backend_api::download_image_with_fallback(
                 title.clone(),
                 plat.clone(),
                 "Box - Front".to_string(),
@@ -1639,7 +1639,7 @@ fn MediaCarousel(
             }
 
             // Pre-load box back URL for 3D viewer
-            if let Ok(path) = tauri::download_image_with_fallback(
+            if let Ok(path) = backend_api::download_image_with_fallback(
                 title.clone(),
                 plat.clone(),
                 "Box - Back".to_string(),
@@ -1784,7 +1784,7 @@ fn firmware_source_label(source: &str) -> &'static str {
     }
 }
 
-fn summarize_firmware_sources(statuses: &[tauri::FirmwareStatus]) -> Option<String> {
+fn summarize_firmware_sources(statuses: &[backend_api::FirmwareStatus]) -> Option<String> {
     let sources = statuses
         .iter()
         .map(|status| firmware_source_label(&status.source))
@@ -1842,7 +1842,7 @@ fn EmulatorPickerModal(
         let db_id = stored_db_id.get_value();
         let platform = stored_platform.get_value();
         spawn_local(async move {
-            if let Ok(pref) = tauri::get_emulator_preference(db_id, platform).await {
+            if let Ok(pref) = backend_api::get_emulator_preference(db_id, platform).await {
                 set_current_pref.set(pref);
             }
         });
@@ -2081,7 +2081,7 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
                                                 spawn_local(async move {
                                                     // Record play session
-                                                    let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
+                                                    let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                     // Launch selected emulator with ROM path
                                                     match launch_game_with_resolved_rom(
                                                         db_id,
@@ -2109,11 +2109,11 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emulator_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match tauri::install_emulator(emulator_for_install.clone(), is_ra).await {
+                                                    match backend_api::install_emulator(emulator_for_install.clone(), is_ra).await {
                                                         Ok(_path) => {
                                                             set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
                                                             // Record play session
-                                                            let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
+                                                            let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                             // Launch selected emulator with ROM path
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
@@ -2158,8 +2158,8 @@ fn EmulatorPickerModal(
                                             if is_installed {
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
                                                 spawn_local(async move {
-                                                    let _ = tauri::set_game_emulator_preference(db_id, emulator_name.clone()).await;
-                                                    let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
+                                                    let _ = backend_api::set_game_emulator_preference(db_id, emulator_name.clone()).await;
+                                                    let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                     match launch_game_with_resolved_rom(
                                                         db_id,
                                                         platform.clone(),
@@ -2185,11 +2185,11 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match tauri::install_emulator(emu_for_install.clone(), is_ra).await {
+                                                    match backend_api::install_emulator(emu_for_install.clone(), is_ra).await {
                                                         Ok(_) => {
-                                                            let _ = tauri::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
+                                                            let _ = backend_api::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
-                                                            let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
+                                                            let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
                                                                 platform.clone(),
@@ -2233,8 +2233,8 @@ fn EmulatorPickerModal(
                                             if is_installed {
                                                 set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
                                                 spawn_local(async move {
-                                                    let _ = tauri::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
-                                                    let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
+                                                    let _ = backend_api::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
+                                                    let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                     match launch_game_with_resolved_rom(
                                                         db_id,
                                                         platform.clone(),
@@ -2260,11 +2260,11 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match tauri::install_emulator(emu_for_install.clone(), is_ra).await {
+                                                    match backend_api::install_emulator(emu_for_install.clone(), is_ra).await {
                                                         Ok(_) => {
-                                                            let _ = tauri::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
+                                                            let _ = backend_api::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
-                                                            let _ = tauri::record_play_session(db_id, title, platform.clone()).await;
+                                                            let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
                                                                 platform.clone(),
@@ -2377,7 +2377,7 @@ fn EmulatorPickerModal(
                                                                     set_success_state.set(None);
 
                                                                     spawn_local(async move {
-                                                                        match tauri::install_firmware(
+                                                                        match backend_api::install_firmware(
                                                                             emulator_name.clone(),
                                                                             platform.clone(),
                                                                             is_ra,
@@ -2385,7 +2385,7 @@ fn EmulatorPickerModal(
                                                                         .await
                                                                         {
                                                                             Ok(_) => {
-                                                                                match tauri::get_emulators_with_status(platform).await {
+                                                                                match backend_api::get_emulators_with_status(platform).await {
                                                                                     Ok(emu_list) => {
                                                                                         set_emulators.set(emu_list);
                                                                                         set_progress_state.set(None);
@@ -2432,7 +2432,7 @@ fn EmulatorPickerModal(
                                                                     set_success_state.set(None);
 
                                                                     spawn_local(async move {
-                                                                        match tauri::open_firmware_directory(
+                                                                        match backend_api::open_firmware_directory(
                                                                             emulator_name,
                                                                             platform,
                                                                             is_ra,
@@ -2531,13 +2531,13 @@ fn EmulatorPickerModal(
                                                                 set_success_state.set(None);
 
                                                                 spawn_local(async move {
-                                                                    match tauri::uninstall_emulator(
+                                                                    match backend_api::uninstall_emulator(
                                                                         emulator_name,
                                                                         is_retroarch_core,
                                                                     )
                                                                     .await
                                                                     {
-                                                                        Ok(()) => match tauri::get_emulators_with_status(platform).await {
+                                                                        Ok(()) => match backend_api::get_emulators_with_status(platform).await {
                                                                             Ok(emu_list) => {
                                                                                 set_emulators.set(emu_list);
                                                                                 set_progress_state.set(None);

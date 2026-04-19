@@ -1,13 +1,13 @@
 //! ROM Import component — scan directories, match ROMs to games, import
 
-use crate::tauri;
+use crate::backend_api;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashSet;
 
 #[component]
 pub fn RomImport(#[prop(into)] on_close: Callback<()>) -> impl IntoView {
-    let (scan_results, set_scan_results) = signal::<Vec<tauri::ScannedRom>>(Vec::new());
+    let (scan_results, set_scan_results) = signal::<Vec<backend_api::ScannedRom>>(Vec::new());
     let (scanning, set_scanning) = signal(false);
     let (importing, set_importing) = signal(false);
     let (import_result, set_import_result) = signal::<Option<String>>(None);
@@ -26,7 +26,7 @@ pub fn RomImport(#[prop(into)] on_close: Callback<()>) -> impl IntoView {
         let col = sort_column.get();
         let asc = sort_ascending.get();
 
-        let mut results: Vec<(usize, tauri::ScannedRom)> = scan_results
+        let mut results: Vec<(usize, backend_api::ScannedRom)> = scan_results
             .get()
             .into_iter()
             .enumerate()
@@ -81,7 +81,7 @@ pub fn RomImport(#[prop(into)] on_close: Callback<()>) -> impl IntoView {
         set_scan_results.set(Vec::new());
         set_import_result.set(None);
         spawn_local(async move {
-            match tauri::scan_and_match_roms(vec![dir], checksums, None).await {
+            match backend_api::scan_and_match_roms(vec![dir], checksums, None).await {
                 Ok(result) => {
                     set_total_scanned.set(result.total_scanned);
                     set_matched_count.set(result.matched_count);
@@ -105,12 +105,12 @@ pub fn RomImport(#[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let on_import_selected = move |_| {
         let selected = selected_rows.get();
         let results = scan_results.get();
-        let entries: Vec<tauri::RomImportEntry> = results
+        let entries: Vec<backend_api::RomImportEntry> = results
             .iter()
             .enumerate()
             .filter(|(i, _)| selected.contains(i))
             .filter_map(|(_, rom)| {
-                Some(tauri::RomImportEntry {
+                Some(backend_api::RomImportEntry {
                     file_path: rom.file_path.clone(),
                     launchbox_db_id: rom.matched_launchbox_db_id?,
                     game_title: rom.matched_game_title.clone()?,
@@ -127,7 +127,7 @@ pub fn RomImport(#[prop(into)] on_close: Callback<()>) -> impl IntoView {
         let count = entries.len();
         set_importing.set(true);
         spawn_local(async move {
-            match tauri::confirm_rom_import(entries).await {
+            match backend_api::confirm_rom_import(entries).await {
                 Ok(imported) => {
                     set_import_result.set(Some(format!("Imported {imported} of {count} ROMs")));
                 }

@@ -1,10 +1,10 @@
 //! Media download event system
 //!
-//! Provides event types and sender for communicating download progress
-//! from the backend to the frontend via Tauri's event system.
+//! Provides event types and no-op senders for communicating download progress.
+//! The Electron/browser frontend reads progress via HTTP polling instead of
+//! desktop-shell events.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
 
 use super::media_types::{MediaSource, NormalizedMediaType};
 
@@ -129,34 +129,21 @@ impl MediaEvent {
     }
 }
 
-/// Sender for media events
+/// Sender for media events.
 ///
-/// Wraps Tauri's AppHandle to emit events to the frontend
-#[derive(Clone)]
-pub struct MediaEventSender {
-    app_handle: Option<AppHandle>,
-}
+/// This is currently a no-op because the Electron/browser frontend polls
+/// backend progress over HTTP instead of subscribing to backend events.
+#[derive(Clone, Default)]
+pub struct MediaEventSender;
 
 impl MediaEventSender {
-    /// Create a new sender with a Tauri AppHandle
-    pub fn new(app_handle: AppHandle) -> Self {
-        Self {
-            app_handle: Some(app_handle),
-        }
-    }
-
     /// Create a no-op sender (for testing or when events aren't needed)
     pub fn noop() -> Self {
-        Self { app_handle: None }
+        Self
     }
 
     /// Emit a media event
-    pub fn emit(&self, event: MediaEvent) {
-        if let Some(ref app) = self.app_handle {
-            if let Err(e) = app.emit(MEDIA_EVENT_NAME, &event) {
-                tracing::warn!("Failed to emit media event: {}", e);
-            }
-        }
+    pub fn emit(&self, _event: MediaEvent) {
     }
 
     /// Emit a started event
@@ -268,31 +255,17 @@ impl VideoEvent {
 }
 
 /// Sender for video events
-#[derive(Clone)]
-pub struct VideoEventSender {
-    app_handle: Option<AppHandle>,
-}
+#[derive(Clone, Default)]
+pub struct VideoEventSender;
 
 impl VideoEventSender {
-    /// Create a new sender with a Tauri AppHandle
-    pub fn new(app_handle: AppHandle) -> Self {
-        Self {
-            app_handle: Some(app_handle),
-        }
-    }
-
     /// Create a no-op sender (for testing or when events aren't needed)
     pub fn noop() -> Self {
-        Self { app_handle: None }
+        Self
     }
 
     /// Emit a video event
-    pub fn emit(&self, event: VideoEvent) {
-        if let Some(ref app) = self.app_handle {
-            if let Err(e) = app.emit(VIDEO_EVENT_NAME, &event) {
-                tracing::warn!("Failed to emit video event: {}", e);
-            }
-        }
+    pub fn emit(&self, _event: VideoEvent) {
     }
 
     /// Emit a started event

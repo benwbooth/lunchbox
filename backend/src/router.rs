@@ -1,7 +1,6 @@
-//! rspc router - unified API for both Tauri IPC and HTTP
+//! rspc router for the browser/Electron frontend
 //!
 //! All procedures defined here are automatically available via:
-//! - Tauri IPC (when running as desktop app)
 //! - HTTP API (when running dev server)
 
 use rspc::{Config, Router};
@@ -96,7 +95,7 @@ pub fn build_router() -> Arc<Router<Ctx>> {
 }
 
 // ============================================================================
-// Implementation functions (shared between rspc and legacy Tauri commands)
+// Implementation functions shared by rspc and HTTP routes
 // ============================================================================
 
 pub async fn test_steamgriddb_impl(api_key: String) -> ConnectionTestResult {

@@ -1,7 +1,6 @@
-//! HTTP API for development mode
+//! HTTP API for the browser and Electron frontend
 //!
-//! Provides HTTP endpoints that mirror the Tauri commands, allowing
-//! the frontend to work in a regular browser during development.
+//! Provides the backend surface used by the frontend without any desktop-shell IPC.
 
 use crate::db::schema::{
     extract_region_from_title, normalize_title_for_dedup, normalize_title_for_display, Game,
@@ -1026,9 +1025,9 @@ async fn get_game_variants(
             // Sort by region priority (uses user's preference if set)
             result.sort_by(|a, b| {
                 let priority_a =
-                    crate::commands::region_priority_for_title(&a.title, &custom_region_order);
+                    crate::region_priority::priority_for_title(&a.title, &custom_region_order);
                 let priority_b =
-                    crate::commands::region_priority_for_title(&b.title, &custom_region_order);
+                    crate::region_priority::priority_for_title(&b.title, &custom_region_order);
                 priority_a
                     .cmp(&priority_b)
                     .then_with(|| a.title.cmp(&b.title))
@@ -1471,7 +1470,7 @@ async fn rspc_get_game_image(
     let state_guard = state.read().await;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+        let cache_dir = state_guard.settings.get_media_directory();
         let mut service = crate::images::ImageService::new(games_pool.clone(), cache_dir);
         if let Some(ref images_pool) = state_guard.images_db_pool {
             service = service.with_images_pool(images_pool.clone());
@@ -1544,7 +1543,7 @@ async fn rspc_check_cached_media(
     };
 
     let state_guard = state.read().await;
-    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let cache_dir = state_guard.settings.get_media_directory();
 
     // Compute game_id
     let game_id =
@@ -1645,7 +1644,7 @@ async fn rspc_download_image_with_fallback(
         None
     };
 
-    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let cache_dir = state_guard.settings.get_media_directory();
     let mut service = crate::images::ImageService::new(games_pool.clone(), cache_dir.clone());
     if let Some(ref images_pool) = state_guard.images_db_pool {
         service = service.with_images_pool(images_pool.clone());
@@ -1763,7 +1762,7 @@ async fn rspc_redownload_image_from_next_source(
         }
     };
 
-    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let cache_dir = state_guard.settings.get_media_directory();
 
     // Get the game cache ID
     let game_id =
@@ -1995,7 +1994,7 @@ async fn rspc_check_cached_video(
     };
 
     let state_guard = state.read().await;
-    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let cache_dir = state_guard.settings.get_media_directory();
 
     // Build the expected video path
     let game_id = match input.launchbox_db_id {
@@ -2081,7 +2080,7 @@ async fn rspc_get_video_download_progress(
     };
 
     let state_guard = state.read().await;
-    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let cache_dir = state_guard.settings.get_media_directory();
 
     let game_id = match input.launchbox_db_id {
         Some(id) => crate::images::GameMediaId::from_launchbox_id(id),
@@ -2146,7 +2145,7 @@ async fn rspc_probe_game_video_available(
         return rspc_ok(false).into_response();
     }
 
-    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let cache_dir = state_guard.settings.get_media_directory();
     let client = crate::images::EmuMoviesClient::new(
         crate::images::EmuMoviesConfig {
             username: state_guard.settings.emumovies.username.clone(),
@@ -2221,7 +2220,7 @@ async fn rspc_download_game_video(
         .into_response();
     }
 
-    let cache_dir = crate::commands::get_cache_dir(&state_guard.settings);
+    let cache_dir = state_guard.settings.get_media_directory();
 
     // Build the game cache directory
     let game_id = match input.launchbox_db_id {
@@ -3343,7 +3342,7 @@ async fn rspc_list_torrent_files(
         }
     };
 
-    // Try parsing directly, then try unwrapping an "input" wrapper (Tauri IPC sends wrapped)
+    // Try parsing directly, then try unwrapping an "input" wrapper from older callers.
     let input: handlers::ListTorrentFilesInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
         Err(_) => {

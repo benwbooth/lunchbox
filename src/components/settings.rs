@@ -1,7 +1,7 @@
 //! Settings panel component
 
 use super::ImageSourcesWizard;
-use crate::tauri::{
+use crate::backend_api::{
     clear_game_emulator_preference, clear_platform_emulator_preference,
     get_all_emulator_preferences, get_all_regions, get_credential_storage_name,
     get_emulators_for_platform, get_platforms, get_settings, save_settings,
@@ -914,7 +914,7 @@ struct PlatformEmulatorData {
 #[component]
 fn EmulatorPreferencesSection() -> impl IntoView {
     let (platform_data, set_platform_data) = signal::<Vec<PlatformEmulatorData>>(Vec::new());
-    let (game_prefs, set_game_prefs) = signal::<Vec<crate::tauri::GameEmulatorPref>>(Vec::new());
+    let (game_prefs, set_game_prefs) = signal::<Vec<crate::backend_api::GameEmulatorPref>>(Vec::new());
     let (loading, set_loading) = signal(true);
 
     // Load all data on mount

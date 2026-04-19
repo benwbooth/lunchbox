@@ -16,8 +16,6 @@ struct GameFields {
 }
 
 fn main() {
-    tauri_build::build();
-
     // Generate content hash from git
     let hash = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])

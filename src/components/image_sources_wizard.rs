@@ -2,7 +2,7 @@
 //!
 //! Helps users configure image download sources with step-by-step instructions.
 
-use crate::tauri::{
+use crate::backend_api::{
     get_settings, save_settings, test_emumovies_connection, test_igdb_connection,
     test_screenscraper_connection, test_steamgriddb_connection, AppSettings,
 };

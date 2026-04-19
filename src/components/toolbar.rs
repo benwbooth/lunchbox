@@ -1,5 +1,5 @@
 use crate::app::{ArtworkDisplayType, GameFilters, ViewMode};
-use crate::tauri;
+use crate::backend_api;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -59,7 +59,7 @@ fn StatusIndicator() -> impl IntoView {
 
     // Initial health check
     spawn_local(async move {
-        match tauri::check_health().await {
+        match backend_api::check_health().await {
             Ok(health) => {
                 set_is_connected.set(true);
                 set_backend_hash.set(Some(health.build_hash));
@@ -75,7 +75,7 @@ fn StatusIndicator() -> impl IntoView {
     use gloo_timers::callback::Interval;
     let health_interval = Interval::new(10000, move || {
         spawn_local(async move {
-            match tauri::check_health().await {
+            match backend_api::check_health().await {
                 Ok(health) => {
                     set_is_connected.set(true);
                     set_backend_hash.set(Some(health.build_hash));

@@ -1122,7 +1122,7 @@ def generate_toml() -> str:
 def main():
     toml_content = generate_toml()
 
-    output_path = Path("src-tauri/emulators.toml")
+    output_path = Path("backend/emulators.toml")
     output_path.write_text(toml_content)
     print(f"Generated {output_path}")
 

@@ -4,7 +4,7 @@ use crate::app::{
     ArtworkDisplayType, GameFilters, ViewMode, PLATFORM_SELECTION_ALL_GAMES,
     PLATFORM_SELECTION_MINIGAMES,
 };
-use crate::tauri::{self, Game};
+use crate::backend_api::{self, Game};
 use chrono::{Datelike, NaiveDate};
 use gloo_timers::callback::Interval;
 use leptos::html;
@@ -31,7 +31,7 @@ fn format_number(n: i64) -> String {
     result.chars().rev().collect()
 }
 
-fn format_hover_video_progress_label(progress: &tauri::VideoDownloadProgress) -> String {
+fn format_hover_video_progress_label(progress: &backend_api::VideoDownloadProgress) -> String {
     let status = progress
         .status
         .clone()
@@ -530,10 +530,10 @@ pub fn GameGrid(
                 } else {
                     Some(search)
                 };
-                match tauri::get_games(
+                match backend_api::get_games(
                     query_plat,
                     search_param,
-                    Some(tauri::GameQueryFilters {
+                    Some(backend_api::GameQueryFilters {
                         installed_only: filters.installed_only,
                         hide_homebrew: filters.hide_homebrew,
                         hide_adult: filters.hide_adult,
@@ -667,7 +667,7 @@ pub fn GameGrid(
             spawn_local(async move {
                 // Collections - load all (they're small)
                 if let Some(coll_id) = coll {
-                    let result = tauri::get_collection_games(coll_id)
+                    let result = backend_api::get_collection_games(coll_id)
                         .await
                         .unwrap_or_default();
                     let count = result.len() as i64;
@@ -697,13 +697,13 @@ pub fn GameGrid(
                     Some(search.clone())
                 };
                 let query_plat = query_platform(plat.clone());
-                let query_filters = tauri::GameQueryFilters {
+                let query_filters = backend_api::GameQueryFilters {
                     installed_only: filters.installed_only,
                     hide_homebrew: filters.hide_homebrew,
                     hide_adult: filters.hide_adult,
                 };
 
-                match tauri::get_game_count(
+                match backend_api::get_game_count(
                     query_plat.clone(),
                     search_param.clone(),
                     Some(query_filters),
@@ -714,7 +714,7 @@ pub fn GameGrid(
                         set_total_count.set(count);
 
                         if count > 0 {
-                            match tauri::get_games(
+                            match backend_api::get_games(
                                 query_plat,
                                 search_param,
                                 Some(query_filters),
@@ -1626,7 +1626,7 @@ fn GameCard(
                     set_hover_video_progress.set(None);
                     set_hover_video_status.set("Loading preview...".to_string());
 
-                    match tauri::check_cached_video(
+                    match backend_api::check_cached_video(
                         title_async.clone(),
                         platform_async.clone(),
                         db_id_opt,
@@ -1635,7 +1635,7 @@ fn GameCard(
                     {
                         Ok(Some(cached_path)) => {
                             if hover_token_async.get() == token {
-                                let url = tauri::file_to_asset_url(&cached_path);
+                                let url = backend_api::file_to_asset_url(&cached_path);
                                 set_hover_video_loaded.set(false);
                                 set_hover_video_url.set(Some(url));
                                 set_hover_video_loading.set(false);
@@ -1664,7 +1664,7 @@ fn GameCard(
                                     return;
                                 }
                                 if let Ok(Some(progress)) =
-                                    tauri::get_video_download_progress(title, platform, db_id_opt)
+                                    backend_api::get_video_download_progress(title, platform, db_id_opt)
                                         .await
                                 {
                                     set_hover_video_status
@@ -1677,7 +1677,7 @@ fn GameCard(
                         *progress_poll.borrow_mut() = Some(interval);
                     }
 
-                    match tauri::download_game_video(
+                    match backend_api::download_game_video(
                         title_async.clone(),
                         platform_async.clone(),
                         db_id_opt,
@@ -1686,7 +1686,7 @@ fn GameCard(
                     {
                         Ok(local_path) => {
                             if hover_token_async.get() == token {
-                                let url = tauri::file_to_asset_url(&local_path);
+                                let url = backend_api::file_to_asset_url(&local_path);
                                 set_hover_video_loaded.set(false);
                                 set_hover_video_url.set(Some(url));
                                 set_hover_video_progress.set(Some(1.0));

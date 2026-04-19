@@ -1,4 +1,4 @@
-//! Development server that runs the HTTP API without Tauri's webview.
+//! Development server that runs the HTTP API without a desktop shell.
 //!
 //! Usage:
 //!   cargo run --bin dev_server
@@ -59,13 +59,13 @@ fn find_or_decompress_database(db_name: &str, data_dir: &Path) -> Option<PathBuf
 
     // Possible locations for compressed or uncompressed database
     let possible_paths = [
-        PathBuf::from(format!("../db/{}", db_file)), // Dev mode (from src-tauri)
+        PathBuf::from(format!("../db/{}", db_file)), // Dev mode (from backend)
         PathBuf::from(format!("./db/{}", db_file)),  // Dev mode (from root)
         PathBuf::from(format!("/usr/share/lunchbox/{}", db_file)),
     ];
 
     let possible_zst_paths = [
-        PathBuf::from(format!("../db/{}", zst_file)), // Dev mode (from src-tauri)
+        PathBuf::from(format!("../db/{}", zst_file)), // Dev mode (from backend)
         PathBuf::from(format!("./db/{}", zst_file)),  // Dev mode (from root)
         PathBuf::from(format!("/usr/share/lunchbox/{}", zst_file)),
     ];

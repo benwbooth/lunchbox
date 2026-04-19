@@ -4,7 +4,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
 
 use crate::db;
 
@@ -315,7 +314,7 @@ fn find_or_decompress_database(
     // Possible locations for compressed database
     let possible_zst_paths: Vec<PathBuf> = [
         resource_dir.map(|p| p.join(&zst_file)),
-        Some(PathBuf::from(format!("../db/{}", zst_file))), // Dev mode (from src-tauri)
+        Some(PathBuf::from(format!("../db/{}", zst_file))), // Dev mode (from backend)
         Some(PathBuf::from(format!("./db/{}", zst_file))),  // Dev mode (from root)
         Some(PathBuf::from(format!(
             "/usr/share/{}/{}",
@@ -330,7 +329,7 @@ fn find_or_decompress_database(
     // Also check for uncompressed in other locations (dev mode, system)
     let possible_db_paths: Vec<PathBuf> = [
         resource_dir.map(|p| p.join(&db_file)),
-        Some(PathBuf::from(format!("../db/{}", db_file))), // Dev mode (from src-tauri)
+        Some(PathBuf::from(format!("../db/{}", db_file))), // Dev mode (from backend)
         Some(PathBuf::from(format!("./db/{}", db_file))),  // Dev mode (from root)
         Some(PathBuf::from(format!(
             "/usr/share/{}/{}",
@@ -368,23 +367,16 @@ fn find_or_decompress_database(
     None
 }
 
-/// Initialize app state on startup
-pub async fn initialize_app_state(app: &AppHandle) -> Result<()> {
+/// Initialize app state from explicit data/resource directories.
+pub async fn initialize_app_state(
+    state: &std::sync::Arc<tokio::sync::RwLock<AppState>>,
+    app_data_dir: PathBuf,
+    resource_dir: Option<PathBuf>,
+) -> Result<()> {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::str::FromStr;
 
-    let state = app.state::<std::sync::Arc<tokio::sync::RwLock<AppState>>>();
-
-    // Get the app data directory
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .expect("Failed to get app data directory");
-
     std::fs::create_dir_all(&app_data_dir)?;
-
-    // Get resource directory for bundled databases
-    let resource_dir = app.path().resource_dir().ok();
 
     // User database path - only created when needed (first write operation)
     let user_db_path = app_data_dir.join(db::USER_DB_NAME);

@@ -60,7 +60,7 @@ futures = "0.3"
 
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/lunchbox-core", "crates/lunchbox-cli"]
+members = ["backend", "crates/lunchbox-core", "crates/lunchbox-cli"]
 
 [workspace.package]
 version = "0.1.0"

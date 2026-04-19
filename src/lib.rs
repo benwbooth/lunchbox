@@ -1,6 +1,6 @@
 mod app;
+mod backend_api;
 mod components;
-mod tauri;
 mod ui_state;
 
 use wasm_bindgen::prelude::*;

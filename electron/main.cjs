@@ -5,7 +5,7 @@ const DEV_URL = process.env.LUNCHBOX_ELECTRON_URL || 'http://127.0.0.1:1420';
 const BACKEND_READY_URL = 'http://127.0.0.1:3001/api/games?limit=1';
 const WINDOW_TITLE = 'Lunchbox';
 const RETRY_DELAY_MS = 1000;
-const WINDOW_ICON = path.join(__dirname, '..', 'src-tauri', 'icons', 'icon.png');
+const WINDOW_ICON = path.join(__dirname, '..', 'backend', 'icons', 'icon.png');
 const USE_STABLE_CHROMIUM = process.env.LUNCHBOX_STABLE_CHROMIUM === '1';
 const USE_AGGRESSIVE_GPU = process.env.LUNCHBOX_AGGRESSIVE_GPU === '1';
 

@@ -5,7 +5,7 @@
 //! - libretro-thumbnails (free, no account needed)
 //! - SteamGridDB (requires API key)
 
-use crate::tauri::{self, file_to_asset_url, log_to_backend, ImageInfo};
+use crate::backend_api::{self, file_to_asset_url, log_to_backend, ImageInfo};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::cell::RefCell;
@@ -597,7 +597,7 @@ pub fn LazyImage(
                         source: "Checking...".to_string(),
                     });
 
-                    match tauri::check_cached_media(
+                    match backend_api::check_cached_media(
                         title.clone(),
                         plat.clone(),
                         img_type.clone(),
@@ -639,7 +639,7 @@ pub fn LazyImage(
 
                     let start_time = js_sys::Date::now();
 
-                    match tauri::download_image_with_fallback(
+                    match backend_api::download_image_with_fallback(
                         title.clone(),
                         plat.clone(),
                         img_type.clone(),
@@ -789,7 +789,7 @@ pub fn LazyImage(
                                     });
 
                                     // Call the redownload API
-                                    match tauri::redownload_image_from_next_source(
+                                    match backend_api::redownload_image_from_next_source(
                                         title.clone(),
                                         plat.clone(),
                                         img_type.clone(),
@@ -880,7 +880,7 @@ async fn download_and_update(
     mounted: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
     // Trigger download
-    match tauri::download_image(info.id).await {
+    match backend_api::download_image(info.id).await {
         Ok(local_path) => {
             if mounted.load(std::sync::atomic::Ordering::Relaxed) {
                 let source = source_from_path(&local_path);

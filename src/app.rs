@@ -1,5 +1,5 @@
 use crate::components::{GameDetails, GameGrid, Settings, Sidebar, Toolbar};
-use crate::tauri::Game;
+use crate::backend_api::Game;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 

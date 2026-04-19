@@ -7,7 +7,7 @@ minify = "never"
 no_sri = true
 
 [watch]
-ignore = ["src-tauri", "target", ".git"]
+ignore = ["backend", "target", ".git"]
 # Watch these file types for changes
 watch = ["src", "styles", "js", "assets", "index.html", "Cargo.toml", "build.rs"]
 

@@ -8,7 +8,7 @@
 //! - HTML5 video player with controls
 //! - Full width display at top of details panel
 
-use crate::tauri::{self, file_to_asset_url};
+use crate::backend_api::{self, file_to_asset_url};
 use gloo_timers::callback::{Interval, Timeout};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -77,7 +77,7 @@ fn video_progress_percent(progress: Option<f32>) -> i32 {
     (normalized_video_progress(progress).unwrap_or(0.0) * 100.0).round() as i32
 }
 
-fn format_video_progress_label(progress: &tauri::VideoDownloadProgress) -> String {
+fn format_video_progress_label(progress: &backend_api::VideoDownloadProgress) -> String {
     let status = progress
         .status
         .clone()
@@ -104,7 +104,7 @@ pub async fn preload_video_state(
         None
     };
 
-    match tauri::check_cached_video(game_title.clone(), platform.clone(), db_id_opt).await {
+    match backend_api::check_cached_video(game_title.clone(), platform.clone(), db_id_opt).await {
         Ok(Some(cached_path)) => {
             let ready = VideoState::Ready(video_asset_url(&cached_path, false));
             put_cached_video_state(&key, &ready);
@@ -118,7 +118,7 @@ pub async fn preload_video_state(
         }
     }
 
-    match tauri::probe_game_video_available(game_title, platform, db_id_opt).await {
+    match backend_api::probe_game_video_available(game_title, platform, db_id_opt).await {
         Ok(true) => VideoState::Downloading(None),
         Ok(false) => {
             let no_video = VideoState::NoVideo;
@@ -197,7 +197,7 @@ pub fn VideoPlayer(
             if !should_skip_cache_probe {
                 set_state.set(VideoState::Checking);
 
-                match tauri::check_cached_video(title.clone(), plat.clone(), db_id_opt).await {
+                match backend_api::check_cached_video(title.clone(), plat.clone(), db_id_opt).await {
                     Ok(Some(cached_path)) => {
                         let url = video_asset_url(&cached_path, false);
                         let ready = VideoState::Ready(url);
@@ -207,7 +207,7 @@ pub fn VideoPlayer(
                         return;
                     }
                     Ok(None) => {
-                        match tauri::probe_game_video_available(
+                        match backend_api::probe_game_video_available(
                             title.clone(),
                             plat.clone(),
                             db_id_opt,
@@ -255,7 +255,7 @@ pub fn VideoPlayer(
             set_download_status.set("Preparing video lookup...".to_string());
             set_state.set(VideoState::Downloading(None));
 
-            match tauri::download_game_video(title.clone(), plat.clone(), db_id_opt).await {
+            match backend_api::download_game_video(title.clone(), plat.clone(), db_id_opt).await {
                 Ok(local_path) => {
                     let url = video_asset_url(&local_path, true);
                     let ready = VideoState::Ready(url);
@@ -320,7 +320,7 @@ pub fn VideoPlayer(
             let plat = plat.clone();
             spawn_local(async move {
                 if let Ok(Some(progress)) =
-                    tauri::get_video_download_progress(title, plat, db_id_opt).await
+                    backend_api::get_video_download_progress(title, plat, db_id_opt).await
                 {
                     set_download_status.set(format_video_progress_label(&progress));
                     set_state.set(VideoState::Downloading(normalized_video_progress(
@@ -396,7 +396,7 @@ pub fn VideoPlayer(
                                 let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
 
                                 spawn_local(async move {
-                                    match tauri::check_cached_video(title, plat, db_id_opt).await {
+                                    match backend_api::check_cached_video(title, plat, db_id_opt).await {
                                         Ok(Some(cached_path)) => {
                                             let ready = VideoState::Ready(video_asset_url(&cached_path, true));
                                             put_cached_video_state(&key, &ready);

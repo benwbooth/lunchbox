@@ -1,14 +1,14 @@
 //! Shared endpoint handlers
 //!
 //! This module contains the actual implementation logic for all endpoints.
-//! Both Tauri commands (commands.rs) and HTTP handlers (api.rs) call into
-//! these functions, ensuring the logic is defined in exactly one place.
+//! Both rspc procedures and HTTP handlers call into these functions, ensuring
+//! the logic is defined in exactly one place.
 //!
 //! To add a new endpoint:
 //! 1. Add the handler function here
-//! 2. Add wrapper in commands.rs using the define_command! macro
-//! 3. Add wrapper in api.rs using the define_http_handler! macro
-//! 4. Register in lib.rs invoke_handler and api.rs create_router
+//! 2. Add wrapper(s) in api.rs
+//! 3. Register in api.rs create_router if the legacy HTTP route is needed
+//! 4. Register in router.rs if the frontend needs an rspc procedure
 
 use crate::db::schema::EmulatorInfo;
 use crate::emulator::{self, EmulatorWithStatus, LaunchResult};
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 // ============================================================================
-// Shared types (used by both Tauri and HTTP)
+// Shared types (used by both rspc and HTTP)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

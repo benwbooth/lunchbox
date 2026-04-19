@@ -32,28 +32,27 @@
 
 ## API Endpoints
 
-Backend endpoints must work in both Tauri native mode and HTTP dev mode. To ensure consistency:
+Backend endpoints must work through the shared HTTP/rspc surface. To ensure consistency:
 
 1. **Define shared types and logic in `handlers.rs`**
    - Input structs (e.g., `CreateCollectionInput`)
    - Output structs (e.g., `Collection`)
    - Handler functions that take `&AppState` and return `Result<T, String>`
 
-2. **Create thin wrappers in both:**
-   - `commands.rs` - Tauri commands that extract state and call handlers
-   - `api.rs` - HTTP handlers that parse JSON input and call handlers
+2. **Create thin wrappers in `api.rs`**
+   - HTTP handlers that parse JSON input and call handlers
+   - rspc procedures that expose the same backend logic to the frontend
 
-3. **Register in `lib.rs`** - Add the command to `invoke_handler`
-4. **Register in `api.rs`** - Add the route to `create_router`
+3. **Register in `api.rs`** - Add the route to `create_router`
+4. **Register in `router.rs`** - Add the rspc procedure when the frontend needs it
 
 Example pattern:
 ```rust
 // handlers.rs - THE SOURCE OF TRUTH
 pub async fn get_collections(state: &AppState) -> Result<Vec<Collection>, String> { ... }
 
-// commands.rs - thin wrapper
-#[tauri::command]
-pub async fn get_collections(state: tauri::State<'_, AppStateHandle>) -> Result<Vec<Collection>, String> {
+// api.rs - thin wrapper
+pub async fn get_collections(state: SharedState) -> Result<Vec<Collection>, String> {
     let state_guard = state.read().await;
     handlers::get_collections(&state_guard).await
 }
@@ -68,7 +67,7 @@ async fn rspc_get_collections(State(state): State<SharedState>) -> impl IntoResp
 }
 ```
 
-This ensures business logic is defined once in `handlers.rs`, preventing Tauri/HTTP drift.
+This ensures business logic is defined once in `handlers.rs`, preventing HTTP/rspc drift.
 
 ## Database
 
@@ -79,4 +78,4 @@ This ensures business logic is defined once in `handlers.rs`, preventing Tauri/H
   - Contains: settings, favorites, collections, play_sessions
   - Only created when user saves data (no empty files)
 - **IMPORTANT**: Never rebuild the games database without asking first - it takes a long time
-- **IMPORTANT**: Never run direct SQL updates on the database. All schema changes and data updates must be done via migrations in `src-tauri/migrations/`. This ensures changes are reproducible and tracked in version control.
+- **IMPORTANT**: Never run direct SQL updates on the database. All schema changes and data updates must be done via migrations in `backend/migrations/`. This ensures changes are reproducible and tracked in version control.

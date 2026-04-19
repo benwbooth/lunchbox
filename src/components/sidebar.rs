@@ -2,7 +2,7 @@
 
 use crate::app::{PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES};
 use crate::components::QueueStatus;
-use crate::tauri::{self, Collection, Platform};
+use crate::backend_api::{self, Collection, Platform};
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -52,7 +52,7 @@ pub fn Sidebar(
     let persisted =
         crate::ui_state::load_json::<SidebarUiState>(SIDEBAR_UI_STATE_KEY).unwrap_or_default();
 
-    // Fetch platforms from Tauri backend
+    // Fetch platforms from the backend
     let (platforms, set_platforms) = signal::<Vec<Platform>>(Vec::new());
     let (platforms_loading, set_platforms_loading) = signal(true);
     let (platform_search, set_platform_search) = signal(persisted.platform_search);
@@ -61,7 +61,7 @@ pub fn Sidebar(
     // Load platforms on component mount
     spawn_local(async move {
         console::log_1(&"Sidebar: Loading platforms...".into());
-        match tauri::get_platforms().await {
+        match backend_api::get_platforms().await {
             Ok(p) => {
                 console::log_1(&format!("Sidebar: Loaded {} platforms", p.len()).into());
                 set_platforms.set(p);
@@ -100,7 +100,7 @@ pub fn Sidebar(
     Effect::new(move || {
         let _ = collections_refresh.get(); // Subscribe to refresh trigger
         spawn_local(async move {
-            match tauri::get_collections().await {
+            match backend_api::get_collections().await {
                 Ok(cols) => set_collections.set(cols),
                 Err(e) => console::error_1(&format!("Failed to load collections: {}", e).into()),
             }
@@ -114,7 +114,7 @@ pub fn Sidebar(
             return;
         }
         spawn_local(async move {
-            match tauri::create_collection(name, None).await {
+            match backend_api::create_collection(name, None).await {
                 Ok(_) => {
                     set_new_collection_name.set(String::new());
                     set_show_create_dialog.set(false);
@@ -488,7 +488,7 @@ fn CollectionItem(
         ev.stop_propagation();
         let id = id_for_delete.clone();
         spawn_local(async move {
-            match tauri::delete_collection(id).await {
+            match backend_api::delete_collection(id).await {
                 Ok(_) => set_collections_refresh.update(|n| *n += 1),
                 Err(e) => console::error_1(&format!("Failed to delete collection: {}", e).into()),
             }

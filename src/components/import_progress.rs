@@ -2,7 +2,7 @@
 //!
 //! Shows real-time progress of a Graboid import job using SSE events.
 
-use crate::tauri;
+use crate::backend_api;
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
@@ -59,7 +59,7 @@ pub fn ImportProgress(
     // Set up SSE connection
     let job_id_clone = job_id.clone();
     Effect::new(move |_| {
-        let url = tauri::graboid_sse_url(&job_id_clone);
+        let url = backend_api::graboid_sse_url(&job_id_clone);
         let event_source = web_sys::EventSource::new(&url).ok();
 
         if let Some(ref es) = event_source {
