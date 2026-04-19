@@ -2,7 +2,7 @@
 //!
 //! This module handles:
 //! - Detecting if emulators are installed on the system
-//! - Installing emulators via package managers (flatpak/winget/homebrew)
+//! - Installing emulators via package managers (flatpak/nix/winget/homebrew)
 //! - Launching games with the appropriate emulator
 
 use crate::db::schema::EmulatorInfo;
@@ -129,8 +129,10 @@ pub fn current_os() -> &'static str {
 fn get_install_method(emulator: &EmulatorInfo) -> Option<String> {
     match current_os() {
         "Linux" => {
-            if emulator.flatpak_id.is_some() {
+            if emulator.flatpak_id.is_some() && is_flatpak_available() {
                 Some("flatpak".to_string())
+            } else if nix_package_for_emulator(emulator).is_some() && is_nix_available() {
+                Some("nix".to_string())
             } else {
                 None
             }
@@ -149,6 +151,23 @@ fn get_install_method(emulator: &EmulatorInfo) -> Option<String> {
                 None
             }
         }
+        _ => None,
+    }
+}
+
+fn get_retroarch_install_method() -> Option<String> {
+    match current_os() {
+        "Linux" => {
+            if is_flatpak_available() {
+                Some("flatpak".to_string())
+            } else if is_nix_available() {
+                Some("nix".to_string())
+            } else {
+                None
+            }
+        }
+        "Windows" => Some("winget".to_string()),
+        "macOS" => Some("homebrew".to_string()),
         _ => None,
     }
 }
@@ -186,6 +205,10 @@ fn check_linux_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
             // Return a pseudo-path for flatpak apps
             return Some(PathBuf::from(format!("flatpak::{}", flatpak_id)));
         }
+    }
+
+    if let Some(path) = find_in_lunchbox_nix_profile(&get_executable_names(&emulator.name)) {
+        return Some(path);
     }
 
     // Check for native installation via which
@@ -291,6 +314,9 @@ fn is_retroarch_installed() -> bool {
             if is_flatpak_installed("org.libretro.RetroArch") {
                 return true;
             }
+            if find_lunchbox_nix_profile_executable("retroarch").is_some() {
+                return true;
+            }
             // Check native
             which::which("retroarch").is_ok()
         }
@@ -303,10 +329,35 @@ fn is_retroarch_installed() -> bool {
     }
 }
 
+fn is_flatpak_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        which::which("flatpak").is_ok()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+fn is_nix_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        which::which("nix").is_ok()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 /// Check if a flatpak app is installed
 fn is_flatpak_installed(app_id: &str) -> bool {
     #[cfg(target_os = "linux")]
     {
+        if !is_flatpak_available() {
+            return false;
+        }
         Command::new("flatpak")
             .args(["info", app_id])
             .output()
@@ -317,6 +368,49 @@ fn is_flatpak_installed(app_id: &str) -> bool {
     {
         let _ = app_id;
         false
+    }
+}
+
+fn lunchbox_nix_profile_path() -> PathBuf {
+    let state_root = dirs::state_dir()
+        .or_else(|| dirs::home_dir().map(|home| home.join(".local/state")))
+        .unwrap_or_else(|| PathBuf::from("."));
+    state_root.join("nix/profiles/lunchbox")
+}
+
+fn lunchbox_nix_profile_bin_dir() -> PathBuf {
+    lunchbox_nix_profile_path().join("bin")
+}
+
+fn find_lunchbox_nix_profile_executable(name: &str) -> Option<PathBuf> {
+    let path = lunchbox_nix_profile_bin_dir().join(name);
+    path.exists().then_some(path)
+}
+
+fn find_in_lunchbox_nix_profile(names: &[String]) -> Option<PathBuf> {
+    names
+        .iter()
+        .find_map(|name| find_lunchbox_nix_profile_executable(name))
+}
+
+fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
+    match emulator.name.to_lowercase().as_str() {
+        "ares" => Some("ares"),
+        "atari800" => Some("atari800"),
+        "dolphin" => Some("dolphin-emu"),
+        "dosbox staging" => Some("dosbox-staging"),
+        "dosbox-x" => Some("dosbox-x"),
+        "duckstation" => Some("duckstation"),
+        "flycast" => Some("flycast"),
+        "mame" => Some("mame"),
+        "mgba" => Some("mgba"),
+        "melonds" => Some("melonds"),
+        "openmsx" => Some("openmsx"),
+        "pcsx2" => Some("pcsx2"),
+        "ppsspp" => Some("ppsspp"),
+        "scummvm" => Some("scummvm"),
+        "snes9x" => Some("snes9x"),
+        _ => None,
     }
 }
 
@@ -441,10 +535,33 @@ pub async fn install_emulator(
     // Install standalone version
     let result = match current_os() {
         "Linux" => {
-            if let Some(ref flatpak_id) = emulator.flatpak_id {
-                tracing::info!(flatpak_id = flatpak_id, "Installing via flatpak");
-                install_flatpak(flatpak_id).await?;
-                Ok(PathBuf::from(format!("flatpak::{}", flatpak_id)))
+            if is_flatpak_available() {
+                if let Some(ref flatpak_id) = emulator.flatpak_id {
+                    tracing::info!(flatpak_id = flatpak_id, "Installing via flatpak");
+                    install_flatpak(flatpak_id).await?;
+                    Ok(PathBuf::from(format!("flatpak::{}", flatpak_id)))
+                } else if let Some(package) =
+                    nix_package_for_emulator(emulator).filter(|_| is_nix_available())
+                {
+                    tracing::info!(package = package, "Installing via nix profile");
+                    install_nix_package(package).await?;
+                    check_linux_installation(emulator).ok_or_else(|| {
+                        format!("Installed {} but could not find executable", emulator.name)
+                    })
+                } else {
+                    Err(format!(
+                        "No installation method available for {} on Linux",
+                        emulator.name
+                    ))
+                }
+            } else if let Some(package) =
+                nix_package_for_emulator(emulator).filter(|_| is_nix_available())
+            {
+                tracing::info!(package = package, "Installing via nix profile");
+                install_nix_package(package).await?;
+                check_linux_installation(emulator).ok_or_else(|| {
+                    format!("Installed {} but could not find executable", emulator.name)
+                })
             } else {
                 Err(format!(
                     "No installation method available for {} on Linux",
@@ -513,6 +630,43 @@ async fn install_flatpak(app_id: &str) -> Result<(), String> {
     {
         let _ = app_id;
         Err("Flatpak is only available on Linux".to_string())
+    }
+}
+
+async fn install_nix_package(package: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let profile_path = lunchbox_nix_profile_path();
+        if let Some(parent) = profile_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| format!("Failed to create Lunchbox nix profile directory: {}", e))?;
+        }
+
+        let package_ref = format!("nixpkgs#{}", package);
+        let output = tokio::process::Command::new("nix")
+            .args([
+                "profile",
+                "install",
+                "--profile",
+                profile_path.to_string_lossy().as_ref(),
+                &package_ref,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run nix profile install: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Nix profile install failed: {}", stderr))
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = package;
+        Err("Nix profile installs are only available on Linux".to_string())
     }
 }
 
@@ -658,7 +812,15 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
 /// Install RetroArch itself
 async fn install_retroarch() -> Result<(), String> {
     match current_os() {
-        "Linux" => install_flatpak("org.libretro.RetroArch").await,
+        "Linux" => {
+            if is_flatpak_available() {
+                install_flatpak("org.libretro.RetroArch").await
+            } else if is_nix_available() {
+                install_nix_package("retroarch").await
+            } else {
+                Err("No Linux installation method available for RetroArch".to_string())
+            }
+        }
         "Windows" => install_winget("Libretro.RetroArch").await,
         "macOS" => install_homebrew("retroarch").await,
         _ => Err("Unsupported operating system".to_string()),
@@ -2988,7 +3150,7 @@ pub fn add_status_as_retroarch(emulator: EmulatorInfo) -> EmulatorWithStatus {
     EmulatorWithStatus {
         info: emulator,
         is_installed,
-        install_method: Some("retroarch".to_string()),
+        install_method: get_retroarch_install_method(),
         is_retroarch_core: true,
         display_name,
         executable_path: if is_installed {
@@ -3021,13 +3183,12 @@ pub fn add_status_as_standalone(emulator: EmulatorInfo) -> EmulatorWithStatus {
 /// Find the RetroArch executable
 fn find_retroarch_executable() -> Option<PathBuf> {
     // Check flatpak first
-    if Command::new("flatpak")
-        .args(["info", "org.libretro.RetroArch"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
+    if is_flatpak_installed("org.libretro.RetroArch") {
         return Some(PathBuf::from("flatpak run org.libretro.RetroArch"));
+    }
+
+    if let Some(path) = find_lunchbox_nix_profile_executable("retroarch") {
+        return Some(path);
     }
 
     // Check PATH
@@ -3051,7 +3212,10 @@ pub fn filter_installable(emulators: Vec<EmulatorInfo>) -> Vec<EmulatorInfo> {
             }
             // Keep if we have an install method for this OS
             match os {
-                "Linux" => e.flatpak_id.is_some(),
+                "Linux" => {
+                    (e.flatpak_id.is_some() && is_flatpak_available())
+                        || (nix_package_for_emulator(e).is_some() && is_nix_available())
+                }
                 "Windows" => e.winget_id.is_some(),
                 "macOS" => e.homebrew_formula.is_some(),
                 _ => false,
@@ -3370,5 +3534,35 @@ mod tests {
             std::fs::read(vm_root.join("play.cfg")).unwrap(),
             b"[Hard disks]\nhdd_01_fn = W98-C.vhd\n"
         );
+    }
+
+    #[test]
+    fn lunchbox_nix_profile_bin_dir_uses_dedicated_profile() {
+        let bin_dir = lunchbox_nix_profile_bin_dir();
+        assert!(bin_dir.ends_with(Path::new("nix/profiles/lunchbox/bin")));
+    }
+
+    #[test]
+    fn nix_package_mapping_covers_known_linux_emulators() {
+        let base = EmulatorInfo {
+            id: 1,
+            name: "Atari800".to_string(),
+            homepage: None,
+            supported_os: None,
+            winget_id: None,
+            homebrew_formula: None,
+            flatpak_id: None,
+            retroarch_core: None,
+            save_directory: None,
+            save_extensions: None,
+            notes: None,
+        };
+        let dolphin = EmulatorInfo {
+            name: "Dolphin".to_string(),
+            ..base.clone()
+        };
+
+        assert_eq!(nix_package_for_emulator(&base), Some("atari800"));
+        assert_eq!(nix_package_for_emulator(&dolphin), Some("dolphin-emu"));
     }
 }
