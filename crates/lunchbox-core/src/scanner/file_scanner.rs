@@ -34,6 +34,7 @@ pub const ROM_EXTENSIONS: &[&str] = &[
     "pkg", // PS3
     // Atari
     "a26", "a52", "a78", // Atari 2600/5200/7800
+    "atr", "atx", "xfd", "xex", "car", "cas", // Atari 8-bit / XEGS
     "lnx", // Lynx
     "jag", "j64", // Jaguar
     // Other
@@ -329,5 +330,13 @@ mod tests {
             normalize_for_matching("The Legend of Zelda: A Link to the Past"),
             "THELEGENDOFZELDAALINKTOTHEPAST"
         );
+    }
+
+    #[test]
+    fn test_recognizes_atari_8bit_extensions() {
+        let scanner = RomScanner::new();
+        for ext in ["atr", "atx", "xfd", "xex", "car", "cas"] {
+            assert!(scanner.extensions.contains(ext), "missing extension {ext}");
+        }
     }
 }

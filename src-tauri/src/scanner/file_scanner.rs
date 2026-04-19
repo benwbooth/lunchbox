@@ -35,6 +35,7 @@ pub const ROM_EXTENSIONS: &[&str] = &[
     "pkg", // PS3
     // Atari
     "a26", "a52", "a78", // Atari 2600/5200/7800
+    "atr", "atx", "xfd", "xex", "car", "cas", // Atari 8-bit / XEGS
     "lnx", // Lynx
     "jag", "j64", // Jaguar
     // Other
@@ -258,8 +259,8 @@ const ROM_EXTENSIONS_NO_ARCHIVE: &[&str] = &[
     "nes", "fds", "unf", "unif", "sfc", "smc", "fig", "swc", "bs", "n64", "z64", "v64", "gb",
     "gbc", "sgb", "gba", "nds", "dsi", "3ds", "cia", "gcm", "gcz", "iso", "ciso", "rvz", "wbfs",
     "wad", "sms", "gg", "md", "gen", "bin", "smd", "32x", "cue", "chd", "pbp", "cso", "pkg", "a26",
-    "a52", "a78", "lnx", "jag", "j64", "pce", "sgx", "ngp", "ngc", "ws", "wsc", "vec", "col",
-    "int",
+    "a52", "a78", "atr", "atx", "xfd", "xex", "car", "cas", "lnx", "jag", "j64", "pce", "sgx",
+    "ngp", "ngc", "ws", "wsc", "vec", "col", "int",
 ];
 
 pub fn is_recognized_rom_extension(ext: &str) -> bool {
@@ -312,5 +313,12 @@ mod tests {
             normalize_for_matching("The Legend of Zelda: A Link to the Past"),
             "THELEGENDOFZELDAALINKTOTHEPAST"
         );
+    }
+
+    #[test]
+    fn recognizes_atari_8bit_extensions() {
+        for ext in ["atr", "atx", "xfd", "xex", "car", "cas"] {
+            assert!(is_recognized_rom_extension(ext), "missing extension {ext}");
+        }
     }
 }
