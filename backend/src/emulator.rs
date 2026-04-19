@@ -12,8 +12,11 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+#[cfg(target_os = "linux")]
+use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
 const FLATPAK_INSTALL_PREFIX: &str = "flatpak::";
+const APPIMAGE_INSTALL_PREFIX: &str = "appimage::";
 const WINE_INSTALL_PREFIX: &str = "wine::";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +24,37 @@ struct WineInstallInfo {
     slug: &'static str,
     download_page_url: &'static str,
     executable_candidates: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AppImageInstallInfo {
+    slug: &'static str,
+    github_repo: &'static str,
+    preferred_asset_terms: &'static [&'static str],
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    assets: Vec<GitHubReleaseAsset>,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Deserialize)]
+struct GitHubReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppImageInstallManifest {
+    slug: String,
+    version: String,
+    github_repo: String,
+    asset_name: String,
+    download_url: String,
+    installed_at: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -212,6 +246,8 @@ fn get_install_method(emulator: &EmulatorInfo) -> Option<String> {
                 Some("flatpak".to_string())
             } else if nix_package_for_emulator(emulator).is_some() && is_nix_available() {
                 Some("nix".to_string())
+            } else if appimage_install_for_emulator(emulator).is_some() {
+                Some("appimage".to_string())
             } else if wine_install_for_emulator(emulator).is_some() && is_wine_available() {
                 Some("wine".to_string())
             } else {
@@ -257,6 +293,10 @@ fn get_uninstall_method_for_path(path: &Path) -> Option<String> {
     let path_text = path.to_string_lossy();
     if path_text.starts_with(FLATPAK_INSTALL_PREFIX) {
         Some("flatpak".to_string())
+    } else if path_text.starts_with(APPIMAGE_INSTALL_PREFIX)
+        || path.starts_with(lunchbox_appimage_root())
+    {
+        Some("appimage".to_string())
     } else if path_text.starts_with(WINE_INSTALL_PREFIX) {
         Some("wine".to_string())
     } else if path.starts_with(lunchbox_nix_profile_bin_dir()) {
@@ -311,6 +351,12 @@ fn check_linux_installation(emulator: &EmulatorInfo) -> Option<PathBuf> {
                     path.to_string_lossy()
                 )));
             }
+        }
+    }
+
+    if let Some(info) = appimage_install_for_emulator(emulator) {
+        if let Some(path) = find_appimage_install_executable(&info) {
+            return Some(path);
         }
     }
 
@@ -534,8 +580,34 @@ fn lunchbox_programs_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".").join("programs"))
 }
 
+fn lunchbox_appimage_root() -> PathBuf {
+    lunchbox_programs_dir().join("appimages")
+}
+
 fn lunchbox_wine_root() -> PathBuf {
     lunchbox_programs_dir().join("wine")
+}
+
+fn appimage_install_for_emulator(emulator: &EmulatorInfo) -> Option<AppImageInstallInfo> {
+    match emulator.name.to_ascii_lowercase().as_str() {
+        "hypseus singe" => Some(AppImageInstallInfo {
+            slug: "hypseus-singe",
+            github_repo: "DirtBagXon/hypseus-singe",
+            preferred_asset_terms: &["appimage", "steamdeck", "x86_64"],
+        }),
+        _ => None,
+    }
+}
+
+fn appimage_install_for_slug(slug: &str) -> Option<AppImageInstallInfo> {
+    match slug {
+        "hypseus-singe" => Some(AppImageInstallInfo {
+            slug: "hypseus-singe",
+            github_repo: "DirtBagXon/hypseus-singe",
+            preferred_asset_terms: &["appimage", "steamdeck", "x86_64"],
+        }),
+        _ => None,
+    }
 }
 
 fn wine_install_for_emulator(emulator: &EmulatorInfo) -> Option<WineInstallInfo> {
@@ -568,6 +640,22 @@ fn wine_install_root(info: &WineInstallInfo) -> PathBuf {
     lunchbox_wine_root().join(info.slug)
 }
 
+fn appimage_install_root(info: &AppImageInstallInfo) -> PathBuf {
+    lunchbox_appimage_root().join(info.slug)
+}
+
+fn appimage_version_dir(info: &AppImageInstallInfo, version: &str) -> PathBuf {
+    appimage_install_root(info).join(version)
+}
+
+fn appimage_current_link(info: &AppImageInstallInfo) -> PathBuf {
+    appimage_install_root(info).join("current")
+}
+
+fn appimage_manifest_path(info: &AppImageInstallInfo) -> PathBuf {
+    appimage_install_root(info).join("install.json")
+}
+
 fn wine_app_dir(info: &WineInstallInfo) -> PathBuf {
     wine_install_root(info).join("app")
 }
@@ -578,6 +666,54 @@ fn wine_prefix_dir(info: &WineInstallInfo) -> PathBuf {
 
 fn find_wine_install_executable(info: &WineInstallInfo) -> Option<PathBuf> {
     find_file_by_name_recursive(&wine_app_dir(info), info.executable_candidates)
+}
+
+fn read_appimage_manifest(info: &AppImageInstallInfo) -> Option<AppImageInstallManifest> {
+    let path = appimage_manifest_path(info);
+    let bytes = std::fs::read(path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn write_appimage_manifest(
+    info: &AppImageInstallInfo,
+    manifest: &AppImageInstallManifest,
+) -> Result<(), String> {
+    let root = appimage_install_root(info);
+    std::fs::create_dir_all(&root)
+        .map_err(|e| format!("Failed to create AppImage install directory: {}", e))?;
+    let bytes = serde_json::to_vec_pretty(manifest)
+        .map_err(|e| format!("Failed to serialize AppImage manifest: {}", e))?;
+    std::fs::write(appimage_manifest_path(info), bytes)
+        .map_err(|e| format!("Failed to write AppImage manifest: {}", e))
+}
+
+fn find_appimage_install_executable(info: &AppImageInstallInfo) -> Option<PathBuf> {
+    if let Some(manifest) = read_appimage_manifest(info) {
+        let candidate = appimage_version_dir(info, &manifest.version).join(&manifest.asset_name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    let current = appimage_current_link(info);
+    let current_dir = std::fs::read_link(&current).ok().map(|path| {
+        if path.is_absolute() {
+            path
+        } else {
+            current.parent().unwrap_or_else(|| Path::new("")).join(path)
+        }
+    })?;
+
+    let mut entries = std::fs::read_dir(current_dir).ok()?;
+    entries.find_map(|entry| {
+        let path = entry.ok()?.path();
+        let is_appimage = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("appimage"))
+            .unwrap_or(false);
+        is_appimage.then_some(path)
+    })
 }
 
 fn find_file_by_name_recursive(root: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -651,6 +787,58 @@ async fn resolve_altirra_download_url(page_url: &str) -> Result<String, String> 
     page.join(&href)
         .map(|url| url.to_string())
         .map_err(|e| format!("Failed to resolve Altirra download URL: {}", e))
+}
+
+#[cfg(target_os = "linux")]
+async fn fetch_github_latest_release(repo: &str) -> Result<GitHubRelease, String> {
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    reqwest::Client::new()
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "lunchbox-appimage")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch GitHub release metadata: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("GitHub release metadata request failed: {}", e))?
+        .json::<GitHubRelease>()
+        .await
+        .map_err(|e| format!("Failed to parse GitHub release metadata: {}", e))
+}
+
+#[cfg(target_os = "linux")]
+fn normalize_release_version(tag_name: &str) -> String {
+    tag_name
+        .strip_prefix('v')
+        .unwrap_or(tag_name)
+        .trim()
+        .to_string()
+}
+
+#[cfg(target_os = "linux")]
+fn select_github_appimage_asset<'a>(
+    release: &'a GitHubRelease,
+    info: &AppImageInstallInfo,
+) -> Option<&'a GitHubReleaseAsset> {
+    release
+        .assets
+        .iter()
+        .filter(|asset| {
+            let name = asset.name.to_ascii_lowercase();
+            name.ends_with(".appimage")
+        })
+        .max_by_key(|asset| {
+            let name = asset.name.to_ascii_lowercase();
+            let mut score = 100i32;
+            for term in info.preferred_asset_terms {
+                if name.contains(&term.to_ascii_lowercase()) {
+                    score += 25;
+                }
+            }
+            if name.contains("x86_64") || name.contains("amd64") || name.contains("steamdeck") {
+                score += 50;
+            }
+            score
+        })
 }
 
 fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
@@ -845,6 +1033,12 @@ pub async fn install_emulator(
                 check_linux_installation(emulator).ok_or_else(|| {
                     format!("Installed {} but could not find executable", emulator.name)
                 })
+            } else if let Some(info) = appimage_install_for_emulator(emulator) {
+                tracing::info!(emulator = %emulator.name, "Installing via AppImage backend");
+                install_appimage_emulator(info).await?;
+                check_linux_installation(emulator).ok_or_else(|| {
+                    format!("Installed {} but could not find executable", emulator.name)
+                })
             } else if let Some(info) =
                 wine_install_for_emulator(emulator).filter(|_| is_wine_available())
             {
@@ -936,6 +1130,15 @@ pub async fn uninstall_emulator(
                     })?;
                     uninstall_nix_package(package).await
                 }
+                Some("appimage") => {
+                    let info = appimage_install_for_emulator(emulator).ok_or_else(|| {
+                        format!(
+                            "{} does not define an AppImage install mapping",
+                            emulator.name
+                        )
+                    })?;
+                    uninstall_appimage_emulator(info).await
+                }
                 Some("wine") => {
                     let info = wine_install_for_emulator(emulator).ok_or_else(|| {
                         format!("{} does not define a Wine install mapping", emulator.name)
@@ -967,6 +1170,10 @@ pub async fn get_available_updates(
             Ok(nix_updates) => updates.extend(nix_updates),
             Err(err) => tracing::warn!(error = %err, "Nix emulator update check failed"),
         }
+        match get_appimage_updates(emulators).await {
+            Ok(appimage_updates) => updates.extend(appimage_updates),
+            Err(err) => tracing::warn!(error = %err, "AppImage emulator update check failed"),
+        }
         updates.sort_by(|a, b| {
             a.display_name
                 .cmp(&b.display_name)
@@ -992,6 +1199,10 @@ pub async fn apply_update(update_key: &str) -> Result<(), String> {
 
         if let Some(profile_name) = update_key.strip_prefix("nix:") {
             return update_nix_package(profile_name).await;
+        }
+
+        if let Some(slug) = update_key.strip_prefix("appimage:") {
+            return update_appimage_emulator(slug).await;
         }
 
         Err(format!("Unsupported emulator update key '{}'", update_key))
@@ -1108,6 +1319,50 @@ async fn get_nix_updates(emulators: &[EmulatorInfo]) -> Result<Vec<EmulatorUpdat
             install_method: "nix".to_string(),
             source_label: "Nix profile".to_string(),
             current_version,
+            available_version: Some(available_version),
+        });
+    }
+
+    Ok(updates)
+}
+
+#[cfg(target_os = "linux")]
+async fn get_appimage_updates(emulators: &[EmulatorInfo]) -> Result<Vec<EmulatorUpdate>, String> {
+    let mut targets_by_slug: BTreeMap<&'static str, (AppImageInstallInfo, ManagedUpdateTarget)> =
+        BTreeMap::new();
+    for emulator in emulators {
+        let Some(info) = appimage_install_for_emulator(emulator) else {
+            continue;
+        };
+        targets_by_slug
+            .entry(info.slug)
+            .and_modify(|(_, target)| {
+                target.display_names.insert(emulator.name.clone());
+            })
+            .or_insert_with(|| {
+                let mut target = ManagedUpdateTarget::default();
+                target.display_names.insert(emulator.name.clone());
+                (info, target)
+            });
+    }
+
+    let mut updates = Vec::new();
+    for (slug, (info, target)) in targets_by_slug {
+        let Some(manifest) = read_appimage_manifest(&info) else {
+            continue;
+        };
+        let release = fetch_github_latest_release(info.github_repo).await?;
+        let available_version = normalize_release_version(&release.tag_name);
+        if manifest.version == available_version {
+            continue;
+        }
+
+        updates.push(EmulatorUpdate {
+            key: format!("appimage:{slug}"),
+            display_name: summarize_update_display_names(&target.display_names),
+            install_method: "appimage".to_string(),
+            source_label: "AppImage (GitHub)".to_string(),
+            current_version: Some(manifest.version),
             available_version: Some(available_version),
         });
     }
@@ -1334,6 +1589,60 @@ async fn nix_available_version(package: &str) -> Result<Option<String>, String> 
     }
 }
 
+#[cfg(target_os = "linux")]
+async fn download_appimage_release(
+    info: &AppImageInstallInfo,
+) -> Result<(String, GitHubReleaseAsset), String> {
+    let release = fetch_github_latest_release(info.github_repo).await?;
+    let version = normalize_release_version(&release.tag_name);
+    let asset = select_github_appimage_asset(&release, info)
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "No AppImage asset was found in the latest release for {}",
+                info.github_repo
+            )
+        })?;
+    Ok((version, asset))
+}
+
+#[cfg(target_os = "linux")]
+fn set_executable_permissions(path: &Path) -> Result<(), String> {
+    std::fs::set_permissions(path, Permissions::from_mode(0o755))
+        .map_err(|e| format!("Failed to mark {} executable: {}", path.display(), e))
+}
+
+#[cfg(target_os = "linux")]
+fn replace_symlink(target: &Path, link_path: &Path) -> Result<(), String> {
+    if let Some(parent) = link_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+    }
+
+    match std::fs::symlink_metadata(link_path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+                std::fs::remove_dir_all(link_path)
+                    .map_err(|e| format!("Failed to replace {}: {}", link_path.display(), e))?;
+            } else {
+                std::fs::remove_file(link_path)
+                    .map_err(|e| format!("Failed to replace {}: {}", link_path.display(), e))?;
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(format!(
+                "Failed to inspect {} before replacing symlink: {}",
+                link_path.display(),
+                err
+            ));
+        }
+    }
+
+    std::os::unix::fs::symlink(target, link_path)
+        .map_err(|e| format!("Failed to create {}: {}", link_path.display(), e))
+}
+
 /// Install a flatpak package
 async fn install_flatpak(app_id: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
@@ -1441,6 +1750,66 @@ async fn install_nix_package(package: &str) -> Result<(), String> {
     }
 }
 
+async fn install_appimage_emulator(info: AppImageInstallInfo) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let root = appimage_install_root(&info);
+        tokio::fs::create_dir_all(&root)
+            .await
+            .map_err(|e| format!("Failed to create AppImage install directory: {}", e))?;
+
+        let (version, asset) = download_appimage_release(&info).await?;
+        let version_dir = appimage_version_dir(&info, &version);
+        tokio::fs::create_dir_all(&version_dir)
+            .await
+            .map_err(|e| format!("Failed to create AppImage version directory: {}", e))?;
+
+        let asset_path = version_dir.join(&asset.name);
+        if !asset_path.exists() {
+            let bytes = reqwest::Client::new()
+                .get(&asset.browser_download_url)
+                .header(reqwest::header::USER_AGENT, "lunchbox-appimage")
+                .send()
+                .await
+                .map_err(|e| format!("Failed to download AppImage: {}", e))?
+                .error_for_status()
+                .map_err(|e| format!("AppImage download failed: {}", e))?
+                .bytes()
+                .await
+                .map_err(|e| format!("Failed to read AppImage download: {}", e))?;
+
+            let temp_path = version_dir.join(format!("{}.part", asset.name));
+            tokio::fs::write(&temp_path, &bytes)
+                .await
+                .map_err(|e| format!("Failed to write AppImage download: {}", e))?;
+            tokio::fs::rename(&temp_path, &asset_path)
+                .await
+                .map_err(|e| format!("Failed to finalize AppImage install: {}", e))?;
+        }
+
+        set_executable_permissions(&asset_path)?;
+
+        let current_link = appimage_current_link(&info);
+        replace_symlink(&version_dir, &current_link)?;
+
+        let manifest = AppImageInstallManifest {
+            slug: info.slug.to_string(),
+            version,
+            github_repo: info.github_repo.to_string(),
+            asset_name: asset.name,
+            download_url: asset.browser_download_url,
+            installed_at: chrono::Utc::now().to_rfc3339(),
+        };
+        write_appimage_manifest(&info, &manifest)?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = info;
+        Err("AppImage installs are only available on Linux".to_string())
+    }
+}
+
 async fn uninstall_nix_package(package: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
@@ -1472,6 +1841,18 @@ async fn uninstall_nix_package(package: &str) -> Result<(), String> {
     }
 }
 
+async fn uninstall_appimage_emulator(info: AppImageInstallInfo) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        remove_path_if_exists(&appimage_install_root(&info)).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = info;
+        Err("AppImage uninstall is only available on Linux".to_string())
+    }
+}
+
 async fn update_nix_package(profile_name: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
@@ -1499,6 +1880,20 @@ async fn update_nix_package(profile_name: &str) -> Result<(), String> {
     {
         let _ = profile_name;
         Err("Nix profile updates are only available on Linux".to_string())
+    }
+}
+
+async fn update_appimage_emulator(slug: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let info = appimage_install_for_slug(slug)
+            .ok_or_else(|| format!("Unsupported AppImage update slug '{}'", slug))?;
+        install_appimage_emulator(info).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = slug;
+        Err("AppImage updates are only available on Linux".to_string())
     }
 }
 
@@ -4834,6 +5229,56 @@ mod tests {
         if current_os() == "Linux" {
             assert!(is_emulator_visible_on_current_os(&altirra));
         }
+    }
+
+    #[test]
+    fn appimage_install_mapping_covers_hypseus_singe() {
+        let emulator = EmulatorInfo {
+            id: 1,
+            name: "Hypseus Singe".to_string(),
+            homepage: None,
+            supported_os: Some("Linux".to_string()),
+            winget_id: None,
+            homebrew_formula: None,
+            flatpak_id: None,
+            retroarch_core: None,
+            save_directory: None,
+            save_extensions: None,
+            notes: None,
+        };
+
+        let info = appimage_install_for_emulator(&emulator)
+            .expect("Hypseus Singe should have AppImage metadata");
+        assert_eq!(info.slug, "hypseus-singe");
+        assert_eq!(info.github_repo, "DirtBagXon/hypseus-singe");
+    }
+
+    #[test]
+    fn selects_best_github_appimage_asset() {
+        let release = GitHubRelease {
+            tag_name: "v2.11.7".to_string(),
+            assets: vec![
+                GitHubReleaseAsset {
+                    name: "hypseus-singe-v2.11.7-src.tar.gz".to_string(),
+                    browser_download_url: "https://example.invalid/src.tar.gz".to_string(),
+                },
+                GitHubReleaseAsset {
+                    name: "hypseus-singe-v2.11.7-x86_64.AppImage".to_string(),
+                    browser_download_url: "https://example.invalid/plain.appimage".to_string(),
+                },
+                GitHubReleaseAsset {
+                    name: "hypseus-singe-v2.11.7-SteamDeck-x86_64.AppImage".to_string(),
+                    browser_download_url: "https://example.invalid/steamdeck.appimage".to_string(),
+                },
+            ],
+        };
+        let info = appimage_install_for_slug("hypseus-singe").unwrap();
+
+        let asset = select_github_appimage_asset(&release, &info).expect("asset should match");
+        assert_eq!(
+            asset.name,
+            "hypseus-singe-v2.11.7-SteamDeck-x86_64.AppImage"
+        );
     }
 
     #[test]
