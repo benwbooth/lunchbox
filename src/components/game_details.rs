@@ -334,7 +334,15 @@ fn parse_hypseus_laserdisc_bundle(path: &str) -> Option<(String, &'static str)> 
         _ => return None,
     };
     let stem = path.file_stem()?.to_str()?;
-    let parent = path.parent()?.to_string_lossy();
+    let mut parent = path.parent()?;
+    if parent
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| matches!(value, "video" | "audio" | "sound"))
+    {
+        parent = parent.parent()?;
+    }
+    let parent = parent.to_string_lossy();
     Some((format!("{parent}/{stem}"), kind))
 }
 

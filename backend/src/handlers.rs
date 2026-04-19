@@ -1665,7 +1665,15 @@ fn parse_arcade_hypseus_laserdisc_asset(
         _ => return None,
     };
     let stem = path.file_stem()?.to_str()?;
-    let parent = path.parent()?.to_string_lossy();
+    let mut parent = path.parent()?;
+    if parent
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| matches!(value, "video" | "audio" | "sound"))
+    {
+        parent = parent.parent()?;
+    }
+    let parent = parent.to_string_lossy();
     Some((format!("{parent}/{stem}"), kind))
 }
 
@@ -4088,6 +4096,40 @@ mod tests {
             ),
             Some((
                 "laserdisc collection/hypseus singe/dragon's lair/dlair".to_string(),
+                ArcadeHypseusLaserdiscAssetKind::Audio
+            ))
+        );
+    }
+
+    #[test]
+    fn parses_arcade_hypseus_laserdisc_paths_from_nested_video_dir() {
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/lair.txt"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/singe2/singe/dragons_lair_1080/lair"
+                    .to_string(),
+                ArcadeHypseusLaserdiscAssetKind::FrameText
+            ))
+        );
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.m2v"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/singe2/singe/dragons_lair_1080/lair"
+                    .to_string(),
+                ArcadeHypseusLaserdiscAssetKind::Video
+            ))
+        );
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.ogg"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/singe2/singe/dragons_lair_1080/lair"
+                    .to_string(),
                 ArcadeHypseusLaserdiscAssetKind::Audio
             ))
         );
