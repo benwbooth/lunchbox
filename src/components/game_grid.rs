@@ -1515,6 +1515,7 @@ fn GameCard(
             set_is_hovered.set(true);
             set_hover_preview_armed.set(true);
             set_hover_video_loading.set(false);
+            set_hover_video_unavailable.set(false);
             set_hover_video_playing.set(false);
 
             let Some(card) = card_ref.get() else {
@@ -1725,6 +1726,7 @@ fn GameCard(
         let set_hover_video_loading = set_hover_video_loading;
         let set_hover_video_progress = set_hover_video_progress;
         let set_hover_video_status = set_hover_video_status;
+        let set_hover_video_unavailable = set_hover_video_unavailable;
         let set_hover_video_playing = set_hover_video_playing;
         let set_tooltip_style = set_tooltip_style;
         let hover_token = hover_token.clone();
@@ -1735,6 +1737,7 @@ fn GameCard(
             set_hover_video_loading.set(false);
             set_hover_video_progress.set(None);
             set_hover_video_status.set("Loading preview...".to_string());
+            set_hover_video_unavailable.set(false);
             set_hover_video_playing.set(false);
             set_tooltip_style.set(String::new());
             hover_token.set(hover_token.get().wrapping_add(1));
@@ -1775,6 +1778,7 @@ fn GameCard(
         let set_hover_preview_armed = set_hover_preview_armed;
         let set_hover_video_loading = set_hover_video_loading;
         let set_hover_video_status = set_hover_video_status;
+        let set_hover_video_unavailable = set_hover_video_unavailable;
         let set_hover_video_playing = set_hover_video_playing;
         let hover_token = hover_token.clone();
         let game_for_click = game_for_click.clone();
@@ -1783,6 +1787,7 @@ fn GameCard(
             set_hover_preview_armed.set(false);
             set_hover_video_loading.set(false);
             set_hover_video_status.set("Loading preview...".to_string());
+            set_hover_video_unavailable.set(false);
             set_hover_video_playing.set(false);
             hover_token.set(hover_token.get().wrapping_add(1));
 
