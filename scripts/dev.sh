@@ -92,7 +92,7 @@ wait_for_url() {
 
 wait_for_services() {
     wait_for_url "frontend" "http://127.0.0.1:1420" 180
-    wait_for_url "backend" "http://127.0.0.1:3001/api/games?limit=1" 180
+    wait_for_url "backend" "http://127.0.0.1:3001/api/health" 180
 }
 
 stop_units() {

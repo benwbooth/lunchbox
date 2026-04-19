@@ -2,7 +2,7 @@ const path = require('path');
 const { app, BrowserWindow, shell } = require('electron');
 
 const DEV_URL = process.env.LUNCHBOX_ELECTRON_URL || 'http://127.0.0.1:1420';
-const BACKEND_READY_URL = 'http://127.0.0.1:3001/api/games?limit=1';
+const BACKEND_READY_URL = 'http://127.0.0.1:3001/api/health';
 const WINDOW_TITLE = 'Lunchbox';
 const RETRY_DELAY_MS = 1000;
 const WINDOW_ICON = path.join(__dirname, '..', 'backend', 'icons', 'icon.png');
@@ -305,7 +305,7 @@ function computeSplashState(frontendReady, backendReady) {
       frontendReady,
       backendReady,
       progress: 0.7,
-      message: 'Frontend is ready. Waiting for the backend API to finish compiling…',
+      message: 'Frontend is ready. Waiting for the backend API to start…',
     };
   }
   if (backendReady) {
