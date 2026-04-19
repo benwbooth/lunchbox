@@ -90,8 +90,8 @@ body {
     position: fixed;
     top: 0;
     left: 0;
-    width: 56px;
-    height: 56px;
+    width: 60px;
+    height: 68px;
     pointer-events: none;
     z-index: 20000;
     opacity: 0;
@@ -114,28 +114,30 @@ body {
     inset: 0;
     background-image: url('/assets/cursors/bloody-hand.svg');
     background-repeat: no-repeat;
-    background-size: 48px 48px;
+    background-size: 50px 50px;
     background-position: 0 0;
 }
 
 .bloody-cursor-drip {
     position: absolute;
-    bottom: 5px;
-    width: 5px;
+    top: 39px;
+    width: 4px;
+    height: 8px;
     border-radius: 999px;
     background: linear-gradient(180deg, #ff5c78 0%, #d11533 38%, #7a0015 100%);
     box-shadow: 0 0 0 1px rgba(40, 0, 0, 0.5);
     transform-origin: top center;
-    animation: bloody-cursor-drip 1.35s ease-in-out infinite;
+    opacity: 0;
+    animation: bloody-cursor-drip 1.7s cubic-bezier(0.32, 0.02, 0.22, 1) infinite;
 }
 
 .bloody-cursor-drip::after {
     content: "";
     position: absolute;
     left: 50%;
-    bottom: -3px;
-    width: 7px;
-    height: 7px;
+    bottom: -2px;
+    width: 6px;
+    height: 6px;
     transform: translateX(-50%);
     border-radius: 50%;
     background: #aa0f28;
@@ -143,32 +145,43 @@ body {
 }
 
 .bloody-cursor-drip-a {
-    left: 19px;
-    height: 8px;
+    left: 15px;
+    height: 7px;
     animation-delay: 0s;
 }
 
 .bloody-cursor-drip-b {
-    left: 26px;
-    height: 12px;
-    animation-delay: 0.28s;
+    left: 23px;
+    height: 10px;
+    animation-delay: 0.35s;
 }
 
 .bloody-cursor-drip-c {
-    left: 34px;
+    left: 32px;
     height: 6px;
-    animation-delay: 0.52s;
+    animation-delay: 0.72s;
 }
 
 @keyframes bloody-cursor-drip {
-    0%, 100% {
-        transform: scaleY(0.72) translateY(0);
+    0% {
+        opacity: 0;
+        transform: translateY(0) scaleY(0.2);
     }
-    35% {
-        transform: scaleY(1.18) translateY(2px);
+    12% {
+        opacity: 1;
+        transform: translateY(0) scaleY(0.55);
     }
-    70% {
-        transform: scaleY(0.9) translateY(6px);
+    55% {
+        opacity: 1;
+        transform: translateY(8px) scaleY(1.15);
+    }
+    82% {
+        opacity: 0.92;
+        transform: translateY(17px) scaleY(1.45);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(24px) scaleY(0.45);
     }
 }
 
