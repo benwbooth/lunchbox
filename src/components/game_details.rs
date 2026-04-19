@@ -1500,13 +1500,23 @@ pub fn GameDetails(
                                                         <Show when=move || files_loading.get() && torrent_groups.get().is_empty()>
                                                             <div class="import-status-hint">"Loading Minerva download options..."</div>
                                                         </Show>
-                                                        {move || torrent_groups.get().into_iter().map(|group| {
+                                                        {move || {
+                                                            let groups = torrent_groups.get();
+                                                            groups.iter().enumerate().map(|(group_index, group)| {
+                                                            let group = group.clone();
                                                             let torrent_url = group.rom.torrent_url.clone();
                                                             let collection = group.rom.collection.clone();
                                                             let minerva_platform = group.rom.minerva_platform.clone();
                                                             let rom_count = group.rom.rom_count;
                                                             let total_size = group.rom.total_size;
                                                             let match_count = group.items.len();
+                                                            let show_whole_torrent_row = !groups[..group_index]
+                                                                .iter()
+                                                                .any(|other| other.rom.torrent_url == torrent_url);
+                                                            let shared_whole_torrent = groups
+                                                                .iter()
+                                                                .filter(|other| other.rom.torrent_url == torrent_url)
+                                                                .count() > 1;
                                                             let whole_torrent_selection = MinervaDownloadSelection::WholeTorrent {
                                                                 torrent_url: torrent_url.clone(),
                                                                 representative_file_index: group.items.first().map(|item| match item.selection {
@@ -1525,21 +1535,35 @@ pub fn GameDetails(
                                                                     <div class="file-picker-group-label">
                                                                         {format!("{collection} / {minerva_platform}")}
                                                                     </div>
-                                                                    <div
-                                                                        class="file-picker-row file-picker-row-torrent"
-                                                                        class:selected=whole_torrent_selected
-                                                                        on:click=move |_| set_selected_download.set(Some(whole_torrent_click.clone()))
-                                                                    >
-                                                                        <div class="file-picker-name">
-                                                                            <span class="file-picker-type-badge">"Full Torrent"</span>
-                                                                            <span class="file-picker-type-title">"Download Full Torrent"</span>
+                                                                    {show_whole_torrent_row.then(|| view! {
+                                                                        <div
+                                                                            class="file-picker-row file-picker-row-torrent"
+                                                                            class:selected=whole_torrent_selected
+                                                                            on:click=move |_| set_selected_download.set(Some(whole_torrent_click.clone()))
+                                                                        >
+                                                                            <div class="file-picker-name">
+                                                                                <span class="file-picker-type-badge">"Full Torrent"</span>
+                                                                                <span class="file-picker-type-title">
+                                                                                    {if shared_whole_torrent {
+                                                                                        "Download Shared Full Torrent"
+                                                                                    } else {
+                                                                                        "Download Full Torrent"
+                                                                                    }}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div class="file-picker-meta">
+                                                                                <span class="file-picker-size">{format!("{rom_count} ROMs total")}</span>
+                                                                                <span class="file-picker-size">{format_picker_bytes(total_size)}</span>
+                                                                                <span class="file-picker-match">
+                                                                                    {if shared_whole_torrent {
+                                                                                        format!("{match_count} matching file(s) in this view")
+                                                                                    } else {
+                                                                                        format!("{match_count} matching file(s)")
+                                                                                    }}
+                                                                                </span>
+                                                                            </div>
                                                                         </div>
-                                                                        <div class="file-picker-meta">
-                                                                            <span class="file-picker-size">{format!("{rom_count} ROMs total")}</span>
-                                                                            <span class="file-picker-size">{format_picker_bytes(total_size)}</span>
-                                                                            <span class="file-picker-match">{format!("{match_count} matching file(s)")}</span>
-                                                                        </div>
-                                                                    </div>
+                                                                    })}
                                                                     {group.items.into_iter().map(|item| {
                                                                         let size_mb = item.size as f64 / (1024.0 * 1024.0);
                                                                         let score = item.match_score;
@@ -1585,6 +1609,7 @@ pub fn GameDetails(
                                                                 </div>
                                                             }
                                                         }).collect::<Vec<_>>()}
+                                                        }
                                                     </div>
                                                     <div class="file-picker-actions">
                                                         <button
