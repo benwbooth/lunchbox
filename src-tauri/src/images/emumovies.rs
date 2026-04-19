@@ -17,6 +17,7 @@
 use crate::tags;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
@@ -201,6 +202,39 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
     haystack
         .split(|c: char| !c.is_alphanumeric())
         .any(|token| token == needle)
+}
+
+include!(concat!(env!("OUT_DIR"), "/arcade_video_lookup.rs"));
+
+pub fn resolve_video_lookup_name<'a>(
+    platform: &str,
+    game_name: &'a str,
+    launchbox_db_id: Option<i64>,
+) -> Cow<'a, str> {
+    let Some(launchbox_db_id) = launchbox_db_id else {
+        return Cow::Borrowed(game_name);
+    };
+
+    let Some(system_folder) = get_emumovies_system_folder(platform) else {
+        return Cow::Borrowed(game_name);
+    };
+
+    if system_folder != "MAME" {
+        return Cow::Borrowed(game_name);
+    }
+
+    if let Ok(index) = ARCADE_VIDEO_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _)| *id) {
+        let lookup = ARCADE_VIDEO_LOOKUP[index].1;
+        tracing::info!(
+            "Resolved arcade video lookup '{}' -> '{}' for LaunchBox DB id {}",
+            game_name,
+            lookup,
+            launchbox_db_id
+        );
+        return Cow::Borrowed(lookup);
+    }
+
+    Cow::Borrowed(game_name)
 }
 
 // Prevent multiple threads from downloading/building the same archive at once.
@@ -1716,6 +1750,22 @@ mod tests {
         let matched = find_best_video_match(&entries, "Street Fighter 2")
             .expect("expected numeric-equivalent match");
         assert_eq!(matched.0, "/videos/street-fighter-ii.mp4");
+    }
+
+    #[test]
+    fn test_resolve_arcade_video_lookup_uses_generated_shortname() {
+        assert_eq!(
+            resolve_video_lookup_name(
+                "Arcade",
+                "Dungeons & Dragons: Shadow Over Mystara",
+                Some(8727)
+            ),
+            "ddsom"
+        );
+        assert_eq!(
+            resolve_video_lookup_name("Arcade", "Dungeons & Dragons: Tower of Doom", Some(8729)),
+            "ddtod"
+        );
     }
 
     #[test]

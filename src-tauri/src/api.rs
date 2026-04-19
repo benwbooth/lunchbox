@@ -2052,6 +2052,7 @@ struct DownloadGameVideoInput {
 struct ProbeGameVideoAvailableInput {
     game_title: String,
     platform: String,
+    launchbox_db_id: Option<i64>,
 }
 
 async fn rspc_get_video_download_progress(
@@ -2157,9 +2158,14 @@ async fn rspc_probe_game_video_available(
     drop(state_guard);
 
     let platform_for_task = input.platform.clone();
-    let game_title_for_task = input.game_title.clone();
+    let lookup_name_for_task = crate::images::emumovies::resolve_video_lookup_name(
+        &input.platform,
+        &input.game_title,
+        input.launchbox_db_id,
+    )
+    .into_owned();
     let task = tokio::task::spawn_blocking(move || {
-        client.has_video_match(&platform_for_task, &game_title_for_task)
+        client.has_video_match(&platform_for_task, &lookup_name_for_task)
     });
 
     match tokio::time::timeout(
@@ -2263,12 +2269,17 @@ async fn rspc_download_game_video(
     // Download the video. FTP reads now use stall timeouts and report listing
     // progress, so we avoid a fixed wall-clock timeout here.
     let platform_for_task = input.platform.clone();
-    let game_title_for_task = input.game_title.clone();
+    let lookup_name_for_task = crate::images::emumovies::resolve_video_lookup_name(
+        &input.platform,
+        &input.game_title,
+        input.launchbox_db_id,
+    )
+    .into_owned();
     let game_cache_dir_for_task = game_cache_dir.clone();
     let task = tokio::task::spawn_blocking(move || {
         client.get_video(
             &platform_for_task,
-            &game_title_for_task,
+            &lookup_name_for_task,
             &game_cache_dir_for_task,
             None,
         )

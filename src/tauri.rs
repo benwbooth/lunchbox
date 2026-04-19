@@ -1534,18 +1534,21 @@ pub async fn check_cached_video(
 pub async fn probe_game_video_available(
     game_title: String,
     platform: String,
+    launchbox_db_id: Option<i64>,
 ) -> Result<bool, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         game_title: String,
         platform: String,
+        launchbox_db_id: Option<i64>,
     }
     invoke(
         "probe_game_video_available",
         Args {
             game_title,
             platform,
+            launchbox_db_id,
         },
     )
     .await

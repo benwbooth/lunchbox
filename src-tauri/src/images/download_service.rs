@@ -468,9 +468,14 @@ impl MediaDownloadService {
 
             // Download video via FTP (blocking operation)
             let platform = request.platform.clone();
-            let game_title = request.game_title.clone();
+            let lookup_name = crate::images::emumovies::resolve_video_lookup_name(
+                &request.platform,
+                &request.game_title,
+                Some(request.launchbox_db_id),
+            )
+            .into_owned();
             let video_path = tokio::task::spawn_blocking(move || {
-                client.get_video(&platform, &game_title, &game_cache_dir, None)
+                client.get_video(&platform, &lookup_name, &game_cache_dir, None)
             })
             .await
             .context("Video download task failed")??;

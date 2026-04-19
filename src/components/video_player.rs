@@ -118,7 +118,7 @@ pub async fn preload_video_state(
         }
     }
 
-    match tauri::probe_game_video_available(game_title, platform).await {
+    match tauri::probe_game_video_available(game_title, platform, db_id_opt).await {
         Ok(true) => VideoState::Downloading(None),
         Ok(false) => {
             let no_video = VideoState::NoVideo;
@@ -207,7 +207,13 @@ pub fn VideoPlayer(
                         return;
                     }
                     Ok(None) => {
-                        match tauri::probe_game_video_available(title.clone(), plat.clone()).await {
+                        match tauri::probe_game_video_available(
+                            title.clone(),
+                            plat.clone(),
+                            db_id_opt,
+                        )
+                        .await
+                        {
                             Ok(true) => {}
                             Ok(false) => {
                                 let no_video = VideoState::NoVideo;
