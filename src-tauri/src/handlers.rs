@@ -1006,6 +1006,7 @@ pub async fn launch_game_with_emulator(
         match emulator::launch_emulator(
             emulator,
             Some(&resolved_rom_path),
+            Some(platform),
             as_retroarch_core,
             &firmware_launch_args,
         ) {
@@ -1034,7 +1035,7 @@ pub async fn launch_game_with_emulator(
         });
     };
 
-    match emulator::launch_emulator(emulator, Some(rom_path), as_retroarch_core, &[]) {
+    match emulator::launch_emulator(emulator, Some(rom_path), None, as_retroarch_core, &[]) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),
@@ -1054,7 +1055,7 @@ pub fn launch_emulator_only(
     emulator: &EmulatorInfo,
     is_retroarch_core: bool,
 ) -> Result<LaunchResult, String> {
-    match emulator::launch_emulator(emulator, None, is_retroarch_core, &[]) {
+    match emulator::launch_emulator(emulator, None, None, is_retroarch_core, &[]) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),
@@ -2997,6 +2998,7 @@ mod tests {
                 },
                 is_installed,
                 install_method: None,
+                uninstall_method: None,
                 is_retroarch_core,
                 display_name: name.to_string(),
                 executable_path: None,

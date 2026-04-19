@@ -1442,6 +1442,58 @@ fn prepare_rom_for_launch(rom_path: Option<&str>) -> Result<PreparedRomLaunch, S
     extract_launchable_content_from_archive(path, kind)
 }
 
+fn prepare_rom_for_launch_for_runtime(
+    emulator: &EmulatorInfo,
+    rom_path: Option<&str>,
+    platform_name: Option<&str>,
+    as_retroarch_core: bool,
+) -> Result<PreparedRomLaunch, String> {
+    if let Some(rom_path) = rom_path {
+        if should_preserve_arcade_mame_romset_archive(
+            emulator,
+            platform_name,
+            as_retroarch_core,
+            rom_path,
+        ) {
+            return Ok(PreparedRomLaunch {
+                rom_path: Some(rom_path.to_string()),
+                cleanup_paths: Vec::new(),
+            });
+        }
+    }
+
+    prepare_rom_for_launch(rom_path)
+}
+
+fn should_preserve_arcade_mame_romset_archive(
+    emulator: &EmulatorInfo,
+    platform_name: Option<&str>,
+    as_retroarch_core: bool,
+    rom_path: &str,
+) -> bool {
+    if platform_name != Some("Arcade") {
+        return false;
+    }
+
+    let is_mame = if as_retroarch_core {
+        emulator.retroarch_core.as_deref() == Some("mame")
+    } else {
+        emulator.name == "MAME"
+    };
+    if !is_mame {
+        return false;
+    }
+
+    matches!(
+        Path::new(rom_path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .as_deref(),
+        Some("zip" | "7z")
+    )
+}
+
 fn archive_kind_for_path(path: &Path) -> Option<ArchiveKind> {
     let name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
     if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
@@ -2416,6 +2468,7 @@ fn unique_extracted_rom_path(parent_dir: &Path, entry_name: &Path) -> PathBuf {
 pub fn launch_emulator(
     emulator: &EmulatorInfo,
     rom_path: Option<&str>,
+    platform_name: Option<&str>,
     as_retroarch_core: bool,
     launch_args: &[LaunchArg],
 ) -> Result<u32, String> {
@@ -2426,13 +2479,15 @@ pub fn launch_emulator(
         "Launching emulator"
     );
 
-    let prepared_rom = prepare_rom_for_launch(rom_path)?;
+    let prepared_rom =
+        prepare_rom_for_launch_for_runtime(emulator, rom_path, platform_name, as_retroarch_core)?;
 
     let result = if as_retroarch_core {
         if let Some(ref core_name) = emulator.retroarch_core {
             launch_retroarch(
                 core_name,
                 prepared_rom.rom_path.as_deref(),
+                platform_name,
                 prepared_rom.cleanup_paths,
                 launch_args,
             )
@@ -2446,6 +2501,7 @@ pub fn launch_emulator(
         launch_standalone(
             emulator,
             prepared_rom.rom_path.as_deref(),
+            platform_name,
             prepared_rom.cleanup_paths,
             launch_args,
         )
@@ -2463,7 +2519,7 @@ pub fn launch_emulator(
 /// Defaults to using RetroArch core if available
 pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, String> {
     let as_retroarch_core = emulator.retroarch_core.is_some();
-    launch_emulator(emulator, Some(rom_path), as_retroarch_core, &[])
+    launch_emulator(emulator, Some(rom_path), None, as_retroarch_core, &[])
 }
 
 const DEFAULT_SCUMMVM_CONFIG: &str = r#"[scummvm]
@@ -3346,6 +3402,7 @@ fn add_flatpak_filesystem_args(cmd: &mut Command, paths: Vec<(&Path, bool)>) {
 fn launch_retroarch(
     core_name: &str,
     rom_path: Option<&str>,
+    _platform_name: Option<&str>,
     cleanup_paths: Vec<PathBuf>,
     launch_args: &[LaunchArg],
 ) -> Result<u32, String> {
@@ -3429,6 +3486,7 @@ fn launch_retroarch(
 fn launch_standalone(
     emulator: &EmulatorInfo,
     rom_path: Option<&str>,
+    platform_name: Option<&str>,
     cleanup_paths: Vec<PathBuf>,
     launch_args: &[LaunchArg],
 ) -> Result<u32, String> {
@@ -3453,9 +3511,18 @@ fn launch_standalone(
             .replace(FLATPAK_INSTALL_PREFIX, "");
         let mut cmd = Command::new("flatpak");
         cmd.arg("run");
+        let extra_runtime_roms_dir =
+            if is_arcade_mame_standalone_launch(&emulator.name, platform_name, rom_path) {
+                mame_runtime_roms_dir(true)
+            } else {
+                None
+            };
         let mut filesystem_paths = Vec::new();
         if let Some(rom) = rom_path {
             filesystem_paths.push((Path::new(rom), false));
+        }
+        if let Some(runtime_roms_dir) = extra_runtime_roms_dir.as_ref() {
+            filesystem_paths.push((runtime_roms_dir.as_path(), true));
         }
         for arg in launch_args {
             if let LaunchArg::Path(path) = arg {
@@ -3466,7 +3533,13 @@ fn launch_standalone(
             add_flatpak_filesystem_args(&mut cmd, filesystem_paths);
         }
         cmd.arg(&app_id);
-        append_standalone_rom_and_args_for_flatpak(&mut cmd, &emulator.name, rom_path, launch_args);
+        append_standalone_rom_and_args_for_flatpak(
+            &mut cmd,
+            &emulator.name,
+            platform_name,
+            rom_path,
+            launch_args,
+        );
         tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else if let Some(wine_executable) = exe_path
@@ -3509,13 +3582,25 @@ fn launch_standalone(
         // macOS .app bundle
         let mut cmd = Command::new("open");
         cmd.arg("-a").arg(exe_path.to_str().unwrap_or_default());
-        append_standalone_rom_and_args_native(&mut cmd, &emulator.name, rom_path, launch_args);
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            &emulator.name,
+            platform_name,
+            rom_path,
+            launch_args,
+        );
         tracing::info!(command = ?cmd, "Spawning macOS app");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else {
         // Regular executable
         let mut cmd = Command::new(&exe_path);
-        append_standalone_rom_and_args_native(&mut cmd, &emulator.name, rom_path, launch_args);
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            &emulator.name,
+            platform_name,
+            rom_path,
+            launch_args,
+        );
         tracing::info!(command = ?cmd, "Spawning native executable");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     }
@@ -3570,6 +3655,7 @@ fn append_launch_args_native(cmd: &mut Command, args: &[LaunchArg]) {
 fn append_standalone_rom_and_args_native(
     cmd: &mut Command,
     emulator_name: &str,
+    platform_name: Option<&str>,
     rom_path: Option<&str>,
     args: &[LaunchArg],
 ) {
@@ -3578,6 +3664,9 @@ fn append_standalone_rom_and_args_native(
             cmd.arg(rom);
         }
         append_launch_args_native(cmd, args);
+    } else if is_arcade_mame_standalone_launch(emulator_name, platform_name, rom_path) {
+        append_launch_args_native(cmd, args);
+        append_mame_arcade_launch_args_native(cmd, rom_path);
     } else if emulator_name == "Altirra" {
         append_launch_args_native(cmd, args);
         if let Some(rom) = rom_path {
@@ -3608,6 +3697,7 @@ fn append_launch_args_for_flatpak(cmd: &mut Command, args: &[LaunchArg]) {
 fn append_standalone_rom_and_args_for_flatpak(
     cmd: &mut Command,
     emulator_name: &str,
+    platform_name: Option<&str>,
     rom_path: Option<&str>,
     args: &[LaunchArg],
 ) {
@@ -3616,6 +3706,9 @@ fn append_standalone_rom_and_args_for_flatpak(
             cmd.arg(map_path_for_flatpak(rom));
         }
         append_launch_args_for_flatpak(cmd, args);
+    } else if is_arcade_mame_standalone_launch(emulator_name, platform_name, rom_path) {
+        append_launch_args_for_flatpak(cmd, args);
+        append_mame_arcade_launch_args_flatpak(cmd, rom_path);
     } else if emulator_name == "Altirra" {
         append_launch_args_for_flatpak(cmd, args);
         if let Some(rom) = rom_path {
@@ -3627,6 +3720,102 @@ fn append_standalone_rom_and_args_for_flatpak(
         if let Some(rom) = rom_path {
             cmd.arg(map_path_for_flatpak(rom));
         }
+    }
+}
+
+fn is_arcade_mame_standalone_launch(
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    rom_path: Option<&str>,
+) -> bool {
+    emulator_name == "MAME"
+        && platform_name == Some("Arcade")
+        && matches!(
+            rom_path.and_then(|path| {
+                Path::new(path)
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.to_ascii_lowercase())
+            }),
+            Some(ext) if ext == "zip" || ext == "7z"
+        )
+}
+
+fn append_mame_arcade_launch_args_native(cmd: &mut Command, rom_path: Option<&str>) {
+    let Some(rom_path) = rom_path else {
+        return;
+    };
+    let Some(romset_name) = mame_arcade_romset_name(rom_path) else {
+        cmd.arg(rom_path);
+        return;
+    };
+
+    cmd.arg("-rompath")
+        .arg(mame_arcade_rompath_value(rom_path, false))
+        .arg(romset_name);
+}
+
+fn append_mame_arcade_launch_args_flatpak(cmd: &mut Command, rom_path: Option<&str>) {
+    let Some(rom_path) = rom_path else {
+        return;
+    };
+    let Some(romset_name) = mame_arcade_romset_name(rom_path) else {
+        cmd.arg(map_path_for_flatpak(rom_path));
+        return;
+    };
+
+    cmd.arg("-rompath")
+        .arg(mame_arcade_rompath_value(rom_path, true))
+        .arg(romset_name);
+}
+
+fn mame_arcade_romset_name(rom_path: &str) -> Option<String> {
+    Path::new(rom_path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .map(|stem| stem.to_string())
+}
+
+fn mame_arcade_rompath_value(rom_path: &str, flatpak: bool) -> String {
+    let mut parts = Vec::new();
+
+    if let Some(parent) = Path::new(rom_path).parent() {
+        let value = if flatpak {
+            map_path_for_flatpak(&parent.to_string_lossy())
+        } else {
+            parent.to_string_lossy().to_string()
+        };
+        parts.push(value);
+    }
+
+    if let Some(runtime_dir) = mame_runtime_roms_dir(flatpak) {
+        let runtime_text = runtime_dir.to_string_lossy().to_string();
+        let runtime_value = if flatpak {
+            map_path_for_flatpak(&runtime_text)
+        } else {
+            runtime_text
+        };
+        if !parts.iter().any(|existing| existing == &runtime_value) {
+            parts.push(runtime_value);
+        }
+    }
+
+    parts.join(";")
+}
+
+fn mame_runtime_roms_dir(flatpak: bool) -> Option<PathBuf> {
+    match current_os() {
+        "Linux" => dirs::home_dir().map(|home| {
+            if flatpak {
+                home.join(".var/app/org.mamedev.MAME/data/mame/roms")
+            } else {
+                home.join(".mame/roms")
+            }
+        }),
+        "Windows" => dirs::data_local_dir().map(|dir| dir.join("mame").join("roms")),
+        "macOS" => dirs::home_dir().map(|home| home.join(".mame/roms")),
+        _ => None,
     }
 }
 
@@ -3953,6 +4142,7 @@ mod tests {
         append_standalone_rom_and_args_native(
             &mut cmd,
             "LoopyMSE",
+            None,
             Some("/roms/game.bin"),
             &[
                 LaunchArg::Path("/firmware/main.bin".to_string()),
@@ -3981,6 +4171,7 @@ mod tests {
         append_standalone_rom_and_args_native(
             &mut cmd,
             "Altirra",
+            None,
             Some("/roms/game.atr"),
             &[LaunchArg::Literal("/portable".to_string())],
         );
@@ -4006,6 +4197,7 @@ mod tests {
         append_standalone_rom_and_args_native(
             &mut cmd,
             "Altirra",
+            None,
             Some("/roms/game.xex"),
             &[LaunchArg::Literal("/portable".to_string())],
         );
@@ -4023,6 +4215,60 @@ mod tests {
                 "/roms/game.xex".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn arcade_mame_uses_romset_name_and_rompath() {
+        let mut cmd = Command::new("echo");
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            "MAME",
+            Some("Arcade"),
+            Some("/roms/arcade/ddsomu.zip"),
+            &[],
+        );
+
+        let args = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(args.first().map(String::as_str), Some("-rompath"));
+        assert_eq!(args.last().map(String::as_str), Some("ddsomu"));
+        assert!(args
+            .get(1)
+            .is_some_and(|value| value.contains("/roms/arcade")));
+    }
+
+    #[test]
+    fn arcade_mame_romsets_stay_zipped_for_launch() {
+        let emulator = EmulatorInfo {
+            id: 1,
+            name: "MAME".to_string(),
+            homepage: None,
+            supported_os: None,
+            winget_id: None,
+            homebrew_formula: None,
+            flatpak_id: None,
+            retroarch_core: Some("mame".to_string()),
+            save_directory: None,
+            save_extensions: None,
+            notes: None,
+        };
+
+        let prepared = prepare_rom_for_launch_for_runtime(
+            &emulator,
+            Some("/roms/arcade/ddsomu.zip"),
+            Some("Arcade"),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(
+            prepared.rom_path.as_deref(),
+            Some("/roms/arcade/ddsomu.zip")
+        );
+        assert!(prepared.cleanup_paths.is_empty());
     }
 
     #[test]
