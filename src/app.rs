@@ -286,16 +286,16 @@ fn AnimatedCursor() -> impl IntoView {
             style=move || {
                 format!(
                     "transform: translate3d({:.1}px, {:.1}px, 0);",
-                    cursor_x.get() - 9.0,
-                    cursor_y.get() - 2.0
+                    cursor_x.get() - 8.0,
+                    cursor_y.get() - 4.0
                 )
             }
             aria-hidden="true"
         >
             <div class="bloody-cursor-hand"></div>
-            <div class="bloody-cursor-gore"></div>
             <div class="bloody-cursor-drip bloody-cursor-drip-a"></div>
             <div class="bloody-cursor-drip bloody-cursor-drip-b"></div>
+            <div class="bloody-cursor-drip bloody-cursor-drip-c"></div>
         </div>
     }
 }
