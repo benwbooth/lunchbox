@@ -33,6 +33,13 @@ struct AppImageInstallInfo {
     preferred_asset_terms: &'static [&'static str],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AppImageUpdaterInfo {
+    slug: &'static str,
+    github_repo: &'static str,
+    preferred_asset_terms: &'static [&'static str],
+}
+
 #[cfg(target_os = "linux")]
 #[derive(Debug, Clone, Deserialize)]
 struct GitHubRelease {
@@ -55,6 +62,7 @@ struct AppImageInstallManifest {
     asset_name: String,
     download_url: String,
     installed_at: String,
+    update_transport: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -584,6 +592,10 @@ fn lunchbox_appimage_root() -> PathBuf {
     lunchbox_programs_dir().join("appimages")
 }
 
+fn lunchbox_appimage_tool_root() -> PathBuf {
+    lunchbox_programs_dir().join("appimage-tools")
+}
+
 fn lunchbox_wine_root() -> PathBuf {
     lunchbox_programs_dir().join("wine")
 }
@@ -607,6 +619,14 @@ fn appimage_install_for_slug(slug: &str) -> Option<AppImageInstallInfo> {
             preferred_asset_terms: &["appimage", "steamdeck", "x86_64"],
         }),
         _ => None,
+    }
+}
+
+fn appimage_updater_info() -> AppImageUpdaterInfo {
+    AppImageUpdaterInfo {
+        slug: "appimageupdate",
+        github_repo: "AppImageCommunity/AppImageUpdate",
+        preferred_asset_terms: &["appimageupdatetool", "x86_64"],
     }
 }
 
@@ -644,12 +664,24 @@ fn appimage_install_root(info: &AppImageInstallInfo) -> PathBuf {
     lunchbox_appimage_root().join(info.slug)
 }
 
+fn appimage_updater_root(info: &AppImageUpdaterInfo) -> PathBuf {
+    lunchbox_appimage_tool_root().join(info.slug)
+}
+
 fn appimage_version_dir(info: &AppImageInstallInfo, version: &str) -> PathBuf {
     appimage_install_root(info).join(version)
 }
 
+fn appimage_updater_version_dir(info: &AppImageUpdaterInfo, version: &str) -> PathBuf {
+    appimage_updater_root(info).join(version)
+}
+
 fn appimage_current_link(info: &AppImageInstallInfo) -> PathBuf {
     appimage_install_root(info).join("current")
+}
+
+fn appimage_updater_current_link(info: &AppImageUpdaterInfo) -> PathBuf {
+    appimage_updater_root(info).join("current")
 }
 
 fn appimage_manifest_path(info: &AppImageInstallInfo) -> PathBuf {
@@ -815,9 +847,9 @@ fn normalize_release_version(tag_name: &str) -> String {
 }
 
 #[cfg(target_os = "linux")]
-fn select_github_appimage_asset<'a>(
+fn select_github_appimage_asset_with_terms<'a>(
     release: &'a GitHubRelease,
-    info: &AppImageInstallInfo,
+    preferred_asset_terms: &[&str],
 ) -> Option<&'a GitHubReleaseAsset> {
     release
         .assets
@@ -829,7 +861,7 @@ fn select_github_appimage_asset<'a>(
         .max_by_key(|asset| {
             let name = asset.name.to_ascii_lowercase();
             let mut score = 100i32;
-            for term in info.preferred_asset_terms {
+            for term in preferred_asset_terms {
                 if name.contains(&term.to_ascii_lowercase()) {
                     score += 25;
                 }
@@ -839,6 +871,22 @@ fn select_github_appimage_asset<'a>(
             }
             score
         })
+}
+
+#[cfg(target_os = "linux")]
+fn select_github_appimage_asset<'a>(
+    release: &'a GitHubRelease,
+    info: &AppImageInstallInfo,
+) -> Option<&'a GitHubReleaseAsset> {
+    select_github_appimage_asset_with_terms(release, info.preferred_asset_terms)
+}
+
+#[cfg(target_os = "linux")]
+fn select_github_updater_asset<'a>(
+    release: &'a GitHubRelease,
+    info: &AppImageUpdaterInfo,
+) -> Option<&'a GitHubReleaseAsset> {
+    select_github_appimage_asset_with_terms(release, info.preferred_asset_terms)
 }
 
 fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
@@ -1357,11 +1405,17 @@ async fn get_appimage_updates(emulators: &[EmulatorInfo]) -> Result<Vec<Emulator
             continue;
         }
 
+        let source_label = match manifest.update_transport.as_deref() {
+            Some("zsync") => "AppImageUpdate (zsync)".to_string(),
+            Some(transport) => format!("AppImageUpdate ({transport})"),
+            None => "AppImage (GitHub)".to_string(),
+        };
+
         updates.push(EmulatorUpdate {
             key: format!("appimage:{slug}"),
             display_name: summarize_update_display_names(&target.display_names),
             install_method: "appimage".to_string(),
-            source_label: "AppImage (GitHub)".to_string(),
+            source_label,
             current_version: Some(manifest.version),
             available_version: Some(available_version),
         });
@@ -1607,6 +1661,263 @@ async fn download_appimage_release(
 }
 
 #[cfg(target_os = "linux")]
+async fn download_github_asset_to_path(url: &str, destination: &Path) -> Result<(), String> {
+    let bytes = reqwest::Client::new()
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "lunchbox-appimage")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download AppImage asset: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("AppImage asset download failed: {}", e))?
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read AppImage asset download: {}", e))?;
+
+    let temp_path = destination.with_extension("part");
+    tokio::fs::write(&temp_path, &bytes)
+        .await
+        .map_err(|e| format!("Failed to write AppImage asset download: {}", e))?;
+    tokio::fs::rename(&temp_path, destination)
+        .await
+        .map_err(|e| format!("Failed to finalize AppImage asset download: {}", e))
+}
+
+#[cfg(target_os = "linux")]
+async fn ensure_appimage_updater_tool() -> Result<PathBuf, String> {
+    let info = appimage_updater_info();
+    let release = fetch_github_latest_release(info.github_repo).await?;
+    let version = normalize_release_version(&release.tag_name);
+    let asset = select_github_updater_asset(&release, &info)
+        .cloned()
+        .ok_or_else(|| "No x86_64 appimageupdatetool asset was found".to_string())?;
+
+    let version_dir = appimage_updater_version_dir(&info, &version);
+    tokio::fs::create_dir_all(&version_dir)
+        .await
+        .map_err(|e| format!("Failed to create AppImage updater directory: {}", e))?;
+
+    let asset_path = version_dir.join(&asset.name);
+    if !asset_path.exists() {
+        download_github_asset_to_path(&asset.browser_download_url, &asset_path).await?;
+    }
+
+    set_executable_permissions(&asset_path)?;
+    replace_symlink(&version_dir, &appimage_updater_current_link(&info))?;
+    Ok(asset_path)
+}
+
+#[cfg(target_os = "linux")]
+async fn read_appimage_update_information(path: &Path) -> Result<Option<String>, String> {
+    for flag in ["--appimage-updateinformation", "--appimage-updateinfo"] {
+        let output = tokio::process::Command::new(path)
+            .arg(flag)
+            .env("APPIMAGE_EXTRACT_AND_RUN", "1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| format!("Failed to inspect AppImage update information: {}", e))?;
+
+        if output.status.success() {
+            let update_info = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !update_info.is_empty() {
+                return Ok(Some(update_info));
+            }
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+        if stderr.contains("unrecognized option")
+            || stderr.contains("unknown option")
+            || stderr.contains("unknown argument")
+        {
+            continue;
+        }
+    }
+
+    Ok(None)
+}
+
+#[cfg(target_os = "linux")]
+fn normalize_appimage_update_transport(update_info: &str) -> Option<String> {
+    let transport = update_info
+        .split('|')
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?
+        .to_ascii_lowercase();
+
+    if transport.contains("zsync") {
+        Some("zsync".to_string())
+    } else {
+        Some(transport)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn select_updated_appimage(work_dir: &Path, staged_input: &Path) -> Result<PathBuf, String> {
+    let mut appimages = std::fs::read_dir(work_dir)
+        .map_err(|e| format!("Failed to inspect AppImage update output: {}", e))?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("appimage"))
+                .unwrap_or(false)
+        })
+        .collect::<Vec<_>>();
+
+    appimages.sort();
+
+    if let Some(updated) = appimages.iter().find(|path| *path != staged_input) {
+        return Ok(updated.clone());
+    }
+
+    if staged_input.exists() {
+        return Ok(staged_input.to_path_buf());
+    }
+
+    Err("AppImageUpdate completed but no updated AppImage was produced".to_string())
+}
+
+#[cfg(target_os = "linux")]
+async fn install_appimage_release_asset(
+    info: &AppImageInstallInfo,
+    version: &str,
+    asset: &GitHubReleaseAsset,
+) -> Result<(), String> {
+    let root = appimage_install_root(info);
+    tokio::fs::create_dir_all(&root)
+        .await
+        .map_err(|e| format!("Failed to create AppImage install directory: {}", e))?;
+
+    let version_dir = appimage_version_dir(info, version);
+    tokio::fs::create_dir_all(&version_dir)
+        .await
+        .map_err(|e| format!("Failed to create AppImage version directory: {}", e))?;
+
+    let asset_path = version_dir.join(&asset.name);
+    if !asset_path.exists() {
+        download_github_asset_to_path(&asset.browser_download_url, &asset_path).await?;
+    }
+
+    set_executable_permissions(&asset_path)?;
+    let update_transport = read_appimage_update_information(&asset_path)
+        .await?
+        .as_deref()
+        .and_then(normalize_appimage_update_transport);
+
+    replace_symlink(&version_dir, &appimage_current_link(info))?;
+
+    let manifest = AppImageInstallManifest {
+        slug: info.slug.to_string(),
+        version: version.to_string(),
+        github_repo: info.github_repo.to_string(),
+        asset_name: asset.name.clone(),
+        download_url: asset.browser_download_url.clone(),
+        installed_at: chrono::Utc::now().to_rfc3339(),
+        update_transport,
+    };
+    write_appimage_manifest(info, &manifest)?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn try_delta_update_appimage(
+    info: &AppImageInstallInfo,
+    version: &str,
+    asset: &GitHubReleaseAsset,
+) -> Result<(), String> {
+    let installed_path = find_appimage_install_executable(info)
+        .ok_or_else(|| format!("No installed AppImage was found for {}", info.slug))?;
+    let update_info = read_appimage_update_information(&installed_path)
+        .await?
+        .ok_or_else(|| "Installed AppImage does not advertise update information".to_string())?;
+    let update_transport = normalize_appimage_update_transport(&update_info)
+        .ok_or_else(|| "Installed AppImage uses an unknown update transport".to_string())?;
+
+    let updater_path = ensure_appimage_updater_tool().await?;
+    let scratch_root = appimage_install_root(info).join(".update-work");
+    tokio::fs::create_dir_all(&scratch_root)
+        .await
+        .map_err(|e| format!("Failed to create AppImage update work directory: {}", e))?;
+    let work_dir = scratch_root.join(format!(
+        "delta-{}-{}",
+        std::process::id(),
+        chrono::Utc::now().timestamp_millis()
+    ));
+    tokio::fs::create_dir_all(&work_dir)
+        .await
+        .map_err(|e| format!("Failed to create AppImage update workspace: {}", e))?;
+
+    let staged_name = installed_path
+        .file_name()
+        .ok_or_else(|| "Installed AppImage path has no filename".to_string())?;
+    let staged_input = work_dir.join(staged_name);
+    tokio::fs::copy(installed_path.as_path(), staged_input.as_path())
+        .await
+        .map_err(|e| format!("Failed to stage AppImage for delta update: {}", e))?;
+    set_executable_permissions(&staged_input)?;
+
+    let output = tokio::process::Command::new(&updater_path)
+        .arg(&staged_input)
+        .env("APPIMAGE_EXTRACT_AND_RUN", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run appimageupdatetool: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(format!("appimageupdatetool failed: {}", detail));
+    }
+
+    let updated_path = select_updated_appimage(&work_dir, &staged_input)?;
+    set_executable_permissions(&updated_path)?;
+
+    let version_dir = appimage_version_dir(info, version);
+    tokio::fs::create_dir_all(&version_dir)
+        .await
+        .map_err(|e| format!("Failed to create AppImage version directory: {}", e))?;
+
+    let final_path = version_dir.join(
+        updated_path
+            .file_name()
+            .ok_or_else(|| "Updated AppImage path has no filename".to_string())?,
+    );
+    if final_path.exists() {
+        tokio::fs::remove_file(&final_path)
+            .await
+            .map_err(|e| format!("Failed to replace updated AppImage: {}", e))?;
+    }
+    tokio::fs::rename(&updated_path, &final_path)
+        .await
+        .map_err(|e| format!("Failed to finalize delta-updated AppImage: {}", e))?;
+
+    replace_symlink(&version_dir, &appimage_current_link(info))?;
+
+    let manifest = AppImageInstallManifest {
+        slug: info.slug.to_string(),
+        version: version.to_string(),
+        github_repo: info.github_repo.to_string(),
+        asset_name: final_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&asset.name)
+            .to_string(),
+        download_url: asset.browser_download_url.clone(),
+        installed_at: chrono::Utc::now().to_rfc3339(),
+        update_transport: Some(update_transport),
+    };
+    write_appimage_manifest(info, &manifest)?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
 fn set_executable_permissions(path: &Path) -> Result<(), String> {
     std::fs::set_permissions(path, Permissions::from_mode(0o755))
         .map_err(|e| format!("Failed to mark {} executable: {}", path.display(), e))
@@ -1753,55 +2064,8 @@ async fn install_nix_package(package: &str) -> Result<(), String> {
 async fn install_appimage_emulator(info: AppImageInstallInfo) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
-        let root = appimage_install_root(&info);
-        tokio::fs::create_dir_all(&root)
-            .await
-            .map_err(|e| format!("Failed to create AppImage install directory: {}", e))?;
-
         let (version, asset) = download_appimage_release(&info).await?;
-        let version_dir = appimage_version_dir(&info, &version);
-        tokio::fs::create_dir_all(&version_dir)
-            .await
-            .map_err(|e| format!("Failed to create AppImage version directory: {}", e))?;
-
-        let asset_path = version_dir.join(&asset.name);
-        if !asset_path.exists() {
-            let bytes = reqwest::Client::new()
-                .get(&asset.browser_download_url)
-                .header(reqwest::header::USER_AGENT, "lunchbox-appimage")
-                .send()
-                .await
-                .map_err(|e| format!("Failed to download AppImage: {}", e))?
-                .error_for_status()
-                .map_err(|e| format!("AppImage download failed: {}", e))?
-                .bytes()
-                .await
-                .map_err(|e| format!("Failed to read AppImage download: {}", e))?;
-
-            let temp_path = version_dir.join(format!("{}.part", asset.name));
-            tokio::fs::write(&temp_path, &bytes)
-                .await
-                .map_err(|e| format!("Failed to write AppImage download: {}", e))?;
-            tokio::fs::rename(&temp_path, &asset_path)
-                .await
-                .map_err(|e| format!("Failed to finalize AppImage install: {}", e))?;
-        }
-
-        set_executable_permissions(&asset_path)?;
-
-        let current_link = appimage_current_link(&info);
-        replace_symlink(&version_dir, &current_link)?;
-
-        let manifest = AppImageInstallManifest {
-            slug: info.slug.to_string(),
-            version,
-            github_repo: info.github_repo.to_string(),
-            asset_name: asset.name,
-            download_url: asset.browser_download_url,
-            installed_at: chrono::Utc::now().to_rfc3339(),
-        };
-        write_appimage_manifest(&info, &manifest)?;
-        Ok(())
+        install_appimage_release_asset(&info, &version, &asset).await
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -1888,7 +2152,31 @@ async fn update_appimage_emulator(slug: &str) -> Result<(), String> {
     {
         let info = appimage_install_for_slug(slug)
             .ok_or_else(|| format!("Unsupported AppImage update slug '{}'", slug))?;
-        install_appimage_emulator(info).await
+        let release = fetch_github_latest_release(info.github_repo).await?;
+        let version = normalize_release_version(&release.tag_name);
+        let asset = select_github_appimage_asset(&release, &info)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "No AppImage asset was found in the latest release for {}",
+                    info.github_repo
+                )
+            })?;
+
+        if find_appimage_install_executable(&info).is_some()
+            && read_appimage_update_information(
+                &find_appimage_install_executable(&info)
+                    .ok_or_else(|| format!("No installed AppImage was found for {}", info.slug))?,
+            )
+            .await?
+            .is_some()
+        {
+            if try_delta_update_appimage(&info, &version, &asset).await.is_ok() {
+                return Ok(());
+            }
+        }
+
+        install_appimage_release_asset(&info, &version, &asset).await
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -5279,6 +5567,41 @@ mod tests {
             asset.name,
             "hypseus-singe-v2.11.7-SteamDeck-x86_64.AppImage"
         );
+    }
+
+    #[test]
+    fn parses_zsync_update_transport() {
+        assert_eq!(
+            normalize_appimage_update_transport("zsync|https://example.invalid/app.zsync"),
+            Some("zsync".to_string())
+        );
+        assert_eq!(
+            normalize_appimage_update_transport(
+                "gh-releases-zsync|owner|repo|latest|Example*x86_64.AppImage.zsync"
+            ),
+            Some("zsync".to_string())
+        );
+    }
+
+    #[test]
+    fn selects_best_appimage_updater_asset() {
+        let release = GitHubRelease {
+            tag_name: "2.0.0-alpha".to_string(),
+            assets: vec![
+                GitHubReleaseAsset {
+                    name: "AppImageUpdate-x86_64.AppImage".to_string(),
+                    browser_download_url: "https://example.invalid/gui.appimage".to_string(),
+                },
+                GitHubReleaseAsset {
+                    name: "appimageupdatetool-x86_64.AppImage".to_string(),
+                    browser_download_url: "https://example.invalid/cli.appimage".to_string(),
+                },
+            ],
+        };
+
+        let asset = select_github_updater_asset(&release, &appimage_updater_info())
+            .expect("updater asset should match");
+        assert_eq!(asset.name, "appimageupdatetool-x86_64.AppImage");
     }
 
     #[test]
