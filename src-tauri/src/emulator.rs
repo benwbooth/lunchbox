@@ -416,6 +416,9 @@ fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
         "scummvm" => Some("scummvm"),
         "snes9x" => Some("snes9x"),
         "stella" => Some("stella"),
+        "vice" => Some("vice"),
+        "vice (xpet)" => Some("vice"),
+        "vice (xvic)" => Some("vice"),
         "xemu" => Some("xemu"),
         _ => None,
     }
@@ -443,6 +446,19 @@ fn get_executable_names(name: &str) -> Vec<String> {
         }
         "fs-uae" => {
             names.push("fs-uae-launcher".to_string());
+        }
+        "vice" => {
+            names.extend(
+                ["x64sc", "x64", "x128", "xplus4"]
+                    .iter()
+                    .map(|s| s.to_string()),
+            );
+        }
+        "vice (xpet)" => {
+            names.push("xpet".to_string());
+        }
+        "vice (xvic)" => {
+            names.push("xvic".to_string());
         }
         "ppsspp" => {
             names.extend(["PPSSPP", "PPSSPPQt"].iter().map(|s| s.to_string()));
@@ -3589,12 +3605,22 @@ mod tests {
             name: "FS-UAE".to_string(),
             ..base.clone()
         };
+        let vice = EmulatorInfo {
+            name: "VICE".to_string(),
+            ..base.clone()
+        };
+        let vice_xpet = EmulatorInfo {
+            name: "VICE (xpet)".to_string(),
+            ..base.clone()
+        };
 
         assert_eq!(nix_package_for_emulator(&base), Some("atari800"));
         assert_eq!(nix_package_for_emulator(&dolphin), Some("dolphin-emu"));
         assert_eq!(nix_package_for_emulator(&atari_pp), Some("ataripp"));
         assert_eq!(nix_package_for_emulator(&mednafen), Some("mednafen"));
         assert_eq!(nix_package_for_emulator(&fs_uae), Some("fsuae"));
+        assert_eq!(nix_package_for_emulator(&vice), Some("vice"));
+        assert_eq!(nix_package_for_emulator(&vice_xpet), Some("vice"));
     }
 
     #[test]
@@ -3602,5 +3628,8 @@ mod tests {
         assert!(get_executable_names("Atari++").contains(&"ataripp".to_string()));
         assert!(get_executable_names("FS-UAE").contains(&"fs-uae-launcher".to_string()));
         assert!(get_executable_names("DeSmuME").contains(&"desmume-gtk".to_string()));
+        assert!(get_executable_names("VICE").contains(&"x64sc".to_string()));
+        assert!(get_executable_names("VICE (xpet)").contains(&"xpet".to_string()));
+        assert!(get_executable_names("VICE (xvic)").contains(&"xvic".to_string()));
     }
 }
