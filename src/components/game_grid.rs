@@ -1890,8 +1890,11 @@ fn GameCard(
                 || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get()))
     };
 
-    let show_hover_progress_bar =
-        move || hover_video_loading.get() || hover_video_progress.get().is_some();
+    let show_hover_progress_bar = move || {
+        !hover_video_playing.get()
+            && !hover_video_unavailable.get()
+            && !hover_video_status.get().starts_with("Preview failed")
+    };
 
     let show_hover_layer = move || {
         is_hovered.get()
