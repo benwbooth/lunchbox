@@ -19,7 +19,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::DefaultHasher;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -213,6 +215,7 @@ static VIDEO_DOWNLOAD_PROGRESS: OnceLock<
 > = OnceLock::new();
 
 const VIDEO_MATCH_CACHE_VERSION: &str = "3";
+const VIDEO_INDEX_CACHE_VERSION: &str = "1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -298,12 +301,18 @@ fn write_video_cache_version(game_cache_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct VideoIndexEntry {
     path: String,
     normalized: String,
     no_region: String,
     tokens: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VideoIndexCache {
+    version: String,
+    entries: Vec<VideoIndexEntry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -662,6 +671,24 @@ impl EmuMoviesClient {
         archive_path.with_extension("json")
     }
 
+    fn video_index_cache_dir(&self) -> PathBuf {
+        self.cache_dir.join("emumovies-video-index")
+    }
+
+    fn video_index_cache_path(&self, video_folder: &str) -> PathBuf {
+        let folder_name = video_folder_name(video_folder)
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let mut hasher = DefaultHasher::new();
+        video_folder.hash(&mut hasher);
+        let hash = hasher.finish();
+        self.video_index_cache_dir()
+            .join(format!("{folder_name}-{hash:016x}.json"))
+    }
+
     /// Connect to FTP server
     fn connect(&self) -> Result<FtpStream> {
         let addr = format!("{}:{}", FTP_HOST, FTP_PORT);
@@ -1007,6 +1034,24 @@ impl EmuMoviesClient {
             return Ok(index);
         }
 
+        let cache_path = self.video_index_cache_path(video_folder);
+        if cache_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cache_path) {
+                if let Ok(cache) = serde_json::from_str::<VideoIndexCache>(&content) {
+                    if cache.version == VIDEO_INDEX_CACHE_VERSION {
+                        let index = Arc::new(cache.entries);
+                        VIDEO_INDEX_CACHE
+                            .get_or_init(|| Mutex::new(HashMap::new()))
+                            .lock()
+                            .expect("video index cache lock poisoned")
+                            .insert(video_folder.to_string(), index.clone());
+                        tracing::info!("Loaded cached video index for {}", video_folder);
+                        return Ok(index);
+                    }
+                }
+            }
+        }
+
         let videos = self.list_files(video_folder)?;
         let entries: Vec<VideoIndexEntry> = videos
             .into_iter()
@@ -1029,6 +1074,17 @@ impl EmuMoviesClient {
                 })
             })
             .collect();
+
+        if let Some(parent) = cache_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let cache = VideoIndexCache {
+            version: VIDEO_INDEX_CACHE_VERSION.to_string(),
+            entries: entries.clone(),
+        };
+        if let Ok(json) = serde_json::to_string(&cache) {
+            let _ = std::fs::write(&cache_path, json);
+        }
 
         let index = Arc::new(entries);
         VIDEO_INDEX_CACHE

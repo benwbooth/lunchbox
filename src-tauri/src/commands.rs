@@ -2284,7 +2284,7 @@ pub async fn probe_game_video_available(
     platform: String,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<bool, String> {
-    const VIDEO_PROBE_TIMEOUT_SECS: u64 = 8;
+    const VIDEO_PROBE_TIMEOUT_SECS: u64 = 45;
 
     let state_guard = state.read().await;
     if state_guard.settings.emumovies.username.is_empty()
@@ -2334,7 +2334,7 @@ pub async fn download_game_video(
     launchbox_db_id: Option<i64>,
     state: tauri::State<'_, AppStateHandle>,
 ) -> Result<String, String> {
-    const VIDEO_DOWNLOAD_TIMEOUT_SECS: u64 = 20;
+    const VIDEO_DOWNLOAD_TIMEOUT_SECS: u64 = 120;
 
     let state_guard = state.read().await;
 

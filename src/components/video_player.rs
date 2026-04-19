@@ -123,6 +123,8 @@ pub async fn preload_video_state(
                 let no_video = VideoState::NoVideo;
                 put_cached_video_state(&key, &no_video);
                 no_video
+            } else if msg.contains("timed out") || msg.contains("task failed") {
+                VideoState::Initial
             } else {
                 VideoState::Error(e)
             }
@@ -210,10 +212,16 @@ pub fn VideoPlayer(
                                     let no_video = VideoState::NoVideo;
                                     put_cached_video_state(&key, &no_video);
                                     set_state.set(no_video);
-                                } else {
-                                    set_state.set(VideoState::Error(e));
+                                    return;
                                 }
-                                return;
+                                if !(msg.contains("timed out") || msg.contains("task failed")) {
+                                    set_state.set(VideoState::Error(e));
+                                    return;
+                                } else {
+                                    // Large platforms like arcade/MAME can take too long to probe.
+                                    // Fall through to direct download instead of treating probe timeout
+                                    // as definitive failure.
+                                }
                             }
                         }
                     }
