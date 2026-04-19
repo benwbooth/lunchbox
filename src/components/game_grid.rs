@@ -1883,10 +1883,15 @@ fn GameCard(
     let show_hover_loading = move || {
         is_hovered.get()
             && hover_preview_armed.get()
-            && !hover_video_unavailable.get()
+            && !hover_video_playing.get()
             && (hover_video_loading.get()
+                || hover_video_unavailable.get()
+                || hover_video_status.get() != "Loading preview..."
                 || (hover_video_url.with(|url| url.is_some()) && !hover_video_loaded.get()))
     };
+
+    let show_hover_progress_bar =
+        move || hover_video_loading.get() || hover_video_progress.get().is_some();
 
     let show_hover_layer = move || {
         is_hovered.get()
@@ -1986,18 +1991,20 @@ fn GameCard(
                         <span>
                             {move || hover_video_status.get()}
                         </span>
-                        <div class="download-progress">
-                            <div
-                                class="progress-bar"
-                                class:indeterminate=move || hover_video_progress.get().is_none()
-                                style:width=move || {
-                                    hover_video_progress
-                                        .get()
-                                        .map(|value| format!("{:.1}%", value.clamp(0.0, 1.0) * 100.0))
-                                        .unwrap_or_else(|| "100%".to_string())
-                                }
-                            ></div>
-                        </div>
+                        <Show when=show_hover_progress_bar>
+                            <div class="download-progress">
+                                <div
+                                    class="progress-bar"
+                                    class:indeterminate=move || hover_video_progress.get().is_none()
+                                    style:width=move || {
+                                        hover_video_progress
+                                            .get()
+                                            .map(|value| format!("{:.1}%", value.clamp(0.0, 1.0) * 100.0))
+                                            .unwrap_or_else(|| "100%".to_string())
+                                    }
+                                ></div>
+                            </div>
+                        </Show>
                     </div>
                 </div>
                 {has_game_file.then(|| view! {
