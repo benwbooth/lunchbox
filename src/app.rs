@@ -2,7 +2,6 @@ use crate::components::{GameDetails, GameGrid, Settings, Sidebar, Toolbar};
 use crate::tauri::Game;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::JsCast;
 
 pub const PLATFORM_SELECTION_MINIGAMES: &str = "__minigames__";
 pub const PLATFORM_SELECTION_ALL_GAMES: &str = "__all_games__";
@@ -211,91 +210,6 @@ pub fn App() -> impl IntoView {
                 show=show_settings
                 on_close=set_show_settings
             />
-            <AnimatedCursor />
-        </div>
-    }
-}
-
-#[component]
-fn AnimatedCursor() -> impl IntoView {
-    let (cursor_x, set_cursor_x) = signal(0.0f64);
-    let (cursor_y, set_cursor_y) = signal(0.0f64);
-    let (cursor_visible, set_cursor_visible) = signal(false);
-    let (cursor_pressed, set_cursor_pressed) = signal(false);
-
-    Effect::new(move || {
-        let Some(window) = web_sys::window() else {
-            return;
-        };
-        let Some(document) = window.document() else {
-            return;
-        };
-        let Some(body) = document.body() else {
-            return;
-        };
-        let _ = body.class_list().add_1("custom-cursor-enabled");
-
-        let on_move = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(
-            move |event: web_sys::MouseEvent| {
-                set_cursor_x.set(event.client_x() as f64);
-                set_cursor_y.set(event.client_y() as f64);
-                set_cursor_visible.set(true);
-            },
-        );
-
-        let on_down = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(
-            move |_event: web_sys::MouseEvent| {
-                set_cursor_pressed.set(true);
-            },
-        );
-
-        let on_up = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(
-            move |_event: web_sys::MouseEvent| {
-                set_cursor_pressed.set(false);
-            },
-        );
-
-        let on_out = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::MouseEvent)>::new(
-            move |event: web_sys::MouseEvent| {
-                if event.related_target().is_none() {
-                    set_cursor_visible.set(false);
-                    set_cursor_pressed.set(false);
-                }
-            },
-        );
-
-        let _ = window
-            .add_event_listener_with_callback("mousemove", on_move.as_ref().unchecked_ref());
-        let _ =
-            window.add_event_listener_with_callback("mousedown", on_down.as_ref().unchecked_ref());
-        let _ = window.add_event_listener_with_callback("mouseup", on_up.as_ref().unchecked_ref());
-        let _ =
-            window.add_event_listener_with_callback("mouseout", on_out.as_ref().unchecked_ref());
-
-        on_move.forget();
-        on_down.forget();
-        on_up.forget();
-        on_out.forget();
-    });
-
-    view! {
-        <div
-            class="bloody-cursor"
-            class:is-visible=move || cursor_visible.get()
-            class:is-pressed=move || cursor_pressed.get()
-            style=move || {
-                format!(
-                    "transform: translate3d({:.1}px, {:.1}px, 0);",
-                    cursor_x.get() - 8.0,
-                    cursor_y.get() - 4.0
-                )
-            }
-            aria-hidden="true"
-        >
-            <div class="bloody-cursor-hand"></div>
-            <div class="bloody-cursor-drip bloody-cursor-drip-a"></div>
-            <div class="bloody-cursor-drip bloody-cursor-drip-b"></div>
-            <div class="bloody-cursor-drip bloody-cursor-drip-c"></div>
         </div>
     }
 }
