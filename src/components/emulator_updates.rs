@@ -189,7 +189,7 @@ pub fn EmulatorUpdates(
                                                     row.update.available_version.clone(),
                                                 ) {
                                                     (Some(current), Some(available)) if current == available => {
-                                                        format!("Build update available ({})", current)
+                                                        format!("{} -> {} (new build)", current, available)
                                                     }
                                                     (Some(current), Some(available)) => {
                                                         format!("{} -> {}", current, available)
