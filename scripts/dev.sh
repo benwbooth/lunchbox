@@ -26,6 +26,7 @@ Description=Lunchbox Frontend (trunk)
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
+Environment=CARGO_TARGET_DIR=$PROJECT_DIR/target/dev-frontend
 ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command trunk serve --port 1420
 Restart=on-failure
 RestartSec=2
@@ -39,6 +40,7 @@ Description=Lunchbox Backend (dev_server)
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
+Environment=CARGO_TARGET_DIR=$PROJECT_DIR/target/dev-backend
 ExecStart=/nix/var/nix/profiles/system/sw/bin/nix develop --command watchexec -r -w src-tauri/src -w src-tauri/Cargo.toml -- cargo run -p lunchbox --bin dev_server
 Restart=on-failure
 RestartSec=2
