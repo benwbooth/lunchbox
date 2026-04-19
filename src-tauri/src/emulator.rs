@@ -396,13 +396,18 @@ fn find_in_lunchbox_nix_profile(names: &[String]) -> Option<PathBuf> {
 fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
     match emulator.name.to_lowercase().as_str() {
         "ares" => Some("ares"),
+        "atari++" => Some("ataripp"),
         "atari800" => Some("atari800"),
+        "desmume" => Some("desmume"),
         "dolphin" => Some("dolphin-emu"),
         "dosbox staging" => Some("dosbox-staging"),
         "dosbox-x" => Some("dosbox-x"),
         "duckstation" => Some("duckstation"),
         "flycast" => Some("flycast"),
+        "fs-uae" => Some("fsuae"),
+        "hatari" => Some("hatari"),
         "mame" => Some("mame"),
+        "mednafen" => Some("mednafen"),
         "mgba" => Some("mgba"),
         "melonds" => Some("melonds"),
         "openmsx" => Some("openmsx"),
@@ -410,6 +415,8 @@ fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
         "ppsspp" => Some("ppsspp"),
         "scummvm" => Some("scummvm"),
         "snes9x" => Some("snes9x"),
+        "stella" => Some("stella"),
+        "xemu" => Some("xemu"),
         _ => None,
     }
 }
@@ -421,12 +428,21 @@ fn get_executable_names(name: &str) -> Vec<String> {
 
     // Add common variations
     match lower.as_str() {
+        "atari++" => {
+            names.push("ataripp".to_string());
+        }
+        "desmume" => {
+            names.extend(["DeSmuME", "desmume-gtk"].iter().map(|s| s.to_string()));
+        }
         "dolphin" => {
             names.extend(
                 ["dolphin-emu", "dolphin-emu-qt"]
                     .iter()
                     .map(|s| s.to_string()),
             );
+        }
+        "fs-uae" => {
+            names.push("fs-uae-launcher".to_string());
         }
         "ppsspp" => {
             names.extend(["PPSSPP", "PPSSPPQt"].iter().map(|s| s.to_string()));
@@ -3561,8 +3577,30 @@ mod tests {
             name: "Dolphin".to_string(),
             ..base.clone()
         };
+        let atari_pp = EmulatorInfo {
+            name: "Atari++".to_string(),
+            ..base.clone()
+        };
+        let mednafen = EmulatorInfo {
+            name: "Mednafen".to_string(),
+            ..base.clone()
+        };
+        let fs_uae = EmulatorInfo {
+            name: "FS-UAE".to_string(),
+            ..base.clone()
+        };
 
         assert_eq!(nix_package_for_emulator(&base), Some("atari800"));
         assert_eq!(nix_package_for_emulator(&dolphin), Some("dolphin-emu"));
+        assert_eq!(nix_package_for_emulator(&atari_pp), Some("ataripp"));
+        assert_eq!(nix_package_for_emulator(&mednafen), Some("mednafen"));
+        assert_eq!(nix_package_for_emulator(&fs_uae), Some("fsuae"));
+    }
+
+    #[test]
+    fn executable_aliases_cover_nix_installed_variants() {
+        assert!(get_executable_names("Atari++").contains(&"ataripp".to_string()));
+        assert!(get_executable_names("FS-UAE").contains(&"fs-uae-launcher".to_string()));
+        assert!(get_executable_names("DeSmuME").contains(&"desmume-gtk".to_string()));
     }
 }
