@@ -140,7 +140,6 @@ function buildSplashHtml(state) {
       width: ${percent}%;
       background: linear-gradient(90deg, var(--accent), var(--accent-2));
       border-radius: inherit;
-      transition: width 180ms ease;
       position: relative;
     }
     .bar-fill::after {
