@@ -2237,8 +2237,14 @@ fn EmulatorPickerModal(
                                             move || current_pref.get().as_ref() == Some(&name_check)
                                         };
 
-                                        // Determine the action button text
-                                        let action_text = if is_installed { "Play" } else { "Install & Play" };
+                                        let can_auto_install = install_method.is_some();
+                                        let action_text = if is_installed {
+                                            "Play"
+                                        } else if can_auto_install {
+                                            "Install & Play"
+                                        } else {
+                                            "Manual Install Required"
+                                        };
                                         let firmware_warning = if show_firmware_warning {
                                             Some(view! {
                                                 <div class="emulator-firmware-warning">
@@ -2411,6 +2417,9 @@ fn EmulatorPickerModal(
                                                     {install_method.clone().map(|method| view! {
                                                         <span class="emulator-badge install-method">{method}</span>
                                                     })}
+                                                    {(!is_installed && !can_auto_install).then(|| view! {
+                                                        <span class="emulator-badge install-method">"manual"</span>
+                                                    })}
                                                     {homepage.clone().map(|url| view! {
                                                         <a class="emulator-homepage" href={url} target="_blank">"Website"</a>
                                                     })}
@@ -2423,6 +2432,7 @@ fn EmulatorPickerModal(
                                                     <button
                                                         class="emulator-pref-btn emulator-play-btn"
                                                         class:install=!is_installed
+                                                        disabled=move || !is_installed && !can_auto_install
                                                         on:click=on_launch
                                                     >
                                                         {action_text}

@@ -684,8 +684,10 @@ pub async fn get_emulators_with_status(
 
     let os = current_os();
 
-    // Query emulators for this platform, filtered by OS
-    // We get all emulators that have either a RetroArch core OR a standalone installer
+    // Query emulators for this platform, filtered by OS.
+    // Standalone runtimes without an auto-install method are still useful if the
+    // user installed them manually, so keep them visible and let installation
+    // status resolve separately.
     let mut emulators: Vec<EmulatorInfo> = sqlx::query_as(
         r#"
         SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
@@ -695,21 +697,12 @@ pub async fn get_emulators_with_status(
         JOIN platform_emulators pe ON e.id = pe.emulator_id
         WHERE pe.platform_name = ?
           AND (e.supported_os IS NULL OR e.supported_os LIKE '%' || ? || '%')
-          AND (
-              e.retroarch_core IS NOT NULL
-              OR (? = 'Linux' AND e.flatpak_id IS NOT NULL)
-              OR (? = 'Windows' AND e.winget_id IS NOT NULL)
-              OR (? = 'macOS' AND e.homebrew_formula IS NOT NULL)
-          )
         ORDER BY
             pe.is_recommended DESC,
             e.name
         "#,
     )
     .bind(platform_name)
-    .bind(os)
-    .bind(os)
-    .bind(os)
     .bind(os)
     .fetch_all(pool)
     .await
@@ -726,12 +719,7 @@ pub async fn get_emulators_with_status(
     for emulator in emulators {
         let is_exodos_scummvm = platform_name == "MS-DOS" && emulator.name == "ScummVM";
         let has_retroarch = emulator.retroarch_core.is_some() && !is_exodos_scummvm;
-        let has_standalone = match os {
-            "Linux" => emulator.flatpak_id.is_some(),
-            "Windows" => emulator.winget_id.is_some(),
-            "macOS" => emulator.homebrew_formula.is_some(),
-            _ => false,
-        };
+        let has_standalone = !is_exodos_scummvm;
 
         // Add RetroArch core entry if available
         if has_retroarch {
