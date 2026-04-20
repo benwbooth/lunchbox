@@ -12,6 +12,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/lunchbox-dev.lock"
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "Lunchbox dev session is already running."
+    echo "Stop the existing ./scripts/dev.sh session before starting another one."
+    exit 1
+fi
 
 # Install systemd user units
 install_units() {
