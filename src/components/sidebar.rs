@@ -1,8 +1,8 @@
 //! Sidebar component with platforms and collections
 
 use crate::app::{PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES};
-use crate::components::QueueStatus;
 use crate::backend_api::{self, Collection, Platform};
+use crate::components::QueueStatus;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;

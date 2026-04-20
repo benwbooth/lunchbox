@@ -11,13 +11,13 @@ use sqlx::sqlite::SqlitePool;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock, Semaphore};
+use tokio::sync::{RwLock, Semaphore, mpsc};
 
+use super::LAUNCHBOX_CDN_URL;
 use super::emumovies::{EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType};
 use super::events::MediaEventSender;
 use super::media_types::{GameMediaId, MediaSource, NormalizedMediaType};
 use super::source_selector::RoundRobinSourceSelector;
-use super::LAUNCHBOX_CDN_URL;
 
 /// Default concurrent downloads
 const DEFAULT_CONCURRENCY: usize = 6;

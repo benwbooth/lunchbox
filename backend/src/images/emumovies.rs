@@ -339,8 +339,8 @@ struct VideoDownloadProgressState {
     last_updated: Instant,
 }
 
-fn video_download_progress_map(
-) -> &'static std::sync::RwLock<HashMap<String, VideoDownloadProgressState>> {
+fn video_download_progress_map()
+-> &'static std::sync::RwLock<HashMap<String, VideoDownloadProgressState>> {
     VIDEO_DOWNLOAD_PROGRESS.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
 }
 

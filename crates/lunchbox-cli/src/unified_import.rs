@@ -2219,7 +2219,7 @@ pub async fn build_unified_database(
 ) -> Result<()> {
     use crate::enrich;
     use crate::launchbox;
-    use lunchbox_core::import::{merge_dat_files, parse_dat_file, DatFile};
+    use lunchbox_core::import::{DatFile, merge_dat_files, parse_dat_file};
 
     println!("Unified Game Database Builder");
     println!("==============================");

@@ -309,11 +309,13 @@ fn install_config_candidates(
                 vec![base.join("dosbox.conf"), base.join("dosbox_linux.conf")]
             }
         }
-        ExoCollection::Win3x => vec![install_root
-            .join("eXoWin3x")
-            .join("!win3x")
-            .join(&metadata_relative_dir)
-            .join("dosbox.conf")],
+        ExoCollection::Win3x => vec![
+            install_root
+                .join("eXoWin3x")
+                .join("!win3x")
+                .join(&metadata_relative_dir)
+                .join("dosbox.conf"),
+        ],
         ExoCollection::Win9x => vec![
             install_root
                 .join("eXoWin9x")
@@ -1705,11 +1707,11 @@ fn safe_relative_zip_path(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
+        DosboxExceptionPlan, LinuxDosboxExceptionPlan, LinuxScummvmExceptionPlan,
         is_primary_download_candidate, parse_dosbox_exception_script,
         parse_linux_dosbox_exception_script, parse_linux_scummvm_exception_script,
         plan_related_downloads, prepare_install_for_game, primary_download_priority,
-        should_use_prepared_install, DosboxExceptionPlan, LinuxDosboxExceptionPlan,
-        LinuxScummvmExceptionPlan,
+        should_use_prepared_install,
     };
     use crate::state::AppSettings;
     use crate::torrent::TorrentFileInfo;
@@ -2183,14 +2185,18 @@ eval "$(echo "${dosbox}" | sed -e "s/\$/\\$/g")" -conf \"$(echo "${var}" | sed -
                 .path()
                 .join("roms/.lunchbox-pc-cache/exodos/42/eXoDOS/!dos/Ppersia/dosbox.conf")
         );
-        assert!(temp_dir
-            .path()
-            .join("roms/.lunchbox-pc-cache/exodos/42/eXoDOS/Ppersia/POP.EXE")
-            .exists());
-        assert!(temp_dir
-            .path()
-            .join("roms/.lunchbox-pc-cache/exodos/42/eXoDOS/!dos/Ppersia/Extras/manual.txt")
-            .exists());
+        assert!(
+            temp_dir
+                .path()
+                .join("roms/.lunchbox-pc-cache/exodos/42/eXoDOS/Ppersia/POP.EXE")
+                .exists()
+        );
+        assert!(
+            temp_dir
+                .path()
+                .join("roms/.lunchbox-pc-cache/exodos/42/eXoDOS/!dos/Ppersia/Extras/manual.txt")
+                .exists()
+        );
         assert_eq!(
             std::fs::read(
                 temp_dir

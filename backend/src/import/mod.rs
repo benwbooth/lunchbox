@@ -1,7 +1,7 @@
 pub mod launchbox;
 pub mod libretro;
 
-pub use launchbox::{find_game_images, GameImagePaths, LaunchBoxImporter};
+pub use launchbox::{GameImagePaths, LaunchBoxImporter, find_game_images};
 pub use libretro::{
-    merge_dat_files, parse_dat, parse_dat_file, DatFile, DatGame, DatHeader, DatRom,
+    DatFile, DatGame, DatHeader, DatRom, merge_dat_files, parse_dat, parse_dat_file,
 };

@@ -30,11 +30,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, RwLock, Semaphore};
+use tokio::sync::{RwLock, Semaphore, mpsc};
 
 pub use download_service::{MediaDownloadRequest, MediaDownloadService};
 pub use emumovies::{EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType};
-pub use events::{MediaEvent, MediaEventSender, VideoEvent, VideoEventSender, VIDEO_EVENT_NAME};
+pub use events::{MediaEvent, MediaEventSender, VIDEO_EVENT_NAME, VideoEvent, VideoEventSender};
 pub use libretro::{LibRetroImageType, LibRetroThumbnailsClient};
 pub use media_types::{GameMediaId, MediaSource, NormalizedMediaType};
 pub use source_selector::RoundRobinSourceSelector;
@@ -281,11 +281,7 @@ fn emumovies_cooldown_remaining() -> Option<Duration> {
     let guard = lock.lock().ok()?;
     let until = (*guard)?;
     let now = Instant::now();
-    if until > now {
-        Some(until - now)
-    } else {
-        None
-    }
+    if until > now { Some(until - now) } else { None }
 }
 
 fn emumovies_mark_timeout() {

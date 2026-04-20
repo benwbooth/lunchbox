@@ -210,7 +210,7 @@ fn parse_block(tokens: &mut std::iter::Peekable<Tokenizer>) -> HashMap<String, V
                 // Check if value is a block or a single value
                 if let Some(Token::OpenParen) = tokens.peek() {
                     tokens.next(); // consume open paren
-                                   // Recursively parse nested block, but flatten into a string for now
+                    // Recursively parse nested block, but flatten into a string for now
                     let nested = parse_block(tokens);
                     // For ROM blocks, we want to preserve the structure
                     // Store as a special format: "nested:key=value;key=value"
@@ -279,11 +279,7 @@ fn parse_rom(nested_str: &str) -> Option<DatRom> {
         }
     }
 
-    if rom.name.is_empty() {
-        None
-    } else {
-        Some(rom)
-    }
+    if rom.name.is_empty() { None } else { Some(rom) }
 }
 
 /// Parse a DAT file from a string

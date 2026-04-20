@@ -61,11 +61,7 @@ pub fn RomImport(#[prop(into)] on_close: Callback<()>) -> impl IntoView {
                     .partial_cmp(&a.match_confidence)
                     .unwrap_or(std::cmp::Ordering::Equal),
             };
-            if asc {
-                ord
-            } else {
-                ord.reverse()
-            }
+            if asc { ord } else { ord.reverse() }
         });
 
         results

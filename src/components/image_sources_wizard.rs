@@ -3,8 +3,8 @@
 //! Helps users configure image download sources with step-by-step instructions.
 
 use crate::backend_api::{
-    get_settings, save_settings, test_emumovies_connection, test_igdb_connection,
-    test_screenscraper_connection, test_steamgriddb_connection, AppSettings,
+    AppSettings, get_settings, save_settings, test_emumovies_connection, test_igdb_connection,
+    test_screenscraper_connection, test_steamgriddb_connection,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;

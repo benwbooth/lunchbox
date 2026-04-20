@@ -1,4 +1,4 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 /// Load JSON state from localStorage. Returns None for missing keys or parse errors.
 pub fn load_json<T: DeserializeOwned>(key: &str) -> Option<T> {

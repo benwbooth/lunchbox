@@ -197,7 +197,8 @@ pub fn VideoPlayer(
             if !should_skip_cache_probe {
                 set_state.set(VideoState::Checking);
 
-                match backend_api::check_cached_video(title.clone(), plat.clone(), db_id_opt).await {
+                match backend_api::check_cached_video(title.clone(), plat.clone(), db_id_opt).await
+                {
                     Ok(Some(cached_path)) => {
                         let url = video_asset_url(&cached_path, false);
                         let ready = VideoState::Ready(url);

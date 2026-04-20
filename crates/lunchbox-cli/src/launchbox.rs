@@ -5,8 +5,8 @@
 
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 use sqlx::sqlite::SqlitePool;
 use std::collections::HashMap;
 use std::fs::File;

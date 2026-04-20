@@ -5,8 +5,8 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::SqlitePool;
 use sqlx::FromRow;
+use sqlx::sqlite::SqlitePool;
 use std::path::{Path, PathBuf};
 
 /// LaunchBox Game record from their database

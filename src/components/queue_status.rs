@@ -2,7 +2,7 @@
 //!
 //! Shows real-time stats on active/pending downloads, speed, and per-source timing.
 
-use super::lazy_image::{queue_stats_signal, SourceStats};
+use super::lazy_image::{SourceStats, queue_stats_signal};
 use leptos::prelude::*;
 
 /// Format bytes as human-readable string

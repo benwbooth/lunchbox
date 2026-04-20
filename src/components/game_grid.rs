@@ -1,8 +1,8 @@
 //! Game grid and list views with virtual scrolling
 
 use crate::app::{
-    ArtworkDisplayType, GameFilters, ViewMode, PLATFORM_SELECTION_ALL_GAMES,
-    PLATFORM_SELECTION_MINIGAMES,
+    ArtworkDisplayType, GameFilters, PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES,
+    ViewMode,
 };
 use crate::backend_api::{self, Game};
 use chrono::{Datelike, NaiveDate};
@@ -1664,8 +1664,10 @@ fn GameCard(
                                     return;
                                 }
                                 if let Ok(Some(progress)) =
-                                    backend_api::get_video_download_progress(title, platform, db_id_opt)
-                                        .await
+                                    backend_api::get_video_download_progress(
+                                        title, platform, db_id_opt,
+                                    )
+                                    .await
                                 {
                                     set_hover_video_status
                                         .set(format_hover_video_progress_label(&progress));

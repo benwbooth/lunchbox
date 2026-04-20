@@ -388,7 +388,7 @@ async fn test_emumovies(username: &str, password: &str, platform: &str) -> TestR
                 return TestResult::Success(format!(
                     "{} art archives, videos unavailable",
                     artwork_archives
-                ))
+                ));
             }
         };
         let _ = ftp.login(username, password);

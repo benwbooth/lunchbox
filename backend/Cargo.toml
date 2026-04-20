@@ -76,6 +76,7 @@ futures = "0.3"
 which = "7"
 shellexpand = "3"
 dirs = "5"
+shlex = "1"
 
 lava_torrent = "0.7"
 

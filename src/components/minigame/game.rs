@@ -6,14 +6,14 @@ use leptos::html;
 use leptos::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 use web_sys::{
     GpuBindGroup, GpuBuffer, GpuCanvasContext, GpuComputePipeline, GpuDevice, GpuQueue,
     GpuRenderPipeline, HtmlCanvasElement, KeyboardEvent,
 };
 
-use super::gpu::{pack_palettes, pack_sprite_atlas, u32_slice_to_bytes, Uniforms};
+use super::gpu::{Uniforms, pack_palettes, pack_sprite_atlas, u32_slice_to_bytes};
 
 const COMPUTE_SHADER: &str = include_str!("shaders/compute.wgsl");
 const RENDER_SHADER: &str = include_str!("shaders/render.wgsl");

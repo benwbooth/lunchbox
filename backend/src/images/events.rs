@@ -143,8 +143,7 @@ impl MediaEventSender {
     }
 
     /// Emit a media event
-    pub fn emit(&self, _event: MediaEvent) {
-    }
+    pub fn emit(&self, _event: MediaEvent) {}
 
     /// Emit a started event
     pub fn started(&self, game_id: i64, media_type: NormalizedMediaType, source: MediaSource) {
@@ -265,8 +264,7 @@ impl VideoEventSender {
     }
 
     /// Emit a video event
-    pub fn emit(&self, _event: VideoEvent) {
-    }
+    pub fn emit(&self, _event: VideoEvent) {}
 
     /// Emit a started event
     pub fn started(&self, game_id: i64, total_bytes: Option<u64>) {

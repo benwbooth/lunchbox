@@ -1,6 +1,6 @@
 use chrono::TimeZone;
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
@@ -208,11 +208,7 @@ fn rom_stem_from_path(path: &str) -> Option<&str> {
         .rsplit_once('.')
         .map(|(stem, _)| stem)
         .unwrap_or(file_name);
-    if stem.is_empty() {
-        None
-    } else {
-        Some(stem)
-    }
+    if stem.is_empty() { None } else { Some(stem) }
 }
 
 fn looks_like_romset_id(value: &str) -> bool {

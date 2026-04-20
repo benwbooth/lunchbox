@@ -5,7 +5,7 @@
 //! - libretro-thumbnails (free, no account needed)
 //! - SteamGridDB (requires API key)
 
-use crate::backend_api::{self, file_to_asset_url, log_to_backend, ImageInfo};
+use crate::backend_api::{self, ImageInfo, file_to_asset_url, log_to_backend};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::cell::RefCell;
@@ -366,18 +366,20 @@ fn schedule_process_queue() {
 
 /// Process pending requests if slots are available
 fn process_queue() {
-    REQUEST_QUEUE.with(|q| loop {
-        let mut queue = q.borrow_mut();
-        if queue.active >= MAX_CONCURRENT_REQUESTS {
-            break;
-        }
-        if let Some(task) = queue.pop_next() {
-            queue.active += 1;
-            drop(queue);
-            update_queue_stats();
-            task();
-        } else {
-            break;
+    REQUEST_QUEUE.with(|q| {
+        loop {
+            let mut queue = q.borrow_mut();
+            if queue.active >= MAX_CONCURRENT_REQUESTS {
+                break;
+            }
+            if let Some(task) = queue.pop_next() {
+                queue.active += 1;
+                drop(queue);
+                update_queue_stats();
+                task();
+            } else {
+                break;
+            }
         }
     });
     update_queue_stats();
@@ -500,9 +502,9 @@ pub fn LazyImage(
 
     // Use Arc<AtomicBool> for mounted flag - survives after component disposal and is thread-safe
     use futures::future::AbortHandle;
-    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::sync::atomic::AtomicBool;
 
     let mounted = Arc::new(AtomicBool::new(true));
     let mounted_for_cleanup = mounted.clone();

@@ -665,7 +665,6 @@ const BUILTIN_FIRMWARE_RULES: &[BuiltinFirmwareRule] = &[
         required: true,
         notes: "Standalone melonDS DSi mode requires manually dumped DSi BIOS, firmware, and NAND files; Lunchbox does not have a Minerva source package for these yet.",
     },
-
     BuiltinFirmwareRule {
         rule_key: "m88kai:M88kai:NEC PC-8801",
         runtime_kind: "m88kai",
@@ -3993,9 +3992,11 @@ mod tests {
         assert_eq!(melonds_dsi_ctx.runtime_name, "melonDS");
         assert!(!melonds_dsi_ctx.launch_scoped);
         assert!(melonds_dsi_ctx.runtime_dir.is_none());
-        assert!(melonds_dsi_ctx
-            .runtime_path_display
-            .contains("Emu Settings"));
+        assert!(
+            melonds_dsi_ctx
+                .runtime_path_display
+                .contains("Emu Settings")
+        );
 
         let dolphin_ctx = resolve_runtime_context(&dolphin, "Nintendo GameCube", false).unwrap();
         assert_eq!(dolphin_ctx.runtime_kind, "dolphin");
@@ -4075,9 +4076,11 @@ mod tests {
         assert_eq!(geepee32_ctx.runtime_name, "GeePee32");
         assert!(!geepee32_ctx.launch_scoped);
         assert!(geepee32_ctx.runtime_dir.is_none());
-        assert!(geepee32_ctx
-            .runtime_path_display
-            .contains("fw100k.bin or fw157e.bin"));
+        assert!(
+            geepee32_ctx
+                .runtime_path_display
+                .contains("fw100k.bin or fw157e.bin")
+        );
     }
 
     #[test]
@@ -4398,12 +4401,16 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(systemroms_dir
-            .join("Machines/MSX - C-BIOS/cbios_main_msx1.rom")
-            .exists());
-        assert!(!systemroms_dir
-            .join("Machines/MSX - C-BIOS/config.ini")
-            .exists());
+        assert!(
+            systemroms_dir
+                .join("Machines/MSX - C-BIOS/cbios_main_msx1.rom")
+                .exists()
+        );
+        assert!(
+            !systemroms_dir
+                .join("Machines/MSX - C-BIOS/config.ini")
+                .exists()
+        );
         assert!(!systemroms_dir.join("Databases/msxromdb.xml").exists());
     }
 

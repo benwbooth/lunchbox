@@ -12,11 +12,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use lunchbox_core::import::{merge_dat_files, parse_dat_file, DatFile, LaunchBoxImporter};
+use lunchbox_core::import::{DatFile, LaunchBoxImporter, merge_dat_files, parse_dat_file};
 use lunchbox_core::scanner::{Checksums, RomScanner};
 use lunchbox_core::scraper::{
-    get_screenscraper_platform_id, IGDBClient, IGDBConfig, ScreenScraperClient,
-    ScreenScraperConfig, SteamGridDBClient, SteamGridDBConfig,
+    IGDBClient, IGDBConfig, ScreenScraperClient, ScreenScraperConfig, SteamGridDBClient,
+    SteamGridDBConfig, get_screenscraper_platform_id,
 };
 
 #[derive(Parser)]
@@ -518,7 +518,9 @@ async fn cmd_scrape(
     let client = ScreenScraperClient::new(config);
 
     if !client.has_credentials() {
-        anyhow::bail!("ScreenScraper credentials are required. Set via --dev-id/--dev-password or environment variables.");
+        anyhow::bail!(
+            "ScreenScraper credentials are required. Set via --dev-id/--dev-password or environment variables."
+        );
     }
 
     let platform_id = get_screenscraper_platform_id(platform);

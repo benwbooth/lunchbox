@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use reqwest::multipart;
 
@@ -594,7 +594,9 @@ impl QBittorrentClient {
             }
         }
 
-        bail!("qBittorrent does not support either /torrents/start or /torrents/resume for torrent {hash}");
+        bail!(
+            "qBittorrent does not support either /torrents/start or /torrents/resume for torrent {hash}"
+        );
     }
 }
 
@@ -626,8 +628,13 @@ impl TorrentClient for QBittorrentClient {
         if let Some(existing_torrent) = self.fetch_existing_torrent(&client, &info_hash).await? {
             let state = existing_torrent["state"].as_str().unwrap_or("");
             let missing_requested_files = if let Some(ref indices) = file_indices {
-                self.requested_files_missing_on_disk(&client, &info_hash, &existing_torrent, indices)
-                    .await?
+                self.requested_files_missing_on_disk(
+                    &client,
+                    &info_hash,
+                    &existing_torrent,
+                    indices,
+                )
+                .await?
             } else {
                 false
             };
