@@ -1817,10 +1817,33 @@ fn select_appimage_payload_entry(entries: &[ArchiveEntry]) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-fn extract_appimage_payload_from_archive(
+fn select_nested_archive_entry(entries: &[ArchiveEntry]) -> Option<PathBuf> {
+    let archive_entries = entries
+        .iter()
+        .filter(|entry| !entry.is_dir)
+        .filter_map(|entry| archive_kind_from_name(&entry.path).map(|_| entry.path.clone()))
+        .collect::<Vec<_>>();
+
+    if archive_entries.len() == 1 {
+        archive_entries.into_iter().next()
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn extract_appimage_payload_from_archive_inner(
     archive_path: &Path,
     output_dir: &Path,
+    depth: usize,
 ) -> Result<PathBuf, String> {
+    if depth > 4 {
+        return Err(format!(
+            "Archive {} is wrapped too deeply to resolve an AppImage payload",
+            archive_path.display()
+        ));
+    }
+
     let kind = archive_kind_for_path(archive_path).ok_or_else(|| {
         format!(
             "Asset {} is not a supported AppImage archive",
@@ -1828,19 +1851,38 @@ fn extract_appimage_payload_from_archive(
         )
     })?;
     let entries = list_archive_entries(archive_path, kind)?;
-    let appimage_entry = select_appimage_payload_entry(&entries).ok_or_else(|| {
+    if let Some(appimage_entry) = select_appimage_payload_entry(&entries) {
+        let extracted = extract_archive_entries(archive_path, kind, output_dir, &[appimage_entry])?;
+        return extracted.into_iter().next().ok_or_else(|| {
+            format!(
+                "Archive {} did not produce an extracted AppImage",
+                archive_path.display()
+            )
+        });
+    }
+
+    let nested_archive = select_nested_archive_entry(&entries).ok_or_else(|| {
         format!(
             "Archive {} does not contain an AppImage payload",
             archive_path.display()
         )
     })?;
-    let extracted = extract_archive_entries(archive_path, kind, output_dir, &[appimage_entry])?;
-    extracted.into_iter().next().ok_or_else(|| {
+    let extracted = extract_archive_entries(archive_path, kind, output_dir, &[nested_archive])?;
+    let nested_path = extracted.into_iter().next().ok_or_else(|| {
         format!(
-            "Archive {} did not produce an extracted AppImage",
+            "Archive {} did not produce the nested archive payload",
             archive_path.display()
         )
-    })
+    })?;
+    extract_appimage_payload_from_archive_inner(&nested_path, output_dir, depth + 1)
+}
+
+#[cfg(target_os = "linux")]
+fn extract_appimage_payload_from_archive(
+    archive_path: &Path,
+    output_dir: &Path,
+) -> Result<PathBuf, String> {
+    extract_appimage_payload_from_archive_inner(archive_path, output_dir, 0)
 }
 
 #[cfg(target_os = "linux")]
@@ -2757,6 +2799,10 @@ fn should_preserve_arcade_mame_romset_archive(
 }
 
 fn archive_kind_for_path(path: &Path) -> Option<ArchiveKind> {
+    archive_kind_from_magic(path).or_else(|| archive_kind_from_name(path))
+}
+
+fn archive_kind_from_name(path: &Path) -> Option<ArchiveKind> {
     let name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
     if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
         return Some(ArchiveKind::TarGz);
@@ -2783,6 +2829,46 @@ fn archive_kind_for_path(path: &Path) -> Option<ArchiveKind> {
         Some("xz") => Some(ArchiveKind::Xz),
         _ => None,
     }
+}
+
+fn archive_kind_from_magic(path: &Path) -> Option<ArchiveKind> {
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buffer = [0u8; 8];
+    let bytes_read = file.read(&mut buffer).ok()?;
+    let header = &buffer[..bytes_read];
+
+    if header.starts_with(b"PK\x03\x04")
+        || header.starts_with(b"PK\x05\x06")
+        || header.starts_with(b"PK\x07\x08")
+    {
+        return Some(ArchiveKind::Zip);
+    }
+    if header.starts_with(&[0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]) {
+        return Some(ArchiveKind::SevenZip);
+    }
+    if header.starts_with(b"Rar!\x1a\x07") {
+        return Some(ArchiveKind::Rar);
+    }
+    if header.starts_with(&[0x1f, 0x8b]) {
+        return match archive_kind_from_name(path) {
+            Some(ArchiveKind::TarGz) => Some(ArchiveKind::TarGz),
+            _ => Some(ArchiveKind::Gz),
+        };
+    }
+    if header.starts_with(b"BZh") {
+        return match archive_kind_from_name(path) {
+            Some(ArchiveKind::TarBz2) => Some(ArchiveKind::TarBz2),
+            _ => Some(ArchiveKind::Bz2),
+        };
+    }
+    if header.starts_with(&[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) {
+        return match archive_kind_from_name(path) {
+            Some(ArchiveKind::TarXz) => Some(ArchiveKind::TarXz),
+            _ => Some(ArchiveKind::Xz),
+        };
+    }
+
+    None
 }
 
 fn extract_launchable_content_from_archive(
