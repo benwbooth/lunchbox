@@ -536,6 +536,17 @@ fn find_winepath_command() -> Option<PathBuf> {
     }
 }
 
+fn find_appimage_run_command() -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        which::which("appimage-run").ok()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
 fn is_wine_available() -> bool {
     find_wine_command().is_some() && find_winepath_command().is_some()
 }
@@ -5120,6 +5131,27 @@ fn launch_standalone(
             launch_args,
         );
         tracing::info!(command = ?cmd, "Spawning macOS app");
+        spawn_and_verify(cmd, &emulator.name, cleanup_paths)
+    } else if current_os() == "Linux"
+        && exe_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("appimage"))
+        && find_appimage_run_command().is_some()
+    {
+        let mut cmd = Command::new(
+            find_appimage_run_command().expect("checked appimage-run presence above"),
+        );
+        cmd.arg(&exe_path);
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            Some(&exe_path),
+            &emulator.name,
+            platform_name,
+            rom_path,
+            launch_args,
+        );
+        tracing::info!(command = ?cmd, "Spawning AppImage via appimage-run");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else {
         // Regular executable
