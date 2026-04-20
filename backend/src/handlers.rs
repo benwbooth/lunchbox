@@ -14,6 +14,7 @@ use crate::db::schema::EmulatorInfo;
 use crate::emulator::{self, EmulatorUpdate, EmulatorWithStatus, LaunchResult};
 use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 // ============================================================================
@@ -1193,27 +1194,268 @@ pub async fn get_game_file(
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(row.map(
-        |(
-            db_id,
-            game_title,
-            platform,
-            file_path,
-            file_size,
-            imported_at,
-            import_source,
-            graboid_job_id,
-        )| GameFile {
-            launchbox_db_id: db_id,
-            game_title,
-            platform,
-            file_path,
-            file_size,
-            imported_at,
-            import_source,
-            graboid_job_id,
-        },
-    ))
+    if let Some(row) = row {
+        return Ok(Some(
+            (|(
+                db_id,
+                game_title,
+                platform,
+                file_path,
+                file_size,
+                imported_at,
+                import_source,
+                graboid_job_id,
+            )| GameFile {
+                launchbox_db_id: db_id,
+                game_title,
+                platform,
+                file_path,
+                file_size,
+                imported_at,
+                import_source,
+                graboid_job_id,
+            })(row),
+        ));
+    }
+
+    recover_missing_laserdisc_game_file(state, db_pool, launchbox_db_id).await
+}
+
+async fn recover_missing_laserdisc_game_file(
+    state: &AppState,
+    db_pool: &sqlx::SqlitePool,
+    launchbox_db_id: i64,
+) -> Result<Option<GameFile>, String> {
+    let games_pool = match state.games_db_pool.as_ref() {
+        Some(pool) => pool,
+        None => return Ok(None),
+    };
+
+    let game_row: Option<(String, String)> = sqlx::query_as(
+        "SELECT g.title, p.name FROM games g JOIN platforms p ON g.platform_id = p.id WHERE g.launchbox_db_id = ?",
+    )
+    .bind(launchbox_db_id)
+    .fetch_optional(games_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some((game_title, platform)) = game_row else {
+        return Ok(None);
+    };
+    if !platform.eq_ignore_ascii_case("Arcade") {
+        return Ok(None);
+    }
+
+    let completed_job: Option<(String,)> = sqlx::query_as(
+        "SELECT status_message FROM graboid_jobs WHERE launchbox_db_id = ? AND status = 'completed' ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(launchbox_db_id)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some((status_message,)) = completed_job else {
+        return Ok(None);
+    };
+
+    let collection_root = state
+        .settings
+        .get_import_directory()
+        .join("Arcade")
+        .join("Minerva_Myrient")
+        .join("Laserdisc Collection");
+
+    let recovered_path = if status_message.contains("Hypseus bundle") {
+        recover_hypseus_laserdisc_framefile(
+            &collection_root.join("Hypseus Singe"),
+            launchbox_db_id,
+            &game_title,
+        )
+    } else if status_message.contains("ROM + CHD") {
+        recover_mame_laserdisc_rom(
+            &collection_root.join("MAME"),
+            launchbox_db_id,
+            &game_title,
+        )
+    } else {
+        None
+    };
+
+    let Some(file_path) = recovered_path else {
+        return Ok(None);
+    };
+    let file_size = std::fs::metadata(&file_path).ok().map(|meta| meta.len() as i64);
+    let file_path_text = file_path.display().to_string();
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')",
+    )
+    .bind(launchbox_db_id)
+    .bind(&game_title)
+    .bind(&platform)
+    .bind(&file_path_text)
+    .bind(file_size)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(Some(GameFile {
+        launchbox_db_id,
+        game_title,
+        platform,
+        file_path: file_path_text,
+        file_size,
+        imported_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        import_source: "minerva".to_string(),
+        graboid_job_id: None,
+    }))
+}
+
+fn recover_hypseus_laserdisc_framefile(
+    root: &Path,
+    launchbox_db_id: i64,
+    game_title: &str,
+) -> Option<PathBuf> {
+    let resolved_lookup_title = crate::images::emumovies::resolve_arcade_download_lookup_name(
+        "Arcade",
+        game_title,
+        Some(launchbox_db_id),
+    )
+    .into_owned();
+    let lookup_titles = torrent_match_lookup_titles(
+        Some("Arcade"),
+        game_title,
+        &resolved_lookup_title,
+        Some("Laserdisc Collection"),
+        Some("Hypseus Singe"),
+    );
+
+    let mut bundles: BTreeMap<
+        String,
+        (
+            Option<PathBuf>,
+            Option<PathBuf>,
+            Option<PathBuf>,
+            Option<PathBuf>,
+            Option<PathBuf>,
+        ),
+    > = BTreeMap::new();
+    for entry in walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+    {
+        let Some(pseudo_path) = laserdisc_relative_path(entry.path()) else {
+            continue;
+        };
+        let Some((bundle_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&pseudo_path) else {
+            continue;
+        };
+        let bundle = bundles.entry(bundle_key).or_insert((None, None, None, None, None));
+        match kind {
+            ArcadeHypseusLaserdiscAssetKind::RomZip => bundle.1 = Some(entry.path().to_path_buf()),
+            ArcadeHypseusLaserdiscAssetKind::Data => bundle.2 = Some(entry.path().to_path_buf()),
+            ArcadeHypseusLaserdiscAssetKind::FrameText => {
+                bundle.0 = Some(entry.path().to_path_buf())
+            }
+            ArcadeHypseusLaserdiscAssetKind::Video => bundle.3 = Some(entry.path().to_path_buf()),
+            ArcadeHypseusLaserdiscAssetKind::Audio => bundle.4 = Some(entry.path().to_path_buf()),
+        }
+    }
+
+    bundles
+        .into_iter()
+        .filter_map(|(bundle_key, (framefile, rom_zip, data, video, audio))| {
+            let framefile = framefile?;
+            let _rom_zip = rom_zip?;
+            let _data = data?;
+            let _video = video?;
+            let _audio = audio?;
+            let best_score = lookup_titles
+                .iter()
+                .filter_map(|lookup_title| {
+                    let normalized_query = crate::tags::normalize_title_for_matching(lookup_title);
+                    let query_words: Vec<&str> = normalized_query.split_whitespace().collect();
+                    let significant_query_words = significant_match_words(&normalized_query);
+                    score_match_name(
+                        &bundle_key,
+                        &normalized_query,
+                        &query_words,
+                        &significant_query_words,
+                    )
+                    .map(|score| score.score)
+                })
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
+            Some((best_score, framefile))
+        })
+        .max_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(_, framefile)| framefile)
+}
+
+fn recover_mame_laserdisc_rom(root: &Path, launchbox_db_id: i64, game_title: &str) -> Option<PathBuf> {
+    let resolved_lookup_title = crate::images::emumovies::resolve_arcade_download_lookup_name(
+        "Arcade",
+        game_title,
+        Some(launchbox_db_id),
+    )
+    .into_owned();
+    let lookup_titles = torrent_match_lookup_titles(
+        Some("Arcade"),
+        game_title,
+        &resolved_lookup_title,
+        Some("Laserdisc Collection"),
+        Some("MAME"),
+    );
+
+    let mut bundles: BTreeMap<String, (Option<PathBuf>, Option<PathBuf>)> = BTreeMap::new();
+    for entry in walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+    {
+        let Some(pseudo_path) = laserdisc_relative_path(entry.path()) else {
+            continue;
+        };
+        let Some((romset_name, kind)) = parse_arcade_mame_laserdisc_asset(&pseudo_path) else {
+            continue;
+        };
+        let bundle = bundles.entry(romset_name).or_insert((None, None));
+        match kind {
+            ArcadeMameLaserdiscAssetKind::RomZip => bundle.0 = Some(entry.path().to_path_buf()),
+            ArcadeMameLaserdiscAssetKind::Chd => bundle.1 = Some(entry.path().to_path_buf()),
+        }
+    }
+
+    bundles
+        .into_iter()
+        .filter_map(|(bundle_key, (rom_zip, chd))| {
+            let rom_zip = rom_zip?;
+            let _chd = chd?;
+            let best_score = lookup_titles
+                .iter()
+                .filter_map(|lookup_title| {
+                    let normalized_query = crate::tags::normalize_title_for_matching(lookup_title);
+                    let query_words: Vec<&str> = normalized_query.split_whitespace().collect();
+                    let significant_query_words = significant_match_words(&normalized_query);
+                    score_match_name(
+                        &bundle_key,
+                        &normalized_query,
+                        &query_words,
+                        &significant_query_words,
+                    )
+                    .map(|score| score.score)
+                })
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
+            Some((best_score, rom_zip))
+        })
+        .max_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(_, rom_zip)| rom_zip)
+}
+
+fn laserdisc_relative_path(path: &Path) -> Option<String> {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let (_, suffix) = normalized.split_once("/Laserdisc Collection/")?;
+    Some(format!("Laserdisc Collection/{suffix}"))
 }
 
 pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Result<(), String> {
@@ -1565,6 +1807,7 @@ enum ArcadeMameLaserdiscAssetKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArcadeHypseusLaserdiscAssetKind {
     RomZip,
+    Data,
     FrameText,
     Video,
     Audio,
@@ -1661,6 +1904,7 @@ fn parse_arcade_hypseus_laserdisc_asset(
         .map(|value| value.to_ascii_lowercase())?;
     let kind = match extension.as_str() {
         "zip" => ArcadeHypseusLaserdiscAssetKind::RomZip,
+        "dat" => ArcadeHypseusLaserdiscAssetKind::Data,
         "txt" => ArcadeHypseusLaserdiscAssetKind::FrameText,
         "m2v" => ArcadeHypseusLaserdiscAssetKind::Video,
         "ogg" => ArcadeHypseusLaserdiscAssetKind::Audio,
@@ -1851,6 +2095,7 @@ fn build_arcade_hypseus_laserdisc_plan(
 ) -> Option<ArcadeHypseusLaserdiscPlan> {
     let (bundle_key, _) = parse_arcade_hypseus_laserdisc_asset(&selected_file.filename)?;
 
+    let mut data_asset = None;
     let mut text_asset = None;
     let mut video_asset = None;
     let mut audio_asset = None;
@@ -1873,6 +2118,7 @@ fn build_arcade_hypseus_laserdisc_plan(
         };
         match kind {
             ArcadeHypseusLaserdiscAssetKind::RomZip => rom_zip_asset = Some(asset),
+            ArcadeHypseusLaserdiscAssetKind::Data => data_asset = Some(asset),
             ArcadeHypseusLaserdiscAssetKind::FrameText => text_asset = Some(asset),
             ArcadeHypseusLaserdiscAssetKind::Video => video_asset = Some(asset),
             ArcadeHypseusLaserdiscAssetKind::Audio => audio_asset = Some(asset),
@@ -1881,10 +2127,17 @@ fn build_arcade_hypseus_laserdisc_plan(
 
     let representative_asset = text_asset
         .clone()
+        .or_else(|| data_asset.clone())
         .or_else(|| video_asset.clone())
         .or_else(|| audio_asset.clone())
         .or_else(|| rom_zip_asset.clone())?;
-    let assets = vec![rom_zip_asset?, text_asset?, video_asset?, audio_asset?];
+    let assets = vec![
+        rom_zip_asset?,
+        data_asset?,
+        text_asset?,
+        video_asset?,
+        audio_asset?,
+    ];
     let bundle_name = Path::new(&bundle_key)
         .file_name()
         .and_then(|value| value.to_str())
@@ -2069,6 +2322,50 @@ fn stage_arcade_mame_laserdisc_layout(
         .map_err(|e| format!("Failed to stage {}: {}", chd_target.display(), e))?;
 
     Ok(primary_target)
+}
+
+fn locate_arcade_hypseus_bundle_framefile(
+    download_dir: &Path,
+    plan: &ArcadeHypseusLaserdiscPlan,
+) -> Result<PathBuf, String> {
+    let mut framefile_path = None;
+    let mut missing_assets = Vec::new();
+
+    for asset in &plan.assets {
+        let Some(path) = locate_downloaded_file(download_dir, &asset.filename) else {
+            missing_assets.push(asset.filename.clone());
+            continue;
+        };
+
+        if matches!(
+            parse_arcade_hypseus_laserdisc_asset(&asset.filename).map(|(_, kind)| kind),
+            Some(ArcadeHypseusLaserdiscAssetKind::FrameText)
+        ) {
+            framefile_path = Some(path);
+        }
+    }
+
+    if !missing_assets.is_empty() {
+        let missing_list = missing_assets
+            .iter()
+            .map(|asset| {
+                Path::new(asset)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or(asset)
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "Download finished, but the Hypseus bundle is incomplete. Missing: {missing_list}"
+        ));
+    }
+
+    framefile_path.ok_or_else(|| {
+        "Download finished, but Lunchbox could not locate the Hypseus framefile on disk."
+            .to_string()
+    })
 }
 
 fn sanitize_download_directory_component(value: &str) -> String {
@@ -2837,25 +3134,54 @@ pub async fn start_minerva_download(
 
         let (stored_path, stored_size, completion_message) = match download_mode {
             MinervaDownloadMode::GameOnly => {
-                let Some(found_path) = representative_path else {
-                    crate::torrent::update_progress(
-                        &job_id_bg,
-                        crate::torrent::DownloadStatus::Failed,
-                        100.0,
-                        0,
-                        target_size,
-                        target_size,
-                        "Download finished, but the selected ROM file could not be found on disk.",
-                    );
-                    if let Some(ref db_path) = db_path {
-                        if let Ok(pool) = crate::db::init_pool(db_path).await {
-                            let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = 'Download finished, but the selected ROM file could not be found on disk.', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                                .bind(&job_id_bg)
-                                .execute(&pool)
-                                .await;
+                let found_path = if let Some(ArcadeLaserdiscPlan::Hypseus(plan)) =
+                    arcade_laserdisc_plan.as_ref()
+                {
+                    match locate_arcade_hypseus_bundle_framefile(&download_dir_bg, plan) {
+                        Ok(path) => path,
+                        Err(message) => {
+                            crate::torrent::update_progress(
+                                &job_id_bg,
+                                crate::torrent::DownloadStatus::Failed,
+                                100.0,
+                                0,
+                                target_size,
+                                target_size,
+                                &message,
+                            );
+                            persist_graboid_job_status(
+                                db_path.as_ref(),
+                                &job_id_bg,
+                                "failed",
+                                &message,
+                            )
+                            .await;
+                            crate::torrent::clear_client_job_id(&job_id_bg);
+                            return;
                         }
                     }
-                    return;
+                } else {
+                    let Some(found_path) = representative_path else {
+                        crate::torrent::update_progress(
+                            &job_id_bg,
+                            crate::torrent::DownloadStatus::Failed,
+                            100.0,
+                            0,
+                            target_size,
+                            target_size,
+                            "Download finished, but the selected ROM file could not be found on disk.",
+                        );
+                        if let Some(ref db_path) = db_path {
+                            if let Ok(pool) = crate::db::init_pool(db_path).await {
+                                let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = 'Download finished, but the selected ROM file could not be found on disk.', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                                    .bind(&job_id_bg)
+                                    .execute(&pool)
+                                    .await;
+                            }
+                        }
+                        return;
+                    };
+                    found_path
                 };
 
                 let file_size = std::fs::metadata(&found_path)
@@ -3219,6 +3545,7 @@ fn select_arcade_hypseus_laserdisc_matches(
             Option<crate::torrent::TorrentFileInfo>,
             Option<crate::torrent::TorrentFileInfo>,
             Option<crate::torrent::TorrentFileInfo>,
+            Option<crate::torrent::TorrentFileInfo>,
         ),
     > = std::collections::BTreeMap::new();
 
@@ -3226,19 +3553,20 @@ fn select_arcade_hypseus_laserdisc_matches(
         let Some((bundle_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&file.filename) else {
             continue;
         };
-        let entry = bundles.entry(bundle_key).or_insert((None, None, None, None));
+        let entry = bundles.entry(bundle_key).or_insert((None, None, None, None, None));
         match kind {
             ArcadeHypseusLaserdiscAssetKind::RomZip => entry.0 = Some(file),
-            ArcadeHypseusLaserdiscAssetKind::FrameText => entry.1 = Some(file),
-            ArcadeHypseusLaserdiscAssetKind::Video => entry.2 = Some(file),
-            ArcadeHypseusLaserdiscAssetKind::Audio => entry.3 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::Data => entry.1 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::FrameText => entry.2 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::Video => entry.3 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::Audio => entry.4 = Some(file),
         }
     }
 
     let mut candidates: Vec<BundleCandidate> = bundles
         .into_iter()
-        .filter_map(|(bundle_key, (rom_zip, text, video, audio))| {
-            let members = vec![rom_zip?, text?, video?, audio?];
+        .filter_map(|(bundle_key, (rom_zip, data, text, video, audio))| {
+            let members = vec![rom_zip?, data?, text?, video?, audio?];
             let score =
                 score_match_name(&bundle_key, &normalized_query, &query_words, &significant_query_words)?;
             Some(BundleCandidate {
@@ -4309,6 +4637,15 @@ mod tests {
     fn parses_arcade_hypseus_laserdisc_paths() {
         assert_eq!(
             parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Dragon's Lair/dlair.dat"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/dragon's lair/dlair".to_string(),
+                ArcadeHypseusLaserdiscAssetKind::Data
+            ))
+        );
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
                 "Laserdisc Collection/Hypseus Singe/Dragon's Lair/dlair.txt"
             ),
             Some((
@@ -4338,6 +4675,16 @@ mod tests {
 
     #[test]
     fn parses_arcade_hypseus_laserdisc_paths_from_nested_video_dir() {
+        assert_eq!(
+            parse_arcade_hypseus_laserdisc_asset(
+                "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/lair.dat"
+            ),
+            Some((
+                "laserdisc collection/hypseus singe/singe2/singe/dragons_lair_1080/lair"
+                    .to_string(),
+                ArcadeHypseusLaserdiscAssetKind::Data
+            ))
+        );
         assert_eq!(
             parse_arcade_hypseus_laserdisc_asset(
                 "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/lair.txt"
@@ -4380,21 +4727,26 @@ mod tests {
             },
             crate::torrent::TorrentFileInfo {
                 index: 2,
-                filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/lair.txt".to_string(),
+                filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/lair.dat".to_string(),
                 size: 100,
             },
             crate::torrent::TorrentFileInfo {
                 index: 3,
+                filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/lair.txt".to_string(),
+                size: 100,
+            },
+            crate::torrent::TorrentFileInfo {
+                index: 4,
                 filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.m2v".to_string(),
                 size: 1000,
             },
             crate::torrent::TorrentFileInfo {
-                index: 4,
+                index: 5,
                 filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Video/lair.ogg".to_string(),
                 size: 1000,
             },
             crate::torrent::TorrentFileInfo {
-                index: 5,
+                index: 6,
                 filename: "Laserdisc Collection/Hypseus Singe/Singe2/singe/dragons_lair_1080/Assets/Dragon's Lair nitpick.txt".to_string(),
                 size: 10,
             },

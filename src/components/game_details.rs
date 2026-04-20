@@ -329,6 +329,7 @@ fn parse_hypseus_laserdisc_bundle(path: &str) -> Option<(String, &'static str)> 
         .map(|value| value.to_ascii_lowercase())?;
     let kind = match ext.as_str() {
         "zip" => "zip",
+        "dat" => "dat",
         "m2v" => "m2v",
         "ogg" => "ogg",
         "txt" => "txt",
@@ -450,6 +451,7 @@ fn build_minerva_picker_items(
         .into_iter()
         .filter_map(|(bundle_key, members)| {
             let mut rom_zip = None;
+            let mut data = None;
             let mut text = None;
             let mut video = None;
             let mut audio = None;
@@ -459,6 +461,7 @@ fn build_minerva_picker_items(
                     .unwrap_or_default()
                 {
                     "zip" => rom_zip = Some(member),
+                    "dat" => data = Some(member),
                     "txt" => text = Some(member),
                     "m2v" => video = Some(member),
                     "ogg" => audio = Some(member),
@@ -466,7 +469,7 @@ fn build_minerva_picker_items(
                 }
             }
 
-            let (rom_zip, text, video, audio) = (rom_zip?, text?, video?, audio?);
+            let (rom_zip, data, text, video, audio) = (rom_zip?, data?, text?, video?, audio?);
             Some(MinervaPickerItem {
                 selection: MinervaDownloadSelection::File {
                     torrent_url: rom.torrent_url.clone(),
@@ -484,6 +487,7 @@ fn build_minerva_picker_items(
                     .map(|path| path.display().to_string()),
                 size: rom_zip
                     .size
+                    .saturating_add(data.size)
                     .saturating_add(text.size)
                     .saturating_add(video.size)
                     .saturating_add(audio.size),
