@@ -8,7 +8,7 @@
 use crate::db::schema::EmulatorInfo;
 use crate::firmware::FirmwareStatus;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -196,6 +196,261 @@ pub struct LaunchResult {
 pub enum LaunchArg {
     Literal(String),
     Path(String),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LaunchConfiguration {
+    pub command_template_override: Option<String>,
+    pub legacy_args: Vec<LaunchArg>,
+}
+
+pub fn parse_launch_args_text(args_text: &str) -> Result<Vec<LaunchArg>, String> {
+    let trimmed = args_text.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let parsed =
+        shlex::split(trimmed).ok_or_else(|| "Could not parse quoted arguments".to_string())?;
+
+    Ok(parsed.into_iter().map(LaunchArg::Literal).collect())
+}
+
+#[derive(Debug, Clone)]
+enum LaunchTemplateValue {
+    Literal(String),
+    Path(String),
+}
+
+impl LaunchTemplateValue {
+    fn as_text(&self) -> &str {
+        match self {
+            Self::Literal(value) | Self::Path(value) => value,
+        }
+    }
+
+    fn into_launch_arg(self) -> LaunchArg {
+        match self {
+            Self::Literal(value) => LaunchArg::Literal(value),
+            Self::Path(value) => LaunchArg::Path(value),
+        }
+    }
+}
+
+fn template_token(value: &str) -> String {
+    if value.is_empty() {
+        "''".to_string()
+    } else if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '{' | '}'))
+    {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+}
+
+fn join_template_tokens<I>(tokens: I) -> String
+where
+    I: IntoIterator<Item = String>,
+{
+    tokens
+        .into_iter()
+        .map(|token| template_token(&token))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+pub fn default_launch_command_template(
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    as_retroarch_core: bool,
+) -> String {
+    if as_retroarch_core {
+        return join_template_tokens(vec![
+            "--verbose".to_string(),
+            "-L".to_string(),
+            "%{core}".to_string(),
+            "%f".to_string(),
+        ]);
+    }
+
+    if emulator_name == "Hypseus Singe" && platform_name == Some("Arcade") {
+        return join_template_tokens(vec![
+            "%{hypseus_game}".to_string(),
+            "vldp".to_string(),
+            "-fullscreen".to_string(),
+            "-framefile".to_string(),
+            "%{hypseus_framefile}".to_string(),
+            "-homedir".to_string(),
+            "%{hypseus_support_root}".to_string(),
+            "-datadir".to_string(),
+            "%{hypseus_support_root}".to_string(),
+            "-romdir".to_string(),
+            "%{hypseus_romdir}".to_string(),
+        ]);
+    }
+
+    if emulator_name == "MAME" && platform_name == Some("Arcade") {
+        return join_template_tokens(vec![
+            "-rompath".to_string(),
+            "%{mame_rompath}".to_string(),
+            "%{mame_romset}".to_string(),
+        ]);
+    }
+
+    if emulator_name == "Altirra" {
+        return join_template_tokens(vec![
+            "%{altirra_media_switch}".to_string(),
+            "%f".to_string(),
+        ]);
+    }
+
+    "%f".to_string()
+}
+
+pub fn default_prepared_launch_command_template(
+    emulator_name: &str,
+    collection: crate::exo::ExoCollection,
+    as_retroarch_core: bool,
+) -> String {
+    if as_retroarch_core {
+        return default_launch_command_template(emulator_name, None, true);
+    }
+
+    let emulator_name = emulator_name.to_ascii_lowercase();
+    match collection {
+        crate::exo::ExoCollection::Dos | crate::exo::ExoCollection::Win3x => {
+            if emulator_name.contains("scummvm") {
+                join_template_tokens(vec![
+                    "--config".to_string(),
+                    "%{config}".to_string(),
+                    "-p".to_string(),
+                    "%{game_path}".to_string(),
+                    "%{game_id}".to_string(),
+                ])
+            } else {
+                join_template_tokens(vec![
+                    "-conf".to_string(),
+                    "%{config}".to_string(),
+                    "-conf".to_string(),
+                    "%{shared_config}".to_string(),
+                ])
+            }
+        }
+        crate::exo::ExoCollection::Win9x => {
+            if emulator_name.contains("pcbox") {
+                join_template_tokens(vec!["-c".to_string(), "%{config}".to_string()])
+            } else if emulator_name.contains("86box") {
+                join_template_tokens(vec!["-P".to_string(), "%{vm_root}".to_string()])
+            } else {
+                join_template_tokens(vec![
+                    "-conf".to_string(),
+                    "%{config}".to_string(),
+                    "-conf".to_string(),
+                    "%{shared_config}".to_string(),
+                    "-nomenu".to_string(),
+                    "-noconsole".to_string(),
+                ])
+            }
+        }
+    }
+}
+
+fn compile_launch_template(
+    template: &str,
+    values: &HashMap<String, LaunchTemplateValue>,
+) -> Result<Vec<LaunchArg>, String> {
+    let chars = template.chars().collect::<Vec<_>>();
+    let mut rendered = String::new();
+    let mut sentinels = Vec::<(String, LaunchTemplateValue)>::new();
+    let mut index = 0usize;
+
+    while index < chars.len() {
+        if chars[index] != '%' {
+            rendered.push(chars[index]);
+            index += 1;
+            continue;
+        }
+
+        let next = chars
+            .get(index + 1)
+            .copied()
+            .ok_or_else(|| "Launch template ends with a dangling '%'".to_string())?;
+
+        match next {
+            '%' => {
+                rendered.push('%');
+                index += 2;
+            }
+            'f' => {
+                let value = values
+                    .get("file")
+                    .cloned()
+                    .ok_or_else(|| "Launch template uses %f but no input file is available".to_string())?;
+                let sentinel = format!("__LBTPL_{}__", sentinels.len());
+                rendered.push_str(&sentinel);
+                sentinels.push((sentinel, value));
+                index += 2;
+            }
+            '{' => {
+                let mut end = index + 2;
+                while end < chars.len() && chars[end] != '}' {
+                    end += 1;
+                }
+                if end >= chars.len() {
+                    return Err("Launch template has an unterminated %{...} placeholder".to_string());
+                }
+                let name = chars[index + 2..end].iter().collect::<String>();
+                let value = values
+                    .get(&name)
+                    .cloned()
+                    .ok_or_else(|| format!("Launch template uses unknown placeholder '%{{{name}}}'"))?;
+                let sentinel = format!("__LBTPL_{}__", sentinels.len());
+                rendered.push_str(&sentinel);
+                sentinels.push((sentinel, value));
+                index = end + 1;
+            }
+            other => {
+                return Err(format!("Launch template uses unknown placeholder '%{other}'"));
+            }
+        }
+    }
+
+    let parsed = shlex::split(&rendered)
+        .ok_or_else(|| "Could not parse quoted launch template".to_string())?;
+
+    let sentinel_map = sentinels
+        .into_iter()
+        .collect::<HashMap<String, LaunchTemplateValue>>();
+
+    let mut compiled = Vec::with_capacity(parsed.len());
+    for token in parsed {
+        if let Some(value) = sentinel_map.get(&token).cloned() {
+            compiled.push(value.into_launch_arg());
+            continue;
+        }
+
+        let mut expanded = token;
+        for (sentinel, value) in &sentinel_map {
+            if expanded.contains(sentinel) {
+                expanded = expanded.replace(sentinel, value.as_text());
+            }
+        }
+        compiled.push(LaunchArg::Literal(expanded));
+    }
+
+    Ok(compiled)
+}
+
+fn compile_override_launch_args(
+    command_template_override: Option<&str>,
+    values: HashMap<String, LaunchTemplateValue>,
+) -> Result<Option<Vec<LaunchArg>>, String> {
+    match command_template_override {
+        Some(template) => compile_launch_template(template, &values).map(Some),
+        None => Ok(None),
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1505,8 +1760,8 @@ fn parse_flatpak_update_key(rest: &str) -> Result<(FlatpakScope, &str), String> 
 }
 
 #[cfg(target_os = "linux")]
-async fn flatpak_installed_versions(
-) -> Result<BTreeMap<(FlatpakScope, String), Option<String>>, String> {
+async fn flatpak_installed_versions()
+-> Result<BTreeMap<(FlatpakScope, String), Option<String>>, String> {
     let mut installed = BTreeMap::new();
     for scope in [FlatpakScope::System, FlatpakScope::User] {
         let output = tokio::process::Command::new("flatpak")
@@ -1554,8 +1809,8 @@ async fn flatpak_installed_versions(
 }
 
 #[cfg(target_os = "linux")]
-async fn flatpak_available_updates(
-) -> Result<BTreeMap<(FlatpakScope, String), Option<String>>, String> {
+async fn flatpak_available_updates()
+-> Result<BTreeMap<(FlatpakScope, String), Option<String>>, String> {
     let mut updates = BTreeMap::new();
     for scope in [FlatpakScope::System, FlatpakScope::User] {
         let output = tokio::process::Command::new("flatpak")
@@ -1915,7 +2170,11 @@ fn extract_archive_contents_recursive_missing(
     if let Some(nested_archive_entry) = select_nested_archive_entry(&entries) {
         let nested_archive_path = output_dir.join(&nested_archive_entry);
         if nested_archive_path.exists() {
-            extract_archive_contents_recursive_missing(&nested_archive_path, output_dir, depth + 1)?;
+            extract_archive_contents_recursive_missing(
+                &nested_archive_path,
+                output_dir,
+                depth + 1,
+            )?;
         }
     }
 
@@ -4012,7 +4271,7 @@ pub fn launch_emulator(
     rom_path: Option<&str>,
     platform_name: Option<&str>,
     as_retroarch_core: bool,
-    launch_args: &[LaunchArg],
+    launch_configuration: &LaunchConfiguration,
 ) -> Result<u32, String> {
     tracing::info!(
         emulator = %emulator.name,
@@ -4031,7 +4290,8 @@ pub fn launch_emulator(
                 prepared_rom.rom_path.as_deref(),
                 platform_name,
                 prepared_rom.cleanup_paths,
-                launch_args,
+                &launch_configuration.legacy_args,
+                launch_configuration.command_template_override.as_deref(),
             )
         } else {
             cleanup_extracted_roms(&prepared_rom.cleanup_paths);
@@ -4045,7 +4305,8 @@ pub fn launch_emulator(
             prepared_rom.rom_path.as_deref(),
             platform_name,
             prepared_rom.cleanup_paths,
-            launch_args,
+            &launch_configuration.legacy_args,
+            launch_configuration.command_template_override.as_deref(),
         )
     };
 
@@ -4061,7 +4322,13 @@ pub fn launch_emulator(
 /// Defaults to using RetroArch core if available
 pub fn launch_game(emulator: &EmulatorInfo, rom_path: &str) -> Result<u32, String> {
     let as_retroarch_core = emulator.retroarch_core.is_some();
-    launch_emulator(emulator, Some(rom_path), None, as_retroarch_core, &[])
+    launch_emulator(
+        emulator,
+        Some(rom_path),
+        None,
+        as_retroarch_core,
+        &LaunchConfiguration::default(),
+    )
 }
 
 const DEFAULT_SCUMMVM_CONFIG: &str = r#"[scummvm]
@@ -4096,6 +4363,7 @@ pub fn launch_prepared_install(
     install_root: &Path,
     launch_config_path: &Path,
     as_retroarch_core: bool,
+    launch_configuration: &LaunchConfiguration,
 ) -> Result<u32, String> {
     match collection {
         crate::exo::ExoCollection::Dos | crate::exo::ExoCollection::Win3x => {
@@ -4104,6 +4372,8 @@ pub fn launch_prepared_install(
                 install_root,
                 launch_config_path,
                 as_retroarch_core,
+                &launch_configuration.legacy_args,
+                launch_configuration.command_template_override.as_deref(),
             )
         }
         crate::exo::ExoCollection::Win9x => launch_win9x_prepared_install(
@@ -4111,6 +4381,8 @@ pub fn launch_prepared_install(
             install_root,
             launch_config_path,
             as_retroarch_core,
+            &launch_configuration.legacy_args,
+            launch_configuration.command_template_override.as_deref(),
         ),
     }
 }
@@ -4120,6 +4392,8 @@ fn launch_dosbox_prepared_install(
     install_root: &Path,
     launch_config_path: &Path,
     as_retroarch_core: bool,
+    launch_args: &[LaunchArg],
+    command_template_override: Option<&str>,
 ) -> Result<u32, String> {
     let exception_script = launch_config_path.parent().and_then(|dir| {
         let linux = dir.join("exception.bsh");
@@ -4145,6 +4419,8 @@ fn launch_dosbox_prepared_install(
                     install_root,
                     &scummvm_plan,
                     as_retroarch_core,
+                    launch_args,
+                    command_template_override,
                 );
             }
             let exception_plan =
@@ -4226,6 +4502,15 @@ fn launch_dosbox_prepared_install(
 
     let exe_path = check_standalone_installation(emulator)
         .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+    let override_launch_args = compile_override_launch_args(
+        command_template_override,
+        dosbox_template_values(
+            &emulator.name,
+            &effective_launch_config_path,
+            shared_options_path.as_deref(),
+        ),
+    )?;
+    let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
 
     if exe_path.to_string_lossy().starts_with("flatpak::") {
         let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
@@ -4233,12 +4518,17 @@ fn launch_dosbox_prepared_install(
         cmd.arg("run");
         add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
         cmd.arg(&app_id);
-        cmd.arg("-conf").arg(map_path_for_flatpak(
-            &effective_launch_config_path.to_string_lossy(),
-        ));
-        if let Some(ref shared_options_path) = shared_options_path {
-            cmd.arg("-conf")
-                .arg(map_path_for_flatpak(&shared_options_path.to_string_lossy()));
+        if command_template_override.is_some() {
+            append_launch_args_for_flatpak(&mut cmd, effective_launch_args);
+        } else {
+            cmd.arg("-conf").arg(map_path_for_flatpak(
+                &effective_launch_config_path.to_string_lossy(),
+            ));
+            if let Some(ref shared_options_path) = shared_options_path {
+                cmd.arg("-conf")
+                    .arg(map_path_for_flatpak(&shared_options_path.to_string_lossy()));
+            }
+            append_launch_args_for_flatpak(&mut cmd, launch_args);
         }
         cmd.current_dir(install_root);
         tracing::info!(
@@ -4251,9 +4541,14 @@ fn launch_dosbox_prepared_install(
     }
 
     let mut cmd = Command::new(&exe_path);
-    cmd.arg("-conf").arg(&effective_launch_config_path);
-    if let Some(ref shared_options_path) = shared_options_path {
-        cmd.arg("-conf").arg(shared_options_path);
+    if command_template_override.is_some() {
+        append_launch_args_native(&mut cmd, effective_launch_args);
+    } else {
+        cmd.arg("-conf").arg(&effective_launch_config_path);
+        if let Some(ref shared_options_path) = shared_options_path {
+            cmd.arg("-conf").arg(shared_options_path);
+        }
+        append_launch_args_native(&mut cmd, launch_args);
     }
     cmd.current_dir(install_root);
     tracing::info!(
@@ -4270,6 +4565,8 @@ fn launch_win9x_prepared_install(
     install_root: &Path,
     launch_config_path: &Path,
     as_retroarch_core: bool,
+    launch_args: &[LaunchArg],
+    command_template_override: Option<&str>,
 ) -> Result<u32, String> {
     if as_retroarch_core {
         return Err(
@@ -4305,6 +4602,15 @@ fn launch_win9x_prepared_install(
 
             let exe_path = check_standalone_installation(emulator)
                 .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+            let override_launch_args = compile_override_launch_args(
+                command_template_override,
+                dosbox_template_values(
+                    &emulator.name,
+                    launch_config_path,
+                    Some(shared_options_path.as_path()),
+                ),
+            )?;
+            let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
 
             if exe_path.to_string_lossy().starts_with("flatpak::") {
                 let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
@@ -4312,12 +4618,17 @@ fn launch_win9x_prepared_install(
                 cmd.arg("run");
                 add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
                 cmd.arg(&app_id);
-                cmd.arg("-conf")
-                    .arg(map_path_for_flatpak(&launch_config_path.to_string_lossy()));
-                cmd.arg("-conf")
-                    .arg(map_path_for_flatpak(&shared_options_path.to_string_lossy()));
-                cmd.arg("-nomenu");
-                cmd.arg("-noconsole");
+                if command_template_override.is_some() {
+                    append_launch_args_for_flatpak(&mut cmd, effective_launch_args);
+                } else {
+                    cmd.arg("-conf")
+                        .arg(map_path_for_flatpak(&launch_config_path.to_string_lossy()));
+                    cmd.arg("-conf")
+                        .arg(map_path_for_flatpak(&shared_options_path.to_string_lossy()));
+                    cmd.arg("-nomenu");
+                    cmd.arg("-noconsole");
+                    append_launch_args_for_flatpak(&mut cmd, launch_args);
+                }
                 cmd.current_dir(install_root);
                 tracing::info!(
                     command = ?cmd,
@@ -4329,10 +4640,15 @@ fn launch_win9x_prepared_install(
             }
 
             let mut cmd = Command::new(&exe_path);
-            cmd.arg("-conf").arg(launch_config_path);
-            cmd.arg("-conf").arg(&shared_options_path);
-            cmd.arg("-nomenu");
-            cmd.arg("-noconsole");
+            if command_template_override.is_some() {
+                append_launch_args_native(&mut cmd, effective_launch_args);
+            } else {
+                cmd.arg("-conf").arg(launch_config_path);
+                cmd.arg("-conf").arg(&shared_options_path);
+                cmd.arg("-nomenu");
+                cmd.arg("-noconsole");
+                append_launch_args_native(&mut cmd, launch_args);
+            }
             cmd.current_dir(install_root);
             tracing::info!(
                 command = ?cmd,
@@ -4363,6 +4679,11 @@ fn launch_win9x_prepared_install(
 
             let exe_path = check_standalone_installation(emulator)
                 .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+            let override_launch_args = compile_override_launch_args(
+                command_template_override,
+                vm_launch_template_values(&emulator.name, &vm_root, None),
+            )?;
+            let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
 
             if exe_path.to_string_lossy().starts_with("flatpak::") {
                 let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
@@ -4370,8 +4691,13 @@ fn launch_win9x_prepared_install(
                 cmd.arg("run");
                 add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
                 cmd.arg(&app_id);
-                cmd.arg("-P")
-                    .arg(map_path_for_flatpak(&vm_root.to_string_lossy()));
+                if command_template_override.is_some() {
+                    append_launch_args_for_flatpak(&mut cmd, effective_launch_args);
+                } else {
+                    cmd.arg("-P")
+                        .arg(map_path_for_flatpak(&vm_root.to_string_lossy()));
+                    append_launch_args_for_flatpak(&mut cmd, launch_args);
+                }
                 cmd.current_dir(install_root);
                 tracing::info!(
                     command = ?cmd,
@@ -4383,7 +4709,12 @@ fn launch_win9x_prepared_install(
             }
 
             let mut cmd = Command::new(&exe_path);
-            cmd.arg("-P").arg(&vm_root);
+            if command_template_override.is_some() {
+                append_launch_args_native(&mut cmd, effective_launch_args);
+            } else {
+                cmd.arg("-P").arg(&vm_root);
+                append_launch_args_native(&mut cmd, launch_args);
+            }
             cmd.current_dir(install_root);
             tracing::info!(
                 command = ?cmd,
@@ -4412,6 +4743,15 @@ fn launch_win9x_prepared_install(
                 vm_root.join("86box.cfg")
             };
             prepare_pcbox_vm_root(launch_config_path, &plan, &vm_root, &vm_config_path)?;
+            let override_launch_args = compile_override_launch_args(
+                command_template_override,
+                vm_launch_template_values(
+                    &emulator.name,
+                    &vm_root,
+                    use_native_pcbox.then_some(vm_config_path.as_path()),
+                ),
+            )?;
+            let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
 
             if use_native_pcbox {
                 if exe_path.to_string_lossy().starts_with("flatpak::") {
@@ -4422,7 +4762,12 @@ fn launch_win9x_prepared_install(
                 }
 
                 let mut cmd = Command::new(&exe_path);
-                cmd.arg("-c").arg(&vm_config_path);
+                if command_template_override.is_some() {
+                    append_launch_args_native(&mut cmd, effective_launch_args);
+                } else {
+                    cmd.arg("-c").arg(&vm_config_path);
+                    append_launch_args_native(&mut cmd, launch_args);
+                }
                 cmd.current_dir(install_root);
                 tracing::info!(
                     command = ?cmd,
@@ -4439,8 +4784,13 @@ fn launch_win9x_prepared_install(
                 cmd.arg("run");
                 add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
                 cmd.arg(&app_id);
-                cmd.arg("-P")
-                    .arg(map_path_for_flatpak(&vm_root.to_string_lossy()));
+                if command_template_override.is_some() {
+                    append_launch_args_for_flatpak(&mut cmd, effective_launch_args);
+                } else {
+                    cmd.arg("-P")
+                        .arg(map_path_for_flatpak(&vm_root.to_string_lossy()));
+                    append_launch_args_for_flatpak(&mut cmd, launch_args);
+                }
                 cmd.current_dir(install_root);
                 tracing::info!(
                     command = ?cmd,
@@ -4452,7 +4802,12 @@ fn launch_win9x_prepared_install(
             }
 
             let mut cmd = Command::new(&exe_path);
-            cmd.arg("-P").arg(&vm_root);
+            if command_template_override.is_some() {
+                append_launch_args_native(&mut cmd, effective_launch_args);
+            } else {
+                cmd.arg("-P").arg(&vm_root);
+                append_launch_args_native(&mut cmd, launch_args);
+            }
             cmd.current_dir(install_root);
             tracing::info!(
                 command = ?cmd,
@@ -4691,6 +5046,8 @@ fn launch_scummvm_install(
     install_root: &Path,
     plan: &crate::exo::LinuxScummvmExceptionPlan,
     as_retroarch_core: bool,
+    launch_args: &[LaunchArg],
+    command_template_override: Option<&str>,
 ) -> Result<u32, String> {
     if as_retroarch_core {
         return Err(
@@ -4717,6 +5074,11 @@ fn launch_scummvm_install(
 
     let exe_path = check_standalone_installation(emulator)
         .ok_or_else(|| format!("{} standalone is not installed", emulator.name))?;
+    let override_launch_args = compile_override_launch_args(
+        command_template_override,
+        scummvm_template_values(&emulator.name, &config_path, &game_path, &plan.game_id),
+    )?;
+    let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
 
     if exe_path.to_string_lossy().starts_with("flatpak::") {
         let app_id = exe_path.to_string_lossy().replace("flatpak::", "");
@@ -4724,14 +5086,17 @@ fn launch_scummvm_install(
         cmd.arg("run");
         add_flatpak_filesystem_args(&mut cmd, vec![(install_root, false)]);
         cmd.arg(&app_id);
-        cmd.arg(format!(
-            "--config={}",
-            map_path_for_flatpak(&config_path.to_string_lossy())
-        ));
-        cmd.args(&plan.extra_args);
-        cmd.arg("-p")
-            .arg(map_path_for_flatpak(&game_path.to_string_lossy()));
-        cmd.arg(&plan.game_id);
+        if command_template_override.is_some() {
+            append_launch_args_for_flatpak(&mut cmd, effective_launch_args);
+        } else {
+            cmd.arg("--config")
+                .arg(map_path_for_flatpak(&config_path.to_string_lossy()));
+            cmd.args(&plan.extra_args);
+            append_launch_args_for_flatpak(&mut cmd, launch_args);
+            cmd.arg("-p")
+                .arg(map_path_for_flatpak(&game_path.to_string_lossy()));
+            cmd.arg(&plan.game_id);
+        }
         cmd.current_dir(install_root);
         tracing::info!(
             command = ?cmd,
@@ -4745,10 +5110,15 @@ fn launch_scummvm_install(
     }
 
     let mut cmd = Command::new(&exe_path);
-    cmd.arg(format!("--config={}", config_path.display()));
-    cmd.args(&plan.extra_args);
-    cmd.arg("-p").arg(&game_path);
-    cmd.arg(&plan.game_id);
+    if command_template_override.is_some() {
+        append_launch_args_native(&mut cmd, effective_launch_args);
+    } else {
+        cmd.arg("--config").arg(&config_path);
+        cmd.args(&plan.extra_args);
+        append_launch_args_native(&mut cmd, launch_args);
+        cmd.arg("-p").arg(&game_path);
+        cmd.arg(&plan.game_id);
+    }
     cmd.current_dir(install_root);
     tracing::info!(
         command = ?cmd,
@@ -4940,6 +5310,156 @@ fn add_flatpak_filesystem_args(cmd: &mut Command, paths: Vec<(&Path, bool)>) {
     }
 }
 
+fn standard_launch_template_values(
+    executable_path: Option<&Path>,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    rom_path: Option<&str>,
+    mame_rompath_uses_flatpak_mapping: bool,
+) -> (HashMap<String, LaunchTemplateValue>, Option<PathBuf>) {
+    let mut values = HashMap::from([
+        (
+            "platform".to_string(),
+            LaunchTemplateValue::Literal(platform_name.unwrap_or_default().to_string()),
+        ),
+        (
+            "emulator".to_string(),
+            LaunchTemplateValue::Literal(emulator_name.to_string()),
+        ),
+    ]);
+
+    if let Some(rom) = rom_path {
+        values.insert("file".to_string(), LaunchTemplateValue::Path(rom.to_string()));
+    }
+
+    if emulator_name == "Altirra" {
+        if let Some(rom) = rom_path {
+            values.insert(
+                "altirra_media_switch".to_string(),
+                LaunchTemplateValue::Literal(altirra_media_switch(rom).to_string()),
+            );
+        }
+    } else if is_arcade_mame_standalone_launch(emulator_name, platform_name, rom_path) {
+        if let Some(rom) = rom_path {
+            if let Some(romset) = mame_arcade_romset_name(rom) {
+                values.insert(
+                    "mame_romset".to_string(),
+                    LaunchTemplateValue::Literal(romset),
+                );
+            }
+            values.insert(
+                "mame_rompath".to_string(),
+                LaunchTemplateValue::Literal(mame_arcade_rompath_value(
+                    rom,
+                    mame_rompath_uses_flatpak_mapping,
+                )),
+            );
+        }
+    } else if emulator_name == "Hypseus Singe" {
+        if let Some(context) = hypseus_launch_context(executable_path, rom_path)
+            .or_else(|| hypseus_launch_context(None, rom_path))
+        {
+            values.insert(
+                "hypseus_game".to_string(),
+                LaunchTemplateValue::Literal(context.game_name.clone()),
+            );
+            values.insert(
+                "hypseus_framefile".to_string(),
+                LaunchTemplateValue::Path(context.framefile.clone()),
+            );
+            values.insert(
+                "hypseus_support_root".to_string(),
+                LaunchTemplateValue::Path(context.support_root.clone()),
+            );
+            values.insert(
+                "hypseus_romdir".to_string(),
+                LaunchTemplateValue::Path(context.romdir.clone()),
+            );
+            return (values, context.current_dir);
+        }
+    }
+
+    (values, None)
+}
+
+fn dosbox_template_values(
+    emulator_name: &str,
+    config_path: &Path,
+    shared_config_path: Option<&Path>,
+) -> HashMap<String, LaunchTemplateValue> {
+    let mut values = HashMap::from([
+        (
+            "emulator".to_string(),
+            LaunchTemplateValue::Literal(emulator_name.to_string()),
+        ),
+        (
+            "config".to_string(),
+            LaunchTemplateValue::Path(config_path.to_string_lossy().to_string()),
+        ),
+    ]);
+
+    if let Some(shared_config_path) = shared_config_path {
+        values.insert(
+            "shared_config".to_string(),
+            LaunchTemplateValue::Path(shared_config_path.to_string_lossy().to_string()),
+        );
+    }
+
+    values
+}
+
+fn vm_launch_template_values(
+    emulator_name: &str,
+    vm_root: &Path,
+    vm_config_path: Option<&Path>,
+) -> HashMap<String, LaunchTemplateValue> {
+    let mut values = HashMap::from([
+        (
+            "emulator".to_string(),
+            LaunchTemplateValue::Literal(emulator_name.to_string()),
+        ),
+        (
+            "vm_root".to_string(),
+            LaunchTemplateValue::Path(vm_root.to_string_lossy().to_string()),
+        ),
+    ]);
+
+    if let Some(vm_config_path) = vm_config_path {
+        values.insert(
+            "vm_config".to_string(),
+            LaunchTemplateValue::Path(vm_config_path.to_string_lossy().to_string()),
+        );
+    }
+
+    values
+}
+
+fn scummvm_template_values(
+    emulator_name: &str,
+    config_path: &Path,
+    game_path: &Path,
+    game_id: &str,
+) -> HashMap<String, LaunchTemplateValue> {
+    HashMap::from([
+        (
+            "emulator".to_string(),
+            LaunchTemplateValue::Literal(emulator_name.to_string()),
+        ),
+        (
+            "config".to_string(),
+            LaunchTemplateValue::Path(config_path.to_string_lossy().to_string()),
+        ),
+        (
+            "game_path".to_string(),
+            LaunchTemplateValue::Path(game_path.to_string_lossy().to_string()),
+        ),
+        (
+            "game_id".to_string(),
+            LaunchTemplateValue::Literal(game_id.to_string()),
+        ),
+    ])
+}
+
 /// Launch RetroArch with a specific core (optionally with a ROM)
 fn launch_retroarch(
     core_name: &str,
@@ -4947,6 +5467,7 @@ fn launch_retroarch(
     _platform_name: Option<&str>,
     cleanup_paths: Vec<PathBuf>,
     launch_args: &[LaunchArg],
+    command_template_override: Option<&str>,
 ) -> Result<u32, String> {
     let core_path = check_retroarch_core_installed(core_name)
         .ok_or_else(|| format!("RetroArch core '{}' is not installed", core_name))?;
@@ -4959,6 +5480,24 @@ fn launch_retroarch(
         "Launching RetroArch with explicit core"
     );
 
+    let mut template_values = HashMap::from([
+        ("core".to_string(), LaunchTemplateValue::Path(core_path_str.clone())),
+        (
+            "platform".to_string(),
+            LaunchTemplateValue::Literal(_platform_name.unwrap_or_default().to_string()),
+        ),
+        (
+            "emulator".to_string(),
+            LaunchTemplateValue::Literal("RetroArch".to_string()),
+        ),
+    ]);
+    if let Some(rom) = rom_path {
+        template_values.insert("file".to_string(), LaunchTemplateValue::Path(rom.to_string()));
+    }
+    let override_launch_args =
+        compile_override_launch_args(command_template_override, template_values)?;
+    let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
+
     match current_os() {
         "Linux" => {
             let is_flatpak = is_flatpak_installed("org.libretro.RetroArch");
@@ -4969,7 +5508,7 @@ fn launch_retroarch(
                 if let Some(rom) = rom_path {
                     filesystem_paths.push((Path::new(rom), false));
                 }
-                for arg in launch_args {
+                for arg in effective_launch_args {
                     if let LaunchArg::Path(path) = arg {
                         filesystem_paths.push((Path::new(path), false));
                     }
@@ -4978,7 +5517,7 @@ fn launch_retroarch(
                 cmd.arg("org.libretro.RetroArch");
                 cmd.arg("--verbose");
                 cmd.arg("-L").arg(map_path_for_flatpak(&core_path_str));
-                append_launch_args_for_flatpak(&mut cmd, launch_args);
+                append_launch_args_for_flatpak(&mut cmd, effective_launch_args);
                 if let Some(rom) = rom_path {
                     cmd.arg(map_path_for_flatpak(rom));
                 }
@@ -4995,7 +5534,7 @@ fn launch_retroarch(
                 let mut cmd = Command::new(retroarch_path);
                 cmd.arg("--verbose");
                 cmd.arg("-L").arg(&core_path_str);
-                append_launch_args_native(&mut cmd, launch_args);
+                append_launch_args_native(&mut cmd, effective_launch_args);
                 if let Some(rom) = rom_path {
                     cmd.arg(rom);
                 }
@@ -5014,7 +5553,7 @@ fn launch_retroarch(
             let mut cmd = Command::new(retroarch_path);
             cmd.arg("--verbose");
             cmd.arg("-L").arg(&core_path_str);
-            append_launch_args_native(&mut cmd, launch_args);
+            append_launch_args_native(&mut cmd, effective_launch_args);
             if let Some(rom) = rom_path {
                 cmd.arg(rom);
             }
@@ -5031,6 +5570,7 @@ fn launch_standalone(
     platform_name: Option<&str>,
     cleanup_paths: Vec<PathBuf>,
     launch_args: &[LaunchArg],
+    command_template_override: Option<&str>,
 ) -> Result<u32, String> {
     tracing::debug!(emulator = %emulator.name, rom = ?rom_path, "Launching standalone emulator");
 
@@ -5047,6 +5587,17 @@ fn launch_standalone(
         .to_string_lossy()
         .starts_with(FLATPAK_INSTALL_PREFIX)
     {
+        let (template_values, override_current_dir) = standard_launch_template_values(
+            Some(exe_path.as_path()),
+            &emulator.name,
+            platform_name,
+            rom_path,
+            true,
+        );
+        let override_launch_args =
+            compile_override_launch_args(command_template_override, template_values)?;
+        let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
+
         // Flatpak app
         let app_id = exe_path
             .to_string_lossy()
@@ -5066,7 +5617,7 @@ fn launch_standalone(
         if let Some(runtime_roms_dir) = extra_runtime_roms_dir.as_ref() {
             filesystem_paths.push((runtime_roms_dir.as_path(), true));
         }
-        for arg in launch_args {
+        for arg in effective_launch_args {
             if let LaunchArg::Path(path) = arg {
                 filesystem_paths.push((Path::new(path), false));
             }
@@ -5075,13 +5626,20 @@ fn launch_standalone(
             add_flatpak_filesystem_args(&mut cmd, filesystem_paths);
         }
         cmd.arg(&app_id);
-        append_standalone_rom_and_args_for_flatpak(
-            &mut cmd,
-            &emulator.name,
-            platform_name,
-            rom_path,
-            launch_args,
-        );
+        if command_template_override.is_some() {
+            append_launch_args_for_flatpak(&mut cmd, effective_launch_args);
+            if let Some(current_dir) = override_current_dir {
+                cmd.current_dir(current_dir);
+            }
+        } else {
+            append_standalone_rom_and_args_for_flatpak(
+                &mut cmd,
+                &emulator.name,
+                platform_name,
+                rom_path,
+                launch_args,
+            );
+        }
         tracing::info!(command = ?cmd, app_id = %app_id, "Spawning via flatpak");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else if let Some(wine_executable) = exe_path
@@ -5089,6 +5647,17 @@ fn launch_standalone(
         .strip_prefix(WINE_INSTALL_PREFIX)
         .map(|path| path.to_string())
     {
+        let (template_values, override_current_dir) = standard_launch_template_values(
+            Some(exe_path.as_path()),
+            &emulator.name,
+            platform_name,
+            rom_path,
+            false,
+        );
+        let override_launch_args =
+            compile_override_launch_args(command_template_override, template_values)?;
+        let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
+
         let info = wine_install_for_emulator(emulator)
             .ok_or_else(|| format!("{} does not have a Wine launch profile", emulator.name))?;
         let prefix_dir = wine_prefix_dir(&info);
@@ -5106,13 +5675,20 @@ fn launch_standalone(
             cmd.env("WINEARCH", "win64");
         }
         cmd.arg(&wine_executable);
-        append_standalone_rom_and_args_for_wine(
-            &mut cmd,
-            &emulator.name,
-            &prefix_dir,
-            rom_path,
-            launch_args,
-        )?;
+        if command_template_override.is_some() {
+            append_launch_args_for_wine(&mut cmd, &prefix_dir, effective_launch_args)?;
+            if let Some(current_dir) = override_current_dir {
+                cmd.current_dir(current_dir);
+            }
+        } else {
+            append_standalone_rom_and_args_for_wine(
+                &mut cmd,
+                &emulator.name,
+                &prefix_dir,
+                rom_path,
+                launch_args,
+            )?;
+        }
         tracing::info!(
             command = ?cmd,
             prefix = %prefix_dir.display(),
@@ -5121,17 +5697,35 @@ fn launch_standalone(
         );
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else if current_os() == "macOS" && exe_path.extension().map(|e| e == "app").unwrap_or(false) {
-        // macOS .app bundle
-        let mut cmd = Command::new("open");
-        cmd.arg("-a").arg(exe_path.to_str().unwrap_or_default());
-        append_standalone_rom_and_args_native(
-            &mut cmd,
-            Some(&exe_path),
+        let (template_values, override_current_dir) = standard_launch_template_values(
+            Some(exe_path.as_path()),
             &emulator.name,
             platform_name,
             rom_path,
-            launch_args,
+            false,
         );
+        let override_launch_args =
+            compile_override_launch_args(command_template_override, template_values)?;
+        let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
+
+        // macOS .app bundle
+        let mut cmd = Command::new("open");
+        cmd.arg("-a").arg(exe_path.to_str().unwrap_or_default());
+        if command_template_override.is_some() {
+            append_launch_args_native(&mut cmd, effective_launch_args);
+            if let Some(current_dir) = override_current_dir {
+                cmd.current_dir(current_dir);
+            }
+        } else {
+            append_standalone_rom_and_args_native(
+                &mut cmd,
+                Some(&exe_path),
+                &emulator.name,
+                platform_name,
+                rom_path,
+                launch_args,
+            );
+        }
         tracing::info!(command = ?cmd, "Spawning macOS app");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else if current_os() == "Linux"
@@ -5141,31 +5735,66 @@ fn launch_standalone(
             .is_some_and(|ext| ext.eq_ignore_ascii_case("appimage"))
         && find_appimage_run_command().is_some()
     {
-        let mut cmd = Command::new(
-            find_appimage_run_command().expect("checked appimage-run presence above"),
-        );
-        cmd.arg(&exe_path);
-        append_standalone_rom_and_args_native(
-            &mut cmd,
-            Some(&exe_path),
+        let (template_values, override_current_dir) = standard_launch_template_values(
+            Some(exe_path.as_path()),
             &emulator.name,
             platform_name,
             rom_path,
-            launch_args,
+            false,
         );
+        let override_launch_args =
+            compile_override_launch_args(command_template_override, template_values)?;
+        let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
+
+        let mut cmd =
+            Command::new(find_appimage_run_command().expect("checked appimage-run presence above"));
+        cmd.arg(&exe_path);
+        if command_template_override.is_some() {
+            append_launch_args_native(&mut cmd, effective_launch_args);
+            if let Some(current_dir) = override_current_dir {
+                cmd.current_dir(current_dir);
+            }
+        } else {
+            append_standalone_rom_and_args_native(
+                &mut cmd,
+                Some(&exe_path),
+                &emulator.name,
+                platform_name,
+                rom_path,
+                launch_args,
+            );
+        }
         tracing::info!(command = ?cmd, "Spawning AppImage via appimage-run");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     } else {
-        // Regular executable
-        let mut cmd = Command::new(&exe_path);
-        append_standalone_rom_and_args_native(
-            &mut cmd,
-            Some(&exe_path),
+        let (template_values, override_current_dir) = standard_launch_template_values(
+            Some(exe_path.as_path()),
             &emulator.name,
             platform_name,
             rom_path,
-            launch_args,
+            false,
         );
+        let override_launch_args =
+            compile_override_launch_args(command_template_override, template_values)?;
+        let effective_launch_args = override_launch_args.as_deref().unwrap_or(launch_args);
+
+        // Regular executable
+        let mut cmd = Command::new(&exe_path);
+        if command_template_override.is_some() {
+            append_launch_args_native(&mut cmd, effective_launch_args);
+            if let Some(current_dir) = override_current_dir {
+                cmd.current_dir(current_dir);
+            }
+        } else {
+            append_standalone_rom_and_args_native(
+                &mut cmd,
+                Some(&exe_path),
+                &emulator.name,
+                platform_name,
+                rom_path,
+                launch_args,
+            );
+        }
         tracing::info!(command = ?cmd, "Spawning native executable");
         spawn_and_verify(cmd, &emulator.name, cleanup_paths)
     }
@@ -5231,10 +5860,11 @@ fn append_standalone_rom_and_args_native(
         }
         append_launch_args_native(cmd, args);
     } else if emulator_name == "Hypseus Singe" {
-        if let Some(context) =
-            hypseus_launch_context(executable_path, rom_path).or_else(|| hypseus_launch_context(None, rom_path))
+        if let Some(context) = hypseus_launch_context(executable_path, rom_path)
+            .or_else(|| hypseus_launch_context(None, rom_path))
         {
             cmd.arg(&context.game_name).arg("vldp");
+            cmd.arg("-fullscreen");
             append_launch_args_native(cmd, args);
             cmd.arg("-framefile").arg(&context.framefile);
             cmd.arg("-homedir").arg(&context.support_root);
@@ -5513,12 +6143,11 @@ fn hypseus_launch_context(
     }
 
     let game_name = framefile_path.file_stem()?.to_str()?.to_string();
-    let support_dir = resolve_hypseus_support_dir(executable_path)
-        .or_else(|| {
-            let info = appimage_install_for_slug("hypseus-singe")?;
-            let executable = find_appimage_install_executable(&info)?;
-            resolve_hypseus_support_dir(Some(executable.as_path()))
-        })?;
+    let support_dir = resolve_hypseus_support_dir(executable_path).or_else(|| {
+        let info = appimage_install_for_slug("hypseus-singe")?;
+        let executable = find_appimage_install_executable(&info)?;
+        resolve_hypseus_support_dir(Some(executable.as_path()))
+    })?;
     let bundle_root = hypseus_bundle_root(framefile_path)?;
     let mut staged_support_dir = support_dir.clone();
     let mut staged_bundle_root = bundle_root.clone();
@@ -5612,9 +6241,7 @@ fn stable_path_key(path: &Path) -> String {
 }
 
 fn resolve_hypseus_support_dir(executable_path: Option<&Path>) -> Option<PathBuf> {
-    let support_dir = executable_path
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        ?;
+    let support_dir = executable_path.and_then(|path| path.parent().map(Path::to_path_buf))?;
 
     if hypseus_support_tree_complete(&support_dir) {
         return Some(support_dir);
@@ -5822,11 +6449,13 @@ mod tests {
         let extracted_path = PathBuf::from(prepared.rom_path.unwrap());
 
         assert_ne!(extracted_path, existing_path);
-        assert!(extracted_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap()
-            .starts_with("Existing Game.lunchbox-"));
+        assert!(
+            extracted_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap()
+                .starts_with("Existing Game.lunchbox-")
+        );
         assert_eq!(std::fs::read(&existing_path).unwrap(), b"existing");
         assert_eq!(std::fs::read(&extracted_path).unwrap(), b"new");
         assert_eq!(prepared.cleanup_paths, vec![extracted_path]);
@@ -6008,9 +6637,10 @@ mod tests {
 
         assert_eq!(args.first().map(String::as_str), Some("-rompath"));
         assert_eq!(args.last().map(String::as_str), Some("ddsomu"));
-        assert!(args
-            .get(1)
-            .is_some_and(|value| value.contains("/roms/arcade")));
+        assert!(
+            args.get(1)
+                .is_some_and(|value| value.contains("/roms/arcade"))
+        );
     }
 
     #[test]
@@ -6046,6 +6676,7 @@ mod tests {
 
         assert_eq!(args.first().map(String::as_str), Some("lair"));
         assert_eq!(args.get(1).map(String::as_str), Some("vldp"));
+        assert!(args.contains(&"-fullscreen".to_string()));
         assert!(args.contains(&"-framefile".to_string()));
         assert!(args.contains(&framefile.to_string_lossy().to_string()));
         assert!(args.contains(&"-romdir".to_string()));

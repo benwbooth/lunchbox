@@ -1,8 +1,8 @@
 //! Game details panel
 
-use super::{preload_video_state, Box3DViewer, LazyImage, VideoPlayer, VideoState};
+use super::{Box3DViewer, LazyImage, VideoPlayer, VideoState, preload_video_state};
 use crate::backend_api::{
-    self, file_to_asset_url, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats,
+    self, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats, file_to_asset_url,
 };
 use futures::stream::{self, StreamExt};
 use leptos::prelude::*;
@@ -405,7 +405,10 @@ fn build_minerva_picker_items(
     if rom.minerva_platform.eq_ignore_ascii_case("MAME") {
         let mut bundles: std::collections::BTreeMap<
             String,
-            (Option<backend_api::TorrentFileMatch>, Option<backend_api::TorrentFileMatch>),
+            (
+                Option<backend_api::TorrentFileMatch>,
+                Option<backend_api::TorrentFileMatch>,
+            ),
         > = std::collections::BTreeMap::new();
         for file in files {
             if let Some((romset, kind)) = parse_mame_laserdisc_bundle(&file.filename) {
@@ -496,7 +499,11 @@ fn build_minerva_picker_items(
                     .max(text.match_score)
                     .max(video.match_score)
                     .max(audio.match_score),
-                region: rom_zip.region.or(text.region).or(video.region).or(audio.region),
+                region: rom_zip
+                    .region
+                    .or(text.region)
+                    .or(video.region)
+                    .or(audio.region),
                 suggested_emulator: Some("Hypseus Singe".to_string()),
                 type_badge: Some("Bundle".to_string()),
             })
@@ -627,7 +634,10 @@ async fn load_minerva_torrent_groups(
         }
     }
 
-    if platform_name == "Arcade" && groups.iter().any(|group| is_laserdisc_collection_rom(&group.rom))
+    if platform_name == "Arcade"
+        && groups
+            .iter()
+            .any(|group| is_laserdisc_collection_rom(&group.rom))
     {
         groups.retain(|group| is_laserdisc_collection_rom(&group.rom));
     }
@@ -638,9 +648,14 @@ async fn load_minerva_torrent_groups(
         minerva_collection_compatibility_priority(&a.rom)
             .cmp(&minerva_collection_compatibility_priority(&b.rom))
             .then_with(|| {
-                b.rom.collection
+                b.rom
+                    .collection
                     .eq_ignore_ascii_case("Laserdisc Collection")
-                    .cmp(&a.rom.collection.eq_ignore_ascii_case("Laserdisc Collection"))
+                    .cmp(
+                        &a.rom
+                            .collection
+                            .eq_ignore_ascii_case("Laserdisc Collection"),
+                    )
             })
             .then_with(|| {
                 b_top_score
@@ -2208,6 +2223,334 @@ fn summarize_firmware_sources(statuses: &[backend_api::FirmwareStatus]) -> Optio
     }
 }
 
+fn refresh_game_launch_template_preview(
+    launchbox_db_id: i64,
+    platform_name: String,
+    emulator_name: String,
+    is_retroarch_core: bool,
+    set_loading: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+    set_preview: WriteSignal<Option<backend_api::GameLaunchTemplatePreview>>,
+    set_draft: WriteSignal<String>,
+    set_override_enabled: WriteSignal<bool>,
+) {
+    set_loading.set(true);
+    set_error.set(None);
+
+    spawn_local(async move {
+        match backend_api::get_game_launch_template_preview(
+            launchbox_db_id,
+            platform_name,
+            emulator_name,
+            is_retroarch_core,
+        )
+        .await
+        {
+            Ok(preview) => {
+                let game_override = preview.game_command_template_override.clone();
+                set_override_enabled.set(game_override.is_some());
+                set_draft.set(game_override.unwrap_or_default());
+                set_preview.set(Some(preview));
+            }
+            Err(e) => set_error.set(Some(format!("Failed to load command preview: {}", e))),
+        }
+
+        set_loading.set(false);
+    });
+}
+
+fn game_launch_template_note(preview: &backend_api::GameLaunchTemplatePreview) -> &'static str {
+    if preview.is_prepared_install {
+        "Prepared installs use runtime-specific placeholders such as %{config}, %{shared_config}, %{vm_root}, %{game_path}, and %{game_id}. A game override wins over Settings > Emulator Launch Commands."
+    } else if preview.runtime_kind.eq_ignore_ascii_case("retroarch") {
+        "Use %f for the selected file, %{core} for the RetroArch core, and %% for a literal percent. A game override wins over Settings > Emulator Launch Commands."
+    } else {
+        "Use %f for the selected file and %% for a literal percent. Emulator-specific defaults may also expose placeholders like %{mame_romset} or %{hypseus_framefile}. A game override wins over Settings > Emulator Launch Commands."
+    }
+}
+
+#[component]
+fn GameLaunchTemplateEditor(
+    launchbox_db_id: i64,
+    platform_name: String,
+    emulator_name: String,
+    is_retroarch_core: bool,
+) -> impl IntoView {
+    if launchbox_db_id <= 0 {
+        return view! { <></> }.into_any();
+    }
+
+    let (expanded, set_expanded) = signal(false);
+    let (loading, set_loading) = signal(false);
+    let (saving, set_saving) = signal(false);
+    let (preview, set_preview) = signal::<Option<backend_api::GameLaunchTemplatePreview>>(None);
+    let (draft_template, set_draft_template) = signal(String::new());
+    let (override_enabled, set_override_enabled) = signal(false);
+    let (error, set_error) = signal::<Option<String>>(None);
+    let (status, set_status) = signal::<Option<String>>(None);
+    let platform_name_value = StoredValue::new(platform_name);
+    let emulator_name_value = StoredValue::new(emulator_name);
+
+    view! {
+        <div class="emulator-command-editor">
+            <button
+                class="emulator-pref-btn emulator-command-toggle"
+                class:active=move || expanded.get()
+                on:click=move |e: web_sys::MouseEvent| {
+                    e.stop_propagation();
+                    let next = !expanded.get_untracked();
+                    set_expanded.set(next);
+                    if next {
+                        set_status.set(None);
+                        refresh_game_launch_template_preview(
+                            launchbox_db_id,
+                            platform_name_value.get_value(),
+                            emulator_name_value.get_value(),
+                            is_retroarch_core,
+                            set_loading,
+                            set_error,
+                            set_preview,
+                            set_draft_template,
+                            set_override_enabled,
+                        );
+                    }
+                }
+            >
+                {move || if expanded.get() { "Hide Command Line" } else { "Command Line" }}
+            </button>
+
+            <Show when=move || expanded.get()>
+                <div class="emulator-command-panel">
+                    <Show when=move || error.get().is_some()>
+                        {move || error.get().map(|message| view! {
+                            <div class="emulator-error emulator-command-error">
+                                <span class="error-icon">"!"</span>
+                                <span>{message}</span>
+                                <button class="error-dismiss" on:click=move |_| set_error.set(None)>"Dismiss"</button>
+                            </div>
+                        })}
+                    </Show>
+
+                    <Show when=move || status.get().is_some()>
+                        {move || status.get().map(|message| view! {
+                            <div class="emulator-pref-indicator">{message}</div>
+                        })}
+                    </Show>
+
+                    <Show
+                        when=move || !loading.get()
+                        fallback=|| view! {
+                            <div class="emulator-loading">
+                                <div class="loading-spinner"></div>
+                                <span>"Loading command preview..."</span>
+                            </div>
+                        }
+                    >
+                        {move || preview.get().map(|preview| {
+                            let note = game_launch_template_note(&preview).to_string();
+                            let platform_override =
+                                preview.platform_command_template_override.clone();
+                            let game_override = preview.game_command_template_override.clone();
+                            let has_platform_override = platform_override.is_some();
+                            let has_game_override = game_override.is_some();
+                            let effective_template_value =
+                                StoredValue::new(preview.effective_template.clone());
+                            view! {
+                                <div class="emulator-command-grid">
+                                    <div class="emulator-command-row">
+                                        <span class="emulator-command-label">"Built-In Default"</span>
+                                        <code class="emulator-command-value">{preview.default_template.clone()}</code>
+                                    </div>
+
+                                    <Show when=move || has_platform_override>
+                                        <div class="emulator-command-row">
+                                            <span class="emulator-command-label">"Platform Override"</span>
+                                            <code class="emulator-command-value">
+                                                {platform_override.clone().unwrap_or_default()}
+                                            </code>
+                                        </div>
+                                    </Show>
+
+                                    <Show when=move || has_game_override>
+                                        <div class="emulator-command-row">
+                                            <span class="emulator-command-label">"Game Override"</span>
+                                            <code class="emulator-command-value">
+                                                {game_override.clone().unwrap_or_default()}
+                                            </code>
+                                        </div>
+                                    </Show>
+
+                                    <div class="emulator-command-row">
+                                        <span class="emulator-command-label">"Effective Command"</span>
+                                        <code class="emulator-command-value effective">
+                                            {preview.effective_template.clone()}
+                                        </code>
+                                    </div>
+                                </div>
+
+                                <Show
+                                    when=move || override_enabled.get()
+                                    fallback=move || view! {
+                                        <div class="emulator-command-enable">
+                                            <button
+                                                class="emulator-pref-btn"
+                                                on:click=move |e: web_sys::MouseEvent| {
+                                                    e.stop_propagation();
+                                                    set_override_enabled.set(true);
+                                                    set_draft_template.set(
+                                                        effective_template_value.get_value(),
+                                                    );
+                                                    set_status.set(None);
+                                                    set_error.set(None);
+                                                }
+                                            >
+                                                "Enable Per-Game Override"
+                                            </button>
+                                        </div>
+                                    }
+                                >
+                                    <label class="settings-label">
+                                        "Per-Game Override"
+                                        <textarea
+                                            class="settings-input emulator-command-textarea"
+                                            rows="3"
+                                            prop:value=move || draft_template.get()
+                                            on:input=move |ev| {
+                                                set_draft_template.set(event_target_value(&ev));
+                                                set_status.set(None);
+                                                set_error.set(None);
+                                            }
+                                        />
+                                    </label>
+                                </Show>
+
+                                <p class="settings-hint emulator-command-hint">{note}</p>
+
+                                <Show when=move || override_enabled.get()>
+                                    <div class="emulator-pref-buttons emulator-command-actions">
+                                        <button
+                                            class="emulator-pref-btn emulator-play-btn"
+                                            disabled=move || saving.get()
+                                            on:click=move |e: web_sys::MouseEvent| {
+                                                e.stop_propagation();
+                                                let command_template =
+                                                    draft_template.get_untracked().trim().to_string();
+                                                let platform_name = platform_name_value.get_value();
+                                                let emulator_name = emulator_name_value.get_value();
+                                                set_saving.set(true);
+                                                set_status.set(None);
+                                                set_error.set(None);
+
+                                                spawn_local(async move {
+                                                    match backend_api::set_game_launch_template_override(
+                                                        launchbox_db_id,
+                                                        emulator_name.clone(),
+                                                        is_retroarch_core,
+                                                        command_template.clone(),
+                                                    )
+                                                    .await
+                                                    {
+                                                        Ok(()) => {
+                                                            set_status.set(Some(
+                                                                "Saved the per-game command override."
+                                                                    .to_string(),
+                                                            ));
+                                                            refresh_game_launch_template_preview(
+                                                                launchbox_db_id,
+                                                                platform_name.clone(),
+                                                                emulator_name.clone(),
+                                                                is_retroarch_core,
+                                                                set_loading,
+                                                                set_error,
+                                                                set_preview,
+                                                                set_draft_template,
+                                                                set_override_enabled,
+                                                            );
+                                                        }
+                                                        Err(e) => set_error.set(Some(format!(
+                                                            "Failed to save per-game command override: {}",
+                                                            e
+                                                        ))),
+                                                    }
+
+                                                    set_saving.set(false);
+                                                });
+                                            }
+                                        >
+                                            {move || if saving.get() { "Saving..." } else { "Save Override" }}
+                                        </button>
+
+                                        <button
+                                            class="emulator-pref-btn emulator-uninstall-btn"
+                                            disabled=move || saving.get()
+                                            on:click=move |e: web_sys::MouseEvent| {
+                                                e.stop_propagation();
+                                                if has_game_override {
+                                                    let platform_name = platform_name_value.get_value();
+                                                    let emulator_name = emulator_name_value.get_value();
+                                                    set_saving.set(true);
+                                                    set_status.set(None);
+                                                    set_error.set(None);
+
+                                                    spawn_local(async move {
+                                                        match backend_api::clear_game_launch_template_override(
+                                                            launchbox_db_id,
+                                                            emulator_name.clone(),
+                                                            is_retroarch_core,
+                                                        )
+                                                        .await
+                                                        {
+                                                            Ok(()) => {
+                                                                set_status.set(Some(
+                                                                    "Cleared the per-game command override."
+                                                                        .to_string(),
+                                                                ));
+                                                                refresh_game_launch_template_preview(
+                                                                    launchbox_db_id,
+                                                                    platform_name.clone(),
+                                                                    emulator_name.clone(),
+                                                                    is_retroarch_core,
+                                                                    set_loading,
+                                                                    set_error,
+                                                                    set_preview,
+                                                                    set_draft_template,
+                                                                    set_override_enabled,
+                                                                );
+                                                            }
+                                                            Err(e) => set_error.set(Some(format!(
+                                                                "Failed to clear per-game command override: {}",
+                                                                e
+                                                            ))),
+                                                        }
+
+                                                        set_saving.set(false);
+                                                    });
+                                                } else {
+                                                    set_override_enabled.set(false);
+                                                    set_draft_template.set(String::new());
+                                                    set_status.set(None);
+                                                    set_error.set(None);
+                                                }
+                                            }
+                                        >
+                                            {if has_game_override {
+                                                "Clear Override"
+                                            } else {
+                                                "Cancel"
+                                            }}
+                                        </button>
+                                    </div>
+                                </Show>
+                            }
+                        })}
+                    </Show>
+                </div>
+            </Show>
+        </div>
+    }
+    .into_any()
+}
+
 #[component]
 fn EmulatorPickerModal(
     emulators: ReadSignal<Vec<EmulatorWithStatus>>,
@@ -3002,6 +3345,12 @@ fn EmulatorPickerModal(
                                                     >
                                                         "Always for platform"
                                                     </button>
+                                                    <GameLaunchTemplateEditor
+                                                        launchbox_db_id=stored_db_id.get_value()
+                                                        platform_name=stored_platform.get_value()
+                                                        emulator_name=emu.name.clone()
+                                                        is_retroarch_core=is_retroarch_core
+                                                    />
                                                 </div>
                                             </li>
                                         }

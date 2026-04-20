@@ -227,7 +227,7 @@ pub async fn get_collection_games(
     state: &AppState,
     input: CollectionIdInput,
 ) -> Result<Vec<crate::db::schema::Game>, String> {
-    use crate::db::schema::{normalize_title_for_display, Game};
+    use crate::db::schema::{Game, normalize_title_for_display};
     use sqlx::Row;
 
     let db_pool = state
@@ -465,6 +465,38 @@ pub struct EmulatorPreferences {
     pub platform_preferences: Vec<PlatformEmulatorPref>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorLaunchProfile {
+    pub emulator_name: String,
+    pub platform_name: Option<String>,
+    pub runtime_kind: String,
+    pub args_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorLaunchTemplateOverride {
+    pub emulator_name: String,
+    pub platform_name: Option<String>,
+    pub runtime_kind: String,
+    pub command_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameLaunchTemplatePreview {
+    pub launchbox_db_id: i64,
+    pub platform_name: String,
+    pub emulator_name: String,
+    pub runtime_kind: String,
+    pub is_prepared_install: bool,
+    pub default_template: String,
+    pub platform_command_template_override: Option<String>,
+    pub game_command_template_override: Option<String>,
+    pub effective_template: String,
+}
+
 // ============================================================================
 // Emulator Preference Handlers
 // ============================================================================
@@ -475,10 +507,9 @@ pub async fn get_emulator_preference(
     launchbox_db_id: i64,
     platform_name: &str,
 ) -> Result<Option<String>, String> {
-    let db_pool = state
-        .db_pool
-        .as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(None);
+    };
 
     // First check for game-specific preference
     let game_pref: Option<(String,)> =
@@ -505,14 +536,13 @@ pub async fn get_emulator_preference(
 
 /// Set emulator preference for a specific game
 pub async fn set_game_emulator_preference(
-    state: &AppState,
+    state: &mut AppState,
     launchbox_db_id: i64,
     emulator_name: &str,
 ) -> Result<(), String> {
-    let db_pool = state
-        .db_pool
-        .as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let db_pool = crate::state::ensure_user_db(state)
+        .await
+        .map_err(|e| e.to_string())?;
 
     sqlx::query(
         r#"
@@ -534,14 +564,13 @@ pub async fn set_game_emulator_preference(
 
 /// Set emulator preference for a platform (all games on that platform)
 pub async fn set_platform_emulator_preference(
-    state: &AppState,
+    state: &mut AppState,
     platform_name: &str,
     emulator_name: &str,
 ) -> Result<(), String> {
-    let db_pool = state
-        .db_pool
-        .as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let db_pool = crate::state::ensure_user_db(state)
+        .await
+        .map_err(|e| e.to_string())?;
 
     sqlx::query(
         r#"
@@ -566,10 +595,9 @@ pub async fn clear_game_emulator_preference(
     state: &AppState,
     launchbox_db_id: i64,
 ) -> Result<(), String> {
-    let db_pool = state
-        .db_pool
-        .as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(());
+    };
 
     sqlx::query("DELETE FROM emulator_preferences WHERE launchbox_db_id = ?")
         .bind(launchbox_db_id)
@@ -585,10 +613,9 @@ pub async fn clear_platform_emulator_preference(
     state: &AppState,
     platform_name: &str,
 ) -> Result<(), String> {
-    let db_pool = state
-        .db_pool
-        .as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(());
+    };
 
     sqlx::query("DELETE FROM emulator_preferences WHERE platform_name = ?")
         .bind(platform_name)
@@ -601,10 +628,12 @@ pub async fn clear_platform_emulator_preference(
 
 /// Get all emulator preferences (for settings UI)
 pub async fn get_all_emulator_preferences(state: &AppState) -> Result<EmulatorPreferences, String> {
-    let db_pool = state
-        .db_pool
-        .as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(EmulatorPreferences {
+            game_preferences: Vec::new(),
+            platform_preferences: Vec::new(),
+        });
+    };
 
     // Get game preferences
     let game_prefs: Vec<(i64, String)> = sqlx::query_as(
@@ -658,10 +687,9 @@ pub async fn get_all_emulator_preferences(state: &AppState) -> Result<EmulatorPr
 
 /// Clear all emulator preferences
 pub async fn clear_all_emulator_preferences(state: &AppState) -> Result<(), String> {
-    let db_pool = state
-        .db_pool
-        .as_ref()
-        .ok_or_else(|| "Database not initialized".to_string())?;
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(());
+    };
 
     sqlx::query("DELETE FROM emulator_preferences")
         .execute(db_pool)
@@ -669,6 +697,622 @@ pub async fn clear_all_emulator_preferences(state: &AppState) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// ============================================================================
+// Emulator Launch Profile Handlers
+// ============================================================================
+
+fn runtime_kind_label(is_retroarch_core: bool) -> &'static str {
+    if is_retroarch_core {
+        "retroarch"
+    } else {
+        "standalone"
+    }
+}
+
+pub async fn get_all_emulator_launch_profiles(
+    state: &AppState,
+) -> Result<Vec<EmulatorLaunchProfile>, String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    let rows: Vec<(String, String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT emulator_name, platform_name, runtime_kind, args_text
+        FROM emulator_launch_profiles
+        ORDER BY
+            CASE WHEN platform_name = '' THEN 0 ELSE 1 END,
+            platform_name,
+            emulator_name,
+            runtime_kind
+        "#,
+    )
+    .fetch_all(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(
+            |(emulator_name, platform_name, runtime_kind, args_text)| EmulatorLaunchProfile {
+                emulator_name,
+                platform_name: if platform_name.is_empty() {
+                    None
+                } else {
+                    Some(platform_name)
+                },
+                runtime_kind,
+                args_text,
+            },
+        )
+        .collect())
+}
+
+pub async fn get_emulator_launch_profile(
+    state: &AppState,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> Result<Option<EmulatorLaunchProfile>, String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(None);
+    };
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+    let normalized_platform = platform_name.unwrap_or("").trim();
+
+    let exact: Option<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT platform_name, args_text
+        FROM emulator_launch_profiles
+        WHERE emulator_name = ? AND platform_name = ? AND runtime_kind = ?
+        LIMIT 1
+        "#,
+    )
+    .bind(emulator_name)
+    .bind(normalized_platform)
+    .bind(runtime_kind)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let row = if let Some(row) = exact {
+        Some(row)
+    } else if !normalized_platform.is_empty() {
+        sqlx::query_as(
+            r#"
+            SELECT platform_name, args_text
+            FROM emulator_launch_profiles
+            WHERE emulator_name = ? AND platform_name = '' AND runtime_kind = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(emulator_name)
+        .bind(runtime_kind)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| e.to_string())?
+    } else {
+        None
+    };
+
+    Ok(row.map(|(platform_name, args_text)| EmulatorLaunchProfile {
+        emulator_name: emulator_name.to_string(),
+        platform_name: if platform_name.is_empty() {
+            None
+        } else {
+            Some(platform_name)
+        },
+        runtime_kind: runtime_kind.to_string(),
+        args_text,
+    }))
+}
+
+pub async fn set_emulator_launch_profile(
+    state: &mut AppState,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+    args_text: &str,
+) -> Result<(), String> {
+    let db_pool = crate::state::ensure_user_db(state)
+        .await
+        .map_err(|e| e.to_string())?;
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+    let normalized_platform = platform_name.unwrap_or("").trim();
+    let normalized_args = args_text.trim();
+
+    if normalized_args.is_empty() {
+        return clear_emulator_launch_profile(
+            state,
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+        )
+        .await;
+    }
+
+    crate::emulator::parse_launch_args_text(normalized_args)
+        .map_err(|e| format!("Invalid launch arguments: {}", e))?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO emulator_launch_profiles (emulator_name, platform_name, runtime_kind, args_text, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(emulator_name, platform_name, runtime_kind) DO UPDATE SET
+            args_text = excluded.args_text,
+            updated_at = CURRENT_TIMESTAMP
+        "#,
+    )
+    .bind(emulator_name)
+    .bind(normalized_platform)
+    .bind(runtime_kind)
+    .bind(normalized_args)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub async fn clear_emulator_launch_profile(
+    state: &AppState,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(());
+    };
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+    let normalized_platform = platform_name.unwrap_or("").trim();
+
+    sqlx::query(
+        r#"
+        DELETE FROM emulator_launch_profiles
+        WHERE emulator_name = ? AND platform_name = ? AND runtime_kind = ?
+        "#,
+    )
+    .bind(emulator_name)
+    .bind(normalized_platform)
+    .bind(runtime_kind)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub async fn get_all_emulator_launch_template_overrides(
+    state: &AppState,
+) -> Result<Vec<EmulatorLaunchTemplateOverride>, String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    let rows: Vec<(String, String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT emulator_name, platform_name, runtime_kind, command_template
+        FROM emulator_launch_template_overrides
+        ORDER BY
+            CASE WHEN platform_name = '' THEN 0 ELSE 1 END,
+            platform_name,
+            emulator_name,
+            runtime_kind
+        "#,
+    )
+    .fetch_all(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(
+            |(emulator_name, platform_name, runtime_kind, command_template)| EmulatorLaunchTemplateOverride {
+                emulator_name,
+                platform_name: if platform_name.is_empty() {
+                    None
+                } else {
+                    Some(platform_name)
+                },
+                runtime_kind,
+                command_template,
+            },
+        )
+        .collect())
+}
+
+async fn get_emulator_launch_template_override_internal(
+    state: &AppState,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> Result<Option<String>, String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(None);
+    };
+
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+    let normalized_platform = platform_name.unwrap_or("").trim();
+
+    let exact: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT command_template
+        FROM emulator_launch_template_overrides
+        WHERE emulator_name = ? AND platform_name = ? AND runtime_kind = ?
+        LIMIT 1
+        "#,
+    )
+    .bind(emulator_name)
+    .bind(normalized_platform)
+    .bind(runtime_kind)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if exact.is_some() || normalized_platform.is_empty() {
+        return Ok(exact.map(|(template,)| template));
+    }
+
+    let fallback: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT command_template
+        FROM emulator_launch_template_overrides
+        WHERE emulator_name = ? AND platform_name = '' AND runtime_kind = ?
+        LIMIT 1
+        "#,
+    )
+    .bind(emulator_name)
+    .bind(runtime_kind)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(fallback.map(|(template,)| template))
+}
+
+pub async fn set_emulator_launch_template_override(
+    state: &mut AppState,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+    command_template: &str,
+) -> Result<(), String> {
+    let normalized_template = command_template.trim();
+    if normalized_template.is_empty() {
+        return clear_emulator_launch_template_override(
+            state,
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+        )
+        .await;
+    }
+
+    let db_pool = crate::state::ensure_user_db(state)
+        .await
+        .map_err(|e| e.to_string())?;
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+    let normalized_platform = platform_name.unwrap_or("").trim();
+
+    sqlx::query(
+        r#"
+        INSERT INTO emulator_launch_template_overrides (emulator_name, platform_name, runtime_kind, command_template, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(emulator_name, platform_name, runtime_kind) DO UPDATE SET
+            command_template = excluded.command_template,
+            updated_at = CURRENT_TIMESTAMP
+        "#,
+    )
+    .bind(emulator_name)
+    .bind(normalized_platform)
+    .bind(runtime_kind)
+    .bind(normalized_template)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub async fn clear_emulator_launch_template_override(
+    state: &AppState,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(());
+    };
+
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+    let normalized_platform = platform_name.unwrap_or("").trim();
+
+    sqlx::query(
+        r#"
+        DELETE FROM emulator_launch_template_overrides
+        WHERE emulator_name = ? AND platform_name = ? AND runtime_kind = ?
+        "#,
+    )
+    .bind(emulator_name)
+    .bind(normalized_platform)
+    .bind(runtime_kind)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+async fn get_game_launch_template_override_internal(
+    state: &AppState,
+    launchbox_db_id: i64,
+    emulator_name: &str,
+    is_retroarch_core: bool,
+) -> Result<Option<String>, String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(None);
+    };
+
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+
+    let row: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT command_template
+        FROM game_launch_template_overrides
+        WHERE launchbox_db_id = ? AND emulator_name = ? AND runtime_kind = ?
+        LIMIT 1
+        "#,
+    )
+    .bind(launchbox_db_id)
+    .bind(emulator_name)
+    .bind(runtime_kind)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(row.map(|(template,)| template))
+}
+
+pub async fn set_game_launch_template_override(
+    state: &mut AppState,
+    launchbox_db_id: i64,
+    emulator_name: &str,
+    is_retroarch_core: bool,
+    command_template: &str,
+) -> Result<(), String> {
+    let normalized_template = command_template.trim();
+    if normalized_template.is_empty() {
+        return clear_game_launch_template_override(
+            state,
+            launchbox_db_id,
+            emulator_name,
+            is_retroarch_core,
+        )
+        .await;
+    }
+
+    let db_pool = crate::state::ensure_user_db(state)
+        .await
+        .map_err(|e| e.to_string())?;
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+
+    sqlx::query(
+        r#"
+        INSERT INTO game_launch_template_overrides (launchbox_db_id, emulator_name, runtime_kind, command_template, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(launchbox_db_id, emulator_name, runtime_kind) DO UPDATE SET
+            command_template = excluded.command_template,
+            updated_at = CURRENT_TIMESTAMP
+        "#,
+    )
+    .bind(launchbox_db_id)
+    .bind(emulator_name)
+    .bind(runtime_kind)
+    .bind(normalized_template)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub async fn clear_game_launch_template_override(
+    state: &AppState,
+    launchbox_db_id: i64,
+    emulator_name: &str,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(());
+    };
+
+    let runtime_kind = runtime_kind_label(is_retroarch_core);
+
+    sqlx::query(
+        r#"
+        DELETE FROM game_launch_template_overrides
+        WHERE launchbox_db_id = ? AND emulator_name = ? AND runtime_kind = ?
+        "#,
+    )
+    .bind(launchbox_db_id)
+    .bind(emulator_name)
+    .bind(runtime_kind)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub async fn get_game_launch_template_preview(
+    state: &AppState,
+    launchbox_db_id: i64,
+    platform_name: &str,
+    emulator_name: &str,
+    is_retroarch_core: bool,
+) -> Result<GameLaunchTemplatePreview, String> {
+    let prepared_collection = if let Some(db_pool) = state.db_pool.as_ref() {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT file_path FROM game_files WHERE launchbox_db_id = ? LIMIT 1",
+        )
+        .bind(launchbox_db_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        row.and_then(|(file_path,)| {
+            if crate::exo::should_use_prepared_install(platform_name, Path::new(&file_path)) {
+                crate::exo::collection_for_platform(platform_name)
+            } else {
+                None
+            }
+        })
+    } else {
+        None
+    };
+    let is_prepared_install = prepared_collection.is_some();
+    let default_template = if let Some(collection) = prepared_collection {
+        crate::emulator::default_prepared_launch_command_template(
+            emulator_name,
+            collection,
+            is_retroarch_core,
+        )
+    } else {
+        crate::emulator::default_launch_command_template(
+            emulator_name,
+            Some(platform_name),
+            is_retroarch_core,
+        )
+    };
+    let platform_override = get_emulator_launch_template_override_internal(
+        state,
+        emulator_name,
+        Some(platform_name),
+        is_retroarch_core,
+    )
+    .await?;
+    let game_override = get_game_launch_template_override_internal(
+        state,
+        launchbox_db_id,
+        emulator_name,
+        is_retroarch_core,
+    )
+    .await?;
+
+    let effective_template = game_override
+        .clone()
+        .or_else(|| platform_override.clone())
+        .unwrap_or_else(|| default_template.clone());
+
+    Ok(GameLaunchTemplatePreview {
+        launchbox_db_id,
+        platform_name: platform_name.to_string(),
+        emulator_name: emulator_name.to_string(),
+        runtime_kind: runtime_kind_label(is_retroarch_core).to_string(),
+        is_prepared_install,
+        default_template,
+        platform_command_template_override: platform_override,
+        game_command_template_override: game_override,
+        effective_template,
+    })
+}
+
+async fn resolve_launch_template_override_for_standard_launch(
+    state: &AppState,
+    launchbox_db_id: Option<i64>,
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> Result<Option<String>, String> {
+    if let Some(launchbox_db_id) = launchbox_db_id {
+        if let Some(template) = get_game_launch_template_override_internal(
+            state,
+            launchbox_db_id,
+            emulator_name,
+            is_retroarch_core,
+        )
+        .await?
+        {
+            return Ok(Some(template));
+        }
+    }
+
+    get_emulator_launch_template_override_internal(
+        state,
+        emulator_name,
+        platform_name,
+        is_retroarch_core,
+    )
+    .await
+}
+
+async fn resolve_game_launch_template_override(
+    state: &AppState,
+    launchbox_db_id: Option<i64>,
+    emulator_name: &str,
+    is_retroarch_core: bool,
+) -> Result<Option<String>, String> {
+    let Some(launchbox_db_id) = launchbox_db_id else {
+        return Ok(None);
+    };
+
+    get_game_launch_template_override_internal(state, launchbox_db_id, emulator_name, is_retroarch_core)
+        .await
+}
+
+async fn resolve_emulator_launch_args(
+    state: &AppState,
+    emulator: &EmulatorInfo,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> Result<Vec<emulator::LaunchArg>, String> {
+    let Some(profile) =
+        get_emulator_launch_profile(state, &emulator.name, platform_name, is_retroarch_core)
+            .await?
+    else {
+        return Ok(Vec::new());
+    };
+
+    crate::emulator::parse_launch_args_text(&profile.args_text)
+        .map_err(|e| format!("Invalid launch arguments for {}: {}", emulator.name, e))
+}
+
+async fn build_launch_configuration(
+    state: &AppState,
+    launchbox_db_id: Option<i64>,
+    emulator: &EmulatorInfo,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+    allow_platform_template_override: bool,
+) -> Result<emulator::LaunchConfiguration, String> {
+    let legacy_args =
+        resolve_emulator_launch_args(state, emulator, platform_name, is_retroarch_core).await?;
+
+    let command_template_override = if allow_platform_template_override {
+        resolve_launch_template_override_for_standard_launch(
+            state,
+            launchbox_db_id,
+            &emulator.name,
+            platform_name,
+            is_retroarch_core,
+        )
+        .await?
+    } else {
+        resolve_game_launch_template_override(
+            state,
+            launchbox_db_id,
+            &emulator.name,
+            is_retroarch_core,
+        )
+        .await?
+    };
+
+    Ok(emulator::LaunchConfiguration {
+        command_template_override,
+        legacy_args,
+    })
 }
 
 // ============================================================================
@@ -950,7 +1594,7 @@ pub async fn launch_game_with_emulator(
                         error: Some(
                             "No downloaded eXo archive is available for this game".to_string(),
                         ),
-                    })
+                    });
                 }
             }
         };
@@ -975,9 +1619,19 @@ pub async fn launch_game_with_emulator(
                         success: false,
                         pid: None,
                         error: Some(e),
-                    })
+                    });
                 }
             };
+
+            let launch_configuration = build_launch_configuration(
+                state,
+                Some(db_id),
+                emulator,
+                Some(platform),
+                as_retroarch_core,
+                false,
+            )
+            .await?;
 
             return match emulator::launch_prepared_install(
                 emulator,
@@ -985,6 +1639,7 @@ pub async fn launch_game_with_emulator(
                 &prepared.install_root,
                 &prepared.launch_config_path,
                 as_retroarch_core,
+                &launch_configuration,
             ) {
                 Ok(pid) => Ok(LaunchResult {
                     success: true,
@@ -1029,27 +1684,37 @@ pub async fn launch_game_with_emulator(
         )
         .await
         .map_err(|e| e.to_string())?;
+        let mut launch_configuration = build_launch_configuration(
+            state,
+            Some(db_id),
+            emulator,
+            Some(platform),
+            as_retroarch_core,
+            true,
+        )
+        .await?;
+        launch_configuration.legacy_args.extend(firmware_launch_args);
 
         match emulator::launch_emulator(
             emulator,
             Some(&resolved_rom_path),
             Some(platform),
             as_retroarch_core,
-            &firmware_launch_args,
+            &launch_configuration,
         ) {
             Ok(pid) => {
                 return Ok(LaunchResult {
                     success: true,
                     pid: Some(pid),
                     error: None,
-                })
+                });
             }
             Err(e) => {
                 return Ok(LaunchResult {
                     success: false,
                     pid: None,
                     error: Some(e),
-                })
+                });
             }
         }
     }
@@ -1062,7 +1727,17 @@ pub async fn launch_game_with_emulator(
         });
     };
 
-    match emulator::launch_emulator(emulator, Some(rom_path), None, as_retroarch_core, &[]) {
+    let launch_configuration =
+        build_launch_configuration(state, launchbox_db_id, emulator, None, as_retroarch_core, true)
+            .await?;
+
+    match emulator::launch_emulator(
+        emulator,
+        Some(rom_path),
+        None,
+        as_retroarch_core,
+        &launch_configuration,
+    ) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),
@@ -1082,7 +1757,13 @@ pub fn launch_emulator_only(
     emulator: &EmulatorInfo,
     is_retroarch_core: bool,
 ) -> Result<LaunchResult, String> {
-    match emulator::launch_emulator(emulator, None, None, is_retroarch_core, &[]) {
+    match emulator::launch_emulator(
+        emulator,
+        None,
+        None,
+        is_retroarch_core,
+        &emulator::LaunchConfiguration::default(),
+    ) {
         Ok(pid) => Ok(LaunchResult {
             success: true,
             pid: Some(pid),
@@ -1195,27 +1876,25 @@ pub async fn get_game_file(
     .map_err(|e| e.to_string())?;
 
     if let Some(row) = row {
-        return Ok(Some(
-            (|(
-                db_id,
-                game_title,
-                platform,
-                file_path,
-                file_size,
-                imported_at,
-                import_source,
-                graboid_job_id,
-            )| GameFile {
-                launchbox_db_id: db_id,
-                game_title,
-                platform,
-                file_path,
-                file_size,
-                imported_at,
-                import_source,
-                graboid_job_id,
-            })(row),
-        ));
+        return Ok(Some((|(
+            db_id,
+            game_title,
+            platform,
+            file_path,
+            file_size,
+            imported_at,
+            import_source,
+            graboid_job_id,
+        )| GameFile {
+            launchbox_db_id: db_id,
+            game_title,
+            platform,
+            file_path,
+            file_size,
+            imported_at,
+            import_source,
+            graboid_job_id,
+        })(row)));
     }
 
     recover_missing_laserdisc_game_file(state, db_pool, launchbox_db_id).await
@@ -1272,11 +1951,7 @@ async fn recover_missing_laserdisc_game_file(
             &game_title,
         )
     } else if status_message.contains("ROM + CHD") {
-        recover_mame_laserdisc_rom(
-            &collection_root.join("MAME"),
-            launchbox_db_id,
-            &game_title,
-        )
+        recover_mame_laserdisc_rom(&collection_root.join("MAME"), launchbox_db_id, &game_title)
     } else {
         None
     };
@@ -1284,7 +1959,9 @@ async fn recover_missing_laserdisc_game_file(
     let Some(file_path) = recovered_path else {
         return Ok(None);
     };
-    let file_size = std::fs::metadata(&file_path).ok().map(|meta| meta.len() as i64);
+    let file_size = std::fs::metadata(&file_path)
+        .ok()
+        .map(|meta| meta.len() as i64);
     let file_path_text = file_path.display().to_string();
 
     sqlx::query(
@@ -1351,7 +2028,9 @@ fn recover_hypseus_laserdisc_framefile(
         let Some((bundle_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&pseudo_path) else {
             continue;
         };
-        let bundle = bundles.entry(bundle_key).or_insert((None, None, None, None, None));
+        let bundle = bundles
+            .entry(bundle_key)
+            .or_insert((None, None, None, None, None));
         match kind {
             ArcadeHypseusLaserdiscAssetKind::RomZip => bundle.1 = Some(entry.path().to_path_buf()),
             ArcadeHypseusLaserdiscAssetKind::Data => bundle.2 = Some(entry.path().to_path_buf()),
@@ -1392,7 +2071,11 @@ fn recover_hypseus_laserdisc_framefile(
         .map(|(_, framefile)| framefile)
 }
 
-fn recover_mame_laserdisc_rom(root: &Path, launchbox_db_id: i64, game_title: &str) -> Option<PathBuf> {
+fn recover_mame_laserdisc_rom(
+    root: &Path,
+    launchbox_db_id: i64,
+    game_title: &str,
+) -> Option<PathBuf> {
     let resolved_lookup_title = crate::images::emumovies::resolve_arcade_download_lookup_name(
         "Arcade",
         game_title,
@@ -1667,7 +2350,10 @@ pub struct MinervaRom {
     pub total_size: i64,
 }
 
-fn expand_arcade_laserdisc_roms(roms: Vec<MinervaRom>, canonical_platform_name: &str) -> Vec<MinervaRom> {
+fn expand_arcade_laserdisc_roms(
+    roms: Vec<MinervaRom>,
+    canonical_platform_name: &str,
+) -> Vec<MinervaRom> {
     if canonical_platform_name != "Arcade" {
         return roms;
     }
@@ -1935,7 +2621,8 @@ fn parse_arcade_hypseus_laserdisc_asset(
                 .collect::<Vec<_>>()
                 .iter()
                 .rposition(|component| {
-                    component.eq_ignore_ascii_case("vldp") || component.eq_ignore_ascii_case("singe")
+                    component.eq_ignore_ascii_case("vldp")
+                        || component.eq_ignore_ascii_case("singe")
                 })?
         }
     };
@@ -2170,12 +2857,10 @@ async fn build_arcade_laserdisc_plan(
         return Ok(Some(ArcadeLaserdiscPlan::Mame(plan)));
     }
 
-    Ok(build_arcade_hypseus_laserdisc_plan(
-        selected_torrent_url,
-        current_files,
-        selected_file,
+    Ok(
+        build_arcade_hypseus_laserdisc_plan(selected_torrent_url, current_files, selected_file)
+            .map(ArcadeLaserdiscPlan::Hypseus),
     )
-    .map(ArcadeLaserdiscPlan::Hypseus))
 }
 
 async fn download_minerva_batch(
@@ -2217,7 +2902,7 @@ async fn download_minerva_batch(
             Err(e) => {
                 return Err(MinervaBatchDownloadError::Failed(format!(
                     "Failed to read qBittorrent progress: {e}"
-                )))
+                )));
             }
         };
 
@@ -2246,12 +2931,12 @@ async fn download_minerva_batch(
         match progress.status {
             crate::torrent::DownloadStatus::Completed => break,
             crate::torrent::DownloadStatus::Failed => {
-                return Err(MinervaBatchDownloadError::Failed(progress.status_message))
+                return Err(MinervaBatchDownloadError::Failed(progress.status_message));
             }
             crate::torrent::DownloadStatus::Cancelled => {
                 return Err(MinervaBatchDownloadError::Cancelled(
                     progress.status_message,
-                ))
+                ));
             }
             _ => {}
         }
@@ -2772,10 +3457,16 @@ pub async fn start_minerva_download(
 
         let status_message = match (&download_mode, arcade_laserdisc_plan.as_ref()) {
             (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Mame(plan))) => {
-                format!("Downloading required MAME laserdisc files for {}", plan.romset_name)
+                format!(
+                    "Downloading required MAME laserdisc files for {}",
+                    plan.romset_name
+                )
             }
             (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Hypseus(plan))) => {
-                format!("Downloading Hypseus laserdisc bundle for {}", plan.bundle_name)
+                format!(
+                    "Downloading Hypseus laserdisc bundle for {}",
+                    plan.bundle_name
+                )
             }
             (MinervaDownloadMode::GameOnly, None) => format!("Downloading: {target_filename}"),
             (MinervaDownloadMode::FullTorrent, _) => {
@@ -2786,11 +3477,9 @@ pub async fn start_minerva_download(
             (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Mame(plan))) => {
                 plan.primary_asset.size.saturating_add(plan.chd_asset.size)
             }
-            (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Hypseus(plan))) => plan
-                .assets
-                .iter()
-                .map(|asset| asset.size)
-                .sum(),
+            (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Hypseus(plan))) => {
+                plan.assets.iter().map(|asset| asset.size).sum()
+            }
             (MinervaDownloadMode::GameOnly, None) => selection_plan
                 .as_ref()
                 .map(|plan| {
@@ -3119,7 +3808,11 @@ pub async fn start_minerva_download(
                 .and_then(|idx| files.iter().find(|candidate| candidate.index == idx))
                 .unwrap_or(&file);
             if let Some(path) = client
-                .get_downloaded_file_path(&client_job_id, representative_file.index, &download_dir_bg)
+                .get_downloaded_file_path(
+                    &client_job_id,
+                    representative_file.index,
+                    &download_dir_bg,
+                )
                 .await
                 .ok()
                 .flatten()
@@ -3193,11 +3886,18 @@ pub async fn start_minerva_download(
                 };
                 let completion_message = match arcade_laserdisc_plan.as_ref() {
                     Some(ArcadeLaserdiscPlan::Hypseus(plan)) => {
-                        format!("Download complete (Hypseus bundle for {})", plan.bundle_name)
+                        format!(
+                            "Download complete (Hypseus bundle for {})",
+                            plan.bundle_name
+                        )
                     }
                     _ => "Download complete".to_string(),
                 };
-                (found_path.display().to_string(), stored_size, completion_message)
+                (
+                    found_path.display().to_string(),
+                    stored_size,
+                    completion_message,
+                )
             }
             MinervaDownloadMode::FullTorrent => {
                 let Some(found_path) = representative_path else {
@@ -3484,7 +4184,12 @@ fn build_torrent_match_candidate(
     significant_query_words: &[&str],
 ) -> Option<TorrentMatchCandidate> {
     let name = basename_without_extension(&file.filename);
-    let score = score_match_name(&name, normalized_query, query_words, significant_query_words)?;
+    let score = score_match_name(
+        &name,
+        normalized_query,
+        query_words,
+        significant_query_words,
+    )?;
 
     let region = crate::tags::get_region_tags(&file.filename)
         .into_iter()
@@ -3553,7 +4258,9 @@ fn select_arcade_hypseus_laserdisc_matches(
         let Some((bundle_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&file.filename) else {
             continue;
         };
-        let entry = bundles.entry(bundle_key).or_insert((None, None, None, None, None));
+        let entry = bundles
+            .entry(bundle_key)
+            .or_insert((None, None, None, None, None));
         match kind {
             ArcadeHypseusLaserdiscAssetKind::RomZip => entry.0 = Some(file),
             ArcadeHypseusLaserdiscAssetKind::Data => entry.1 = Some(file),
@@ -3567,8 +4274,12 @@ fn select_arcade_hypseus_laserdisc_matches(
         .into_iter()
         .filter_map(|(bundle_key, (rom_zip, data, text, video, audio))| {
             let members = vec![rom_zip?, data?, text?, video?, audio?];
-            let score =
-                score_match_name(&bundle_key, &normalized_query, &query_words, &significant_query_words)?;
+            let score = score_match_name(
+                &bundle_key,
+                &normalized_query,
+                &query_words,
+                &significant_query_words,
+            )?;
             Some(BundleCandidate {
                 members,
                 exact_match: score.exact_match,
@@ -3593,14 +4304,16 @@ fn select_arcade_hypseus_laserdisc_matches(
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .then_with(|| {
-                let a_region = a
-                    .members
-                    .iter()
-                    .find_map(|file| crate::tags::get_region_tags(&file.filename).into_iter().next());
-                let b_region = b
-                    .members
-                    .iter()
-                    .find_map(|file| crate::tags::get_region_tags(&file.filename).into_iter().next());
+                let a_region = a.members.iter().find_map(|file| {
+                    crate::tags::get_region_tags(&file.filename)
+                        .into_iter()
+                        .next()
+                });
+                let b_region = b.members.iter().find_map(|file| {
+                    crate::tags::get_region_tags(&file.filename)
+                        .into_iter()
+                        .next()
+                });
                 crate::region_priority::priority_for_region(a_region.as_deref(), region_priority)
                     .cmp(&crate::region_priority::priority_for_region(
                         b_region.as_deref(),
@@ -3636,13 +4349,18 @@ fn select_arcade_hypseus_laserdisc_matches(
         .into_iter()
         .take(3)
         .flat_map(|candidate| {
-            candidate.members.into_iter().map(move |file| TorrentFileMatch {
-                index: file.index,
-                filename: file.filename.clone(),
-                size: file.size,
-                match_score: candidate.match_score,
-                region: crate::tags::get_region_tags(&file.filename).into_iter().next(),
-            })
+            candidate
+                .members
+                .into_iter()
+                .map(move |file| TorrentFileMatch {
+                    index: file.index,
+                    filename: file.filename.clone(),
+                    size: file.size,
+                    match_score: candidate.match_score,
+                    region: crate::tags::get_region_tags(&file.filename)
+                        .into_iter()
+                        .next(),
+                })
         })
         .collect()
 }
@@ -3791,8 +4509,10 @@ fn is_platform_specific_torrent_candidate(
                             .starts_with("laserdisc collection/hypseus singe/")
                             && parse_arcade_hypseus_laserdisc_asset(filename).is_some();
                     }
-                    let expected_prefix =
-                        format!("laserdisc collection/{}/", platform_name.to_ascii_lowercase());
+                    let expected_prefix = format!(
+                        "laserdisc collection/{}/",
+                        platform_name.to_ascii_lowercase()
+                    );
                     return normalized_filename.starts_with(&expected_prefix);
                 }
                 return normalized_filename.starts_with("laserdisc collection/");
@@ -3869,7 +4589,11 @@ pub async fn list_torrent_files(
                 &state.settings.region_priority,
             )
         } else {
-            select_torrent_file_matches(files.clone(), &lookup_title, &state.settings.region_priority)
+            select_torrent_file_matches(
+                files.clone(),
+                &lookup_title,
+                &state.settings.region_priority,
+            )
         };
         if !candidates.is_empty() {
             matches = candidates;
@@ -4226,10 +4950,11 @@ pub async fn confirm_rom_import(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_platform_specific_torrent_candidate, locate_downloaded_file, minerva_platform_fallbacks,
-        parse_arcade_hypseus_laserdisc_asset, parse_arcade_mame_laserdisc_asset,
-        select_torrent_file_matches, sort_emulator_statuses, ArcadeHypseusLaserdiscAssetKind,
-        ArcadeMameLaserdiscAssetKind,
+        ArcadeHypseusLaserdiscAssetKind, ArcadeMameLaserdiscAssetKind, MinervaRom,
+        expand_arcade_laserdisc_roms, is_platform_specific_torrent_candidate,
+        locate_downloaded_file, minerva_platform_fallbacks, parse_arcade_hypseus_laserdisc_asset,
+        parse_arcade_mame_laserdisc_asset, select_arcade_hypseus_laserdisc_matches,
+        select_torrent_file_matches, sort_emulator_statuses, torrent_match_lookup_titles,
     };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
@@ -4490,7 +5215,9 @@ mod tests {
             },
         ]
         .into_iter()
-        .filter(|file| is_platform_specific_torrent_candidate("Atari 800", None, None, &file.filename))
+        .filter(|file| {
+            is_platform_specific_torrent_candidate("Atari 800", None, None, &file.filename)
+        })
         .collect();
 
         let matches = select_torrent_file_matches(files, "Kennedy Approach...", &[]);
@@ -4577,10 +5304,18 @@ mod tests {
 
         let expanded = expand_arcade_laserdisc_roms(roms, "Arcade");
         assert_eq!(expanded.len(), 2);
-        assert!(expanded.iter().any(|rom| rom.collection == "Laserdisc Collection"
-            && rom.minerva_platform == "MAME"));
-        assert!(expanded.iter().any(|rom| rom.collection == "Laserdisc Collection"
-            && rom.minerva_platform == "Hypseus Singe"));
+        assert!(
+            expanded
+                .iter()
+                .any(|rom| rom.collection == "Laserdisc Collection"
+                    && rom.minerva_platform == "MAME")
+        );
+        assert!(
+            expanded
+                .iter()
+                .any(|rom| rom.collection == "Laserdisc Collection"
+                    && rom.minerva_platform == "Hypseus Singe")
+        );
     }
 
     #[test]
@@ -4757,5 +5492,124 @@ mod tests {
         assert!(matches.iter().any(|m| m.filename.ends_with("/lair.txt")));
         assert!(matches.iter().any(|m| m.filename.ends_with("/lair.m2v")));
         assert!(matches.iter().any(|m| m.filename.ends_with("/lair.ogg")));
+    }
+
+    fn new_lazy_user_state() -> (tempfile::TempDir, crate::state::AppState) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join(crate::db::USER_DB_NAME);
+        let state = crate::state::AppState {
+            user_db_path: Some(db_path),
+            ..crate::state::AppState::default()
+        };
+        (temp_dir, state)
+    }
+
+    #[tokio::test]
+    async fn emulator_preferences_default_to_empty_without_user_db() {
+        let state = crate::state::AppState::default();
+
+        let pref = super::get_emulator_preference(&state, 123, "Nintendo Entertainment System")
+            .await
+            .unwrap();
+        assert!(pref.is_none());
+
+        let all = super::get_all_emulator_preferences(&state).await.unwrap();
+        assert!(all.game_preferences.is_empty());
+        assert!(all.platform_preferences.is_empty());
+    }
+
+    #[tokio::test]
+    async fn emulator_preferences_create_user_db_on_first_write() {
+        let (_temp_dir, mut state) = new_lazy_user_state();
+
+        super::set_platform_emulator_preference(
+            &mut state,
+            "Nintendo Entertainment System",
+            "Mesen",
+        )
+        .await
+        .unwrap();
+
+        assert!(state.db_pool.is_some());
+
+        let pref = super::get_emulator_preference(&state, 123, "Nintendo Entertainment System")
+            .await
+            .unwrap();
+        assert_eq!(pref.as_deref(), Some("Mesen"));
+
+        let all = super::get_all_emulator_preferences(&state).await.unwrap();
+        assert_eq!(all.platform_preferences.len(), 1);
+        assert_eq!(
+            all.platform_preferences[0].platform_name,
+            "Nintendo Entertainment System"
+        );
+        assert_eq!(all.platform_preferences[0].emulator_name, "Mesen");
+    }
+
+    #[tokio::test]
+    async fn emulator_launch_profiles_default_to_empty_without_user_db() {
+        let state = crate::state::AppState::default();
+
+        let profile = super::get_emulator_launch_profile(&state, "MAME", Some("Arcade"), false)
+            .await
+            .unwrap();
+        assert!(profile.is_none());
+
+        let all = super::get_all_emulator_launch_profiles(&state)
+            .await
+            .unwrap();
+        assert!(all.is_empty());
+    }
+
+    #[tokio::test]
+    async fn emulator_launch_profiles_create_user_db_and_fallback_from_platform_override() {
+        let (_temp_dir, mut state) = new_lazy_user_state();
+
+        super::set_emulator_launch_profile(&mut state, "MAME", None, false, "-noui")
+            .await
+            .unwrap();
+
+        assert!(state.db_pool.is_some());
+
+        let fallback = super::get_emulator_launch_profile(&state, "MAME", Some("Arcade"), false)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(fallback.platform_name.is_none());
+        assert_eq!(fallback.args_text, "-noui");
+
+        super::set_emulator_launch_profile(
+            &mut state,
+            "MAME",
+            Some("Arcade"),
+            false,
+            "-skip_gameinfo",
+        )
+        .await
+        .unwrap();
+
+        let exact = super::get_emulator_launch_profile(&state, "MAME", Some("Arcade"), false)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(exact.platform_name.as_deref(), Some("Arcade"));
+        assert_eq!(exact.args_text, "-skip_gameinfo");
+
+        let all = super::get_all_emulator_launch_profiles(&state)
+            .await
+            .unwrap();
+        assert_eq!(all.len(), 2);
+
+        super::clear_emulator_launch_profile(&state, "MAME", Some("Arcade"), false)
+            .await
+            .unwrap();
+
+        let fallback_again =
+            super::get_emulator_launch_profile(&state, "MAME", Some("Arcade"), false)
+                .await
+                .unwrap()
+                .unwrap();
+        assert!(fallback_again.platform_name.is_none());
+        assert_eq!(fallback_again.args_text, "-noui");
     }
 }

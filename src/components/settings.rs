@@ -2,13 +2,16 @@
 
 use super::ImageSourcesWizard;
 use crate::backend_api::{
-    clear_game_emulator_preference, clear_platform_emulator_preference,
-    get_all_emulator_preferences, get_all_regions, get_credential_storage_name,
+    AppSettings, EmulatorInfo, EmulatorLaunchTemplateOverride, EmulatorPreferences,
+    clear_emulator_launch_template_override, clear_game_emulator_preference,
+    clear_platform_emulator_preference, get_all_emulator_launch_template_overrides,
+    get_all_emulator_preferences, get_all_emulators, get_all_regions, get_credential_storage_name,
     get_emulators_for_platform, get_platforms, get_settings, save_settings,
-    set_platform_emulator_preference, test_igdb_connection, test_screenscraper_connection,
-    test_steamgriddb_connection, test_torrent_connection, AppSettings, EmulatorInfo,
-    EmulatorPreferences,
+    set_emulator_launch_template_override, set_platform_emulator_preference,
+    test_igdb_connection, test_screenscraper_connection, test_steamgriddb_connection,
+    test_torrent_connection,
 };
+use futures::future::join_all;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::cell::Cell;
@@ -646,6 +649,14 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                 <EmulatorPreferencesSection />
                             </div>
 
+                            <div class="settings-section">
+                                <h3>"Emulator Launch Commands"</h3>
+                                <p class="settings-hint">
+                                    "Defaults are generated from Lunchbox's built-in launcher. Save an override to replace the generated command template for a platform, emulator, and runtime."
+                                </p>
+                                <EmulatorLaunchCommandsSection />
+                            </div>
+
                             <Show when=move || save_error.get().is_some()>
                                 <div class="settings-error">
                                     {move || save_error.get().unwrap_or_default()}
@@ -914,7 +925,8 @@ struct PlatformEmulatorData {
 #[component]
 fn EmulatorPreferencesSection() -> impl IntoView {
     let (platform_data, set_platform_data) = signal::<Vec<PlatformEmulatorData>>(Vec::new());
-    let (game_prefs, set_game_prefs) = signal::<Vec<crate::backend_api::GameEmulatorPref>>(Vec::new());
+    let (game_prefs, set_game_prefs) =
+        signal::<Vec<crate::backend_api::GameEmulatorPref>>(Vec::new());
     let (loading, set_loading) = signal(true);
 
     // Load all data on mount
@@ -1064,6 +1076,496 @@ fn EmulatorPreferencesSection() -> impl IntoView {
                             }).collect_view()
                         }}
                     </div>
+                </div>
+            </Show>
+        </div>
+    }
+}
+
+fn launch_profile_runtime_label(runtime_kind: &str) -> &'static str {
+    if runtime_kind.eq_ignore_ascii_case("retroarch") {
+        "RetroArch Core"
+    } else {
+        "Standalone"
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LaunchTemplateRow {
+    platform_name: Option<String>,
+    emulator_name: String,
+    runtime_kind: String,
+    default_template: String,
+}
+
+impl LaunchTemplateRow {
+    fn key(&self) -> String {
+        format!(
+            "{}\u{1f}|{}\u{1f}|{}",
+            self.platform_name.as_deref().unwrap_or(""),
+            self.emulator_name,
+            self.runtime_kind,
+        )
+    }
+}
+
+fn join_command_template_tokens<I>(tokens: I) -> String
+where
+    I: IntoIterator<Item = String>,
+{
+    tokens
+        .into_iter()
+        .map(|token| {
+            if token.is_empty() {
+                "''".to_string()
+            } else if token.chars().all(|ch| {
+                ch.is_ascii_alphanumeric() || matches!(ch, '%' | '_' | '-' | '.' | '/' | ':' | '{' | '}')
+            }) {
+                token
+            } else {
+                format!("'{}'", token.replace('\'', "'\"'\"'"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn default_launch_command_template(
+    emulator_name: &str,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> String {
+    if is_retroarch_core {
+        return join_command_template_tokens(vec![
+            "--verbose".to_string(),
+            "-L".to_string(),
+            "%{core}".to_string(),
+            "%f".to_string(),
+        ]);
+    }
+
+    if emulator_name == "Hypseus Singe" && platform_name == Some("Arcade") {
+        return join_command_template_tokens(vec![
+            "%{hypseus_game}".to_string(),
+            "vldp".to_string(),
+            "-fullscreen".to_string(),
+            "-framefile".to_string(),
+            "%{hypseus_framefile}".to_string(),
+            "-homedir".to_string(),
+            "%{hypseus_support_root}".to_string(),
+            "-datadir".to_string(),
+            "%{hypseus_support_root}".to_string(),
+            "-romdir".to_string(),
+            "%{hypseus_romdir}".to_string(),
+        ]);
+    }
+
+    if emulator_name == "MAME" && platform_name == Some("Arcade") {
+        return join_command_template_tokens(vec![
+            "-rompath".to_string(),
+            "%{mame_rompath}".to_string(),
+            "%{mame_romset}".to_string(),
+        ]);
+    }
+
+    if emulator_name == "Altirra" {
+        return join_command_template_tokens(vec![
+            "%{altirra_media_switch}".to_string(),
+            "%f".to_string(),
+        ]);
+    }
+
+    "%f".to_string()
+}
+
+fn append_launch_template_rows(
+    rows: &mut Vec<LaunchTemplateRow>,
+    platform_name: Option<String>,
+    emulator: &EmulatorInfo,
+) {
+    rows.push(LaunchTemplateRow {
+        platform_name: platform_name.clone(),
+        emulator_name: emulator.name.clone(),
+        runtime_kind: "standalone".to_string(),
+        default_template: default_launch_command_template(
+            &emulator.name,
+            platform_name.as_deref(),
+            false,
+        ),
+    });
+
+    if emulator.retroarch_core.is_some() {
+        rows.push(LaunchTemplateRow {
+            platform_name,
+            emulator_name: emulator.name.clone(),
+            runtime_kind: "retroarch".to_string(),
+            default_template: default_launch_command_template(
+                &emulator.name,
+                None,
+                true,
+            ),
+        });
+    }
+}
+
+fn template_override_for_row(
+    overrides: &[EmulatorLaunchTemplateOverride],
+    row: &LaunchTemplateRow,
+) -> Option<String> {
+    overrides
+        .iter()
+        .find(|override_row| {
+            override_row.emulator_name == row.emulator_name
+                && override_row.runtime_kind == row.runtime_kind
+                && override_row.platform_name == row.platform_name
+        })
+        .map(|override_row| override_row.command_template.clone())
+}
+
+fn sort_launch_template_rows(rows: &mut [LaunchTemplateRow]) {
+    rows.sort_by(|left, right| {
+        (
+            left.platform_name.is_some(),
+            left.platform_name.clone().unwrap_or_default(),
+            left.emulator_name.clone(),
+            left.runtime_kind.clone(),
+        )
+            .cmp(&(
+                right.platform_name.is_some(),
+                right.platform_name.clone().unwrap_or_default(),
+                right.emulator_name.clone(),
+                right.runtime_kind.clone(),
+            ))
+    });
+}
+
+#[component]
+fn EmulatorLaunchCommandsSection() -> impl IntoView {
+    let (rows, set_rows) = signal::<Vec<LaunchTemplateRow>>(Vec::new());
+    let (overrides, set_overrides) = signal::<Vec<EmulatorLaunchTemplateOverride>>(Vec::new());
+    let (filter_text, set_filter_text) = signal(String::new());
+    let (loading, set_loading) = signal(true);
+    let (status, set_status) = signal::<Option<String>>(None);
+    let (error, set_error) = signal::<Option<String>>(None);
+
+    Effect::new(move || {
+        set_loading.set(true);
+        spawn_local(async move {
+            set_error.set(None);
+            let (platforms_res, overrides_res, emulators_res) = futures::join!(
+                get_platforms(),
+                get_all_emulator_launch_template_overrides(),
+                get_all_emulators(Some(true))
+            );
+
+            let mut platform_names = match platforms_res {
+                Ok(items) => {
+                    let mut names = items.into_iter().map(|platform| platform.name).collect::<Vec<_>>();
+                    names.sort();
+                    names
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to load platforms: {}", e)));
+                    Vec::new()
+                }
+            };
+
+            match overrides_res {
+                Ok(items) => set_overrides.set(items),
+                Err(e) => set_error.set(Some(format!("Failed to load launch command overrides: {}", e))),
+            }
+
+            let mut generated_rows = Vec::new();
+            match emulators_res {
+                Ok(mut emulators) => {
+                    emulators.sort_by(|left, right| left.name.cmp(&right.name));
+                    for emulator in &emulators {
+                        append_launch_template_rows(&mut generated_rows, None, emulator);
+                    }
+                }
+                Err(e) => set_error.set(Some(format!("Failed to load emulators: {}", e))),
+            }
+
+            let platform_emulator_results = join_all(
+                platform_names
+                    .drain(..)
+                    .map(|platform_name| async move {
+                        let result = get_emulators_for_platform(platform_name.clone()).await;
+                        (platform_name, result)
+                    }),
+            )
+            .await;
+
+            for (platform_name, result) in platform_emulator_results {
+                match result {
+                    Ok(mut emulators) => {
+                        emulators.sort_by(|left, right| left.name.cmp(&right.name));
+                        for emulator in &emulators {
+                            append_launch_template_rows(
+                                &mut generated_rows,
+                                Some(platform_name.clone()),
+                                emulator,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        set_error.set(Some(format!(
+                            "Failed to load launch command rows for {}: {}",
+                            platform_name, e
+                        )));
+                    }
+                }
+            }
+
+            sort_launch_template_rows(&mut generated_rows);
+            set_rows.set(generated_rows);
+            set_loading.set(false);
+        });
+    });
+
+    let filtered_rows = Memo::new(move |_| {
+        let query = filter_text.get().trim().to_ascii_lowercase();
+        rows.get()
+            .into_iter()
+            .filter(|row| {
+                if query.is_empty() {
+                    return true;
+                }
+
+                let platform = row.platform_name.as_deref().unwrap_or("all platforms");
+                format!(
+                    "{} {} {} {}",
+                    platform, row.emulator_name, row.runtime_kind, row.default_template
+                )
+                .to_ascii_lowercase()
+                .contains(&query)
+            })
+            .collect::<Vec<_>>()
+    });
+
+    view! {
+        <div class="emulator-launch-commands">
+            <Show
+                when=move || !loading.get()
+                fallback=|| view! { <div class="emulator-loading">"Loading..."</div> }
+            >
+                <Show when=move || error.get().is_some()>
+                    {move || error.get().map(|message| view! {
+                        <div class="settings-error">{message}</div>
+                    })}
+                </Show>
+
+                <Show when=move || status.get().is_some()>
+                    {move || status.get().map(|message| view! {
+                        <div class="settings-storage-note">{message}</div>
+                    })}
+                </Show>
+
+                <div class="launch-template-toolbar">
+                    <input
+                        class="settings-input launch-template-filter"
+                        type="search"
+                        placeholder="Filter by platform, emulator, runtime, or template"
+                        prop:value=move || filter_text.get()
+                        on:input=move |ev| {
+                            set_filter_text.set(event_target_value(&ev));
+                            set_status.set(None);
+                            set_error.set(None);
+                        }
+                    />
+                    <div class="launch-template-count">
+                        {move || format!("{} rows", filtered_rows.get().len())}
+                    </div>
+                </div>
+
+                <p class="settings-hint">
+                    "Use `%f` for the selected file and `%%` for a literal percent. Templates are parsed into argv directly, not through a shell. Existing legacy extra-arg overrides still apply only when no command override is saved."
+                </p>
+
+                <div class="launch-template-table-wrap">
+                    <Show
+                        when=move || !filtered_rows.get().is_empty()
+                        fallback=|| view! { <p class="settings-hint">"No launch command rows match the current filter."</p> }
+                    >
+                        <table class="launch-template-table">
+                            <thead>
+                                <tr>
+                                    <th>"Platform"</th>
+                                    <th>"Emulator"</th>
+                                    <th>"Runtime"</th>
+                                    <th>"Default"</th>
+                                    <th>"Override"</th>
+                                    <th>"Actions"</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <For
+                                    each=move || filtered_rows.get()
+                                    key=|row| row.key()
+                                    children=move |row: LaunchTemplateRow| {
+                                        let initial_override =
+                                            template_override_for_row(&overrides.get_untracked(), &row)
+                                                .unwrap_or_default();
+                                        let (draft_template, set_draft_template) = signal(initial_override);
+                                        let (row_saving, set_row_saving) = signal(false);
+                                        let platform_label = row
+                                            .platform_name
+                                            .clone()
+                                            .unwrap_or_else(|| "All platforms".to_string());
+                                        let emulator_name = row.emulator_name.clone();
+                                        let runtime_kind = row.runtime_kind.clone();
+                                        let default_template = row.default_template.clone();
+                                        let save_platform_name = row.platform_name.clone();
+                                        let clear_platform_name = row.platform_name.clone();
+                                        let save_emulator_name = emulator_name.clone();
+                                        let clear_emulator_name = emulator_name.clone();
+                                        let save_runtime_kind = runtime_kind.clone();
+                                        let clear_runtime_kind = runtime_kind.clone();
+
+                                        view! {
+                                            <tr>
+                                                <td>{platform_label.clone()}</td>
+                                                <td>{emulator_name.clone()}</td>
+                                                <td>{launch_profile_runtime_label(&runtime_kind)}</td>
+                                                <td>
+                                                    <code class="launch-template-default">
+                                                        {default_template}
+                                                    </code>
+                                                </td>
+                                                <td>
+                                                    <textarea
+                                                        class="settings-input launch-template-override"
+                                                        rows="3"
+                                                        placeholder="Leave blank to use the generated default"
+                                                        prop:value=move || draft_template.get()
+                                                        on:input=move |ev| {
+                                                            set_draft_template.set(event_target_value(&ev));
+                                                            set_status.set(None);
+                                                            set_error.set(None);
+                                                        }
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <div class="launch-template-actions">
+                                                        <button
+                                                            class="emulator-pref-btn emulator-play-btn"
+                                                            disabled=move || row_saving.get()
+                                                            on:click=move |_| {
+                                                                let platform_name = save_platform_name.clone();
+                                                                let emulator_name = save_emulator_name.clone();
+                                                                let runtime_kind = save_runtime_kind.clone();
+                                                                let command_template = draft_template.get_untracked();
+                                                                set_row_saving.set(true);
+                                                                set_status.set(None);
+                                                                set_error.set(None);
+
+                                                                spawn_local(async move {
+                                                                    let normalized_template =
+                                                                        command_template.trim().to_string();
+                                                                    let result = set_emulator_launch_template_override(
+                                                                        emulator_name.clone(),
+                                                                        platform_name.clone(),
+                                                                        runtime_kind == "retroarch",
+                                                                        normalized_template.clone(),
+                                                                    )
+                                                                    .await;
+
+                                                                    match result {
+                                                                        Ok(()) => {
+                                                                            set_overrides.update(|items| {
+                                                                                items.retain(|item| {
+                                                                                    !(item.emulator_name == emulator_name
+                                                                                        && item.runtime_kind == runtime_kind
+                                                                                        && item.platform_name == platform_name)
+                                                                                });
+                                                                                if !normalized_template.is_empty() {
+                                                                                    items.push(EmulatorLaunchTemplateOverride {
+                                                                                        emulator_name: emulator_name.clone(),
+                                                                                        platform_name: platform_name.clone(),
+                                                                                        runtime_kind: runtime_kind.clone(),
+                                                                                        command_template: normalized_template.clone(),
+                                                                                    });
+                                                                                }
+                                                                            });
+                                                                            set_status.set(Some(format!(
+                                                                                "Saved command override for {} ({}, {}).",
+                                                                                emulator_name,
+                                                                                platform_name
+                                                                                    .as_deref()
+                                                                                    .unwrap_or("all platforms"),
+                                                                                launch_profile_runtime_label(&runtime_kind),
+                                                                            )));
+                                                                        }
+                                                                        Err(e) => set_error.set(Some(format!(
+                                                                            "Failed to save launch command override: {}",
+                                                                            e
+                                                                        ))),
+                                                                    }
+
+                                                                    set_row_saving.set(false);
+                                                                });
+                                                            }
+                                                        >
+                                                            {move || if row_saving.get() { "Saving..." } else { "Save" }}
+                                                        </button>
+                                                        <button
+                                                            class="emulator-pref-btn emulator-uninstall-btn"
+                                                            disabled=move || row_saving.get() || draft_template.get().trim().is_empty()
+                                                            on:click=move |_| {
+                                                                let platform_name = clear_platform_name.clone();
+                                                                let emulator_name = clear_emulator_name.clone();
+                                                                let runtime_kind = clear_runtime_kind.clone();
+                                                                set_row_saving.set(true);
+                                                                set_status.set(None);
+                                                                set_error.set(None);
+
+                                                                spawn_local(async move {
+                                                                    match clear_emulator_launch_template_override(
+                                                                        emulator_name.clone(),
+                                                                        platform_name.clone(),
+                                                                        runtime_kind == "retroarch",
+                                                                    )
+                                                                    .await
+                                                                    {
+                                                                        Ok(()) => {
+                                                                            set_draft_template.set(String::new());
+                                                                            set_overrides.update(|items| {
+                                                                                items.retain(|item| {
+                                                                                    !(item.emulator_name == emulator_name
+                                                                                        && item.runtime_kind == runtime_kind
+                                                                                        && item.platform_name == platform_name)
+                                                                                });
+                                                                            });
+                                                                            set_status.set(Some(format!(
+                                                                                "Cleared command override for {} ({}, {}).",
+                                                                                emulator_name,
+                                                                                platform_name
+                                                                                    .as_deref()
+                                                                                    .unwrap_or("all platforms"),
+                                                                                launch_profile_runtime_label(&runtime_kind),
+                                                                            )));
+                                                                        }
+                                                                        Err(e) => set_error.set(Some(format!(
+                                                                            "Failed to clear launch command override: {}",
+                                                                            e
+                                                                        ))),
+                                                                    }
+
+                                                                    set_row_saving.set(false);
+                                                                });
+                                                            }
+                                                        >
+                                                            "Clear"
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                />
+                            </tbody>
+                        </table>
+                    </Show>
                 </div>
             </Show>
         </div>

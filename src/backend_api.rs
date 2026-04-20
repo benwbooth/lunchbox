@@ -1,6 +1,6 @@
 //! Backend API bindings for the frontend.
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use wasm_bindgen::prelude::*;
 
 /// The HTTP API base URL for browser mode
@@ -49,7 +49,7 @@ async fn log_to_backend_async(level: &str, message: &str) -> Result<(), String> 
 // ============ HTTP Fetch Helpers ============
 
 async fn http_get<T: DeserializeOwned>(path: &str) -> Result<T, String> {
-    use web_sys::{console, Request, RequestInit, RequestMode, Response};
+    use web_sys::{Request, RequestInit, RequestMode, Response, console};
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -1505,6 +1505,38 @@ pub struct EmulatorPreferences {
     pub platform_preferences: Vec<PlatformEmulatorPref>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorLaunchProfile {
+    pub emulator_name: String,
+    pub platform_name: Option<String>,
+    pub runtime_kind: String,
+    pub args_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorLaunchTemplateOverride {
+    pub emulator_name: String,
+    pub platform_name: Option<String>,
+    pub runtime_kind: String,
+    pub command_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameLaunchTemplatePreview {
+    pub launchbox_db_id: i64,
+    pub platform_name: String,
+    pub emulator_name: String,
+    pub runtime_kind: String,
+    pub is_prepared_install: bool,
+    pub default_template: String,
+    pub platform_command_template_override: Option<String>,
+    pub game_command_template_override: Option<String>,
+    pub effective_template: String,
+}
+
 /// Get emulator preference for a game (checks game-specific, then platform)
 pub async fn get_emulator_preference(
     launchbox_db_id: i64,
@@ -1596,6 +1628,211 @@ pub async fn get_all_emulator_preferences() -> Result<EmulatorPreferences, Strin
 /// Clear all emulator preferences
 pub async fn clear_all_emulator_preferences() -> Result<(), String> {
     invoke_no_args("clear_all_emulator_preferences").await
+}
+
+pub async fn get_all_emulator_launch_profiles() -> Result<Vec<EmulatorLaunchProfile>, String> {
+    invoke_no_args("get_all_emulator_launch_profiles").await
+}
+
+pub async fn get_emulator_launch_profile(
+    emulator_name: String,
+    platform_name: Option<String>,
+    is_retroarch_core: bool,
+) -> Result<Option<EmulatorLaunchProfile>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        platform_name: Option<String>,
+        is_retroarch_core: bool,
+    }
+    invoke(
+        "get_emulator_launch_profile",
+        Args {
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+        },
+    )
+    .await
+}
+
+pub async fn set_emulator_launch_profile(
+    emulator_name: String,
+    platform_name: Option<String>,
+    is_retroarch_core: bool,
+    args_text: String,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        platform_name: Option<String>,
+        is_retroarch_core: bool,
+        args_text: String,
+    }
+    invoke(
+        "set_emulator_launch_profile",
+        Args {
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+            args_text,
+        },
+    )
+    .await
+}
+
+pub async fn clear_emulator_launch_profile(
+    emulator_name: String,
+    platform_name: Option<String>,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        platform_name: Option<String>,
+        is_retroarch_core: bool,
+    }
+    invoke(
+        "clear_emulator_launch_profile",
+        Args {
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+        },
+    )
+    .await
+}
+
+pub async fn get_all_emulator_launch_template_overrides(
+) -> Result<Vec<EmulatorLaunchTemplateOverride>, String> {
+    invoke_no_args("get_all_emulator_launch_template_overrides").await
+}
+
+pub async fn set_emulator_launch_template_override(
+    emulator_name: String,
+    platform_name: Option<String>,
+    is_retroarch_core: bool,
+    command_template: String,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        platform_name: Option<String>,
+        is_retroarch_core: bool,
+        command_template: String,
+    }
+    invoke(
+        "set_emulator_launch_template_override",
+        Args {
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+            command_template,
+        },
+    )
+    .await
+}
+
+pub async fn clear_emulator_launch_template_override(
+    emulator_name: String,
+    platform_name: Option<String>,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        emulator_name: String,
+        platform_name: Option<String>,
+        is_retroarch_core: bool,
+    }
+    invoke(
+        "clear_emulator_launch_template_override",
+        Args {
+            emulator_name,
+            platform_name,
+            is_retroarch_core,
+        },
+    )
+    .await
+}
+
+pub async fn get_game_launch_template_preview(
+    launchbox_db_id: i64,
+    platform_name: String,
+    emulator_name: String,
+    is_retroarch_core: bool,
+) -> Result<GameLaunchTemplatePreview, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        platform_name: String,
+        emulator_name: String,
+        is_retroarch_core: bool,
+    }
+    invoke(
+        "get_game_launch_template_preview",
+        Args {
+            launchbox_db_id,
+            platform_name,
+            emulator_name,
+            is_retroarch_core,
+        },
+    )
+    .await
+}
+
+pub async fn set_game_launch_template_override(
+    launchbox_db_id: i64,
+    emulator_name: String,
+    is_retroarch_core: bool,
+    command_template: String,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        emulator_name: String,
+        is_retroarch_core: bool,
+        command_template: String,
+    }
+    invoke(
+        "set_game_launch_template_override",
+        Args {
+            launchbox_db_id,
+            emulator_name,
+            is_retroarch_core,
+            command_template,
+        },
+    )
+    .await
+}
+
+pub async fn clear_game_launch_template_override(
+    launchbox_db_id: i64,
+    emulator_name: String,
+    is_retroarch_core: bool,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        launchbox_db_id: i64,
+        emulator_name: String,
+        is_retroarch_core: bool,
+    }
+    invoke(
+        "clear_game_launch_template_override",
+        Args {
+            launchbox_db_id,
+            emulator_name,
+            is_retroarch_core,
+        },
+    )
+    .await
 }
 
 // ============ Emulator Installation & Launch ============
@@ -2072,14 +2309,14 @@ pub async fn list_torrent_files(
     }
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-        struct Inner {
-            torrent_url: String,
-            game_title: String,
-            platform: Option<String>,
-            launchbox_db_id: Option<i64>,
-            collection: Option<String>,
-            minerva_platform: Option<String>,
-        }
+    struct Inner {
+        torrent_url: String,
+        game_title: String,
+        platform: Option<String>,
+        launchbox_db_id: Option<i64>,
+        collection: Option<String>,
+        minerva_platform: Option<String>,
+    }
     invoke(
         "list_torrent_files",
         Args {

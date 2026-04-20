@@ -3,19 +3,19 @@
 //! Provides the backend surface used by the frontend without any desktop-shell IPC.
 
 use crate::db::schema::{
-    extract_region_from_title, normalize_title_for_dedup, normalize_title_for_display, Game,
-    GameVariant, Platform,
+    Game, GameVariant, Platform, extract_region_from_title, normalize_title_for_dedup,
+    normalize_title_for_display,
 };
 use crate::handlers::{
     self as handlers, Collection, CollectionGameInput, CollectionIdInput, CreateCollectionInput,
 };
 use crate::state::AppState;
 use axum::{
+    Json, Router,
     extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -197,6 +197,46 @@ pub fn create_router(state: SharedState) -> Router {
         .route(
             "/rspc/clear_all_emulator_preferences",
             get(rspc_clear_all_emulator_preferences),
+        )
+        .route(
+            "/rspc/get_all_emulator_launch_profiles",
+            get(rspc_get_all_emulator_launch_profiles),
+        )
+        .route(
+            "/rspc/get_emulator_launch_profile",
+            get(rspc_get_emulator_launch_profile),
+        )
+        .route(
+            "/rspc/set_emulator_launch_profile",
+            get(rspc_set_emulator_launch_profile),
+        )
+        .route(
+            "/rspc/clear_emulator_launch_profile",
+            get(rspc_clear_emulator_launch_profile),
+        )
+        .route(
+            "/rspc/get_all_emulator_launch_template_overrides",
+            get(rspc_get_all_emulator_launch_template_overrides),
+        )
+        .route(
+            "/rspc/set_emulator_launch_template_override",
+            get(rspc_set_emulator_launch_template_override),
+        )
+        .route(
+            "/rspc/clear_emulator_launch_template_override",
+            get(rspc_clear_emulator_launch_template_override),
+        )
+        .route(
+            "/rspc/get_game_launch_template_preview",
+            get(rspc_get_game_launch_template_preview),
+        )
+        .route(
+            "/rspc/set_game_launch_template_override",
+            get(rspc_set_game_launch_template_override),
+        )
+        .route(
+            "/rspc/clear_game_launch_template_override",
+            get(rspc_clear_game_launch_template_override),
         )
         // Emulator installation and launch endpoints
         .route(
@@ -1161,9 +1201,7 @@ async fn get_favorites(
 ) -> Result<Json<Vec<Game>>, (StatusCode, String)> {
     let state_guard = state.read().await;
 
-    if let (Some(db_pool), Some(games_pool)) =
-        (&state_guard.db_pool, &state_guard.games_db_pool)
-    {
+    if let (Some(db_pool), Some(games_pool)) = (&state_guard.db_pool, &state_guard.games_db_pool) {
         let favorite_ids: Vec<(String,)> =
             sqlx::query_as("SELECT game_id FROM favorites ORDER BY added_at DESC")
                 .fetch_all(db_pool)
@@ -1289,7 +1327,7 @@ async fn rspc_create_collection(
     let input_str = match params.get("input") {
         Some(s) => s,
         None => {
-            return rspc_err::<Collection>("Missing 'input' parameter".to_string()).into_response()
+            return rspc_err::<Collection>("Missing 'input' parameter".to_string()).into_response();
         }
     };
 
@@ -1333,7 +1371,7 @@ async fn rspc_get_collection_games(
     let input_str = match params.get("input") {
         Some(s) => s,
         None => {
-            return rspc_err::<Vec<Game>>("Missing 'input' parameter".to_string()).into_response()
+            return rspc_err::<Vec<Game>>("Missing 'input' parameter".to_string()).into_response();
         }
     };
 
@@ -1452,14 +1490,14 @@ async fn rspc_get_game_image(
         Some(s) => s,
         None => {
             return rspc_err::<Option<ImageInfo>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
     let input: GetGameImageInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
         Err(e) => {
-            return rspc_err::<Option<ImageInfo>>(format!("Invalid input: {}", e)).into_response()
+            return rspc_err::<Option<ImageInfo>>(format!("Invalid input: {}", e)).into_response();
         }
     };
 
@@ -1532,7 +1570,7 @@ async fn rspc_check_cached_media(
         Some(s) => s,
         None => {
             return rspc_err::<Option<CachedMediaResult>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -1540,7 +1578,7 @@ async fn rspc_check_cached_media(
         Ok(i) => i,
         Err(e) => {
             return rspc_err::<Option<CachedMediaResult>>(format!("Invalid input: {}", e))
-                .into_response()
+                .into_response();
         }
     };
 
@@ -1623,7 +1661,8 @@ async fn rspc_download_image_with_fallback(
     let games_pool = match state_guard.games_db_pool.as_ref() {
         Some(p) => p,
         None => {
-            return rspc_err::<String>("Games database not initialized".to_string()).into_response()
+            return rspc_err::<String>("Games database not initialized".to_string())
+                .into_response();
         }
     };
 
@@ -1752,15 +1791,21 @@ async fn rspc_redownload_image_from_next_source(
         Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    tracing::info!("rspc_redownload_image_from_next_source: game='{}', platform='{}', type='{}', current_source='{}'",
-        input.game_title, input.platform, input.image_type, input.current_source);
+    tracing::info!(
+        "rspc_redownload_image_from_next_source: game='{}', platform='{}', type='{}', current_source='{}'",
+        input.game_title,
+        input.platform,
+        input.image_type,
+        input.current_source
+    );
 
     let state_guard = state.read().await;
 
     let games_pool = match state_guard.games_db_pool.as_ref() {
         Some(p) => p,
         None => {
-            return rspc_err::<String>("Games database not initialized".to_string()).into_response()
+            return rspc_err::<String>("Games database not initialized".to_string())
+                .into_response();
         }
     };
 
@@ -1984,14 +2029,14 @@ async fn rspc_check_cached_video(
         Some(s) => s,
         None => {
             return rspc_err::<Option<String>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
     let input: CheckCachedVideoInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
         Err(e) => {
-            return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response()
+            return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response();
         }
     };
 
@@ -2006,8 +2051,10 @@ async fn rspc_check_cached_video(
             let games_pool = match state_guard.games_db_pool.as_ref() {
                 Some(p) => p,
                 None => {
-                    return rspc_err::<Option<String>>("Games database not initialized".to_string())
-                        .into_response()
+                    return rspc_err::<Option<String>>(
+                        "Games database not initialized".to_string(),
+                    )
+                    .into_response();
                 }
             };
 
@@ -2233,7 +2280,7 @@ async fn rspc_download_game_video(
                 Some(p) => p,
                 None => {
                     return rspc_err::<String>("Games database not initialized".to_string())
-                        .into_response()
+                        .into_response();
                 }
             };
 
@@ -2321,7 +2368,7 @@ async fn rspc_get_emulators_for_platform(
         Some(s) => s,
         None => {
             return rspc_err::<Vec<EmulatorInfo>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -2329,7 +2376,7 @@ async fn rspc_get_emulators_for_platform(
     let platform_name: String = match serde_json::from_str(input_str) {
         Ok(s) => s,
         Err(e) => {
-            return rspc_err::<Vec<EmulatorInfo>>(format!("Invalid input: {}", e)).into_response()
+            return rspc_err::<Vec<EmulatorInfo>>(format!("Invalid input: {}", e)).into_response();
         }
     };
 
@@ -2349,7 +2396,7 @@ async fn rspc_get_emulator(
         Some(s) => s,
         None => {
             return rspc_err::<Option<EmulatorInfo>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -2357,7 +2404,7 @@ async fn rspc_get_emulator(
         Ok(s) => s,
         Err(e) => {
             return rspc_err::<Option<EmulatorInfo>>(format!("Invalid input: {}", e))
-                .into_response()
+                .into_response();
         }
     };
 
@@ -2482,14 +2529,14 @@ async fn rspc_get_emulator_preference(
         Some(s) => s,
         None => {
             return rspc_err::<Option<String>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
     let input: GetEmulatorPreferenceInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
         Err(e) => {
-            return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response()
+            return rspc_err::<Option<String>>(format!("Invalid input: {}", e)).into_response();
         }
     };
 
@@ -2527,9 +2574,9 @@ async fn rspc_set_game_emulator_preference(
         Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    let state_guard = state.read().await;
+    let mut state_guard = state.write().await;
     match handlers::set_game_emulator_preference(
-        &state_guard,
+        &mut state_guard,
         input.launchbox_db_id,
         &input.emulator_name,
     )
@@ -2561,9 +2608,9 @@ async fn rspc_set_platform_emulator_preference(
         Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    let state_guard = state.read().await;
+    let mut state_guard = state.write().await;
     match handlers::set_platform_emulator_preference(
-        &state_guard,
+        &mut state_guard,
         &input.platform_name,
         &input.emulator_name,
     )
@@ -2646,6 +2693,352 @@ async fn rspc_clear_all_emulator_preferences(
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetEmulatorLaunchProfileInput {
+    emulator_name: String,
+    platform_name: Option<String>,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
+async fn rspc_get_all_emulator_launch_profiles(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::get_all_emulator_launch_profiles(&state_guard).await {
+        Ok(profiles) => rspc_ok(profiles).into_response(),
+        Err(e) => rspc_err::<Vec<handlers::EmulatorLaunchProfile>>(e).into_response(),
+    }
+}
+
+async fn rspc_get_emulator_launch_profile(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Option<handlers::EmulatorLaunchProfile>>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response();
+        }
+    };
+
+    let input: GetEmulatorLaunchProfileInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<Option<handlers::EmulatorLaunchProfile>>(format!(
+                "Invalid input: {}",
+                e
+            ))
+            .into_response();
+        }
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_emulator_launch_profile(
+        &state_guard,
+        &input.emulator_name,
+        input.platform_name.as_deref(),
+        input.is_retroarch_core,
+    )
+    .await
+    {
+        Ok(profile) => rspc_ok(profile).into_response(),
+        Err(e) => rspc_err::<Option<handlers::EmulatorLaunchProfile>>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetEmulatorLaunchProfileInput {
+    emulator_name: String,
+    platform_name: Option<String>,
+    #[serde(default)]
+    is_retroarch_core: bool,
+    args_text: String,
+}
+
+async fn rspc_set_emulator_launch_profile(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: SetEmulatorLaunchProfileInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let mut state_guard = state.write().await;
+    match handlers::set_emulator_launch_profile(
+        &mut state_guard,
+        &input.emulator_name,
+        input.platform_name.as_deref(),
+        input.is_retroarch_core,
+        &input.args_text,
+    )
+    .await
+    {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClearEmulatorLaunchProfileInput {
+    emulator_name: String,
+    platform_name: Option<String>,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
+async fn rspc_clear_emulator_launch_profile(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: ClearEmulatorLaunchProfileInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::clear_emulator_launch_profile(
+        &state_guard,
+        &input.emulator_name,
+        input.platform_name.as_deref(),
+        input.is_retroarch_core,
+    )
+    .await
+    {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+async fn rspc_get_all_emulator_launch_template_overrides(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::get_all_emulator_launch_template_overrides(&state_guard).await {
+        Ok(overrides) => rspc_ok(overrides).into_response(),
+        Err(e) => rspc_err::<Vec<handlers::EmulatorLaunchTemplateOverride>>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetEmulatorLaunchTemplateOverrideInput {
+    emulator_name: String,
+    platform_name: Option<String>,
+    #[serde(default)]
+    is_retroarch_core: bool,
+    command_template: String,
+}
+
+async fn rspc_set_emulator_launch_template_override(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: SetEmulatorLaunchTemplateOverrideInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let mut state_guard = state.write().await;
+    match handlers::set_emulator_launch_template_override(
+        &mut state_guard,
+        &input.emulator_name,
+        input.platform_name.as_deref(),
+        input.is_retroarch_core,
+        &input.command_template,
+    )
+    .await
+    {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClearEmulatorLaunchTemplateOverrideInput {
+    emulator_name: String,
+    platform_name: Option<String>,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
+async fn rspc_clear_emulator_launch_template_override(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: ClearEmulatorLaunchTemplateOverrideInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::clear_emulator_launch_template_override(
+        &state_guard,
+        &input.emulator_name,
+        input.platform_name.as_deref(),
+        input.is_retroarch_core,
+    )
+    .await
+    {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GameLaunchTemplatePreviewInput {
+    launchbox_db_id: i64,
+    platform_name: String,
+    emulator_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
+async fn rspc_get_game_launch_template_preview(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<handlers::GameLaunchTemplatePreview>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response();
+        }
+    };
+
+    let input: GameLaunchTemplatePreviewInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<handlers::GameLaunchTemplatePreview>(format!(
+                "Invalid input: {}",
+                e
+            ))
+            .into_response();
+        }
+    };
+
+    let state_guard = state.read().await;
+    match handlers::get_game_launch_template_preview(
+        &state_guard,
+        input.launchbox_db_id,
+        &input.platform_name,
+        &input.emulator_name,
+        input.is_retroarch_core,
+    )
+    .await
+    {
+        Ok(preview) => rspc_ok(preview).into_response(),
+        Err(e) => rspc_err::<handlers::GameLaunchTemplatePreview>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetGameLaunchTemplateOverrideInput {
+    launchbox_db_id: i64,
+    emulator_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
+    command_template: String,
+}
+
+async fn rspc_set_game_launch_template_override(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: SetGameLaunchTemplateOverrideInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let mut state_guard = state.write().await;
+    match handlers::set_game_launch_template_override(
+        &mut state_guard,
+        input.launchbox_db_id,
+        &input.emulator_name,
+        input.is_retroarch_core,
+        &input.command_template,
+    )
+    .await
+    {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClearGameLaunchTemplateOverrideInput {
+    launchbox_db_id: i64,
+    emulator_name: String,
+    #[serde(default)]
+    is_retroarch_core: bool,
+}
+
+async fn rspc_clear_game_launch_template_override(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: ClearGameLaunchTemplateOverrideInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::clear_game_launch_template_override(
+        &state_guard,
+        input.launchbox_db_id,
+        &input.emulator_name,
+        input.is_retroarch_core,
+    )
+    .await
+    {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
 // ============================================================================
 // Emulator Installation & Launch Handlers
 // ============================================================================
@@ -2658,7 +3051,7 @@ async fn rspc_get_emulators_with_status(
         Some(s) => s,
         None => {
             return rspc_err::<Vec<EmulatorWithStatus>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -2666,7 +3059,7 @@ async fn rspc_get_emulators_with_status(
         Ok(s) => s,
         Err(e) => {
             return rspc_err::<Vec<EmulatorWithStatus>>(format!("Invalid input: {}", e))
-                .into_response()
+                .into_response();
         }
     };
 
@@ -2744,7 +3137,7 @@ async fn rspc_install_emulator(
         Ok(Some(e)) => e,
         Ok(None) => {
             return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
-                .into_response()
+                .into_response();
         }
         Err(e) => return rspc_err::<String>(e).into_response(),
     };
@@ -2783,7 +3176,7 @@ async fn rspc_uninstall_emulator(
         Ok(Some(e)) => e,
         Ok(None) => {
             return rspc_err::<()>(format!("Emulator '{}' not found", input.emulator_name))
-                .into_response()
+                .into_response();
         }
         Err(e) => return rspc_err::<()>(e).into_response(),
     };
@@ -2825,7 +3218,7 @@ async fn rspc_install_firmware(
             return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(
                 "Missing 'input' parameter".to_string(),
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -2836,7 +3229,7 @@ async fn rspc_install_firmware(
                 "Invalid input: {}",
                 e
             ))
-            .into_response()
+            .into_response();
         }
     };
 
@@ -2850,7 +3243,7 @@ async fn rspc_install_firmware(
                     "Emulator '{}' not found",
                     input.emulator_name
                 ))
-                .into_response()
+                .into_response();
             }
             Err(e) => return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(e).into_response(),
         };
@@ -2861,7 +3254,7 @@ async fn rspc_install_firmware(
             Ok(pool) => pool.clone(),
             Err(e) => {
                 return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(e.to_string())
-                    .into_response()
+                    .into_response();
             }
         };
 
@@ -2904,7 +3297,7 @@ async fn rspc_open_firmware_directory(
             Ok(Some(e)) => e,
             Ok(None) => {
                 return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
-                    .into_response()
+                    .into_response();
             }
             Err(e) => return rspc_err::<String>(e).into_response(),
         };
@@ -2948,7 +3341,7 @@ async fn rspc_launch_emulator(
         Some(s) => s,
         None => {
             return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -2967,7 +3360,7 @@ async fn rspc_launch_emulator(
                 "Emulator '{}' not found",
                 input.emulator_name
             ))
-            .into_response()
+            .into_response();
         }
         Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
     };
@@ -2997,7 +3390,7 @@ async fn rspc_launch_game(
         Some(s) => s,
         None => {
             return rspc_err::<LaunchResult>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -3016,7 +3409,7 @@ async fn rspc_launch_game(
                 "Emulator '{}' not found",
                 input.emulator_name
             ))
-            .into_response()
+            .into_response();
         }
         Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
     };
@@ -3090,14 +3483,14 @@ async fn rspc_get_game_file(
         Some(s) => s,
         None => {
             return rspc_err::<Option<handlers::GameFile>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
     let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
         Ok(input) => input.into_value(),
         Err(e) => {
             return rspc_err::<Option<handlers::GameFile>>(format!("Invalid input: {}", e))
-                .into_response()
+                .into_response();
         }
     };
     let state_guard = state.read().await;
@@ -3135,15 +3528,17 @@ async fn rspc_get_active_import(
     let input_str = match params.get("input") {
         Some(s) => s,
         None => {
-            return rspc_err::<Option<handlers::ImportJob>>("Missing 'input' parameter".to_string())
-                .into_response()
+            return rspc_err::<Option<handlers::ImportJob>>(
+                "Missing 'input' parameter".to_string(),
+            )
+            .into_response();
         }
     };
     let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
         Ok(input) => input.into_value(),
         Err(e) => {
             return rspc_err::<Option<handlers::ImportJob>>(format!("Invalid input: {}", e))
-                .into_response()
+                .into_response();
         }
     };
     let state_guard = state.read().await;
@@ -3191,7 +3586,7 @@ async fn rspc_get_minerva_rom_for_game(
             return rspc_err::<Option<handlers::MinervaRom>>(
                 "Missing 'input' parameter".to_string(),
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -3214,7 +3609,7 @@ async fn rspc_get_minerva_rom_for_game(
         }) => (launchbox_db_id, platform_id),
         Err(e) => {
             return rspc_err::<Option<handlers::MinervaRom>>(format!("Invalid input: {}", e))
-                .into_response()
+                .into_response();
         }
     };
 
@@ -3233,7 +3628,7 @@ async fn rspc_search_minerva(
         Some(s) => s,
         None => {
             return rspc_err::<Vec<handlers::MinervaRom>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -3249,7 +3644,7 @@ async fn rspc_search_minerva(
         Ok(i) => i,
         Err(e) => {
             return rspc_err::<Vec<handlers::MinervaRom>>(format!("Invalid input: {}", e))
-                .into_response()
+                .into_response();
         }
     };
 
@@ -3275,7 +3670,7 @@ async fn rspc_start_minerva_download(
         Some(s) => s,
         None => {
             return rspc_err::<handlers::ImportJob>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -3290,7 +3685,7 @@ async fn rspc_start_minerva_download(
                 Ok(w) => w.input,
                 Err(e) => {
                     return rspc_err::<handlers::ImportJob>(format!("Invalid input: {}", e))
-                        .into_response()
+                        .into_response();
                 }
             }
         }
@@ -3310,7 +3705,7 @@ async fn rspc_get_minerva_download_progress(
         Some(s) => s,
         None => {
             return rspc_err::<Option<serde_json::Value>>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -3375,7 +3770,7 @@ async fn rspc_list_torrent_files(
             return rspc_err::<Vec<handlers::TorrentFileMatch>>(
                 "Missing 'input' parameter".to_string(),
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -3395,7 +3790,7 @@ async fn rspc_list_torrent_files(
                         "Invalid input: {}",
                         e
                     ))
-                    .into_response()
+                    .into_response();
                 }
             }
         }
@@ -3420,7 +3815,7 @@ async fn rspc_scan_and_match_roms(
         Some(s) => s,
         None => {
             return rspc_err::<handlers::ScanRomsResult>("Missing 'input' parameter".to_string())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -3435,7 +3830,7 @@ async fn rspc_scan_and_match_roms(
                 Ok(w) => w.input,
                 Err(e) => {
                     return rspc_err::<handlers::ScanRomsResult>(format!("Invalid input: {}", e))
-                        .into_response()
+                        .into_response();
                 }
             }
         }
@@ -3467,7 +3862,7 @@ async fn rspc_confirm_rom_import(
             match serde_json::from_str::<W>(input_str) {
                 Ok(w) => w.input,
                 Err(e) => {
-                    return rspc_err::<usize>(format!("Invalid input: {}", e)).into_response()
+                    return rspc_err::<usize>(format!("Invalid input: {}", e)).into_response();
                 }
             }
         }
