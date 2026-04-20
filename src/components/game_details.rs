@@ -486,6 +486,49 @@ fn minerva_torrent_groups_request_key(
     format!("{launchbox_db_id}:{platform_id}:{game_title}")
 }
 
+fn filter_emulators_for_game(
+    platform_name: &str,
+    game_file: Option<&GameFile>,
+    mut emulators: Vec<EmulatorWithStatus>,
+) -> Vec<EmulatorWithStatus> {
+    if !platform_name.eq_ignore_ascii_case("Arcade") {
+        return emulators;
+    }
+
+    let Some(game_file) = game_file else {
+        return emulators;
+    };
+
+    let normalized_path = game_file.file_path.replace('\\', "/").to_ascii_lowercase();
+    let required_emulator = if normalized_path.contains("/laserdisc collection/hypseus singe/")
+        && normalized_path.ends_with(".txt")
+    {
+        Some("Hypseus Singe")
+    } else if normalized_path.contains("/laserdisc collection/mame/")
+        && normalized_path.ends_with(".zip")
+    {
+        Some("MAME")
+    } else {
+        None
+    };
+
+    let Some(required_emulator) = required_emulator else {
+        return emulators;
+    };
+
+    let original_emulators = emulators.clone();
+    emulators.retain(|emulator| {
+        emulator.name.eq_ignore_ascii_case(required_emulator) && !emulator.is_retroarch_core
+    });
+
+    if emulators.is_empty() && !original_emulators.is_empty() {
+        // Fail open if the expected runtime is absent from the catalog.
+        return original_emulators;
+    }
+
+    emulators
+}
+
 async fn load_minerva_torrent_groups(
     launchbox_db_id: i64,
     game_title: String,
@@ -1771,11 +1814,17 @@ pub fn GameDetails(
                                             }>
                                                 <button class="play-btn" disabled=move || game_uninstalling.get() on:click=move |_| {
                                                     let platform = stored_platform.get_value();
+                                                    let platform_for_filter = platform.clone();
+                                                    let current_game_file = game_file.get_untracked();
                                                     set_emulators_loading.set(true);
                                                     set_show_emulator_picker.set(true);
                                                     spawn_local(async move {
                                                         match backend_api::get_emulators_with_status(platform).await {
-                                                            Ok(emu_list) => set_emulators.set(emu_list),
+                                                            Ok(emu_list) => set_emulators.set(filter_emulators_for_game(
+                                                                &platform_for_filter,
+                                                                current_game_file.as_ref(),
+                                                                emu_list,
+                                                            )),
                                                             Err(e) => {
                                                                 web_sys::console::error_1(&format!("Failed to fetch emulators: {}", e).into());
                                                                 set_emulators.set(Vec::new());
@@ -2690,6 +2739,7 @@ fn EmulatorPickerModal(
                                                                     let emulator_name = firmware_emulator_name.get_value();
                                                                     let display_name = firmware_display_name.get_value();
                                                                     let platform = stored_platform.get_value();
+                                                                    let current_game_file = game_file.get_untracked();
                                                                     let is_ra = is_retroarch_core;
 
                                                                     set_progress_state.set(Some(format!(
@@ -2708,9 +2758,13 @@ fn EmulatorPickerModal(
                                                                         .await
                                                                         {
                                                                             Ok(_) => {
-                                                                                match backend_api::get_emulators_with_status(platform).await {
+                                                                                match backend_api::get_emulators_with_status(platform.clone()).await {
                                                                                     Ok(emu_list) => {
-                                                                                        set_emulators.set(emu_list);
+                                                                                        set_emulators.set(filter_emulators_for_game(
+                                                                                            &platform,
+                                                                                            current_game_file.as_ref(),
+                                                                                            emu_list,
+                                                                                        ));
                                                                                         set_progress_state.set(None);
                                                                                         set_error_state.set(None);
                                                                                         set_success_state.set(Some(format!(
@@ -2845,6 +2899,7 @@ fn EmulatorPickerModal(
                                                                 let emulator_name =
                                                                     uninstall_emulator_name.get_value();
                                                                 let platform = stored_platform.get_value();
+                                                                let current_game_file = game_file.get_untracked();
                                                                 let display_name = uninstall_display_name;
                                                                 set_progress_state.set(Some(format!(
                                                                     "Uninstalling {}...",
@@ -2860,9 +2915,13 @@ fn EmulatorPickerModal(
                                                                     )
                                                                     .await
                                                                     {
-                                                                        Ok(()) => match backend_api::get_emulators_with_status(platform).await {
+                                                                        Ok(()) => match backend_api::get_emulators_with_status(platform.clone()).await {
                                                                             Ok(emu_list) => {
-                                                                                set_emulators.set(emu_list);
+                                                                                set_emulators.set(filter_emulators_for_game(
+                                                                                    &platform,
+                                                                                    current_game_file.as_ref(),
+                                                                                    emu_list,
+                                                                                ));
                                                                                 set_progress_state.set(None);
                                                                                 set_success_state.set(Some(format!(
                                                                                     "Uninstalled {}.",
