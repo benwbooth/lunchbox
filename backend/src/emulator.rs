@@ -1862,7 +1862,7 @@ fn select_nested_archive_entry(entries: &[ArchiveEntry]) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-fn extract_archive_contents_recursive(
+fn extract_archive_contents_recursive_missing(
     archive_path: &Path,
     output_dir: &Path,
     depth: usize,
@@ -1885,8 +1885,12 @@ fn extract_archive_contents_recursive(
         .iter()
         .filter(|entry| !entry.is_dir)
         .map(|entry| entry.path.clone())
+        .filter(|entry_path| !archive_output_path_exists(output_dir, entry_path))
         .collect::<Vec<_>>();
-    let extracted = extract_archive_entries(archive_path, kind, output_dir, &entry_paths)?;
+
+    if !entry_paths.is_empty() {
+        let _ = extract_archive_entries(archive_path, kind, output_dir, &entry_paths)?;
+    }
 
     if entries
         .iter()
@@ -1895,16 +1899,73 @@ fn extract_archive_contents_recursive(
         return Ok(());
     }
 
-    if extracted.len() == 1 {
-        if let Some(nested_archive) = extracted
-            .into_iter()
-            .find(|path| archive_kind_for_path(path).is_some())
-        {
-            extract_archive_contents_recursive(&nested_archive, output_dir, depth + 1)?;
+    if let Some(nested_archive_entry) = select_nested_archive_entry(&entries) {
+        let nested_archive_path = output_dir.join(&nested_archive_entry);
+        if nested_archive_path.exists() {
+            extract_archive_contents_recursive_missing(&nested_archive_path, output_dir, depth + 1)?;
         }
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn extract_archive_all(
+    archive_path: &Path,
+    kind: ArchiveKind,
+    output_dir: &Path,
+) -> Result<(), String> {
+    match kind {
+        ArchiveKind::Tar | ArchiveKind::TarGz | ArchiveKind::TarBz2 | ArchiveKind::TarXz => {
+            let output = Command::new("tar")
+                .arg(tar_extract_flag(kind))
+                .arg(archive_path)
+                .arg("-C")
+                .arg(output_dir)
+                .output()
+                .map_err(|e| {
+                    format!(
+                        "Failed to extract {} with tar: {}",
+                        archive_path.display(),
+                        e
+                    )
+                })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!(
+                    "Failed to extract {} with tar: {}",
+                    archive_path.display(),
+                    stderr.trim()
+                ));
+            }
+            Ok(())
+        }
+        ArchiveKind::Zip | ArchiveKind::SevenZip | ArchiveKind::Rar => {
+            let output = Command::new("7z")
+                .args(["x", "-bd", "-y", &format!("-o{}", output_dir.display())])
+                .arg(archive_path)
+                .output()
+                .map_err(|e| {
+                    format!(
+                        "Failed to extract {} with 7z: {}",
+                        archive_path.display(),
+                        e
+                    )
+                })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!(
+                    "Failed to extract {} with 7z: {}",
+                    archive_path.display(),
+                    stderr.trim()
+                ));
+            }
+            Ok(())
+        }
+        ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => {
+            extract_archive_contents_recursive_missing(archive_path, output_dir, 0)
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -1985,7 +2046,13 @@ async fn install_appimage_release_asset(
     let installed_path = if asset.name.to_ascii_lowercase().ends_with(".appimage") {
         asset_path.clone()
     } else if info.slug == "hypseus-singe" {
-        extract_archive_contents_recursive(&asset_path, &version_dir, 0)?;
+        let kind = archive_kind_for_path(&asset_path).ok_or_else(|| {
+            format!(
+                "Archive {} is not a supported Hypseus release archive",
+                asset.name
+            )
+        })?;
+        extract_archive_all(&asset_path, kind, &version_dir)?;
         let _ = tokio::fs::remove_file(&asset_path).await;
         find_file_by_extension_recursive(&version_dir, "appimage").ok_or_else(|| {
             format!(
@@ -3892,6 +3959,14 @@ fn path_to_archive_name(path: &Path) -> String {
         .join("/")
 }
 
+fn archive_output_path_exists(parent_dir: &Path, entry_path: &Path) -> bool {
+    let relative_parent = entry_path.parent().unwrap_or_else(|| Path::new(""));
+    let Some(file_name) = entry_path.file_name() else {
+        return false;
+    };
+    parent_dir.join(relative_parent).join(file_name).exists()
+}
+
 fn unique_extracted_rom_path(parent_dir: &Path, entry_name: &Path) -> PathBuf {
     let candidate = parent_dir.join(entry_name);
     if !candidate.exists() {
@@ -5404,14 +5479,11 @@ fn hypseus_launch_context(
     }
 
     let game_name = framefile_path.file_stem()?.to_str()?.to_string();
-    let support_dir = executable_path
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .filter(|path| path.join("pics").exists())
+    let support_dir = resolve_hypseus_support_dir(executable_path)
         .or_else(|| {
             let info = appimage_install_for_slug("hypseus-singe")?;
-            find_appimage_install_executable(&info)
-                .and_then(|path| path.parent().map(Path::to_path_buf))
-                .filter(|path| path.join("pics").exists())
+            let executable = find_appimage_install_executable(&info)?;
+            resolve_hypseus_support_dir(Some(executable.as_path()))
         })?;
     let bundle_root = hypseus_bundle_root(framefile_path)?;
     let romdir = bundle_root.join("roms");
@@ -5423,6 +5495,46 @@ fn hypseus_launch_context(
         romdir: romdir.to_string_lossy().to_string(),
         current_dir: Some(support_dir),
     })
+}
+
+fn resolve_hypseus_support_dir(executable_path: Option<&Path>) -> Option<PathBuf> {
+    let support_dir = executable_path
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        ?;
+
+    if hypseus_support_tree_complete(&support_dir) {
+        return Some(support_dir);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let version_dir = support_dir.parent().unwrap_or(&support_dir);
+        if let Some(archive_path) = find_first_archive_in_dir(version_dir) {
+            if let Some(kind) = archive_kind_for_path(&archive_path) {
+                let _ = extract_archive_all(&archive_path, kind, version_dir);
+            }
+        }
+    }
+
+    Some(support_dir)
+}
+
+fn hypseus_support_tree_complete(support_dir: &Path) -> bool {
+    support_dir.join("pics/overlayleds2.bmp").exists()
+        && support_dir.join("fonts/default.ttf").exists()
+        && support_dir.join("hypinput.ini").exists()
+}
+
+#[cfg(target_os = "linux")]
+fn find_first_archive_in_dir(dir: &Path) -> Option<PathBuf> {
+    let mut archives = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && archive_kind_for_path(path).is_some())
+        .collect::<Vec<_>>();
+    archives.sort();
+    archives.into_iter().next()
 }
 
 fn hypseus_bundle_root(framefile_path: &Path) -> Option<PathBuf> {
@@ -5684,6 +5796,7 @@ mod tests {
         let mut cmd = Command::new("echo");
         append_standalone_rom_and_args_native(
             &mut cmd,
+            None,
             "LoopyMSE",
             None,
             Some("/roms/game.bin"),
@@ -5713,6 +5826,7 @@ mod tests {
         let mut cmd = Command::new("echo");
         append_standalone_rom_and_args_native(
             &mut cmd,
+            None,
             "Altirra",
             None,
             Some("/roms/game.atr"),
@@ -5739,6 +5853,7 @@ mod tests {
         let mut cmd = Command::new("echo");
         append_standalone_rom_and_args_native(
             &mut cmd,
+            None,
             "Altirra",
             None,
             Some("/roms/game.xex"),
@@ -5765,6 +5880,7 @@ mod tests {
         let mut cmd = Command::new("echo");
         append_standalone_rom_and_args_native(
             &mut cmd,
+            None,
             "MAME",
             Some("Arcade"),
             Some("/roms/arcade/ddsomu.zip"),
@@ -5781,6 +5897,45 @@ mod tests {
         assert!(args
             .get(1)
             .is_some_and(|value| value.contains("/roms/arcade")));
+    }
+
+    #[test]
+    fn hypseus_uses_framefile_launch_without_pics_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let support_dir = temp_dir.path().join("hypseus-singe");
+        let bundle_dir = temp_dir.path().join("Singe1");
+        let framefile = bundle_dir.join("vldp/lair/lair.txt");
+        let romdir = bundle_dir.join("roms");
+        let executable = support_dir.join("Hypseus_Singe-x86_64.AppImage");
+
+        std::fs::create_dir_all(framefile.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(&romdir).unwrap();
+        std::fs::create_dir_all(&support_dir).unwrap();
+        std::fs::write(&framefile, b"frame").unwrap();
+        std::fs::write(romdir.join("lair.zip"), b"zip").unwrap();
+        std::fs::write(&executable, b"appimage").unwrap();
+
+        let mut cmd = Command::new("echo");
+        append_standalone_rom_and_args_native(
+            &mut cmd,
+            Some(executable.as_path()),
+            "Hypseus Singe",
+            Some("Arcade"),
+            Some(framefile.to_string_lossy().as_ref()),
+            &[],
+        );
+
+        let args = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(args.first().map(String::as_str), Some("lair"));
+        assert_eq!(args.get(1).map(String::as_str), Some("vldp"));
+        assert!(args.contains(&"-framefile".to_string()));
+        assert!(args.contains(&framefile.to_string_lossy().to_string()));
+        assert!(args.contains(&"-romdir".to_string()));
+        assert!(args.contains(&romdir.to_string_lossy().to_string()));
     }
 
     #[test]
