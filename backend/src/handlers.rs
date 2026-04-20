@@ -4256,6 +4256,160 @@ fn is_hypseus_laserdisc_request(
             .is_some_and(|value| value.eq_ignore_ascii_case("Hypseus Singe"))
 }
 
+fn is_mame_laserdisc_request(
+    platform: Option<&str>,
+    collection: Option<&str>,
+    minerva_platform: Option<&str>,
+) -> bool {
+    platform
+        .map(canonicalize_legacy_platform_name)
+        .is_some_and(|platform| platform == "Arcade")
+        && collection
+            .map(str::trim)
+            .is_some_and(|value| value.eq_ignore_ascii_case("Laserdisc Collection"))
+        && minerva_platform
+            .map(str::trim)
+            .is_some_and(|value| value.eq_ignore_ascii_case("MAME"))
+}
+
+fn select_arcade_mame_laserdisc_matches(
+    files: Vec<crate::torrent::TorrentFileInfo>,
+    game_title: &str,
+    region_priority: &[String],
+) -> Vec<TorrentFileMatch> {
+    #[derive(Debug)]
+    struct BundleCandidate {
+        rom_zip: crate::torrent::TorrentFileInfo,
+        chd: crate::torrent::TorrentFileInfo,
+        exact_match: bool,
+        full_query_match: bool,
+        all_significant_words_match: bool,
+        match_score: f64,
+    }
+
+    let normalized_query = crate::tags::normalize_title_for_matching(game_title);
+    let query_words: Vec<&str> = normalized_query.split_whitespace().collect();
+    let significant_query_words = significant_match_words(&normalized_query);
+
+    let mut bundles: std::collections::BTreeMap<
+        String,
+        (
+            Option<crate::torrent::TorrentFileInfo>,
+            Option<crate::torrent::TorrentFileInfo>,
+        ),
+    > = std::collections::BTreeMap::new();
+    for file in files {
+        let Some((romset_name, kind)) = parse_arcade_mame_laserdisc_asset(&file.filename) else {
+            continue;
+        };
+        let entry = bundles.entry(romset_name).or_insert((None, None));
+        match kind {
+            ArcadeMameLaserdiscAssetKind::RomZip => entry.0 = Some(file),
+            ArcadeMameLaserdiscAssetKind::Chd => entry.1 = Some(file),
+        }
+    }
+
+    let mut candidates: Vec<BundleCandidate> = bundles
+        .into_iter()
+        .filter_map(|(romset_name, (rom_zip, chd))| {
+            let score = score_match_name(
+                &romset_name,
+                &normalized_query,
+                &query_words,
+                &significant_query_words,
+            )?;
+            Some(BundleCandidate {
+                rom_zip: rom_zip?,
+                chd: chd?,
+                exact_match: score.exact_match,
+                full_query_match: score.full_query_match,
+                all_significant_words_match: score.all_significant_words_match,
+                match_score: score.score,
+            })
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| {
+        b.exact_match
+            .cmp(&a.exact_match)
+            .then_with(|| b.full_query_match.cmp(&a.full_query_match))
+            .then_with(|| {
+                b.all_significant_words_match
+                    .cmp(&a.all_significant_words_match)
+            })
+            .then_with(|| {
+                b.match_score
+                    .partial_cmp(&a.match_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                let a_region = crate::tags::get_region_tags(&a.rom_zip.filename)
+                    .into_iter()
+                    .next()
+                    .or_else(|| {
+                        crate::tags::get_region_tags(&a.chd.filename)
+                            .into_iter()
+                            .next()
+                    });
+                let b_region = crate::tags::get_region_tags(&b.rom_zip.filename)
+                    .into_iter()
+                    .next()
+                    .or_else(|| {
+                        crate::tags::get_region_tags(&b.chd.filename)
+                            .into_iter()
+                            .next()
+                    });
+                crate::region_priority::priority_for_region(a_region.as_deref(), region_priority)
+                    .cmp(&crate::region_priority::priority_for_region(
+                        b_region.as_deref(),
+                        region_priority,
+                    ))
+            })
+            .then_with(|| {
+                let a_size = a.rom_zip.size.saturating_add(a.chd.size);
+                let b_size = b.rom_zip.size.saturating_add(b.chd.size);
+                b_size.cmp(&a_size)
+            })
+            .then_with(|| a.rom_zip.filename.cmp(&b.rom_zip.filename))
+    });
+
+    let has_exact_match = candidates.iter().any(|candidate| candidate.exact_match);
+    let has_full_query_match = candidates
+        .iter()
+        .any(|candidate| candidate.full_query_match);
+    let has_significant_match = candidates
+        .iter()
+        .any(|candidate| candidate.all_significant_words_match);
+
+    if has_exact_match {
+        candidates.retain(|candidate| candidate.exact_match);
+    } else if has_full_query_match {
+        candidates.retain(|candidate| candidate.full_query_match);
+    } else if has_significant_match {
+        candidates.retain(|candidate| candidate.all_significant_words_match);
+    } else {
+        candidates.retain(|candidate| candidate.match_score > 0.0);
+    }
+
+    candidates
+        .into_iter()
+        .take(5)
+        .flat_map(|candidate| {
+            [candidate.rom_zip, candidate.chd]
+                .into_iter()
+                .map(move |file| TorrentFileMatch {
+                    index: file.index,
+                    filename: file.filename.clone(),
+                    size: file.size,
+                    match_score: candidate.match_score,
+                    region: crate::tags::get_region_tags(&file.filename)
+                        .into_iter()
+                        .next(),
+                })
+        })
+        .collect()
+}
+
 fn select_arcade_hypseus_laserdisc_matches(
     files: Vec<crate::torrent::TorrentFileInfo>,
     game_title: &str,
@@ -4609,7 +4763,17 @@ pub async fn list_torrent_files(
 
     let mut matches = Vec::new();
     for lookup_title in lookup_titles {
-        let candidates = if is_hypseus_laserdisc_request(
+        let candidates = if is_mame_laserdisc_request(
+            input.platform.as_deref(),
+            input.collection.as_deref(),
+            input.minerva_platform.as_deref(),
+        ) {
+            select_arcade_mame_laserdisc_matches(
+                files.clone(),
+                &lookup_title,
+                &state.settings.region_priority,
+            )
+        } else if is_hypseus_laserdisc_request(
             input.platform.as_deref(),
             input.collection.as_deref(),
             input.minerva_platform.as_deref(),
@@ -4985,7 +5149,8 @@ mod tests {
         expand_arcade_laserdisc_roms, is_platform_specific_torrent_candidate,
         locate_downloaded_file, minerva_platform_fallbacks, parse_arcade_hypseus_laserdisc_asset,
         parse_arcade_mame_laserdisc_asset, select_arcade_hypseus_laserdisc_matches,
-        select_torrent_file_matches, sort_emulator_statuses, torrent_match_lookup_titles,
+        select_arcade_mame_laserdisc_matches, select_torrent_file_matches, sort_emulator_statuses,
+        torrent_match_lookup_titles,
     };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
@@ -5396,6 +5561,94 @@ mod tests {
                 "Laserdisc Collection/Various - Video - Archived/Reference Videos/Dragon's Lair/dlair.m2v"
             ),
             None
+        );
+    }
+
+    #[test]
+    fn arcade_mame_laserdisc_matching_prefers_exact_bundle_over_partial_overlap() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "Laserdisc Collection/MAME/ROMs/dlair.zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Laserdisc Collection/MAME/CHD/dlair/dlair.chd".to_string(),
+                size: 10,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename: "Laserdisc Collection/MAME/ROMs/dlair2.zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 3,
+                filename: "Laserdisc Collection/MAME/CHD/dlair2/dlair2.chd".to_string(),
+                size: 10,
+            },
+        ];
+
+        let matches = select_arcade_mame_laserdisc_matches(files, "dlair", &[]);
+        assert_eq!(matches.len(), 2);
+        assert_eq!(
+            matches
+                .iter()
+                .map(|file| file.filename.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "Laserdisc Collection/MAME/ROMs/dlair.zip",
+                "Laserdisc Collection/MAME/CHD/dlair/dlair.chd",
+            ]
+        );
+    }
+
+    #[test]
+    fn arcade_mame_laserdisc_matching_keeps_dragons_lair_two_bundle_only() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "Laserdisc Collection/MAME/ROMs/dlair.zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Laserdisc Collection/MAME/CHD/dlair/dlair.chd".to_string(),
+                size: 10,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename: "Laserdisc Collection/MAME/ROMs/dlair2.zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 3,
+                filename: "Laserdisc Collection/MAME/CHD/dlair2/dlair2.chd".to_string(),
+                size: 10,
+            },
+            TorrentFileInfo {
+                index: 4,
+                filename: "Laserdisc Collection/MAME/ROMs/ep_twarp.zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 5,
+                filename: "Laserdisc Collection/MAME/CHD/ep_twarp/ep_twarp.chd".to_string(),
+                size: 10,
+            },
+        ];
+
+        let matches = select_arcade_mame_laserdisc_matches(files, "dlair2", &[]);
+        assert_eq!(matches.len(), 2);
+        assert_eq!(
+            matches
+                .iter()
+                .map(|file| file.filename.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "Laserdisc Collection/MAME/ROMs/dlair2.zip",
+                "Laserdisc Collection/MAME/CHD/dlair2/dlair2.chd",
+            ]
         );
     }
 
