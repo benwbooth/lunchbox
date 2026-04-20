@@ -1498,7 +1498,12 @@ pub fn GameDetails(
                                                     </div>
                                                     <div class="file-picker-list">
                                                         <Show when=move || files_loading.get() && torrent_groups.get().is_empty()>
-                                                            <div class="import-status-hint">"Loading Minerva download options..."</div>
+                                                            <div class="file-picker-loading">
+                                                                <div class="import-status-hint">"Loading Minerva download options..."</div>
+                                                                <div class="download-progress">
+                                                                    <div class="progress-bar indeterminate"></div>
+                                                                </div>
+                                                            </div>
                                                         </Show>
                                                         {move || {
                                                             let groups = torrent_groups.get();
