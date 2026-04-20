@@ -721,9 +721,13 @@ fn write_appimage_manifest(
 
 fn find_appimage_install_executable(info: &AppImageInstallInfo) -> Option<PathBuf> {
     if let Some(manifest) = read_appimage_manifest(info) {
-        let candidate = appimage_version_dir(info, &manifest.version).join(&manifest.asset_name);
+        let version_dir = appimage_version_dir(info, &manifest.version);
+        let candidate = version_dir.join(&manifest.asset_name);
         if candidate.exists() {
             return Some(candidate);
+        }
+        if let Some(path) = find_file_by_name_recursive(&version_dir, &[&manifest.asset_name]) {
+            return Some(path);
         }
     }
 
@@ -736,16 +740,7 @@ fn find_appimage_install_executable(info: &AppImageInstallInfo) -> Option<PathBu
         }
     })?;
 
-    let mut entries = std::fs::read_dir(current_dir).ok()?;
-    entries.find_map(|entry| {
-        let path = entry.ok()?.path();
-        let is_appimage = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("appimage"))
-            .unwrap_or(false);
-        is_appimage.then_some(path)
-    })
+    find_file_by_extension_recursive(&current_dir, "appimage")
 }
 
 fn find_file_by_name_recursive(root: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -776,6 +771,41 @@ fn find_file_by_name_recursive(root: &Path, candidates: &[&str]) -> Option<PathB
                 continue;
             };
             if wanted.contains(&file_name.to_ascii_lowercase()) {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+fn find_file_by_extension_recursive(root: &Path, extension: &str) -> Option<PathBuf> {
+    if !root.exists() {
+        return None;
+    }
+
+    let wanted = extension.to_ascii_lowercase();
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            let matches = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case(&wanted))
+                .unwrap_or(false);
+            if matches {
                 return Some(path);
             }
         }
