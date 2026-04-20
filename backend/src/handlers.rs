@@ -1564,6 +1564,7 @@ enum ArcadeMameLaserdiscAssetKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArcadeHypseusLaserdiscAssetKind {
+    RomZip,
     FrameText,
     Video,
     Audio,
@@ -1659,22 +1660,48 @@ fn parse_arcade_hypseus_laserdisc_asset(
         .and_then(|value| value.to_str())
         .map(|value| value.to_ascii_lowercase())?;
     let kind = match extension.as_str() {
+        "zip" => ArcadeHypseusLaserdiscAssetKind::RomZip,
         "txt" => ArcadeHypseusLaserdiscAssetKind::FrameText,
         "m2v" => ArcadeHypseusLaserdiscAssetKind::Video,
         "ogg" => ArcadeHypseusLaserdiscAssetKind::Audio,
         _ => return None,
     };
     let stem = path.file_stem()?.to_str()?;
-    let mut parent = path.parent()?;
-    if parent
-        .file_name()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| matches!(value, "video" | "audio" | "sound"))
-    {
-        parent = parent.parent()?;
-    }
-    let parent = parent.to_string_lossy();
-    Some((format!("{parent}/{stem}"), kind))
+
+    let components = path
+        .iter()
+        .filter_map(|component| component.to_str())
+        .collect::<Vec<_>>();
+    let anchor_idx = match kind {
+        ArcadeHypseusLaserdiscAssetKind::RomZip => components
+            .iter()
+            .rposition(|component| component.eq_ignore_ascii_case("roms"))?,
+        _ => {
+            let mut parent = path.parent()?;
+            if parent
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| matches!(value, "video" | "audio" | "sound"))
+            {
+                parent = parent.parent()?;
+            }
+            parent
+                .iter()
+                .filter_map(|component| component.to_str())
+                .collect::<Vec<_>>()
+                .iter()
+                .rposition(|component| {
+                    component.eq_ignore_ascii_case("vldp") || component.eq_ignore_ascii_case("singe")
+                })?
+        }
+    };
+    let prefix = components
+        .iter()
+        .take(anchor_idx)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("/");
+    Some((format!("{prefix}/{stem}"), kind))
 }
 
 fn find_torrent_file_by_suffix(
@@ -1827,6 +1854,7 @@ fn build_arcade_hypseus_laserdisc_plan(
     let mut text_asset = None;
     let mut video_asset = None;
     let mut audio_asset = None;
+    let mut rom_zip_asset = None;
 
     for file in current_files {
         let Some((candidate_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&file.filename)
@@ -1844,14 +1872,19 @@ fn build_arcade_hypseus_laserdisc_plan(
             size: file.size,
         };
         match kind {
+            ArcadeHypseusLaserdiscAssetKind::RomZip => rom_zip_asset = Some(asset),
             ArcadeHypseusLaserdiscAssetKind::FrameText => text_asset = Some(asset),
             ArcadeHypseusLaserdiscAssetKind::Video => video_asset = Some(asset),
             ArcadeHypseusLaserdiscAssetKind::Audio => audio_asset = Some(asset),
         }
     }
 
-    let representative_asset = text_asset.clone().or_else(|| video_asset.clone()).or_else(|| audio_asset.clone())?;
-    let assets = vec![text_asset?, video_asset?, audio_asset?];
+    let representative_asset = text_asset
+        .clone()
+        .or_else(|| video_asset.clone())
+        .or_else(|| audio_asset.clone())
+        .or_else(|| rom_zip_asset.clone())?;
+    let assets = vec![rom_zip_asset?, text_asset?, video_asset?, audio_asset?];
     let bundle_name = Path::new(&bundle_key)
         .file_name()
         .and_then(|value| value.to_str())
@@ -3185,6 +3218,7 @@ fn select_arcade_hypseus_laserdisc_matches(
             Option<crate::torrent::TorrentFileInfo>,
             Option<crate::torrent::TorrentFileInfo>,
             Option<crate::torrent::TorrentFileInfo>,
+            Option<crate::torrent::TorrentFileInfo>,
         ),
     > = std::collections::BTreeMap::new();
 
@@ -3192,18 +3226,19 @@ fn select_arcade_hypseus_laserdisc_matches(
         let Some((bundle_key, kind)) = parse_arcade_hypseus_laserdisc_asset(&file.filename) else {
             continue;
         };
-        let entry = bundles.entry(bundle_key).or_insert((None, None, None));
+        let entry = bundles.entry(bundle_key).or_insert((None, None, None, None));
         match kind {
-            ArcadeHypseusLaserdiscAssetKind::FrameText => entry.0 = Some(file),
-            ArcadeHypseusLaserdiscAssetKind::Video => entry.1 = Some(file),
-            ArcadeHypseusLaserdiscAssetKind::Audio => entry.2 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::RomZip => entry.0 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::FrameText => entry.1 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::Video => entry.2 = Some(file),
+            ArcadeHypseusLaserdiscAssetKind::Audio => entry.3 = Some(file),
         }
     }
 
     let mut candidates: Vec<BundleCandidate> = bundles
         .into_iter()
-        .filter_map(|(bundle_key, (text, video, audio))| {
-            let members = vec![text?, video?, audio?];
+        .filter_map(|(bundle_key, (rom_zip, text, video, audio))| {
+            let members = vec![rom_zip?, text?, video?, audio?];
             let score =
                 score_match_name(&bundle_key, &normalized_query, &query_words, &significant_query_words)?;
             Some(BundleCandidate {

@@ -328,22 +328,46 @@ fn parse_hypseus_laserdisc_bundle(path: &str) -> Option<(String, &'static str)> 
         .and_then(|value| value.to_str())
         .map(|value| value.to_ascii_lowercase())?;
     let kind = match ext.as_str() {
+        "zip" => "zip",
         "m2v" => "m2v",
         "ogg" => "ogg",
         "txt" => "txt",
         _ => return None,
     };
     let stem = path.file_stem()?.to_str()?;
-    let mut parent = path.parent()?;
-    if parent
-        .file_name()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| matches!(value, "video" | "audio" | "sound"))
-    {
-        parent = parent.parent()?;
-    }
-    let parent = parent.to_string_lossy();
-    Some((format!("{parent}/{stem}"), kind))
+    let components = path
+        .iter()
+        .filter_map(|component| component.to_str())
+        .collect::<Vec<_>>();
+    let anchor_idx = if kind == "zip" {
+        components
+            .iter()
+            .rposition(|component| component.eq_ignore_ascii_case("roms"))?
+    } else {
+        let mut parent = path.parent()?;
+        if parent
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| matches!(value, "video" | "audio" | "sound"))
+        {
+            parent = parent.parent()?;
+        }
+        parent
+            .iter()
+            .filter_map(|component| component.to_str())
+            .collect::<Vec<_>>()
+            .iter()
+            .rposition(|component| {
+                component.eq_ignore_ascii_case("vldp") || component.eq_ignore_ascii_case("singe")
+            })?
+    };
+    let prefix = components
+        .iter()
+        .take(anchor_idx)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("/");
+    Some((format!("{prefix}/{stem}"), kind))
 }
 
 fn laserdisc_bundle_title(bundle_key: &str) -> String {
@@ -425,6 +449,7 @@ fn build_minerva_picker_items(
     bundles
         .into_iter()
         .filter_map(|(bundle_key, members)| {
+            let mut rom_zip = None;
             let mut text = None;
             let mut video = None;
             let mut audio = None;
@@ -433,6 +458,7 @@ fn build_minerva_picker_items(
                     .map(|(_, kind)| kind)
                     .unwrap_or_default()
                 {
+                    "zip" => rom_zip = Some(member),
                     "txt" => text = Some(member),
                     "m2v" => video = Some(member),
                     "ogg" => audio = Some(member),
@@ -440,14 +466,15 @@ fn build_minerva_picker_items(
                 }
             }
 
-            let (text, video, audio) = (text?, video?, audio?);
+            let (rom_zip, text, video, audio) = (rom_zip?, text?, video?, audio?);
             Some(MinervaPickerItem {
                 selection: MinervaDownloadSelection::File {
                     torrent_url: rom.torrent_url.clone(),
                     file_index: text.index,
                 },
                 display_name: format!(
-                    "{}.m2v + {}.ogg + {}.txt",
+                    "{}.zip + {}.m2v + {}.ogg + {}.txt",
+                    laserdisc_bundle_title(&bundle_key),
                     laserdisc_bundle_title(&bundle_key),
                     laserdisc_bundle_title(&bundle_key),
                     laserdisc_bundle_title(&bundle_key)
@@ -455,9 +482,17 @@ fn build_minerva_picker_items(
                 path_detail: std::path::Path::new(&bundle_key)
                     .parent()
                     .map(|path| path.display().to_string()),
-                size: text.size.saturating_add(video.size).saturating_add(audio.size),
-                match_score: text.match_score.max(video.match_score).max(audio.match_score),
-                region: text.region.or(video.region).or(audio.region),
+                size: rom_zip
+                    .size
+                    .saturating_add(text.size)
+                    .saturating_add(video.size)
+                    .saturating_add(audio.size),
+                match_score: rom_zip
+                    .match_score
+                    .max(text.match_score)
+                    .max(video.match_score)
+                    .max(audio.match_score),
+                region: rom_zip.region.or(text.region).or(video.region).or(audio.region),
                 suggested_emulator: Some("Hypseus Singe".to_string()),
                 type_badge: Some("Bundle".to_string()),
             })

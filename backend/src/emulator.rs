@@ -1862,6 +1862,52 @@ fn select_nested_archive_entry(entries: &[ArchiveEntry]) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
+fn extract_archive_contents_recursive(
+    archive_path: &Path,
+    output_dir: &Path,
+    depth: usize,
+) -> Result<(), String> {
+    if depth > 4 {
+        return Err(format!(
+            "Archive {} is wrapped too deeply to extract",
+            archive_path.display()
+        ));
+    }
+
+    let kind = archive_kind_for_path(archive_path).ok_or_else(|| {
+        format!(
+            "Asset {} is not a supported archive",
+            archive_path.display()
+        )
+    })?;
+    let entries = list_archive_entries(archive_path, kind)?;
+    let entry_paths = entries
+        .iter()
+        .filter(|entry| !entry.is_dir)
+        .map(|entry| entry.path.clone())
+        .collect::<Vec<_>>();
+    let extracted = extract_archive_entries(archive_path, kind, output_dir, &entry_paths)?;
+
+    if entries
+        .iter()
+        .any(|entry| select_appimage_payload_entry(std::slice::from_ref(entry)).is_some())
+    {
+        return Ok(());
+    }
+
+    if extracted.len() == 1 {
+        if let Some(nested_archive) = extracted
+            .into_iter()
+            .find(|path| archive_kind_for_path(path).is_some())
+        {
+            extract_archive_contents_recursive(&nested_archive, output_dir, depth + 1)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
 fn extract_appimage_payload_from_archive_inner(
     archive_path: &Path,
     output_dir: &Path,
@@ -1938,6 +1984,15 @@ async fn install_appimage_release_asset(
 
     let installed_path = if asset.name.to_ascii_lowercase().ends_with(".appimage") {
         asset_path.clone()
+    } else if info.slug == "hypseus-singe" {
+        extract_archive_contents_recursive(&asset_path, &version_dir, 0)?;
+        let _ = tokio::fs::remove_file(&asset_path).await;
+        find_file_by_extension_recursive(&version_dir, "appimage").ok_or_else(|| {
+            format!(
+                "Archive {} did not contain an AppImage payload after extraction",
+                asset.name
+            )
+        })?
     } else {
         let extracted_path = extract_appimage_payload_from_archive(&asset_path, &version_dir)?;
         let _ = tokio::fs::remove_file(&asset_path).await;
@@ -4983,6 +5038,7 @@ fn launch_standalone(
         cmd.arg("-a").arg(exe_path.to_str().unwrap_or_default());
         append_standalone_rom_and_args_native(
             &mut cmd,
+            Some(&exe_path),
             &emulator.name,
             platform_name,
             rom_path,
@@ -4995,6 +5051,7 @@ fn launch_standalone(
         let mut cmd = Command::new(&exe_path);
         append_standalone_rom_and_args_native(
             &mut cmd,
+            Some(&exe_path),
             &emulator.name,
             platform_name,
             rom_path,
@@ -5053,6 +5110,7 @@ fn append_launch_args_native(cmd: &mut Command, args: &[LaunchArg]) {
 
 fn append_standalone_rom_and_args_native(
     cmd: &mut Command,
+    executable_path: Option<&Path>,
     emulator_name: &str,
     platform_name: Option<&str>,
     rom_path: Option<&str>,
@@ -5063,6 +5121,25 @@ fn append_standalone_rom_and_args_native(
             cmd.arg(rom);
         }
         append_launch_args_native(cmd, args);
+    } else if emulator_name == "Hypseus Singe" {
+        if let Some(context) =
+            hypseus_launch_context(executable_path, rom_path).or_else(|| hypseus_launch_context(None, rom_path))
+        {
+            cmd.arg(&context.game_name).arg("vldp");
+            append_launch_args_native(cmd, args);
+            cmd.arg("-framefile").arg(&context.framefile);
+            cmd.arg("-homedir").arg(&context.support_root);
+            cmd.arg("-datadir").arg(&context.support_root);
+            cmd.arg("-romdir").arg(&context.romdir);
+            if let Some(current_dir) = context.current_dir {
+                cmd.current_dir(current_dir);
+            }
+        } else {
+            append_launch_args_native(cmd, args);
+            if let Some(rom) = rom_path {
+                cmd.arg(rom);
+            }
+        }
     } else if is_arcade_mame_standalone_launch(emulator_name, platform_name, rom_path) {
         append_launch_args_native(cmd, args);
         append_mame_arcade_launch_args_native(cmd, rom_path);
@@ -5302,6 +5379,73 @@ fn append_standalone_rom_and_args_for_wine(
     }
 
     Ok(())
+}
+
+struct HypseusLaunchContext {
+    game_name: String,
+    framefile: String,
+    support_root: String,
+    romdir: String,
+    current_dir: Option<PathBuf>,
+}
+
+fn hypseus_launch_context(
+    executable_path: Option<&Path>,
+    rom_path: Option<&str>,
+) -> Option<HypseusLaunchContext> {
+    let framefile = rom_path?;
+    let framefile_path = Path::new(framefile);
+    if !framefile_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+    {
+        return None;
+    }
+
+    let game_name = framefile_path.file_stem()?.to_str()?.to_string();
+    let support_dir = executable_path
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .filter(|path| path.join("pics").exists())
+        .or_else(|| {
+            let info = appimage_install_for_slug("hypseus-singe")?;
+            find_appimage_install_executable(&info)
+                .and_then(|path| path.parent().map(Path::to_path_buf))
+                .filter(|path| path.join("pics").exists())
+        })?;
+    let bundle_root = hypseus_bundle_root(framefile_path)?;
+    let romdir = bundle_root.join("roms");
+
+    Some(HypseusLaunchContext {
+        game_name,
+        framefile: framefile.to_string(),
+        support_root: ensure_trailing_separator(&support_dir),
+        romdir: romdir.to_string_lossy().to_string(),
+        current_dir: Some(support_dir),
+    })
+}
+
+fn hypseus_bundle_root(framefile_path: &Path) -> Option<PathBuf> {
+    let mut ancestors = framefile_path.ancestors();
+    let _file = ancestors.next()?;
+    for ancestor in ancestors {
+        let name = ancestor
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase());
+        if matches!(name.as_deref(), Some("vldp" | "singe")) {
+            return ancestor.parent().map(Path::to_path_buf);
+        }
+    }
+    None
+}
+
+fn ensure_trailing_separator(path: &Path) -> String {
+    let mut value = path.to_string_lossy().to_string();
+    if !value.ends_with('/') {
+        value.push('/');
+    }
+    value
 }
 
 /// Add status for an emulator as a RetroArch core entry
