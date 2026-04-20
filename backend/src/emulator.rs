@@ -9,6 +9,7 @@ use crate::db::schema::EmulatorInfo;
 use crate::firmware::FirmwareStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -18,6 +19,7 @@ use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 const FLATPAK_INSTALL_PREFIX: &str = "flatpak::";
 const APPIMAGE_INSTALL_PREFIX: &str = "appimage::";
 const WINE_INSTALL_PREFIX: &str = "wine::";
+const HYPSEUS_MAX_SAFE_PATH_LEN: usize = 80;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WineInstallInfo {
@@ -5518,15 +5520,95 @@ fn hypseus_launch_context(
             resolve_hypseus_support_dir(Some(executable.as_path()))
         })?;
     let bundle_root = hypseus_bundle_root(framefile_path)?;
-    let romdir = bundle_root.join("roms");
+    let mut staged_support_dir = support_dir.clone();
+    let mut staged_bundle_root = bundle_root.clone();
+    let mut staged_framefile = framefile_path.to_path_buf();
+
+    #[cfg(target_os = "linux")]
+    if hypseus_needs_short_runtime_paths(&support_dir, &bundle_root, framefile_path) {
+        if let Some((short_support_dir, short_bundle_root, short_framefile)) =
+            prepare_hypseus_short_runtime(&game_name, &support_dir, &bundle_root, framefile_path)
+        {
+            staged_support_dir = short_support_dir;
+            staged_bundle_root = short_bundle_root;
+            staged_framefile = short_framefile;
+        }
+    }
+
+    let romdir = staged_bundle_root.join("roms");
 
     Some(HypseusLaunchContext {
         game_name,
-        framefile: framefile.to_string(),
-        support_root: ensure_trailing_separator(&support_dir),
+        framefile: staged_framefile.to_string_lossy().to_string(),
+        support_root: ensure_trailing_separator(&staged_support_dir),
         romdir: romdir.to_string_lossy().to_string(),
-        current_dir: Some(support_dir),
+        current_dir: Some(staged_support_dir),
     })
+}
+
+#[cfg(target_os = "linux")]
+fn hypseus_needs_short_runtime_paths(
+    support_dir: &Path,
+    bundle_root: &Path,
+    framefile_path: &Path,
+) -> bool {
+    [
+        support_dir.to_string_lossy().len(),
+        bundle_root.to_string_lossy().len(),
+        framefile_path.to_string_lossy().len(),
+    ]
+    .into_iter()
+    .any(|len| len > HYPSEUS_MAX_SAFE_PATH_LEN)
+}
+
+#[cfg(target_os = "linux")]
+fn prepare_hypseus_short_runtime(
+    game_name: &str,
+    support_dir: &Path,
+    bundle_root: &Path,
+    framefile_path: &Path,
+) -> Option<(PathBuf, PathBuf, PathBuf)> {
+    let runtime_root = std::env::temp_dir().join("lb-hypseus");
+    let game_key = format!(
+        "{}-{}",
+        sanitize_hypseus_runtime_component(game_name),
+        stable_path_key(bundle_root)
+    );
+    let support_link = runtime_root.join("s");
+    let bundle_link = runtime_root.join("g").join(game_key);
+    let relative_framefile = framefile_path.strip_prefix(bundle_root).ok()?;
+
+    replace_symlink(support_dir, &support_link).ok()?;
+    replace_symlink(bundle_root, &bundle_link).ok()?;
+
+    Some((
+        support_link.clone(),
+        bundle_link.clone(),
+        bundle_link.join(relative_framefile),
+    ))
+}
+
+#[cfg(target_os = "linux")]
+fn sanitize_hypseus_runtime_component(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|ch| match ch {
+            'a'..='z' | 'A'..='Z' | '0'..='9' => ch.to_ascii_lowercase(),
+            _ => '-',
+        })
+        .collect::<String>();
+    let trimmed = sanitized.trim_matches('-');
+    if trimmed.is_empty() {
+        "game".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn stable_path_key(path: &Path) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    path.to_string_lossy().hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn resolve_hypseus_support_dir(executable_path: Option<&Path>) -> Option<PathBuf> {
