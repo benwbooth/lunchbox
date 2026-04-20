@@ -270,12 +270,19 @@ pub async fn get_collection_games(
         if let Some(row) = row_opt {
             let title: String = row.get("title");
             let display_title = normalize_title_for_display(&title);
+            let platform: String = row.get("platform");
+            let launchbox_db_id: i64 = row.get("launchbox_db_id");
             games.push(Game {
                 id: game_id,
-                database_id: row.get("launchbox_db_id"),
-                title,
+                database_id: launchbox_db_id,
+                title: title.clone(),
                 display_title,
-                platform: row.get("platform"),
+                platform: crate::arcade::display_platform_name(
+                    canonicalize_legacy_platform_name(&platform),
+                    &title,
+                    (launchbox_db_id > 0).then_some(launchbox_db_id),
+                )
+                .into_owned(),
                 platform_id: row.get("platform_id"),
                 description: row.get("description"),
                 release_date: row.get("release_date"),
@@ -345,6 +352,7 @@ pub async fn get_emulators_for_platform(
         .ok_or_else(|| "Emulators database not initialized".to_string())?;
 
     let os = current_os();
+    let canonical_platform_name = canonicalize_legacy_platform_name(platform_name);
 
     let mut emulators: Vec<EmulatorInfo> = sqlx::query_as(
         r#"
@@ -357,14 +365,14 @@ pub async fn get_emulators_for_platform(
         ORDER BY pe.is_recommended DESC, e.name
         "#,
     )
-    .bind(platform_name)
+    .bind(canonical_platform_name)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     emulators.retain(emulator::is_emulator_visible_on_current_os);
 
-    maybe_append_exodos_scummvm(pool, platform_name, os, false, &mut emulators).await?;
+    maybe_append_exodos_scummvm(pool, canonical_platform_name, os, false, &mut emulators).await?;
 
     Ok(emulators)
 }
@@ -909,15 +917,17 @@ pub async fn get_all_emulator_launch_template_overrides(
     Ok(rows
         .into_iter()
         .map(
-            |(emulator_name, platform_name, runtime_kind, command_template)| EmulatorLaunchTemplateOverride {
-                emulator_name,
-                platform_name: if platform_name.is_empty() {
-                    None
-                } else {
-                    Some(platform_name)
-                },
-                runtime_kind,
-                command_template,
+            |(emulator_name, platform_name, runtime_kind, command_template)| {
+                EmulatorLaunchTemplateOverride {
+                    emulator_name,
+                    platform_name: if platform_name.is_empty() {
+                        None
+                    } else {
+                        Some(platform_name)
+                    },
+                    runtime_kind,
+                    command_template,
+                }
             },
         )
         .collect())
@@ -1154,13 +1164,12 @@ pub async fn get_game_launch_template_preview(
     is_retroarch_core: bool,
 ) -> Result<GameLaunchTemplatePreview, String> {
     let prepared_collection = if let Some(db_pool) = state.db_pool.as_ref() {
-        let row: Option<(String,)> = sqlx::query_as(
-            "SELECT file_path FROM game_files WHERE launchbox_db_id = ? LIMIT 1",
-        )
-        .bind(launchbox_db_id)
-        .fetch_optional(db_pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT file_path FROM game_files WHERE launchbox_db_id = ? LIMIT 1")
+                .bind(launchbox_db_id)
+                .fetch_optional(db_pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         row.and_then(|(file_path,)| {
             if crate::exo::should_use_prepared_install(platform_name, Path::new(&file_path)) {
@@ -1258,8 +1267,13 @@ async fn resolve_game_launch_template_override(
         return Ok(None);
     };
 
-    get_game_launch_template_override_internal(state, launchbox_db_id, emulator_name, is_retroarch_core)
-        .await
+    get_game_launch_template_override_internal(
+        state,
+        launchbox_db_id,
+        emulator_name,
+        is_retroarch_core,
+    )
+    .await
 }
 
 async fn resolve_emulator_launch_args(
@@ -1330,6 +1344,7 @@ pub async fn get_emulators_with_status(
         .ok_or_else(|| "Emulators database not initialized".to_string())?;
 
     let os = current_os();
+    let canonical_platform_name = canonicalize_legacy_platform_name(platform_name);
 
     // Query emulators for this platform, filtered by OS.
     // Standalone runtimes without an auto-install method are still useful if the
@@ -1348,14 +1363,14 @@ pub async fn get_emulators_with_status(
             e.name
         "#,
     )
-    .bind(platform_name)
+    .bind(canonical_platform_name)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     emulators.retain(emulator::is_emulator_visible_on_current_os);
 
-    maybe_append_exodos_scummvm(pool, platform_name, os, true, &mut emulators).await?;
+    maybe_append_exodos_scummvm(pool, canonical_platform_name, os, true, &mut emulators).await?;
 
     // Create separate entries for RetroArch cores and standalone emulators
     // An emulator with both will appear twice in the list
@@ -1364,7 +1379,7 @@ pub async fn get_emulators_with_status(
     let mut standalone_entries: Vec<EmulatorWithStatus> = Vec::new();
 
     for emulator in emulators {
-        let is_exodos_scummvm = platform_name == "MS-DOS" && emulator.name == "ScummVM";
+        let is_exodos_scummvm = canonical_platform_name == "MS-DOS" && emulator.name == "ScummVM";
         let has_retroarch = emulator.retroarch_core.is_some() && !is_exodos_scummvm;
         let has_standalone = !is_exodos_scummvm;
 
@@ -1390,7 +1405,7 @@ pub async fn get_emulators_with_status(
                 &state.settings,
                 db_pool,
                 &emulator.info,
-                platform_name,
+                canonical_platform_name,
                 emulator.is_retroarch_core,
             )
             .await?;
@@ -1511,6 +1526,7 @@ pub async fn install_firmware_for_emulator(
     platform_name: &str,
     is_retroarch_core: bool,
 ) -> Result<Vec<crate::firmware::FirmwareStatus>, String> {
+    let canonical_platform_name = canonicalize_legacy_platform_name(platform_name);
     let settings = state.settings.clone();
     let minerva_pool = state.minerva_db_pool.clone();
     let db_pool = crate::state::ensure_user_db(state)
@@ -1523,7 +1539,7 @@ pub async fn install_firmware_for_emulator(
         &db_pool,
         minerva_pool.as_ref(),
         emulator,
-        platform_name,
+        canonical_platform_name,
         is_retroarch_core,
     )
     .await
@@ -1537,12 +1553,13 @@ pub async fn install_firmware_for_emulator_with_context(
     platform_name: &str,
     is_retroarch_core: bool,
 ) -> Result<Vec<crate::firmware::FirmwareStatus>, String> {
+    let canonical_platform_name = canonicalize_legacy_platform_name(platform_name);
     crate::firmware::ensure_runtime_firmware(
         settings,
         db_pool,
         minerva_pool,
         emulator,
-        platform_name,
+        canonical_platform_name,
         is_retroarch_core,
     )
     .await?;
@@ -1551,7 +1568,7 @@ pub async fn install_firmware_for_emulator_with_context(
         settings,
         db_pool,
         emulator,
-        platform_name,
+        canonical_platform_name,
         is_retroarch_core,
     )
     .await
@@ -1569,6 +1586,7 @@ pub async fn launch_game_with_emulator(
     let as_retroarch_core = is_retroarch_core.unwrap_or(emulator.retroarch_core.is_some());
 
     if let (Some(db_id), Some(platform)) = (launchbox_db_id, platform) {
+        let runtime_platform = canonicalize_legacy_platform_name(platform);
         let settings = state.settings.clone();
         let resolved_rom_path = if let Some(path) = rom_path.filter(|path| !path.trim().is_empty())
         {
@@ -1599,7 +1617,8 @@ pub async fn launch_game_with_emulator(
             }
         };
 
-        if crate::exo::should_use_prepared_install(platform, Path::new(&resolved_rom_path)) {
+        if crate::exo::should_use_prepared_install(runtime_platform, Path::new(&resolved_rom_path))
+        {
             let db_pool = crate::state::ensure_user_db(state)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -1608,7 +1627,7 @@ pub async fn launch_game_with_emulator(
                 &settings,
                 db_pool,
                 db_id,
-                platform,
+                runtime_platform,
                 Path::new(&resolved_rom_path),
             )
             .await
@@ -1663,7 +1682,7 @@ pub async fn launch_game_with_emulator(
             db_pool,
             minerva_pool.as_ref(),
             emulator,
-            platform,
+            runtime_platform,
             as_retroarch_core,
             Path::new(&resolved_rom_path),
         )
@@ -1679,7 +1698,7 @@ pub async fn launch_game_with_emulator(
         let firmware_launch_args = crate::firmware::get_launch_firmware_args(
             db_pool,
             emulator,
-            platform,
+            runtime_platform,
             as_retroarch_core,
         )
         .await
@@ -1693,12 +1712,14 @@ pub async fn launch_game_with_emulator(
             true,
         )
         .await?;
-        launch_configuration.legacy_args.extend(firmware_launch_args);
+        launch_configuration
+            .legacy_args
+            .extend(firmware_launch_args);
 
         match emulator::launch_emulator(
             emulator,
             Some(&resolved_rom_path),
-            Some(platform),
+            Some(runtime_platform),
             as_retroarch_core,
             &launch_configuration,
         ) {
@@ -1727,9 +1748,15 @@ pub async fn launch_game_with_emulator(
         });
     };
 
-    let launch_configuration =
-        build_launch_configuration(state, launchbox_db_id, emulator, None, as_retroarch_core, true)
-            .await?;
+    let launch_configuration = build_launch_configuration(
+        state,
+        launchbox_db_id,
+        emulator,
+        None,
+        as_retroarch_core,
+        true,
+    )
+    .await?;
 
     match emulator::launch_emulator(
         emulator,
@@ -1921,7 +1948,7 @@ async fn recover_missing_laserdisc_game_file(
     let Some((game_title, platform)) = game_row else {
         return Ok(None);
     };
-    if !platform.eq_ignore_ascii_case("Arcade") {
+    if canonicalize_legacy_platform_name(&platform) != "Arcade" {
         return Ok(None);
     }
 
@@ -2379,11 +2406,12 @@ fn expand_arcade_laserdisc_roms(
 }
 
 fn canonicalize_legacy_platform_name(name: &str) -> &str {
-    match name.trim() {
+    let legacy = match name.trim() {
         "Arduboy Inc - Arduboy" => "Arduboy",
         "Atari - 8-bit Family" => "Atari 800",
         other => other,
-    }
+    };
+    crate::arcade::canonicalize_platform_name(legacy)
 }
 
 #[derive(Clone, Copy)]
@@ -3318,13 +3346,15 @@ pub async fn start_minerva_download(
     input: StartMinervaDownloadInput,
 ) -> Result<ImportJob, String> {
     let torrent_url = input.torrent_url.clone();
+    let canonical_platform = canonicalize_legacy_platform_name(&input.platform).to_string();
     let file_index = input.file_index;
     let download_mode = input.download_mode;
     let files = crate::torrent::get_torrent_file_listing(&torrent_url)
         .await
         .map_err(|e| format!("Failed to parse torrent: {e}"))?;
     let selection_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
-        file_index.and_then(|idx| crate::exo::plan_related_downloads(&input.platform, idx, &files))
+        file_index
+            .and_then(|idx| crate::exo::plan_related_downloads(&canonical_platform, idx, &files))
     } else {
         None
     };
@@ -3375,7 +3405,7 @@ pub async fn start_minerva_download(
     .bind(&job_id)
     .bind(input.launchbox_db_id)
     .bind(&input.game_title)
-    .bind(&input.platform)
+    .bind(&canonical_platform)
     .execute(db_pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -3383,16 +3413,17 @@ pub async fn start_minerva_download(
     let rom_dir = state.settings.get_rom_directory();
     let file_link_mode = state.settings.torrent.file_link_mode.clone();
     let download_dir = match download_mode {
-        MinervaDownloadMode::GameOnly => {
-            state.settings.get_import_directory().join(&input.platform)
-        }
+        MinervaDownloadMode::GameOnly => state
+            .settings
+            .get_import_directory()
+            .join(&canonical_platform),
         MinervaDownloadMode::FullTorrent => {
             let title_component = sanitize_download_directory_component(&input.game_title);
             let job_suffix = job_id.chars().take(8).collect::<String>();
             state
                 .settings
                 .get_torrent_library_directory()
-                .join(&input.platform)
+                .join(&canonical_platform)
                 .join(format!("{title_component}-{job_suffix}"))
         }
     };
@@ -3401,7 +3432,7 @@ pub async fn start_minerva_download(
     // Spawn background download task
     let job_id_bg = job_id.clone();
     let game_title = input.game_title.clone();
-    let platform = input.platform.clone();
+    let platform = canonical_platform.clone();
     let launchbox_db_id = input.launchbox_db_id;
     let db_path = state.user_db_path.clone();
     let app_settings = state.settings.clone();
@@ -3979,7 +4010,7 @@ pub async fn start_minerva_download(
         id: job_id,
         launchbox_db_id: input.launchbox_db_id,
         game_title: input.game_title,
-        platform: input.platform,
+        platform: canonical_platform,
         status: "in_progress".to_string(),
         progress_percent: 0.0,
         status_message: Some("Preparing download...".to_string()),

@@ -7,9 +7,8 @@ use crate::backend_api::{
     clear_platform_emulator_preference, get_all_emulator_launch_template_overrides,
     get_all_emulator_preferences, get_all_emulators, get_all_regions, get_credential_storage_name,
     get_emulators_for_platform, get_platforms, get_settings, save_settings,
-    set_emulator_launch_template_override, set_platform_emulator_preference,
-    test_igdb_connection, test_screenscraper_connection, test_steamgriddb_connection,
-    test_torrent_connection,
+    set_emulator_launch_template_override, set_platform_emulator_preference, test_igdb_connection,
+    test_screenscraper_connection, test_steamgriddb_connection, test_torrent_connection,
 };
 use futures::future::join_all;
 use leptos::prelude::*;
@@ -1119,7 +1118,8 @@ where
             if token.is_empty() {
                 "''".to_string()
             } else if token.chars().all(|ch| {
-                ch.is_ascii_alphanumeric() || matches!(ch, '%' | '_' | '-' | '.' | '/' | ':' | '{' | '}')
+                ch.is_ascii_alphanumeric()
+                    || matches!(ch, '%' | '_' | '-' | '.' | '/' | ':' | '{' | '}')
             }) {
                 token
             } else {
@@ -1135,6 +1135,11 @@ fn default_launch_command_template(
     platform_name: Option<&str>,
     is_retroarch_core: bool,
 ) -> String {
+    fn is_arcade_family_platform(platform_name: Option<&str>) -> bool {
+        platform_name
+            .is_some_and(|name| matches!(name, "Arcade" | "Arcade Pinball" | "Arcade Laserdisc"))
+    }
+
     if is_retroarch_core {
         return join_command_template_tokens(vec![
             "--verbose".to_string(),
@@ -1144,7 +1149,7 @@ fn default_launch_command_template(
         ]);
     }
 
-    if emulator_name == "Hypseus Singe" && platform_name == Some("Arcade") {
+    if emulator_name == "Hypseus Singe" && is_arcade_family_platform(platform_name) {
         return join_command_template_tokens(vec![
             "%{hypseus_game}".to_string(),
             "vldp".to_string(),
@@ -1160,7 +1165,7 @@ fn default_launch_command_template(
         ]);
     }
 
-    if emulator_name == "MAME" && platform_name == Some("Arcade") {
+    if emulator_name == "MAME" && is_arcade_family_platform(platform_name) {
         return join_command_template_tokens(vec![
             "-rompath".to_string(),
             "%{mame_rompath}".to_string(),
@@ -1199,11 +1204,7 @@ fn append_launch_template_rows(
             platform_name,
             emulator_name: emulator.name.clone(),
             runtime_kind: "retroarch".to_string(),
-            default_template: default_launch_command_template(
-                &emulator.name,
-                None,
-                true,
-            ),
+            default_template: default_launch_command_template(&emulator.name, None, true),
         });
     }
 }
@@ -1260,7 +1261,10 @@ fn EmulatorLaunchCommandsSection() -> impl IntoView {
 
             let mut platform_names = match platforms_res {
                 Ok(items) => {
-                    let mut names = items.into_iter().map(|platform| platform.name).collect::<Vec<_>>();
+                    let mut names = items
+                        .into_iter()
+                        .map(|platform| platform.name)
+                        .collect::<Vec<_>>();
                     names.sort();
                     names
                 }
@@ -1272,7 +1276,10 @@ fn EmulatorLaunchCommandsSection() -> impl IntoView {
 
             match overrides_res {
                 Ok(items) => set_overrides.set(items),
-                Err(e) => set_error.set(Some(format!("Failed to load launch command overrides: {}", e))),
+                Err(e) => set_error.set(Some(format!(
+                    "Failed to load launch command overrides: {}",
+                    e
+                ))),
             }
 
             let mut generated_rows = Vec::new();
@@ -1286,15 +1293,12 @@ fn EmulatorLaunchCommandsSection() -> impl IntoView {
                 Err(e) => set_error.set(Some(format!("Failed to load emulators: {}", e))),
             }
 
-            let platform_emulator_results = join_all(
-                platform_names
-                    .drain(..)
-                    .map(|platform_name| async move {
-                        let result = get_emulators_for_platform(platform_name.clone()).await;
-                        (platform_name, result)
-                    }),
-            )
-            .await;
+            let platform_emulator_results =
+                join_all(platform_names.drain(..).map(|platform_name| async move {
+                    let result = get_emulators_for_platform(platform_name.clone()).await;
+                    (platform_name, result)
+                }))
+                .await;
 
             for (platform_name, result) in platform_emulator_results {
                 match result {

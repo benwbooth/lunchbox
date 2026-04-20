@@ -1,4 +1,5 @@
 pub mod api;
+pub mod arcade;
 pub mod db;
 pub mod emulator;
 pub mod exo;

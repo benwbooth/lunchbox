@@ -532,12 +532,23 @@ fn minerva_torrent_groups_request_key(
     format!("{launchbox_db_id}:{platform_id}:{game_title}")
 }
 
+fn is_arcade_family_platform(platform_name: &str) -> bool {
+    matches!(
+        platform_name,
+        "Arcade" | "Arcade Pinball" | "Arcade Laserdisc"
+    )
+}
+
+fn is_arcade_laserdisc_platform(platform_name: &str) -> bool {
+    platform_name == "Arcade Laserdisc"
+}
+
 fn filter_emulators_for_game(
     platform_name: &str,
     game_file: Option<&GameFile>,
     mut emulators: Vec<EmulatorWithStatus>,
 ) -> Vec<EmulatorWithStatus> {
-    if !platform_name.eq_ignore_ascii_case("Arcade") {
+    if !is_arcade_family_platform(platform_name) {
         return emulators;
     }
 
@@ -589,7 +600,7 @@ async fn load_minerva_torrent_groups(
         Some(platform_id),
     )
     .await?;
-    if platform_name == "Arcade" {
+    if is_arcade_family_platform(&platform_name) {
         roms.retain(|rom| !is_arcade_mame_merged_or_split_rom(rom));
     }
     let total_groups = roms.len();
@@ -634,7 +645,7 @@ async fn load_minerva_torrent_groups(
         }
     }
 
-    if platform_name == "Arcade"
+    if is_arcade_laserdisc_platform(&platform_name)
         && groups
             .iter()
             .any(|group| is_laserdisc_collection_rom(&group.rom))

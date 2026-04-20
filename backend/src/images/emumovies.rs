@@ -117,7 +117,7 @@ impl EmuMoviesMediaType {
 
 /// Map platform names to EmuMovies FTP folder names
 pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
-    let normalized = platform.to_lowercase();
+    let normalized = crate::arcade::canonicalize_platform_name(platform).to_lowercase();
 
     match normalized.as_str() {
         // Nintendo
@@ -204,8 +204,6 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
         .any(|token| token == needle)
 }
 
-include!(concat!(env!("OUT_DIR"), "/arcade_video_lookup.rs"));
-
 pub fn resolve_arcade_download_lookup_name<'a>(
     platform: &str,
     game_name: &'a str,
@@ -223,18 +221,17 @@ pub fn resolve_arcade_download_lookup_name<'a>(
         return Cow::Borrowed(game_name);
     }
 
-    if let Ok(index) = ARCADE_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _, _)| *id) {
-        let lookup = ARCADE_LOOKUP[index].1;
+    let lookup =
+        crate::arcade::resolve_download_lookup_name(game_name, Some(launchbox_db_id), false);
+    if lookup.as_ref() != game_name {
         tracing::info!(
             "Resolved arcade download lookup '{}' -> '{}' for LaunchBox DB id {}",
             game_name,
-            lookup,
+            lookup.as_ref(),
             launchbox_db_id
         );
-        return Cow::Borrowed(lookup);
     }
-
-    Cow::Borrowed(game_name)
+    lookup
 }
 
 pub fn resolve_arcade_download_lookup_name_for_torrent<'a>(
@@ -255,24 +252,22 @@ pub fn resolve_arcade_download_lookup_name_for_torrent<'a>(
         return Cow::Borrowed(game_name);
     }
 
-    if let Ok(index) = ARCADE_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _, _)| *id) {
-        let use_parent_lookup = torrent_url.contains("MAME - ROMs (merged).torrent");
-        let lookup = if use_parent_lookup {
-            ARCADE_LOOKUP[index].2
-        } else {
-            ARCADE_LOOKUP[index].1
-        };
+    let use_parent_lookup = torrent_url.contains("MAME - ROMs (merged).torrent");
+    let lookup = crate::arcade::resolve_download_lookup_name(
+        game_name,
+        Some(launchbox_db_id),
+        use_parent_lookup,
+    );
+    if lookup.as_ref() != game_name {
         tracing::info!(
             "Resolved arcade download lookup '{}' -> '{}' for LaunchBox DB id {} using torrent {}",
             game_name,
-            lookup,
+            lookup.as_ref(),
             launchbox_db_id,
             torrent_url
         );
-        return Cow::Borrowed(lookup);
     }
-
-    Cow::Borrowed(game_name)
+    lookup
 }
 
 pub fn resolve_video_lookup_name<'a>(
@@ -292,18 +287,16 @@ pub fn resolve_video_lookup_name<'a>(
         return Cow::Borrowed(game_name);
     }
 
-    if let Ok(index) = ARCADE_LOOKUP.binary_search_by_key(&launchbox_db_id, |(id, _, _)| *id) {
-        let lookup = ARCADE_LOOKUP[index].2;
+    let lookup = crate::arcade::resolve_video_lookup_name(game_name, Some(launchbox_db_id));
+    if lookup.as_ref() != game_name {
         tracing::info!(
             "Resolved arcade video lookup '{}' -> '{}' for LaunchBox DB id {}",
             game_name,
-            lookup,
+            lookup.as_ref(),
             launchbox_db_id
         );
-        return Cow::Borrowed(lookup);
     }
-
-    Cow::Borrowed(game_name)
+    lookup
 }
 
 // Prevent multiple threads from downloading/building the same archive at once.

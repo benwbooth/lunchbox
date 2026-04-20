@@ -240,10 +240,9 @@ impl LaunchTemplateValue {
 fn template_token(value: &str) -> String {
     if value.is_empty() {
         "''".to_string()
-    } else if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '{' | '}'))
-    {
+    } else if value.chars().all(|ch| {
+        ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '{' | '}')
+    }) {
         value.to_string()
     } else {
         format!("'{}'", value.replace('\'', "'\"'\"'"))
@@ -261,6 +260,10 @@ where
         .join(" ")
 }
 
+fn is_arcade_family_platform_name(platform_name: Option<&str>) -> bool {
+    platform_name.is_some_and(crate::arcade::is_arcade_family_platform)
+}
+
 pub fn default_launch_command_template(
     emulator_name: &str,
     platform_name: Option<&str>,
@@ -275,7 +278,7 @@ pub fn default_launch_command_template(
         ]);
     }
 
-    if emulator_name == "Hypseus Singe" && platform_name == Some("Arcade") {
+    if emulator_name == "Hypseus Singe" && is_arcade_family_platform_name(platform_name) {
         return join_template_tokens(vec![
             "%{hypseus_game}".to_string(),
             "vldp".to_string(),
@@ -291,7 +294,7 @@ pub fn default_launch_command_template(
         ]);
     }
 
-    if emulator_name == "MAME" && platform_name == Some("Arcade") {
+    if emulator_name == "MAME" && is_arcade_family_platform_name(platform_name) {
         return join_template_tokens(vec![
             "-rompath".to_string(),
             "%{mame_rompath}".to_string(),
@@ -384,10 +387,9 @@ fn compile_launch_template(
                 index += 2;
             }
             'f' => {
-                let value = values
-                    .get("file")
-                    .cloned()
-                    .ok_or_else(|| "Launch template uses %f but no input file is available".to_string())?;
+                let value = values.get("file").cloned().ok_or_else(|| {
+                    "Launch template uses %f but no input file is available".to_string()
+                })?;
                 let sentinel = format!("__LBTPL_{}__", sentinels.len());
                 rendered.push_str(&sentinel);
                 sentinels.push((sentinel, value));
@@ -399,20 +401,23 @@ fn compile_launch_template(
                     end += 1;
                 }
                 if end >= chars.len() {
-                    return Err("Launch template has an unterminated %{...} placeholder".to_string());
+                    return Err(
+                        "Launch template has an unterminated %{...} placeholder".to_string()
+                    );
                 }
                 let name = chars[index + 2..end].iter().collect::<String>();
-                let value = values
-                    .get(&name)
-                    .cloned()
-                    .ok_or_else(|| format!("Launch template uses unknown placeholder '%{{{name}}}'"))?;
+                let value = values.get(&name).cloned().ok_or_else(|| {
+                    format!("Launch template uses unknown placeholder '%{{{name}}}'")
+                })?;
                 let sentinel = format!("__LBTPL_{}__", sentinels.len());
                 rendered.push_str(&sentinel);
                 sentinels.push((sentinel, value));
                 index = end + 1;
             }
             other => {
-                return Err(format!("Launch template uses unknown placeholder '%{other}'"));
+                return Err(format!(
+                    "Launch template uses unknown placeholder '%{other}'"
+                ));
             }
         }
     }
@@ -3199,7 +3204,7 @@ fn should_preserve_arcade_mame_romset_archive(
     as_retroarch_core: bool,
     rom_path: &str,
 ) -> bool {
-    if platform_name != Some("Arcade") {
+    if !is_arcade_family_platform_name(platform_name) {
         return false;
     }
 
@@ -5329,7 +5334,10 @@ fn standard_launch_template_values(
     ]);
 
     if let Some(rom) = rom_path {
-        values.insert("file".to_string(), LaunchTemplateValue::Path(rom.to_string()));
+        values.insert(
+            "file".to_string(),
+            LaunchTemplateValue::Path(rom.to_string()),
+        );
     }
 
     if emulator_name == "Altirra" {
@@ -5481,7 +5489,10 @@ fn launch_retroarch(
     );
 
     let mut template_values = HashMap::from([
-        ("core".to_string(), LaunchTemplateValue::Path(core_path_str.clone())),
+        (
+            "core".to_string(),
+            LaunchTemplateValue::Path(core_path_str.clone()),
+        ),
         (
             "platform".to_string(),
             LaunchTemplateValue::Literal(_platform_name.unwrap_or_default().to_string()),
@@ -5492,7 +5503,10 @@ fn launch_retroarch(
         ),
     ]);
     if let Some(rom) = rom_path {
-        template_values.insert("file".to_string(), LaunchTemplateValue::Path(rom.to_string()));
+        template_values.insert(
+            "file".to_string(),
+            LaunchTemplateValue::Path(rom.to_string()),
+        );
     }
     let override_launch_args =
         compile_override_launch_args(command_template_override, template_values)?;
@@ -5944,7 +5958,7 @@ fn is_arcade_mame_standalone_launch(
     rom_path: Option<&str>,
 ) -> bool {
     emulator_name == "MAME"
-        && platform_name == Some("Arcade")
+        && is_arcade_family_platform_name(platform_name)
         && matches!(
             rom_path.and_then(|path| {
                 Path::new(path)

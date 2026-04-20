@@ -1,7 +1,6 @@
 use chrono::TimeZone;
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
 use std::path::Path;
@@ -10,9 +9,38 @@ use std::process::Command;
 #[derive(Default)]
 struct GameFields {
     database_id: Option<i64>,
+    title: Option<String>,
+    source: Option<String>,
     clone_of: Option<String>,
     application_path: Option<String>,
     version: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GeneratedArcadeSubtype {
+    Standard,
+    Pinball,
+    Laserdisc,
+}
+
+impl GeneratedArcadeSubtype {
+    fn rust_variant_name(self) -> &'static str {
+        match self {
+            Self::Standard => "Standard",
+            Self::Pinball => "Pinball",
+            Self::Laserdisc => "Laserdisc",
+        }
+    }
+}
+
+struct GeneratedArcadeEntry {
+    database_id: i64,
+    title: String,
+    source: String,
+    subtype: GeneratedArcadeSubtype,
+    preferred_lookup: String,
+    video_lookup: String,
+    lookup_rank: u8,
 }
 
 fn main() {
@@ -38,7 +66,7 @@ fn main() {
     let timestamp = format!("{} {}", now.format("%Y-%m-%d %H:%M:%S"), tz_abbrev);
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", timestamp);
 
-    generate_arcade_video_lookup();
+    generate_arcade_lookup();
 
     // Rerun if git state changes
     println!("cargo:rerun-if-changed=../.git/HEAD");
@@ -46,15 +74,15 @@ fn main() {
     println!("cargo:rerun-if-changed=../.git/refs/heads");
 }
 
-fn generate_arcade_video_lookup() {
+fn generate_arcade_lookup() {
     let source_path = Path::new("../launchbox-data/Arcade.xml");
     println!("cargo:rerun-if-changed={}", source_path.display());
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
-    let output_path = Path::new(&out_dir).join("arcade_video_lookup.rs");
+    let output_path = Path::new(&out_dir).join("arcade_lookup.rs");
 
     let Ok(file) = fs::File::open(source_path) else {
-        let empty = "pub static ARCADE_LOOKUP: &[(i64, &str, &str)] = &[];\n";
+        let empty = "pub static ARCADE_LOOKUP: &[ArcadeLookupEntry] = &[];\n";
         fs::write(&output_path, empty).expect("failed to write empty arcade lookup");
         return;
     };
@@ -65,7 +93,7 @@ fn generate_arcade_video_lookup() {
     let mut buf = Vec::new();
     let mut current_game: Option<GameFields> = None;
     let mut current_field: Option<String> = None;
-    let mut entries: HashMap<i64, (u8, String, String)> = HashMap::new();
+    let mut entries: Vec<GeneratedArcadeEntry> = Vec::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -83,18 +111,20 @@ fn generate_arcade_video_lookup() {
                 if tag_name == "Game" {
                     if let Some(game) = current_game.take() {
                         if let Some(database_id) = game.database_id {
-                            if let Some((rank, preferred_lookup, video_lookup)) =
-                                choose_arcade_lookup(&game)
-                            {
-                                match entries.get(&database_id) {
-                                    Some((existing_rank, _, _)) if *existing_rank >= rank => {}
-                                    _ => {
-                                        entries.insert(
-                                            database_id,
-                                            (rank, preferred_lookup, video_lookup),
-                                        );
-                                    }
-                                }
+                            let subtype = classify_arcade_subtype(game.source.as_deref());
+                            let lookup = choose_arcade_lookup(&game);
+                            if subtype != GeneratedArcadeSubtype::Standard || lookup.is_some() {
+                                let (lookup_rank, preferred_lookup, video_lookup) =
+                                    lookup.unwrap_or_else(|| (0, String::new(), String::new()));
+                                entries.push(GeneratedArcadeEntry {
+                                    database_id,
+                                    title: game.title.unwrap_or_default(),
+                                    source: game.source.unwrap_or_default(),
+                                    subtype,
+                                    preferred_lookup,
+                                    video_lookup,
+                                    lookup_rank,
+                                });
                             }
                         }
                     }
@@ -112,43 +142,48 @@ fn generate_arcade_video_lookup() {
                     }
 
                     match field.as_str() {
-                        "DatabaseID" => game.database_id = text.parse().ok(),
-                        "CloneOf" => game.clone_of = Some(text),
                         "ApplicationPath" => game.application_path = Some(text),
+                        "CloneOf" => game.clone_of = Some(text),
+                        "DatabaseID" => game.database_id = text.parse().ok(),
+                        "Source" => game.source = Some(text),
+                        "Title" => game.title = Some(text),
                         "Version" => game.version = Some(text),
                         _ => {}
                     }
                 }
             }
             Ok(Event::Eof) => break,
-            Err(e) => panic!(
-                "Failed to parse Arcade.xml for video lookup generation: {}",
-                e
-            ),
+            Err(e) => panic!("Failed to parse Arcade.xml for lookup generation: {}", e),
             _ => {}
         }
 
         buf.clear();
     }
 
-    let mut rows: Vec<(i64, String, String)> = entries
-        .into_iter()
-        .map(|(database_id, (_, preferred_lookup, video_lookup))| {
-            (database_id, preferred_lookup, video_lookup)
-        })
-        .collect();
-    rows.sort_by_key(|(database_id, _, _)| *database_id);
+    entries.sort_by(|left, right| {
+        left.database_id
+            .cmp(&right.database_id)
+            .then_with(|| left.title.cmp(&right.title))
+            .then_with(|| left.preferred_lookup.cmp(&right.preferred_lookup))
+            .then_with(|| left.source.cmp(&right.source))
+    });
 
-    let mut generated = String::from("pub static ARCADE_LOOKUP: &[(i64, &str, &str)] = &[\n");
-    for (database_id, preferred_lookup, video_lookup) in rows {
+    let mut generated = String::from("pub static ARCADE_LOOKUP: &[ArcadeLookupEntry] = &[\n");
+    for entry in entries {
         generated.push_str(&format!(
-            "    ({}, {:?}, {:?}),\n",
-            database_id, preferred_lookup, video_lookup
+            "    ArcadeLookupEntry {{ database_id: {}, title: {:?}, source: {:?}, subtype: ArcadeSubtype::{}, preferred_lookup: {:?}, video_lookup: {:?}, lookup_rank: {} }},\n",
+            entry.database_id,
+            entry.title,
+            entry.source,
+            entry.subtype.rust_variant_name(),
+            entry.preferred_lookup,
+            entry.video_lookup,
+            entry.lookup_rank
         ));
     }
     generated.push_str("];\n");
 
-    fs::write(&output_path, generated).expect("failed to write arcade video lookup");
+    fs::write(&output_path, generated).expect("failed to write arcade lookup");
 }
 
 fn choose_arcade_lookup(game: &impl ArcadeLookupFields) -> Option<(u8, String, String)> {
@@ -197,6 +232,37 @@ impl ArcadeLookupFields for GameFields {
     fn version(&self) -> Option<&str> {
         self.version.as_deref()
     }
+}
+
+fn classify_arcade_subtype(source: Option<&str>) -> GeneratedArcadeSubtype {
+    let Some(source) = source.map(str::trim).filter(|value| !value.is_empty()) else {
+        return GeneratedArcadeSubtype::Standard;
+    };
+
+    let normalized = source.replace('\\', "/").to_ascii_lowercase();
+    if normalized.starts_with("pinball/") {
+        return GeneratedArcadeSubtype::Pinball;
+    }
+
+    if matches!(
+        normalized.as_str(),
+        "atari/firefox.cpp"
+            | "cinematronics/dlair.cpp"
+            | "cinematronics/dlair2.cpp"
+            | "dataeast/deco_ld.cpp"
+            | "misc/cubeqst.cpp"
+            | "misc/istellar.cpp"
+            | "misc/thayers.cpp"
+            | "sega/gpworld.cpp"
+            | "sega/segald.cpp"
+            | "sega/timetrv.cpp"
+            | "stern/cliffhgr.cpp"
+            | "universal/superdq.cpp"
+    ) {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    GeneratedArcadeSubtype::Standard
 }
 
 fn rom_stem_from_path(path: &str) -> Option<&str> {

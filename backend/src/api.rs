@@ -86,6 +86,8 @@ fn get_platform_search_aliases(name: &str) -> Option<String> {
         "Sinclair ZX Spectrum" => "ZX, ZX Spectrum, zxspectrum",
         "Amstrad CPC" => "CPC, amstradcpc",
         "Arcade" => "MAME, arcade, fbneo",
+        "Arcade Laserdisc" => "Laserdisc, Daphne, Singe, arcade laserdisc",
+        "Arcade Pinball" => "Pinball, arcade pinball, MAME pinball",
         "Panasonic 3DO" => "3DO, 3do",
         "Philips CD-i" => "CD-i, CDi, cdimono1",
         "Bandai WonderSwan" => "WS, WonderSwan, wonderswan",
@@ -402,17 +404,57 @@ async fn frontend_log(Json(log): Json<LogMessage>) -> &'static str {
 
 /// Sanitize a platform name for use as a filename
 fn platform_name_to_filename(name: &str) -> String {
-    name.replace("/", "-")
+    crate::arcade::canonicalize_platform_name(name)
+        .replace("/", "-")
         .replace(":", "-")
         .replace("&", "and")
         .replace(" ", "_")
 }
 
 fn canonicalize_legacy_platform_name(name: &str) -> &str {
-    match name.trim() {
+    let legacy = match name.trim() {
         "Arduboy Inc - Arduboy" => "Arduboy",
         "Atari - 8-bit Family" => "Atari 800",
         other => other,
+    };
+    crate::arcade::canonicalize_platform_name(legacy)
+}
+
+fn optional_launchbox_db_id(launchbox_db_id: i64) -> Option<i64> {
+    (launchbox_db_id > 0).then_some(launchbox_db_id)
+}
+
+fn display_platform_name_for_game<'a>(
+    platform_name: &'a str,
+    game_title: &str,
+    launchbox_db_id: i64,
+) -> std::borrow::Cow<'a, str> {
+    let canonical_platform_name = canonicalize_legacy_platform_name(platform_name);
+    crate::arcade::display_platform_name(
+        canonical_platform_name,
+        game_title,
+        optional_launchbox_db_id(launchbox_db_id),
+    )
+}
+
+fn platform_aliases_for_display_name(
+    display_name: &str,
+    db_aliases: Option<&str>,
+) -> Option<String> {
+    if crate::arcade::is_arcade_derived_platform(display_name) {
+        return get_platform_search_aliases(display_name);
+    }
+
+    db_aliases
+        .map(str::to_string)
+        .or_else(|| get_platform_search_aliases(display_name))
+}
+
+fn platform_list_entry_id(base_id: i64, display_name: &str) -> i64 {
+    match display_name {
+        crate::arcade::ARCADE_PINBALL_PLATFORM => -(base_id * 10 + 1),
+        crate::arcade::ARCADE_LASERDISC_PLATFORM => -(base_id * 10 + 2),
+        _ => base_id,
     }
 }
 
@@ -499,31 +541,64 @@ async fn get_platforms(
 
         for (id, name, aliases) in platforms {
             let canonical_name = canonicalize_legacy_platform_name(&name).to_string();
-            let all_titles: Vec<(String,)> =
-                sqlx::query_as("SELECT title FROM games WHERE platform_id = ?")
+            let all_games: Vec<(String, i64)> = sqlx::query_as(
+                "SELECT title, COALESCE(launchbox_db_id, 0) as launchbox_db_id FROM games WHERE platform_id = ?",
+            )
                     .bind(id)
                     .fetch_all(games_pool)
                     .await
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            let entry =
-                grouped
-                    .entry(canonical_name.clone())
-                    .or_insert_with(|| PlatformAggregate {
-                        id,
-                        aliases: aliases.clone(),
-                        seen_titles: HashSet::new(),
-                        has_canonical_row: name == canonical_name,
-                    });
+            if all_games.is_empty() {
+                let entry =
+                    grouped
+                        .entry(canonical_name.clone())
+                        .or_insert_with(|| PlatformAggregate {
+                            id,
+                            aliases: platform_aliases_for_display_name(
+                                &canonical_name,
+                                aliases.as_deref(),
+                            ),
+                            seen_titles: HashSet::new(),
+                            has_canonical_row: name == canonical_name,
+                        });
 
-            if !entry.has_canonical_row && name == canonical_name {
-                entry.id = id;
-                entry.has_canonical_row = true;
+                if !entry.has_canonical_row && name == canonical_name {
+                    entry.id = id;
+                    entry.has_canonical_row = true;
+                }
+                if entry.aliases.is_none() {
+                    entry.aliases =
+                        platform_aliases_for_display_name(&canonical_name, aliases.as_deref());
+                }
+                continue;
             }
-            if entry.aliases.is_none() {
-                entry.aliases = aliases.clone();
-            }
-            for (title,) in all_titles {
+
+            for (title, launchbox_db_id) in all_games {
+                let display_name =
+                    display_platform_name_for_game(&name, &title, launchbox_db_id).into_owned();
+                let entry =
+                    grouped
+                        .entry(display_name.clone())
+                        .or_insert_with(|| PlatformAggregate {
+                            id: platform_list_entry_id(id, &display_name),
+                            aliases: platform_aliases_for_display_name(
+                                &display_name,
+                                aliases.as_deref(),
+                            ),
+                            seen_titles: HashSet::new(),
+                            has_canonical_row: name == display_name,
+                        });
+
+                if !entry.has_canonical_row && name == display_name {
+                    entry.id = id;
+                    entry.has_canonical_row = true;
+                }
+                if entry.aliases.is_none() {
+                    entry.aliases =
+                        platform_aliases_for_display_name(&display_name, aliases.as_deref());
+                }
+
                 let normalized = normalize_title_for_dedup(&title);
                 entry.seen_titles.insert(normalized);
             }
@@ -531,9 +606,7 @@ async fn get_platforms(
 
         let mut result = Vec::new();
         for (name, aggregate) in grouped {
-            let aliases = aggregate
-                .aliases
-                .or_else(|| get_platform_search_aliases(&name));
+            let aliases = aggregate.aliases;
             let filename = platform_name_to_filename(&name);
             let icon_url = Some(format!("/assets/platforms/{}.png", filename));
             result.push(Platform {
@@ -640,6 +713,14 @@ async fn get_games(
     let offset = query.offset.unwrap_or(0) as usize;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
+        let requested_display_platform = query.platform.as_ref().map(|platform_name| {
+            let trimmed = platform_name.trim();
+            if crate::arcade::is_arcade_derived_platform(trimmed) {
+                trimmed.to_string()
+            } else {
+                canonicalize_legacy_platform_name(trimmed).to_string()
+            }
+        });
         let platform_names = if let Some(ref platform_name) = query.platform {
             Some(resolve_equivalent_platform_names(games_pool, platform_name).await?)
         } else {
@@ -813,8 +894,17 @@ async fn get_games(
                 continue;
             }
 
+            let display_platform =
+                display_platform_name_for_game(&platform, &title, launchbox_db_id).into_owned();
+            if requested_display_platform
+                .as_ref()
+                .is_some_and(|requested| requested != &display_platform)
+            {
+                continue;
+            }
+
             let normalized = normalize_title_for_dedup(&title);
-            let key = format!("{}:{}", platform_id, normalized);
+            let key = format!("{}:{}", display_platform, normalized);
 
             *variant_counts.entry(key.clone()).or_insert(0) += 1;
 
@@ -823,7 +913,7 @@ async fn get_games(
                 database_id: launchbox_db_id,
                 title: title.clone(),
                 display_title: normalize_title_for_display(&title),
-                platform,
+                platform: display_platform,
                 platform_id,
                 description: row.get("description"),
                 release_date: row.get("release_date"),
@@ -945,6 +1035,7 @@ async fn get_game_by_uuid(
         if let Some(row) = row {
             use sqlx::Row;
             let title: String = row.get("title");
+            let platform: String = row.get("platform");
             let platform_id: i64 = row.get("platform_id");
             let launchbox_db_id: i64 = row.get("launchbox_db_id");
 
@@ -955,17 +1046,16 @@ async fn get_game_by_uuid(
             )
             .bind(platform_id)
             .fetch_all(games_pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            let mut variant_count = 0i64;
             let mut fallback_launchbox_db_id = 0i64;
             for (variant_title, variant_db_id) in &all_titles {
-                if normalize_title_for_dedup(variant_title) == normalized_for_dedup {
-                    variant_count += 1;
-                    if fallback_launchbox_db_id == 0 && *variant_db_id > 0 {
-                        fallback_launchbox_db_id = *variant_db_id;
-                    }
+                if normalize_title_for_dedup(variant_title) == normalized_for_dedup
+                    && fallback_launchbox_db_id == 0
+                    && *variant_db_id > 0
+                {
+                    fallback_launchbox_db_id = *variant_db_id;
                 }
             }
             let resolved_launchbox_db_id = if launchbox_db_id > 0 {
@@ -973,13 +1063,25 @@ async fn get_game_by_uuid(
             } else {
                 fallback_launchbox_db_id
             };
+            let display_platform =
+                display_platform_name_for_game(&platform, &title, resolved_launchbox_db_id)
+                    .into_owned();
+            let variant_count = all_titles
+                .iter()
+                .filter(|(variant_title, variant_db_id)| {
+                    normalize_title_for_dedup(variant_title) == normalized_for_dedup
+                        && display_platform_name_for_game(&platform, variant_title, *variant_db_id)
+                            .as_ref()
+                            == display_platform.as_str()
+                })
+                .count() as i32;
 
             let game = Game {
                 id: row.get("id"),
                 database_id: resolved_launchbox_db_id,
                 title: title.clone(),
                 display_title: normalize_title_for_display(&title),
-                platform: row.get("platform"),
+                platform: display_platform,
                 platform_id,
                 description: row.get("description"),
                 release_date: row.get("release_date"),
@@ -1005,7 +1107,7 @@ async fn get_game_by_uuid(
                 steam_app_id: row.get("steam_app_id"),
                 box_front_path: None,
                 screenshot_path: None,
-                variant_count: variant_count as i32,
+                variant_count,
                 has_game_file: false,
             };
 
@@ -1033,7 +1135,9 @@ async fn get_game_variants(
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
         // First get the game to find its normalized title and platform
-        let game_row = sqlx::query("SELECT title, platform_id FROM games WHERE id = ?")
+        let game_row = sqlx::query(
+            "SELECT g.title, g.platform_id, p.name as platform, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id FROM games g JOIN platforms p ON g.platform_id = p.id WHERE g.id = ?",
+        )
             .bind(&uuid)
             .fetch_optional(games_pool)
             .await
@@ -1042,13 +1146,18 @@ async fn get_game_variants(
         if let Some(row) = game_row {
             use sqlx::Row;
             let title: String = row.get("title");
+            let platform: String = row.get("platform");
             let platform_id: i64 = row.get("platform_id");
+            let launchbox_db_id: i64 = row.get("launchbox_db_id");
             // Use normalize_for_dedup to match how variants are counted in get_games
             let normalized = normalize_title_for_dedup(&title);
+            let display_platform =
+                display_platform_name_for_game(&platform, &title, launchbox_db_id).into_owned();
 
             // Find all variants with the same normalized title
-            let variants: Vec<(String, String)> =
-                sqlx::query_as("SELECT id, title FROM games WHERE platform_id = ? ORDER BY title")
+            let variants: Vec<(String, String, i64)> = sqlx::query_as(
+                "SELECT id, title, COALESCE(launchbox_db_id, 0) as launchbox_db_id FROM games WHERE platform_id = ? ORDER BY title",
+            )
                     .bind(platform_id)
                     .fetch_all(games_pool)
                     .await
@@ -1056,8 +1165,13 @@ async fn get_game_variants(
 
             let mut result: Vec<GameVariant> = variants
                 .into_iter()
-                .filter(|(_, t)| normalize_title_for_dedup(t) == normalized)
-                .map(|(id, title)| GameVariant {
+                .filter(|(_, variant_title, variant_db_id)| {
+                    normalize_title_for_dedup(variant_title) == normalized
+                        && display_platform_name_for_game(&platform, variant_title, *variant_db_id)
+                            .as_ref()
+                            == display_platform.as_str()
+                })
+                .map(|(id, title, _)| GameVariant {
                     id,
                     region: extract_region_from_title(&title),
                     title,
@@ -1230,12 +1344,15 @@ async fn get_favorites(
             if let Some(row) = row {
                 use sqlx::Row;
                 let title: String = row.get("title");
+                let platform: String = row.get("platform");
+                let launchbox_db_id: i64 = row.get("launchbox_db_id");
                 games.push(Game {
                     id: row.get("id"),
-                    database_id: row.get("launchbox_db_id"),
+                    database_id: launchbox_db_id,
                     title: title.clone(),
                     display_title: normalize_title_for_display(&title),
-                    platform: row.get("platform"),
+                    platform: display_platform_name_for_game(&platform, &title, launchbox_db_id)
+                        .into_owned(),
                     platform_id: row.get("platform_id"),
                     description: row.get("description"),
                     release_date: row.get("release_date"),

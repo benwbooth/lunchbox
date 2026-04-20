@@ -1706,8 +1706,8 @@ pub async fn clear_emulator_launch_profile(
     .await
 }
 
-pub async fn get_all_emulator_launch_template_overrides(
-) -> Result<Vec<EmulatorLaunchTemplateOverride>, String> {
+pub async fn get_all_emulator_launch_template_overrides()
+-> Result<Vec<EmulatorLaunchTemplateOverride>, String> {
     invoke_no_args("get_all_emulator_launch_template_overrides").await
 }
 
