@@ -173,8 +173,9 @@ fn subtype_priority(subtype: ArcadeSubtype) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ARCADE_LASERDISC_PLATFORM, ARCADE_PINBALL_PLATFORM, ARCADE_PLATFORM, display_platform_name,
-        resolve_download_lookup_name, resolve_video_lookup_name,
+        ARCADE_LASERDISC_PLATFORM, ARCADE_LOOKUP, ARCADE_PINBALL_PLATFORM, ARCADE_PLATFORM,
+        ArcadeSubtype, display_platform_name, resolve_download_lookup_name,
+        resolve_video_lookup_name,
     };
 
     #[test]
@@ -207,6 +208,52 @@ mod tests {
         assert_eq!(
             display_platform_name(ARCADE_PLATFORM, "Space Ace", Some(39466)).as_ref(),
             ARCADE_LASERDISC_PLATFORM
+        );
+    }
+
+    #[test]
+    fn note_based_laserdisc_titles_are_classified() {
+        assert_eq!(
+            display_platform_name(ARCADE_PLATFORM, "Crime Patrol", Some(28612)).as_ref(),
+            ARCADE_LASERDISC_PLATFORM
+        );
+        assert_eq!(
+            display_platform_name(ARCADE_PLATFORM, "Mad Dog McCree", Some(28615)).as_ref(),
+            ARCADE_LASERDISC_PLATFORM
+        );
+        assert_eq!(
+            display_platform_name(ARCADE_PLATFORM, "Star Rider", Some(448360)).as_ref(),
+            ARCADE_LASERDISC_PLATFORM
+        );
+    }
+
+    #[test]
+    fn alg_source_titles_without_laserdisc_notes_are_classified() {
+        assert_eq!(
+            display_platform_name(ARCADE_PLATFORM, "Space Pirates", Some(39503)).as_ref(),
+            ARCADE_LASERDISC_PLATFORM
+        );
+        assert_eq!(
+            display_platform_name(ARCADE_PLATFORM, "Mad Dog II: The Lost Gold", Some(37753))
+                .as_ref(),
+            ARCADE_LASERDISC_PLATFORM
+        );
+        assert_eq!(
+            display_platform_name(ARCADE_PLATFORM, "Who Shot Johnny Rock?", Some(40587)).as_ref(),
+            ARCADE_LASERDISC_PLATFORM
+        );
+    }
+
+    #[test]
+    fn laserdisc_lookup_classifies_more_than_source_only_subset() {
+        let laserdisc_entries = ARCADE_LOOKUP
+            .iter()
+            .filter(|entry| entry.subtype == ArcadeSubtype::Laserdisc)
+            .count();
+        assert!(
+            laserdisc_entries >= 45,
+            "expected at least 45 laserdisc arcade entries, found {}",
+            laserdisc_entries
         );
     }
 }

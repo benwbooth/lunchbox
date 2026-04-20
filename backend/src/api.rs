@@ -575,6 +575,26 @@ async fn get_platforms(
             }
 
             for (title, launchbox_db_id) in all_games {
+                let normalized = normalize_title_for_dedup(&title);
+                if canonical_name == crate::arcade::ARCADE_PLATFORM {
+                    let entry = grouped.entry(canonical_name.clone()).or_insert_with(|| {
+                        PlatformAggregate {
+                            id,
+                            aliases: platform_aliases_for_display_name(
+                                &canonical_name,
+                                aliases.as_deref(),
+                            ),
+                            seen_titles: HashSet::new(),
+                            has_canonical_row: true,
+                        }
+                    });
+                    if entry.aliases.is_none() {
+                        entry.aliases =
+                            platform_aliases_for_display_name(&canonical_name, aliases.as_deref());
+                    }
+                    entry.seen_titles.insert(normalized.clone());
+                }
+
                 let display_name =
                     display_platform_name_for_game(&name, &title, launchbox_db_id).into_owned();
                 let entry =
@@ -599,7 +619,6 @@ async fn get_platforms(
                         platform_aliases_for_display_name(&display_name, aliases.as_deref());
                 }
 
-                let normalized = normalize_title_for_dedup(&title);
                 entry.seen_titles.insert(normalized);
             }
         }
@@ -713,12 +732,14 @@ async fn get_games(
     let offset = query.offset.unwrap_or(0) as usize;
 
     if let Some(ref games_pool) = state_guard.games_db_pool {
-        let requested_display_platform = query.platform.as_ref().map(|platform_name| {
+        let requested_display_platform = query.platform.as_ref().and_then(|platform_name| {
             let trimmed = platform_name.trim();
-            if crate::arcade::is_arcade_derived_platform(trimmed) {
-                trimmed.to_string()
+            if trimmed == crate::arcade::ARCADE_PLATFORM {
+                None
+            } else if crate::arcade::is_arcade_derived_platform(trimmed) {
+                Some(trimmed.to_string())
             } else {
-                canonicalize_legacy_platform_name(trimmed).to_string()
+                Some(canonicalize_legacy_platform_name(trimmed).to_string())
             }
         });
         let platform_names = if let Some(ref platform_name) = query.platform {

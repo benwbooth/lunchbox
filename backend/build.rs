@@ -11,6 +11,8 @@ struct GameFields {
     database_id: Option<i64>,
     title: Option<String>,
     source: Option<String>,
+    notes: Option<String>,
+    genre: Option<String>,
     clone_of: Option<String>,
     application_path: Option<String>,
     version: Option<String>,
@@ -111,7 +113,7 @@ fn generate_arcade_lookup() {
                 if tag_name == "Game" {
                     if let Some(game) = current_game.take() {
                         if let Some(database_id) = game.database_id {
-                            let subtype = classify_arcade_subtype(game.source.as_deref());
+                            let subtype = classify_arcade_subtype(&game);
                             let lookup = choose_arcade_lookup(&game);
                             if subtype != GeneratedArcadeSubtype::Standard || lookup.is_some() {
                                 let (lookup_rank, preferred_lookup, video_lookup) =
@@ -145,6 +147,8 @@ fn generate_arcade_lookup() {
                         "ApplicationPath" => game.application_path = Some(text),
                         "CloneOf" => game.clone_of = Some(text),
                         "DatabaseID" => game.database_id = text.parse().ok(),
+                        "Genre" => game.genre = Some(text),
+                        "Notes" => game.notes = Some(text),
                         "Source" => game.source = Some(text),
                         "Title" => game.title = Some(text),
                         "Version" => game.version = Some(text),
@@ -234,19 +238,22 @@ impl ArcadeLookupFields for GameFields {
     }
 }
 
-fn classify_arcade_subtype(source: Option<&str>) -> GeneratedArcadeSubtype {
-    let Some(source) = source.map(str::trim).filter(|value| !value.is_empty()) else {
-        return GeneratedArcadeSubtype::Standard;
-    };
-
-    let normalized = source.replace('\\', "/").to_ascii_lowercase();
+fn classify_arcade_subtype(game: &GameFields) -> GeneratedArcadeSubtype {
+    let normalized = game
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.replace('\\', "/").to_ascii_lowercase())
+        .unwrap_or_default();
     if normalized.starts_with("pinball/") {
         return GeneratedArcadeSubtype::Pinball;
     }
 
     if matches!(
         normalized.as_str(),
-        "atari/firefox.cpp"
+        "amiga/alg.cpp"
+            | "atari/firefox.cpp"
             | "cinematronics/dlair.cpp"
             | "cinematronics/dlair2.cpp"
             | "dataeast/deco_ld.cpp"
@@ -259,6 +266,61 @@ fn classify_arcade_subtype(source: Option<&str>) -> GeneratedArcadeSubtype {
             | "stern/cliffhgr.cpp"
             | "universal/superdq.cpp"
     ) {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    let genre = game
+        .genre
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if genre.contains("laserdisc") {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    let notes = game
+        .notes
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if [
+        "arcade laserdisc game",
+        "game on laserdisc",
+        "laserdisc fmv arcade game",
+        "laserdisc game",
+        "laserdisc video game",
+        "laserdisc-based",
+        "laserdisc based",
+        "laserdisc-streamed",
+        "laserdisc streamed",
+        "live-action laserdisc",
+        "only laserdisc game",
+    ]
+    .iter()
+    .any(|phrase| notes.contains(phrase))
+    {
+        return GeneratedArcadeSubtype::Laserdisc;
+    }
+
+    let version = game
+        .version
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if [
+        "pioneer ld",
+        "sony ld",
+        "data east ld",
+        "amld",
+        "(dld)",
+        " laserdisc",
+    ]
+    .iter()
+    .any(|phrase| version.contains(phrase))
+    {
         return GeneratedArcadeSubtype::Laserdisc;
     }
 
