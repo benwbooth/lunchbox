@@ -438,6 +438,64 @@ impl QBittorrentClient {
         Ok(())
     }
 
+    fn existing_torrent_file_candidates(
+        &self,
+        torrent: &serde_json::Value,
+        file_name: &str,
+    ) -> Vec<PathBuf> {
+        let mut candidates = Vec::new();
+
+        if let Some(save_path) = torrent["save_path"].as_str() {
+            let save_path = self.map_container_path_to_host(&PathBuf::from(save_path));
+            candidates.push(save_path.join(file_name));
+        }
+
+        if let Some(content_path) = torrent["content_path"].as_str() {
+            let content_path = self.map_container_path_to_host(&PathBuf::from(content_path));
+            if content_path.is_file() {
+                candidates.push(content_path);
+            } else {
+                let nested_name = file_name
+                    .split_once('/')
+                    .map(|(_, rest)| rest)
+                    .unwrap_or(file_name);
+                candidates.push(content_path.join(nested_name));
+            }
+        }
+
+        candidates
+    }
+
+    async fn requested_files_missing_on_disk(
+        &self,
+        client: &reqwest::Client,
+        hash: &str,
+        torrent: &serde_json::Value,
+        requested_indices: &[usize],
+    ) -> Result<bool> {
+        let files = self.fetch_torrent_files_with_retry(client, hash, 3).await?;
+
+        for index in requested_indices {
+            let Some(file) = files.get(*index) else {
+                return Ok(true);
+            };
+            let file_name = file["name"].as_str().unwrap_or("");
+            if file_name.is_empty() {
+                return Ok(true);
+            }
+
+            let exists = self
+                .existing_torrent_file_candidates(torrent, file_name)
+                .into_iter()
+                .any(|candidate| candidate.exists());
+            if !exists {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
     fn active_selected_indices(files: &[serde_json::Value]) -> HashSet<usize> {
         files
             .iter()
@@ -567,11 +625,18 @@ impl TorrentClient for QBittorrentClient {
         let info_hash = torrent_info_hash(&torrent_bytes);
         if let Some(existing_torrent) = self.fetch_existing_torrent(&client, &info_hash).await? {
             let state = existing_torrent["state"].as_str().unwrap_or("");
-            if state == "error" || state == "missingFiles" {
+            let missing_requested_files = if let Some(ref indices) = file_indices {
+                self.requested_files_missing_on_disk(&client, &info_hash, &existing_torrent, indices)
+                    .await?
+            } else {
+                false
+            };
+            if state == "error" || state == "missingFiles" || missing_requested_files {
                 tracing::info!(
                     hash = %info_hash,
                     state,
-                    "Resetting errored qBittorrent torrent before add"
+                    missing_requested_files,
+                    "Resetting qBittorrent torrent before add"
                 );
                 let _ = client
                     .post(format!("{}/api/v2/torrents/delete", self.base_url()))
