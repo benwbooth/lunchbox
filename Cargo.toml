@@ -1,7 +1,7 @@
 [package]
 name = "lunchbox-frontend"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -64,7 +64,7 @@ members = ["backend", "crates/lunchbox-core", "crates/lunchbox-cli"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 authors = ["Ben"]
 

@@ -1161,7 +1161,7 @@ async fn get_favorites(
 ) -> Result<Json<Vec<Game>>, (StatusCode, String)> {
     let state_guard = state.read().await;
 
-    if let (Some(ref db_pool), Some(ref games_pool)) =
+    if let (Some(db_pool), Some(games_pool)) =
         (&state_guard.db_pool, &state_guard.games_db_pool)
     {
         let favorite_ids: Vec<(String,)> =
