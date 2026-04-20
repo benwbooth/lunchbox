@@ -492,6 +492,7 @@ async fn load_minerva_torrent_groups(
     platform_name: String,
     platform_id: i64,
     region_priority: Vec<String>,
+    mut on_progress: impl FnMut(usize, usize),
 ) -> Result<Vec<MinervaTorrentGroup>, String> {
     let mut roms = backend_api::search_minerva(
         Some(launchbox_db_id),
@@ -502,10 +503,14 @@ async fn load_minerva_torrent_groups(
     if platform_name == "Arcade" {
         roms.retain(|rom| !is_arcade_mame_merged_or_split_rom(rom));
     }
+    let total_groups = roms.len();
+    if total_groups > 0 {
+        on_progress(0, total_groups);
+    }
     let mut groups = Vec::new();
     let mut last_error = None;
 
-    let group_results = stream::iter(roms.into_iter().map(|rom| {
+    let mut group_results = stream::iter(roms.into_iter().map(|rom| {
         let game_title = game_title.clone();
         let platform_name = platform_name.clone();
         async move {
@@ -521,11 +526,14 @@ async fn load_minerva_torrent_groups(
             (rom, result)
         }
     }))
-    .buffer_unordered(6)
-    .collect::<Vec<_>>()
-    .await;
+    .buffer_unordered(6);
 
-    for (rom, result) in group_results {
+    let mut completed_groups = 0usize;
+    while let Some((rom, result)) = group_results.next().await {
+        completed_groups += 1;
+        if total_groups > 0 {
+            on_progress(completed_groups, total_groups);
+        }
         match result {
             Ok(files) => {
                 let items = build_minerva_picker_items(&rom, files);
@@ -625,6 +633,8 @@ pub fn GameDetails(
     let (selected_download, set_selected_download) =
         signal::<Option<MinervaDownloadSelection>>(None);
     let (files_loading, set_files_loading) = signal(false);
+    let (files_loading_progress, set_files_loading_progress) =
+        signal::<Option<(usize, usize)>>(None);
     let (torrent_groups_request_key, set_torrent_groups_request_key) =
         signal::<Option<String>>(None);
 
@@ -653,6 +663,7 @@ pub fn GameDetails(
             set_minerva_job_id.set(None);
             set_minerva_missing_progress_polls.set(0);
             set_files_loading.set(false);
+            set_files_loading_progress.set(None);
             set_torrent_groups.set(Vec::new());
             set_selected_download.set(None);
             set_show_file_picker.set(false);
@@ -673,6 +684,8 @@ pub fn GameDetails(
             set_details_min_delay_elapsed.set(false);
             set_preloaded_video_state.set(None);
             set_minerva_missing_progress_polls.set(0);
+            set_files_loading.set(false);
+            set_files_loading_progress.set(None);
             set_torrent_groups.set(Vec::new());
             set_selected_download.set(None);
             set_show_file_picker.set(false);
@@ -746,6 +759,7 @@ pub fn GameDetails(
 
             set_torrent_groups_request_key.set(Some(request_key.clone()));
             set_files_loading.set(true);
+            set_files_loading_progress.set(None);
             set_selected_download.set(None);
 
             if open_picker_immediately {
@@ -761,6 +775,16 @@ pub fn GameDetails(
                     platform_name,
                     platform_id,
                     region_priority,
+                    {
+                        let request_key = request_key.clone();
+                        move |completed, total| {
+                            if torrent_groups_request_key.get_untracked().as_deref()
+                                == Some(request_key.as_str())
+                            {
+                                set_files_loading_progress.set(Some((completed, total)));
+                            }
+                        }
+                    },
                 )
                 .await;
 
@@ -787,6 +811,7 @@ pub fn GameDetails(
                     Err(e) => {
                         set_torrent_groups.set(Vec::new());
                         set_torrent_groups_request_key.set(None);
+                        set_files_loading_progress.set(None);
                         if surface_errors {
                             set_import_error.set(Some(e));
                             set_show_file_picker.set(false);
@@ -795,6 +820,7 @@ pub fn GameDetails(
                 }
 
                 set_files_loading.set(false);
+                set_files_loading_progress.set(None);
             });
         };
 
@@ -1499,9 +1525,46 @@ pub fn GameDetails(
                                                     <div class="file-picker-list">
                                                         <Show when=move || files_loading.get() && torrent_groups.get().is_empty()>
                                                             <div class="file-picker-loading">
-                                                                <div class="import-status-hint">"Loading Minerva download options..."</div>
+                                                                <div class="import-status-hint">
+                                                                    {move || {
+                                                                        files_loading_progress
+                                                                            .get()
+                                                                            .map(|(completed, total)| {
+                                                                                let percent =
+                                                                                    if total == 0 {
+                                                                                        0
+                                                                                    } else {
+                                                                                        ((completed as f64 / total as f64)
+                                                                                            * 100.0)
+                                                                                            .round() as i32
+                                                                                    };
+                                                                                format!(
+                                                                                    "Loading Minerva download options... {percent}% ({completed}/{total})"
+                                                                                )
+                                                                            })
+                                                                            .unwrap_or_else(|| {
+                                                                                "Loading Minerva download options...".to_string()
+                                                                            })
+                                                                    }}
+                                                                </div>
                                                                 <div class="download-progress">
-                                                                    <div class="progress-bar indeterminate"></div>
+                                                                    <div
+                                                                        class="progress-bar"
+                                                                        class:indeterminate=move || files_loading_progress.get().is_none()
+                                                                        style:width=move || {
+                                                                            files_loading_progress
+                                                                                .get()
+                                                                                .map(|(completed, total)| {
+                                                                                    let percent = if total == 0 {
+                                                                                        0.0
+                                                                                    } else {
+                                                                                        (completed as f64 / total as f64) * 100.0
+                                                                                    };
+                                                                                    format!("{percent:.1}%")
+                                                                                })
+                                                                                .unwrap_or_else(|| "100%".to_string())
+                                                                        }
+                                                                    ></div>
                                                                 </div>
                                                             </div>
                                                         </Show>
