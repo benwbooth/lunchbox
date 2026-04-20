@@ -2841,7 +2841,7 @@ fn list_archive_entries(
         ArchiveKind::Zip => list_zip_entries(archive_path),
         ArchiveKind::SevenZip | ArchiveKind::Rar => list_7z_entries(archive_path),
         ArchiveKind::Tar | ArchiveKind::TarGz | ArchiveKind::TarBz2 | ArchiveKind::TarXz => {
-            list_tar_entries(archive_path)
+            list_tar_entries(archive_path, kind)
         }
         ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => Err(format!(
             "Archive {} should be handled as a single-file compressed ROM",
@@ -2890,9 +2890,29 @@ fn list_zip_entries(archive_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
     Ok(entries)
 }
 
-fn list_tar_entries(archive_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+fn tar_list_flag(kind: ArchiveKind) -> &'static str {
+    match kind {
+        ArchiveKind::Tar => "-tf",
+        ArchiveKind::TarGz => "-tzf",
+        ArchiveKind::TarBz2 => "-tjf",
+        ArchiveKind::TarXz => "-tJf",
+        _ => unreachable!(),
+    }
+}
+
+fn tar_extract_flag(kind: ArchiveKind) -> &'static str {
+    match kind {
+        ArchiveKind::Tar => "-xf",
+        ArchiveKind::TarGz => "-xzf",
+        ArchiveKind::TarBz2 => "-xjf",
+        ArchiveKind::TarXz => "-xJf",
+        _ => unreachable!(),
+    }
+}
+
+fn list_tar_entries(archive_path: &Path, kind: ArchiveKind) -> Result<Vec<ArchiveEntry>, String> {
     let output = Command::new("tar")
-        .arg("-tf")
+        .arg(tar_list_flag(kind))
         .arg(archive_path)
         .output()
         .map_err(|e| {
@@ -3352,7 +3372,7 @@ fn extract_archive_entries(
             extract_7z_entries(archive_path, parent_dir, entry_paths)?
         }
         ArchiveKind::Tar | ArchiveKind::TarGz | ArchiveKind::TarBz2 | ArchiveKind::TarXz => {
-            extract_tar_entries(archive_path, parent_dir, entry_paths)?
+            extract_tar_entries(archive_path, kind, parent_dir, entry_paths)?
         }
         ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => unreachable!(),
     }
@@ -3420,11 +3440,12 @@ fn extract_zip_entries(
 
 fn extract_tar_entries(
     archive_path: &Path,
+    kind: ArchiveKind,
     parent_dir: &Path,
     entry_paths: &[PathBuf],
 ) -> Result<(), String> {
     let mut cmd = Command::new("tar");
-    cmd.arg("-xf")
+    cmd.arg(tar_extract_flag(kind))
         .arg(archive_path)
         .arg("-C")
         .arg(parent_dir)
