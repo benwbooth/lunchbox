@@ -3404,10 +3404,7 @@ fn is_live_minerva_queue_status(status: &str) -> bool {
     matches!(status, "pending" | "in_progress" | "paused")
 }
 
-fn stale_minerva_job_message(
-    updated_at: &str,
-    has_live_progress: bool,
-) -> Option<&'static str> {
+fn stale_minerva_job_message(updated_at: &str, has_live_progress: bool) -> Option<&'static str> {
     let stale_minutes = chrono::NaiveDateTime::parse_from_str(updated_at, "%Y-%m-%d %H:%M:%S")
         .ok()
         .map(|dt| {
@@ -3582,8 +3579,54 @@ fn stage_arcade_daphne_laserdisc_layout(
     let staged_framefile = staged_root.join(&plan.staged_framefile_relative_path);
     crate::torrent::link_file_to_target(&source_framefile, &staged_framefile, link_mode)
         .map_err(|e| format!("Failed to stage {}: {}", staged_framefile.display(), e))?;
+    verify_staged_daphne_framefile_assets(&staged_framefile)?;
 
     Ok(staged_framefile)
+}
+
+fn verify_staged_daphne_framefile_assets(framefile_path: &Path) -> Result<(), String> {
+    let framefile_dir = framefile_path.parent().ok_or_else(|| {
+        format!(
+            "Invalid Daphne framefile path: {}",
+            framefile_path.display()
+        )
+    })?;
+    let contents = std::fs::read_to_string(framefile_path)
+        .map_err(|e| format!("Failed to read {}: {}", framefile_path.display(), e))?;
+
+    let mut missing_files = Vec::new();
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty()
+            || trimmed == "."
+            || trimmed.starts_with('#')
+            || trimmed.starts_with(';')
+        {
+            continue;
+        }
+
+        let mut parts = trimmed.split_whitespace();
+        let _frame = parts.next();
+        let Some(video_path) = parts.next() else {
+            continue;
+        };
+        let candidate = framefile_dir.join(video_path);
+        if !candidate.exists() {
+            missing_files.push(video_path.to_string());
+            if missing_files.len() >= 3 {
+                break;
+            }
+        }
+    }
+
+    if missing_files.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Downloaded Daphne bundle is incomplete; the framefile references missing video files such as {}.",
+            missing_files.join(", ")
+        ))
+    }
 }
 
 fn sanitize_download_directory_component(value: &str) -> String {
@@ -4656,9 +4699,7 @@ pub async fn list_minerva_downloads(
             crate::torrent::get_progress(&job_id)
         };
 
-        if let Some(message) =
-            stale_minerva_job_message(&updated_at, live_progress.is_some())
-        {
+        if let Some(message) = stale_minerva_job_message(&updated_at, live_progress.is_some()) {
             let _ = sqlx::query(
                 "UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             )
@@ -5379,11 +5420,17 @@ fn select_arcade_daphne_laserdisc_matches(
 ) -> Vec<TorrentFileMatch> {
     #[derive(Debug)]
     struct BundleCandidate {
+        bundle_name: String,
         members: Vec<crate::torrent::TorrentFileInfo>,
         exact_match: bool,
         full_query_match: bool,
         all_significant_words_match: bool,
         match_score: f64,
+    }
+
+    fn is_canonical_daphne_loader_bundle(bundle_name: &str) -> bool {
+        let normalized = bundle_name.to_ascii_lowercase();
+        normalized == "daphneloader" || normalized.starts_with("daphneloader /")
     }
 
     let normalized_query = crate::tags::normalize_title_for_matching(game_title);
@@ -5418,6 +5465,7 @@ fn select_arcade_daphne_laserdisc_matches(
             )?;
 
             Some(BundleCandidate {
+                bundle_name: bundle.bundle_name,
                 members: bundle
                     .members
                     .into_iter()
@@ -5438,6 +5486,10 @@ fn select_arcade_daphne_laserdisc_matches(
             .then_with(|| {
                 b.all_significant_words_match
                     .cmp(&a.all_significant_words_match)
+            })
+            .then_with(|| {
+                is_canonical_daphne_loader_bundle(&b.bundle_name)
+                    .cmp(&is_canonical_daphne_loader_bundle(&a.bundle_name))
             })
             .then_with(|| {
                 b.match_score
@@ -5484,6 +5536,13 @@ fn select_arcade_daphne_laserdisc_matches(
         candidates.retain(|candidate| candidate.all_significant_words_match);
     } else {
         candidates.retain(|candidate| candidate.match_score > 0.0);
+    }
+
+    if candidates
+        .iter()
+        .any(|candidate| is_canonical_daphne_loader_bundle(&candidate.bundle_name))
+    {
+        candidates.retain(|candidate| is_canonical_daphne_loader_bundle(&candidate.bundle_name));
     }
 
     candidates
@@ -5591,7 +5650,7 @@ fn torrent_match_lookup_titles(
 ) -> Vec<String> {
     let mut titles = Vec::new();
 
-    let is_hypseus_laserdisc = platform
+    let is_non_mame_laserdisc = platform
         .map(canonicalize_legacy_platform_name)
         .is_some_and(|platform| platform == "Arcade")
         && collection
@@ -5601,16 +5660,16 @@ fn torrent_match_lookup_titles(
             .map(str::trim)
             .is_some_and(|value| !value.eq_ignore_ascii_case("MAME"));
 
-    if is_hypseus_laserdisc {
-        titles.push(game_title.to_string());
+    if is_non_mame_laserdisc {
         if resolved_lookup_title != game_title {
             titles.push(resolved_lookup_title.to_string());
-        }
-        if let Some(stripped) = resolved_lookup_title.strip_prefix('d') {
-            if stripped != resolved_lookup_title && !stripped.is_empty() {
-                titles.push(stripped.to_string());
+            if let Some(stripped) = resolved_lookup_title.strip_prefix('d') {
+                if stripped != resolved_lookup_title && !stripped.is_empty() {
+                    titles.push(stripped.to_string());
+                }
             }
         }
+        titles.push(game_title.to_string());
         return titles;
     }
 
@@ -6122,7 +6181,7 @@ mod tests {
         parse_arcade_mame_laserdisc_asset, select_arcade_daphne_laserdisc_matches,
         select_arcade_hypseus_laserdisc_matches, select_arcade_mame_laserdisc_matches,
         select_arcade_mame_laserdisc_or_generic_matches, select_torrent_file_matches,
-        sort_emulator_statuses, torrent_match_lookup_titles,
+        sort_emulator_statuses, torrent_match_lookup_titles, verify_staged_daphne_framefile_assets,
     };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
@@ -6864,6 +6923,110 @@ mod tests {
         assert!(matches.iter().all(|candidate| {
             candidate.filename.contains("/lair2/") || candidate.filename.contains("lair2_")
         }));
+    }
+
+    #[test]
+    fn arcade_daphne_laserdisc_matching_prefers_daphneloader_bundle() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 1,
+                filename: "Laserdisc Collection/Daphne/DaphneLoader/roms/lair2_318.zip"
+                    .to_string(),
+                size: 12,
+            },
+            TorrentFileInfo {
+                index: 2,
+                filename:
+                    "Laserdisc Collection/Daphne/DaphneLoader/vldp_dl/lair2/dl2-framefile.txt"
+                        .to_string(),
+                size: 2,
+            },
+            TorrentFileInfo {
+                index: 3,
+                filename: "Laserdisc Collection/Daphne/DaphneLoader/vldp_dl/lair2/dl2.dat"
+                    .to_string(),
+                size: 20,
+            },
+            TorrentFileInfo {
+                index: 4,
+                filename: "Laserdisc Collection/Daphne/DaphneLoader/vldp_dl/lair2/dl2.m2v"
+                    .to_string(),
+                size: 200,
+            },
+            TorrentFileInfo {
+                index: 5,
+                filename: "Laserdisc Collection/Daphne/DaphneLoader/vldp_dl/lair2/dl2.ogg"
+                    .to_string(),
+                size: 30,
+            },
+            TorrentFileInfo {
+                index: 6,
+                filename: "Laserdisc Collection/Daphne/Daphne [AI Remastered 1080p]/Dragon's Lair II Time Warp 1080p 16x9 (Eng+Spa)/roms/lair2.zip".to_string(),
+                size: 10,
+            },
+            TorrentFileInfo {
+                index: 7,
+                filename: "Laserdisc Collection/Daphne/Daphne [AI Remastered 1080p]/Dragon's Lair II Time Warp 1080p 16x9 (Eng+Spa)/mpeg2/lair2/dl2-framefile.txt".to_string(),
+                size: 2,
+            },
+            TorrentFileInfo {
+                index: 8,
+                filename: "Laserdisc Collection/Daphne/Daphne [AI Remastered 1080p]/Dragon's Lair II Time Warp 1080p 16x9 (Eng+Spa)/mpeg2/lair2/dl2-00001.dat".to_string(),
+                size: 20,
+            },
+            TorrentFileInfo {
+                index: 9,
+                filename: "Laserdisc Collection/Daphne/Daphne [AI Remastered 1080p]/Dragon's Lair II Time Warp 1080p 16x9 (Eng+Spa)/mpeg2/lair2/dl2-00001.m2v".to_string(),
+                size: 20_000,
+            },
+            TorrentFileInfo {
+                index: 10,
+                filename: "Laserdisc Collection/Daphne/Daphne [AI Remastered 1080p]/Dragon's Lair II Time Warp 1080p 16x9 (Eng+Spa)/mpeg2/lair2/dl2-00001.ogg".to_string(),
+                size: 2_000,
+            },
+        ];
+
+        let matches = select_arcade_daphne_laserdisc_matches(files, "lair2", &[]);
+
+        assert!(!matches.is_empty());
+        assert!(
+            matches
+                .iter()
+                .all(|candidate| candidate.filename.contains("/DaphneLoader/"))
+        );
+    }
+
+    #[test]
+    fn arcade_non_mame_laserdisc_lookup_titles_prefer_shortname_first() {
+        let titles = torrent_match_lookup_titles(
+            Some("Arcade Laserdisc"),
+            "Dragon's Lair II: Time Warp",
+            "dlair2",
+            Some("Laserdisc Collection"),
+            Some("Daphne"),
+        );
+
+        assert_eq!(
+            titles,
+            vec![
+                "dlair2".to_string(),
+                "lair2".to_string(),
+                "Dragon's Lair II: Time Warp".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn staged_daphne_framefile_verification_rejects_missing_video_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let frame_dir = temp_dir.path().join("vldp/lair2");
+        std::fs::create_dir_all(&frame_dir).unwrap();
+        let framefile = frame_dir.join("lair2.txt");
+        std::fs::write(&framefile, ".\n00001 dl2-00001.m2v\n00721 dl2-00721.m2v\n").unwrap();
+        std::fs::write(frame_dir.join("dl2-00001.m2v"), b"video").unwrap();
+
+        let err = verify_staged_daphne_framefile_assets(&framefile).unwrap_err();
+        assert!(err.contains("dl2-00721.m2v"));
     }
 
     #[test]
