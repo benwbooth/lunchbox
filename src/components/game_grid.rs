@@ -1,8 +1,8 @@
 //! Game grid and list views with virtual scrolling
 
 use crate::app::{
-    ArtworkDisplayType, GameFilters, PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES,
-    ViewMode,
+    ArtworkDisplayType, GameFilters, ViewMode, PLATFORM_SELECTION_ALL_GAMES,
+    PLATFORM_SELECTION_MINIGAMES,
 };
 use crate::backend_api::{self, Game};
 use chrono::{Datelike, NaiveDate};
@@ -47,6 +47,22 @@ fn format_hover_video_progress_label(progress: &backend_api::VideoDownloadProgre
             )
         })
         .unwrap_or(status)
+}
+
+fn format_game_card_download_label(item: &backend_api::MinervaDownloadQueueItem) -> String {
+    let status = match item.status.as_str() {
+        "fetching_torrent" => "Preparing download",
+        "extracting" => "Finishing download",
+        "paused" => "Download paused",
+        "pending" => "Download queued",
+        _ => "Downloading",
+    };
+
+    if item.progress_percent > 0.0 {
+        format!("{status} {:.0}%", item.progress_percent.clamp(0.0, 100.0))
+    } else {
+        status.to_string()
+    }
 }
 
 // Virtual scroll configuration
@@ -1431,7 +1447,7 @@ fn GameCard(
     #[prop(default = false)]
     in_viewport: bool,
 ) -> impl IntoView {
-    use crate::components::LazyImage;
+    use crate::components::{minerva_downloads_signal, LazyImage};
 
     let display_title = game.display_title.clone();
     let first_char = game.display_title.chars().next().unwrap_or('?').to_string();
@@ -1451,6 +1467,7 @@ fn GameCard(
         .unwrap_or_else(|| game.platform.clone());
     let hover_video_title = StoredValue::new(game.title.clone());
     let hover_video_platform = StoredValue::new(game.platform.clone());
+    let (minerva_downloads, _) = minerva_downloads_signal();
 
     let (is_hovered, set_is_hovered) = signal(false);
     let (hover_preview_armed, set_hover_preview_armed) = signal(false);
@@ -1913,6 +1930,13 @@ fn GameCard(
                 || hover_video_status.get().starts_with("Preview failed"))
     };
 
+    let active_download = move || {
+        minerva_downloads
+            .get()
+            .into_iter()
+            .find(|item| item.launchbox_db_id == launchbox_db_id)
+    };
+
     view! {
         <>
         <div
@@ -2018,19 +2042,63 @@ fn GameCard(
                         </Show>
                     </div>
                 </div>
-                {has_game_file.then(|| view! {
-                    <span class="play-ready-badge" title="Ready to play" aria-label="Ready to play">
-                        <svg
-                            class="play-ready-icon"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                            focusable="false"
-                        >
-                            <circle cx="12" cy="12" r="10" class="play-ready-icon-base" />
-                            <path d="M10 8.6 L16.3 12 L10 15.4 Z" class="play-ready-icon-triangle" />
-                        </svg>
-                    </span>
-                })}
+                {move || {
+                    if let Some(download) = active_download() {
+                        let is_paused = download.status == "paused";
+                        let label = format_game_card_download_label(&download);
+                        view! {
+                            <span
+                                class="download-status-badge"
+                                class:paused=is_paused
+                                title=label.clone()
+                                aria-label=label
+                            >
+                                <svg
+                                    class="download-status-icon"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    focusable="false"
+                                >
+                                    <circle cx="12" cy="12" r="10" class="download-status-icon-base" />
+                                    {if is_paused {
+                                        view! {
+                                            <>
+                                                <rect x="9" y="8" width="2.4" height="8" rx="0.8" class="download-status-icon-pause" />
+                                                <rect x="12.6" y="8" width="2.4" height="8" rx="0.8" class="download-status-icon-pause" />
+                                            </>
+                                        }.into_any()
+                                    } else {
+                                        view! {
+                                            <>
+                                                <path d="M12 7.4 V13.4" class="download-status-icon-arrow" />
+                                                <path d="M9.6 11.2 L12 13.8 L14.4 11.2" class="download-status-icon-arrow" />
+                                                <path d="M8.6 16 H15.4" class="download-status-icon-arrow" />
+                                            </>
+                                        }.into_any()
+                                    }}
+                                </svg>
+                            </span>
+                        }
+                            .into_any()
+                    } else if has_game_file {
+                        view! {
+                            <span class="play-ready-badge" title="Ready to play" aria-label="Ready to play">
+                                <svg
+                                    class="play-ready-icon"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    focusable="false"
+                                >
+                                    <circle cx="12" cy="12" r="10" class="play-ready-icon-base" />
+                                    <path d="M10 8.6 L16.3 12 L10 15.4 Z" class="play-ready-icon-triangle" />
+                                </svg>
+                            </span>
+                        }
+                            .into_any()
+                    } else {
+                        view! { <></> }.into_any()
+                    }
+                }}
                 {(variant_count > 1).then(|| view! {
                     <span class="variant-badge">{variant_count}</span>
                 })}

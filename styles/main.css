@@ -2650,8 +2650,9 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--text-secondary);
 }
 
-/* Variant Badge on Game Cards */
-.play-ready-badge {
+/* Status Badges on Game Cards */
+.play-ready-badge,
+.download-status-badge {
     position: absolute;
     top: 8px;
     right: 8px;
@@ -2681,6 +2682,42 @@ h1, h2, h3, h4, h5, h6 {
     opacity: 1;
 }
 
+.download-status-badge {
+    animation: download-status-pulse 1.2s ease-in-out infinite;
+}
+
+.download-status-badge.paused {
+    animation: none;
+}
+
+.download-status-icon {
+    width: 32px;
+    height: 32px;
+    display: block;
+}
+
+.download-status-icon-base {
+    fill: rgba(84, 163, 255, 0.94);
+}
+
+.download-status-badge.paused .download-status-icon-base {
+    fill: rgba(255, 189, 84, 0.94);
+}
+
+.download-status-icon-arrow,
+.download-status-icon-pause {
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.download-status-icon-pause {
+    fill: #ffffff;
+    stroke: none;
+}
+
 .variant-badge {
     position: absolute;
     bottom: 8px;
@@ -2697,10 +2734,22 @@ h1, h2, h3, h4, h5, h6 {
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
+.game-card:hover .download-status-badge,
 .game-card:hover .play-ready-badge,
 .game-card:hover .variant-badge {
     opacity: 0;
     transform: scale(0.88);
+}
+
+@keyframes download-status-pulse {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.06);
+    }
 }
 
 .variant-count {
