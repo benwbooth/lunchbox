@@ -121,14 +121,14 @@ pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
 
     match normalized.as_str() {
         // Nintendo
-        s if s.contains("nintendo entertainment system") => Some("Nintendo Entertainment System"),
-        s if contains_word(s, "nes") && !contains_word(s, "snes") && !contains_word(s, "super") => {
-            Some("Nintendo Entertainment System")
-        }
         s if s.contains("super nintendo")
             || (contains_word(s, "snes") && !contains_word(s, "msu")) =>
         {
             Some("Super Nintendo Entertainment System")
+        }
+        s if s.contains("nintendo entertainment system") => Some("Nintendo Entertainment System"),
+        s if contains_word(s, "nes") && !contains_word(s, "snes") && !contains_word(s, "super") => {
+            Some("Nintendo Entertainment System")
         }
         s if s.contains("nintendo 64") || s == "n64" => Some("Nintendo 64"),
         s if s.contains("game boy advance") || s == "gba" => Some("Nintendo Game Boy Advance"),
@@ -311,7 +311,7 @@ static VIDEO_DOWNLOAD_PROGRESS: OnceLock<
     std::sync::RwLock<HashMap<String, VideoDownloadProgressState>>,
 > = OnceLock::new();
 
-const VIDEO_MATCH_CACHE_VERSION: &str = "3";
+const VIDEO_MATCH_CACHE_VERSION: &str = "4";
 const VIDEO_INDEX_CACHE_VERSION: &str = "1";
 const FTP_CONTROL_STALL_TIMEOUT: Duration = Duration::from_secs(45);
 const FTP_DATA_STALL_TIMEOUT: Duration = Duration::from_secs(45);
@@ -332,8 +332,8 @@ struct VideoDownloadProgressState {
     last_updated: Instant,
 }
 
-fn video_download_progress_map()
--> &'static std::sync::RwLock<HashMap<String, VideoDownloadProgressState>> {
+fn video_download_progress_map(
+) -> &'static std::sync::RwLock<HashMap<String, VideoDownloadProgressState>> {
     VIDEO_DOWNLOAD_PROGRESS.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
 }
 
@@ -1695,6 +1695,14 @@ mod tests {
         assert_eq!(
             get_emumovies_system_folder("NES"),
             Some("Nintendo Entertainment System")
+        );
+        assert_eq!(
+            get_emumovies_system_folder("Super Nintendo Entertainment System"),
+            Some("Super Nintendo Entertainment System")
+        );
+        assert_eq!(
+            get_emumovies_system_folder("SNES"),
+            Some("Super Nintendo Entertainment System")
         );
         assert_eq!(
             get_emumovies_system_folder("Sega Genesis"),
