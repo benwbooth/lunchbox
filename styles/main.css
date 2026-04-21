@@ -4436,8 +4436,201 @@ body.sidebar-resizing * {
     color: var(--text-secondary);
 }
 
+.minerva-inline-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .minerva-download-btn {
     background-color: #3b82f6 !important;
+}
+
+.minerva-download-queue {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    width: min(420px, calc(100vw - 36px));
+    background: color-mix(in srgb, var(--bg-secondary) 94%, black 6%);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+    z-index: 1200;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+}
+
+.minerva-download-queue-toggle {
+    width: 100%;
+    border: none;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(34, 197, 94, 0.12));
+    color: inherit;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.minerva-download-queue-toggle:hover {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.24), rgba(34, 197, 94, 0.16));
+}
+
+.minerva-download-queue-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+}
+
+.minerva-download-queue-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-weight: 700;
+}
+
+.minerva-download-queue-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.minerva-download-queue-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.minerva-download-queue-chevron {
+    font-size: 20px;
+    line-height: 1;
+    color: var(--text-secondary);
+}
+
+.minerva-download-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    max-height: min(58vh, 460px);
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.minerva-download-queue-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.minerva-download-queue-item-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.minerva-download-queue-game {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.minerva-download-queue-platform {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.minerva-download-queue-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.minerva-download-queue-action {
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.minerva-download-queue-action:hover {
+    border-color: var(--accent-color);
+    background: rgba(59, 130, 246, 0.18);
+}
+
+.minerva-download-queue-action.danger:hover {
+    border-color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.16);
+}
+
+.minerva-download-queue-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.minerva-download-queue-progress-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.minerva-download-queue-progress {
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.minerva-download-queue-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #22c55e);
+    transition: width 0.25s ease;
+}
+
+.minerva-download-queue-progress-fill.is-paused {
+    background: linear-gradient(90deg, #f59e0b, #f97316);
+}
+
+.minerva-download-queue-progress-fill.is-terminal {
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.minerva-download-queue-progress-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 700px) {
+    .minerva-download-queue {
+        right: 10px;
+        left: 10px;
+        width: auto;
+        bottom: 10px;
+    }
+
+    .minerva-download-queue-item-header {
+        flex-direction: column;
+    }
+
+    .minerva-download-queue-actions {
+        justify-content: flex-start;
+    }
 }
 
 /* Torrent File Picker Dialog */

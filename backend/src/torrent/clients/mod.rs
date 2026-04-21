@@ -33,6 +33,12 @@ pub trait TorrentClient: Send + Sync {
     /// Get download progress for a job
     async fn get_progress(&self, job_id: &str) -> Result<Option<DownloadProgress>>;
 
+    /// Pause an active download without removing it from the queue.
+    async fn pause(&self, job_id: &str) -> Result<()>;
+
+    /// Resume a previously paused download.
+    async fn resume(&self, job_id: &str) -> Result<()>;
+
     /// Cancel an active download
     async fn cancel(&self, job_id: &str) -> Result<()>;
 

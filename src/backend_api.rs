@@ -2167,6 +2167,23 @@ pub struct MinervaDownloadProgress {
     pub status_message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinervaDownloadQueueItem {
+    pub job_id: String,
+    pub launchbox_db_id: i64,
+    pub game_title: String,
+    pub platform: String,
+    pub status: String,
+    pub progress_percent: f64,
+    pub download_speed: u64,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub status_message: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 pub async fn has_minerva_db() -> Result<bool, String> {
     invoke("has_minerva_db", ()).await
 }
@@ -2264,6 +2281,28 @@ pub async fn get_minerva_download_progress(
     invoke("get_minerva_download_progress", Args { job_id }).await
 }
 
+pub async fn list_minerva_downloads() -> Result<Vec<MinervaDownloadQueueItem>, String> {
+    invoke_no_args("list_minerva_downloads").await
+}
+
+pub async fn pause_minerva_download(job_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        job_id: String,
+    }
+    invoke("pause_minerva_download", Args { job_id }).await
+}
+
+pub async fn resume_minerva_download(job_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        job_id: String,
+    }
+    invoke("resume_minerva_download", Args { job_id }).await
+}
+
 pub async fn cancel_minerva_download(job_id: String) -> Result<(), String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -2271,6 +2310,15 @@ pub async fn cancel_minerva_download(job_id: String) -> Result<(), String> {
         job_id: String,
     }
     invoke("cancel_minerva_download", Args { job_id }).await
+}
+
+pub async fn delete_minerva_download(job_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        job_id: String,
+    }
+    invoke("delete_minerva_download", Args { job_id }).await
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

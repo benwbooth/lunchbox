@@ -2295,7 +2295,7 @@ pub async fn get_active_import(
         .ok_or_else(|| "Database not initialized".to_string())?;
 
     let row: Option<(String, i64, String, String, String, f64, Option<String>, String, String)> = sqlx::query_as(
-        "SELECT id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at FROM graboid_jobs WHERE launchbox_db_id = ? AND status IN ('pending', 'in_progress') ORDER BY created_at DESC LIMIT 1"
+        "SELECT id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at FROM graboid_jobs WHERE launchbox_db_id = ? AND status IN ('pending', 'in_progress', 'paused') ORDER BY created_at DESC LIMIT 1"
     )
     .bind(launchbox_db_id)
     .fetch_optional(db_pool)
@@ -2314,7 +2314,7 @@ pub async fn get_active_import(
         updated_at,
     )) = row
     {
-        let missing_live_progress = crate::torrent::get_progress(&id).is_none();
+        let missing_live_progress = load_minerva_live_progress(state, &id, None).await.is_none();
 
         // Auto-fail stale jobs (no updates for 30+ minutes)
         let stale_minutes = chrono::NaiveDateTime::parse_from_str(&updated_at, "%Y-%m-%d %H:%M:%S")
@@ -2327,7 +2327,9 @@ pub async fn get_active_import(
             })
             .unwrap_or(0);
 
-        let stale_message = if stale_minutes >= 30 {
+        let stale_message = if status == "paused" {
+            None
+        } else if stale_minutes >= 30 {
             Some("Stale job auto-failed")
         } else if missing_live_progress && stale_minutes >= 1 {
             Some("Lost live download state; retry the download")
@@ -2525,6 +2527,23 @@ pub enum MinervaDownloadMode {
     #[default]
     GameOnly,
     FullTorrent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinervaDownloadQueueItem {
+    pub job_id: String,
+    pub launchbox_db_id: i64,
+    pub game_title: String,
+    pub platform: String,
+    pub status: String,
+    pub progress_percent: f64,
+    pub download_speed: u64,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub status_message: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3389,6 +3408,66 @@ async fn persist_graboid_job_status(
     }
 }
 
+fn torrent_download_status_code(status: crate::torrent::DownloadStatus) -> &'static str {
+    match status {
+        crate::torrent::DownloadStatus::FetchingTorrent => "fetching_torrent",
+        crate::torrent::DownloadStatus::Downloading => "downloading",
+        crate::torrent::DownloadStatus::Paused => "paused",
+        crate::torrent::DownloadStatus::Extracting => "extracting",
+        crate::torrent::DownloadStatus::Completed => "completed",
+        crate::torrent::DownloadStatus::Failed => "failed",
+        crate::torrent::DownloadStatus::Cancelled => "cancelled",
+    }
+}
+
+fn is_live_minerva_queue_status(status: &str) -> bool {
+    matches!(status, "pending" | "in_progress" | "paused")
+}
+
+async fn resolve_minerva_client_job_id(state: &AppState, job_id: &str) -> Option<String> {
+    if let Some(client_job_id) = crate::torrent::get_client_job_id(job_id) {
+        return Some(client_job_id);
+    }
+
+    let db_pool = state.db_pool.as_ref()?;
+    sqlx::query_scalar::<_, String>("SELECT client_job_id FROM graboid_jobs WHERE id = ?")
+        .bind(job_id)
+        .fetch_optional(db_pool)
+        .await
+        .ok()
+        .flatten()
+}
+
+async fn load_minerva_live_progress(
+    state: &AppState,
+    job_id: &str,
+    client_job_id: Option<&str>,
+) -> Option<crate::torrent::DownloadProgress> {
+    if let Some(progress) = crate::torrent::get_progress(job_id) {
+        return Some(progress);
+    }
+
+    let client_job_id = if let Some(client_job_id) = client_job_id {
+        client_job_id.to_string()
+    } else {
+        resolve_minerva_client_job_id(state, job_id).await?
+    };
+
+    let client = crate::torrent::create_client(&state.settings).ok()?;
+    let progress = client.get_progress(&client_job_id).await.ok()??;
+    crate::torrent::set_client_job_id(job_id, &client_job_id);
+    crate::torrent::update_progress(
+        job_id,
+        progress.status,
+        progress.progress_percent,
+        progress.download_speed,
+        progress.downloaded_bytes,
+        progress.total_bytes,
+        &progress.status_message,
+    );
+    Some(progress)
+}
+
 fn staging_link_mode(mode: &str) -> &str {
     match mode {
         "leave_in_place" => "symlink",
@@ -4172,6 +4251,17 @@ pub async fn start_minerva_download(
             }
         };
         crate::torrent::set_client_job_id(&job_id_bg, &client_job_id);
+        if let Some(ref db_path) = db_path {
+            if let Ok(pool) = crate::db::init_pool(db_path).await {
+                let _ = sqlx::query(
+                    "UPDATE graboid_jobs SET client_job_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                )
+                .bind(&client_job_id)
+                .bind(&job_id_bg)
+                .execute(&pool)
+                .await;
+            }
+        }
 
         // Step 4: Poll qBittorrent progress until the requested download completes.
         let start = std::time::Instant::now();
@@ -4179,6 +4269,21 @@ pub async fn start_minerva_download(
 
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            if matches!(
+                crate::torrent::get_progress(&job_id_bg).map(|progress| progress.status),
+                Some(crate::torrent::DownloadStatus::Cancelled)
+            ) {
+                persist_graboid_job_status(
+                    db_path.as_ref(),
+                    &job_id_bg,
+                    "cancelled",
+                    "Download cancelled",
+                )
+                .await;
+                crate::torrent::clear_client_job_id(&job_id_bg);
+                return;
+            }
 
             if start.elapsed() > timeout {
                 crate::torrent::update_progress(
@@ -4497,32 +4602,200 @@ pub async fn start_minerva_download(
 }
 
 /// Get download progress for a minerva download
-pub fn get_minerva_download_progress(job_id: &str) -> Option<crate::torrent::DownloadProgress> {
-    crate::torrent::get_progress(job_id)
+pub async fn get_minerva_download_progress(
+    state: &AppState,
+    job_id: &str,
+) -> Option<crate::torrent::DownloadProgress> {
+    load_minerva_live_progress(state, job_id, None).await
+}
+
+pub async fn list_minerva_downloads(
+    state: &AppState,
+) -> Result<Vec<MinervaDownloadQueueItem>, String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    let rows: Vec<(String, i64, String, String, String, f64, Option<String>, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at, client_job_id
+         FROM graboid_jobs
+         WHERE status IN ('pending', 'in_progress', 'paused', 'failed', 'cancelled', 'completed')
+         ORDER BY
+            CASE
+                WHEN status IN ('pending', 'in_progress', 'paused') THEN 0
+                WHEN status = 'failed' THEN 1
+                WHEN status = 'cancelled' THEN 2
+                ELSE 3
+            END,
+            updated_at DESC
+         LIMIT 24"
+    )
+    .fetch_all(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut items = Vec::with_capacity(rows.len());
+    for (
+        job_id,
+        launchbox_db_id,
+        game_title,
+        platform,
+        status,
+        progress_percent,
+        status_message,
+        created_at,
+        updated_at,
+        client_job_id,
+    ) in rows
+    {
+        let live_progress = if is_live_minerva_queue_status(&status) {
+            load_minerva_live_progress(state, &job_id, client_job_id.as_deref()).await
+        } else {
+            crate::torrent::get_progress(&job_id)
+        };
+
+        let item = if let Some(progress) = live_progress {
+            MinervaDownloadQueueItem {
+                job_id: job_id.clone(),
+                launchbox_db_id,
+                game_title,
+                platform,
+                status: torrent_download_status_code(progress.status).to_string(),
+                progress_percent: progress.progress_percent,
+                download_speed: progress.download_speed,
+                downloaded_bytes: progress.downloaded_bytes,
+                total_bytes: progress.total_bytes,
+                status_message: progress.status_message,
+                created_at,
+                updated_at,
+            }
+        } else {
+            MinervaDownloadQueueItem {
+                job_id: job_id.clone(),
+                launchbox_db_id,
+                game_title,
+                platform,
+                status,
+                progress_percent,
+                download_speed: 0,
+                downloaded_bytes: 0,
+                total_bytes: 0,
+                status_message: status_message.unwrap_or_default(),
+                created_at,
+                updated_at,
+            }
+        };
+        items.push(item);
+    }
+
+    Ok(items)
+}
+
+pub async fn pause_minerva_download(state: &AppState, job_id: &str) -> Result<(), String> {
+    let progress = get_minerva_download_progress(state, job_id).await;
+    let client_job_id = resolve_minerva_client_job_id(state, job_id).await;
+
+    if let Some(client_job_id) = client_job_id {
+        let client = crate::torrent::create_client(&state.settings).map_err(|e| e.to_string())?;
+        client
+            .pause(&client_job_id)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let progress_percent = progress.as_ref().map(|p| p.progress_percent).unwrap_or(0.0);
+    let downloaded_bytes = progress.as_ref().map(|p| p.downloaded_bytes).unwrap_or(0);
+    let total_bytes = progress.as_ref().map(|p| p.total_bytes).unwrap_or(0);
+    crate::torrent::update_progress(
+        job_id,
+        crate::torrent::DownloadStatus::Paused,
+        progress_percent,
+        0,
+        downloaded_bytes,
+        total_bytes,
+        "Download paused",
+    );
+
+    if let Some(db_pool) = state.db_pool.as_ref() {
+        let _ = sqlx::query(
+            "UPDATE graboid_jobs SET status = 'paused', progress_percent = ?, status_message = 'Download paused', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+        .bind(progress_percent)
+        .bind(job_id)
+        .execute(db_pool)
+        .await;
+    }
+
+    Ok(())
+}
+
+pub async fn resume_minerva_download(state: &AppState, job_id: &str) -> Result<(), String> {
+    let progress = get_minerva_download_progress(state, job_id).await;
+    let client_job_id = resolve_minerva_client_job_id(state, job_id).await;
+
+    if let Some(client_job_id) = client_job_id {
+        let client = crate::torrent::create_client(&state.settings).map_err(|e| e.to_string())?;
+        client
+            .resume(&client_job_id)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let progress_percent = progress.as_ref().map(|p| p.progress_percent).unwrap_or(0.0);
+    let downloaded_bytes = progress.as_ref().map(|p| p.downloaded_bytes).unwrap_or(0);
+    let total_bytes = progress.as_ref().map(|p| p.total_bytes).unwrap_or(0);
+    crate::torrent::update_progress(
+        job_id,
+        crate::torrent::DownloadStatus::Downloading,
+        progress_percent,
+        0,
+        downloaded_bytes,
+        total_bytes,
+        "Resuming download...",
+    );
+
+    if let Some(db_pool) = state.db_pool.as_ref() {
+        let _ = sqlx::query(
+            "UPDATE graboid_jobs SET status = 'in_progress', progress_percent = ?, status_message = 'Resuming download...', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+        .bind(progress_percent)
+        .bind(job_id)
+        .execute(db_pool)
+        .await;
+    }
+
+    Ok(())
 }
 
 /// Cancel an active minerva download
 pub async fn cancel_minerva_download(state: &AppState, job_id: &str) -> Result<(), String> {
-    // Cancel via client
     if let Ok(client) = crate::torrent::create_client(&state.settings) {
-        if let Some(client_job_id) = crate::torrent::get_client_job_id(job_id) {
+        if let Some(client_job_id) = resolve_minerva_client_job_id(state, job_id).await {
             let _ = client.cancel(&client_job_id).await;
         }
     }
 
-    // Also update local progress tracking
+    let previous_progress = get_minerva_download_progress(state, job_id).await;
     crate::torrent::update_progress(
         job_id,
         crate::torrent::DownloadStatus::Cancelled,
-        0.0,
+        previous_progress
+            .as_ref()
+            .map(|progress| progress.progress_percent)
+            .unwrap_or(0.0),
         0,
-        0,
-        0,
-        "Cancelled",
+        previous_progress
+            .as_ref()
+            .map(|progress| progress.downloaded_bytes)
+            .unwrap_or(0),
+        previous_progress
+            .as_ref()
+            .map(|progress| progress.total_bytes)
+            .unwrap_or(0),
+        "Download cancelled",
     );
     crate::torrent::clear_client_job_id(job_id);
 
-    // Update job status in database
     if let Some(db_pool) = state.db_pool.as_ref() {
         let _ = sqlx::query(
             "UPDATE graboid_jobs SET status = 'cancelled', status_message = 'Download cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
@@ -4530,6 +4803,19 @@ pub async fn cancel_minerva_download(state: &AppState, job_id: &str) -> Result<(
         .bind(job_id)
         .execute(db_pool)
         .await;
+    }
+
+    Ok(())
+}
+
+pub async fn delete_minerva_download(state: &AppState, job_id: &str) -> Result<(), String> {
+    cancel_minerva_download(state, job_id).await?;
+
+    if let Some(db_pool) = state.db_pool.as_ref() {
+        let _ = sqlx::query("DELETE FROM graboid_jobs WHERE id = ?")
+            .bind(job_id)
+            .execute(db_pool)
+            .await;
     }
 
     Ok(())

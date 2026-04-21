@@ -21,6 +21,7 @@ pub use clients::create_client;
 pub enum DownloadStatus {
     FetchingTorrent,
     Downloading,
+    Paused,
     Extracting,
     Completed,
     Failed,

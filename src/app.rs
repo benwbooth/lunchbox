@@ -1,5 +1,7 @@
 use crate::backend_api::Game;
-use crate::components::{EmulatorUpdates, GameDetails, GameGrid, Settings, Sidebar, Toolbar};
+use crate::components::{
+    EmulatorUpdates, GameDetails, GameGrid, MinervaDownloadQueue, Settings, Sidebar, Toolbar,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -236,6 +238,7 @@ pub fn App() -> impl IntoView {
                 on_close=set_show_emulator_updates
                 set_update_count=set_emulator_update_count
             />
+            <MinervaDownloadQueue />
         </div>
     }
 }

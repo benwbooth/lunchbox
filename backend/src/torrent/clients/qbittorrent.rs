@@ -225,9 +225,11 @@ impl QBittorrentClient {
             "uploading" | "stalledUP" | "queuedUP" | "forcedUP" | "pausedUP" | "checkingUP" => {
                 DownloadStatus::Completed
             }
+            "pausedDL" => DownloadStatus::Paused,
             "allocating" | "checkingDL" | "checkingResumeData" | "downloading" | "forcedDL"
-            | "metaDL" | "forcedMetaDL" | "moving" | "pausedDL" | "queuedDL" | "stalledDL"
-            | "unknown" => DownloadStatus::Downloading,
+            | "metaDL" | "forcedMetaDL" | "moving" | "queuedDL" | "stalledDL" | "unknown" => {
+                DownloadStatus::Downloading
+            }
             _ if progress >= 0.999 => DownloadStatus::Completed,
             _ => DownloadStatus::Downloading,
         }
@@ -249,6 +251,7 @@ impl QBittorrentClient {
                 }
             }
             DownloadStatus::Cancelled => format!("Download cancelled: {name}"),
+            DownloadStatus::Paused => format!("Download paused: {name}"),
             DownloadStatus::Downloading => match state {
                 "allocating" => format!("Allocating disk space for {name}..."),
                 "checkingDL" | "checkingResumeData" | "checkingUP" => {
@@ -256,7 +259,6 @@ impl QBittorrentClient {
                 }
                 "metaDL" | "forcedMetaDL" => format!("Fetching torrent metadata for {name}..."),
                 "moving" => format!("Moving files for {name}..."),
-                "pausedDL" => format!("Waiting for qBittorrent to resume {name}..."),
                 "queuedDL" => format!("Queued in qBittorrent: {name}"),
                 "stalledDL" => format!("Waiting for peers for {name}..."),
                 "unknown" => format!("Preparing {name} in qBittorrent..."),
@@ -571,6 +573,21 @@ impl QBittorrentClient {
 }
 
 impl QBittorrentClient {
+    async fn pause_torrent(&self, client: &reqwest::Client, hash: &str) -> Result<()> {
+        let resp = client
+            .post(format!("{}/api/v2/torrents/pause", self.base_url()))
+            .form(&[("hashes", hash)])
+            .send()
+            .await
+            .with_context(|| format!("qBittorrent pause request failed for torrent {hash}"))?;
+
+        if !resp.status().is_success() {
+            bail!("qBittorrent pause request failed: HTTP {}", resp.status());
+        }
+
+        Ok(())
+    }
+
     async fn start_torrent(&self, client: &reqwest::Client, hash: &str) -> Result<()> {
         for endpoint in ["start", "resume"] {
             let resp = client
@@ -739,6 +756,8 @@ impl TorrentClient for QBittorrentClient {
                 let mut selected_downloaded_bytes = 0_u64;
                 let mut matched_files = 0usize;
                 let mut all_complete = true;
+                let mut any_incomplete_selected = false;
+                let mut any_active_selected = false;
 
                 for &idx in selected_indices {
                     let Some(file) = files.get(idx) else {
@@ -749,11 +768,16 @@ impl TorrentClient for QBittorrentClient {
                     let file_name = file["name"].as_str().unwrap_or(torrent_name);
                     let file_size = file["size"].as_u64().unwrap_or(0);
                     let file_progress = file["progress"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0);
+                    let file_priority = file["priority"].as_i64().unwrap_or(0);
                     selected_total_bytes += file_size;
                     selected_downloaded_bytes +=
                         ((file_size as f64) * file_progress).round() as u64;
                     if file_progress < 0.999 {
                         all_complete = false;
+                        any_incomplete_selected = true;
+                        if file_priority > 0 {
+                            any_active_selected = true;
+                        }
                     }
                     if selected_display_name.is_none() {
                         selected_display_name = Some(Self::selection_display_name(
@@ -775,8 +799,10 @@ impl TorrentClient for QBittorrentClient {
                     DownloadStatus::Failed
                 } else if matched_files > 0 && all_complete {
                     DownloadStatus::Completed
+                } else if matched_files > 0 && any_incomplete_selected && !any_active_selected {
+                    DownloadStatus::Paused
                 } else {
-                    DownloadStatus::Downloading
+                    Self::map_download_status(state, raw_progress)
                 };
 
                 (
@@ -815,6 +841,72 @@ impl TorrentClient for QBittorrentClient {
             total_bytes,
             status_message,
         }))
+    }
+
+    async fn pause(&self, job_id: &str) -> Result<()> {
+        let job_ref = Self::parse_job_id(job_id);
+        let client = self.authenticated_client().await?;
+
+        if let Some(selected_indices) = job_ref.selected_indices {
+            let Some(existing_torrent) =
+                self.fetch_existing_torrent(&client, &job_ref.hash).await?
+            else {
+                return Ok(());
+            };
+            let files = self
+                .fetch_torrent_files_with_retry(&client, &job_ref.hash, 3)
+                .await?;
+            let pause_ids = selected_indices
+                .iter()
+                .copied()
+                .filter(|idx| {
+                    files
+                        .get(*idx)
+                        .map(|file| file["progress"].as_f64().unwrap_or(0.0) < 0.999)
+                        .unwrap_or(true)
+                })
+                .collect::<Vec<_>>();
+            if !pause_ids.is_empty() {
+                self.set_file_priority_batch(&client, &job_ref.hash, &pause_ids, "0")
+                    .await?;
+            }
+
+            let pause_set = selected_indices.iter().copied().collect::<HashSet<_>>();
+            let remaining_selected = Self::active_selected_indices(&files)
+                .into_iter()
+                .filter(|idx| !pause_set.contains(idx))
+                .collect::<Vec<_>>();
+            if remaining_selected.is_empty()
+                && existing_torrent["progress"].as_f64().unwrap_or(0.0) < 0.999
+            {
+                self.pause_torrent(&client, &job_ref.hash).await?;
+            }
+        } else {
+            self.pause_torrent(&client, &job_ref.hash).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn resume(&self, job_id: &str) -> Result<()> {
+        let job_ref = Self::parse_job_id(job_id);
+        let client = self.authenticated_client().await?;
+
+        if let Some(selected_indices) = job_ref.selected_indices {
+            let Some(_) = self.fetch_existing_torrent(&client, &job_ref.hash).await? else {
+                return Ok(());
+            };
+            let files = self
+                .fetch_torrent_files_with_retry(&client, &job_ref.hash, 3)
+                .await?;
+            let mut wanted = Self::active_selected_indices(&files);
+            wanted.extend(selected_indices.iter().copied());
+            self.apply_file_priorities(&client, &job_ref.hash, files.len(), &wanted)
+                .await?;
+        }
+
+        self.start_torrent(&client, &job_ref.hash).await?;
+        Ok(())
     }
 
     async fn cancel(&self, job_id: &str) -> Result<()> {
@@ -973,6 +1065,14 @@ mod tests {
         assert_eq!(
             QBittorrentClient::map_download_status("unknown", 0.0),
             DownloadStatus::Downloading
+        );
+    }
+
+    #[test]
+    fn paused_download_state_is_treated_as_paused() {
+        assert_eq!(
+            QBittorrentClient::map_download_status("pausedDL", 0.25),
+            DownloadStatus::Paused
         );
     }
 

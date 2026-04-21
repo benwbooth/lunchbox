@@ -1,6 +1,9 @@
 //! Game details panel
 
-use super::{Box3DViewer, LazyImage, VideoPlayer, VideoState, preload_video_state};
+use super::{
+    Box3DViewer, LazyImage, VideoPlayer, VideoState, minerva_downloads_signal, preload_video_state,
+    refresh_minerva_download_queue_now, request_minerva_download_queue_refresh,
+};
 use crate::backend_api::{
     self, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats, file_to_asset_url,
 };
@@ -96,11 +99,26 @@ fn pause_game_details_video() {
     let _ = pause_fn.call0(video_el.as_ref());
 }
 
-fn is_transient_progress_fetch_error(err: &str) -> bool {
-    err.contains("Failed to fetch")
-        || err.contains("NetworkError")
-        || err.contains("Load failed")
-        || err.contains("error sending request")
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1_000_000_000 {
+        format!("{:.1} GB", bytes as f64 / 1_000_000_000.0)
+    } else if bytes >= 1_000_000 {
+        format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+    } else if bytes >= 1_000 {
+        format!("{:.1} KB", bytes as f64 / 1_000.0)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn format_speed(bytes_per_sec: u64) -> String {
+    if bytes_per_sec >= 1_000_000 {
+        format!("{:.1} MB/s", bytes_per_sec as f64 / 1_000_000.0)
+    } else if bytes_per_sec >= 1_000 {
+        format!("{:.1} KB/s", bytes_per_sec as f64 / 1_000.0)
+    } else {
+        format!("{bytes_per_sec} B/s")
+    }
 }
 
 async fn delay_ms(ms: i32) {
@@ -990,11 +1008,9 @@ pub fn GameDetails(
     let (preloaded_video_state, set_preloaded_video_state) = signal::<Option<VideoState>>(None);
     // Minerva download state
     let (minerva_rom, set_minerva_rom) = signal::<Option<backend_api::MinervaRom>>(None);
-    let (minerva_downloading, set_minerva_downloading) = signal(false);
-    let (minerva_progress, set_minerva_progress) =
-        signal::<Option<backend_api::MinervaDownloadProgress>>(None);
+    let (minerva_starting, set_minerva_starting) = signal(false);
     let (minerva_job_id, set_minerva_job_id) = signal::<Option<String>>(None);
-    let (minerva_missing_progress_polls, set_minerva_missing_progress_polls) = signal(0u8);
+    let (minerva_downloads, _) = minerva_downloads_signal();
     // Torrent file picker state
     let (show_file_picker, set_show_file_picker) = signal(false);
     let (torrent_groups, set_torrent_groups) = signal::<Vec<MinervaTorrentGroup>>(Vec::new());
@@ -1026,10 +1042,8 @@ pub fn GameDetails(
             set_details_min_delay_elapsed.set(false);
             set_preloaded_video_state.set(None);
             set_minerva_rom.set(None);
-            set_minerva_downloading.set(false);
-            set_minerva_progress.set(None);
+            set_minerva_starting.set(false);
             set_minerva_job_id.set(None);
-            set_minerva_missing_progress_polls.set(0);
             set_files_loading.set(false);
             set_files_loading_progress.set(None);
             set_torrent_groups.set(Vec::new());
@@ -1051,7 +1065,7 @@ pub fn GameDetails(
             set_details_ready.set(false);
             set_details_min_delay_elapsed.set(false);
             set_preloaded_video_state.set(None);
-            set_minerva_missing_progress_polls.set(0);
+            set_minerva_starting.set(false);
             set_files_loading.set(false);
             set_files_loading_progress.set(None);
             set_torrent_groups.set(Vec::new());
@@ -1366,7 +1380,9 @@ pub fn GameDetails(
                         if !is_current_game() {
                             return;
                         }
-                        set_import_job_id.set(Some(job.id));
+                        set_import_job_id.set(Some(job.id.clone()));
+                        set_minerva_job_id.set(Some(job.id));
+                        request_minerva_download_queue_refresh();
                     }
                     _ => {
                         if !is_current_game() {
@@ -1393,104 +1409,53 @@ pub fn GameDetails(
         }
     });
 
-    // Minerva download progress polling
+    let current_minerva_download = Memo::new(move |_| {
+        let Some(job_id) = minerva_job_id.get() else {
+            return None;
+        };
+        minerva_downloads
+            .get()
+            .into_iter()
+            .find(|item| item.job_id == job_id)
+    });
+
     Effect::new(move || {
-        if let Some(jid) = minerva_job_id.get() {
-            let jid_clone = jid.clone();
-            spawn_local(async move {
-                loop {
-                    match backend_api::get_minerva_download_progress(jid_clone.clone()).await {
-                        Ok(Some(progress)) => {
-                            set_minerva_missing_progress_polls.set(0);
-                            let done = progress.status == "completed"
-                                || progress.status == "failed"
-                                || progress.status == "cancelled";
-                            set_minerva_progress.set(Some(progress.clone()));
-                            if done {
-                                set_minerva_downloading.set(false);
-                                set_minerva_job_id.set(None);
-                                if progress.status == "completed" {
-                                    // Refresh game file
-                                    if let Some(g) = game.get_untracked() {
-                                        if let Ok(Some(file)) =
-                                            backend_api::get_game_file(g.database_id).await
-                                        {
-                                            set_game_file.set(Some(file));
-                                        }
-                                    }
-                                } else {
-                                    set_import_error.set(Some(progress.status_message.clone()));
-                                }
-                                break;
-                            }
-                        }
-                        Ok(None) => {
-                            let missing_polls = minerva_missing_progress_polls
-                                .get_untracked()
-                                .saturating_add(1);
-                            set_minerva_missing_progress_polls.set(missing_polls);
-                            if missing_polls >= 3 {
-                                set_minerva_downloading.set(false);
-                                set_minerva_job_id.set(None);
-                                if let Some(last_progress) = minerva_progress.get_untracked() {
-                                    if last_progress.status != "completed" {
-                                        set_import_error.set(Some(last_progress.status_message));
-                                    }
-                                } else {
-                                    set_import_error.set(Some(
-                                        "Download stopped unexpectedly before Lunchbox received a final status."
-                                            .to_string(),
-                                    ));
-                                }
-                                break;
-                            }
-                        }
-                        Err(err) => {
-                            let err_string = err.to_string();
-                            if is_transient_progress_fetch_error(&err_string) {
-                                let missing_polls = minerva_missing_progress_polls
-                                    .get_untracked()
-                                    .saturating_add(1);
-                                set_minerva_missing_progress_polls.set(missing_polls);
+        if minerva_job_id.get().is_some()
+            && !minerva_starting.get()
+            && current_minerva_download.get().is_none()
+        {
+            set_minerva_job_id.set(None);
+            set_import_job_id.set(None);
+        }
+    });
 
-                                if let Some(mut last_progress) = minerva_progress.get_untracked() {
-                                    last_progress.status_message =
-                                        "Waiting for Lunchbox backend to reconnect...".to_string();
-                                    set_minerva_progress.set(Some(last_progress));
-                                }
+    Effect::new(move || {
+        let Some(download) = current_minerva_download.get() else {
+            return;
+        };
 
-                                if missing_polls >= 15 {
-                                    set_minerva_downloading.set(false);
-                                    set_minerva_job_id.set(None);
-                                    set_import_error.set(Some(format!(
-                                        "Lost connection while checking download progress: {err_string}"
-                                    )));
-                                    break;
-                                }
-                            } else {
-                                set_minerva_downloading.set(false);
-                                set_minerva_job_id.set(None);
-                                set_import_error.set(Some(format!(
-                                    "Failed to read download progress: {err_string}"
-                                )));
-                                break;
-                            }
+        match download.status.as_str() {
+            "completed" => {
+                set_minerva_starting.set(false);
+                set_minerva_job_id.set(None);
+                set_import_job_id.set(None);
+                spawn_local(async move {
+                    if let Some(g) = game.get_untracked() {
+                        if let Ok(Some(file)) = backend_api::get_game_file(g.database_id).await {
+                            set_game_file.set(Some(file));
                         }
                     }
-                    wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(
-                        &mut |resolve, _| {
-                            web_sys::window()
-                                .unwrap()
-                                .set_timeout_with_callback_and_timeout_and_arguments_0(
-                                    &resolve, 1000,
-                                )
-                                .unwrap();
-                        },
-                    ))
-                    .await
-                    .unwrap();
-                }
-            });
+                });
+            }
+            "failed" | "cancelled" => {
+                set_minerva_starting.set(false);
+                set_minerva_job_id.set(None);
+                set_import_job_id.set(None);
+                set_import_error.set(Some(download.status_message));
+            }
+            _ => {
+                set_minerva_starting.set(false);
+            }
         }
     });
 
@@ -1762,43 +1727,93 @@ pub fn GameDetails(
                                         <div class="game-actions">
 
                                             // Minerva torrent download progress
-                                            <Show when=move || minerva_downloading.get()>
+                                            <Show when=move || {
+                                                minerva_starting.get()
+                                                    || current_minerva_download.get().is_some()
+                                            }>
                                                 <div class="import-section">
                                                     <div class="minerva-progress">
                                                         <div class="minerva-progress-bar">
                                                             <div class="minerva-progress-fill" style=move || {
-                                                                let pct = minerva_progress.get().map(|p| p.progress_percent).unwrap_or(0.0);
+                                                                let pct = current_minerva_download
+                                                                    .get()
+                                                                    .map(|download| download.progress_percent)
+                                                                    .unwrap_or(0.0);
                                                                 format!("width: {:.1}%", pct)
                                                             }></div>
                                                         </div>
                                                         <div class="minerva-progress-text">
                                                             {move || {
-                                                                if let Some(p) = minerva_progress.get() {
-                                                                    let speed = if p.download_speed > 0 {
-                                                                        format!(" ({:.1} MB/s)", p.download_speed as f64 / 1_000_000.0)
+                                                                if let Some(download) = current_minerva_download.get() {
+                                                                    let totals = if download.total_bytes > 0 {
+                                                                        format!(
+                                                                            " • {} / {}",
+                                                                            format_bytes(download.downloaded_bytes),
+                                                                            format_bytes(download.total_bytes)
+                                                                        )
                                                                     } else {
                                                                         String::new()
                                                                     };
-                                                                    format!("{}{speed}", p.status_message)
+                                                                    let speed = if download.download_speed > 0 {
+                                                                        format!(" • {}", format_speed(download.download_speed))
+                                                                    } else {
+                                                                        String::new()
+                                                                    };
+                                                                    format!("{}{}{}", download.status_message, totals, speed)
                                                                 } else {
                                                                     "Starting download...".to_string()
                                                                 }
                                                             }}
                                                         </div>
                                                     </div>
-                                                    <button class="cancel-import-btn" on:click=move |_| {
-                                                        if let Some(jid) = minerva_job_id.get() {
-                                                            set_minerva_downloading.set(false);
-                                                            set_minerva_job_id.set(None);
-                                                            set_minerva_missing_progress_polls.set(0);
-                                                            spawn_local(async move {
-                                                                let _ = backend_api::cancel_minerva_download(jid).await;
-                                                            });
-                                                        } else {
-                                                            set_minerva_downloading.set(false);
-                                                            set_minerva_missing_progress_polls.set(0);
-                                                        }
-                                                    }>"Cancel"</button>
+                                                    <div class="minerva-inline-actions">
+                                                        {move || current_minerva_download.get().map(|download| {
+                                                            let job_id = download.job_id.clone();
+                                                            let status = download.status.clone();
+                                                            let pause_job_id = job_id.clone();
+                                                            let delete_job_id = job_id.clone();
+                                                            view! {
+                                                                <>
+                                                                    {(status == "paused" || status == "downloading" || status == "fetching_torrent" || status == "extracting").then(|| view! {
+                                                                        <button
+                                                                            class="cancel-import-btn"
+                                                                            on:click=move |_| {
+                                                                                let job_id = pause_job_id.clone();
+                                                                                let status = status.clone();
+                                                                                spawn_local(async move {
+                                                                                    let _ = if status == "paused" {
+                                                                                        backend_api::resume_minerva_download(job_id.clone()).await
+                                                                                    } else {
+                                                                                        backend_api::pause_minerva_download(job_id.clone()).await
+                                                                                    };
+                                                                                    request_minerva_download_queue_refresh();
+                                                                                    refresh_minerva_download_queue_now().await;
+                                                                                });
+                                                                            }
+                                                                        >
+                                                                            {if status == "paused" { "Resume" } else { "Pause" }}
+                                                                        </button>
+                                                                    })}
+                                                                    <button
+                                                                        class="cancel-import-btn"
+                                                                        on:click=move |_| {
+                                                                            let job_id = delete_job_id.clone();
+                                                                            set_minerva_starting.set(false);
+                                                                            set_minerva_job_id.set(None);
+                                                                            set_import_job_id.set(None);
+                                                                            spawn_local(async move {
+                                                                                let _ = backend_api::delete_minerva_download(job_id).await;
+                                                                                request_minerva_download_queue_refresh();
+                                                                                refresh_minerva_download_queue_now().await;
+                                                                            });
+                                                                        }
+                                                                    >
+                                                                        "Delete"
+                                                                    </button>
+                                                                </>
+                                                            }
+                                                        })}
+                                                    </div>
                                                 </div>
                                             </Show>
 
@@ -1818,7 +1833,8 @@ pub fn GameDetails(
                                                     && game_file.get().is_none()
                                                     && !display_game.get().map(|g| g.has_game_file).unwrap_or(false)
                                                     && import_job_id.get().is_none()
-                                                    && !minerva_downloading.get()
+                                                    && !minerva_starting.get()
+                                                    && current_minerva_download.get().is_none()
                                             }>
                                                 // Download button (Minerva torrent) — opens file picker
                                                 <Show when=move || !show_file_picker.get()>
@@ -2070,14 +2086,12 @@ pub fn GameDetails(
                                                                         }
                                                                     };
                                                                     set_show_file_picker.set(false);
-                                                                    set_minerva_downloading.set(true);
-                                                                    set_minerva_progress.set(None);
-                                                                    set_minerva_missing_progress_polls.set(0);
+                                                                    set_minerva_starting.set(true);
                                                                     set_import_error.set(None);
                                                                     spawn_local(async move {
                                                                         match backend_api::test_torrent_connection().await {
                                                                             Ok(result) if !result.success => {
-                                                                                set_minerva_downloading.set(false);
+                                                                                set_minerva_starting.set(false);
                                                                                 if let Some(setter) = set_show_settings {
                                                                                     setter.set(true);
                                                                                 }
@@ -2085,7 +2099,7 @@ pub fn GameDetails(
                                                                                 return;
                                                                             }
                                                                             Err(e) => {
-                                                                                set_minerva_downloading.set(false);
+                                                                                set_minerva_starting.set(false);
                                                                                 if let Some(setter) = set_show_settings {
                                                                                     setter.set(true);
                                                                                 }
@@ -2102,9 +2116,14 @@ pub fn GameDetails(
                                                                             platform,
                                                                             download_mode,
                                                                         ).await {
-                                                                            Ok(job) => set_minerva_job_id.set(Some(job.id)),
+                                                                            Ok(job) => {
+                                                                                set_import_job_id.set(Some(job.id.clone()));
+                                                                                set_minerva_job_id.set(Some(job.id));
+                                                                                request_minerva_download_queue_refresh();
+                                                                                refresh_minerva_download_queue_now().await;
+                                                                            }
                                                                             Err(e) => {
-                                                                                set_minerva_downloading.set(false);
+                                                                                set_minerva_starting.set(false);
                                                                                 set_import_error.set(Some(e));
                                                                             }
                                                                         }

@@ -278,8 +278,24 @@ pub fn create_router(state: SharedState) -> Router {
             get(rspc_get_minerva_download_progress),
         )
         .route(
+            "/rspc/list_minerva_downloads",
+            get(rspc_list_minerva_downloads),
+        )
+        .route(
+            "/rspc/pause_minerva_download",
+            get(rspc_pause_minerva_download),
+        )
+        .route(
+            "/rspc/resume_minerva_download",
+            get(rspc_resume_minerva_download),
+        )
+        .route(
             "/rspc/cancel_minerva_download",
             get(rspc_cancel_minerva_download),
+        )
+        .route(
+            "/rspc/delete_minerva_download",
+            get(rspc_delete_minerva_download),
         )
         .route(
             "/rspc/test_torrent_connection",
@@ -3836,7 +3852,21 @@ async fn rspc_start_minerva_download(
     }
 }
 
+fn parse_job_id_input(input_str: &str) -> Result<String, String> {
+    serde_json::from_str::<String>(input_str)
+        .or_else(|_| {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct W {
+                job_id: String,
+            }
+            serde_json::from_str::<W>(input_str).map(|w| w.job_id)
+        })
+        .map_err(|e| format!("Invalid input: {e}"))
+}
+
 async fn rspc_get_minerva_download_progress(
+    State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let input_str = match params.get("input") {
@@ -3847,24 +3877,66 @@ async fn rspc_get_minerva_download_progress(
         }
     };
 
-    // Parse job_id from either "raw-string" or {"jobId":"..."} format
-    let job_id: String = serde_json::from_str::<String>(input_str)
-        .or_else(|_| {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct W {
-                job_id: String,
-            }
-            serde_json::from_str::<W>(input_str).map(|w| w.job_id)
-        })
-        .unwrap_or_default();
+    let job_id = match parse_job_id_input(input_str) {
+        Ok(job_id) => job_id,
+        Err(e) => return rspc_err::<Option<serde_json::Value>>(e).into_response(),
+    };
 
     if job_id.is_empty() {
         return rspc_ok::<Option<serde_json::Value>>(None).into_response();
     }
 
-    let progress = handlers::get_minerva_download_progress(&job_id);
+    let state_guard = state.read().await;
+    let progress = handlers::get_minerva_download_progress(&state_guard, &job_id).await;
     rspc_ok(progress).into_response()
+}
+
+async fn rspc_list_minerva_downloads(State(state): State<SharedState>) -> impl IntoResponse {
+    let state_guard = state.read().await;
+    match handlers::list_minerva_downloads(&state_guard).await {
+        Ok(downloads) => rspc_ok(downloads).into_response(),
+        Err(e) => rspc_err::<Vec<handlers::MinervaDownloadQueueItem>>(e).into_response(),
+    }
+}
+
+async fn rspc_pause_minerva_download(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+    let job_id = match parse_job_id_input(input_str) {
+        Ok(job_id) => job_id,
+        Err(e) => return rspc_err::<()>(e).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::pause_minerva_download(&state_guard, &job_id).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+async fn rspc_resume_minerva_download(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+    let job_id = match parse_job_id_input(input_str) {
+        Ok(job_id) => job_id,
+        Err(e) => return rspc_err::<()>(e).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::resume_minerva_download(&state_guard, &job_id).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
 }
 
 async fn rspc_cancel_minerva_download(
@@ -3876,13 +3948,33 @@ async fn rspc_cancel_minerva_download(
         None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
     };
 
-    let job_id: String = match serde_json::from_str(input_str) {
-        Ok(id) => id,
-        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    let job_id = match parse_job_id_input(input_str) {
+        Ok(job_id) => job_id,
+        Err(e) => return rspc_err::<()>(e).into_response(),
     };
 
     let state_guard = state.read().await;
     match handlers::cancel_minerva_download(&state_guard, &job_id).await {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
+}
+
+async fn rspc_delete_minerva_download(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+    let job_id = match parse_job_id_input(input_str) {
+        Ok(job_id) => job_id,
+        Err(e) => return rspc_err::<()>(e).into_response(),
+    };
+
+    let state_guard = state.read().await;
+    match handlers::delete_minerva_download(&state_guard, &job_id).await {
         Ok(()) => rspc_ok(()).into_response(),
         Err(e) => rspc_err::<()>(e).into_response(),
     }

@@ -5,6 +5,7 @@ mod game_grid;
 mod image_sources_wizard;
 // mod import_progress; // removed — was Graboid SSE-based, replaced by minerva progress polling
 mod lazy_image;
+mod minerva_download_queue;
 mod minigame;
 mod queue_status;
 mod rom_import;
@@ -20,6 +21,10 @@ pub use game_grid::GameGrid;
 pub use image_sources_wizard::ImageSourcesWizard;
 // pub use import_progress::ImportProgress; // removed
 pub use lazy_image::LazyImage;
+pub use minerva_download_queue::{
+    MinervaDownloadQueue, minerva_downloads_signal, refresh_minerva_download_queue_now,
+    request_minerva_download_queue_refresh,
+};
 pub use minigame::MarioMinigame;
 pub use queue_status::QueueStatus;
 pub use rom_import::RomImport;
