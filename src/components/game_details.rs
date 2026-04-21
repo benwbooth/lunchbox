@@ -3158,7 +3158,13 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emulator_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match backend_api::install_emulator(emulator_for_install.clone(), is_ra).await {
+                                                    match backend_api::install_emulator(
+                                                        emulator_for_install.clone(),
+                                                        Some(platform.clone()),
+                                                        is_ra,
+                                                    )
+                                                    .await
+                                                    {
                                                         Ok(_path) => {
                                                             set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
                                                             // Record play session
@@ -3234,7 +3240,13 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match backend_api::install_emulator(emu_for_install.clone(), is_ra).await {
+                                                    match backend_api::install_emulator(
+                                                        emu_for_install.clone(),
+                                                        Some(platform.clone()),
+                                                        is_ra,
+                                                    )
+                                                    .await
+                                                    {
                                                         Ok(_) => {
                                                             let _ = backend_api::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
@@ -3309,7 +3321,13 @@ fn EmulatorPickerModal(
                                                 set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
-                                                    match backend_api::install_emulator(emu_for_install.clone(), is_ra).await {
+                                                    match backend_api::install_emulator(
+                                                        emu_for_install.clone(),
+                                                        Some(platform.clone()),
+                                                        is_ra,
+                                                    )
+                                                    .await
+                                                    {
                                                         Ok(_) => {
                                                             let _ = backend_api::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
                                                             set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
@@ -3588,6 +3606,7 @@ fn EmulatorPickerModal(
                                                                 spawn_local(async move {
                                                                     match backend_api::uninstall_emulator(
                                                                         emulator_name,
+                                                                        Some(platform.clone()),
                                                                         is_retroarch_core,
                                                                     )
                                                                     .await

@@ -357,7 +357,8 @@ pub async fn get_emulators_for_platform(
     let mut emulators: Vec<EmulatorInfo> = sqlx::query_as(
         r#"
         SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
-               e.homebrew_formula, e.flatpak_id, e.retroarch_core,
+               e.homebrew_formula, e.flatpak_id,
+               COALESCE(pe.core_name, e.retroarch_core) AS retroarch_core,
                e.save_directory, e.save_extensions, e.notes
         FROM emulators e
         JOIN platform_emulators pe ON e.id = pe.emulator_id
@@ -375,6 +376,42 @@ pub async fn get_emulators_for_platform(
     maybe_append_exodos_scummvm(pool, canonical_platform_name, os, false, &mut emulators).await?;
 
     Ok(emulators)
+}
+
+/// Get a specific emulator for a platform, preferring any platform-specific
+/// RetroArch core override from the emulators reference database.
+pub async fn get_emulator_for_platform(
+    state: &AppState,
+    name: &str,
+    platform_name: &str,
+) -> Result<Option<EmulatorInfo>, String> {
+    let pool = state
+        .emulators_db_pool
+        .as_ref()
+        .ok_or_else(|| "Emulators database not initialized".to_string())?;
+
+    let canonical_platform_name = canonicalize_legacy_platform_name(platform_name);
+
+    let emulator: Option<EmulatorInfo> = sqlx::query_as(
+        r#"
+        SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
+               e.homebrew_formula, e.flatpak_id,
+               COALESCE(pe.core_name, e.retroarch_core) AS retroarch_core,
+               e.save_directory, e.save_extensions, e.notes
+        FROM emulators e
+        JOIN platform_emulators pe ON e.id = pe.emulator_id
+        WHERE e.name = ? AND pe.platform_name = ?
+        ORDER BY pe.is_recommended DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(name)
+    .bind(canonical_platform_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(emulator)
 }
 
 /// Get a specific emulator by name
@@ -1353,7 +1390,8 @@ pub async fn get_emulators_with_status(
     let mut emulators: Vec<EmulatorInfo> = sqlx::query_as(
         r#"
         SELECT e.id, e.name, e.homepage, e.supported_os, e.winget_id,
-               e.homebrew_formula, e.flatpak_id, e.retroarch_core,
+               e.homebrew_formula, e.flatpak_id,
+               COALESCE(pe.core_name, e.retroarch_core) AS retroarch_core,
                e.save_directory, e.save_extensions, e.notes
         FROM emulators e
         JOIN platform_emulators pe ON e.id = pe.emulator_id
@@ -7081,6 +7119,79 @@ mod tests {
         (temp_dir, state)
     }
 
+    async fn new_reference_emulator_state() -> crate::state::AppState {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE emulators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                homepage TEXT,
+                supported_os TEXT,
+                winget_id TEXT,
+                homebrew_formula TEXT,
+                flatpak_id TEXT,
+                retroarch_core TEXT,
+                save_directory TEXT,
+                save_extensions TEXT,
+                notes TEXT
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE platform_emulators (
+                platform_name TEXT NOT NULL,
+                emulator_id INTEGER NOT NULL REFERENCES emulators(id),
+                core_name TEXT,
+                is_recommended INTEGER DEFAULT 1,
+                PRIMARY KEY (platform_name, emulator_id)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO emulators (
+                id, name, homepage, supported_os, winget_id, homebrew_formula,
+                flatpak_id, retroarch_core, save_directory, save_extensions, notes
+            ) VALUES (1, 'Mesen', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO platform_emulators (platform_name, emulator_id, core_name, is_recommended)
+            VALUES
+                ('Nintendo Entertainment System', 1, 'mesen', 1),
+                ('Super Nintendo Entertainment System', 1, 'mesen-s', 1)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        crate::state::AppState {
+            emulators_db_pool: Some(pool),
+            ..crate::state::AppState::default()
+        }
+    }
+
     #[tokio::test]
     async fn emulator_preferences_default_to_empty_without_user_db() {
         let state = crate::state::AppState::default();
@@ -7188,5 +7299,37 @@ mod tests {
                 .unwrap();
         assert!(fallback_again.platform_name.is_none());
         assert_eq!(fallback_again.args_text, "-noui");
+    }
+
+    #[tokio::test]
+    async fn platform_emulator_lookup_prefers_platform_specific_retroarch_core() {
+        let state = new_reference_emulator_state().await;
+
+        let snes = super::get_emulator_for_platform(
+            &state,
+            "Mesen",
+            "Super Nintendo Entertainment System",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(snes.retroarch_core.as_deref(), Some("mesen-s"));
+
+        let nes =
+            super::get_emulator_for_platform(&state, "Mesen", "Nintendo Entertainment System")
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(nes.retroarch_core.as_deref(), Some("mesen"));
+
+        let emulators =
+            super::get_emulators_for_platform(&state, "Super Nintendo Entertainment System")
+                .await
+                .unwrap();
+        let mesen = emulators
+            .into_iter()
+            .find(|emulator| emulator.name == "Mesen")
+            .unwrap();
+        assert_eq!(mesen.retroarch_core.as_deref(), Some("mesen-s"));
     }
 }

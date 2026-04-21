@@ -38,6 +38,7 @@ def create_database(db_path: Path) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS platform_emulators (
             platform_name TEXT NOT NULL,
             emulator_id INTEGER NOT NULL REFERENCES emulators(id),
+            core_name TEXT,
             is_recommended INTEGER DEFAULT 1,
             PRIMARY KEY (platform_name, emulator_id)
         )
@@ -66,9 +67,10 @@ def import_csv(conn: sqlite3.Connection, csv_path: Path) -> tuple[int, int]:
 
     # Track emulators we've already inserted (by name)
     emulator_ids: dict[str, int] = {}
+    emulator_cores: dict[str, set[str]] = {}
 
     # Track platform mappings
-    platform_mappings: list[tuple[str, int]] = []
+    platform_mappings: list[tuple[str, int, str | None]] = []
 
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -89,6 +91,10 @@ def import_csv(conn: sqlite3.Connection, csv_path: Path) -> tuple[int, int]:
             save_directory = row.get("save_directory", "").strip() or None
             save_extensions = row.get("save_extensions", "").strip() or None
             notes = row.get("notes", "").strip() or None
+
+            cores = emulator_cores.setdefault(name, set())
+            if retroarch_core:
+                cores.add(retroarch_core)
 
             # Insert or get emulator ID
             if name not in emulator_ids:
@@ -135,25 +141,33 @@ def import_csv(conn: sqlite3.Connection, csv_path: Path) -> tuple[int, int]:
                         (flatpak_id, emulator_id),
                     )
                 if retroarch_core:
-                    cursor.execute(
-                        "UPDATE emulators SET retroarch_core = ? WHERE id = ? AND retroarch_core IS NULL",
-                        (retroarch_core, emulator_id),
-                    )
+                    if len(cores) == 1:
+                        cursor.execute(
+                            "UPDATE emulators SET retroarch_core = ? WHERE id = ?",
+                            (next(iter(cores)), emulator_id),
+                        )
+                    else:
+                        cursor.execute(
+                            "UPDATE emulators SET retroarch_core = NULL WHERE id = ?",
+                            (emulator_id,),
+                        )
 
             # Record platform mapping
             emulator_id = emulator_ids[name]
-            platform_mappings.append((platform, emulator_id))
+            platform_mappings.append((platform, emulator_id, retroarch_core))
             if platform == "ScummVM":
-                platform_mappings.append(("MS-DOS", emulator_id))
+                platform_mappings.append(("MS-DOS", emulator_id, retroarch_core))
 
     # Insert platform mappings
-    for platform, emulator_id in platform_mappings:
+    for platform, emulator_id, core_name in platform_mappings:
         cursor.execute(
             """
-            INSERT OR IGNORE INTO platform_emulators (platform_name, emulator_id, is_recommended)
-            VALUES (?, ?, 1)
+            INSERT OR IGNORE INTO platform_emulators (
+                platform_name, emulator_id, core_name, is_recommended
+            )
+            VALUES (?, ?, ?, 1)
             """,
-            (platform, emulator_id),
+            (platform, emulator_id, core_name),
         )
 
     conn.commit()

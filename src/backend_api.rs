@@ -1913,18 +1913,21 @@ pub async fn get_emulator_updates() -> Result<Vec<EmulatorUpdate>, String> {
 /// Install an emulator using the appropriate package manager
 pub async fn install_emulator(
     emulator_name: String,
+    platform_name: Option<String>,
     is_retroarch_core: bool,
 ) -> Result<String, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
+        platform_name: Option<String>,
         is_retroarch_core: bool,
     }
     invoke(
         "install_emulator",
         Args {
             emulator_name,
+            platform_name,
             is_retroarch_core,
         },
     )
@@ -1933,18 +1936,21 @@ pub async fn install_emulator(
 
 pub async fn uninstall_emulator(
     emulator_name: String,
+    platform_name: Option<String>,
     is_retroarch_core: bool,
 ) -> Result<(), String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         emulator_name: String,
+        platform_name: Option<String>,
         is_retroarch_core: bool,
     }
     invoke(
         "uninstall_emulator",
         Args {
             emulator_name,
+            platform_name,
             is_retroarch_core,
         },
     )

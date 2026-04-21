@@ -3228,6 +3228,7 @@ async fn rspc_get_emulators_with_status(
 #[serde(rename_all = "camelCase")]
 struct InstallEmulatorInput {
     emulator_name: String,
+    platform_name: Option<String>,
     #[serde(default)]
     is_retroarch_core: bool,
 }
@@ -3245,6 +3246,7 @@ struct InstallFirmwareInput {
 #[serde(rename_all = "camelCase")]
 struct UninstallEmulatorInput {
     emulator_name: String,
+    platform_name: Option<String>,
     #[serde(default)]
     is_retroarch_core: bool,
 }
@@ -3286,14 +3288,34 @@ async fn rspc_install_emulator(
 
     let state_guard = state.read().await;
 
-    // Look up the emulator by name
-    let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
-        Ok(Some(e)) => e,
-        Ok(None) => {
-            return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
-                .into_response();
+    let emulator = match input.platform_name.as_deref() {
+        Some(platform_name) => {
+            match handlers::get_emulator_for_platform(
+                &state_guard,
+                &input.emulator_name,
+                platform_name,
+            )
+            .await
+            {
+                Ok(Some(e)) => e,
+                Ok(None) => {
+                    return rspc_err::<String>(format!(
+                        "Emulator '{}' not found for platform '{}'",
+                        input.emulator_name, platform_name
+                    ))
+                    .into_response();
+                }
+                Err(e) => return rspc_err::<String>(e).into_response(),
+            }
         }
-        Err(e) => return rspc_err::<String>(e).into_response(),
+        None => match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
+                    .into_response();
+            }
+            Err(e) => return rspc_err::<String>(e).into_response(),
+        },
     };
 
     match handlers::install_emulator(&emulator, input.is_retroarch_core).await {
@@ -3326,13 +3348,34 @@ async fn rspc_uninstall_emulator(
 
     let state_guard = state.read().await;
 
-    let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
-        Ok(Some(e)) => e,
-        Ok(None) => {
-            return rspc_err::<()>(format!("Emulator '{}' not found", input.emulator_name))
-                .into_response();
+    let emulator = match input.platform_name.as_deref() {
+        Some(platform_name) => {
+            match handlers::get_emulator_for_platform(
+                &state_guard,
+                &input.emulator_name,
+                platform_name,
+            )
+            .await
+            {
+                Ok(Some(e)) => e,
+                Ok(None) => {
+                    return rspc_err::<()>(format!(
+                        "Emulator '{}' not found for platform '{}'",
+                        input.emulator_name, platform_name
+                    ))
+                    .into_response();
+                }
+                Err(e) => return rspc_err::<()>(e).into_response(),
+            }
         }
-        Err(e) => return rspc_err::<()>(e).into_response(),
+        None => match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return rspc_err::<()>(format!("Emulator '{}' not found", input.emulator_name))
+                    .into_response();
+            }
+            Err(e) => return rspc_err::<()>(e).into_response(),
+        },
     };
 
     match handlers::uninstall_emulator(&emulator, input.is_retroarch_core).await {
@@ -3390,12 +3433,18 @@ async fn rspc_install_firmware(
     let (emulator, settings, minerva_pool, db_pool) = {
         let mut state_guard = state.write().await;
 
-        let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+        let emulator = match handlers::get_emulator_for_platform(
+            &state_guard,
+            &input.emulator_name,
+            &input.platform_name,
+        )
+        .await
+        {
             Ok(Some(e)) => e,
             Ok(None) => {
                 return rspc_err::<Vec<crate::firmware::FirmwareStatus>>(format!(
-                    "Emulator '{}' not found",
-                    input.emulator_name
+                    "Emulator '{}' not found for platform '{}'",
+                    input.emulator_name, input.platform_name
                 ))
                 .into_response();
             }
@@ -3447,11 +3496,20 @@ async fn rspc_open_firmware_directory(
     let (emulator, settings, db_pool) = {
         let mut state_guard = state.write().await;
 
-        let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+        let emulator = match handlers::get_emulator_for_platform(
+            &state_guard,
+            &input.emulator_name,
+            &input.platform_name,
+        )
+        .await
+        {
             Ok(Some(e)) => e,
             Ok(None) => {
-                return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
-                    .into_response();
+                return rspc_err::<String>(format!(
+                    "Emulator '{}' not found for platform '{}'",
+                    input.emulator_name, input.platform_name
+                ))
+                .into_response();
             }
             Err(e) => return rspc_err::<String>(e).into_response(),
         };
@@ -3506,7 +3564,6 @@ async fn rspc_launch_emulator(
 
     let state_guard = state.read().await;
 
-    // Look up the emulator by name
     let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
         Ok(Some(e)) => e,
         Ok(None) => {
