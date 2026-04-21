@@ -157,7 +157,14 @@ fn emumovies_platform_search_candidates(platform: &str) -> Vec<String> {
             candidates.push("Nintendo Entertainment System".to_string())
         }
         "snes" | "nintendosnes" | "supernintendoentertainmentsystem" => {
-            candidates.push("Super Nintendo Entertainment System".to_string())
+            candidates.push("Super Nintendo Entertainment System".to_string());
+            candidates.push("Nintendo Super Nintendo Entertainment System".to_string());
+            candidates.push("Nintendo Super Nintendo".to_string());
+            candidates.push("Nintendo Super NES".to_string());
+            candidates.push("Super Nintendo".to_string());
+            candidates.push("Super NES".to_string());
+            candidates.push("Nintendo Super Famicom".to_string());
+            candidates.push("Super Famicom".to_string());
         }
         "nintendosnesmsu1" | "snesmsu1" | "snesmsu" => {
             candidates.push("Nintendo SNES MSU1".to_string())
@@ -1348,11 +1355,11 @@ impl EmuMoviesClient {
                 }
             };
 
-            for folder in folders {
+            for folder in &folders {
                 if let Some(match_rank) = video_folder_match_rank_for_platform(&folder, platform) {
                     tracing::info!("Found video folder: {} (match_rank={})", folder, match_rank);
                     matches.push(VideoFolderCandidate {
-                        path: folder,
+                        path: folder.clone(),
                         source_order,
                         match_rank,
                     });
@@ -2076,6 +2083,17 @@ mod tests {
 
     #[test]
     fn test_platform_search_candidates_cover_cross_media_aliases() {
+        let snes = emumovies_platform_search_candidates("Super Nintendo Entertainment System");
+        assert!(snes.contains(&"Nintendo Super Nintendo".to_string()));
+        assert!(snes.contains(&"Nintendo Super Famicom".to_string()));
+        assert_eq!(
+            video_folder_match_rank_for_platform(
+                "/Official/Video Snaps (HQ)/Nintendo Super Nintendo (Video Snaps)(HQ)(No-Intro 20210322)(EM 2.2)",
+                "Super Nintendo Entertainment System"
+            ),
+            Some(4)
+        );
+
         let tg16 = emumovies_platform_search_candidates("NEC TurboGrafx-16");
         assert!(tg16.contains(&"NEC PC Engine - Turbografx 16".to_string()));
         assert_eq!(
