@@ -308,7 +308,7 @@ fn parse_mame_laserdisc_bundle(path: &str) -> Option<(String, &'static str)> {
         let mut parts = remainder.split('/');
         let romset = parts.next()?;
         let file_name = parts.next()?;
-        if parts.next().is_none() && file_name == format!("{romset}.chd") {
+        if parts.next().is_none() && file_name.ends_with(".chd") {
             return Some((romset.to_string(), "chd"));
         }
     }
@@ -424,19 +424,38 @@ fn build_minerva_picker_items(
         return bundles
             .into_iter()
             .filter_map(|(romset, (zip, chd))| {
-                let (zip, chd) = (zip?, chd?);
-                Some(MinervaPickerItem {
-                    selection: MinervaDownloadSelection::File {
-                        torrent_url: rom.torrent_url.clone(),
-                        file_index: zip.index,
-                    },
-                    display_name: format!("{romset}.zip + {romset}.chd"),
-                    path_detail: Some("Laserdisc Collection / MAME".to_string()),
-                    size: zip.size.saturating_add(chd.size),
-                    match_score: zip.match_score.max(chd.match_score),
-                    region: zip.region.or(chd.region),
-                    suggested_emulator: Some("MAME".to_string()),
-                    type_badge: Some("Bundle".to_string()),
+                let zip = zip?;
+                Some(if let Some(chd) = chd {
+                    MinervaPickerItem {
+                        selection: MinervaDownloadSelection::File {
+                            torrent_url: rom.torrent_url.clone(),
+                            file_index: zip.index,
+                        },
+                        display_name: format!(
+                            "{romset}.zip + {}",
+                            file_picker_display_name(&chd.filename)
+                        ),
+                        path_detail: Some("Laserdisc Collection / MAME".to_string()),
+                        size: zip.size.saturating_add(chd.size),
+                        match_score: zip.match_score.max(chd.match_score),
+                        region: zip.region.or(chd.region),
+                        suggested_emulator: Some("MAME".to_string()),
+                        type_badge: Some("Bundle".to_string()),
+                    }
+                } else {
+                    MinervaPickerItem {
+                        selection: MinervaDownloadSelection::File {
+                            torrent_url: rom.torrent_url.clone(),
+                            file_index: zip.index,
+                        },
+                        display_name: file_picker_display_name(&zip.filename),
+                        path_detail: Some("Laserdisc Collection / MAME".to_string()),
+                        size: zip.size,
+                        match_score: zip.match_score,
+                        region: zip.region,
+                        suggested_emulator: Some("MAME".to_string()),
+                        type_badge: Some("ROM".to_string()),
+                    }
                 })
             })
             .collect();
@@ -527,9 +546,25 @@ fn format_picker_bytes(bytes: i64) -> String {
 fn minerva_torrent_groups_request_key(
     launchbox_db_id: i64,
     game_title: &str,
+    platform_name: &str,
     platform_id: i64,
 ) -> String {
-    format!("{launchbox_db_id}:{platform_id}:{game_title}")
+    format!("{launchbox_db_id}:{platform_id}:{platform_name}:{game_title}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::minerva_torrent_groups_request_key;
+
+    #[test]
+    fn minerva_request_key_includes_display_platform() {
+        let arcade_key =
+            minerva_torrent_groups_request_key(12256, "Dragon's Lair II", "Arcade", 15);
+        let laserdisc_key =
+            minerva_torrent_groups_request_key(12256, "Dragon's Lair II", "Arcade Laserdisc", 15);
+
+        assert_ne!(arcade_key, laserdisc_key);
+    }
 }
 
 fn is_arcade_family_platform(platform_name: &str) -> bool {
@@ -849,8 +884,12 @@ pub fn GameDetails(
               platform_id: i64,
               open_picker_immediately: bool,
               surface_errors: bool| {
-            let request_key =
-                minerva_torrent_groups_request_key(launchbox_db_id, &game_title, platform_id);
+            let request_key = minerva_torrent_groups_request_key(
+                launchbox_db_id,
+                &game_title,
+                &platform_name,
+                platform_id,
+            );
             let current_request_key = torrent_groups_request_key.get_untracked();
             let current_groups = torrent_groups.get_untracked();
             let currently_loading = files_loading.get_untracked();
@@ -1243,6 +1282,7 @@ pub fn GameDetails(
         let request_key = minerva_torrent_groups_request_key(
             current_game.database_id,
             &current_game.display_title,
+            &current_game.platform,
             current_game.platform_id,
         );
         if torrent_groups_request_key.get_untracked().as_deref() == Some(request_key.as_str()) {

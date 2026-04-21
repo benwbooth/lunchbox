@@ -2567,14 +2567,6 @@ fn normalize_torrent_listing_path(path: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn arcade_mame_laserdisc_rom_suffix(romset_name: &str) -> String {
-    format!("laserdisc collection/mame/roms/{romset_name}.zip")
-}
-
-fn arcade_mame_laserdisc_chd_suffix(romset_name: &str) -> String {
-    format!("laserdisc collection/mame/chd/{romset_name}/{romset_name}.chd")
-}
-
 fn parse_arcade_mame_laserdisc_asset(path: &str) -> Option<(String, ArcadeMameLaserdiscAssetKind)> {
     let normalized = normalize_torrent_listing_path(path);
 
@@ -2595,7 +2587,7 @@ fn parse_arcade_mame_laserdisc_asset(path: &str) -> Option<(String, ArcadeMameLa
         let mut parts = remainder.split('/');
         let romset_name = parts.next()?;
         let file_name = parts.next()?;
-        if parts.next().is_none() && file_name == format!("{romset_name}.chd") {
+        if parts.next().is_none() && file_name.ends_with(".chd") {
             return Some((romset_name.to_string(), ArcadeMameLaserdiscAssetKind::Chd));
         }
     }
@@ -2663,14 +2655,20 @@ fn parse_arcade_hypseus_laserdisc_asset(
     Some((format!("{prefix}/{stem}"), kind))
 }
 
-fn find_torrent_file_by_suffix(
+fn find_arcade_mame_laserdisc_asset_in_files(
     files: &[crate::torrent::TorrentFileInfo],
-    expected_suffix: &str,
+    romset_name: &str,
+    expected_kind: ArcadeMameLaserdiscAssetKind,
 ) -> Option<crate::torrent::TorrentFileInfo> {
-    let expected = normalize_torrent_listing_path(expected_suffix);
     files
         .iter()
-        .find(|file| normalize_torrent_listing_path(&file.filename).ends_with(&expected))
+        .find(|file| {
+            parse_arcade_mame_laserdisc_asset(&file.filename).is_some_and(
+                |(candidate_romset, candidate_kind)| {
+                    candidate_romset == romset_name && candidate_kind == expected_kind
+                },
+            )
+        })
         .cloned()
 }
 
@@ -2690,10 +2688,12 @@ async fn find_arcade_mame_laserdisc_asset(
     launchbox_db_id: i64,
     selected_torrent_url: &str,
     current_files: &[crate::torrent::TorrentFileInfo],
-    expected_suffix: &str,
-    _expected_kind: ArcadeMameLaserdiscAssetKind,
+    romset_name: &str,
+    expected_kind: ArcadeMameLaserdiscAssetKind,
 ) -> Result<Option<ArcadeMameLaserdiscAsset>, String> {
-    if let Some(file) = find_torrent_file_by_suffix(current_files, expected_suffix) {
+    if let Some(file) =
+        find_arcade_mame_laserdisc_asset_in_files(current_files, romset_name, expected_kind)
+    {
         return Ok(Some(ArcadeMameLaserdiscAsset {
             torrent_url: selected_torrent_url.to_string(),
             file_index: file.index,
@@ -2719,7 +2719,9 @@ async fn find_arcade_mame_laserdisc_asset(
         let files = crate::torrent::get_torrent_file_listing(&rom.torrent_url)
             .await
             .map_err(|e| format!("Failed to inspect Minerva torrent contents: {e}"))?;
-        if let Some(file) = find_torrent_file_by_suffix(&files, expected_suffix) {
+        if let Some(file) =
+            find_arcade_mame_laserdisc_asset_in_files(&files, romset_name, expected_kind)
+        {
             return Ok(Some(ArcadeMameLaserdiscAsset {
                 torrent_url: rom.torrent_url,
                 file_index: file.index,
@@ -2745,9 +2747,6 @@ async fn build_arcade_mame_laserdisc_plan(
         return Ok(None);
     };
 
-    let rom_suffix = arcade_mame_laserdisc_rom_suffix(&romset_name);
-    let chd_suffix = arcade_mame_laserdisc_chd_suffix(&romset_name);
-
     let primary_asset = match selected_kind {
         ArcadeMameLaserdiscAssetKind::RomZip => ArcadeMameLaserdiscAsset {
             torrent_url: selected_torrent_url.to_string(),
@@ -2760,7 +2759,7 @@ async fn build_arcade_mame_laserdisc_plan(
             launchbox_db_id,
             selected_torrent_url,
             current_files,
-            &rom_suffix,
+            &romset_name,
             ArcadeMameLaserdiscAssetKind::RomZip,
         )
         .await?
@@ -2784,7 +2783,7 @@ async fn build_arcade_mame_laserdisc_plan(
             launchbox_db_id,
             selected_torrent_url,
             current_files,
-            &chd_suffix,
+            &romset_name,
             ArcadeMameLaserdiscAssetKind::Chd,
         )
         .await?
@@ -4410,6 +4409,20 @@ fn select_arcade_mame_laserdisc_matches(
         .collect()
 }
 
+fn select_arcade_mame_laserdisc_or_generic_matches(
+    files: Vec<crate::torrent::TorrentFileInfo>,
+    game_title: &str,
+    region_priority: &[String],
+) -> Vec<TorrentFileMatch> {
+    let bundle_matches =
+        select_arcade_mame_laserdisc_matches(files.clone(), game_title, region_priority);
+    if !bundle_matches.is_empty() {
+        return bundle_matches;
+    }
+
+    select_torrent_file_matches(files, game_title, region_priority)
+}
+
 fn select_arcade_hypseus_laserdisc_matches(
     files: Vec<crate::torrent::TorrentFileInfo>,
     game_title: &str,
@@ -4768,7 +4781,7 @@ pub async fn list_torrent_files(
             input.collection.as_deref(),
             input.minerva_platform.as_deref(),
         ) {
-            select_arcade_mame_laserdisc_matches(
+            select_arcade_mame_laserdisc_or_generic_matches(
                 files.clone(),
                 &lookup_title,
                 &state.settings.region_priority,
@@ -5149,8 +5162,8 @@ mod tests {
         expand_arcade_laserdisc_roms, is_platform_specific_torrent_candidate,
         locate_downloaded_file, minerva_platform_fallbacks, parse_arcade_hypseus_laserdisc_asset,
         parse_arcade_mame_laserdisc_asset, select_arcade_hypseus_laserdisc_matches,
-        select_arcade_mame_laserdisc_matches, select_torrent_file_matches, sort_emulator_statuses,
-        torrent_match_lookup_titles,
+        select_arcade_mame_laserdisc_matches, select_arcade_mame_laserdisc_or_generic_matches,
+        select_torrent_file_matches, sort_emulator_statuses, torrent_match_lookup_titles,
     };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
@@ -5558,6 +5571,12 @@ mod tests {
         );
         assert_eq!(
             parse_arcade_mame_laserdisc_asset(
+                "Laserdisc Collection/MAME/CHD/dlair2/lair2_319e.chd"
+            ),
+            Some(("dlair2".to_string(), ArcadeMameLaserdiscAssetKind::Chd))
+        );
+        assert_eq!(
+            parse_arcade_mame_laserdisc_asset(
                 "Laserdisc Collection/Various - Video - Archived/Reference Videos/Dragon's Lair/dlair.m2v"
             ),
             None
@@ -5623,7 +5642,7 @@ mod tests {
             },
             TorrentFileInfo {
                 index: 3,
-                filename: "Laserdisc Collection/MAME/CHD/dlair2/dlair2.chd".to_string(),
+                filename: "Laserdisc Collection/MAME/CHD/dlair2/lair2_319e.chd".to_string(),
                 size: 10,
             },
             TorrentFileInfo {
@@ -5647,8 +5666,31 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 "Laserdisc Collection/MAME/ROMs/dlair2.zip",
-                "Laserdisc Collection/MAME/CHD/dlair2/dlair2.chd",
+                "Laserdisc Collection/MAME/CHD/dlair2/lair2_319e.chd",
             ]
+        );
+    }
+
+    #[test]
+    fn arcade_mame_laserdisc_falls_back_to_generic_match_when_no_chd_bundle_exists() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename: "Laserdisc Collection/MAME/ROMs/dlair.zip".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Laserdisc Collection/MAME/ROMs/dlair2.zip".to_string(),
+                size: 1,
+            },
+        ];
+
+        let matches = select_arcade_mame_laserdisc_or_generic_matches(files, "dlair2", &[]);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].filename,
+            "Laserdisc Collection/MAME/ROMs/dlair2.zip"
         );
     }
 
