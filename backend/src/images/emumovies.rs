@@ -115,93 +115,148 @@ impl EmuMoviesMediaType {
     }
 }
 
-/// Map platform names to EmuMovies FTP folder names
-pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
-    let normalized = crate::arcade::canonicalize_platform_name(platform).to_lowercase();
-
-    match normalized.as_str() {
-        // Nintendo
-        s if s.contains("super nintendo")
-            || (contains_word(s, "snes") && !contains_word(s, "msu")) =>
-        {
-            Some("Super Nintendo Entertainment System")
-        }
-        s if s.contains("nintendo entertainment system") => Some("Nintendo Entertainment System"),
-        s if contains_word(s, "nes") && !contains_word(s, "snes") && !contains_word(s, "super") => {
-            Some("Nintendo Entertainment System")
-        }
-        s if s.contains("nintendo 64") || s == "n64" => Some("Nintendo 64"),
-        s if s.contains("game boy advance") || s == "gba" => Some("Nintendo Game Boy Advance"),
-        s if s.contains("game boy color") || s == "gbc" || s.contains("gameboy color") => {
-            Some("Nintendo Gameboy Color")
-        }
-        s if s.contains("game boy") && !s.contains("advance") && !s.contains("color") => {
-            Some("Nintendo Game Boy")
-        }
-        s if s.contains("nintendo ds") || s == "nds" => Some("Nintendo DS"),
-        s if s.contains("nintendo 3ds") || s == "3ds" => Some("Nintendo 3DS"),
-        s if s.contains("gamecube") => Some("Nintendo GameCube"),
-        s if s.contains("wii u") => Some("Nintendo Wii U"),
-        s if s.contains("wiiware") => Some("Nintendo WiiWare"),
-        s if s.contains("wii") && !s.contains("wii u") && !s.contains("wiiware") => {
-            Some("Nintendo Wii")
-        }
-        s if s.contains("switch") => Some("Nintendo Switch"),
-        s if s.contains("virtual boy") => Some("Nintendo Virtual Boy"),
-        s if s.contains("famicom disk") => Some("Nintendo Famicom Disk System"),
-        s if s.contains("famicom") => Some("Nintendo Famicom"),
-
-        // Sega
-        s if s.contains("genesis") || s.contains("mega drive") => Some("Sega Genesis - Mega Drive"),
-        s if s.contains("master system") => Some("Sega Master System"),
-        s if s.contains("game gear") => Some("Sega Game Gear"),
-        s if s.contains("saturn") => Some("Sega Saturn"),
-        s if s.contains("dreamcast") => Some("Sega Dreamcast"),
-        s if s.contains("sega cd") || s.contains("mega-cd") => Some("Sega CD"),
-        s if s.contains("32x") => Some("Sega 32X"),
-
-        // Sony
-        s if s.contains("playstation 2") || s == "ps2" => Some("Sony Playstation 2"),
-        s if s.contains("playstation 3") || s == "ps3" => Some("Sony Playstation 3"),
-        s if s.contains("playstation portable") || s == "psp" => Some("Sony PSP"),
-        s if s.contains("ps vita") || s.contains("vita") => Some("Sony Playstation Vita"),
-        s if s.contains("playstation") && !s.contains("2") && !s.contains("3") => {
-            Some("Sony Playstation")
-        }
-
-        // NEC
-        s if s.contains("turbografx") && s.contains("cd") => Some("NEC TurboGrafx-CD"),
-        s if s.contains("turbografx") || s.contains("pc engine") => Some("NEC TurboGrafx-16"),
-        s if s.contains("supergrafx") => Some("NEC SuperGrafx"),
-
-        // SNK
-        s if s.contains("neo geo pocket color") => Some("SNK Neo Geo Pocket Color"),
-        s if s.contains("neo geo pocket") => Some("SNK Neo Geo Pocket"),
-        s if s.contains("neo geo cd") => Some("SNK Neo Geo CD"),
-        s if s.contains("neo geo") => Some("SNK Neo Geo"),
-
-        // Atari
-        s if s.contains("atari 2600") => Some("Atari 2600"),
-        s if s.contains("atari 5200") => Some("Atari 5200"),
-        s if s.contains("atari 7800") => Some("Atari 7800"),
-        s if s.contains("lynx") => Some("Atari Lynx"),
-        s if s.contains("jaguar") => Some("Atari Jaguar"),
-
-        // Other
-        s if s.contains("colecovision") => Some("ColecoVision"),
-        s if s.contains("intellivision") => Some("Mattel Intellivision"),
-        s if s.contains("arcade") || s.contains("mame") => Some("MAME"),
-        s if s.contains("dos") || s.contains("ms-dos") => Some("Microsoft DOS"),
-        s if s.contains("3do") => Some("3DO Interactive Multiplayer"),
-
-        _ => None,
-    }
+fn normalize_emumovies_platform_key(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
 }
 
-fn contains_word(haystack: &str, needle: &str) -> bool {
-    haystack
-        .split(|c: char| !c.is_alphanumeric())
-        .any(|token| token == needle)
+fn tokenize_emumovies_platform_name(name: &str) -> Vec<String> {
+    name.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_ascii_lowercase())
+        .collect()
+}
+
+fn dedupe_emumovies_platform_candidates(candidates: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+    for candidate in candidates {
+        let key = normalize_emumovies_platform_key(&candidate);
+        if key.is_empty() || !seen.insert(key) {
+            continue;
+        }
+        deduped.push(candidate);
+    }
+    deduped
+}
+
+fn emumovies_platform_search_candidates(platform: &str) -> Vec<String> {
+    let canonical = crate::arcade::canonicalize_platform_name(platform);
+    let mut candidates = vec![platform.to_string()];
+    if canonical != platform {
+        candidates.push(canonical.to_string());
+    }
+
+    let key = normalize_emumovies_platform_key(&canonical);
+    let platform_tokens = tokenize_emumovies_platform_name(&canonical);
+    match key.as_str() {
+        "arcade" | "mame" => candidates.push("MAME".to_string()),
+        "nes" | "nintendoentertainmentsystem" => {
+            candidates.push("Nintendo Entertainment System".to_string())
+        }
+        "snes" | "nintendosnes" | "supernintendoentertainmentsystem" => {
+            candidates.push("Super Nintendo Entertainment System".to_string())
+        }
+        "nintendosnesmsu1" | "snesmsu1" | "snesmsu" => {
+            candidates.push("Nintendo SNES MSU1".to_string())
+        }
+        "n64" | "nintendo64" => candidates.push("Nintendo 64".to_string()),
+        "gba" | "nintendogameboyadvance" => {
+            candidates.push("Nintendo Game Boy Advance".to_string())
+        }
+        "gbc" | "nintendogameboycolor" => {
+            candidates.push("Nintendo Game Boy Color".to_string());
+            candidates.push("Nintendo Gameboy Color".to_string());
+        }
+        "nds" | "nintendods" => candidates.push("Nintendo DS".to_string()),
+        "3ds" | "nintendo3ds" => candidates.push("Nintendo 3DS".to_string()),
+        "genesis" | "segagenesis" | "megadrive" | "segamegadrive" => {
+            candidates.push("Sega Genesis - Mega Drive".to_string())
+        }
+        "segacd" | "megacd" => candidates.push("Sega CD".to_string()),
+        "psx" | "ps1" => candidates.push("Sony PlayStation".to_string()),
+        "ps2" => candidates.push("Sony PlayStation 2".to_string()),
+        "ps3" => candidates.push("Sony PlayStation 3".to_string()),
+        "psp" | "sonypsp" | "sonyplaystationportable" => {
+            candidates.push("Sony Playstation Portable".to_string());
+            candidates.push("Sony PSP".to_string());
+        }
+        "psvita" | "sonyplaystationvita" | "playstationvita" => {
+            candidates.push("Sony PlayStation Vita".to_string())
+        }
+        "pcengine" | "necpcengine" | "turbografx16" | "tg16" | "necturbografx16" => {
+            candidates.push("NEC PC Engine - Turbografx 16".to_string());
+            candidates.push("NEC TurboGrafx 16".to_string());
+        }
+        "pcenginecd" | "necpcenginecd" | "turbografxcd" | "tgcd" | "necturbografxcd" => {
+            candidates.push("NEC PC Engine CD - Turbografx CD".to_string());
+            candidates.push("NEC TurboGrafx CD".to_string());
+        }
+        "pcenginesupergrafx" => candidates.push("NEC PC-Engine SuperGrafx".to_string()),
+        "3dointeractivemultiplayer" => candidates.push("Panasonic 3DO".to_string()),
+        _ => {}
+    }
+
+    if key.starts_with("arcade") || platform_tokens.iter().any(|token| token == "arcade") {
+        candidates.push("MAME".to_string());
+    }
+
+    if key.starts_with("msdos") || platform_tokens.iter().any(|token| token == "dos") {
+        candidates.push("Microsoft DOS".to_string());
+    }
+
+    dedupe_emumovies_platform_candidates(candidates)
+}
+
+/// Map common shorthand platform names to a primary EmuMovies search name.
+/// Exact platform resolution for artwork and video happens against the live FTP
+/// directory names using normalized aliases from `emumovies_platform_search_candidates`.
+pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
+    let canonical = crate::arcade::canonicalize_platform_name(platform);
+    let key = normalize_emumovies_platform_key(&canonical);
+    let platform_tokens = tokenize_emumovies_platform_name(&canonical);
+
+    match key.as_str() {
+        "arcade" | "mame" => Some("MAME"),
+        "nes" | "nintendoentertainmentsystem" => Some("Nintendo Entertainment System"),
+        "snes" | "nintendosnes" | "supernintendoentertainmentsystem" => {
+            Some("Super Nintendo Entertainment System")
+        }
+        "nintendosnesmsu1" | "snesmsu1" | "snesmsu" => Some("Nintendo SNES MSU1"),
+        "n64" | "nintendo64" => Some("Nintendo 64"),
+        "gba" | "nintendogameboyadvance" => Some("Nintendo Game Boy Advance"),
+        "gbc" | "nintendogameboycolor" => Some("Nintendo Game Boy Color"),
+        "nds" | "nintendods" => Some("Nintendo DS"),
+        "3ds" | "nintendo3ds" => Some("Nintendo 3DS"),
+        "genesis" | "segagenesis" | "megadrive" | "segamegadrive" => {
+            Some("Sega Genesis - Mega Drive")
+        }
+        "segacd" | "megacd" => Some("Sega CD"),
+        "psx" | "ps1" | "sonyplaystation" => Some("Sony PlayStation"),
+        "ps2" | "sonyplaystation2" => Some("Sony PlayStation 2"),
+        "ps3" | "sonyplaystation3" => Some("Sony PlayStation 3"),
+        "psp" | "sonypsp" | "sonyplaystationportable" => Some("Sony Playstation Portable"),
+        "psvita" | "sonyplaystationvita" | "playstationvita" => Some("Sony PlayStation Vita"),
+        "pcengine" | "necpcengine" | "turbografx16" | "tg16" | "necturbografx16" => {
+            Some("NEC PC Engine - Turbografx 16")
+        }
+        "pcenginecd" | "necpcenginecd" | "turbografxcd" | "tgcd" | "necturbografxcd" => {
+            Some("NEC PC Engine CD - Turbografx CD")
+        }
+        "pcenginesupergrafx" => Some("NEC PC-Engine SuperGrafx"),
+        key if key.starts_with("arcade")
+            || platform_tokens.iter().any(|token| token == "arcade") =>
+        {
+            Some("MAME")
+        }
+        key if key.starts_with("msdos") || platform_tokens.iter().any(|token| token == "dos") => {
+            Some("Microsoft DOS")
+        }
+        "3dointeractivemultiplayer" => Some("3DO Interactive Multiplayer"),
+        _ => None,
+    }
 }
 
 pub fn resolve_arcade_download_lookup_name<'a>(
@@ -302,6 +357,7 @@ pub fn resolve_video_lookup_name<'a>(
 // Prevent multiple threads from downloading/building the same archive at once.
 static ARCHIVE_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 static VIDEO_DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+static ARTWORK_FOLDER_CACHE: OnceLock<Mutex<Option<Vec<String>>>> = OnceLock::new();
 // Cache discovered video folders per normalized EmuMovies platform folder.
 static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
 // Cache video indices per remote FTP folder path.
@@ -311,7 +367,7 @@ static VIDEO_DOWNLOAD_PROGRESS: OnceLock<
     std::sync::RwLock<HashMap<String, VideoDownloadProgressState>>,
 > = OnceLock::new();
 
-const VIDEO_MATCH_CACHE_VERSION: &str = "4";
+const VIDEO_MATCH_CACHE_VERSION: &str = "5";
 const VIDEO_INDEX_CACHE_VERSION: &str = "1";
 const FTP_CONTROL_STALL_TIMEOUT: Duration = Duration::from_secs(45);
 const FTP_DATA_STALL_TIMEOUT: Duration = Duration::from_secs(45);
@@ -503,23 +559,63 @@ fn video_folder_platform_stem(folder_path: &str) -> &str {
     folder_name.split(" (").next().unwrap_or(folder_name).trim()
 }
 
-fn video_folder_match_rank(folder_path: &str, system_folder: &str) -> Option<u8> {
-    let stem = video_folder_platform_stem(folder_path);
-    let stem_lower = stem.to_ascii_lowercase();
-    let system_lower = system_folder.to_ascii_lowercase();
+fn artwork_folder_name(folder_path: &str) -> &str {
+    folder_path.rsplit('/').next().unwrap_or(folder_path)
+}
 
-    if stem_lower == system_lower {
+fn exact_platform_key_match(name_a: &str, name_b: &str) -> bool {
+    normalize_emumovies_platform_key(name_a) == normalize_emumovies_platform_key(name_b)
+}
+
+fn tokens_start_with(haystack: &[String], needle: &[String]) -> bool {
+    haystack.len() >= needle.len() && haystack.iter().zip(needle.iter()).all(|(a, b)| a == b)
+}
+
+fn video_folder_match_rank(folder_path: &str, candidate: &str) -> Option<u8> {
+    let stem = video_folder_platform_stem(folder_path);
+    if exact_platform_key_match(stem, candidate) {
         return Some(0);
     }
 
-    let dash_prefix = format!("{}-", system_lower);
-    let space_prefix = format!("{} ", system_lower);
+    let stem_tokens = tokenize_emumovies_platform_name(stem);
+    let candidate_tokens = tokenize_emumovies_platform_name(candidate);
+    if candidate_tokens.is_empty() || stem_tokens.len() <= candidate_tokens.len() {
+        return None;
+    }
 
-    if stem_lower.starts_with(&dash_prefix) || stem_lower.starts_with(&space_prefix) {
+    if tokens_start_with(&stem_tokens, &candidate_tokens) {
         Some(1)
     } else {
         None
     }
+}
+
+fn video_folder_match_rank_for_platform(folder_path: &str, platform: &str) -> Option<u8> {
+    emumovies_platform_search_candidates(platform)
+        .iter()
+        .enumerate()
+        .find_map(|(idx, candidate)| {
+            video_folder_match_rank(folder_path, candidate).and_then(|match_rank| {
+                let base = idx.saturating_mul(2);
+                if base > u8::MAX as usize {
+                    None
+                } else {
+                    Some((base as u8).saturating_add(match_rank))
+                }
+            })
+        })
+}
+
+fn select_artwork_folder_from_list<'a>(folders: &'a [String], platform: &str) -> Option<&'a str> {
+    for candidate in emumovies_platform_search_candidates(platform) {
+        if let Some(folder) = folders
+            .iter()
+            .find(|folder| exact_platform_key_match(artwork_folder_name(folder), &candidate))
+        {
+            return Some(folder.as_str());
+        }
+    }
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -910,14 +1006,40 @@ impl EmuMoviesClient {
         Ok(files)
     }
 
+    fn get_artwork_folders(&self) -> Result<Vec<String>> {
+        if let Some(cached) = ARTWORK_FOLDER_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("artwork folder cache lock poisoned")
+            .clone()
+        {
+            return Ok(cached);
+        }
+
+        let folders = self.list_files("/Official/Artwork")?;
+        ARTWORK_FOLDER_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("artwork folder cache lock poisoned")
+            .replace(folders.clone());
+        Ok(folders)
+    }
+
+    fn find_artwork_folder(&self, platform: &str) -> Result<Option<String>> {
+        let folders = self.get_artwork_folders()?;
+        Ok(select_artwork_folder_from_list(&folders, platform).map(str::to_string))
+    }
+
     /// Find the archive file for a platform and media type on the FTP server
     pub fn find_archive(
         &self,
         platform: &str,
         media_type: EmuMoviesMediaType,
     ) -> Result<Option<String>> {
-        let system_folder = get_emumovies_system_folder(platform)
-            .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
+        let Some(system_folder) = self.find_artwork_folder(platform)? else {
+            tracing::info!("No EmuMovies artwork folder found for {}", platform);
+            return Ok(None);
+        };
 
         let artwork_path = format!("/Official/Artwork/{}", system_folder);
         let pattern = media_type.archive_pattern();
@@ -1159,9 +1281,12 @@ impl EmuMoviesClient {
         platform: &str,
         game_cache_dir: Option<&Path>,
     ) -> Result<Vec<String>> {
-        let system_folder = get_emumovies_system_folder(platform)
-            .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
-        let cache_key = system_folder.to_ascii_lowercase();
+        let search_candidates = emumovies_platform_search_candidates(platform);
+        let cache_key = search_candidates
+            .iter()
+            .map(|candidate| normalize_emumovies_platform_key(candidate))
+            .collect::<Vec<_>>()
+            .join("|");
 
         if let Some(cached) = VIDEO_FOLDER_CACHE
             .get_or_init(|| Mutex::new(HashMap::new()))
@@ -1186,13 +1311,14 @@ impl EmuMoviesClient {
                 update_video_download_status(
                     game_cache_dir,
                     "finding-folder",
-                    format!("Scanning {} for {} videos...", base_label, system_folder),
+                    format!("Scanning {} for {} videos...", base_label, platform),
                 );
             }
             tracing::info!(
-                "Searching for video folder for {} in {}",
-                system_folder,
-                video_base
+                "Searching for video folder for {} in {} using candidates {:?}",
+                platform,
+                video_base,
+                search_candidates
             );
             let mut last_progress_update = Instant::now()
                 .checked_sub(Duration::from_secs(1))
@@ -1208,7 +1334,7 @@ impl EmuMoviesClient {
                             "finding-folder",
                             format!(
                                 "Scanning {} for {} videos... {} entries",
-                                base_label, system_folder, count
+                                base_label, platform, count
                             ),
                         );
                     }
@@ -1223,7 +1349,7 @@ impl EmuMoviesClient {
             };
 
             for folder in folders {
-                if let Some(match_rank) = video_folder_match_rank(&folder, system_folder) {
+                if let Some(match_rank) = video_folder_match_rank_for_platform(&folder, platform) {
                     tracing::info!("Found video folder: {} (match_rank={})", folder, match_rank);
                     matches.push(VideoFolderCandidate {
                         path: folder,
@@ -1245,7 +1371,7 @@ impl EmuMoviesClient {
         let ordered_paths: Vec<String> = matches.into_iter().map(|m| m.path).collect();
 
         if ordered_paths.is_empty() {
-            tracing::info!("No video folder found for {}", system_folder);
+            tracing::info!("No video folder found for {}", platform);
         }
 
         if !ordered_paths.is_empty() {
@@ -1403,8 +1529,6 @@ impl EmuMoviesClient {
         progress: Option<&ProgressCallback>,
     ) -> Result<PathBuf> {
         let output_path = game_cache_dir.join("emumovies").join("video.mp4");
-        let system_folder = get_emumovies_system_folder(platform)
-            .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
 
         // Check cache first
         if output_path.exists() && is_video_cache_current(game_cache_dir) {
@@ -1447,7 +1571,8 @@ impl EmuMoviesClient {
             };
 
             if let Some((path, kind, score)) = find_best_video_match(index.as_slice(), game_name) {
-                let folder_rank = video_folder_match_rank(video_folder, system_folder).unwrap_or(2);
+                let folder_rank =
+                    video_folder_match_rank_for_platform(video_folder, platform).unwrap_or(255);
                 let replace = match selected_video.as_ref() {
                     Some((_, _, cur_kind, cur_score, cur_rank, cur_order)) => {
                         compare_video_candidates(
@@ -1565,9 +1690,6 @@ impl EmuMoviesClient {
 
     /// Check whether a matching video exists for a game without downloading it.
     pub fn has_video_match(&self, platform: &str, game_name: &str) -> Result<bool> {
-        let system_folder = get_emumovies_system_folder(platform)
-            .ok_or_else(|| anyhow::anyhow!("Unknown platform: {}", platform))?;
-
         let video_folders = self.find_video_folders(platform, None)?;
         if video_folders.is_empty() {
             return Ok(false);
@@ -1587,7 +1709,8 @@ impl EmuMoviesClient {
             };
 
             if let Some((_, kind, score)) = find_best_video_match(index.as_slice(), game_name) {
-                let folder_rank = video_folder_match_rank(video_folder, system_folder).unwrap_or(2);
+                let folder_rank =
+                    video_folder_match_rank_for_platform(video_folder, platform).unwrap_or(255);
                 tracing::info!(
                     "Video availability probe matched '{}' in {} using {:?} match (score {:.2}, folder_rank={}, source_order={})",
                     game_name,
@@ -1716,6 +1839,9 @@ mod tests {
             get_emumovies_system_folder("Sega Genesis"),
             Some("Nintendo Entertainment System")
         );
+        assert_eq!(get_emumovies_system_folder("Sony Playstation 4"), None);
+        assert_eq!(get_emumovies_system_folder("Vitalize"), None);
+        assert_eq!(get_emumovies_system_folder("Nintendo Sufami Turbo"), None);
     }
 
     #[test]
@@ -1909,6 +2035,96 @@ mod tests {
                 nes
             ),
             Some(1)
+        );
+    }
+
+    #[test]
+    fn test_video_folder_match_rank_is_punctuation_insensitive() {
+        assert_eq!(
+            video_folder_match_rank(
+                "/Official/Video Snaps (HQ)/Nintendo Game Boy Color (Video Snaps)(HQ)(EM 2.5)",
+                "Nintendo Gameboy Color"
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            video_folder_match_rank(
+                "/Official/Video Snaps (HQ)/Colecovision (Video Snaps)(HQ)(EM 1.3)",
+                "ColecoVision"
+            ),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn test_video_folder_match_rank_handles_token_prefixes() {
+        assert_eq!(
+            video_folder_match_rank(
+                "/Official/Video Snaps (HQ)/Sony Playstation 3 - Retail (Video Snaps)(HQ)(ReDump)(EM 0.9)",
+                "Sony PlayStation 3"
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            video_folder_match_rank(
+                "/Official/Video Snaps (HQ)/Sega Genesis - USA (Video Snaps)(HQ)(No-Intro)(EM 2.6)",
+                "Sega Genesis"
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_platform_search_candidates_cover_cross_media_aliases() {
+        let tg16 = emumovies_platform_search_candidates("NEC TurboGrafx-16");
+        assert!(tg16.contains(&"NEC PC Engine - Turbografx 16".to_string()));
+        assert_eq!(
+            video_folder_match_rank_for_platform(
+                "/Official/Video Snaps (HQ)/NEC TurboGrafx 16 (Video Snaps)(HQ)(EM 1.6)",
+                "NEC TurboGrafx-16"
+            ),
+            Some(0)
+        );
+
+        let psp = emumovies_platform_search_candidates("Sony PSP");
+        assert!(psp.contains(&"Sony Playstation Portable".to_string()));
+        assert!(psp.contains(&"Sony PSP".to_string()));
+
+        let three_do = emumovies_platform_search_candidates("3DO Interactive Multiplayer");
+        assert!(three_do.contains(&"Panasonic 3DO".to_string()));
+    }
+
+    #[test]
+    fn test_select_artwork_folder_from_list_uses_normalized_aliases() {
+        let folders = vec![
+            "/Official/Artwork/NEC PC Engine - Turbografx 16".to_string(),
+            "/Official/Artwork/Sony PlayStation 3".to_string(),
+        ];
+        assert_eq!(
+            select_artwork_folder_from_list(&folders, "NEC TurboGrafx-16"),
+            Some("/Official/Artwork/NEC PC Engine - Turbografx 16")
+        );
+        assert_eq!(
+            select_artwork_folder_from_list(&folders, "Sony Playstation 3"),
+            Some("/Official/Artwork/Sony PlayStation 3")
+        );
+    }
+
+    #[test]
+    fn test_video_folder_match_rank_for_platform_rejects_false_positives() {
+        assert_eq!(
+            video_folder_match_rank_for_platform(
+                "/Official/Video Snaps (HQ)/Sony Playstation (Video Snaps)(HQ480p)(ReDump)(EM 2.3)",
+                "Sony Playstation 4"
+            ),
+            None
+        );
+        assert_eq!(
+            video_folder_match_rank_for_platform(
+                "/Official/Video Snaps (HQ)/Sony PlayStation Vita (Video Snaps)(HQ)(EM 1.0)",
+                "Vitalize"
+            ),
+            None
         );
     }
 }
