@@ -1,9 +1,14 @@
 use crate::backend_api::{self, MinervaDownloadQueueItem};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 static MINERVA_DOWNLOADS_SIGNAL: OnceLock<(
+    ReadSignal<Vec<MinervaDownloadQueueItem>>,
+    WriteSignal<Vec<MinervaDownloadQueueItem>>,
+)> = OnceLock::new();
+static MINERVA_RECENT_SIGNAL: OnceLock<(
     ReadSignal<Vec<MinervaDownloadQueueItem>>,
     WriteSignal<Vec<MinervaDownloadQueueItem>>,
 )> = OnceLock::new();
@@ -17,6 +22,13 @@ pub fn minerva_downloads_signal() -> (
     *MINERVA_DOWNLOADS_SIGNAL.get_or_init(|| signal(Vec::new()))
 }
 
+fn minerva_recent_signal() -> (
+    ReadSignal<Vec<MinervaDownloadQueueItem>>,
+    WriteSignal<Vec<MinervaDownloadQueueItem>>,
+) {
+    *MINERVA_RECENT_SIGNAL.get_or_init(|| signal(Vec::new()))
+}
+
 fn minerva_download_refresh_signal() -> (ReadSignal<u64>, WriteSignal<u64>) {
     *MINERVA_DOWNLOAD_REFRESH_SIGNAL.get_or_init(|| signal(0))
 }
@@ -28,8 +40,37 @@ pub fn request_minerva_download_queue_refresh() {
 
 pub async fn refresh_minerva_download_queue_now() {
     let (_, set_downloads) = minerva_downloads_signal();
+    let (recent_downloads, set_recent_downloads) = minerva_recent_signal();
     match backend_api::list_minerva_downloads().await {
-        Ok(downloads) => set_downloads.set(downloads),
+        Ok(downloads) => {
+            let active_downloads = downloads
+                .iter()
+                .filter(|item| !is_terminal_download_status(&item.status))
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut recent_by_id = recent_downloads
+                .get_untracked()
+                .into_iter()
+                .map(|item| (item.job_id.clone(), item))
+                .collect::<HashMap<_, _>>();
+            for item in downloads
+                .iter()
+                .filter(|item| is_terminal_download_status(&item.status))
+            {
+                recent_by_id.insert(item.job_id.clone(), item.clone());
+            }
+            let active_ids = active_downloads
+                .iter()
+                .map(|item| item.job_id.as_str())
+                .collect::<HashSet<_>>();
+            let mut recent = recent_by_id
+                .into_values()
+                .filter(|item| !active_ids.contains(item.job_id.as_str()))
+                .collect::<Vec<_>>();
+            recent.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            set_downloads.set(active_downloads);
+            set_recent_downloads.set(recent);
+        }
         Err(err) => {
             backend_api::log_to_backend(
                 "warn",
@@ -100,8 +141,10 @@ fn status_label(status: &str) -> &'static str {
 #[component]
 pub fn MinervaDownloadQueue() -> impl IntoView {
     let (downloads, _) = minerva_downloads_signal();
+    let (recent_downloads, set_recent_downloads) = minerva_recent_signal();
     let (refresh_tick, _) = minerva_download_refresh_signal();
     let (expanded, set_expanded) = signal(false);
+    let (dismissed_recent_ids, set_dismissed_recent_ids) = signal::<HashSet<String>>(HashSet::new());
 
     Effect::new(move || {
         let _ = refresh_tick.get();
@@ -120,39 +163,49 @@ pub fn MinervaDownloadQueue() -> impl IntoView {
         });
     });
 
-    let active_count = move || {
-        downloads
+    let visible_recent_downloads = Memo::new(move |_| {
+        let dismissed_ids = dismissed_recent_ids.get();
+        recent_downloads
             .get()
+            .into_iter()
+            .filter(|item| !dismissed_ids.contains(&item.job_id))
+            .collect::<Vec<_>>()
+    });
+
+    let visible_downloads = Memo::new(move |_| {
+        let mut items = downloads.get();
+        items.extend(visible_recent_downloads.get());
+        items
+    });
+
+    let active_count = move || downloads.get().len();
+    let total_speed = move || downloads.get().iter().map(|item| item.download_speed).sum::<u64>();
+    let active_downloaded_bytes =
+        move || downloads.get().iter().map(|item| item.downloaded_bytes).sum::<u64>();
+    let active_total_bytes =
+        move || downloads.get().iter().map(|item| item.total_bytes).sum::<u64>();
+
+    let dismiss_finished = move || {
+        let visible_recent = visible_recent_downloads.get_untracked();
+        if visible_recent.is_empty() {
+            set_expanded.set(false);
+            return;
+        }
+        let dismissed_ids = visible_recent
             .iter()
-            .filter(|item| is_active_download_status(&item.status) || item.status == "paused")
-            .count()
-    };
-    let total_speed = move || {
-        downloads
-            .get()
-            .iter()
-            .map(|item| item.download_speed)
-            .sum::<u64>()
-    };
-    let active_downloaded_bytes = move || {
-        downloads
-            .get()
-            .iter()
-            .filter(|item| is_active_download_status(&item.status) || item.status == "paused")
-            .map(|item| item.downloaded_bytes)
-            .sum::<u64>()
-    };
-    let active_total_bytes = move || {
-        downloads
-            .get()
-            .iter()
-            .filter(|item| is_active_download_status(&item.status) || item.status == "paused")
-            .map(|item| item.total_bytes)
-            .sum::<u64>()
+            .map(|item| item.job_id.clone())
+            .collect::<HashSet<_>>();
+        set_dismissed_recent_ids.update(|ids| ids.extend(dismissed_ids));
+        set_recent_downloads.update(|items| {
+            items.retain(|item| !visible_recent.iter().any(|recent| recent.job_id == item.job_id))
+        });
+        if downloads.get_untracked().is_empty() {
+            set_expanded.set(false);
+        }
     };
 
     view! {
-        <Show when=move || !downloads.get().is_empty()>
+        <Show when=move || !visible_downloads.get().is_empty()>
             <div class="minerva-download-queue" class:expanded=move || expanded.get()>
                 <button
                     class="minerva-download-queue-toggle"
@@ -162,7 +215,14 @@ pub fn MinervaDownloadQueue() -> impl IntoView {
                         <div class="minerva-download-queue-title">
                             <span>"Downloads"</span>
                             <span class="minerva-download-queue-count">
-                                {move || format!("{} active", active_count())}
+                                {move || {
+                                    let finished_count = visible_recent_downloads.get().len();
+                                    if finished_count > 0 {
+                                        format!("{} active • {} recent", active_count(), finished_count)
+                                    } else {
+                                        format!("{} active", active_count())
+                                    }
+                                }}
                             </span>
                         </div>
                         <div class="minerva-download-queue-meta">
@@ -170,15 +230,39 @@ pub fn MinervaDownloadQueue() -> impl IntoView {
                             <span>{move || format_speed(total_speed())}</span>
                         </div>
                     </div>
-                    <span class="minerva-download-queue-chevron">
-                        {move || if expanded.get() { "−" } else { "+" }}
-                    </span>
+                    <div class="minerva-download-queue-header-actions">
+                        <Show when=move || !visible_recent_downloads.get().is_empty()>
+                            <button
+                                class="minerva-download-queue-dismiss"
+                                on:click=move |ev| {
+                                    ev.stop_propagation();
+                                    dismiss_finished();
+                                }
+                                title="Dismiss finished downloads"
+                            >
+                                "×"
+                            </button>
+                        </Show>
+                        <span class="minerva-download-queue-chevron">
+                            {move || if expanded.get() { "−" } else { "+" }}
+                        </span>
+                    </div>
                 </button>
 
                 <Show when=move || expanded.get()>
                     <div class="minerva-download-queue-list">
+                        <Show when=move || !visible_recent_downloads.get().is_empty()>
+                            <div class="minerva-download-queue-list-actions">
+                                <button
+                                    class="minerva-download-queue-clear"
+                                    on:click=move |_| dismiss_finished()
+                                >
+                                    "Clear Finished"
+                                </button>
+                            </div>
+                        </Show>
                         <For
-                            each=move || downloads.get()
+                            each=move || visible_downloads.get()
                             key=|item| item.job_id.clone()
                             let:item
                         >

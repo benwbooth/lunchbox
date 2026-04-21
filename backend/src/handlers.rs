@@ -4623,7 +4623,13 @@ pub async fn list_minerva_downloads(
         "SELECT id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at, client_job_id
          FROM graboid_jobs
          WHERE status IN ('pending', 'in_progress', 'paused')
-         ORDER BY updated_at DESC
+            OR (
+                status IN ('completed', 'failed', 'cancelled')
+                AND updated_at >= DATETIME('now', '-5 minutes')
+            )
+         ORDER BY
+            CASE WHEN status IN ('pending', 'in_progress', 'paused') THEN 0 ELSE 1 END,
+            updated_at DESC
          LIMIT 24"
     )
     .fetch_all(db_pool)

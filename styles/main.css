@@ -4508,6 +4508,30 @@ body.sidebar-resizing * {
     color: var(--text-secondary);
 }
 
+.minerva-download-queue-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.minerva-download-queue-dismiss {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1;
+    font-size: 18px;
+}
+
+.minerva-download-queue-dismiss:hover {
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    background: rgba(255, 255, 255, 0.12);
+}
+
 .minerva-download-queue-chevron {
     font-size: 20px;
     line-height: 1;
@@ -4522,6 +4546,27 @@ body.sidebar-resizing * {
     max-height: min(58vh, 460px);
     overflow-y: auto;
     background: rgba(0, 0, 0, 0.08);
+}
+
+.minerva-download-queue-list-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.minerva-download-queue-clear {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.minerva-download-queue-clear:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-color);
+    background: rgba(59, 130, 246, 0.14);
 }
 
 .minerva-download-queue-item {
