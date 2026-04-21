@@ -2314,28 +2314,8 @@ pub async fn get_active_import(
         updated_at,
     )) = row
     {
-        let missing_live_progress = load_minerva_live_progress(state, &id, None).await.is_none();
-
-        // Auto-fail stale jobs (no updates for 30+ minutes)
-        let stale_minutes = chrono::NaiveDateTime::parse_from_str(&updated_at, "%Y-%m-%d %H:%M:%S")
-            .ok()
-            .map(|dt| {
-                chrono::Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(dt)
-                    .num_minutes()
-            })
-            .unwrap_or(0);
-
-        let stale_message = if status == "paused" {
-            None
-        } else if stale_minutes >= 30 {
-            Some("Stale job auto-failed")
-        } else if missing_live_progress && stale_minutes >= 1 {
-            Some("Lost live download state; retry the download")
-        } else {
-            None
-        };
+        let has_live_progress = load_minerva_live_progress(state, &id, None).await.is_some();
+        let stale_message = stale_minerva_job_message(&updated_at, has_live_progress);
 
         if let Some(message) = stale_message {
             let _ = sqlx::query("UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -3422,6 +3402,29 @@ fn torrent_download_status_code(status: crate::torrent::DownloadStatus) -> &'sta
 
 fn is_live_minerva_queue_status(status: &str) -> bool {
     matches!(status, "pending" | "in_progress" | "paused")
+}
+
+fn stale_minerva_job_message(
+    updated_at: &str,
+    has_live_progress: bool,
+) -> Option<&'static str> {
+    let stale_minutes = chrono::NaiveDateTime::parse_from_str(updated_at, "%Y-%m-%d %H:%M:%S")
+        .ok()
+        .map(|dt| {
+            chrono::Utc::now()
+                .naive_utc()
+                .signed_duration_since(dt)
+                .num_minutes()
+        })
+        .unwrap_or(0);
+
+    if stale_minutes >= 30 {
+        Some("Stale job auto-failed")
+    } else if !has_live_progress && stale_minutes >= 1 {
+        Some("Lost live download state; retry the download")
+    } else {
+        None
+    }
 }
 
 async fn resolve_minerva_client_job_id(state: &AppState, job_id: &str) -> Option<String> {
@@ -4619,15 +4622,8 @@ pub async fn list_minerva_downloads(
     let rows: Vec<(String, i64, String, String, String, f64, Option<String>, String, String, Option<String>)> = sqlx::query_as(
         "SELECT id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at, client_job_id
          FROM graboid_jobs
-         WHERE status IN ('pending', 'in_progress', 'paused', 'failed', 'cancelled', 'completed')
-         ORDER BY
-            CASE
-                WHEN status IN ('pending', 'in_progress', 'paused') THEN 0
-                WHEN status = 'failed' THEN 1
-                WHEN status = 'cancelled' THEN 2
-                ELSE 3
-            END,
-            updated_at DESC
+         WHERE status IN ('pending', 'in_progress', 'paused')
+         ORDER BY updated_at DESC
          LIMIT 24"
     )
     .fetch_all(db_pool)
@@ -4653,6 +4649,20 @@ pub async fn list_minerva_downloads(
         } else {
             crate::torrent::get_progress(&job_id)
         };
+
+        if let Some(message) =
+            stale_minerva_job_message(&updated_at, live_progress.is_some())
+        {
+            let _ = sqlx::query(
+                "UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(message)
+            .bind(&job_id)
+            .execute(db_pool)
+            .await;
+            crate::torrent::clear_progress(&job_id);
+            continue;
+        }
 
         let item = if let Some(progress) = live_progress {
             MinervaDownloadQueueItem {
