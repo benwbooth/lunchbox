@@ -336,36 +336,35 @@ fn parse_hypseus_laserdisc_bundle(path: &str) -> Option<(String, &'static str)> 
         _ => return None,
     };
     let stem = path.file_stem()?.to_str()?;
-    let components = path
-        .iter()
-        .filter_map(|component| component.to_str())
-        .collect::<Vec<_>>();
-    let anchor_idx = if kind == "zip" {
-        components
-            .iter()
-            .rposition(|component| component.eq_ignore_ascii_case("roms"))?
+    let prefix_path = if kind == "zip" {
+        let parent = path.parent()?;
+        if parent
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("roms"))
+        {
+            parent.parent()?
+        } else {
+            parent
+        }
     } else {
         let mut parent = path.parent()?;
         if parent
             .file_name()
             .and_then(|value| value.to_str())
-            .is_some_and(|value| matches!(value, "video" | "audio" | "sound"))
+            .is_some_and(|value| {
+                value.eq_ignore_ascii_case("video")
+                    || value.eq_ignore_ascii_case("audio")
+                    || value.eq_ignore_ascii_case("sound")
+            })
         {
             parent = parent.parent()?;
         }
         parent
-            .iter()
-            .filter_map(|component| component.to_str())
-            .collect::<Vec<_>>()
-            .iter()
-            .rposition(|component| {
-                component.eq_ignore_ascii_case("vldp") || component.eq_ignore_ascii_case("singe")
-            })?
     };
-    let prefix = components
+    let prefix = prefix_path
         .iter()
-        .take(anchor_idx)
-        .copied()
+        .filter_map(|component| component.to_str())
         .collect::<Vec<_>>()
         .join("/");
     Some((format!("{prefix}/{stem}"), kind))
@@ -377,6 +376,182 @@ fn laserdisc_bundle_title(bundle_key: &str) -> String {
         .and_then(|value| value.to_str())
         .unwrap_or(bundle_key)
         .to_string()
+}
+
+#[derive(Clone)]
+struct ParsedDaphneLaserdiscBundle {
+    package_root: String,
+    game_key: Option<String>,
+    stem: String,
+    kind: &'static str,
+}
+
+fn daphne_bundle_title(package_root: &str, game_key: Option<&str>) -> String {
+    let label = std::path::Path::new(package_root)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or(package_root);
+    if matches!(
+        label.to_ascii_lowercase().as_str(),
+        "daphneloader" | "daphne"
+    ) {
+        if let Some(game_key) = game_key {
+            return format!("{label} / {game_key}");
+        }
+    }
+    label.to_string()
+}
+
+fn parse_daphne_laserdisc_bundle(path: &str) -> Option<ParsedDaphneLaserdiscBundle> {
+    let normalized = normalized_listing_path(path);
+    if !normalized.starts_with("laserdisc collection/daphne/") {
+        return None;
+    }
+
+    let path = std::path::Path::new(&normalized);
+    let components = path
+        .iter()
+        .filter_map(|component| component.to_str())
+        .collect::<Vec<_>>();
+    let file_name = path.file_name()?.to_str()?.to_string();
+    let stem = path.file_stem()?.to_str()?.to_string();
+
+    if let Some(anchor_idx) = components
+        .iter()
+        .rposition(|component| component.eq_ignore_ascii_case("roms"))
+    {
+        if anchor_idx + 1 != components.len() - 1 || !file_name.ends_with(".zip") {
+            return None;
+        }
+        let package_root = components[..anchor_idx].join("/");
+        if package_root.is_empty() {
+            return None;
+        }
+        return Some(ParsedDaphneLaserdiscBundle {
+            package_root,
+            game_key: None,
+            stem,
+            kind: "zip",
+        });
+    }
+
+    if let Some(anchor_idx) = components
+        .iter()
+        .rposition(|component| component.eq_ignore_ascii_case("ram"))
+    {
+        if anchor_idx + 1 != components.len() - 1 || !file_name.ends_with(".gz") {
+            return None;
+        }
+        let package_root = components[..anchor_idx].join("/");
+        if package_root.is_empty() {
+            return None;
+        }
+        return Some(ParsedDaphneLaserdiscBundle {
+            package_root,
+            game_key: None,
+            stem,
+            kind: "ram",
+        });
+    }
+
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())?;
+    let kind = match extension.as_str() {
+        "txt" => "txt",
+        "dat" => "dat",
+        "m2v" => "m2v",
+        "ogg" | "wav" | "mp3" | "flac" => "audio",
+        _ => return None,
+    };
+
+    for anchor_name in ["mpeg2", "vldp_dl"] {
+        let Some(anchor_idx) = components
+            .iter()
+            .rposition(|component| component.eq_ignore_ascii_case(anchor_name))
+        else {
+            continue;
+        };
+        let package_root = components[..anchor_idx].join("/");
+        let game_key = components.get(anchor_idx + 1)?.to_string();
+        if package_root.is_empty() {
+            return None;
+        }
+        return Some(ParsedDaphneLaserdiscBundle {
+            package_root,
+            game_key: Some(game_key),
+            stem,
+            kind,
+        });
+    }
+
+    None
+}
+
+fn daphne_matching_game_key(
+    stem: &str,
+    available_game_keys: &std::collections::BTreeSet<String>,
+) -> Option<String> {
+    available_game_keys
+        .iter()
+        .filter(|game_key| {
+            let game_key = game_key.as_str();
+            stem == game_key || stem.starts_with(&format!("{game_key}_"))
+        })
+        .max_by_key(|game_key| game_key.len())
+        .cloned()
+}
+
+fn build_daphne_laserdisc_bundles(
+    files: Vec<backend_api::TorrentFileMatch>,
+) -> Vec<(String, String, Vec<backend_api::TorrentFileMatch>)> {
+    #[derive(Default)]
+    struct PackageState {
+        game_keys: std::collections::BTreeSet<String>,
+        members: Vec<(backend_api::TorrentFileMatch, ParsedDaphneLaserdiscBundle)>,
+    }
+
+    let mut packages: std::collections::BTreeMap<String, PackageState> =
+        std::collections::BTreeMap::new();
+    for file in files {
+        let Some(parsed) = parse_daphne_laserdisc_bundle(&file.filename) else {
+            continue;
+        };
+        let entry = packages.entry(parsed.package_root.clone()).or_default();
+        if let Some(game_key) = parsed.game_key.as_ref() {
+            entry.game_keys.insert(game_key.clone());
+        }
+        entry.members.push((file, parsed));
+    }
+
+    let mut bundles: std::collections::BTreeMap<
+        String,
+        (String, Vec<backend_api::TorrentFileMatch>),
+    > = std::collections::BTreeMap::new();
+    for (package_root, package) in packages {
+        for (file, parsed) in package.members {
+            let Some(game_key) = parsed
+                .game_key
+                .clone()
+                .or_else(|| daphne_matching_game_key(&parsed.stem, &package.game_keys))
+            else {
+                continue;
+            };
+            let bundle_key = format!("{package_root}/{game_key}");
+            let bundle_name = daphne_bundle_title(&package_root, Some(&game_key));
+            bundles
+                .entry(bundle_key)
+                .or_insert_with(|| (bundle_name, Vec::new()))
+                .1
+                .push(file);
+        }
+    }
+
+    bundles
+        .into_iter()
+        .map(|(bundle_key, (bundle_name, members))| (bundle_key, bundle_name, members))
+        .collect()
 }
 
 fn build_minerva_picker_items(
@@ -456,6 +631,56 @@ fn build_minerva_picker_items(
                         suggested_emulator: Some("MAME".to_string()),
                         type_badge: Some("ROM".to_string()),
                     }
+                })
+            })
+            .collect();
+    }
+
+    if rom.minerva_platform.eq_ignore_ascii_case("Daphne") {
+        return build_daphne_laserdisc_bundles(files)
+            .into_iter()
+            .filter_map(|(_bundle_key, bundle_name, members)| {
+                let mut rom_zip = None;
+                let mut framefile = None;
+                let mut has_video = false;
+                let mut total_size = 0_u64;
+                let mut match_score = 0.0_f64;
+                let mut region = None;
+
+                for member in members {
+                    let parsed = parse_daphne_laserdisc_bundle(&member.filename)?;
+                    total_size = total_size.saturating_add(member.size);
+                    match_score = match_score.max(member.match_score);
+                    if region.is_none() {
+                        region = member.region.clone();
+                    }
+
+                    match parsed.kind {
+                        "zip" => rom_zip = Some(member),
+                        "txt" => framefile = Some(member),
+                        "m2v" => has_video = true,
+                        _ => {}
+                    }
+                }
+
+                let framefile = framefile?;
+                let _rom_zip = rom_zip?;
+                if !has_video {
+                    return None;
+                }
+
+                Some(MinervaPickerItem {
+                    selection: MinervaDownloadSelection::File {
+                        torrent_url: rom.torrent_url.clone(),
+                        file_index: framefile.index,
+                    },
+                    display_name: bundle_name,
+                    path_detail: Some("Laserdisc Collection / Daphne".to_string()),
+                    size: total_size,
+                    match_score,
+                    region,
+                    suggested_emulator: Some("Hypseus Singe".to_string()),
+                    type_badge: Some("Bundle".to_string()),
                 })
             })
             .collect();
