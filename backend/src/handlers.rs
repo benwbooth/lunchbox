@@ -14,7 +14,7 @@ use crate::db::schema::EmulatorInfo;
 use crate::emulator::{self, EmulatorUpdate, EmulatorWithStatus, LaunchResult};
 use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 // ============================================================================
@@ -2122,12 +2122,14 @@ async fn recover_zero_launchbox_db_id_game_file(
         return Ok(None);
     };
 
-    sqlx::query("UPDATE game_files SET launchbox_db_id = ? WHERE launchbox_db_id = 0 AND file_path = ?")
-        .bind(launchbox_db_id)
-        .bind(&recovered_path)
-        .execute(db_pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE game_files SET launchbox_db_id = ? WHERE launchbox_db_id = 0 AND file_path = ?",
+    )
+    .bind(launchbox_db_id)
+    .bind(&recovered_path)
+    .execute(db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(Some(GameFile {
         launchbox_db_id,
@@ -5387,6 +5389,200 @@ fn score_match_name(
     })
 }
 
+fn append_unique_lookup_title(
+    titles: &mut Vec<String>,
+    seen_normalized: &mut HashSet<String>,
+    candidate: impl AsRef<str>,
+) {
+    let candidate = candidate.as_ref().trim();
+    if candidate.is_empty() {
+        return;
+    }
+
+    let normalized = crate::tags::normalize_title_for_matching(candidate);
+    let key = if normalized.is_empty() {
+        candidate.to_ascii_lowercase()
+    } else {
+        normalized
+    };
+    if seen_normalized.insert(key) {
+        titles.push(candidate.to_string());
+    }
+}
+
+fn torrent_lookup_title_search_fragments(title: &str) -> Vec<String> {
+    let normalized = crate::tags::normalize_title_for_matching(title);
+    let mut fragments: Vec<String> = significant_match_words(&normalized)
+        .into_iter()
+        .filter_map(|word| {
+            let chars: Vec<char> = word.chars().collect();
+            if chars.len() < 3 {
+                return None;
+            }
+            let take_len = if chars.len() >= 6 { 6 } else { chars.len() };
+            Some(chars.into_iter().take(take_len).collect::<String>())
+        })
+        .collect();
+    fragments.sort();
+    fragments.dedup();
+    fragments
+}
+
+async fn load_related_launchbox_ids_for_lookup_title(
+    games_db: &sqlx::SqlitePool,
+    lookup_title: &str,
+) -> Result<Vec<i64>, String> {
+    let fragments = torrent_lookup_title_search_fragments(lookup_title);
+    if fragments.len() < 2 {
+        return Ok(Vec::new());
+    }
+
+    let mut related_ids = BTreeSet::new();
+
+    let mut alternate_sql = String::from(
+        "SELECT DISTINCT launchbox_db_id FROM game_alternate_names WHERE launchbox_db_id > 0",
+    );
+    for _ in &fragments {
+        alternate_sql.push_str(" AND lower(alternate_name) LIKE ?");
+    }
+    alternate_sql.push_str(" LIMIT 24");
+
+    let mut alternate_query = sqlx::query_scalar::<_, i64>(&alternate_sql);
+    for fragment in &fragments {
+        alternate_query = alternate_query.bind(format!("%{fragment}%"));
+    }
+    match alternate_query.fetch_all(games_db).await {
+        Ok(rows) => {
+            for launchbox_db_id in rows {
+                related_ids.insert(launchbox_db_id);
+            }
+        }
+        Err(err) => {
+            if !err
+                .to_string()
+                .contains("no such table: game_alternate_names")
+            {
+                return Err(err.to_string());
+            }
+        }
+    }
+
+    let mut title_sql = String::from(
+        "SELECT DISTINCT launchbox_db_id FROM games WHERE launchbox_db_id IS NOT NULL",
+    );
+    for _ in &fragments {
+        title_sql.push_str(" AND lower(title) LIKE ?");
+    }
+    title_sql.push_str(" LIMIT 24");
+
+    let mut title_query = sqlx::query_scalar::<_, i64>(&title_sql);
+    for fragment in &fragments {
+        title_query = title_query.bind(format!("%{fragment}%"));
+    }
+    for launchbox_db_id in title_query
+        .fetch_all(games_db)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        related_ids.insert(launchbox_db_id);
+    }
+
+    Ok(related_ids.into_iter().take(12).collect())
+}
+
+async fn fetch_lookup_titles_for_launchbox_ids(
+    games_db: &sqlx::SqlitePool,
+    launchbox_db_ids: &BTreeSet<i64>,
+) -> Result<Vec<String>, String> {
+    if launchbox_db_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = vec!["?"; launchbox_db_ids.len()].join(", ");
+
+    let primary_sql = format!(
+        "SELECT DISTINCT title FROM games WHERE launchbox_db_id IN ({placeholders}) ORDER BY title"
+    );
+    let mut primary_query = sqlx::query_scalar::<_, String>(&primary_sql);
+    for launchbox_db_id in launchbox_db_ids {
+        primary_query = primary_query.bind(*launchbox_db_id);
+    }
+    let primary_titles = primary_query
+        .fetch_all(games_db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let alternate_sql = format!(
+        "SELECT DISTINCT alternate_name FROM game_alternate_names WHERE launchbox_db_id IN ({placeholders}) ORDER BY alternate_name"
+    );
+    let mut alternate_query = sqlx::query_scalar::<_, String>(&alternate_sql);
+    for launchbox_db_id in launchbox_db_ids {
+        alternate_query = alternate_query.bind(*launchbox_db_id);
+    }
+    let alternate_titles = match alternate_query.fetch_all(games_db).await {
+        Ok(rows) => rows,
+        Err(err) => {
+            if err
+                .to_string()
+                .contains("no such table: game_alternate_names")
+            {
+                Vec::new()
+            } else {
+                return Err(err.to_string());
+            }
+        }
+    };
+
+    let mut lookup_titles = Vec::new();
+    let mut seen_normalized = HashSet::new();
+    for title in primary_titles {
+        append_unique_lookup_title(&mut lookup_titles, &mut seen_normalized, title);
+    }
+    for title in alternate_titles {
+        append_unique_lookup_title(&mut lookup_titles, &mut seen_normalized, title);
+    }
+
+    Ok(lookup_titles)
+}
+
+async fn expand_torrent_match_lookup_titles(
+    state: &AppState,
+    launchbox_db_id: Option<i64>,
+    base_titles: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let Some(games_db) = state.games_db_pool.as_ref() else {
+        return Ok(base_titles);
+    };
+
+    let mut related_launchbox_ids = BTreeSet::new();
+    if let Some(launchbox_db_id) = launchbox_db_id.filter(|value| *value > 0) {
+        related_launchbox_ids.insert(launchbox_db_id);
+    }
+
+    for lookup_title in &base_titles {
+        let related_ids =
+            load_related_launchbox_ids_for_lookup_title(games_db, lookup_title).await?;
+        related_launchbox_ids.extend(related_ids);
+        if related_launchbox_ids.len() >= 12 {
+            break;
+        }
+    }
+
+    let related_titles =
+        fetch_lookup_titles_for_launchbox_ids(games_db, &related_launchbox_ids).await?;
+
+    let mut expanded_titles = Vec::new();
+    let mut seen_normalized = HashSet::new();
+    for title in base_titles {
+        append_unique_lookup_title(&mut expanded_titles, &mut seen_normalized, title);
+    }
+    for title in related_titles {
+        append_unique_lookup_title(&mut expanded_titles, &mut seen_normalized, title);
+    }
+
+    Ok(expanded_titles)
+}
+
 fn build_torrent_match_candidate(
     file: crate::torrent::TorrentFileInfo,
     normalized_query: &str,
@@ -5417,6 +5613,122 @@ fn build_torrent_match_candidate(
         full_query_match: score.full_query_match,
         all_significant_words_match: score.all_significant_words_match,
     })
+}
+
+fn select_matches_for_lookup_title(
+    files: &[crate::torrent::TorrentFileInfo],
+    lookup_title: &str,
+    region_priority: &[String],
+    platform: Option<&str>,
+    collection: Option<&str>,
+    minerva_platform: Option<&str>,
+) -> Vec<TorrentFileMatch> {
+    if is_mame_laserdisc_request(platform, collection, minerva_platform) {
+        select_arcade_mame_laserdisc_or_generic_matches(
+            files.to_vec(),
+            lookup_title,
+            region_priority,
+        )
+    } else if is_hypseus_laserdisc_request(platform, collection, minerva_platform) {
+        select_arcade_hypseus_laserdisc_matches(files.to_vec(), lookup_title, region_priority)
+    } else if is_daphne_laserdisc_request(platform, collection, minerva_platform) {
+        select_arcade_daphne_laserdisc_matches(files.to_vec(), lookup_title, region_priority)
+    } else {
+        select_torrent_file_matches(files.to_vec(), lookup_title, region_priority)
+    }
+}
+
+fn torrent_match_distribution_tag_penalty(filename: &str) -> usize {
+    let basename = basename_without_extension(filename);
+    let (_base, tags) = crate::tags::parse_title_tags(&basename);
+    tags.iter()
+        .filter(|tag| matches!(tag.category, crate::tags::TagCategory::Platform))
+        .count()
+}
+
+fn should_prefer_torrent_match_set(
+    candidate_index: usize,
+    candidate_matches: &[TorrentFileMatch],
+    current_index: usize,
+    current_matches: &[TorrentFileMatch],
+    region_priority: &[String],
+) -> bool {
+    let Some(candidate_top) = candidate_matches.first() else {
+        return false;
+    };
+    let Some(current_top) = current_matches.first() else {
+        return true;
+    };
+
+    match candidate_top
+        .match_score
+        .partial_cmp(&current_top.match_score)
+        .unwrap_or(std::cmp::Ordering::Equal)
+    {
+        std::cmp::Ordering::Greater => return true,
+        std::cmp::Ordering::Less => return false,
+        std::cmp::Ordering::Equal => {}
+    }
+
+    let candidate_penalty = torrent_match_distribution_tag_penalty(&candidate_top.filename);
+    let current_penalty = torrent_match_distribution_tag_penalty(&current_top.filename);
+    if candidate_penalty != current_penalty {
+        return candidate_penalty < current_penalty;
+    }
+
+    let candidate_region_priority = crate::region_priority::priority_for_region(
+        candidate_top.region.as_deref(),
+        region_priority,
+    );
+    let current_region_priority =
+        crate::region_priority::priority_for_region(current_top.region.as_deref(), region_priority);
+    if candidate_region_priority != current_region_priority {
+        return candidate_region_priority < current_region_priority;
+    }
+
+    candidate_index < current_index
+}
+
+fn select_best_matches_for_lookup_titles(
+    files: &[crate::torrent::TorrentFileInfo],
+    lookup_titles: &[String],
+    region_priority: &[String],
+    platform: Option<&str>,
+    collection: Option<&str>,
+    minerva_platform: Option<&str>,
+) -> Vec<TorrentFileMatch> {
+    let mut best_index = None;
+    let mut best_matches = Vec::new();
+
+    for (lookup_index, lookup_title) in lookup_titles.iter().enumerate() {
+        let candidates = select_matches_for_lookup_title(
+            files,
+            lookup_title,
+            region_priority,
+            platform,
+            collection,
+            minerva_platform,
+        );
+        if candidates.is_empty() {
+            continue;
+        }
+
+        let should_replace = best_index.is_none_or(|current_index| {
+            should_prefer_torrent_match_set(
+                lookup_index,
+                &candidates,
+                current_index,
+                &best_matches,
+                region_priority,
+            )
+        });
+        if should_replace {
+            best_index = Some(lookup_index);
+            best_matches = candidates;
+        }
+    }
+
+    best_matches
 }
 
 fn is_hypseus_laserdisc_request(
@@ -6131,58 +6443,27 @@ pub async fn list_torrent_files(
         input.game_title.clone()
     };
 
-    let lookup_titles = torrent_match_lookup_titles(
+    let lookup_titles = expand_torrent_match_lookup_titles(
+        state,
+        input.launchbox_db_id,
+        torrent_match_lookup_titles(
+            input.platform.as_deref(),
+            &input.game_title,
+            &resolved_lookup_title,
+            input.collection.as_deref(),
+            input.minerva_platform.as_deref(),
+        ),
+    )
+    .await?;
+
+    let mut matches = select_best_matches_for_lookup_titles(
+        &files,
+        &lookup_titles,
+        &state.settings.region_priority,
         input.platform.as_deref(),
-        &input.game_title,
-        &resolved_lookup_title,
         input.collection.as_deref(),
         input.minerva_platform.as_deref(),
     );
-
-    let mut matches = Vec::new();
-    for lookup_title in lookup_titles {
-        let candidates = if is_mame_laserdisc_request(
-            input.platform.as_deref(),
-            input.collection.as_deref(),
-            input.minerva_platform.as_deref(),
-        ) {
-            select_arcade_mame_laserdisc_or_generic_matches(
-                files.clone(),
-                &lookup_title,
-                &state.settings.region_priority,
-            )
-        } else if is_hypseus_laserdisc_request(
-            input.platform.as_deref(),
-            input.collection.as_deref(),
-            input.minerva_platform.as_deref(),
-        ) {
-            select_arcade_hypseus_laserdisc_matches(
-                files.clone(),
-                &lookup_title,
-                &state.settings.region_priority,
-            )
-        } else if is_daphne_laserdisc_request(
-            input.platform.as_deref(),
-            input.collection.as_deref(),
-            input.minerva_platform.as_deref(),
-        ) {
-            select_arcade_daphne_laserdisc_matches(
-                files.clone(),
-                &lookup_title,
-                &state.settings.region_priority,
-            )
-        } else {
-            select_torrent_file_matches(
-                files.clone(),
-                &lookup_title,
-                &state.settings.region_priority,
-            )
-        };
-        if !candidates.is_empty() {
-            matches = candidates;
-            break;
-        }
-    }
 
     if let Some(ref platform) = input.platform {
         let mut filtered: Vec<TorrentFileMatch> = matches
@@ -6543,12 +6824,13 @@ mod tests {
     use super::{
         ArcadeDaphneLaserdiscAssetKind, ArcadeHypseusLaserdiscAssetKind,
         ArcadeMameLaserdiscAssetKind, MinervaRom, expand_arcade_laserdisc_roms,
-        is_platform_specific_torrent_candidate, locate_downloaded_file, minerva_platform_fallbacks,
-        parse_arcade_daphne_laserdisc_asset, parse_arcade_hypseus_laserdisc_asset,
-        parse_arcade_mame_laserdisc_asset, select_arcade_daphne_laserdisc_matches,
-        select_arcade_hypseus_laserdisc_matches, select_arcade_mame_laserdisc_matches,
-        select_arcade_mame_laserdisc_or_generic_matches, select_torrent_file_matches,
-        sort_emulator_statuses, torrent_match_lookup_titles, verify_staged_daphne_framefile_assets,
+        expand_torrent_match_lookup_titles, is_platform_specific_torrent_candidate,
+        locate_downloaded_file, minerva_platform_fallbacks, parse_arcade_daphne_laserdisc_asset,
+        parse_arcade_hypseus_laserdisc_asset, parse_arcade_mame_laserdisc_asset,
+        select_arcade_daphne_laserdisc_matches, select_arcade_hypseus_laserdisc_matches,
+        select_arcade_mame_laserdisc_matches, select_arcade_mame_laserdisc_or_generic_matches,
+        select_best_matches_for_lookup_titles, select_torrent_file_matches, sort_emulator_statuses,
+        torrent_match_lookup_titles, verify_staged_daphne_framefile_assets,
     };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
@@ -6679,6 +6961,44 @@ mod tests {
         assert_eq!(matches[0].region.as_deref(), Some("Japan"));
         assert_eq!(matches[1].region.as_deref(), Some("USA"));
         assert_eq!(matches[2].region.as_deref(), Some("Asia"));
+    }
+
+    #[test]
+    fn alternate_lookup_title_can_beat_virtual_console_exact_match() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename:
+                    "No-Intro/Microsoft - MSX2/Akumajo Dracula (Japan) (Wii U Virtual Console).zip"
+                        .to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "No-Intro/Microsoft - MSX2/Vampire Killer (Japan, Europe) (En).zip"
+                    .to_string(),
+                size: 1,
+            },
+        ];
+        let lookup_titles = vec![
+            "Akumajo Dracula (Japan) (Wii U Virtual Console)".to_string(),
+            "Vampire Killer".to_string(),
+        ];
+
+        let matches = select_best_matches_for_lookup_titles(
+            &files,
+            &lookup_titles,
+            &[],
+            Some("Microsoft MSX2"),
+            Some("No-Intro"),
+            Some("Microsoft - MSX2"),
+        );
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].filename,
+            "No-Intro/Microsoft - MSX2/Vampire Killer (Japan, Europe) (En).zip"
+        );
     }
 
     #[test]
@@ -7581,6 +7901,69 @@ mod tests {
         }
     }
 
+    async fn new_lookup_alias_state() -> crate::state::AppState {
+        let games_pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE games (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                platform_id INTEGER NOT NULL,
+                launchbox_db_id INTEGER
+            )
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE game_alternate_names (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                launchbox_db_id INTEGER NOT NULL,
+                alternate_name TEXT NOT NULL,
+                region TEXT
+            )
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO games (id, title, platform_id, launchbox_db_id) VALUES
+                ('msx-vampire-killer', 'Vampire Killer', 75, 27106),
+                ('msx2-akumajo', 'Akumajo Dracula (Japan) (Wii U Virtual Console)', 76, NULL)
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO game_alternate_names (launchbox_db_id, alternate_name, region) VALUES
+                (27106, 'Akumajou Dracula', 'Japan'),
+                (27106, 'Akumajō Dracula', 'Japan')
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        crate::state::AppState {
+            games_db_pool: Some(games_pool),
+            ..crate::state::AppState::default()
+        }
+    }
+
     #[tokio::test]
     async fn emulator_preferences_default_to_empty_without_user_db() {
         let state = crate::state::AppState::default();
@@ -7744,7 +8127,10 @@ mod tests {
         let reference_games = new_reference_games_state().await;
         state.games_db_pool = reference_games.games_db_pool.clone();
 
-        let db_pool = crate::state::ensure_user_db(&mut state).await.unwrap().clone();
+        let db_pool = crate::state::ensure_user_db(&mut state)
+            .await
+            .unwrap()
+            .clone();
 
         sqlx::query(
             "INSERT INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source)
@@ -7765,6 +8151,22 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(repaired_db_id.map(|(db_id,)| db_id), Some(1602));
+    }
+
+    #[tokio::test]
+    async fn alternate_name_metadata_expands_generic_lookup_titles() {
+        let state = new_lookup_alias_state().await;
+
+        let titles = expand_torrent_match_lookup_titles(
+            &state,
+            None,
+            vec!["Akumajo Dracula (Japan) (Wii U Virtual Console)".to_string()],
+        )
+        .await
+        .unwrap();
+
+        assert!(titles.iter().any(|title| title == "Vampire Killer"));
+        assert!(titles.iter().any(|title| title == "Akumajou Dracula"));
     }
 
     #[tokio::test]
