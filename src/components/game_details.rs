@@ -2367,20 +2367,6 @@ pub fn GameDetails(
                                             </button>
                                         </div>
 
-                                        // Emulator picker modal
-                                        <Show when=move || show_emulator_picker.get()>
-                                            <EmulatorPickerModal
-                                                emulators=emulators
-                                                set_emulators=set_emulators
-                                                emulators_loading=emulators_loading
-                                                game_file=game_file
-                                                stored_title=stored_title
-                                                stored_platform=stored_platform
-                                                stored_db_id=stored_db_id
-                                                set_show_emulator_picker=set_show_emulator_picker
-                                            />
-                                        </Show>
-
                                     </div>
 
                                 // Video player, full width
@@ -2404,6 +2390,19 @@ pub fn GameDetails(
                                     <p>{description}</p>
                                 </div>
                             </div>
+
+                            <Show when=move || show_emulator_picker.get()>
+                                <EmulatorPickerModal
+                                    emulators=emulators
+                                    set_emulators=set_emulators
+                                    emulators_loading=emulators_loading
+                                    game_file=game_file
+                                    stored_title=stored_title
+                                    stored_platform=stored_platform
+                                    stored_db_id=stored_db_id
+                                    set_show_emulator_picker=set_show_emulator_picker
+                                />
+                            </Show>
                         </div>
                     }
                     .into_any()
@@ -3003,7 +3002,8 @@ fn EmulatorPickerModal(
     let can_close = move || progress_state.get().is_none();
 
     view! {
-        <div class="emulator-picker-overlay" on:click=move |_| {
+        <div class="emulator-picker-overlay" on:click=move |e| {
+            e.stop_propagation();
             if can_close() {
                 set_show_emulator_picker.set(false);
             }
