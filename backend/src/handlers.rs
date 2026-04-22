@@ -5431,6 +5431,7 @@ fn torrent_lookup_title_search_fragments(title: &str) -> Vec<String> {
 async fn load_related_launchbox_ids_for_lookup_title(
     games_db: &sqlx::SqlitePool,
     lookup_title: &str,
+    platform_ids: &[i64],
 ) -> Result<Vec<i64>, String> {
     let fragments = torrent_lookup_title_search_fragments(lookup_title);
     if fragments.len() < 2 {
@@ -5440,14 +5441,25 @@ async fn load_related_launchbox_ids_for_lookup_title(
     let mut related_ids = BTreeSet::new();
 
     let mut alternate_sql = String::from(
-        "SELECT DISTINCT launchbox_db_id FROM game_alternate_names WHERE launchbox_db_id > 0",
+        "SELECT DISTINCT gan.launchbox_db_id
+         FROM game_alternate_names gan
+         JOIN games g ON g.launchbox_db_id = gan.launchbox_db_id
+         WHERE gan.launchbox_db_id > 0",
     );
+    if !platform_ids.is_empty() {
+        alternate_sql.push_str(" AND g.platform_id IN (");
+        alternate_sql.push_str(&vec!["?"; platform_ids.len()].join(", "));
+        alternate_sql.push(')');
+    }
     for _ in &fragments {
-        alternate_sql.push_str(" AND lower(alternate_name) LIKE ?");
+        alternate_sql.push_str(" AND lower(gan.alternate_name) LIKE ?");
     }
     alternate_sql.push_str(" LIMIT 24");
 
     let mut alternate_query = sqlx::query_scalar::<_, i64>(&alternate_sql);
+    for platform_id in platform_ids {
+        alternate_query = alternate_query.bind(*platform_id);
+    }
     for fragment in &fragments {
         alternate_query = alternate_query.bind(format!("%{fragment}%"));
     }
@@ -5470,12 +5482,20 @@ async fn load_related_launchbox_ids_for_lookup_title(
     let mut title_sql = String::from(
         "SELECT DISTINCT launchbox_db_id FROM games WHERE launchbox_db_id IS NOT NULL",
     );
+    if !platform_ids.is_empty() {
+        title_sql.push_str(" AND platform_id IN (");
+        title_sql.push_str(&vec!["?"; platform_ids.len()].join(", "));
+        title_sql.push(')');
+    }
     for _ in &fragments {
         title_sql.push_str(" AND lower(title) LIKE ?");
     }
     title_sql.push_str(" LIMIT 24");
 
     let mut title_query = sqlx::query_scalar::<_, i64>(&title_sql);
+    for platform_id in platform_ids {
+        title_query = title_query.bind(*platform_id);
+    }
     for fragment in &fragments {
         title_query = title_query.bind(format!("%{fragment}%"));
     }
@@ -5548,10 +5568,17 @@ async fn fetch_lookup_titles_for_launchbox_ids(
 async fn expand_torrent_match_lookup_titles(
     state: &AppState,
     launchbox_db_id: Option<i64>,
+    platform_name: Option<&str>,
     base_titles: Vec<String>,
 ) -> Result<Vec<String>, String> {
     let Some(games_db) = state.games_db_pool.as_ref() else {
         return Ok(base_titles);
+    };
+
+    let platform_ids = if let Some(platform_name) = platform_name {
+        resolve_equivalent_platform_ids_by_name(games_db, platform_name).await?
+    } else {
+        Vec::new()
     };
 
     let mut related_launchbox_ids = BTreeSet::new();
@@ -5561,7 +5588,8 @@ async fn expand_torrent_match_lookup_titles(
 
     for lookup_title in &base_titles {
         let related_ids =
-            load_related_launchbox_ids_for_lookup_title(games_db, lookup_title).await?;
+            load_related_launchbox_ids_for_lookup_title(games_db, lookup_title, &platform_ids)
+                .await?;
         related_launchbox_ids.extend(related_ids);
         if related_launchbox_ids.len() >= 12 {
             break;
@@ -5581,6 +5609,24 @@ async fn expand_torrent_match_lookup_titles(
     }
 
     Ok(expanded_titles)
+}
+
+async fn resolve_equivalent_platform_ids_by_name(
+    games_db: &sqlx::SqlitePool,
+    platform_name: &str,
+) -> Result<Vec<i64>, String> {
+    let canonical = canonicalize_legacy_platform_name(platform_name).to_string();
+    let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, name FROM platforms")
+        .fetch_all(games_db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, name)| {
+            (canonicalize_legacy_platform_name(&name) == canonical).then_some(id)
+        })
+        .collect())
 }
 
 fn build_torrent_match_candidate(
@@ -6446,6 +6492,7 @@ pub async fn list_torrent_files(
     let lookup_titles = expand_torrent_match_lookup_titles(
         state,
         input.launchbox_db_id,
+        input.platform.as_deref(),
         torrent_match_lookup_titles(
             input.platform.as_deref(),
             &input.game_title,
@@ -6999,6 +7046,42 @@ mod tests {
             matches[0].filename,
             "No-Intro/Microsoft - MSX2/Vampire Killer (Japan, Europe) (En).zip"
         );
+    }
+
+    #[test]
+    fn unrelated_aftermarket_titles_do_not_match_msx2_castlevania_lookup_titles() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 0,
+                filename:
+                    "No-Intro/Microsoft - MSX2 (Aftermarket)/Sword of Ianna, The (World) (En,Es) (v1.2) (Aftermarket) (Unl).zip"
+                        .to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename:
+                    "No-Intro/Microsoft - MSX2 (Aftermarket)/Sword of Ianna, The (World) (Fr) (v1.2) (Aftermarket) (Unl).zip"
+                        .to_string(),
+                size: 1,
+            },
+        ];
+        let lookup_titles = vec![
+            "Akumajo Dracula (Japan) (Wii U Virtual Console)".to_string(),
+            "Vampire Killer".to_string(),
+            "Akumajou Dracula".to_string(),
+        ];
+
+        let matches = select_best_matches_for_lookup_titles(
+            &files,
+            &lookup_titles,
+            &[],
+            Some("Microsoft MSX2"),
+            Some("No-Intro"),
+            Some("Microsoft - MSX2 (Aftermarket)"),
+        );
+
+        assert!(matches.is_empty());
     }
 
     #[test]
@@ -7910,6 +7993,29 @@ mod tests {
 
         sqlx::query(
             r#"
+            CREATE TABLE platforms (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO platforms (id, name) VALUES
+                (75, 'Microsoft MSX2'),
+                (138, 'Sony Playstation')
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
             CREATE TABLE games (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -7940,7 +8046,8 @@ mod tests {
             r#"
             INSERT INTO games (id, title, platform_id, launchbox_db_id) VALUES
                 ('msx-vampire-killer', 'Vampire Killer', 75, 27106),
-                ('msx2-akumajo', 'Akumajo Dracula (Japan) (Wii U Virtual Console)', 76, NULL)
+                ('msx2-akumajo', 'Akumajo Dracula (Japan) (Wii U Virtual Console)', 75, NULL),
+                ('psx-symphony', 'Castlevania: Symphony of the Night', 138, 511)
             "#,
         )
         .execute(&games_pool)
@@ -8160,6 +8267,7 @@ mod tests {
         let titles = expand_torrent_match_lookup_titles(
             &state,
             None,
+            Some("Microsoft MSX2"),
             vec!["Akumajo Dracula (Japan) (Wii U Virtual Console)".to_string()],
         )
         .await
@@ -8167,6 +8275,11 @@ mod tests {
 
         assert!(titles.iter().any(|title| title == "Vampire Killer"));
         assert!(titles.iter().any(|title| title == "Akumajou Dracula"));
+        assert!(
+            !titles
+                .iter()
+                .any(|title| title == "Castlevania: Symphony of the Night")
+        );
     }
 
     #[tokio::test]
