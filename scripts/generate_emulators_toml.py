@@ -424,7 +424,7 @@ KNOWN_EMULATORS = {
         "platforms": {
             "linux": {
                 "install_type": "flatpak",
-                "flatpak_id": "ca.mesen.Mesen",
+                "flatpak_id": "ca.mesen.Mesen2",
             },
             "windows": {
                 "install_type": "portable",

@@ -875,6 +875,11 @@ fn lunchbox_wine_root() -> PathBuf {
 
 fn appimage_install_for_emulator(emulator: &EmulatorInfo) -> Option<AppImageInstallInfo> {
     match emulator.name.to_ascii_lowercase().as_str() {
+        "mesen" => Some(AppImageInstallInfo {
+            slug: "mesen",
+            github_repo: "SourMesen/Mesen2",
+            preferred_asset_terms: &["mesen", "linux", "appimage", "x64", "x86_64"],
+        }),
         "hypseus singe" => Some(AppImageInstallInfo {
             slug: "hypseus-singe",
             github_repo: "DirtBagXon/hypseus-singe",
@@ -886,6 +891,11 @@ fn appimage_install_for_emulator(emulator: &EmulatorInfo) -> Option<AppImageInst
 
 fn appimage_install_for_slug(slug: &str) -> Option<AppImageInstallInfo> {
     match slug {
+        "mesen" => Some(AppImageInstallInfo {
+            slug: "mesen",
+            github_repo: "SourMesen/Mesen2",
+            preferred_asset_terms: &["mesen", "linux", "appimage", "x64", "x86_64"],
+        }),
         "hypseus-singe" => Some(AppImageInstallInfo {
             slug: "hypseus-singe",
             github_repo: "DirtBagXon/hypseus-singe",
@@ -1212,6 +1222,7 @@ fn nix_package_for_emulator(emulator: &EmulatorInfo) -> Option<&'static str> {
         "hatari" => Some("hatari"),
         "mame" => Some("mame"),
         "mednafen" => Some("mednafen"),
+        "mesen" => Some("mesen"),
         "mgba" => Some("mgba"),
         "melonds" => Some("melonds"),
         "openmsx" => Some("openmsx"),
@@ -6814,6 +6825,28 @@ mod tests {
     }
 
     #[test]
+    fn appimage_install_mapping_covers_mesen() {
+        let emulator = EmulatorInfo {
+            id: 1,
+            name: "Mesen".to_string(),
+            homepage: None,
+            supported_os: Some("Linux".to_string()),
+            winget_id: None,
+            homebrew_formula: None,
+            flatpak_id: None,
+            retroarch_core: None,
+            save_directory: None,
+            save_extensions: None,
+            notes: None,
+        };
+
+        let info =
+            appimage_install_for_emulator(&emulator).expect("Mesen should have AppImage metadata");
+        assert_eq!(info.slug, "mesen");
+        assert_eq!(info.github_repo, "SourMesen/Mesen2");
+    }
+
+    #[test]
     fn selects_best_github_appimage_asset() {
         let release = GitHubRelease {
             tag_name: "v2.11.7".to_string(),
@@ -6864,6 +6897,32 @@ mod tests {
 
         let asset = select_github_appimage_asset(&release, &info).expect("asset should match");
         assert_eq!(asset.name, "hypseus-singe_v2.11.7_AppImage.tar.gz");
+    }
+
+    #[test]
+    fn selects_best_mesen_github_appimage_asset() {
+        let release = GitHubRelease {
+            tag_name: "2.1.1".to_string(),
+            assets: vec![
+                GitHubReleaseAsset {
+                    name: "Mesen.Linux-x64.tar.gz".to_string(),
+                    browser_download_url: "https://example.invalid/native.tar.gz".to_string(),
+                },
+                GitHubReleaseAsset {
+                    name: "Mesen.Linux-x64.AppImage.tar.gz".to_string(),
+                    browser_download_url: "https://example.invalid/appimage.tar.gz".to_string(),
+                },
+                GitHubReleaseAsset {
+                    name: "Mesen.Linux-arm64.AppImage.tar.gz".to_string(),
+                    browser_download_url: "https://example.invalid/arm64-appimage.tar.gz"
+                        .to_string(),
+                },
+            ],
+        };
+        let info = appimage_install_for_slug("mesen").unwrap();
+
+        let asset = select_github_appimage_asset(&release, &info).expect("asset should match");
+        assert_eq!(asset.name, "Mesen.Linux-x64.AppImage.tar.gz");
     }
 
     #[test]
@@ -7081,6 +7140,10 @@ mod tests {
             name: "Mednafen".to_string(),
             ..base.clone()
         };
+        let mesen = EmulatorInfo {
+            name: "Mesen".to_string(),
+            ..base.clone()
+        };
         let fs_uae = EmulatorInfo {
             name: "FS-UAE".to_string(),
             ..base.clone()
@@ -7098,6 +7161,7 @@ mod tests {
         assert_eq!(nix_package_for_emulator(&dolphin), Some("dolphin-emu"));
         assert_eq!(nix_package_for_emulator(&atari_pp), Some("ataripp"));
         assert_eq!(nix_package_for_emulator(&mednafen), Some("mednafen"));
+        assert_eq!(nix_package_for_emulator(&mesen), Some("mesen"));
         assert_eq!(nix_package_for_emulator(&fs_uae), Some("fsuae"));
         assert_eq!(nix_package_for_emulator(&vice), Some("vice"));
         assert_eq!(nix_package_for_emulator(&vice_xpet), Some("vice"));
