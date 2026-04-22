@@ -3612,17 +3612,37 @@ async fn rspc_launch_game(
 
     let mut state_guard = state.write().await;
 
-    // Look up the emulator by name
-    let emulator = match handlers::get_emulator(&state_guard, &input.emulator_name).await {
-        Ok(Some(e)) => e,
-        Ok(None) => {
-            return rspc_err::<LaunchResult>(format!(
-                "Emulator '{}' not found",
-                input.emulator_name
-            ))
-            .into_response();
+    let emulator = match input.platform.as_deref() {
+        Some(platform_name) => {
+            match handlers::get_emulator_for_platform(
+                &state_guard,
+                &input.emulator_name,
+                platform_name,
+            )
+            .await
+            {
+                Ok(Some(e)) => e,
+                Ok(None) => {
+                    return rspc_err::<LaunchResult>(format!(
+                        "Emulator '{}' not found for platform '{}'",
+                        input.emulator_name, platform_name
+                    ))
+                    .into_response();
+                }
+                Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
+            }
         }
-        Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
+        None => match handlers::get_emulator(&state_guard, &input.emulator_name).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return rspc_err::<LaunchResult>(format!(
+                    "Emulator '{}' not found",
+                    input.emulator_name
+                ))
+                .into_response();
+            }
+            Err(e) => return rspc_err::<LaunchResult>(e).into_response(),
+        },
     };
 
     match handlers::launch_game_with_emulator(

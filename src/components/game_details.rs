@@ -2973,7 +2973,17 @@ fn EmulatorPickerModal(
                             <ul class="emulator-list">
                                 <For
                                     each=move || emulators.get()
-                                    key=|emu| emu.id
+                                    key=|emu| {
+                                        format!(
+                                            "{}:{}",
+                                            emu.id,
+                                            if emu.is_retroarch_core {
+                                                "retroarch"
+                                            } else {
+                                                "standalone"
+                                            }
+                                        )
+                                    }
                                     children=move |emu: EmulatorWithStatus| {
                                         let name = emu.name.clone();
                                         let display_name = emu.display_name.clone();
