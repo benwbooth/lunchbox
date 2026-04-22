@@ -6455,6 +6455,34 @@ mod tests {
     }
 
     #[test]
+    fn extracts_msx_rom_from_zip_archive() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let archive_path = temp_dir.path().join("vampire-killer.zip");
+
+        let archive_file = File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(archive_file);
+        writer
+            .start_file::<_, ()>(
+                "Vampire Killer (Japan, Europe) (En) (Alt 2).rom",
+                zip::write::FileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"MSX ROM").unwrap();
+        writer.finish().unwrap();
+
+        let prepared =
+            extract_launchable_content_from_archive(&archive_path, ArchiveKind::Zip).unwrap();
+        let extracted_path = PathBuf::from(prepared.rom_path.unwrap());
+
+        assert_eq!(
+            extracted_path.file_name().and_then(|name| name.to_str()),
+            Some("Vampire Killer (Japan, Europe) (En) (Alt 2).rom")
+        );
+        assert_eq!(std::fs::read(&extracted_path).unwrap(), b"MSX ROM");
+        assert_eq!(prepared.cleanup_paths, vec![extracted_path]);
+    }
+
+    #[test]
     fn avoids_overwriting_existing_rom_when_extracting_zip() {
         let temp_dir = tempfile::tempdir().unwrap();
         let archive_path = temp_dir.path().join("game.zip");

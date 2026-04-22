@@ -259,8 +259,8 @@ const ROM_EXTENSIONS_NO_ARCHIVE: &[&str] = &[
     "nes", "fds", "unf", "unif", "sfc", "smc", "fig", "swc", "bs", "n64", "z64", "v64", "gb",
     "gbc", "sgb", "gba", "nds", "dsi", "3ds", "cia", "gcm", "gcz", "iso", "ciso", "rvz", "wbfs",
     "wad", "sms", "gg", "md", "gen", "bin", "smd", "32x", "cue", "chd", "pbp", "cso", "pkg", "a26",
-    "a52", "a78", "atr", "atx", "xfd", "xex", "car", "cas", "lnx", "jag", "j64", "pce", "sgx",
-    "ngp", "ngc", "ws", "wsc", "vec", "col", "int",
+    "a52", "a78", "atr", "atx", "xfd", "xex", "car", "cas", "rom", "lnx", "jag", "j64", "pce",
+    "sgx", "ngp", "ngc", "ws", "wsc", "vec", "col", "int",
 ];
 
 pub fn is_recognized_rom_extension(ext: &str) -> bool {
@@ -320,5 +320,10 @@ mod tests {
         for ext in ["atr", "atx", "xfd", "xex", "car", "cas"] {
             assert!(is_recognized_rom_extension(ext), "missing extension {ext}");
         }
+    }
+
+    #[test]
+    fn recognizes_msx_rom_extension() {
+        assert!(is_recognized_rom_extension("rom"));
     }
 }
