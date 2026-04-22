@@ -423,8 +423,8 @@ KNOWN_EMULATORS = {
         ],
         "platforms": {
             "linux": {
-                "install_type": "flatpak",
-                "flatpak_id": "ca.mesen.Mesen2",
+                "install_type": "appimage",
+                "appimage_url": "https://github.com/SourMesen/Mesen2/releases/latest",
             },
             "windows": {
                 "install_type": "portable",
