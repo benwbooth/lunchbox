@@ -14,7 +14,7 @@ use crate::db::schema::EmulatorInfo;
 use crate::emulator::{self, EmulatorUpdate, EmulatorWithStatus, LaunchResult};
 use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 // ============================================================================
@@ -3639,6 +3639,124 @@ fn stale_minerva_job_message(updated_at: &str, has_live_progress: bool) -> Optio
     }
 }
 
+fn minerva_requested_indices(
+    download_mode: MinervaDownloadMode,
+    arcade_laserdisc_plan: Option<&ArcadeLaserdiscPlan>,
+    selection_plan: Option<&crate::exo::DownloadSelectionPlan>,
+    file_index: Option<usize>,
+) -> Option<Vec<usize>> {
+    match download_mode {
+        MinervaDownloadMode::GameOnly => match arcade_laserdisc_plan {
+            Some(ArcadeLaserdiscPlan::Hypseus(plan)) => {
+                Some(plan.assets.iter().map(|asset| asset.file_index).collect())
+            }
+            Some(ArcadeLaserdiscPlan::Daphne(plan)) => Some(
+                plan.staged_assets
+                    .iter()
+                    .map(|asset| asset.asset.file_index)
+                    .collect(),
+            ),
+            _ => selection_plan
+                .map(|plan| plan.requested_indices.clone())
+                .or_else(|| file_index.map(|idx| vec![idx])),
+        },
+        MinervaDownloadMode::FullTorrent => None,
+    }
+}
+
+async fn find_reusable_minerva_job(
+    state: &AppState,
+    launchbox_db_id: i64,
+    client_job_id: &str,
+) -> Result<Option<ImportJob>, String> {
+    let Some(db_pool) = state.db_pool.as_ref() else {
+        return Ok(None);
+    };
+
+    let rows: Vec<(String, i64, String, String, String, f64, Option<String>, String, String)> =
+        sqlx::query_as(
+            "SELECT id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at
+             FROM graboid_jobs
+             WHERE client_job_id = ?
+               AND launchbox_db_id IN (?, 0)
+               AND status IN ('pending', 'in_progress', 'paused', 'completed')
+             ORDER BY
+               CASE WHEN status IN ('pending', 'in_progress', 'paused') THEN 0 ELSE 1 END,
+               updated_at DESC",
+        )
+        .bind(client_job_id)
+        .bind(launchbox_db_id)
+        .fetch_all(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (
+        id,
+        existing_launchbox_db_id,
+        game_title,
+        platform,
+        status,
+        progress_percent,
+        status_message,
+        created_at,
+        updated_at,
+    ) in rows
+    {
+        if is_live_minerva_queue_status(&status) {
+            let has_live_progress = load_minerva_live_progress(state, &id, Some(client_job_id))
+                .await
+                .is_some();
+            if let Some(message) = stale_minerva_job_message(&updated_at, has_live_progress) {
+                let _ = sqlx::query(
+                    "UPDATE graboid_jobs SET status = 'failed', status_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                )
+                .bind(message)
+                .bind(&id)
+                .execute(db_pool)
+                .await;
+                crate::torrent::clear_progress(&id);
+                continue;
+            }
+
+            return Ok(Some(ImportJob {
+                id,
+                launchbox_db_id: if existing_launchbox_db_id > 0 {
+                    existing_launchbox_db_id
+                } else {
+                    launchbox_db_id
+                },
+                game_title,
+                platform,
+                status,
+                progress_percent,
+                status_message,
+                created_at,
+                updated_at,
+            }));
+        }
+
+        if status == "completed" {
+            if let Some(game_file) = get_game_file(state, launchbox_db_id).await? {
+                if Path::new(&game_file.file_path).exists() {
+                    return Ok(Some(ImportJob {
+                        id,
+                        launchbox_db_id,
+                        game_title,
+                        platform,
+                        status,
+                        progress_percent,
+                        status_message,
+                        created_at,
+                        updated_at,
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 async fn resolve_minerva_client_job_id(state: &AppState, job_id: &str) -> Option<String> {
     if let Some(client_job_id) = crate::torrent::get_client_job_id(job_id) {
         return Some(client_job_id);
@@ -4162,21 +4280,46 @@ pub async fn start_minerva_download(
         None
     };
 
-    // Create import job
-    let job_id = uuid::Uuid::new_v4().to_string();
-    let db_pool = crate::state::ensure_user_db(state)
+    let requested_indices = minerva_requested_indices(
+        download_mode,
+        arcade_laserdisc_plan.as_ref(),
+        selection_plan.as_ref(),
+        file_index,
+    );
+    let predicted_client_job_id = crate::torrent::predict_client_job_id_from_torrent_url(
+        &torrent_url,
+        requested_indices.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    crate::state::ensure_user_db(state)
         .await
         .map_err(|e| e.to_string())?;
+    let db_pool = state
+        .db_pool
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    if let Some(existing_job) =
+        find_reusable_minerva_job(state, resolved_launchbox_db_id, &predicted_client_job_id).await?
+    {
+        return Ok(existing_job);
+    }
+
+    // Create import job
+    let job_id = uuid::Uuid::new_v4().to_string();
 
     sqlx::query(
-        "INSERT INTO graboid_jobs (id, launchbox_db_id, game_title, platform, status, progress_percent, status_message)
-         VALUES (?, ?, ?, ?, 'in_progress', 0, 'Preparing download...')"
+        "INSERT INTO graboid_jobs (id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, client_job_id)
+         VALUES (?, ?, ?, ?, 'in_progress', 0, 'Preparing download...', ?)"
     )
     .bind(&job_id)
     .bind(resolved_launchbox_db_id)
     .bind(&input.game_title)
     .bind(&canonical_platform)
-    .execute(db_pool)
+    .bind(&predicted_client_job_id)
+    .execute(&db_pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -4215,6 +4358,7 @@ pub async fn start_minerva_download(
     let target_filename_bg = target_filename.clone();
     let target_size_bg = target_size;
     let arcade_laserdisc_plan_bg = arcade_laserdisc_plan.clone();
+    let requested_indices_bg = requested_indices.clone();
 
     tokio::spawn(async move {
         // Step 1: Initialize the prepared download plan
@@ -4471,24 +4615,7 @@ pub async fn start_minerva_download(
             }
         };
 
-        let requested_indices = match download_mode {
-            MinervaDownloadMode::GameOnly => match arcade_laserdisc_plan.as_ref() {
-                Some(ArcadeLaserdiscPlan::Hypseus(plan)) => {
-                    Some(plan.assets.iter().map(|asset| asset.file_index).collect())
-                }
-                Some(ArcadeLaserdiscPlan::Daphne(plan)) => Some(
-                    plan.staged_assets
-                        .iter()
-                        .map(|asset| asset.asset.file_index)
-                        .collect(),
-                ),
-                _ => selection_plan
-                    .as_ref()
-                    .map(|plan| plan.requested_indices.clone())
-                    .or_else(|| file_index.map(|idx| vec![idx])),
-            },
-            MinervaDownloadMode::FullTorrent => None,
-        };
+        let requested_indices = requested_indices_bg;
 
         let add_result = client
             .add_torrent(&torrent_url, &download_dir_bg, requested_indices)
@@ -4902,6 +5029,7 @@ pub async fn list_minerva_downloads(
     .map_err(|e| e.to_string())?;
 
     let mut items = Vec::with_capacity(rows.len());
+    let mut seen_queue_keys = HashSet::new();
     for (
         job_id,
         launchbox_db_id,
@@ -4930,6 +5058,15 @@ pub async fn list_minerva_downloads(
             .execute(db_pool)
             .await;
             crate::torrent::clear_progress(&job_id);
+            continue;
+        }
+
+        let dedupe_key = client_job_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| format!("client:{value}"))
+            .unwrap_or_else(|| format!("job:{job_id}"));
+        if !seen_queue_keys.insert(dedupe_key) {
             continue;
         }
 
@@ -7628,5 +7765,77 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(repaired_db_id.map(|(db_id,)| db_id), Some(1602));
+    }
+
+    #[tokio::test]
+    async fn completed_minerva_job_is_reused_when_the_file_is_already_present() {
+        let (_temp_dir, mut state) = new_lazy_user_state();
+        let db_pool = crate::state::ensure_user_db(&mut state)
+            .await
+            .unwrap()
+            .clone();
+
+        let rom_file = tempfile::NamedTempFile::new().unwrap();
+        let rom_path = rom_file.path().display().to_string();
+
+        sqlx::query(
+            "INSERT INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source)
+             VALUES (1602, 'Final Fantasy: Mystic Quest', 'Super Nintendo Entertainment System', ?, 1234, 'minerva')",
+        )
+        .bind(&rom_path)
+        .execute(&db_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO graboid_jobs (id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, client_job_id)
+             VALUES ('completed-job', 1602, 'Final Fantasy: Mystic Quest', 'Super Nintendo Entertainment System', 'completed', 100, 'Download complete', 'qbt:test#files=991')",
+        )
+        .execute(&db_pool)
+        .await
+        .unwrap();
+
+        let existing = super::find_reusable_minerva_job(&state, 1602, "qbt:test#files=991")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(existing.id, "completed-job");
+        assert_eq!(existing.launchbox_db_id, 1602);
+        assert_eq!(existing.status, "completed");
+    }
+
+    #[tokio::test]
+    async fn list_minerva_downloads_dedupes_duplicate_client_job_ids() {
+        let (_temp_dir, mut state) = new_lazy_user_state();
+        let _ = crate::state::ensure_user_db(&mut state).await.unwrap();
+        let db_pool = state.db_pool.as_ref().unwrap().clone();
+
+        sqlx::query(
+            "INSERT INTO graboid_jobs (
+                id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at, client_job_id
+             ) VALUES (
+                'older-job', 1602, 'Final Fantasy: Mystic Quest', 'Super Nintendo Entertainment System', 'completed', 100, 'Download complete',
+                DATETIME('now', '-1 minute'), DATETIME('now', '-1 minute'), 'qbt:test#files=991'
+             )",
+        )
+        .execute(&db_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO graboid_jobs (
+                id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, created_at, updated_at, client_job_id
+             ) VALUES (
+                'newer-job', 1602, 'Final Fantasy: Mystic Quest', 'Super Nintendo Entertainment System', 'completed', 100, 'Download complete',
+                DATETIME('now'), DATETIME('now'), 'qbt:test#files=991'
+             )",
+        )
+        .execute(&db_pool)
+        .await
+        .unwrap();
+
+        let downloads = super::list_minerva_downloads(&state).await.unwrap();
+        assert_eq!(downloads.len(), 1);
+        assert_eq!(downloads[0].job_id, "newer-job");
     }
 }

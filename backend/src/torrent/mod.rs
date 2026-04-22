@@ -223,6 +223,52 @@ pub async fn get_torrent_file_listing(torrent_url: &str) -> Result<Vec<TorrentFi
     Ok(files)
 }
 
+fn torrent_info_hash_bytes(torrent_bytes: &[u8]) -> String {
+    if let Ok(torrent) = lava_torrent::torrent::v1::Torrent::read_from_bytes(torrent_bytes) {
+        return torrent.info_hash().to_lowercase();
+    }
+
+    use sha1::{Digest, Sha1};
+    let mut hasher = Sha1::new();
+    hasher.update(torrent_bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn encode_client_job_id(hash: &str, file_indices: Option<&[usize]>) -> String {
+    if let Some(file_indices) = file_indices {
+        let mut sorted = file_indices.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        let encoded = sorted
+            .iter()
+            .map(|idx| idx.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("qbt:{hash}#files={encoded}")
+    } else {
+        format!("qbt:{hash}")
+    }
+}
+
+pub fn predict_client_job_id_from_torrent_bytes(
+    torrent_bytes: &[u8],
+    file_indices: Option<&[usize]>,
+) -> String {
+    let info_hash = torrent_info_hash_bytes(torrent_bytes);
+    encode_client_job_id(&info_hash, file_indices)
+}
+
+pub async fn predict_client_job_id_from_torrent_url(
+    torrent_url: &str,
+    file_indices: Option<&[usize]>,
+) -> Result<String> {
+    let torrent_bytes = fetch_torrent_file(torrent_url).await?;
+    Ok(predict_client_job_id_from_torrent_bytes(
+        &torrent_bytes,
+        file_indices,
+    ))
+}
+
 // ============================================================================
 // File linking utility
 // ============================================================================
@@ -269,6 +315,28 @@ pub fn link_file_to_target(source: &Path, target: &Path, mode: &str) -> Result<P
     }
 
     Ok(target.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn predicted_client_job_id_sorts_and_deduplicates_selected_files() {
+        let job_id = super::predict_client_job_id_from_torrent_bytes(
+            b"not-a-real-torrent",
+            Some(&[7, 2, 7, 3]),
+        );
+
+        assert!(job_id.starts_with("qbt:"));
+        assert!(job_id.ends_with("#files=2,3,7"));
+    }
+
+    #[test]
+    fn predicted_client_job_id_omits_file_suffix_for_full_torrent_downloads() {
+        let job_id = super::predict_client_job_id_from_torrent_bytes(b"not-a-real-torrent", None);
+
+        assert!(job_id.starts_with("qbt:"));
+        assert!(!job_id.contains("#files="));
+    }
 }
 
 /// Link/copy a ROM file from source to the rom directory, organized by platform.
