@@ -615,7 +615,8 @@ pub async fn set_platform_emulator_preference(
 ) -> Result<(), String> {
     let db_pool = crate::state::ensure_user_db(state)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .clone();
 
     sqlx::query(
         r#"
@@ -628,7 +629,7 @@ pub async fn set_platform_emulator_preference(
     )
     .bind(platform_name)
     .bind(emulator_name)
-    .execute(db_pool)
+    .execute(&db_pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -863,7 +864,8 @@ pub async fn set_emulator_launch_profile(
 ) -> Result<(), String> {
     let db_pool = crate::state::ensure_user_db(state)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .clone();
     let runtime_kind = runtime_kind_label(is_retroarch_core);
     let normalized_platform = platform_name.unwrap_or("").trim();
     let normalized_args = args_text.trim();
@@ -894,7 +896,7 @@ pub async fn set_emulator_launch_profile(
     .bind(normalized_platform)
     .bind(runtime_kind)
     .bind(normalized_args)
-    .execute(db_pool)
+    .execute(&db_pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -1962,7 +1964,181 @@ pub async fn get_game_file(
         })(row)));
     }
 
+    if launchbox_db_id > 0 {
+        if let Some(recovered) =
+            recover_zero_launchbox_db_id_game_file(state, db_pool, launchbox_db_id).await?
+        {
+            return Ok(Some(recovered));
+        }
+    }
+
     recover_missing_laserdisc_game_file(state, db_pool, launchbox_db_id).await
+}
+
+async fn resolve_effective_launchbox_db_id(
+    state: &AppState,
+    launchbox_db_id: i64,
+    game_title: &str,
+    platform: &str,
+) -> Result<i64, String> {
+    if launchbox_db_id > 0 {
+        return Ok(launchbox_db_id);
+    }
+
+    let Some(games_pool) = state.games_db_pool.as_ref() else {
+        return Ok(0);
+    };
+
+    let canonical_platform = canonicalize_legacy_platform_name(platform).to_string();
+    let normalized_title = crate::tags::normalize_title_for_matching(game_title);
+    let query_words: Vec<&str> = normalized_title.split_whitespace().collect();
+    let significant_query_words = significant_match_words(&normalized_title);
+    let candidates: Vec<(String, i64)> = sqlx::query_as(
+        r#"
+        SELECT g.title, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id
+        FROM games g
+        JOIN platforms p ON g.platform_id = p.id
+        WHERE p.name = ?
+        "#,
+    )
+    .bind(&canonical_platform)
+    .fetch_all(games_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(candidates
+        .into_iter()
+        .filter_map(|(candidate_title, candidate_db_id)| {
+            if candidate_db_id <= 0 {
+                return None;
+            }
+            let score = score_match_name(
+                &candidate_title,
+                &normalized_title,
+                &query_words,
+                &significant_query_words,
+            )?;
+            Some((candidate_db_id, score))
+        })
+        .filter(|(_, score)| score.score >= 0.75)
+        .max_by(|a, b| {
+            a.1.exact_match
+                .cmp(&b.1.exact_match)
+                .then_with(|| a.1.full_query_match.cmp(&b.1.full_query_match))
+                .then_with(|| {
+                    a.1.all_significant_words_match
+                        .cmp(&b.1.all_significant_words_match)
+                })
+                .then_with(|| {
+                    a.1.score
+                        .partial_cmp(&b.1.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        })
+        .map(|(candidate_db_id, _)| candidate_db_id)
+        .unwrap_or(0))
+}
+
+async fn recover_zero_launchbox_db_id_game_file(
+    state: &AppState,
+    db_pool: &sqlx::SqlitePool,
+    launchbox_db_id: i64,
+) -> Result<Option<GameFile>, String> {
+    let Some(games_pool) = state.games_db_pool.as_ref() else {
+        return Ok(None);
+    };
+
+    let game_row: Option<(String, String)> = sqlx::query_as(
+        "SELECT g.title, p.name FROM games g JOIN platforms p ON g.platform_id = p.id WHERE g.launchbox_db_id = ? LIMIT 1",
+    )
+    .bind(launchbox_db_id)
+    .fetch_optional(games_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some((game_title, platform)) = game_row else {
+        return Ok(None);
+    };
+
+    let canonical_platform = canonicalize_legacy_platform_name(&platform).to_string();
+    let normalized_title = crate::tags::normalize_title_for_matching(&game_title);
+    let query_words: Vec<&str> = normalized_title.split_whitespace().collect();
+    let significant_query_words = significant_match_words(&normalized_title);
+    let orphaned_rows: Vec<(
+        String,
+        String,
+        String,
+        Option<i64>,
+        String,
+        String,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT game_title, platform, file_path, file_size, imported_at, import_source, graboid_job_id FROM game_files WHERE launchbox_db_id = 0",
+    )
+    .fetch_all(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let Some((
+        recovered_title,
+        recovered_platform,
+        recovered_path,
+        recovered_size,
+        recovered_imported_at,
+        recovered_source,
+        recovered_graboid_job_id,
+    )) = orphaned_rows
+        .into_iter()
+        .filter_map(|row| {
+            let (candidate_title, candidate_platform, ..) = &row;
+            if canonicalize_legacy_platform_name(candidate_platform) != canonical_platform {
+                return None;
+            }
+            let score = score_match_name(
+                candidate_title,
+                &normalized_title,
+                &query_words,
+                &significant_query_words,
+            )?;
+            Some((row, score))
+        })
+        .filter(|(_, score)| score.score >= 0.75)
+        .max_by(|a, b| {
+            a.1.exact_match
+                .cmp(&b.1.exact_match)
+                .then_with(|| a.1.full_query_match.cmp(&b.1.full_query_match))
+                .then_with(|| {
+                    a.1.all_significant_words_match
+                        .cmp(&b.1.all_significant_words_match)
+                })
+                .then_with(|| {
+                    a.1.score
+                        .partial_cmp(&b.1.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        })
+        .map(|(row, _)| row)
+    else {
+        return Ok(None);
+    };
+
+    sqlx::query("UPDATE game_files SET launchbox_db_id = ? WHERE launchbox_db_id = 0 AND file_path = ?")
+        .bind(launchbox_db_id)
+        .bind(&recovered_path)
+        .execute(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(Some(GameFile {
+        launchbox_db_id,
+        game_title: recovered_title,
+        platform: recovered_platform,
+        file_path: recovered_path,
+        file_size: recovered_size,
+        imported_at: recovered_imported_at,
+        import_source: recovered_source,
+        graboid_job_id: recovered_graboid_job_id,
+    }))
 }
 
 async fn recover_missing_laserdisc_game_file(
@@ -2209,20 +2385,21 @@ fn laserdisc_relative_path(path: &Path) -> Option<String> {
 pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Result<(), String> {
     let db_pool = crate::state::ensure_user_db(state)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .clone();
 
     let game_file_row: Option<(String, String, String)> = sqlx::query_as(
         "SELECT platform, file_path, import_source FROM game_files WHERE launchbox_db_id = ?",
     )
     .bind(launchbox_db_id)
-    .fetch_optional(db_pool)
+    .fetch_optional(&db_pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let pc_install_row: Option<(String,)> =
         sqlx::query_as("SELECT install_root FROM pc_game_installs WHERE launchbox_db_id = ?")
             .bind(launchbox_db_id)
-            .fetch_optional(db_pool)
+            .fetch_optional(&db_pool)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -2234,7 +2411,7 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
             remove_arcade_laserdisc_companion_assets(&platform, &file_path).await?;
             sqlx::query("DELETE FROM game_files WHERE launchbox_db_id = ?")
                 .bind(launchbox_db_id)
-                .execute(db_pool)
+                .execute(&db_pool)
                 .await
                 .map_err(|e| e.to_string())?;
             removed_anything = true;
@@ -2250,7 +2427,7 @@ pub async fn uninstall_game(state: &mut AppState, launchbox_db_id: i64) -> Resul
         remove_path_if_exists(std::path::Path::new(&install_root)).await?;
         sqlx::query("DELETE FROM pc_game_installs WHERE launchbox_db_id = ?")
             .bind(launchbox_db_id)
-            .execute(db_pool)
+            .execute(&db_pool)
             .await
             .map_err(|e| e.to_string())?;
         removed_anything = true;
@@ -3933,6 +4110,13 @@ pub async fn start_minerva_download(
 ) -> Result<ImportJob, String> {
     let torrent_url = input.torrent_url.clone();
     let canonical_platform = canonicalize_legacy_platform_name(&input.platform).to_string();
+    let resolved_launchbox_db_id = resolve_effective_launchbox_db_id(
+        state,
+        input.launchbox_db_id,
+        &input.game_title,
+        &canonical_platform,
+    )
+    .await?;
     let file_index = input.file_index;
     let download_mode = input.download_mode;
     let files = crate::torrent::get_torrent_file_listing(&torrent_url)
@@ -3965,7 +4149,7 @@ pub async fn start_minerva_download(
         if let Some(target_file) = target_file.as_ref() {
             build_arcade_laserdisc_plan(
                 state,
-                input.launchbox_db_id,
+                resolved_launchbox_db_id,
                 &torrent_url,
                 &files,
                 target_file,
@@ -3989,7 +4173,7 @@ pub async fn start_minerva_download(
          VALUES (?, ?, ?, ?, 'in_progress', 0, 'Preparing download...')"
     )
     .bind(&job_id)
-    .bind(input.launchbox_db_id)
+    .bind(resolved_launchbox_db_id)
     .bind(&input.game_title)
     .bind(&canonical_platform)
     .execute(db_pool)
@@ -4019,7 +4203,7 @@ pub async fn start_minerva_download(
     let job_id_bg = job_id.clone();
     let game_title = input.game_title.clone();
     let platform = canonical_platform.clone();
-    let launchbox_db_id = input.launchbox_db_id;
+    let launchbox_db_id = resolved_launchbox_db_id;
     let db_path = state.user_db_path.clone();
     let app_settings = state.settings.clone();
     let file_link_mode_bg = file_link_mode.clone();
@@ -4674,7 +4858,7 @@ pub async fn start_minerva_download(
 
     Ok(ImportJob {
         id: job_id,
-        launchbox_db_id: input.launchbox_db_id,
+        launchbox_db_id: resolved_launchbox_db_id,
         game_title: input.game_title,
         platform: canonical_platform,
         status: "in_progress".to_string(),
@@ -6167,10 +6351,18 @@ pub async fn confirm_rom_import(
 
     let db_pool = crate::state::ensure_user_db(state)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .clone();
     let mut imported = 0usize;
 
     for entry in &input.roms {
+        let resolved_launchbox_db_id = resolve_effective_launchbox_db_id(
+            state,
+            entry.launchbox_db_id,
+            &entry.game_title,
+            &entry.platform,
+        )
+        .await?;
         let file_path = if entry.copy_to_library {
             let source = std::path::Path::new(&entry.file_path);
             match crate::torrent::link_rom_file(source, &rom_dir, &entry.platform, &file_link_mode)
@@ -6193,12 +6385,12 @@ pub async fn confirm_rom_import(
             "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source)
              VALUES (?, ?, ?, ?, ?, 'local')",
         )
-        .bind(entry.launchbox_db_id)
+        .bind(resolved_launchbox_db_id)
         .bind(&entry.game_title)
         .bind(&entry.platform)
         .bind(&file_path)
         .bind(file_size)
-        .execute(db_pool)
+        .execute(&db_pool)
         .await;
 
         if result.is_ok() {
@@ -7192,6 +7384,66 @@ mod tests {
         }
     }
 
+    async fn new_reference_games_state() -> crate::state::AppState {
+        let games_pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE platforms (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE games (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                platform_id INTEGER NOT NULL,
+                launchbox_db_id INTEGER
+            )
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO platforms (id, name) VALUES (1, 'Super Nintendo Entertainment System')
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO games (id, title, platform_id, launchbox_db_id) VALUES
+                ('canonical', 'Final Fantasy: Mystic Quest', 1, 1602),
+                ('variant-usa', 'Final Fantasy - Mystic Quest (USA)', 1, NULL),
+                ('variant-japan', 'Final Fantasy USA - Mystic Quest (Japan)', 1, NULL)
+            "#,
+        )
+        .execute(&games_pool)
+        .await
+        .unwrap();
+
+        crate::state::AppState {
+            games_db_pool: Some(games_pool),
+            ..crate::state::AppState::default()
+        }
+    }
+
     #[tokio::test]
     async fn emulator_preferences_default_to_empty_without_user_db() {
         let state = crate::state::AppState::default();
@@ -7331,5 +7583,50 @@ mod tests {
             .find(|emulator| emulator.name == "Mesen")
             .unwrap();
         assert_eq!(mesen.retroarch_core.as_deref(), Some("mesen-s"));
+    }
+
+    #[tokio::test]
+    async fn zero_launchbox_db_id_imports_resolve_to_matching_canonical_game() {
+        let state = new_reference_games_state().await;
+
+        let resolved = super::resolve_effective_launchbox_db_id(
+            &state,
+            0,
+            "Final Fantasy USA - Mystic Quest",
+            "Super Nintendo Entertainment System",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(resolved, 1602);
+    }
+
+    #[tokio::test]
+    async fn get_game_file_repairs_zero_launchbox_db_id_rows() {
+        let (_temp_dir, mut state) = new_lazy_user_state();
+        let reference_games = new_reference_games_state().await;
+        state.games_db_pool = reference_games.games_db_pool.clone();
+
+        let db_pool = crate::state::ensure_user_db(&mut state).await.unwrap().clone();
+
+        sqlx::query(
+            "INSERT INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source)
+             VALUES (0, 'Final Fantasy USA - Mystic Quest', 'Super Nintendo Entertainment System', '/tmp/mystic-quest.sfc', 1234, 'minerva')",
+        )
+        .execute(&db_pool)
+        .await
+        .unwrap();
+
+        let file = super::get_game_file(&state, 1602).await.unwrap().unwrap();
+        assert_eq!(file.launchbox_db_id, 1602);
+        assert_eq!(file.file_path, "/tmp/mystic-quest.sfc");
+
+        let repaired_db_id: Option<(i64,)> = sqlx::query_as(
+            "SELECT launchbox_db_id FROM game_files WHERE file_path = '/tmp/mystic-quest.sfc'",
+        )
+        .fetch_optional(&db_pool)
+        .await
+        .unwrap();
+        assert_eq!(repaired_db_id.map(|(db_id,)| db_id), Some(1602));
     }
 }

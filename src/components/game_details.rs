@@ -78,6 +78,17 @@ async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
     None
 }
 
+async fn resolve_display_game_identity(game: &Game) -> Game {
+    if game.database_id > 0 {
+        return game.clone();
+    }
+
+    match backend_api::get_game_by_uuid(game.id.clone()).await {
+        Ok(Some(resolved)) if resolved.database_id > 0 => resolved,
+        _ => game.clone(),
+    }
+}
+
 async fn refresh_display_game_file_state(
     display_game: ReadSignal<Option<Game>>,
     set_display_game: WriteSignal<Option<Game>>,
@@ -89,11 +100,20 @@ async fn refresh_display_game_file_state(
             return;
         };
 
-        if let Some(file) = resolve_game_file_for_display(&game_snapshot).await {
+        let resolved_game = resolve_display_game_identity(&game_snapshot).await;
+        if resolved_game.database_id > 0 && resolved_game.database_id != game_snapshot.database_id {
+            set_display_game.set(Some(resolved_game.clone()));
+        }
+
+        if let Some(file) = resolve_game_file_for_display(&resolved_game).await {
             set_game_file.set(Some(file));
             set_display_game.update(|game| {
                 if let Some(game) = game.as_mut() {
                     game.has_game_file = true;
+                    if game.database_id <= 0 && resolved_game.database_id > 0 {
+                        *game = resolved_game.clone();
+                        game.has_game_file = true;
+                    }
                 }
             });
             return;
@@ -1284,10 +1304,6 @@ pub fn GameDetails(
             set_import_state_loading.set(true);
             let game_snapshot = g.clone();
             let game_id = g.id.clone();
-            let db_id = g.database_id;
-            let display_title = g.display_title.clone();
-            let platform_id = g.platform_id;
-            let variant_count = g.variant_count;
             let expected_game_id = game_id.clone();
 
             // Check if we're switching variants of the same game (variants already loaded)
@@ -1307,6 +1323,22 @@ pub fn GameDetails(
                         .map(|current| current.id.as_str() == expected_game_id.as_str())
                         .unwrap_or(false)
                 };
+
+                let resolved_game = resolve_display_game_identity(&game_snapshot).await;
+                if !is_current_game() {
+                    return;
+                }
+                if resolved_game.database_id > 0
+                    && resolved_game.database_id != game_snapshot.database_id
+                {
+                    set_display_game.set(Some(resolved_game.clone()));
+                }
+
+                let game_snapshot = resolved_game;
+                let db_id = game_snapshot.database_id;
+                let display_title = game_snapshot.display_title.clone();
+                let platform_id = game_snapshot.platform_id;
+                let variant_count = game_snapshot.variant_count;
 
                 // Load play stats
                 if let Ok(stats) = backend_api::get_play_stats(db_id).await {
@@ -1896,7 +1928,7 @@ pub fn GameDetails(
                                                         class="import-btn-action"
                                                         title="Import a local ROM file by path"
                                                         on:click=move |_| {
-                                                            if let Some(g) = game.get_untracked() {
+                                                            if let Some(g) = display_game.get_untracked() {
                                                                 let db_id = g.database_id;
                                                                 let title = g.display_title.clone();
                                                                 let platform = stored_platform.get_value();
