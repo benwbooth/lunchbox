@@ -1975,7 +1975,7 @@ pub async fn get_game_file(
     recover_missing_laserdisc_game_file(state, db_pool, launchbox_db_id).await
 }
 
-async fn resolve_effective_launchbox_db_id(
+pub(crate) async fn resolve_effective_launchbox_db_id(
     state: &AppState,
     launchbox_db_id: i64,
     game_title: &str,
@@ -1990,53 +1990,43 @@ async fn resolve_effective_launchbox_db_id(
     };
 
     let canonical_platform = canonicalize_legacy_platform_name(platform).to_string();
-    let normalized_title = crate::tags::normalize_title_for_matching(game_title);
-    let query_words: Vec<&str> = normalized_title.split_whitespace().collect();
-    let significant_query_words = significant_match_words(&normalized_title);
-    let candidates: Vec<(String, i64)> = sqlx::query_as(
-        r#"
-        SELECT g.title, COALESCE(g.launchbox_db_id, 0) as launchbox_db_id
-        FROM games g
-        JOIN platforms p ON g.platform_id = p.id
-        WHERE p.name = ?
-        "#,
-    )
-    .bind(&canonical_platform)
-    .fetch_all(games_pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let platform_ids = resolve_equivalent_platform_ids_by_name(games_pool, &canonical_platform).await?;
+    let mut lookup_titles = vec![game_title.to_string()];
 
-    Ok(candidates
-        .into_iter()
-        .filter_map(|(candidate_title, candidate_db_id)| {
-            if candidate_db_id <= 0 {
-                return None;
-            }
-            let score = score_match_name(
-                &candidate_title,
-                &normalized_title,
-                &query_words,
-                &significant_query_words,
-            )?;
-            Some((candidate_db_id, score))
-        })
-        .filter(|(_, score)| score.score >= 0.75)
-        .max_by(|a, b| {
-            a.1.exact_match
-                .cmp(&b.1.exact_match)
-                .then_with(|| a.1.full_query_match.cmp(&b.1.full_query_match))
-                .then_with(|| {
-                    a.1.all_significant_words_match
-                        .cmp(&b.1.all_significant_words_match)
-                })
-                .then_with(|| {
-                    a.1.score
-                        .partial_cmp(&b.1.score)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-        })
-        .map(|(candidate_db_id, _)| candidate_db_id)
-        .unwrap_or(0))
+    if let Some(resolved) =
+        find_best_launchbox_db_id_match_for_lookup_titles(games_pool, &platform_ids, &lookup_titles)
+            .await?
+    {
+        return Ok(resolved);
+    }
+
+    let related_ids =
+        load_related_launchbox_ids_for_lookup_title(games_pool, game_title, &platform_ids).await?;
+    if !related_ids.is_empty() {
+        let related_id_set: BTreeSet<i64> = related_ids.iter().copied().collect();
+        let related_titles =
+            fetch_lookup_titles_for_launchbox_ids(games_pool, &related_id_set).await?;
+        let base_lookup_titles = std::mem::take(&mut lookup_titles);
+        let mut seen_normalized = HashSet::new();
+        for title in base_lookup_titles {
+            append_unique_lookup_title(&mut lookup_titles, &mut seen_normalized, title);
+        }
+        for title in related_titles {
+            append_unique_lookup_title(&mut lookup_titles, &mut seen_normalized, title);
+        }
+
+        if let Some(resolved) = find_best_launchbox_db_id_match_for_lookup_titles(
+            games_pool,
+            &platform_ids,
+            &lookup_titles,
+        )
+        .await?
+        {
+            return Ok(resolved);
+        }
+    }
+
+    Ok(related_ids.into_iter().next().unwrap_or(0))
 }
 
 async fn recover_zero_launchbox_db_id_game_file(
@@ -2056,14 +2046,11 @@ async fn recover_zero_launchbox_db_id_game_file(
     .await
     .map_err(|e| e.to_string())?;
 
-    let Some((game_title, platform)) = game_row else {
+    let Some((_game_title, platform)) = game_row else {
         return Ok(None);
     };
 
     let canonical_platform = canonicalize_legacy_platform_name(&platform).to_string();
-    let normalized_title = crate::tags::normalize_title_for_matching(&game_title);
-    let query_words: Vec<&str> = normalized_title.split_whitespace().collect();
-    let significant_query_words = significant_match_words(&normalized_title);
     let orphaned_rows: Vec<(
         String,
         String,
@@ -2073,11 +2060,26 @@ async fn recover_zero_launchbox_db_id_game_file(
         String,
         Option<String>,
     )> = sqlx::query_as(
-        "SELECT game_title, platform, file_path, file_size, imported_at, import_source, graboid_job_id FROM game_files WHERE launchbox_db_id = 0",
+        "SELECT game_title, platform, file_path, file_size, imported_at, import_source, graboid_job_id FROM game_files WHERE launchbox_db_id = 0 ORDER BY imported_at DESC",
     )
     .fetch_all(db_pool)
         .await
         .map_err(|e| e.to_string())?;
+
+    let mut recovered_row = None;
+    for row in orphaned_rows {
+        let (candidate_title, candidate_platform, ..) = &row;
+        if canonicalize_legacy_platform_name(candidate_platform) != canonical_platform {
+            continue;
+        }
+
+        let resolved_candidate_db_id =
+            resolve_effective_launchbox_db_id(state, 0, candidate_title, candidate_platform).await?;
+        if resolved_candidate_db_id == launchbox_db_id {
+            recovered_row = Some(row);
+            break;
+        }
+    }
 
     let Some((
         recovered_title,
@@ -2087,37 +2089,7 @@ async fn recover_zero_launchbox_db_id_game_file(
         recovered_imported_at,
         recovered_source,
         recovered_graboid_job_id,
-    )) = orphaned_rows
-        .into_iter()
-        .filter_map(|row| {
-            let (candidate_title, candidate_platform, ..) = &row;
-            if canonicalize_legacy_platform_name(candidate_platform) != canonical_platform {
-                return None;
-            }
-            let score = score_match_name(
-                candidate_title,
-                &normalized_title,
-                &query_words,
-                &significant_query_words,
-            )?;
-            Some((row, score))
-        })
-        .filter(|(_, score)| score.score >= 0.75)
-        .max_by(|a, b| {
-            a.1.exact_match
-                .cmp(&b.1.exact_match)
-                .then_with(|| a.1.full_query_match.cmp(&b.1.full_query_match))
-                .then_with(|| {
-                    a.1.all_significant_words_match
-                        .cmp(&b.1.all_significant_words_match)
-                })
-                .then_with(|| {
-                    a.1.score
-                        .partial_cmp(&b.1.score)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-        })
-        .map(|(row, _)| row)
+    )) = recovered_row
     else {
         return Ok(None);
     };
@@ -5389,6 +5361,85 @@ fn score_match_name(
     })
 }
 
+fn compare_named_match_scores(
+    a: &NamedMatchScore,
+    b: &NamedMatchScore,
+) -> std::cmp::Ordering {
+    a.exact_match
+        .cmp(&b.exact_match)
+        .then_with(|| a.full_query_match.cmp(&b.full_query_match))
+        .then_with(|| {
+            a.all_significant_words_match
+                .cmp(&b.all_significant_words_match)
+        })
+        .then_with(|| {
+            a.score
+                .partial_cmp(&b.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn best_named_match_for_lookup_titles(
+    candidate_name: &str,
+    lookup_titles: &[String],
+) -> Option<NamedMatchScore> {
+    lookup_titles
+        .iter()
+        .filter_map(|lookup_title| {
+            let normalized_title = crate::tags::normalize_title_for_matching(lookup_title);
+            if normalized_title.is_empty() {
+                return None;
+            }
+            let query_words: Vec<&str> = normalized_title.split_whitespace().collect();
+            let significant_query_words = significant_match_words(&normalized_title);
+            score_match_name(
+                candidate_name,
+                &normalized_title,
+                &query_words,
+                &significant_query_words,
+            )
+        })
+        .max_by(compare_named_match_scores)
+}
+
+async fn find_best_launchbox_db_id_match_for_lookup_titles(
+    games_pool: &sqlx::SqlitePool,
+    platform_ids: &[i64],
+    lookup_titles: &[String],
+) -> Result<Option<i64>, String> {
+    if platform_ids.is_empty() || lookup_titles.is_empty() {
+        return Ok(None);
+    }
+
+    let placeholders = vec!["?"; platform_ids.len()].join(", ");
+    let sql = format!(
+        "SELECT title, COALESCE(launchbox_db_id, 0) as launchbox_db_id
+         FROM games
+         WHERE platform_id IN ({placeholders}) AND launchbox_db_id IS NOT NULL"
+    );
+    let mut query = sqlx::query_as::<_, (String, i64)>(&sql);
+    for platform_id in platform_ids {
+        query = query.bind(*platform_id);
+    }
+    let candidates = query
+        .fetch_all(games_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(candidates
+        .into_iter()
+        .filter_map(|(candidate_title, candidate_db_id)| {
+            if candidate_db_id <= 0 {
+                return None;
+            }
+            let score = best_named_match_for_lookup_titles(&candidate_title, lookup_titles)?;
+            Some((candidate_db_id, score))
+        })
+        .filter(|(_, score)| score.score >= 0.75)
+        .max_by(|a, b| compare_named_match_scores(&a.1, &b.1))
+        .map(|(candidate_db_id, _)| candidate_db_id))
+}
+
 fn append_unique_lookup_title(
     titles: &mut Vec<String>,
     seen_normalized: &mut HashSet<String>,
@@ -8229,6 +8280,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn zero_launchbox_db_id_alias_imports_resolve_to_matching_canonical_game() {
+        let state = new_lookup_alias_state().await;
+
+        let resolved = super::resolve_effective_launchbox_db_id(
+            &state,
+            0,
+            "Akumajo Dracula",
+            "Microsoft MSX2",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(resolved, 27106);
+    }
+
+    #[tokio::test]
     async fn get_game_file_repairs_zero_launchbox_db_id_rows() {
         let (_temp_dir, mut state) = new_lazy_user_state();
         let reference_games = new_reference_games_state().await;
@@ -8258,6 +8325,38 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(repaired_db_id.map(|(db_id,)| db_id), Some(1602));
+    }
+
+    #[tokio::test]
+    async fn get_game_file_repairs_zero_launchbox_db_id_alias_rows() {
+        let (_temp_dir, mut state) = new_lazy_user_state();
+        let reference_games = new_lookup_alias_state().await;
+        state.games_db_pool = reference_games.games_db_pool.clone();
+
+        let db_pool = crate::state::ensure_user_db(&mut state)
+            .await
+            .unwrap()
+            .clone();
+
+        sqlx::query(
+            "INSERT INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source)
+             VALUES (0, 'Akumajo Dracula', 'Microsoft MSX2', '/tmp/vampire-killer.rom', 1234, 'minerva')",
+        )
+        .execute(&db_pool)
+        .await
+        .unwrap();
+
+        let file = super::get_game_file(&state, 27106).await.unwrap().unwrap();
+        assert_eq!(file.launchbox_db_id, 27106);
+        assert_eq!(file.file_path, "/tmp/vampire-killer.rom");
+
+        let repaired_db_id: Option<(i64,)> = sqlx::query_as(
+            "SELECT launchbox_db_id FROM game_files WHERE file_path = '/tmp/vampire-killer.rom'",
+        )
+        .fetch_optional(&db_pool)
+        .await
+        .unwrap();
+        assert_eq!(repaired_db_id.map(|(db_id,)| db_id), Some(27106));
     }
 
     #[tokio::test]

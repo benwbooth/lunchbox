@@ -2185,10 +2185,44 @@ pub fn GameDetails(
                                                                             download_mode,
                                                                         ).await {
                                                                             Ok(job) => {
-                                                                                set_import_job_id.set(Some(job.id.clone()));
-                                                                                set_minerva_job_id.set(Some(job.id));
-                                                                                request_minerva_download_queue_refresh();
-                                                                                refresh_minerva_download_queue_now().await;
+                                                                                let job_id = job.id.clone();
+                                                                                let job_status = job.status.clone();
+                                                                                let job_message = job.status_message.clone();
+
+                                                                                match job_status.as_str() {
+                                                                                    "completed" => {
+                                                                                        set_minerva_starting.set(false);
+                                                                                        set_import_job_id.set(None);
+                                                                                        set_minerva_job_id.set(None);
+                                                                                        request_minerva_download_queue_refresh();
+                                                                                        refresh_minerva_download_queue_now().await;
+                                                                                        refresh_display_game_file_state(
+                                                                                            display_game,
+                                                                                            set_display_game,
+                                                                                            set_game_file,
+                                                                                            4,
+                                                                                        )
+                                                                                        .await;
+                                                                                    }
+                                                                                    "failed" | "cancelled" => {
+                                                                                        set_minerva_starting.set(false);
+                                                                                        set_import_job_id.set(None);
+                                                                                        set_minerva_job_id.set(None);
+                                                                                        set_import_error.set(Some(
+                                                                                            job_message.unwrap_or_else(|| {
+                                                                                                format!("Download {}.", job_status)
+                                                                                            }),
+                                                                                        ));
+                                                                                        request_minerva_download_queue_refresh();
+                                                                                        refresh_minerva_download_queue_now().await;
+                                                                                    }
+                                                                                    _ => {
+                                                                                        set_import_job_id.set(Some(job_id.clone()));
+                                                                                        set_minerva_job_id.set(Some(job_id));
+                                                                                        request_minerva_download_queue_refresh();
+                                                                                        refresh_minerva_download_queue_now().await;
+                                                                                    }
+                                                                                }
                                                                             }
                                                                             Err(e) => {
                                                                                 set_minerva_starting.set(false);
