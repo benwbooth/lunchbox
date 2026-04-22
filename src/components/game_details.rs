@@ -78,6 +78,33 @@ async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
     None
 }
 
+async fn refresh_display_game_file_state(
+    display_game: ReadSignal<Option<Game>>,
+    set_display_game: WriteSignal<Option<Game>>,
+    set_game_file: WriteSignal<Option<GameFile>>,
+    attempts: usize,
+) {
+    for attempt in 0..attempts {
+        let Some(game_snapshot) = display_game.get_untracked() else {
+            return;
+        };
+
+        if let Some(file) = resolve_game_file_for_display(&game_snapshot).await {
+            set_game_file.set(Some(file));
+            set_display_game.update(|game| {
+                if let Some(game) = game.as_mut() {
+                    game.has_game_file = true;
+                }
+            });
+            return;
+        }
+
+        if attempt + 1 < attempts {
+            delay_ms(300).await;
+        }
+    }
+}
+
 fn pause_game_details_video() {
     let Some(window) = web_sys::window() else {
         return;
@@ -1426,6 +1453,10 @@ pub fn GameDetails(
         {
             set_minerva_job_id.set(None);
             set_import_job_id.set(None);
+            spawn_local(async move {
+                refresh_display_game_file_state(display_game, set_display_game, set_game_file, 4)
+                    .await;
+            });
         }
     });
 
@@ -1440,11 +1471,13 @@ pub fn GameDetails(
                 set_minerva_job_id.set(None);
                 set_import_job_id.set(None);
                 spawn_local(async move {
-                    if let Some(g) = game.get_untracked() {
-                        if let Ok(Some(file)) = backend_api::get_game_file(g.database_id).await {
-                            set_game_file.set(Some(file));
-                        }
-                    }
+                    refresh_display_game_file_state(
+                        display_game,
+                        set_display_game,
+                        set_game_file,
+                        6,
+                    )
+                    .await;
                 });
             }
             "failed" | "cancelled" => {
@@ -1883,10 +1916,13 @@ pub fn GameDetails(
                                                                             match backend_api::confirm_rom_import(entries).await {
                                                                                 Ok(count) => {
                                                                                     if count > 0 {
-                                                                                        // Refresh game file
-                                                                                        if let Ok(Some(file)) = backend_api::get_game_file(db_id).await {
-                                                                                            set_game_file.set(Some(file));
-                                                                                        }
+                                                                                        refresh_display_game_file_state(
+                                                                                            display_game,
+                                                                                            set_display_game,
+                                                                                            set_game_file,
+                                                                                            4,
+                                                                                        )
+                                                                                        .await;
                                                                                     }
                                                                                 }
                                                                                 Err(e) => set_import_error.set(Some(e)),
