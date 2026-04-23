@@ -425,7 +425,9 @@ fn find_directional_candidate(
 
     candidates
         .iter()
-        .filter(|candidate| !same_element(candidate, current))
+        .filter(|candidate| {
+            !same_element(candidate, current) && should_consider_spatial_candidate(candidate)
+        })
         .filter_map(|candidate| {
             let rect = navigation_rect(candidate);
             directional_score(current_center_x, current_center_y, &rect, action)
@@ -468,7 +470,9 @@ fn find_nearest_candidate(
 
     candidates
         .iter()
-        .filter(|candidate| !same_element(candidate, current))
+        .filter(|candidate| {
+            !same_element(candidate, current) && should_consider_spatial_candidate(candidate)
+        })
         .min_by(|a, b| {
             let rect_a = navigation_rect(a);
             let rect_b = navigation_rect(b);
@@ -604,6 +608,14 @@ fn navigation_rect(element: &HtmlElement) -> NavigationRect {
     }
 
     rect_from_element(element)
+}
+
+fn should_consider_spatial_candidate(element: &HtmlElement) -> bool {
+    if element.get_attribute("data-nav-kind").as_deref() != Some("game-grid") {
+        return true;
+    }
+
+    selected_or_first_game_grid_item(element).is_none()
 }
 
 fn rect_from_element(element: &HtmlElement) -> NavigationRect {
