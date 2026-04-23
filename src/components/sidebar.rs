@@ -108,6 +108,7 @@ pub fn Sidebar(
     let (show_create_dialog, set_show_create_dialog) = signal(false);
     let (new_collection_name, set_new_collection_name) = signal(String::new());
     let (gamepad_nav_index, set_gamepad_nav_index) = signal(0usize);
+    let (last_handled_gamepad_seq, set_last_handled_gamepad_seq) = signal(0u64);
 
     // Load collections and refresh when trigger changes
     Effect::new(move || {
@@ -224,8 +225,11 @@ pub fn Sidebar(
     });
 
     Effect::new(move || {
-        let _ = gamepad_nav_action_seq.get();
+        let action_seq = gamepad_nav_action_seq.get();
         if gamepad_focus_area.get() != GamepadFocusArea::Sidebar {
+            return;
+        }
+        if action_seq == 0 || action_seq == last_handled_gamepad_seq.get() {
             return;
         }
 
@@ -233,6 +237,8 @@ pub fn Sidebar(
         if entries.is_empty() {
             return;
         }
+
+        set_last_handled_gamepad_seq.set(action_seq);
 
         match gamepad_nav_action.get() {
             Some(GamepadNavAction::Up) => {

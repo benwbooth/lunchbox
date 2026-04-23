@@ -563,6 +563,7 @@ pub fn GameGrid(
     let (column_filters, set_column_filters) = signal::<ColumnFilters>(HashMap::new());
     let (filter_menu, set_filter_menu) = signal::<Option<(Column, i32, i32)>>(None); // (column, x, y) position
     let (gamepad_selected_index, set_gamepad_selected_index) = signal(0usize);
+    let (last_handled_gamepad_seq, set_last_handled_gamepad_seq) = signal(0u64);
 
     // Container ref for scroll handling
     let container_ref = NodeRef::<html::Main>::new();
@@ -1043,8 +1044,11 @@ pub fn GameGrid(
     });
 
     Effect::new(move || {
-        let _ = gamepad_nav_action_seq.get();
+        let action_seq = gamepad_nav_action_seq.get();
         if gamepad_focus_area.get() != GamepadFocusArea::Grid {
+            return;
+        }
+        if action_seq == 0 || action_seq == last_handled_gamepad_seq.get() {
             return;
         }
 
@@ -1053,8 +1057,11 @@ pub fn GameGrid(
             if matches!(gamepad_nav_action.get(), Some(GamepadNavAction::Left)) {
                 set_gamepad_focus_area.set(GamepadFocusArea::Sidebar);
             }
+            set_last_handled_gamepad_seq.set(action_seq);
             return;
         }
+
+        set_last_handled_gamepad_seq.set(action_seq);
 
         let max_index = displayed_games.len().saturating_sub(1);
         let current_index = gamepad_selected_index.get().min(max_index);
