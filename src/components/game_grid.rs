@@ -726,7 +726,8 @@ pub fn GameGrid(
                             .and_then(|value| value.parse::<usize>().ok());
                         set_nav_selected_index.set(next_index);
                     }
-                }) as Box<dyn FnMut(web_sys::Event)>);
+                })
+                    as Box<dyn FnMut(web_sys::Event)>);
 
             let _ = container.add_event_listener_with_callback(
                 "lunchbox-grid-select",
@@ -2188,6 +2189,7 @@ fn GameCard(
         <div
             class="game-card-anchor"
             role="button"
+            tabindex="-1"
             attr:data-nav="true"
             attr:data-nav-kind="game-item"
             attr:data-game-index=render_index.to_string()
@@ -2426,6 +2428,7 @@ fn GameListItem(
         <div
             class="game-list-item"
             role="button"
+            tabindex="-1"
             attr:data-nav="true"
             attr:data-nav-kind="game-item"
             attr:data-game-index=render_index.to_string()

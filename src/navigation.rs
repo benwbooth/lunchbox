@@ -158,6 +158,16 @@ fn move_directional(action: NavigationAction) -> bool {
         }
     }
 
+    if let Some(grid_entry) = find_game_grid_entry_candidate(&current, &candidates, action) {
+        debug_log_nav(&format!(
+            "grid entry from kind={} action={:?} index={:?}",
+            current_kind,
+            action,
+            parse_usize_attr(&grid_entry, "data-game-index")
+        ));
+        return focus_candidate(&grid_entry);
+    }
+
     if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid") {
         if let Some(selected_item) = selected_game_grid_item(&current) {
             if let Some(next) = find_directional_candidate(&selected_item, &candidates, action) {
@@ -347,7 +357,10 @@ fn focus_game_grid_index(
 
     if let Some(container_html) = maybe_container_html.as_ref() {
         set_game_grid_selected_index(container_html, next_index);
-        focus_game_grid_container(container_html, desired_scroll_top);
+        if !focus_game_grid_item_by_index(container_html, next_index, desired_scroll_top) {
+            focus_game_grid_container(container_html, desired_scroll_top);
+            retry_focus_game_grid_item(container_html.clone(), next_index, desired_scroll_top);
+        }
         return;
     }
 }
@@ -418,6 +431,50 @@ fn focus_game_grid_container(container: &HtmlElement, desired_scroll_top: Option
                 delay_ms(delay).await;
             }
             restore_scroll_top(&container, desired_scroll_top);
+        }
+    });
+}
+
+fn focus_game_grid_item_by_index(
+    container: &HtmlElement,
+    next_index: usize,
+    desired_scroll_top: Option<i32>,
+) -> bool {
+    let selector = format!(
+        r#"[data-nav-kind="game-item"][data-game-index="{}"]"#,
+        next_index
+    );
+    let container_element: Element = container.clone().unchecked_into();
+    let Some(item) = query_selector(&container_element, &selector).and_then(html_element_from)
+    else {
+        return false;
+    };
+
+    let _ = item.set_attribute("data-nav-active-grid", "true");
+    let focused = focus_without_scroll(&item).is_ok();
+    let _ = container.set_attribute("data-nav-active-grid", "true");
+    if let Some(desired_scroll_top) = desired_scroll_top {
+        restore_scroll_top(container, desired_scroll_top);
+    }
+    focused
+}
+
+fn retry_focus_game_grid_item(
+    container: HtmlElement,
+    next_index: usize,
+    desired_scroll_top: Option<i32>,
+) {
+    spawn_local(async move {
+        for delay in [0, 16, 48, 96] {
+            if delay > 0 {
+                delay_ms(delay).await;
+            }
+            if let Some(desired_scroll_top) = desired_scroll_top {
+                restore_scroll_top(&container, desired_scroll_top);
+            }
+            if focus_game_grid_item_by_index(&container, next_index, desired_scroll_top) {
+                break;
+            }
         }
     });
 }
@@ -686,13 +743,10 @@ fn focus_default_candidate(candidates: &[HtmlElement], scope: Option<&Element>) 
         {
             return focus_candidate(&default_candidate);
         }
-    } else if let Some(game_item) = candidates
-        .iter()
-        .find(|candidate| {
-            candidate.get_attribute("data-nav-kind").as_deref() == Some("game-grid")
-                || candidate.get_attribute("data-nav-kind").as_deref() == Some("game-item")
-        })
-    {
+    } else if let Some(game_item) = candidates.iter().find(|candidate| {
+        candidate.get_attribute("data-nav-kind").as_deref() == Some("game-grid")
+            || candidate.get_attribute("data-nav-kind").as_deref() == Some("game-item")
+    }) {
         return focus_candidate(game_item);
     }
 
@@ -711,6 +765,69 @@ fn focus_candidate(candidate: &HtmlElement) -> bool {
         candidate.scroll_into_view();
     }
     focus_without_scroll(candidate).is_ok()
+}
+
+fn find_game_grid_entry_candidate(
+    current: &HtmlElement,
+    candidates: &[HtmlElement],
+    action: NavigationAction,
+) -> Option<HtmlElement> {
+    if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid")
+        || current.get_attribute("data-nav-kind").as_deref() == Some("game-item")
+    {
+        return None;
+    }
+
+    let game_items = candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.get_attribute("data-nav-kind").as_deref() == Some("game-item")
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if game_items.is_empty() {
+        return None;
+    }
+
+    let current_rect = rect_from_element(current);
+    let current_center_x = current_rect.left + current_rect.width / 2.0;
+    let current_center_y = current_rect.top + current_rect.height / 2.0;
+    let grid_rect = union_navigation_rect(&game_items)?;
+    let is_outside_grid = match action {
+        NavigationAction::Right => current_center_x < grid_rect.left,
+        NavigationAction::Left => current_center_x > grid_rect.right,
+        NavigationAction::Down => current_center_y < grid_rect.top,
+        NavigationAction::Up => current_center_y > grid_rect.bottom,
+        _ => false,
+    };
+
+    if !is_outside_grid {
+        return None;
+    }
+
+    find_directional_candidate(current, &game_items, action)
+}
+
+fn union_navigation_rect(elements: &[HtmlElement]) -> Option<NavigationRect> {
+    let mut iter = elements.iter();
+    let first = rect_from_element(iter.next()?);
+    let rect = iter.fold(first, |acc, element| {
+        let next = rect_from_element(element);
+        NavigationRect {
+            left: acc.left.min(next.left),
+            top: acc.top.min(next.top),
+            right: acc.right.max(next.right),
+            bottom: acc.bottom.max(next.bottom),
+            width: 0.0,
+            height: 0.0,
+        }
+    });
+
+    Some(NavigationRect {
+        width: rect.right - rect.left,
+        height: rect.bottom - rect.top,
+        ..rect
+    })
 }
 
 fn activate_game_grid(container: &HtmlElement) -> bool {
@@ -745,7 +862,10 @@ fn selected_or_first_game_grid_item(container: &HtmlElement) -> Option<HtmlEleme
     query_selector(&container_element, r#"[data-nav-kind="game-item"]"#).and_then(html_element_from)
 }
 
-fn active_game_grid_for_direction(document: &Document, current: &HtmlElement) -> Option<HtmlElement> {
+fn active_game_grid_for_direction(
+    document: &Document,
+    current: &HtmlElement,
+) -> Option<HtmlElement> {
     if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid")
         || current.get_attribute("data-nav-kind").as_deref() == Some("game-item")
     {
@@ -774,7 +894,11 @@ fn clear_active_game_grid() {
 }
 
 fn focus_game_item_candidate(candidate: &HtmlElement) -> bool {
-    let Some(container) = candidate.closest(r#"[data-nav-grid="true"]"#).ok().flatten() else {
+    let Some(container) = candidate
+        .closest(r#"[data-nav-grid="true"]"#)
+        .ok()
+        .flatten()
+    else {
         return focus_without_scroll(candidate).is_ok();
     };
     let Some(next_index) = parse_usize_attr(candidate, "data-game-index") else {
