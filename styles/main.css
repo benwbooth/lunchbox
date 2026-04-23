@@ -5789,3 +5789,38 @@ body.sidebar-resizing * {
 .graboid-prompt-delete:hover {
     color: var(--danger-color);
 }
+
+/* D-pad focus ring for native HTML controls */
+:where(
+    button:not([disabled]),
+    a[href],
+    input:not([type="hidden"]):not([disabled]),
+    select:not([disabled]),
+    textarea:not([disabled]),
+    summary
+):focus {
+    outline: 2px solid color-mix(in srgb, var(--logo-yellow) 86%, transparent);
+    outline-offset: 2px;
+    box-shadow:
+        0 0 0 2px rgba(255, 221, 0, 0.22),
+        inset 0 0 0 1px rgba(255, 221, 0, 0.72);
+}
+
+.filters-summary:focus {
+    border-color: var(--logo-yellow);
+    color: var(--text-primary);
+}
+
+.zoom-slider:focus {
+    background: color-mix(in srgb, var(--logo-yellow) 36%, var(--bg-tertiary));
+}
+
+.zoom-slider:focus::-webkit-slider-thumb {
+    background: var(--logo-yellow);
+    box-shadow: 0 0 0 3px rgba(255, 221, 0, 0.24);
+}
+
+.zoom-slider:focus::-moz-range-thumb {
+    background: var(--logo-yellow);
+    box-shadow: 0 0 0 3px rgba(255, 221, 0, 0.24);
+}
