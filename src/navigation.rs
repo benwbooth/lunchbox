@@ -419,15 +419,15 @@ fn find_directional_candidate(
     candidates: &[HtmlElement],
     action: NavigationAction,
 ) -> Option<HtmlElement> {
-    let current_rect = current.get_bounding_client_rect();
-    let current_center_x = current_rect.left() + current_rect.width() / 2.0;
-    let current_center_y = current_rect.top() + current_rect.height() / 2.0;
+    let current_rect = navigation_rect(current);
+    let current_center_x = current_rect.left + current_rect.width / 2.0;
+    let current_center_y = current_rect.top + current_rect.height / 2.0;
 
     candidates
         .iter()
         .filter(|candidate| !same_element(candidate, current))
         .filter_map(|candidate| {
-            let rect = candidate.get_bounding_client_rect();
+            let rect = navigation_rect(candidate);
             directional_score(current_center_x, current_center_y, &rect, action)
                 .map(|score| (score, candidate.clone()))
         })
@@ -462,27 +462,27 @@ fn find_nearest_candidate(
     current: &HtmlElement,
     candidates: &[HtmlElement],
 ) -> Option<HtmlElement> {
-    let current_rect = current.get_bounding_client_rect();
-    let current_center_x = current_rect.left() + current_rect.width() / 2.0;
-    let current_center_y = current_rect.top() + current_rect.height() / 2.0;
+    let current_rect = navigation_rect(current);
+    let current_center_x = current_rect.left + current_rect.width / 2.0;
+    let current_center_y = current_rect.top + current_rect.height / 2.0;
 
     candidates
         .iter()
         .filter(|candidate| !same_element(candidate, current))
         .min_by(|a, b| {
-            let rect_a = a.get_bounding_client_rect();
-            let rect_b = b.get_bounding_client_rect();
+            let rect_a = navigation_rect(a);
+            let rect_b = navigation_rect(b);
             let distance_a = squared_distance(
                 current_center_x,
                 current_center_y,
-                rect_a.left() + rect_a.width() / 2.0,
-                rect_a.top() + rect_a.height() / 2.0,
+                rect_a.left + rect_a.width / 2.0,
+                rect_a.top + rect_a.height / 2.0,
             );
             let distance_b = squared_distance(
                 current_center_x,
                 current_center_y,
-                rect_b.left() + rect_b.width() / 2.0,
-                rect_b.top() + rect_b.height() / 2.0,
+                rect_b.left + rect_b.width / 2.0,
+                rect_b.top + rect_b.height / 2.0,
             );
             distance_a
                 .partial_cmp(&distance_b)
@@ -498,14 +498,24 @@ struct DirectionalScore {
     center_distance: f64,
 }
 
+#[derive(Clone, Copy)]
+struct NavigationRect {
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
+    width: f64,
+    height: f64,
+}
+
 fn directional_score(
     current_center_x: f64,
     current_center_y: f64,
-    candidate: &web_sys::DomRect,
+    candidate: &NavigationRect,
     action: NavigationAction,
 ) -> Option<DirectionalScore> {
-    let candidate_center_x = candidate.left() + candidate.width() / 2.0;
-    let candidate_center_y = candidate.top() + candidate.height() / 2.0;
+    let candidate_center_x = candidate.left + candidate.width / 2.0;
+    let candidate_center_y = candidate.top + candidate.height / 2.0;
     let center_distance = squared_distance(
         current_center_x,
         current_center_y,
@@ -516,11 +526,11 @@ fn directional_score(
     match action {
         NavigationAction::Up if candidate_center_y < current_center_y => {
             let overlaps_ray =
-                candidate.left() <= current_center_x && current_center_x <= candidate.right();
+                candidate.left <= current_center_x && current_center_x <= candidate.right;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_x, candidate.left(), candidate.right());
-            let primary_distance = if candidate.bottom() <= current_center_y {
-                current_center_y - candidate.bottom()
+                distance_from_value_to_span(current_center_x, candidate.left, candidate.right);
+            let primary_distance = if candidate.bottom <= current_center_y {
+                current_center_y - candidate.bottom
             } else {
                 0.0
             };
@@ -533,11 +543,11 @@ fn directional_score(
         }
         NavigationAction::Down if candidate_center_y > current_center_y => {
             let overlaps_ray =
-                candidate.left() <= current_center_x && current_center_x <= candidate.right();
+                candidate.left <= current_center_x && current_center_x <= candidate.right;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_x, candidate.left(), candidate.right());
-            let primary_distance = if candidate.top() >= current_center_y {
-                candidate.top() - current_center_y
+                distance_from_value_to_span(current_center_x, candidate.left, candidate.right);
+            let primary_distance = if candidate.top >= current_center_y {
+                candidate.top - current_center_y
             } else {
                 0.0
             };
@@ -550,11 +560,11 @@ fn directional_score(
         }
         NavigationAction::Left if candidate_center_x < current_center_x => {
             let overlaps_ray =
-                candidate.top() <= current_center_y && current_center_y <= candidate.bottom();
+                candidate.top <= current_center_y && current_center_y <= candidate.bottom;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_y, candidate.top(), candidate.bottom());
-            let primary_distance = if candidate.right() <= current_center_x {
-                current_center_x - candidate.right()
+                distance_from_value_to_span(current_center_y, candidate.top, candidate.bottom);
+            let primary_distance = if candidate.right <= current_center_x {
+                current_center_x - candidate.right
             } else {
                 0.0
             };
@@ -567,11 +577,11 @@ fn directional_score(
         }
         NavigationAction::Right if candidate_center_x > current_center_x => {
             let overlaps_ray =
-                candidate.top() <= current_center_y && current_center_y <= candidate.bottom();
+                candidate.top <= current_center_y && current_center_y <= candidate.bottom;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_y, candidate.top(), candidate.bottom());
-            let primary_distance = if candidate.left() >= current_center_x {
-                candidate.left() - current_center_x
+                distance_from_value_to_span(current_center_y, candidate.top, candidate.bottom);
+            let primary_distance = if candidate.left >= current_center_x {
+                candidate.left - current_center_x
             } else {
                 0.0
             };
@@ -583,6 +593,28 @@ fn directional_score(
             })
         }
         _ => None,
+    }
+}
+
+fn navigation_rect(element: &HtmlElement) -> NavigationRect {
+    if element.get_attribute("data-nav-kind").as_deref() == Some("game-grid") {
+        if let Some(item) = selected_or_first_game_grid_item(element) {
+            return rect_from_element(&item);
+        }
+    }
+
+    rect_from_element(element)
+}
+
+fn rect_from_element(element: &HtmlElement) -> NavigationRect {
+    let rect = element.get_bounding_client_rect();
+    NavigationRect {
+        left: rect.left(),
+        top: rect.top(),
+        right: rect.right(),
+        bottom: rect.bottom(),
+        width: rect.width(),
+        height: rect.height(),
     }
 }
 
@@ -654,6 +686,15 @@ fn selected_game_grid_item(container: &HtmlElement) -> Option<HtmlElement> {
     );
     let container_element: Element = container.clone().unchecked_into();
     query_selector(&container_element, &selector).and_then(html_element_from)
+}
+
+fn selected_or_first_game_grid_item(container: &HtmlElement) -> Option<HtmlElement> {
+    if let Some(selected) = selected_game_grid_item(container) {
+        return Some(selected);
+    }
+
+    let container_element: Element = container.clone().unchecked_into();
+    query_selector(&container_element, r#"[data-nav-kind="game-item"]"#).and_then(html_element_from)
 }
 
 fn focus_game_item_candidate(candidate: &HtmlElement) -> bool {
