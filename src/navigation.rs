@@ -148,6 +148,16 @@ fn move_directional(action: NavigationAction) -> bool {
         return true;
     }
 
+    if let Some(grid) = active_game_grid_for_direction(&document, &current) {
+        if handle_game_grid_direction(&grid, action) {
+            debug_log_nav(&format!(
+                "grid move handled via active grid fallback current_kind={}",
+                current_kind
+            ));
+            return true;
+        }
+    }
+
     if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid") {
         if let Some(selected_item) = selected_game_grid_item(&current) {
             if let Some(next) = find_directional_candidate(&selected_item, &candidates, action) {
@@ -394,6 +404,7 @@ fn reveal_game_grid_index(
 
 fn focus_game_grid_container(container: &HtmlElement, desired_scroll_top: Option<i32>) {
     let _ = focus_without_scroll(container);
+    let _ = container.set_attribute("data-nav-active-grid", "true");
     let Some(desired_scroll_top) = desired_scroll_top else {
         return;
     };
@@ -419,6 +430,7 @@ fn restore_scroll_top(container: &HtmlElement, desired_scroll_top: i32) {
 
 fn set_game_grid_selected_index(container: &HtmlElement, next_index: usize) {
     let _ = container.set_attribute("data-nav-selected-index", &next_index.to_string());
+    let _ = container.set_attribute("data-nav-active-grid", "true");
     if let Ok(event) = web_sys::Event::new("lunchbox-grid-select") {
         let _ = container.dispatch_event(&event);
     }
@@ -692,6 +704,9 @@ fn focus_candidate(candidate: &HtmlElement) -> bool {
     if nav_kind.as_deref() == Some("game-item") {
         return focus_game_item_candidate(candidate);
     }
+    if nav_kind.as_deref() != Some("game-grid") {
+        clear_active_game_grid();
+    }
     if nav_kind.as_deref() != Some("game-item") && nav_kind.as_deref() != Some("game-grid") {
         candidate.scroll_into_view();
     }
@@ -728,6 +743,34 @@ fn selected_or_first_game_grid_item(container: &HtmlElement) -> Option<HtmlEleme
 
     let container_element: Element = container.clone().unchecked_into();
     query_selector(&container_element, r#"[data-nav-kind="game-item"]"#).and_then(html_element_from)
+}
+
+fn active_game_grid_for_direction(document: &Document, current: &HtmlElement) -> Option<HtmlElement> {
+    if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid")
+        || current.get_attribute("data-nav-kind").as_deref() == Some("game-item")
+    {
+        return None;
+    }
+
+    let grid = query_selector(
+        document,
+        r#"[data-nav-kind="game-grid"][data-nav-active-grid="true"]"#,
+    )
+    .and_then(html_element_from)?;
+    selected_game_grid_item(&grid).map(|_| grid)
+}
+
+fn clear_active_game_grid() {
+    let Some(document) = document() else {
+        return;
+    };
+
+    for grid in query_selector_all(
+        &document,
+        r#"[data-nav-kind="game-grid"][data-nav-active-grid="true"]"#,
+    ) {
+        let _ = grid.remove_attribute("data-nav-active-grid");
+    }
 }
 
 fn focus_game_item_candidate(candidate: &HtmlElement) -> bool {
