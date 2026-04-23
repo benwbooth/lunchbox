@@ -30,8 +30,8 @@ struct GamepadRepeatState {
     down: RepeatState,
     left: RepeatState,
     right: RepeatState,
-    left_shoulder: RepeatState,
-    right_shoulder: RepeatState,
+    page_up: RepeatState,
+    page_down: RepeatState,
     left_trigger: RepeatState,
     right_trigger: RepeatState,
     primary: RepeatState,
@@ -127,13 +127,14 @@ fn next_gamepad_action(
     let axes = gamepad.axes();
     let axis_x = axis_value(&axes, 0);
     let axis_y = axis_value(&axes, 1);
+    let right_axis_y = axis_value(&axes, 3);
 
     let up_pressed = button_pressed(&buttons, 12) || axis_y <= -AXIS_THRESHOLD;
     let down_pressed = button_pressed(&buttons, 13) || axis_y >= AXIS_THRESHOLD;
     let left_pressed = button_pressed(&buttons, 14) || axis_x <= -AXIS_THRESHOLD;
     let right_pressed = button_pressed(&buttons, 15) || axis_x >= AXIS_THRESHOLD;
-    let left_shoulder_pressed = button_pressed(&buttons, 4);
-    let right_shoulder_pressed = button_pressed(&buttons, 5);
+    let page_up_pressed = button_pressed(&buttons, 4) || right_axis_y <= -AXIS_THRESHOLD;
+    let page_down_pressed = button_pressed(&buttons, 5) || right_axis_y >= AXIS_THRESHOLD;
     let left_trigger_pressed = button_pressed(&buttons, 6);
     let right_trigger_pressed = button_pressed(&buttons, 7);
     let primary_pressed = button_pressed(&buttons, 0);
@@ -179,8 +180,8 @@ fn next_gamepad_action(
     }
     if consume_repeat(
         now_ms,
-        left_shoulder_pressed,
-        &mut repeat_state.left_shoulder,
+        page_up_pressed,
+        &mut repeat_state.page_up,
         DPAD_INITIAL_REPEAT_DELAY_MS,
         DPAD_HELD_REPEAT_DELAY_MS,
     ) {
@@ -188,8 +189,8 @@ fn next_gamepad_action(
     }
     if consume_repeat(
         now_ms,
-        right_shoulder_pressed,
-        &mut repeat_state.right_shoulder,
+        page_down_pressed,
+        &mut repeat_state.page_down,
         DPAD_INITIAL_REPEAT_DELAY_MS,
         DPAD_HELD_REPEAT_DELAY_MS,
     ) {
