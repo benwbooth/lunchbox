@@ -1338,22 +1338,22 @@ pub fn GameGrid(
             class="game-content virtual-scroll"
             node_ref=container_ref
             tabindex="0"
-            attr:data-nav="true"
-            attr:data-nav-kind="game-grid"
-            attr:data-nav-grid="true"
-            attr:data-nav-view-mode=move || match view_mode.get() {
+            data-nav="true"
+            data-nav-kind="game-grid"
+            data-nav-grid="true"
+            data-nav-view-mode=move || match view_mode.get() {
                 ViewMode::Grid => "grid".to_string(),
                 ViewMode::List => "list".to_string(),
             }
-            attr:data-nav-grid-cols=move || {
+            data-nav-grid-cols=move || {
                 let zoom = zoom_level.get();
                 let scaled_item_width = (ITEM_WIDTH as f64 * zoom) as i32;
                 ((container_width.get() / scaled_item_width).max(1)).to_string()
             }
-            attr:data-nav-game-count=move || navigation_games().len().to_string()
-            attr:data-nav-selected-index=move || nav_selected_index.get().map(|index| index.to_string()).unwrap_or_default()
-            attr:data-nav-grid-row-height=move || ((ITEM_HEIGHT as f64 * zoom_level.get()) as i32).to_string()
-            attr:data-nav-list-row-height=LIST_ITEM_HEIGHT.to_string()
+            data-nav-game-count=move || navigation_games().len().to_string()
+            data-nav-selected-index=move || nav_selected_index.get().map(|index| index.to_string()).unwrap_or_default()
+            data-nav-grid-row-height=move || ((ITEM_HEIGHT as f64 * zoom_level.get()) as i32).to_string()
+            data-nav-list-row-height=LIST_ITEM_HEIGHT.to_string()
             on:focus=move |_| {
                 let available_games = navigation_games();
                 if available_games.is_empty() {
@@ -2404,9 +2404,9 @@ fn GameCard(
             class="game-card-anchor"
             role="button"
             tabindex="-1"
-            attr:data-nav="true"
-            attr:data-nav-kind="game-item"
-            attr:data-game-index=render_index.to_string()
+            data-nav="true"
+            data-nav-kind="game-item"
+            data-game-index=render_index.to_string()
             class:nav-selected=move || nav_selected.get()
             on:mouseenter=on_mouse_enter
             on:mouseleave=on_mouse_leave
@@ -2643,9 +2643,9 @@ fn GameListItem(
             class="game-list-item"
             role="button"
             tabindex="-1"
-            attr:data-nav="true"
-            attr:data-nav-kind="game-item"
-            attr:data-game-index=render_index.to_string()
+            data-nav="true"
+            data-nav-kind="game-item"
+            data-game-index=render_index.to_string()
             class:nav-selected=move || nav_selected.get()
             style:grid-template-columns=format!("repeat({}, 1fr)", col_count)
             on:click=move |_| {

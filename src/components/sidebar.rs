@@ -317,9 +317,9 @@ pub fn Sidebar(
             <Show when=move || show_create_dialog.get()>
                 <div
                     class="dialog-overlay"
-                    attr:data-nav-scope="create-collection"
-                    attr:data-nav-scope-active="true"
-                    attr:data-nav-scope-priority="220"
+                    data-nav-scope="create-collection"
+                    data-nav-scope-active="true"
+                    data-nav-scope-priority="220"
                     on:click=move |_| set_show_create_dialog.set(false)
                 >
                     <div class="dialog" on:click=|ev| ev.stop_propagation()>
@@ -335,7 +335,7 @@ pub fn Sidebar(
                         <div class="dialog-actions">
                             <button
                                 class="dialog-cancel"
-                                attr:data-nav-back="true"
+                                data-nav-back="true"
                                 on:click=move |_| set_show_create_dialog.set(false)
                             >
                                 "Cancel"

@@ -1653,9 +1653,9 @@ pub fn GameDetails(
                     view! {
                         <div
                             class="game-details-overlay"
-                            attr:data-nav-scope="game-details"
-                            attr:data-nav-scope-active="true"
-                            attr:data-nav-scope-priority="100"
+                            data-nav-scope="game-details"
+                            data-nav-scope-active="true"
+                            data-nav-scope-priority="100"
                             on:click=move |_| on_close.set(None)
                         >
                             <div class="game-details-panel" on:click=|e| e.stop_propagation()>
@@ -1664,7 +1664,7 @@ pub fn GameDetails(
                                     <h1 class="titlebar-title">{display_title.clone()}</h1>
                                     <button
                                         class="titlebar-close"
-                                        attr:data-nav-back="true"
+                                        data-nav-back="true"
                                         on:click=move |_| on_close.set(None)
                                     >
                                         "×"
@@ -1917,7 +1917,7 @@ pub fn GameDetails(
                                                 <Show when=move || !show_file_picker.get()>
                                                     <button
                                                         class="import-btn-action minerva-download-btn"
-                                                        attr:data-nav-default="true"
+                                                        data-nav-default="true"
                                                         disabled=move || minerva_rom.get().is_none()
                                                         title=move || if minerva_rom.get().is_none() { "No minerva.db — run lunchbox-cli minerva-build first".to_string() } else { "Download ROM via torrent".to_string() }
                                                         on:click=move |_| {
@@ -1986,15 +1986,15 @@ pub fn GameDetails(
                                             <Show when=move || show_file_picker.get()>
                                                 <div
                                                     class="file-picker-dialog"
-                                                    attr:data-nav-scope="minerva-picker"
-                                                    attr:data-nav-scope-active="true"
-                                                    attr:data-nav-scope-priority="120"
+                                                    data-nav-scope="minerva-picker"
+                                                    data-nav-scope-active="true"
+                                                    data-nav-scope-priority="120"
                                                 >
                                                     <div class="file-picker-header">
                                                         <h4>"Select Minerva download"</h4>
                                                         <button
                                                             class="file-picker-close"
-                                                            attr:data-nav-back="true"
+                                                            data-nav-back="true"
                                                             on:click=move |_| set_show_file_picker.set(false)
                                                         >
                                                             "X"
@@ -2092,8 +2092,8 @@ pub fn GameDetails(
                                                                                 node_ref=row_ref
                                                                                 tabindex="0"
                                                                                 role="button"
-                                                                                attr:data-nav="true"
-                                                                                attr:data-nav-default=if group_index == 0 { Some("true") } else { None }
+                                                                                data-nav="true"
+                                                                                data-nav-default=if group_index == 0 { Some("true") } else { None }
                                                                                 class:selected=whole_torrent_selected
                                                                                 on:click=move |_| {
                                                                                     if let Some(row) = row_ref.get() {
@@ -2143,8 +2143,8 @@ pub fn GameDetails(
                                                                                 node_ref=row_ref
                                                                                 tabindex="0"
                                                                                 role="button"
-                                                                                attr:data-nav="true"
-                                                                                attr:data-nav-default=if group_index == 0 && !show_whole_torrent_row { Some("true") } else { None }
+                                                                                data-nav="true"
+                                                                                data-nav-default=if group_index == 0 && !show_whole_torrent_row { Some("true") } else { None }
                                                                                 class:selected=is_selected
                                                                                 on:click=move |_| {
                                                                                     if let Some(row) = row_ref.get() {
@@ -2289,7 +2289,7 @@ pub fn GameDetails(
                                                         </button>
                                                         <button
                                                             class="cancel-import-btn"
-                                                            attr:data-nav-back="true"
+                                                            data-nav-back="true"
                                                             on:click=move |_| set_show_file_picker.set(false)
                                                         >"Cancel"</button>
                                                     </div>
@@ -2314,7 +2314,7 @@ pub fn GameDetails(
                                             }>
                                                 <button
                                                     class="play-btn"
-                                                    attr:data-nav-default="true"
+                                                    data-nav-default="true"
                                                     disabled=move || game_uninstalling.get()
                                                     on:click=move |_| {
                                                     let platform = stored_platform.get_value();
@@ -3058,9 +3058,9 @@ fn EmulatorPickerModal(
     view! {
         <div
             class="emulator-picker-overlay"
-            attr:data-nav-scope="emulator-picker"
-            attr:data-nav-scope-active="true"
-            attr:data-nav-scope-priority="130"
+            data-nav-scope="emulator-picker"
+            data-nav-scope-active="true"
+            data-nav-scope-priority="130"
             on:click=move |e| {
             e.stop_propagation();
             if can_close() {
@@ -3072,7 +3072,7 @@ fn EmulatorPickerModal(
                     <h3>"Select Emulator"</h3>
                     <button
                         class="emulator-picker-close"
-                        attr:data-nav-back="true"
+                        data-nav-back="true"
                         on:click=move |_| {
                             if can_close() {
                                 set_show_emulator_picker.set(false);
@@ -3747,7 +3747,7 @@ fn EmulatorPickerModal(
                                                     <button
                                                         class="emulator-pref-btn emulator-play-btn"
                                                         class:install=!is_installed
-                                                        attr:data-nav-default=if emu_index == 0 { Some("true") } else { None }
+                                                        data-nav-default=if emu_index == 0 { Some("true") } else { None }
                                                         disabled=move || !is_installed && !can_auto_install
                                                         on:click=on_launch
                                                     >
