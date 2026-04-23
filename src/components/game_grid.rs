@@ -131,6 +131,141 @@ const LIST_ITEM_HEIGHT: i32 = 40; // Height in list view
 const BUFFER_ITEMS: i32 = 10; // Extra items to render above/below viewport
 const FETCH_CHUNK_SIZE: i64 = 500; // How many games to fetch at once
 const GAME_GRID_UI_STATE_KEY: &str = "lunchbox.ui.game-grid.v1";
+const GAME_GRID_DPAD_EVENT: &str = "lunchbox-grid-dpad";
+const GAME_GRID_DPAD_ACTION_ATTR: &str = "data-nav-grid-dpad-action";
+const GAME_GRID_DPAD_HANDLED_ATTR: &str = "data-nav-grid-dpad-handled";
+const GAME_GRID_DPAD_TARGET_ATTR: &str = "data-nav-grid-dpad-target-index";
+
+fn scaled_grid_item_height(zoom: f64) -> i32 {
+    ((ITEM_HEIGHT as f64 * zoom) as i32).max(1)
+}
+
+fn grid_nav_columns(width: i32, zoom: f64) -> usize {
+    let scaled_item_width = ((ITEM_WIDTH as f64 * zoom) as i32).max(1);
+    (width / scaled_item_width).max(1) as usize
+}
+
+fn default_grid_nav_index(
+    container: &web_sys::HtmlElement,
+    mode: ViewMode,
+    count: usize,
+    cols: usize,
+    zoom: f64,
+) -> usize {
+    if count == 0 {
+        return 0;
+    }
+
+    let scroll = container.scroll_top().max(0);
+    let index = match mode {
+        ViewMode::Grid => {
+            let row = scroll / scaled_grid_item_height(zoom);
+            row.max(0) as usize * cols.max(1)
+        }
+        ViewMode::List => (scroll / LIST_ITEM_HEIGHT).max(0) as usize,
+    };
+
+    index.min(count.saturating_sub(1))
+}
+
+fn next_grid_nav_index(
+    current_index: usize,
+    count: usize,
+    mode: ViewMode,
+    cols: usize,
+    action: &str,
+) -> Option<usize> {
+    if count == 0 {
+        return None;
+    }
+    if action == "enter" {
+        return Some(current_index.min(count.saturating_sub(1)));
+    }
+
+    match mode {
+        ViewMode::List => match action {
+            "up" => current_index.checked_sub(1),
+            "down" if current_index + 1 < count => Some(current_index + 1),
+            _ => None,
+        },
+        ViewMode::Grid => {
+            let cols = cols.max(1);
+            match action {
+                "up" if current_index >= cols => Some(current_index - cols),
+                "down" => next_grid_nav_down_index(current_index, cols, count),
+                "left" if current_index % cols != 0 => Some(current_index - 1),
+                "right" if current_index + 1 < count => Some(current_index + 1),
+                _ => None,
+            }
+        }
+    }
+}
+
+fn next_grid_nav_down_index(current_index: usize, cols: usize, count: usize) -> Option<usize> {
+    let direct = current_index + cols;
+    if direct < count {
+        return Some(direct);
+    }
+
+    let last_row_start = ((count - 1) / cols) * cols;
+    if current_index >= last_row_start {
+        return None;
+    }
+
+    let candidate = last_row_start + (current_index % cols);
+    Some(candidate.min(count - 1))
+}
+
+fn reveal_grid_nav_index(
+    container: &web_sys::HtmlElement,
+    mode: ViewMode,
+    index: usize,
+    cols: usize,
+    zoom: f64,
+) -> i32 {
+    let current_scroll = container.scroll_top().max(0);
+    let client_height = container.client_height().max(0);
+    if client_height <= 0 {
+        return current_scroll;
+    }
+
+    let next_scroll = match mode {
+        ViewMode::Grid => {
+            let row_height = scaled_grid_item_height(zoom);
+            let row = index / cols.max(1);
+            let row_top = row as i32 * row_height;
+            let row_bottom = row_top + row_height;
+            let viewport_bottom = current_scroll + client_height;
+
+            if row_top < current_scroll {
+                row_top.max(0)
+            } else if row_bottom > viewport_bottom {
+                (row_bottom - client_height).max(0)
+            } else {
+                current_scroll
+            }
+        }
+        ViewMode::List => {
+            let row_top = LIST_ITEM_HEIGHT + index as i32 * LIST_ITEM_HEIGHT;
+            let row_bottom = row_top + LIST_ITEM_HEIGHT;
+            let viewport_top = current_scroll + LIST_ITEM_HEIGHT;
+            let viewport_bottom = current_scroll + client_height;
+
+            if row_top < viewport_top {
+                (row_top - LIST_ITEM_HEIGHT).max(0)
+            } else if row_bottom > viewport_bottom {
+                (row_bottom - client_height).max(0)
+            } else {
+                current_scroll
+            }
+        }
+    };
+
+    if next_scroll != current_scroll {
+        container.set_scroll_top(next_scroll);
+    }
+    next_scroll
+}
 
 /// Parse a date string into a NaiveDate, handling various formats
 fn parse_date(date_str: &str) -> Option<NaiveDate> {
@@ -550,6 +685,7 @@ pub fn GameGrid(
     let (did_initial_load, set_did_initial_load) = signal(false);
     let resize_listener_attached = Rc::new(Cell::new(false));
     let nav_listener_attached = Rc::new(Cell::new(false));
+    let dpad_listener_attached = Rc::new(Cell::new(false));
 
     // Column configuration for list view
     let (visible_columns, set_visible_columns) = signal(initial_visible_columns);
@@ -1040,6 +1176,89 @@ pub fn GameGrid(
 
     Effect::new({
         let container_ref = container_ref.clone();
+        let dpad_listener_attached = dpad_listener_attached.clone();
+        move || {
+            let Some(container) = container_ref.get() else {
+                return;
+            };
+
+            if dpad_listener_attached.get() {
+                return;
+            }
+            dpad_listener_attached.set(true);
+
+            let listener =
+                wasm_bindgen::closure::Closure::wrap(Box::new(move |_event: web_sys::Event| {
+                    let Some(container) = container_ref.get() else {
+                        return;
+                    };
+                    let action = container
+                        .get_attribute(GAME_GRID_DPAD_ACTION_ATTR)
+                        .unwrap_or_default();
+                    let mode = view_mode.get_untracked();
+                    let count = match mode {
+                        ViewMode::Grid => games.get_untracked().len(),
+                        ViewMode::List => apply_list_view_state(
+                            &games.get_untracked(),
+                            &column_filters.get_untracked(),
+                            sort_state.get_untracked(),
+                        )
+                        .len(),
+                    };
+                    if count == 0 {
+                        let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "false");
+                        return;
+                    }
+
+                    let zoom = zoom_level.get_untracked();
+                    let cols = grid_nav_columns(container.client_width(), zoom);
+                    let target_index = container
+                        .get_attribute(GAME_GRID_DPAD_TARGET_ATTR)
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .filter(|index| *index < count);
+                    let selected_index = nav_selected_index
+                        .get_untracked()
+                        .filter(|index| *index < count);
+                    let current_index = if action == "enter" {
+                        target_index.or(selected_index)
+                    } else {
+                        selected_index
+                    }
+                    .unwrap_or_else(|| default_grid_nav_index(&container, mode, count, cols, zoom));
+                    let Some(next_index) =
+                        next_grid_nav_index(current_index, count, mode, cols, &action)
+                    else {
+                        let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "false");
+                        return;
+                    };
+
+                    set_nav_selected_index.set(Some(next_index));
+                    let _ =
+                        container.set_attribute("data-nav-selected-index", &next_index.to_string());
+                    let _ = container.set_attribute("data-nav-active-grid", "true");
+
+                    let next_scroll =
+                        reveal_grid_nav_index(&container, mode, next_index, cols, zoom);
+                    set_scroll_top.set(next_scroll);
+                    set_grid_has_focus.set(true);
+                    let _ = container.focus();
+                    if container.scroll_top() != next_scroll {
+                        container.set_scroll_top(next_scroll);
+                    }
+                    let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
+                })
+                    as Box<dyn FnMut(web_sys::Event)>);
+
+            let _ = container.add_event_listener_with_callback(
+                GAME_GRID_DPAD_EVENT,
+                listener.as_ref().unchecked_ref(),
+            );
+            listener.forget();
+        }
+    });
+
+    Effect::new({
+        let container_ref = container_ref.clone();
         move || {
             let available_games = navigation_games();
             if available_games.is_empty() {
@@ -1153,6 +1372,7 @@ pub fn GameGrid(
                 set_nav_selected_index.set(Some(default_index));
                 if let Some(container) = container_ref.get() {
                     let _ = container.set_attribute("data-nav-selected-index", &default_index.to_string());
+                    let _ = container.set_attribute("data-nav-active-grid", "true");
                 }
             }
             on:blur=move |_| {

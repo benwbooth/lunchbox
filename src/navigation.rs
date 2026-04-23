@@ -28,6 +28,10 @@ const NAV_SELECTOR: &str = concat!(
 
 const ACTIVE_SCOPE_SELECTOR: &str = r#"[data-nav-scope][data-nav-scope-active="true"]"#;
 const BACK_SELECTOR: &str = r#"[data-nav-back="true"]"#;
+const GAME_GRID_DPAD_EVENT: &str = "lunchbox-grid-dpad";
+const GAME_GRID_DPAD_ACTION_ATTR: &str = "data-nav-grid-dpad-action";
+const GAME_GRID_DPAD_HANDLED_ATTR: &str = "data-nav-grid-dpad-handled";
+const GAME_GRID_DPAD_TARGET_ATTR: &str = "data-nav-grid-dpad-target-index";
 
 pub fn keyboard_action(event: &KeyboardEvent) -> Option<NavigationAction> {
     if event.ctrl_key() || event.meta_key() || event.alt_key() {
@@ -139,6 +143,30 @@ fn move_directional(action: NavigationAction) -> bool {
             action,
             parse_usize_attr(&current, "data-nav-selected-index")
         ));
+    }
+
+    if active_scope.is_none() {
+        if let Some(grid) = game_grid_container_for_element(&current) {
+            if dispatch_game_grid_dpad_action(&grid, grid_dpad_action_name(action), None) {
+                debug_log_nav(&format!("grid custom dpad handled action={:?}", action));
+                return true;
+            }
+        }
+
+        if let Some(grid_entry) = find_game_grid_entry_candidate(&current, &candidates, action) {
+            if let Some(grid) = game_grid_container_for_element(&grid_entry) {
+                let target_index = parse_usize_attr(&grid_entry, "data-game-index");
+                if dispatch_game_grid_dpad_action(&grid, "enter", target_index) {
+                    debug_log_nav(&format!(
+                        "grid custom enter from kind={} action={:?} index={:?}",
+                        current_kind,
+                        action,
+                        parse_usize_attr(&grid_entry, "data-game-index")
+                    ));
+                    return true;
+                }
+            }
+        }
     }
 
     if handle_game_grid_direction(&current, action) {
@@ -765,6 +793,57 @@ fn focus_candidate(candidate: &HtmlElement) -> bool {
         candidate.scroll_into_view();
     }
     focus_without_scroll(candidate).is_ok()
+}
+
+fn game_grid_container_for_element(element: &HtmlElement) -> Option<HtmlElement> {
+    if element.get_attribute("data-nav-grid").as_deref() == Some("true") {
+        return Some(element.clone());
+    }
+
+    element
+        .closest(r#"[data-nav-grid="true"]"#)
+        .ok()
+        .flatten()
+        .and_then(html_element_from)
+}
+
+fn grid_dpad_action_name(action: NavigationAction) -> &'static str {
+    match action {
+        NavigationAction::Up => "up",
+        NavigationAction::Down => "down",
+        NavigationAction::Left => "left",
+        NavigationAction::Right => "right",
+        _ => "unknown",
+    }
+}
+
+fn dispatch_game_grid_dpad_action(
+    container: &HtmlElement,
+    action_name: &str,
+    target_index: Option<usize>,
+) -> bool {
+    let _ = container.set_attribute(GAME_GRID_DPAD_ACTION_ATTR, action_name);
+    let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "false");
+    if let Some(target_index) = target_index {
+        let _ = container.set_attribute(GAME_GRID_DPAD_TARGET_ATTR, &target_index.to_string());
+    } else {
+        let _ = container.remove_attribute(GAME_GRID_DPAD_TARGET_ATTR);
+    }
+
+    let Ok(event) = web_sys::Event::new(GAME_GRID_DPAD_EVENT) else {
+        return false;
+    };
+
+    let _ = container.dispatch_event(&event);
+    let handled = container
+        .get_attribute(GAME_GRID_DPAD_HANDLED_ATTR)
+        .as_deref()
+        == Some("true");
+
+    let _ = container.remove_attribute(GAME_GRID_DPAD_ACTION_ATTR);
+    let _ = container.remove_attribute(GAME_GRID_DPAD_HANDLED_ATTR);
+    let _ = container.remove_attribute(GAME_GRID_DPAD_TARGET_ATTR);
+    handled
 }
 
 fn find_game_grid_entry_candidate(
