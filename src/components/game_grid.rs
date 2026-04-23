@@ -643,6 +643,27 @@ pub fn GameGrid(
                 set_container_height.set(element.client_height());
                 set_container_width.set(element.client_width());
 
+                if gamepad_focus_area.get_untracked() == GamepadFocusArea::Grid {
+                    let loaded_count = loaded_up_to.get_untracked().max(0) as usize;
+                    if loaded_count == 0 {
+                        return;
+                    }
+
+                    let selected_index = match view_mode.get_untracked() {
+                        ViewMode::Grid => {
+                            let zoom = zoom_level.get_untracked();
+                            let scaled_item_width = (ITEM_WIDTH as f64 * zoom) as i32;
+                            let scaled_item_height = (ITEM_HEIGHT as f64 * zoom) as i32;
+                            let cols = (element.client_width() / scaled_item_width).max(1) as usize;
+                            let row = (current_scroll / scaled_item_height).max(0) as usize;
+                            row.saturating_mul(cols)
+                        }
+                        ViewMode::List => (current_scroll / LIST_ITEM_HEIGHT).max(0) as usize,
+                    };
+
+                    set_gamepad_selected_index.set(selected_index.min(loaded_count - 1));
+                }
+
                 // Persist frequently enough for restoration, but avoid hot-path writes each frame.
                 let now_ms = js_sys::Date::now();
                 if now_ms - last_scroll_persist_ms.get() > 250.0 {

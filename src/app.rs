@@ -3,13 +3,13 @@ use crate::components::{
     EmulatorUpdates, GameDetails, GameGrid, MinervaDownloadQueue, Settings, Sidebar, Toolbar,
 };
 use gloo_timers::callback::Interval;
-use js_sys::Array;
+use js_sys::{Array, Function, Reflect};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Gamepad, GamepadButton};
 
 pub const PLATFORM_SELECTION_MINIGAMES: &str = "__minigames__";
@@ -78,13 +78,31 @@ fn array_item_as<T: JsCast>(array: &Array, index: u32) -> Option<T> {
     array.get(index).dyn_into::<T>().ok()
 }
 
-fn first_connected_gamepad() -> Option<Gamepad> {
+fn navigator_gamepads_array() -> Option<Array> {
     let window = web_sys::window()?;
-    let pads = window.navigator().get_gamepads().ok()?;
+    let navigator = window.navigator();
+
+    for method_name in ["getGamepads", "webkitGetGamepads"] {
+        let method = Reflect::get(navigator.as_ref(), &JsValue::from_str(method_name)).ok()?;
+        let Some(function) = method.dyn_ref::<Function>() else {
+            continue;
+        };
+        let result = function.call0(navigator.as_ref()).ok()?;
+        if let Ok(gamepads) = result.dyn_into::<Array>() {
+            return Some(gamepads);
+        }
+    }
+
+    None
+}
+
+fn first_connected_gamepad() -> Option<Gamepad> {
+    let pads = navigator_gamepads_array()?;
 
     for index in 0..pads.length() {
         if let Some(gamepad) = array_item_as::<Gamepad>(&pads, index) {
-            if gamepad.connected() {
+            if gamepad.connected() || gamepad.buttons().length() > 0 || gamepad.axes().length() > 0
+            {
                 return Some(gamepad);
             }
         }
