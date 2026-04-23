@@ -200,6 +200,14 @@ const GAME_GRID_DPAD_EVENT: &str = "lunchbox-grid-dpad";
 const GAME_GRID_DPAD_ACTION_ATTR: &str = "data-nav-grid-dpad-action";
 const GAME_GRID_DPAD_HANDLED_ATTR: &str = "data-nav-grid-dpad-handled";
 const GAME_GRID_DPAD_TARGET_ATTR: &str = "data-nav-grid-dpad-target-index";
+const GAME_GRID_SCROLL_ANIMATION_ATTR: &str = "data-nav-scroll-animation";
+const GAME_GRID_SCROLL_ANIMATION_MS: f64 = 145.0;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GridScrollMotion {
+    Instant,
+    Animated,
+}
 
 fn scaled_grid_item_height(zoom: f64) -> i32 {
     ((ITEM_HEIGHT as f64 * zoom) as i32).max(1)
@@ -357,10 +365,59 @@ fn reveal_grid_nav_index(
         }
     };
 
-    if next_scroll != current_scroll {
-        container.set_scroll_top(next_scroll);
-    }
     next_scroll
+}
+
+fn set_grid_scroll_top(
+    container: &web_sys::HtmlElement,
+    scroll_top: i32,
+    set_scroll_top: WriteSignal<i32>,
+) {
+    container.set_scroll_top(scroll_top);
+    set_scroll_top.set(scroll_top);
+}
+
+fn animate_grid_scroll_top(
+    container: web_sys::HtmlElement,
+    target_scroll: i32,
+    set_scroll_top: WriteSignal<i32>,
+) {
+    let start_scroll = container.scroll_top();
+    if start_scroll == target_scroll {
+        set_scroll_top.set(target_scroll);
+        return;
+    }
+
+    let token = format!("{:.3}", js_sys::Date::now());
+    let _ = container.set_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR, &token);
+    let start_time = js_sys::Date::now();
+    let handle = Rc::new(RefCell::new(None::<Interval>));
+    let handle_for_tick = handle.clone();
+
+    *handle.borrow_mut() = Some(Interval::new(16, move || {
+        let still_current = container
+            .get_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR)
+            .as_deref()
+            == Some(token.as_str());
+        if !still_current {
+            handle_for_tick.borrow_mut().take();
+            return;
+        }
+
+        let elapsed = js_sys::Date::now() - start_time;
+        let progress = (elapsed / GAME_GRID_SCROLL_ANIMATION_MS).clamp(0.0, 1.0);
+        let eased = 1.0 - (1.0 - progress).powi(3);
+        let next_scroll = start_scroll as f64 + (target_scroll - start_scroll) as f64 * eased;
+        let next_scroll = next_scroll.round() as i32;
+
+        set_grid_scroll_top(&container, next_scroll, set_scroll_top);
+
+        if progress >= 1.0 {
+            set_grid_scroll_top(&container, target_scroll, set_scroll_top);
+            let _ = container.remove_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR);
+            handle_for_tick.borrow_mut().take();
+        }
+    }));
 }
 
 fn select_grid_nav_index(
@@ -370,6 +427,7 @@ fn select_grid_nav_index(
     zoom: f64,
     set_nav_selected_index: WriteSignal<Option<usize>>,
     set_scroll_top: WriteSignal<i32>,
+    motion: GridScrollMotion,
 ) {
     let cols = grid_nav_columns(container.client_width(), zoom);
     set_nav_selected_index.set(Some(index));
@@ -377,10 +435,20 @@ fn select_grid_nav_index(
     let _ = container.set_attribute("data-nav-active-grid", "true");
 
     let next_scroll = reveal_grid_nav_index(container, mode, index, cols, zoom);
-    set_scroll_top.set(next_scroll);
     let _ = container.focus();
-    if container.scroll_top() != next_scroll {
-        container.set_scroll_top(next_scroll);
+    if container.scroll_top() == next_scroll {
+        set_scroll_top.set(next_scroll);
+        return;
+    }
+
+    match motion {
+        GridScrollMotion::Instant => {
+            let _ = container.remove_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR);
+            set_grid_scroll_top(container, next_scroll, set_scroll_top);
+        }
+        GridScrollMotion::Animated => {
+            animate_grid_scroll_top(container.clone(), next_scroll, set_scroll_top);
+        }
     }
 }
 
@@ -1366,6 +1434,7 @@ pub fn GameGrid(
                                 zoom,
                                 set_nav_selected_index,
                                 set_scroll_top,
+                                GridScrollMotion::Animated,
                             );
                             let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
                             return;
@@ -1381,6 +1450,7 @@ pub fn GameGrid(
                                 zoom,
                                 set_nav_selected_index,
                                 set_scroll_top,
+                                GridScrollMotion::Animated,
                             );
                             let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
                             return;
@@ -1402,6 +1472,7 @@ pub fn GameGrid(
                                 zoom,
                                 set_nav_selected_index,
                                 set_scroll_top,
+                                GridScrollMotion::Animated,
                             );
                             let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
                             return;
@@ -1500,6 +1571,7 @@ pub fn GameGrid(
                                     zoom_level.get_untracked(),
                                     set_nav_selected_index,
                                     set_scroll_top,
+                                    GridScrollMotion::Animated,
                                 );
                             }
                         });
@@ -1513,6 +1585,11 @@ pub fn GameGrid(
                         return;
                     };
 
+                    let motion = if action == "page-up" || action == "page-down" {
+                        GridScrollMotion::Animated
+                    } else {
+                        GridScrollMotion::Instant
+                    };
                     select_grid_nav_index(
                         &container,
                         mode,
@@ -1520,6 +1597,7 @@ pub fn GameGrid(
                         zoom,
                         set_nav_selected_index,
                         set_scroll_top,
+                        motion,
                     );
                     let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
                 })
