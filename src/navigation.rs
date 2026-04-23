@@ -273,12 +273,38 @@ fn focus_game_grid_index(
     list_row_height: i32,
 ) {
     if let Some(container_html) = html_element_from(container.clone()) {
-        let scroll_top = if view_mode == "list" {
-            (next_index as i32 + 1) * list_row_height
-        } else {
-            (next_index as i32 / cols as i32) * row_height
-        };
-        container_html.set_scroll_top(scroll_top.max(0));
+        let current_scroll_top = container_html.scroll_top().max(0);
+        let client_height = container_html.client_height().max(0);
+
+        if client_height > 0 {
+            let (target_top, target_bottom, visible_top) = if view_mode == "list" {
+                let top = (next_index as i32 + 1) * list_row_height;
+                let bottom = top + list_row_height;
+                let visible_top = current_scroll_top + list_row_height;
+                (top, bottom, visible_top)
+            } else {
+                let top = (next_index as i32 / cols as i32) * row_height;
+                let bottom = top + row_height;
+                (top, bottom, current_scroll_top)
+            };
+
+            let visible_bottom = current_scroll_top + client_height;
+            let mut next_scroll_top = current_scroll_top;
+
+            if target_top < visible_top {
+                next_scroll_top = if view_mode == "list" {
+                    (target_top - list_row_height).max(0)
+                } else {
+                    target_top.max(0)
+                };
+            } else if target_bottom > visible_bottom {
+                next_scroll_top = (target_bottom - client_height).max(0);
+            }
+
+            if next_scroll_top != current_scroll_top {
+                container_html.set_scroll_top(next_scroll_top);
+            }
+        }
     }
 
     let selector = format!(
@@ -286,7 +312,7 @@ fn focus_game_grid_index(
         next_index
     );
     if let Some(element) = query_selector(&container, &selector).and_then(html_element_from) {
-        let _ = focus_candidate(&element);
+        let _ = element.focus();
         return;
     }
 
@@ -295,7 +321,7 @@ fn focus_game_grid_index(
             delay_ms(16).await;
             if let Some(element) = query_selector(&container, &selector).and_then(html_element_from)
             {
-                let _ = focus_candidate(&element);
+                let _ = element.focus();
                 return;
             }
         }
@@ -319,27 +345,42 @@ fn find_directional_candidate(
     action: NavigationAction,
 ) -> Option<HtmlElement> {
     let current_rect = current.get_bounding_client_rect();
+    let current_center_x = current_rect.left() + current_rect.width() / 2.0;
+    let current_center_y = current_rect.top() + current_rect.height() / 2.0;
 
     candidates
         .iter()
         .filter(|candidate| !same_element(candidate, current))
         .filter_map(|candidate| {
             let rect = candidate.get_bounding_client_rect();
-            let (primary_gap, secondary_gap, valid) =
-                directional_gaps(&current_rect, &rect, action);
-            valid.then_some((primary_gap, secondary_gap, candidate.clone()))
+            directional_score(current_center_x, current_center_y, &rect, action)
+                .map(|score| (score, candidate.clone()))
         })
-        .min_by(|(primary_a, secondary_a, _), (primary_b, secondary_b, _)| {
-            primary_a
-                .partial_cmp(primary_b)
-                .unwrap_or(std::cmp::Ordering::Equal)
+        .min_by(|(score_a, _), (score_b, _)| {
+            score_a
+                .overlaps_ray
+                .cmp(&score_b.overlaps_ray)
+                .reverse()
                 .then_with(|| {
-                    secondary_a
-                        .partial_cmp(secondary_b)
+                    score_a
+                        .primary_distance
+                        .partial_cmp(&score_b.primary_distance)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| {
+                    score_a
+                        .perpendicular_distance
+                        .partial_cmp(&score_b.perpendicular_distance)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| {
+                    score_a
+                        .center_distance
+                        .partial_cmp(&score_b.center_distance)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 })
         })
-        .map(|(_, _, candidate)| candidate)
+        .map(|(_, candidate)| candidate)
 }
 
 fn find_nearest_candidate(
@@ -375,64 +416,108 @@ fn find_nearest_candidate(
         .cloned()
 }
 
-fn directional_gaps(
-    current: &web_sys::DomRect,
+struct DirectionalScore {
+    overlaps_ray: bool,
+    primary_distance: f64,
+    perpendicular_distance: f64,
+    center_distance: f64,
+}
+
+fn directional_score(
+    current_center_x: f64,
+    current_center_y: f64,
     candidate: &web_sys::DomRect,
     action: NavigationAction,
-) -> (f64, f64, bool) {
-    let horizontal_gap = if candidate.right() < current.left() {
-        current.left() - candidate.right()
-    } else if candidate.left() > current.right() {
-        candidate.left() - current.right()
-    } else {
-        0.0
-    };
-    let vertical_gap = if candidate.bottom() < current.top() {
-        current.top() - candidate.bottom()
-    } else if candidate.top() > current.bottom() {
-        candidate.top() - current.bottom()
-    } else {
-        0.0
-    };
+) -> Option<DirectionalScore> {
+    let candidate_center_x = candidate.left() + candidate.width() / 2.0;
+    let candidate_center_y = candidate.top() + candidate.height() / 2.0;
+    let center_distance = squared_distance(
+        current_center_x,
+        current_center_y,
+        candidate_center_x,
+        candidate_center_y,
+    );
 
     match action {
-        NavigationAction::Up => (
-            if candidate.bottom() <= current.top() {
-                current.top() - candidate.bottom()
+        NavigationAction::Up if candidate_center_y < current_center_y => {
+            let overlaps_ray =
+                candidate.left() <= current_center_x && current_center_x <= candidate.right();
+            let perpendicular_distance =
+                distance_from_value_to_span(current_center_x, candidate.left(), candidate.right());
+            let primary_distance = if candidate.bottom() <= current_center_y {
+                current_center_y - candidate.bottom()
             } else {
                 0.0
-            },
-            horizontal_gap,
-            candidate.bottom() <= current.top(),
-        ),
-        NavigationAction::Down => (
-            if candidate.top() >= current.bottom() {
-                candidate.top() - current.bottom()
+            };
+            Some(DirectionalScore {
+                overlaps_ray,
+                primary_distance,
+                perpendicular_distance,
+                center_distance,
+            })
+        }
+        NavigationAction::Down if candidate_center_y > current_center_y => {
+            let overlaps_ray =
+                candidate.left() <= current_center_x && current_center_x <= candidate.right();
+            let perpendicular_distance =
+                distance_from_value_to_span(current_center_x, candidate.left(), candidate.right());
+            let primary_distance = if candidate.top() >= current_center_y {
+                candidate.top() - current_center_y
             } else {
                 0.0
-            },
-            horizontal_gap,
-            candidate.top() >= current.bottom(),
-        ),
-        NavigationAction::Left => (
-            if candidate.right() <= current.left() {
-                current.left() - candidate.right()
+            };
+            Some(DirectionalScore {
+                overlaps_ray,
+                primary_distance,
+                perpendicular_distance,
+                center_distance,
+            })
+        }
+        NavigationAction::Left if candidate_center_x < current_center_x => {
+            let overlaps_ray =
+                candidate.top() <= current_center_y && current_center_y <= candidate.bottom();
+            let perpendicular_distance =
+                distance_from_value_to_span(current_center_y, candidate.top(), candidate.bottom());
+            let primary_distance = if candidate.right() <= current_center_x {
+                current_center_x - candidate.right()
             } else {
                 0.0
-            },
-            vertical_gap,
-            candidate.right() <= current.left(),
-        ),
-        NavigationAction::Right => (
-            if candidate.left() >= current.right() {
-                candidate.left() - current.right()
+            };
+            Some(DirectionalScore {
+                overlaps_ray,
+                primary_distance,
+                perpendicular_distance,
+                center_distance,
+            })
+        }
+        NavigationAction::Right if candidate_center_x > current_center_x => {
+            let overlaps_ray =
+                candidate.top() <= current_center_y && current_center_y <= candidate.bottom();
+            let perpendicular_distance =
+                distance_from_value_to_span(current_center_y, candidate.top(), candidate.bottom());
+            let primary_distance = if candidate.left() >= current_center_x {
+                candidate.left() - current_center_x
             } else {
                 0.0
-            },
-            vertical_gap,
-            candidate.left() >= current.right(),
-        ),
-        _ => (0.0, 0.0, false),
+            };
+            Some(DirectionalScore {
+                overlaps_ray,
+                primary_distance,
+                perpendicular_distance,
+                center_distance,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn distance_from_value_to_span(value: f64, start: f64, end: f64) -> f64 {
+    if value < start {
+        start - value
+    } else if value > end {
+        value - end
+    } else {
+        0.0
     }
 }
 
@@ -460,7 +545,9 @@ fn focus_default_candidate(candidates: &[HtmlElement], scope: Option<&Element>) 
 }
 
 fn focus_candidate(candidate: &HtmlElement) -> bool {
-    candidate.scroll_into_view();
+    if candidate.get_attribute("data-nav-kind").as_deref() != Some("game-item") {
+        candidate.scroll_into_view();
+    }
     candidate.focus().is_ok()
 }
 
