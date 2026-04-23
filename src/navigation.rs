@@ -277,8 +277,7 @@ fn focus_game_grid_index(
         next_index
     );
     let maybe_container_html = html_element_from(container.clone());
-
-    if let Some(container_html) = maybe_container_html.as_ref() {
+    let desired_scroll_top = maybe_container_html.as_ref().map(|container_html| {
         reveal_game_grid_index(
             container_html,
             view_mode,
@@ -286,11 +285,15 @@ fn focus_game_grid_index(
             cols,
             row_height,
             list_row_height,
-        );
-    }
+        )
+    });
 
     if let Some(element) = query_selector(&container, &selector).and_then(html_element_from) {
-        let _ = focus_without_scroll(&element);
+        focus_game_grid_item(
+            maybe_container_html.as_ref(),
+            desired_scroll_top,
+            &element,
+        );
         return;
     }
 
@@ -299,7 +302,11 @@ fn focus_game_grid_index(
             delay_ms(16).await;
             if let Some(element) = query_selector(&container, &selector).and_then(html_element_from)
             {
-                let _ = focus_without_scroll(&element);
+                focus_game_grid_item(
+                    maybe_container_html.as_ref(),
+                    desired_scroll_top,
+                    &element,
+                );
                 return;
             }
         }
@@ -313,11 +320,11 @@ fn reveal_game_grid_index(
     cols: usize,
     row_height: i32,
     list_row_height: i32,
-) {
+) -> i32 {
     let current_scroll_top = container_html.scroll_top().max(0);
     let client_height = container_html.client_height().max(0);
     if client_height <= 0 {
-        return;
+        return current_scroll_top;
     }
 
     let next_scroll_top = if view_mode == "list" {
@@ -351,6 +358,40 @@ fn reveal_game_grid_index(
 
     if next_scroll_top != current_scroll_top {
         container_html.set_scroll_top(next_scroll_top);
+    }
+
+    next_scroll_top
+}
+
+fn focus_game_grid_item(
+    container: Option<&HtmlElement>,
+    desired_scroll_top: Option<i32>,
+    element: &HtmlElement,
+) {
+    let _ = focus_without_scroll(element);
+
+    let Some(container) = container.cloned() else {
+        return;
+    };
+    let Some(desired_scroll_top) = desired_scroll_top else {
+        return;
+    };
+
+    restore_scroll_top(&container, desired_scroll_top);
+
+    spawn_local(async move {
+        for delay in [0, 16, 48] {
+            if delay > 0 {
+                delay_ms(delay).await;
+            }
+            restore_scroll_top(&container, desired_scroll_top);
+        }
+    });
+}
+
+fn restore_scroll_top(container: &HtmlElement, desired_scroll_top: i32) {
+    if container.scroll_top() != desired_scroll_top {
+        container.set_scroll_top(desired_scroll_top);
     }
 }
 
