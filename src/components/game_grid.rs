@@ -539,6 +539,8 @@ pub fn GameGrid(
     let (scroll_top, set_scroll_top) = signal(initial_scroll_top);
     let (container_height, set_container_height) = signal(600);
     let (container_width, set_container_width) = signal(800);
+    let (nav_selected_index, set_nav_selected_index) = signal::<Option<usize>>(None);
+    let (grid_has_focus, set_grid_has_focus) = signal(false);
 
     // Track current filters
     let (current_platform, set_current_platform) = signal::<Option<String>>(None);
@@ -547,6 +549,7 @@ pub fn GameGrid(
     let (current_filters, set_current_filters) = signal(GameFilters::default());
     let (did_initial_load, set_did_initial_load) = signal(false);
     let resize_listener_attached = Rc::new(Cell::new(false));
+    let nav_listener_attached = Rc::new(Cell::new(false));
 
     // Column configuration for list view
     let (visible_columns, set_visible_columns) = signal(initial_visible_columns);
@@ -702,6 +705,37 @@ pub fn GameGrid(
         }
     });
 
+    Effect::new({
+        let container_ref = container_ref.clone();
+        let nav_listener_attached = nav_listener_attached.clone();
+        move || {
+            let Some(container) = container_ref.get() else {
+                return;
+            };
+
+            if nav_listener_attached.get() {
+                return;
+            }
+            nav_listener_attached.set(true);
+
+            let listener =
+                wasm_bindgen::closure::Closure::wrap(Box::new(move |_event: web_sys::Event| {
+                    if let Some(container) = container_ref.get() {
+                        let next_index = container
+                            .get_attribute("data-nav-selected-index")
+                            .and_then(|value| value.parse::<usize>().ok());
+                        set_nav_selected_index.set(next_index);
+                    }
+                }) as Box<dyn FnMut(web_sys::Event)>);
+
+            let _ = container.add_event_listener_with_callback(
+                "lunchbox-grid-select",
+                listener.as_ref().unchecked_ref(),
+            );
+            listener.forget();
+        }
+    });
+
     // Watch for filter changes and reset
     Effect::new(move || {
         let plat = platform.get();
@@ -720,6 +754,7 @@ pub fn GameGrid(
             set_current_search.set(search.clone());
             set_current_filters.set(filters);
             set_games.set(Vec::new());
+            set_nav_selected_index.set(None);
             set_loaded_up_to.set(0);
             set_total_count.set(0);
             if !is_initial_load {
@@ -1002,6 +1037,34 @@ pub fn GameGrid(
         }
     };
 
+    Effect::new({
+        let container_ref = container_ref.clone();
+        move || {
+            let available_games = navigation_games();
+            if available_games.is_empty() {
+                set_nav_selected_index.set(None);
+                if let Some(container) = container_ref.get() {
+                    let _ = container.remove_attribute("data-nav-selected-index");
+                }
+                return;
+            }
+
+            let clamped_index = nav_selected_index
+                .get()
+                .map(|index| index.min(available_games.len().saturating_sub(1)));
+
+            if clamped_index != nav_selected_index.get() {
+                set_nav_selected_index.set(clamped_index);
+            }
+
+            if let Some(index) = clamped_index {
+                if let Some(container) = container_ref.get() {
+                    let _ = container.set_attribute("data-nav-selected-index", &index.to_string());
+                }
+            }
+        }
+    });
+
     // Pinch-to-zoom state
     let (initial_pinch_distance, set_initial_pinch_distance) = signal::<Option<f64>>(None);
     let (initial_zoom, set_initial_zoom) = signal(1.0f64);
@@ -1056,6 +1119,9 @@ pub fn GameGrid(
         <main
             class="game-content virtual-scroll"
             node_ref=container_ref
+            tabindex="0"
+            attr:data-nav="true"
+            attr:data-nav-kind="game-grid"
             attr:data-nav-grid="true"
             attr:data-nav-view-mode=move || match view_mode.get() {
                 ViewMode::Grid => "grid".to_string(),
@@ -1067,8 +1133,30 @@ pub fn GameGrid(
                 ((container_width.get() / scaled_item_width).max(1)).to_string()
             }
             attr:data-nav-game-count=move || navigation_games().len().to_string()
+            attr:data-nav-selected-index=move || nav_selected_index.get().map(|index| index.to_string()).unwrap_or_default()
             attr:data-nav-grid-row-height=move || ((ITEM_HEIGHT as f64 * zoom_level.get()) as i32).to_string()
             attr:data-nav-list-row-height=LIST_ITEM_HEIGHT.to_string()
+            on:focus=move |_| {
+                set_grid_has_focus.set(true);
+                let available_games = navigation_games();
+                if available_games.is_empty() {
+                    return;
+                }
+                let default_index = nav_selected_index
+                    .get_untracked()
+                    .filter(|index| *index < available_games.len())
+                    .unwrap_or_else(|| {
+                        let (start, _, _) = visible_range();
+                        start.min(available_games.len().saturating_sub(1))
+                    });
+                set_nav_selected_index.set(Some(default_index));
+                if let Some(container) = container_ref.get() {
+                    let _ = container.set_attribute("data-nav-selected-index", &default_index.to_string());
+                }
+            }
+            on:blur=move |_| {
+                set_grid_has_focus.set(false);
+            }
             on:scroll=on_scroll
             on:touchstart=on_touchstart
             on:touchmove=on_touchmove
@@ -1195,6 +1283,15 @@ pub fn GameGrid(
                                                         artwork_type=current_artwork_type
                                                         render_index=index
                                                         in_viewport=in_viewport
+                                                        nav_selected=Signal::derive(move || {
+                                                            grid_has_focus.get() && nav_selected_index.get() == Some(index)
+                                                        })
+                                                        on_nav_select=Callback::new(move |_| {
+                                                            set_nav_selected_index.set(Some(index));
+                                                            if let Some(container) = container_ref.get() {
+                                                                let _ = container.set_attribute("data-nav-selected-index", &index.to_string());
+                                                            }
+                                                        })
                                                     />
                                                 </div>
                                             }
@@ -1354,6 +1451,15 @@ pub fn GameGrid(
                                                             columns=columns
                                                             search_query=current_search.get()
                                                             render_index=index
+                                                            nav_selected=Signal::derive(move || {
+                                                                grid_has_focus.get() && nav_selected_index.get() == Some(index)
+                                                            })
+                                                            on_nav_select=Callback::new(move |_| {
+                                                                set_nav_selected_index.set(Some(index));
+                                                                if let Some(container) = container_ref.get() {
+                                                                    let _ = container.set_attribute("data-nav-selected-index", &index.to_string());
+                                                                }
+                                                            })
                                                         />
                                                     </div>
                                                 }
@@ -1573,6 +1679,8 @@ fn GameCard(
     /// Whether this item is in the actual viewport (not just buffer)
     #[prop(default = false)]
     in_viewport: bool,
+    #[prop(default = false.into())] nav_selected: Signal<bool>,
+    #[prop(into)] on_nav_select: Callback<usize>,
 ) -> impl IntoView {
     use crate::components::{LazyImage, minerva_downloads_signal};
 
@@ -1935,9 +2043,7 @@ fn GameCard(
         let hover_token = hover_token.clone();
         let game_for_click = game_for_click.clone();
         move |_| {
-            if let Some(card) = card_ref.get() {
-                let _ = card.focus();
-            }
+            on_nav_select.run(render_index);
             set_is_hovered.set(false);
             set_hover_preview_armed.set(false);
             set_hover_video_loading.set(false);
@@ -2077,11 +2183,9 @@ fn GameCard(
         <>
         <div
             class="game-card-anchor"
-            tabindex="0"
             role="button"
-            attr:data-nav="true"
-            attr:data-nav-kind="game-item"
             attr:data-game-index=render_index.to_string()
+            class:nav-selected=move || nav_selected.get()
             on:mouseenter=on_mouse_enter
             on:mouseleave=on_mouse_leave
             on:click=on_card_click
@@ -2306,25 +2410,21 @@ fn GameListItem(
     #[prop(default = String::new())]
     search_query: String,
     #[prop(default = 0)] render_index: usize,
+    #[prop(default = false.into())] nav_selected: Signal<bool>,
+    #[prop(into)] on_nav_select: Callback<usize>,
 ) -> impl IntoView {
     let game_for_click = game.clone();
     let col_count = columns.len();
-    let row_ref = NodeRef::<html::Div>::new();
 
     view! {
         <div
             class="game-list-item"
-            node_ref=row_ref
-            tabindex="0"
             role="button"
-            attr:data-nav="true"
-            attr:data-nav-kind="game-item"
             attr:data-game-index=render_index.to_string()
+            class:nav-selected=move || nav_selected.get()
             style:grid-template-columns=format!("repeat({}, 1fr)", col_count)
             on:click=move |_| {
-                if let Some(row) = row_ref.get() {
-                    let _ = row.focus();
-                }
+                on_nav_select.run(render_index);
                 on_select.set(Some(game_for_click.clone()))
             }
         >

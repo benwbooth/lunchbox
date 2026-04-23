@@ -156,6 +156,10 @@ fn activate_current() -> bool {
         return focus_default_candidate(&candidates, active_scope.as_ref());
     };
 
+    if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid") {
+        return activate_game_grid(&current);
+    }
+
     current.click();
     true
 }
@@ -181,17 +185,31 @@ fn invoke_back_action() -> bool {
 }
 
 fn handle_game_grid_direction(current: &HtmlElement, action: NavigationAction) -> bool {
-    if current.get_attribute("data-nav-kind").as_deref() != Some("game-item") {
-        return false;
-    }
-
-    let Some(container) = current.closest(r#"[data-nav-grid="true"]"#).ok().flatten() else {
-        return false;
+    let (container, current_index) = if current.get_attribute("data-nav-kind").as_deref()
+        == Some("game-grid")
+    {
+        let container: Element = current.clone().unchecked_into();
+        let loaded_count = parse_usize_attr(&container, "data-nav-game-count").unwrap_or(0);
+        if loaded_count == 0 {
+            return false;
+        }
+        let current_index = parse_usize_attr(current, "data-nav-selected-index")
+            .unwrap_or(0)
+            .min(loaded_count.saturating_sub(1));
+        (container, current_index)
+    } else {
+        if current.get_attribute("data-nav-kind").as_deref() != Some("game-item") {
+            return false;
+        }
+        let Some(container) = current.closest(r#"[data-nav-grid="true"]"#).ok().flatten() else {
+            return false;
+        };
+        let Some(current_index) = parse_usize_attr(current, "data-game-index") else {
+            return false;
+        };
+        (container, current_index)
     };
 
-    let Some(current_index) = parse_usize_attr(current, "data-game-index") else {
-        return false;
-    };
     let loaded_count = parse_usize_attr(&container, "data-nav-game-count").unwrap_or(0);
     if loaded_count == 0 {
         return false;
@@ -272,10 +290,6 @@ fn focus_game_grid_index(
     row_height: i32,
     list_row_height: i32,
 ) {
-    let selector = format!(
-        r#"[data-nav-kind="game-item"][data-game-index="{}"]"#,
-        next_index
-    );
     let maybe_container_html = html_element_from(container.clone());
     let desired_scroll_top = maybe_container_html.as_ref().map(|container_html| {
         reveal_game_grid_index(
@@ -288,29 +302,11 @@ fn focus_game_grid_index(
         )
     });
 
-    if let Some(element) = query_selector(&container, &selector).and_then(html_element_from) {
-        focus_game_grid_item(
-            maybe_container_html.as_ref(),
-            desired_scroll_top,
-            &element,
-        );
+    if let Some(container_html) = maybe_container_html.as_ref() {
+        set_game_grid_selected_index(container_html, next_index);
+        focus_game_grid_container(container_html, desired_scroll_top);
         return;
     }
-
-    spawn_local(async move {
-        for _ in 0..12 {
-            delay_ms(16).await;
-            if let Some(element) = query_selector(&container, &selector).and_then(html_element_from)
-            {
-                focus_game_grid_item(
-                    maybe_container_html.as_ref(),
-                    desired_scroll_top,
-                    &element,
-                );
-                return;
-            }
-        }
-    });
 }
 
 fn reveal_game_grid_index(
@@ -363,20 +359,13 @@ fn reveal_game_grid_index(
     next_scroll_top
 }
 
-fn focus_game_grid_item(
-    container: Option<&HtmlElement>,
-    desired_scroll_top: Option<i32>,
-    element: &HtmlElement,
-) {
-    let _ = focus_without_scroll(element);
-
-    let Some(container) = container.cloned() else {
-        return;
-    };
+fn focus_game_grid_container(container: &HtmlElement, desired_scroll_top: Option<i32>) {
+    let _ = focus_without_scroll(container);
     let Some(desired_scroll_top) = desired_scroll_top else {
         return;
     };
 
+    let container = container.clone();
     restore_scroll_top(&container, desired_scroll_top);
 
     spawn_local(async move {
@@ -392,6 +381,13 @@ fn focus_game_grid_item(
 fn restore_scroll_top(container: &HtmlElement, desired_scroll_top: i32) {
     if container.scroll_top() != desired_scroll_top {
         container.set_scroll_top(desired_scroll_top);
+    }
+}
+
+fn set_game_grid_selected_index(container: &HtmlElement, next_index: usize) {
+    let _ = container.set_attribute("data-nav-selected-index", &next_index.to_string());
+    if let Ok(event) = web_sys::Event::new("lunchbox-grid-select") {
+        let _ = container.dispatch_event(&event);
     }
 }
 
@@ -603,7 +599,10 @@ fn focus_default_candidate(candidates: &[HtmlElement], scope: Option<&Element>) 
         }
     } else if let Some(game_item) = candidates
         .iter()
-        .find(|candidate| candidate.get_attribute("data-nav-kind").as_deref() == Some("game-item"))
+        .find(|candidate| {
+            candidate.get_attribute("data-nav-kind").as_deref() == Some("game-grid")
+                || candidate.get_attribute("data-nav-kind").as_deref() == Some("game-item")
+        })
     {
         return focus_candidate(game_item);
     }
@@ -612,10 +611,24 @@ fn focus_default_candidate(candidates: &[HtmlElement], scope: Option<&Element>) 
 }
 
 fn focus_candidate(candidate: &HtmlElement) -> bool {
-    if candidate.get_attribute("data-nav-kind").as_deref() != Some("game-item") {
+    let nav_kind = candidate.get_attribute("data-nav-kind");
+    if nav_kind.as_deref() != Some("game-item") && nav_kind.as_deref() != Some("game-grid") {
         candidate.scroll_into_view();
     }
     focus_without_scroll(candidate).is_ok()
+}
+
+fn activate_game_grid(container: &HtmlElement) -> bool {
+    let selected_index = parse_usize_attr(container, "data-nav-selected-index").unwrap_or(0);
+    let selector = format!(r#"[data-game-index="{}"]"#, selected_index);
+    let container_element: Element = container.clone().unchecked_into();
+    let Some(target) = query_selector(&container_element, &selector).and_then(html_element_from)
+    else {
+        return false;
+    };
+
+    target.click();
+    true
 }
 
 fn focus_without_scroll(element: &HtmlElement) -> Result<(), wasm_bindgen::JsValue> {
