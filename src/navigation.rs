@@ -560,8 +560,7 @@ fn find_directional_candidate(
     action: NavigationAction,
 ) -> Option<HtmlElement> {
     let current_rect = navigation_rect(current);
-    let current_center_x = current_rect.left + current_rect.width / 2.0;
-    let current_center_y = current_rect.top + current_rect.height / 2.0;
+    let (ray_origin_x, ray_origin_y) = directional_ray_origin(&current_rect, action)?;
 
     candidates
         .iter()
@@ -570,7 +569,7 @@ fn find_directional_candidate(
         })
         .filter_map(|candidate| {
             let rect = navigation_rect(candidate);
-            directional_score(current_center_x, current_center_y, &rect, action)
+            directional_score(ray_origin_x, ray_origin_y, &rect, action)
                 .map(|score| (score, candidate.clone()))
         })
         .min_by(|(score_a, _), (score_b, _)| {
@@ -642,6 +641,22 @@ struct DirectionalScore {
     center_distance: f64,
 }
 
+fn directional_ray_origin(
+    current: &NavigationRect,
+    action: NavigationAction,
+) -> Option<(f64, f64)> {
+    let center_x = current.left + current.width / 2.0;
+    let center_y = current.top + current.height / 2.0;
+
+    match action {
+        NavigationAction::Up => Some((center_x, current.top)),
+        NavigationAction::Down => Some((center_x, current.bottom)),
+        NavigationAction::Left => Some((current.left, center_y)),
+        NavigationAction::Right => Some((current.right, center_y)),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 struct NavigationRect {
     left: f64,
@@ -653,28 +668,27 @@ struct NavigationRect {
 }
 
 fn directional_score(
-    current_center_x: f64,
-    current_center_y: f64,
+    ray_origin_x: f64,
+    ray_origin_y: f64,
     candidate: &NavigationRect,
     action: NavigationAction,
 ) -> Option<DirectionalScore> {
     let candidate_center_x = candidate.left + candidate.width / 2.0;
     let candidate_center_y = candidate.top + candidate.height / 2.0;
     let center_distance = squared_distance(
-        current_center_x,
-        current_center_y,
+        ray_origin_x,
+        ray_origin_y,
         candidate_center_x,
         candidate_center_y,
     );
 
     match action {
-        NavigationAction::Up if candidate.top < current_center_y => {
-            let overlaps_ray =
-                candidate.left <= current_center_x && current_center_x <= candidate.right;
+        NavigationAction::Up if candidate.top < ray_origin_y => {
+            let overlaps_ray = candidate.left <= ray_origin_x && ray_origin_x <= candidate.right;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_x, candidate.left, candidate.right);
-            let primary_distance = if candidate.bottom <= current_center_y {
-                current_center_y - candidate.bottom
+                distance_from_value_to_span(ray_origin_x, candidate.left, candidate.right);
+            let primary_distance = if candidate.bottom <= ray_origin_y {
+                ray_origin_y - candidate.bottom
             } else {
                 0.0
             };
@@ -685,13 +699,12 @@ fn directional_score(
                 center_distance,
             })
         }
-        NavigationAction::Down if candidate.bottom > current_center_y => {
-            let overlaps_ray =
-                candidate.left <= current_center_x && current_center_x <= candidate.right;
+        NavigationAction::Down if candidate.bottom > ray_origin_y => {
+            let overlaps_ray = candidate.left <= ray_origin_x && ray_origin_x <= candidate.right;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_x, candidate.left, candidate.right);
-            let primary_distance = if candidate.top >= current_center_y {
-                candidate.top - current_center_y
+                distance_from_value_to_span(ray_origin_x, candidate.left, candidate.right);
+            let primary_distance = if candidate.top >= ray_origin_y {
+                candidate.top - ray_origin_y
             } else {
                 0.0
             };
@@ -702,13 +715,12 @@ fn directional_score(
                 center_distance,
             })
         }
-        NavigationAction::Left if candidate.left < current_center_x => {
-            let overlaps_ray =
-                candidate.top <= current_center_y && current_center_y <= candidate.bottom;
+        NavigationAction::Left if candidate.left < ray_origin_x => {
+            let overlaps_ray = candidate.top <= ray_origin_y && ray_origin_y <= candidate.bottom;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_y, candidate.top, candidate.bottom);
-            let primary_distance = if candidate.right <= current_center_x {
-                current_center_x - candidate.right
+                distance_from_value_to_span(ray_origin_y, candidate.top, candidate.bottom);
+            let primary_distance = if candidate.right <= ray_origin_x {
+                ray_origin_x - candidate.right
             } else {
                 0.0
             };
@@ -719,13 +731,12 @@ fn directional_score(
                 center_distance,
             })
         }
-        NavigationAction::Right if candidate.right > current_center_x => {
-            let overlaps_ray =
-                candidate.top <= current_center_y && current_center_y <= candidate.bottom;
+        NavigationAction::Right if candidate.right > ray_origin_x => {
+            let overlaps_ray = candidate.top <= ray_origin_y && ray_origin_y <= candidate.bottom;
             let perpendicular_distance =
-                distance_from_value_to_span(current_center_y, candidate.top, candidate.bottom);
-            let primary_distance = if candidate.left >= current_center_x {
-                candidate.left - current_center_x
+                distance_from_value_to_span(ray_origin_y, candidate.top, candidate.bottom);
+            let primary_distance = if candidate.left >= ray_origin_x {
+                candidate.left - ray_origin_x
             } else {
                 0.0
             };
