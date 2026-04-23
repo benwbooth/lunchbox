@@ -65,6 +65,29 @@ fn format_game_card_download_label(item: &backend_api::MinervaDownloadQueueItem)
     }
 }
 
+fn title_matches_alphabet_target(title: &str, target: char) -> bool {
+    match target {
+        '#' => title
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false),
+        _ => {
+            let target_lower = target.to_ascii_lowercase();
+            title
+                .chars()
+                .next()
+                .map(|c| c.to_ascii_lowercase() == target_lower)
+                .unwrap_or(false)
+        }
+    }
+}
+
+fn find_first_game_index_for_target(games: &[Game], target: char) -> Option<usize> {
+    games.iter()
+        .position(|game| title_matches_alphabet_target(&game.display_title, target))
+}
+
 // Virtual scroll configuration
 const ITEM_HEIGHT: i32 = 280; // Height of each game card in grid
 
@@ -829,20 +852,6 @@ pub fn GameGrid(
         }
     };
 
-    // Find the index of the first game starting with a given character
-    let find_first_game_index = move |ch: char| -> Option<usize> {
-        let games_list = games.get();
-        let ch_lower = ch.to_ascii_lowercase();
-
-        games_list.iter().position(|game| {
-            game.display_title
-                .chars()
-                .next()
-                .map(|c| c.to_ascii_lowercase() == ch_lower)
-                .unwrap_or(false)
-        })
-    };
-
     // Scroll to a specific game index (with zoom applied)
     let scroll_to_index = move |index: usize| {
         let mode = view_mode.get();
@@ -865,6 +874,92 @@ pub fn GameGrid(
         if let Some(container) = container_ref.get() {
             container.set_scroll_top(scroll_pos);
         }
+    };
+
+    let jump_to_alphabet_target = move |target: char| {
+        let loaded_games = games.get();
+        if let Some(idx) = find_first_game_index_for_target(&loaded_games, target) {
+            scroll_to_index(idx);
+            return;
+        }
+
+        if loading.get() {
+            return;
+        }
+
+        let total = total_count.get();
+        let already_loaded = loaded_up_to.get();
+        if already_loaded >= total {
+            return;
+        }
+
+        let query_plat = query_platform(current_platform.get());
+        let search = current_search.get();
+        let search_param = if search.is_empty() { None } else { Some(search) };
+        let filters = current_filters.get();
+        let query_filters = backend_api::GameQueryFilters {
+            installed_only: filters.installed_only,
+            hide_homebrew: filters.hide_homebrew,
+            hide_adult: filters.hide_adult,
+        };
+
+        set_load_error.set(None);
+        set_loading.set(true);
+
+        spawn_local(async move {
+            let mut offset = already_loaded;
+            let mut pending_games = Vec::new();
+            let mut found_index = None;
+
+            while offset < total {
+                match backend_api::get_games(
+                    query_plat.clone(),
+                    search_param.clone(),
+                    Some(query_filters),
+                    Some(FETCH_CHUNK_SIZE),
+                    Some(offset),
+                )
+                .await
+                {
+                    Ok(chunk) => {
+                        if chunk.is_empty() {
+                            break;
+                        }
+
+                        let base_index = already_loaded as usize + pending_games.len();
+                        if let Some(pos) = find_first_game_index_for_target(&chunk, target) {
+                            found_index = Some(base_index + pos);
+                        }
+
+                        offset += chunk.len() as i64;
+                        pending_games.extend(chunk);
+
+                        if found_index.is_some() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        let message = format!("Failed to jump to letter {}: {}", target, e);
+                        console::error_1(&message.clone().into());
+                        set_load_error.set(Some(message));
+                        set_loading.set(false);
+                        return;
+                    }
+                }
+            }
+
+            if !pending_games.is_empty() {
+                let pending_count = pending_games.len() as i64;
+                set_games.update(|games| games.extend(pending_games));
+                set_loaded_up_to.update(|loaded| *loaded += pending_count);
+            }
+
+            set_loading.set(false);
+
+            if let Some(idx) = found_index {
+                scroll_to_index(idx);
+            }
+        });
     };
 
     // Pinch-to-zoom state
@@ -1404,17 +1499,7 @@ pub fn GameGrid(
                                             class="alphabet-btn"
                                             title=title
                                             on:click=move |_| {
-                                                if ch == '#' {
-                                                    // Find first game starting with a digit
-                                                    let games_list = games.get();
-                                                    if let Some(idx) = games_list.iter().position(|g| {
-                                                        g.display_title.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
-                                                    }) {
-                                                        scroll_to_index(idx);
-                                                    }
-                                                } else if let Some(idx) = find_first_game_index(ch) {
-                                                    scroll_to_index(idx);
-                                                }
+                                                jump_to_alphabet_target(ch);
                                             }
                                         >
                                             {display}
