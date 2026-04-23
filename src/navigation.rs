@@ -896,6 +896,11 @@ fn dispatch_card_pane_dpad_action(
             return false;
         }
 
+        if focus_adjacent_alphabet_button(current, action) {
+            debug_log_nav(&format!("alphabet rail handled action={:?}", action));
+            return true;
+        }
+
         if let Some(grid_entry) = find_game_grid_entry_candidate(current, candidates, action) {
             if let Some(grid) = game_grid_container_for_element(&grid_entry) {
                 let target_index = parse_usize_attr(&grid_entry, "data-game-index");
@@ -942,6 +947,47 @@ fn active_or_first_game_grid(document: &Document) -> Option<HtmlElement> {
     })
     .and_then(html_element_from)
     .filter(|grid| parse_usize_attr(grid, "data-nav-game-count").unwrap_or(0) > 0)
+}
+
+fn focus_adjacent_alphabet_button(current: &HtmlElement, action: NavigationAction) -> bool {
+    let target_offset = match action {
+        NavigationAction::Up => -1,
+        NavigationAction::Down => 1,
+        _ => return false,
+    };
+
+    if !is_alphabet_nav_button(current) {
+        return false;
+    }
+
+    let Some(alphabet_nav) = current.closest(".alphabet-nav").ok().flatten() else {
+        return false;
+    };
+    let buttons = query_selector_all(&alphabet_nav, ".alphabet-btn")
+        .into_iter()
+        .filter_map(html_element_from)
+        .collect::<Vec<_>>();
+    let Some(current_index) = buttons
+        .iter()
+        .position(|button| same_element(button, current))
+    else {
+        return false;
+    };
+    let target_index = current_index as isize + target_offset;
+    if !(0..buttons.len() as isize).contains(&target_index) {
+        return false;
+    }
+
+    clear_active_game_grid();
+    focus_without_scroll(&buttons[target_index as usize]).is_ok()
+}
+
+fn is_alphabet_nav_button(element: &HtmlElement) -> bool {
+    element.get_attribute("class").is_some_and(|class_name| {
+        class_name
+            .split_whitespace()
+            .any(|class| class == "alphabet-btn")
+    })
 }
 
 fn grid_action_name(action: NavigationAction) -> &'static str {
