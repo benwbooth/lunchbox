@@ -284,7 +284,16 @@ pub fn MinervaDownloadQueue() -> impl IntoView {
                         </Show>
                         <For
                             each=move || visible_downloads.get()
-                            key=|item| item.job_id.clone()
+                            key=|item| {
+                                format!(
+                                    "{}:{}:{:.1}:{}:{}",
+                                    item.job_id,
+                                    item.status,
+                                    item.progress_percent,
+                                    item.updated_at,
+                                    item.status_message
+                                )
+                            }
                             let:item
                         >
                             {
