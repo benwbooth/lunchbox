@@ -321,28 +321,29 @@ fn reveal_game_grid_index(
     }
 
     let next_scroll_top = if view_mode == "list" {
-        let available_height = (client_height - list_row_height).max(list_row_height);
-        let visible_rows = (available_height / list_row_height).max(1) as usize;
-        let first_visible_row = (current_scroll_top / list_row_height).max(0) as usize;
-        let last_visible_row = first_visible_row + visible_rows.saturating_sub(1);
+        let row_top = list_row_height + next_index as i32 * list_row_height;
+        let row_bottom = row_top + list_row_height;
+        let viewport_top = current_scroll_top + list_row_height;
+        let viewport_bottom = current_scroll_top + client_height;
 
-        if next_index < first_visible_row {
-            (next_index as i32 * list_row_height).max(0)
-        } else if next_index > last_visible_row {
-            ((next_index + 1 - visible_rows) as i32 * list_row_height).max(0)
+        if row_top < viewport_top {
+            (row_top - list_row_height).max(0)
+        } else if row_bottom > viewport_bottom {
+            (row_bottom - client_height).max(0)
         } else {
             current_scroll_top
         }
     } else {
-        let visible_rows = (client_height / row_height).max(1) as usize;
-        let first_visible_row = (current_scroll_top / row_height).max(0) as usize;
-        let last_visible_row = first_visible_row + visible_rows.saturating_sub(1);
         let next_row = next_index / cols.max(1);
+        let row_top = next_row as i32 * row_height;
+        let row_bottom = row_top + row_height;
+        let viewport_top = current_scroll_top;
+        let viewport_bottom = current_scroll_top + client_height;
 
-        if next_row < first_visible_row {
-            (next_row as i32 * row_height).max(0)
-        } else if next_row > last_visible_row {
-            ((next_row + 1 - visible_rows) as i32 * row_height).max(0)
+        if row_top < viewport_top {
+            row_top.max(0)
+        } else if row_bottom > viewport_bottom {
+            (row_bottom - client_height).max(0)
         } else {
             current_scroll_top
         }
