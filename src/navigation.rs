@@ -132,7 +132,15 @@ fn move_directional(action: NavigationAction) -> bool {
         return false;
     }
 
-    let Some(current) = current_navigation_element(&document, active_scope.as_ref()) else {
+    let current = current_navigation_element(&document, active_scope.as_ref());
+
+    if active_scope.is_none()
+        && dispatch_card_pane_dpad_action(&document, current.as_ref(), &candidates, action)
+    {
+        return true;
+    }
+
+    let Some(current) = current else {
         return focus_default_candidate(&candidates, active_scope.as_ref());
     };
 
@@ -143,30 +151,6 @@ fn move_directional(action: NavigationAction) -> bool {
             action,
             parse_usize_attr(&current, "data-nav-selected-index")
         ));
-    }
-
-    if active_scope.is_none() {
-        if let Some(grid) = game_grid_container_for_element(&current) {
-            if dispatch_game_grid_dpad_action(&grid, grid_dpad_action_name(action), None) {
-                debug_log_nav(&format!("grid custom dpad handled action={:?}", action));
-                return true;
-            }
-        }
-
-        if let Some(grid_entry) = find_game_grid_entry_candidate(&current, &candidates, action) {
-            if let Some(grid) = game_grid_container_for_element(&grid_entry) {
-                let target_index = parse_usize_attr(&grid_entry, "data-game-index");
-                if dispatch_game_grid_dpad_action(&grid, "enter", target_index) {
-                    debug_log_nav(&format!(
-                        "grid custom enter from kind={} action={:?} index={:?}",
-                        current_kind,
-                        action,
-                        parse_usize_attr(&grid_entry, "data-game-index")
-                    ));
-                    return true;
-                }
-            }
-        }
     }
 
     if handle_game_grid_direction(&current, action) {
@@ -805,6 +789,84 @@ fn game_grid_container_for_element(element: &HtmlElement) -> Option<HtmlElement>
         .ok()
         .flatten()
         .and_then(html_element_from)
+}
+
+fn dispatch_card_pane_dpad_action(
+    document: &Document,
+    current: Option<&HtmlElement>,
+    candidates: &[HtmlElement],
+    action: NavigationAction,
+) -> bool {
+    if let Some(current) = current {
+        if let Some(grid) = game_grid_container_for_element(current) {
+            if dispatch_game_grid_dpad_action(&grid, grid_dpad_action_name(action), None) {
+                debug_log_nav(&format!("grid custom dpad handled action={:?}", action));
+                return true;
+            }
+            return false;
+        }
+
+        if is_alphabet_nav_button(current) {
+            if let Some(grid) = active_or_first_game_grid(document) {
+                if dispatch_game_grid_dpad_action(&grid, grid_dpad_action_name(action), None) {
+                    debug_log_nav(&format!(
+                        "grid custom dpad reclaimed from alphabet action={:?}",
+                        action
+                    ));
+                    return true;
+                }
+            }
+        }
+
+        if let Some(grid_entry) = find_game_grid_entry_candidate(current, candidates, action) {
+            if let Some(grid) = game_grid_container_for_element(&grid_entry) {
+                let target_index = parse_usize_attr(&grid_entry, "data-game-index");
+                if dispatch_game_grid_dpad_action(&grid, "enter", target_index) {
+                    debug_log_nav(&format!(
+                        "grid custom enter action={:?} index={:?}",
+                        action, target_index
+                    ));
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    let Some(grid) = active_or_first_game_grid(document) else {
+        return false;
+    };
+
+    if dispatch_game_grid_dpad_action(&grid, "enter", None) {
+        debug_log_nav("grid custom enter from empty focus");
+        return true;
+    }
+
+    false
+}
+
+fn active_or_first_game_grid(document: &Document) -> Option<HtmlElement> {
+    query_selector(
+        document,
+        r#"[data-nav-kind="game-grid"][data-nav-active-grid="true"]"#,
+    )
+    .or_else(|| {
+        query_selector(
+            document,
+            r#"[data-nav-kind="game-grid"][data-nav-grid="true"]"#,
+        )
+    })
+    .and_then(html_element_from)
+    .filter(|grid| parse_usize_attr(grid, "data-nav-game-count").unwrap_or(0) > 0)
+}
+
+fn is_alphabet_nav_button(element: &HtmlElement) -> bool {
+    element.get_attribute("class").is_some_and(|class_name| {
+        class_name
+            .split_whitespace()
+            .any(|class| class == "alphabet-btn")
+    })
 }
 
 fn grid_dpad_action_name(action: NavigationAction) -> &'static str {
