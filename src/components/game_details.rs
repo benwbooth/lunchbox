@@ -1917,6 +1917,7 @@ pub fn GameDetails(
                                                 <Show when=move || !show_file_picker.get()>
                                                     <button
                                                         class="import-btn-action minerva-download-btn"
+                                                        attr:data-nav-default="true"
                                                         disabled=move || minerva_rom.get().is_none()
                                                         title=move || if minerva_rom.get().is_none() { "No minerva.db — run lunchbox-cli minerva-build first".to_string() } else { "Download ROM via torrent".to_string() }
                                                         on:click=move |_| {
@@ -2083,37 +2084,47 @@ pub fn GameDetails(
                                                                     <div class="file-picker-group-label">
                                                                         {format!("{collection} / {minerva_platform}")}
                                                                     </div>
-                                                                    {show_whole_torrent_row.then(|| view! {
-                                                                        <div
-                                                                            class="file-picker-row file-picker-row-torrent"
-                                                                            tabindex="0"
-                                                                            role="button"
-                                                                            attr:data-nav="true"
-                                                                            class:selected=whole_torrent_selected
-                                                                            on:click=move |_| set_selected_download.set(Some(whole_torrent_click.clone()))
-                                                                        >
-                                                                            <div class="file-picker-name">
-                                                                                <span class="file-picker-type-badge">"Full Torrent"</span>
-                                                                                <span class="file-picker-type-title">
-                                                                                    {if shared_whole_torrent {
-                                                                                        "Download Shared Full Torrent"
-                                                                                    } else {
-                                                                                        "Download Full Torrent"
-                                                                                    }}
-                                                                                </span>
+                                                                    {show_whole_torrent_row.then(|| {
+                                                                        let row_ref = NodeRef::<leptos::html::Div>::new();
+                                                                        view! {
+                                                                            <div
+                                                                                class="file-picker-row file-picker-row-torrent"
+                                                                                node_ref=row_ref
+                                                                                tabindex="0"
+                                                                                role="button"
+                                                                                attr:data-nav="true"
+                                                                                attr:data-nav-default=if group_index == 0 { Some("true") } else { None }
+                                                                                class:selected=whole_torrent_selected
+                                                                                on:click=move |_| {
+                                                                                    if let Some(row) = row_ref.get() {
+                                                                                        let _ = row.focus();
+                                                                                    }
+                                                                                    set_selected_download.set(Some(whole_torrent_click.clone()))
+                                                                                }
+                                                                            >
+                                                                                <div class="file-picker-name">
+                                                                                    <span class="file-picker-type-badge">"Full Torrent"</span>
+                                                                                    <span class="file-picker-type-title">
+                                                                                        {if shared_whole_torrent {
+                                                                                            "Download Shared Full Torrent"
+                                                                                        } else {
+                                                                                            "Download Full Torrent"
+                                                                                        }}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div class="file-picker-meta">
+                                                                                    <span class="file-picker-size">{format!("{rom_count} ROMs total")}</span>
+                                                                                    <span class="file-picker-size">{format_picker_bytes(total_size)}</span>
+                                                                                    <span class="file-picker-match">
+                                                                                        {if shared_whole_torrent {
+                                                                                            format!("{match_count} matching file(s) in this view")
+                                                                                        } else {
+                                                                                            format!("{match_count} matching file(s)")
+                                                                                        }}
+                                                                                    </span>
+                                                                                </div>
                                                                             </div>
-                                                                            <div class="file-picker-meta">
-                                                                                <span class="file-picker-size">{format!("{rom_count} ROMs total")}</span>
-                                                                                <span class="file-picker-size">{format_picker_bytes(total_size)}</span>
-                                                                                <span class="file-picker-match">
-                                                                                    {if shared_whole_torrent {
-                                                                                        format!("{match_count} matching file(s) in this view")
-                                                                                    } else {
-                                                                                        format!("{match_count} matching file(s)")
-                                                                                    }}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
+                                                                        }
                                                                     })}
                                                                     {group.items.into_iter().map(|item| {
                                                                         let size_mb = item.size as f64 / (1024.0 * 1024.0);
@@ -2125,14 +2136,22 @@ pub fn GameDetails(
                                                                             move || selected_download.get() == Some(selection.clone())
                                                                         };
                                                                         let click_selection = selection.clone();
+                                                                        let row_ref = NodeRef::<leptos::html::Div>::new();
                                                                         view! {
                                                                             <div
                                                                                 class="file-picker-row file-picker-row-file"
+                                                                                node_ref=row_ref
                                                                                 tabindex="0"
                                                                                 role="button"
                                                                                 attr:data-nav="true"
+                                                                                attr:data-nav-default=if group_index == 0 && !show_whole_torrent_row { Some("true") } else { None }
                                                                                 class:selected=is_selected
-                                                                                on:click=move |_| set_selected_download.set(Some(click_selection.clone()))
+                                                                                on:click=move |_| {
+                                                                                    if let Some(row) = row_ref.get() {
+                                                                                        let _ = row.focus();
+                                                                                    }
+                                                                                    set_selected_download.set(Some(click_selection.clone()))
+                                                                                }
                                                                             >
                                                                                 <div class="file-picker-name">
                                                                                     <div class="file-picker-title">
@@ -2293,7 +2312,11 @@ pub fn GameDetails(
                                                     || display_game.get().map(|g| g.has_game_file).unwrap_or(false))
                                                     && import_job_id.get().is_none()
                                             }>
-                                                <button class="play-btn" disabled=move || game_uninstalling.get() on:click=move |_| {
+                                                <button
+                                                    class="play-btn"
+                                                    attr:data-nav-default="true"
+                                                    disabled=move || game_uninstalling.get()
+                                                    on:click=move |_| {
                                                     let platform = stored_platform.get_value();
                                                     let platform_for_filter = platform.clone();
                                                     let current_game_file = game_file.get_untracked();
@@ -2313,7 +2336,8 @@ pub fn GameDetails(
                                                         }
                                                         set_emulators_loading.set(false);
                                                     });
-                                                }>"Play"</button>
+                                                }
+                                                >"Play"</button>
                                                 <Show when=move || {
                                                     game_file
                                                         .get()
@@ -3110,10 +3134,17 @@ fn EmulatorPickerModal(
                         >
                             <ul class="emulator-list">
                                 <For
-                                    each=move || emulators.get()
-                                    key=|emu| {
+                                    each=move || {
+                                        emulators
+                                            .get()
+                                            .into_iter()
+                                            .enumerate()
+                                            .collect::<Vec<_>>()
+                                    }
+                                    key=|(index, emu)| {
                                         format!(
-                                            "{}:{}",
+                                            "{}:{}:{}",
+                                            index,
                                             emu.id,
                                             if emu.is_retroarch_core {
                                                 "retroarch"
@@ -3122,7 +3153,7 @@ fn EmulatorPickerModal(
                                             }
                                         )
                                     }
-                                    children=move |emu: EmulatorWithStatus| {
+                                    children=move |(emu_index, emu): (usize, EmulatorWithStatus)| {
                                         let name = emu.name.clone();
                                         let display_name = emu.display_name.clone();
                                         let firmware_display_name =
@@ -3716,6 +3747,7 @@ fn EmulatorPickerModal(
                                                     <button
                                                         class="emulator-pref-btn emulator-play-btn"
                                                         class:install=!is_installed
+                                                        attr:data-nav-default=if emu_index == 0 { Some("true") } else { None }
                                                         disabled=move || !is_installed && !can_auto_install
                                                         on:click=on_launch
                                                     >

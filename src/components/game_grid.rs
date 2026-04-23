@@ -1935,6 +1935,9 @@ fn GameCard(
         let hover_token = hover_token.clone();
         let game_for_click = game_for_click.clone();
         move |_| {
+            if let Some(card) = card_ref.get() {
+                let _ = card.focus();
+            }
             set_is_hovered.set(false);
             set_hover_preview_armed.set(false);
             set_hover_video_loading.set(false);
@@ -2306,17 +2309,24 @@ fn GameListItem(
 ) -> impl IntoView {
     let game_for_click = game.clone();
     let col_count = columns.len();
+    let row_ref = NodeRef::<html::Div>::new();
 
     view! {
         <div
             class="game-list-item"
+            node_ref=row_ref
             tabindex="0"
             role="button"
             attr:data-nav="true"
             attr:data-nav-kind="game-item"
             attr:data-game-index=render_index.to_string()
             style:grid-template-columns=format!("repeat({}, 1fr)", col_count)
-            on:click=move |_| on_select.set(Some(game_for_click.clone()))
+            on:click=move |_| {
+                if let Some(row) = row_ref.get() {
+                    let _ = row.focus();
+                }
+                on_select.set(Some(game_for_click.clone()))
+            }
         >
             {columns.iter().map(|col| {
                 let value = col.value(&game);
