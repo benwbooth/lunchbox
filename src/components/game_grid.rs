@@ -288,7 +288,9 @@ fn next_grid_nav_index(
                 "up" if current_index >= cols => Some(current_index - cols),
                 "down" => next_grid_nav_down_index(current_index, cols, count),
                 "left" if current_index % cols != 0 => Some(current_index - 1),
-                "right" if current_index + 1 < count => Some(current_index + 1),
+                "right" if current_index % cols + 1 < cols && current_index + 1 < count => {
+                    Some(current_index + 1)
+                }
                 _ => None,
             }
         }

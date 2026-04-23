@@ -334,7 +334,11 @@ fn handle_game_grid_direction(current: &HtmlElement, action: NavigationAction) -
             NavigationAction::Up if current_index >= cols => Some(current_index - cols),
             NavigationAction::Down => next_grid_down_index(current_index, cols, loaded_count),
             NavigationAction::Left if current_index % cols != 0 => Some(current_index - 1),
-            NavigationAction::Right if current_index + 1 < loaded_count => Some(current_index + 1),
+            NavigationAction::Right
+                if current_index % cols + 1 < cols && current_index + 1 < loaded_count =>
+            {
+                Some(current_index + 1)
+            }
             _ => None,
         }
     };
@@ -664,7 +668,7 @@ fn directional_score(
     );
 
     match action {
-        NavigationAction::Up if candidate_center_y < current_center_y => {
+        NavigationAction::Up if candidate.top < current_center_y => {
             let overlaps_ray =
                 candidate.left <= current_center_x && current_center_x <= candidate.right;
             let perpendicular_distance =
@@ -681,7 +685,7 @@ fn directional_score(
                 center_distance,
             })
         }
-        NavigationAction::Down if candidate_center_y > current_center_y => {
+        NavigationAction::Down if candidate.bottom > current_center_y => {
             let overlaps_ray =
                 candidate.left <= current_center_x && current_center_x <= candidate.right;
             let perpendicular_distance =
@@ -698,7 +702,7 @@ fn directional_score(
                 center_distance,
             })
         }
-        NavigationAction::Left if candidate_center_x < current_center_x => {
+        NavigationAction::Left if candidate.left < current_center_x => {
             let overlaps_ray =
                 candidate.top <= current_center_y && current_center_y <= candidate.bottom;
             let perpendicular_distance =
@@ -715,7 +719,7 @@ fn directional_score(
                 center_distance,
             })
         }
-        NavigationAction::Right if candidate_center_x > current_center_x => {
+        NavigationAction::Right if candidate.right > current_center_x => {
             let overlaps_ray =
                 candidate.top <= current_center_y && current_center_y <= candidate.bottom;
             let perpendicular_distance =
