@@ -272,30 +272,14 @@ fn focus_game_grid_index(
     row_height: i32,
     list_row_height: i32,
 ) {
-    let view_mode_owned = view_mode.to_string();
     let selector = format!(
         r#"[data-nav-kind="game-item"][data-game-index="{}"]"#,
         next_index
     );
     let maybe_container_html = html_element_from(container.clone());
 
-    if let (Some(container_html), Some(element)) = (
-        maybe_container_html.as_ref(),
-        query_selector(&container, &selector).and_then(html_element_from),
-    ) {
-        reveal_target_in_game_grid(
-            container_html,
-            &container,
-            &element,
-            view_mode,
-            list_row_height,
-        );
-        let _ = focus_without_scroll(&element);
-        return;
-    }
-
     if let Some(container_html) = maybe_container_html.as_ref() {
-        scroll_game_grid_to_estimated_index(
+        reveal_game_grid_index(
             container_html,
             view_mode,
             next_index,
@@ -305,20 +289,16 @@ fn focus_game_grid_index(
         );
     }
 
+    if let Some(element) = query_selector(&container, &selector).and_then(html_element_from) {
+        let _ = focus_without_scroll(&element);
+        return;
+    }
+
     spawn_local(async move {
         for _ in 0..12 {
             delay_ms(16).await;
             if let Some(element) = query_selector(&container, &selector).and_then(html_element_from)
             {
-                if let Some(container_html) = html_element_from(container.clone()) {
-                    reveal_target_in_game_grid(
-                        &container_html,
-                        &container,
-                        &element,
-                        &view_mode_owned,
-                        list_row_height,
-                    );
-                }
                 let _ = focus_without_scroll(&element);
                 return;
             }
@@ -326,47 +306,7 @@ fn focus_game_grid_index(
     });
 }
 
-fn reveal_target_in_game_grid(
-    container_html: &HtmlElement,
-    container: &Element,
-    target: &HtmlElement,
-    view_mode: &str,
-    list_row_height: i32,
-) {
-    let current_scroll_top = container_html.scroll_top().max(0);
-    let client_height = container_html.client_height().max(0);
-    if client_height <= 0 {
-        return;
-    }
-
-    let container_rect = container_html.get_bounding_client_rect();
-    let list_header_height = if view_mode == "list" {
-        query_selector(container, ".game-list-header")
-            .and_then(html_element_from)
-            .map(|header| header.get_bounding_client_rect().height())
-            .unwrap_or(list_row_height as f64)
-    } else {
-        0.0
-    };
-
-    let visible_top = container_rect.top() + list_header_height;
-    let visible_bottom = container_rect.bottom();
-    let target_rect = target.get_bounding_client_rect();
-    let mut next_scroll_top = current_scroll_top as f64;
-
-    if target_rect.top() < visible_top {
-        next_scroll_top -= visible_top - target_rect.top();
-    } else if target_rect.bottom() > visible_bottom {
-        next_scroll_top += target_rect.bottom() - visible_bottom;
-    }
-
-    let next_scroll_top = next_scroll_top.max(0.0).round() as i32;
-    if next_scroll_top != current_scroll_top {
-        container_html.set_scroll_top(next_scroll_top);
-    }
-}
-
-fn scroll_game_grid_to_estimated_index(
+fn reveal_game_grid_index(
     container_html: &HtmlElement,
     view_mode: &str,
     next_index: usize,
@@ -380,29 +320,33 @@ fn scroll_game_grid_to_estimated_index(
         return;
     }
 
-    let (target_top, target_bottom, visible_top) = if view_mode == "list" {
-        let top = (next_index as i32 + 1) * list_row_height;
-        let bottom = top + list_row_height;
-        let visible_top = current_scroll_top + list_row_height;
-        (top, bottom, visible_top)
-    } else {
-        let top = (next_index as i32 / cols as i32) * row_height;
-        let bottom = top + row_height;
-        (top, bottom, current_scroll_top)
-    };
+    let next_scroll_top = if view_mode == "list" {
+        let available_height = (client_height - list_row_height).max(list_row_height);
+        let visible_rows = (available_height / list_row_height).max(1) as usize;
+        let first_visible_row = (current_scroll_top / list_row_height).max(0) as usize;
+        let last_visible_row = first_visible_row + visible_rows.saturating_sub(1);
 
-    let visible_bottom = current_scroll_top + client_height;
-    let mut next_scroll_top = current_scroll_top;
-
-    if target_top < visible_top {
-        next_scroll_top = if view_mode == "list" {
-            (target_top - list_row_height).max(0)
+        if next_index < first_visible_row {
+            (next_index as i32 * list_row_height).max(0)
+        } else if next_index > last_visible_row {
+            ((next_index + 1 - visible_rows) as i32 * list_row_height).max(0)
         } else {
-            target_top.max(0)
-        };
-    } else if target_bottom > visible_bottom {
-        next_scroll_top = (target_bottom - client_height).max(0);
-    }
+            current_scroll_top
+        }
+    } else {
+        let visible_rows = (client_height / row_height).max(1) as usize;
+        let first_visible_row = (current_scroll_top / row_height).max(0) as usize;
+        let last_visible_row = first_visible_row + visible_rows.saturating_sub(1);
+        let next_row = next_index / cols.max(1);
+
+        if next_row < first_visible_row {
+            (next_row as i32 * row_height).max(0)
+        } else if next_row > last_visible_row {
+            ((next_row + 1 - visible_rows) as i32 * row_height).max(0)
+        } else {
+            current_scroll_top
+        }
+    };
 
     if next_scroll_top != current_scroll_top {
         container_html.set_scroll_top(next_scroll_top);
