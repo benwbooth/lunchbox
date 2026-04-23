@@ -1527,6 +1527,7 @@ fn GameCard(
             const HOVER_SCALE: f64 = 1.95;
             const HOVER_LIFT_PX: f64 = 10.0;
             const EDGE_MARGIN_PX: f64 = 8.0;
+            const ALPHABET_NAV_CLEARANCE_PX: f64 = 44.0;
             const TOOLTIP_SCALE: f64 = HOVER_SCALE;
 
             set_is_hovered.set(true);
@@ -1551,19 +1552,21 @@ fn GameCard(
                 return;
             };
 
+            // Keep hover-expanded cards and preview tooltips out of the right-edge alphabet jump
+            // lane so those buttons stay clickable.
             let (min_x, max_x, min_y, max_y) = match card.closest(".game-content") {
                 Ok(Some(container)) => {
                     let c = container.get_bounding_client_rect();
                     (
                         c.left() + EDGE_MARGIN_PX,
-                        c.right() - EDGE_MARGIN_PX,
+                        c.right() - EDGE_MARGIN_PX - ALPHABET_NAV_CLEARANCE_PX,
                         c.top() + EDGE_MARGIN_PX,
                         c.bottom() - EDGE_MARGIN_PX,
                     )
                 }
                 _ => (
                     EDGE_MARGIN_PX,
-                    vw - EDGE_MARGIN_PX,
+                    vw - EDGE_MARGIN_PX - ALPHABET_NAV_CLEARANCE_PX,
                     EDGE_MARGIN_PX,
                     vh - EDGE_MARGIN_PX,
                 ),
@@ -1604,9 +1607,12 @@ fn GameCard(
             let tooltip_width = 198.0;
             let tooltip_visual_width = tooltip_width * TOOLTIP_SCALE;
             let tooltip_margin = 24.0;
+            let tooltip_max_left =
+                (vw - tooltip_visual_width - tooltip_margin - ALPHABET_NAV_CLEARANCE_PX)
+                    .max(tooltip_margin);
             let tooltip_left = (rect.left() + (rect.width() / 2.0) + dodge_x
                 - (tooltip_visual_width / 2.0))
-                .clamp(tooltip_margin, vw - tooltip_visual_width - tooltip_margin);
+                .clamp(tooltip_margin, tooltip_max_left);
             let tooltip_top = projected_bottom + dodge_y - 2.0;
             set_tooltip_style.set(format!(
                 "top: {:.2}px; left: {:.2}px; --tooltip-scale: {:.3};",
