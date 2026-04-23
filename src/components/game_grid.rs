@@ -65,28 +65,93 @@ fn format_game_card_download_label(item: &backend_api::MinervaDownloadQueueItem)
     }
 }
 
-fn title_matches_alphabet_target(title: &str, target: char) -> bool {
-    match target {
-        '#' => title
-            .chars()
-            .next()
-            .map(|c| c.is_ascii_digit())
-            .unwrap_or(false),
-        _ => {
-            let target_lower = target.to_ascii_lowercase();
-            title
-                .chars()
-                .next()
-                .map(|c| c.to_ascii_lowercase() == target_lower)
-                .unwrap_or(false)
-        }
+fn title_alphabet_rank(title: &str) -> Option<usize> {
+    let first = title.chars().next()?;
+    if first.is_ascii_digit() {
+        return Some(0);
     }
+
+    let upper = first.to_ascii_uppercase();
+    if upper.is_ascii_alphabetic() {
+        Some((upper as u8 - b'A' + 1) as usize)
+    } else {
+        None
+    }
+}
+
+fn alphabet_target_rank(target: char) -> Option<usize> {
+    if target == '#' {
+        return Some(0);
+    }
+
+    let upper = target.to_ascii_uppercase();
+    if upper.is_ascii_alphabetic() {
+        Some((upper as u8 - b'A' + 1) as usize)
+    } else {
+        None
+    }
+}
+
+fn title_matches_alphabet_target(title: &str, target: char) -> bool {
+    alphabet_target_rank(target).is_some_and(|rank| title_alphabet_rank(title) == Some(rank))
 }
 
 fn find_first_game_index_for_target(games: &[Game], target: char) -> Option<usize> {
     games
         .iter()
         .position(|game| title_matches_alphabet_target(&game.display_title, target))
+}
+
+fn game_alphabet_rank(game: &Game) -> Option<usize> {
+    title_alphabet_rank(&game.display_title)
+}
+
+fn find_first_alphabet_index_after_rank(games: &[Game], current_rank: i32) -> Option<usize> {
+    games.iter().enumerate().find_map(|(index, game)| {
+        let rank = game_alphabet_rank(game)? as i32;
+        (rank > current_rank).then_some(index)
+    })
+}
+
+fn find_next_alphabet_jump_index(games: &[Game], current_index: usize) -> Option<usize> {
+    if games.is_empty() {
+        return None;
+    }
+
+    let current_index = current_index.min(games.len().saturating_sub(1));
+    let current_rank = game_alphabet_rank(&games[current_index])
+        .map(|rank| rank as i32)
+        .unwrap_or(-1);
+
+    find_first_alphabet_index_after_rank(&games[current_index.saturating_add(1)..], current_rank)
+        .map(|index| current_index + 1 + index)
+}
+
+fn find_previous_alphabet_jump_index(games: &[Game], current_index: usize) -> Option<usize> {
+    if games.is_empty() || current_index == 0 {
+        return None;
+    }
+
+    let current_index = current_index.min(games.len().saturating_sub(1));
+    let current_rank = game_alphabet_rank(&games[current_index])?;
+
+    let mut previous_match = None;
+    for index in (0..current_index).rev() {
+        let Some(rank) = game_alphabet_rank(&games[index]) else {
+            continue;
+        };
+        if rank < current_rank {
+            previous_match = Some((rank, index));
+            break;
+        }
+    }
+
+    let (previous_rank, mut target_index) = previous_match?;
+    while target_index > 0 && game_alphabet_rank(&games[target_index - 1]) == Some(previous_rank) {
+        target_index -= 1;
+    }
+
+    Some(target_index)
 }
 
 // Virtual scroll configuration
@@ -294,6 +359,27 @@ fn reveal_grid_nav_index(
         container.set_scroll_top(next_scroll);
     }
     next_scroll
+}
+
+fn select_grid_nav_index(
+    container: &web_sys::HtmlElement,
+    mode: ViewMode,
+    index: usize,
+    zoom: f64,
+    set_nav_selected_index: WriteSignal<Option<usize>>,
+    set_scroll_top: WriteSignal<i32>,
+) {
+    let cols = grid_nav_columns(container.client_width(), zoom);
+    set_nav_selected_index.set(Some(index));
+    let _ = container.set_attribute("data-nav-selected-index", &index.to_string());
+    let _ = container.set_attribute("data-nav-active-grid", "true");
+
+    let next_scroll = reveal_grid_nav_index(container, mode, index, cols, zoom);
+    set_scroll_top.set(next_scroll);
+    let _ = container.focus();
+    if container.scroll_top() != next_scroll {
+        container.set_scroll_top(next_scroll);
+    }
 }
 
 /// Parse a date string into a NaiveDate, handling various formats
@@ -1224,10 +1310,11 @@ pub fn GameGrid(
                         .get_attribute(GAME_GRID_DPAD_ACTION_ATTR)
                         .unwrap_or_default();
                     let mode = view_mode.get_untracked();
+                    let loaded_games = games.get_untracked();
                     let count = match mode {
-                        ViewMode::Grid => games.get_untracked().len(),
+                        ViewMode::Grid => loaded_games.len(),
                         ViewMode::List => apply_list_view_state(
-                            &games.get_untracked(),
+                            &loaded_games,
                             &column_filters.get_untracked(),
                             sort_state.get_untracked(),
                         )
@@ -1254,6 +1341,169 @@ pub fn GameGrid(
                         selected_index
                     }
                     .unwrap_or_else(|| default_grid_nav_index(&container, mode, count, cols, zoom));
+
+                    if action == "letter-previous" || action == "letter-next" {
+                        if mode != ViewMode::Grid {
+                            let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "false");
+                            return;
+                        }
+
+                        if action == "letter-previous" {
+                            let Some(next_index) =
+                                find_previous_alphabet_jump_index(&loaded_games, current_index)
+                            else {
+                                let _ =
+                                    container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "false");
+                                return;
+                            };
+
+                            select_grid_nav_index(
+                                &container,
+                                mode,
+                                next_index,
+                                zoom,
+                                set_nav_selected_index,
+                                set_scroll_top,
+                            );
+                            let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
+                            return;
+                        }
+
+                        if let Some(next_index) =
+                            find_next_alphabet_jump_index(&loaded_games, current_index)
+                        {
+                            select_grid_nav_index(
+                                &container,
+                                mode,
+                                next_index,
+                                zoom,
+                                set_nav_selected_index,
+                                set_scroll_top,
+                            );
+                            let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
+                            return;
+                        }
+
+                        if loading.get_untracked() {
+                            let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "false");
+                            return;
+                        }
+
+                        let total = total_count.get_untracked();
+                        let already_loaded = loaded_up_to.get_untracked();
+                        if already_loaded >= total {
+                            let next_index = loaded_games.len().saturating_sub(1);
+                            select_grid_nav_index(
+                                &container,
+                                mode,
+                                next_index,
+                                zoom,
+                                set_nav_selected_index,
+                                set_scroll_top,
+                            );
+                            let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
+                            return;
+                        }
+
+                        let current_rank = loaded_games
+                            .get(current_index)
+                            .and_then(game_alphabet_rank)
+                            .map(|rank| rank as i32)
+                            .unwrap_or(-1);
+                        let loaded_count = loaded_games.len();
+                        let query_plat = query_platform(current_platform.get_untracked());
+                        let search = current_search.get_untracked();
+                        let search_param = if search.is_empty() {
+                            None
+                        } else {
+                            Some(search)
+                        };
+                        let filters = current_filters.get_untracked();
+                        let query_filters = backend_api::GameQueryFilters {
+                            installed_only: filters.installed_only,
+                            hide_homebrew: filters.hide_homebrew,
+                            hide_adult: filters.hide_adult,
+                        };
+                        let container_ref_for_jump = container_ref.clone();
+
+                        set_load_error.set(None);
+                        set_loading.set(true);
+                        let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
+
+                        spawn_local(async move {
+                            let mut offset = already_loaded;
+                            let mut pending_games = Vec::new();
+                            let mut found_index = None;
+
+                            while offset < total {
+                                match backend_api::get_games(
+                                    query_plat.clone(),
+                                    search_param.clone(),
+                                    Some(query_filters),
+                                    Some(FETCH_CHUNK_SIZE),
+                                    Some(offset),
+                                )
+                                .await
+                                {
+                                    Ok(chunk) => {
+                                        if chunk.is_empty() {
+                                            break;
+                                        }
+
+                                        let base_index = loaded_count + pending_games.len();
+                                        if let Some(pos) = find_first_alphabet_index_after_rank(
+                                            &chunk,
+                                            current_rank,
+                                        ) {
+                                            found_index = Some(base_index + pos);
+                                        }
+
+                                        offset += chunk.len() as i64;
+                                        pending_games.extend(chunk);
+
+                                        if found_index.is_some() {
+                                            break;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        let message =
+                                            format!("Failed to jump to next letter: {}", e);
+                                        console::error_1(&message.clone().into());
+                                        set_load_error.set(Some(message));
+                                        set_loading.set(false);
+                                        return;
+                                    }
+                                }
+                            }
+
+                            let mut final_loaded_count = loaded_count;
+                            if !pending_games.is_empty() {
+                                final_loaded_count += pending_games.len();
+                                set_games.update(|games| games.extend(pending_games));
+                                set_loaded_up_to.set(offset);
+                            }
+
+                            set_loading.set(false);
+
+                            let target_index = found_index.or_else(|| {
+                                (final_loaded_count > 0).then_some(final_loaded_count - 1)
+                            });
+                            if let (Some(next_index), Some(container)) =
+                                (target_index, container_ref_for_jump.get())
+                            {
+                                select_grid_nav_index(
+                                    &container,
+                                    mode,
+                                    next_index,
+                                    zoom_level.get_untracked(),
+                                    set_nav_selected_index,
+                                    set_scroll_top,
+                                );
+                            }
+                        });
+                        return;
+                    }
+
                     let Some(next_index) =
                         next_grid_nav_index(current_index, count, mode, cols, page_step, &action)
                     else {
@@ -1261,18 +1511,14 @@ pub fn GameGrid(
                         return;
                     };
 
-                    set_nav_selected_index.set(Some(next_index));
-                    let _ =
-                        container.set_attribute("data-nav-selected-index", &next_index.to_string());
-                    let _ = container.set_attribute("data-nav-active-grid", "true");
-
-                    let next_scroll =
-                        reveal_grid_nav_index(&container, mode, next_index, cols, zoom);
-                    set_scroll_top.set(next_scroll);
-                    let _ = container.focus();
-                    if container.scroll_top() != next_scroll {
-                        container.set_scroll_top(next_scroll);
-                    }
+                    select_grid_nav_index(
+                        &container,
+                        mode,
+                        next_index,
+                        zoom,
+                        set_nav_selected_index,
+                        set_scroll_top,
+                    );
                     let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "true");
                 })
                     as Box<dyn FnMut(web_sys::Event)>);

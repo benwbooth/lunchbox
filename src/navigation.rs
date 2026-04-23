@@ -11,6 +11,8 @@ pub enum NavigationAction {
     Right,
     PageUp,
     PageDown,
+    PreviousLetter,
+    NextLetter,
     Home,
     End,
     Next,
@@ -92,6 +94,8 @@ pub fn handle_navigation_action(action: NavigationAction) -> bool {
         NavigationAction::Next | NavigationAction::Previous => move_linear(action),
         NavigationAction::PageUp
         | NavigationAction::PageDown
+        | NavigationAction::PreviousLetter
+        | NavigationAction::NextLetter
         | NavigationAction::Home
         | NavigationAction::End => move_card_pane(action),
         NavigationAction::Up
@@ -923,6 +927,8 @@ fn grid_action_name(action: NavigationAction) -> &'static str {
         NavigationAction::Right => "right",
         NavigationAction::PageUp => "page-up",
         NavigationAction::PageDown => "page-down",
+        NavigationAction::PreviousLetter => "letter-previous",
+        NavigationAction::NextLetter => "letter-next",
         NavigationAction::Home => "home",
         NavigationAction::End => "end",
         _ => "unknown",

@@ -203,7 +203,7 @@ fn next_gamepad_action(
         BUTTON_INITIAL_REPEAT_DELAY_MS,
         BUTTON_HELD_REPEAT_DELAY_MS,
     ) {
-        return Some(NavigationAction::Home);
+        return Some(NavigationAction::PreviousLetter);
     }
     if consume_repeat(
         now_ms,
@@ -212,7 +212,7 @@ fn next_gamepad_action(
         BUTTON_INITIAL_REPEAT_DELAY_MS,
         BUTTON_HELD_REPEAT_DELAY_MS,
     ) {
-        return Some(NavigationAction::End);
+        return Some(NavigationAction::NextLetter);
     }
     if consume_repeat(
         now_ms,
