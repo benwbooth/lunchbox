@@ -135,6 +135,18 @@ fn move_directional(action: NavigationAction) -> bool {
         return true;
     }
 
+    if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid") {
+        if let Some(selected_item) = selected_game_grid_item(&current) {
+            if let Some(next) = find_directional_candidate(&selected_item, &candidates, action) {
+                return focus_candidate(&next);
+            }
+
+            if let Some(fallback) = find_nearest_candidate(&selected_item, &candidates) {
+                return focus_candidate(&fallback);
+            }
+        }
+    }
+
     if let Some(next) = find_directional_candidate(&current, &candidates, action) {
         return focus_candidate(&next);
     }
@@ -612,6 +624,9 @@ fn focus_default_candidate(candidates: &[HtmlElement], scope: Option<&Element>) 
 
 fn focus_candidate(candidate: &HtmlElement) -> bool {
     let nav_kind = candidate.get_attribute("data-nav-kind");
+    if nav_kind.as_deref() == Some("game-item") {
+        return focus_game_item_candidate(candidate);
+    }
     if nav_kind.as_deref() != Some("game-item") && nav_kind.as_deref() != Some("game-grid") {
         candidate.scroll_into_view();
     }
@@ -628,6 +643,44 @@ fn activate_game_grid(container: &HtmlElement) -> bool {
     };
 
     target.click();
+    true
+}
+
+fn selected_game_grid_item(container: &HtmlElement) -> Option<HtmlElement> {
+    let selected_index = parse_usize_attr(container, "data-nav-selected-index")?;
+    let selector = format!(
+        r#"[data-nav-kind="game-item"][data-game-index="{}"]"#,
+        selected_index
+    );
+    let container_element: Element = container.clone().unchecked_into();
+    query_selector(&container_element, &selector).and_then(html_element_from)
+}
+
+fn focus_game_item_candidate(candidate: &HtmlElement) -> bool {
+    let Some(container) = candidate.closest(r#"[data-nav-grid="true"]"#).ok().flatten() else {
+        return focus_without_scroll(candidate).is_ok();
+    };
+    let Some(next_index) = parse_usize_attr(candidate, "data-game-index") else {
+        return false;
+    };
+
+    let view_mode = container
+        .get_attribute("data-nav-view-mode")
+        .unwrap_or_else(|| "grid".to_string());
+    let cols = parse_usize_attr(&container, "data-nav-grid-cols")
+        .unwrap_or(1)
+        .max(1);
+    let row_height = parse_i32_attr(&container, "data-nav-grid-row-height").unwrap_or(280);
+    let list_row_height = parse_i32_attr(&container, "data-nav-list-row-height").unwrap_or(40);
+
+    focus_game_grid_index(
+        container,
+        next_index,
+        &view_mode,
+        cols,
+        row_height,
+        list_row_height,
+    );
     true
 }
 

@@ -2184,6 +2184,8 @@ fn GameCard(
         <div
             class="game-card-anchor"
             role="button"
+            attr:data-nav="true"
+            attr:data-nav-kind="game-item"
             attr:data-game-index=render_index.to_string()
             class:nav-selected=move || nav_selected.get()
             on:mouseenter=on_mouse_enter
@@ -2420,6 +2422,8 @@ fn GameListItem(
         <div
             class="game-list-item"
             role="button"
+            attr:data-nav="true"
+            attr:data-nav-kind="game-item"
             attr:data-game-index=render_index.to_string()
             class:nav-selected=move || nav_selected.get()
             style:grid-template-columns=format!("repeat({}, 1fr)", col_count)
