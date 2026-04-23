@@ -38,6 +38,7 @@ const GAME_GRID_DPAD_EVENT: &str = "lunchbox-grid-dpad";
 const GAME_GRID_DPAD_ACTION_ATTR: &str = "data-nav-grid-dpad-action";
 const GAME_GRID_DPAD_HANDLED_ATTR: &str = "data-nav-grid-dpad-handled";
 const GAME_GRID_DPAD_TARGET_ATTR: &str = "data-nav-grid-dpad-target-index";
+const GAME_GRID_SELECT_EVENT: &str = "lunchbox-grid-select";
 
 pub fn keyboard_action(event: &KeyboardEvent) -> Option<NavigationAction> {
     if event.ctrl_key() || event.meta_key() || event.alt_key() {
@@ -538,7 +539,7 @@ fn restore_scroll_top(container: &HtmlElement, desired_scroll_top: i32) {
 fn set_game_grid_selected_index(container: &HtmlElement, next_index: usize) {
     let _ = container.set_attribute("data-nav-selected-index", &next_index.to_string());
     let _ = container.set_attribute("data-nav-active-grid", "true");
-    if let Ok(event) = web_sys::Event::new("lunchbox-grid-select") {
+    if let Ok(event) = web_sys::Event::new(GAME_GRID_SELECT_EVENT) {
         let _ = container.dispatch_event(&event);
     }
 }
@@ -561,6 +562,7 @@ fn find_directional_candidate(
 ) -> Option<HtmlElement> {
     let current_rect = navigation_rect(current);
     let (ray_origin_x, ray_origin_y) = directional_ray_origin(&current_rect, action)?;
+    let current_z_index = effective_z_index(current);
 
     candidates
         .iter()
@@ -569,7 +571,8 @@ fn find_directional_candidate(
         })
         .filter_map(|candidate| {
             let rect = navigation_rect(candidate);
-            directional_score(ray_origin_x, ray_origin_y, &rect, action)
+            let z_index_distance = effective_z_index(candidate).abs_diff(current_z_index);
+            directional_score(ray_origin_x, ray_origin_y, &rect, action, z_index_distance)
                 .map(|score| (score, candidate.clone()))
         })
         .min_by(|(score_a, _), (score_b, _)| {
@@ -577,6 +580,7 @@ fn find_directional_candidate(
                 .overlaps_ray
                 .cmp(&score_b.overlaps_ray)
                 .reverse()
+                .then_with(|| score_a.z_index_distance.cmp(&score_b.z_index_distance))
                 .then_with(|| {
                     score_a
                         .primary_distance
@@ -636,6 +640,7 @@ fn find_nearest_candidate(
 
 struct DirectionalScore {
     overlaps_ray: bool,
+    z_index_distance: u32,
     primary_distance: f64,
     perpendicular_distance: f64,
     center_distance: f64,
@@ -672,6 +677,7 @@ fn directional_score(
     ray_origin_y: f64,
     candidate: &NavigationRect,
     action: NavigationAction,
+    z_index_distance: u32,
 ) -> Option<DirectionalScore> {
     let candidate_center_x = candidate.left + candidate.width / 2.0;
     let candidate_center_y = candidate.top + candidate.height / 2.0;
@@ -694,6 +700,7 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
+                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -710,6 +717,7 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
+                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -726,6 +734,7 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
+                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -742,6 +751,7 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
+                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -789,6 +799,26 @@ fn distance_from_value_to_span(value: f64, start: f64, end: f64) -> f64 {
     } else {
         0.0
     }
+}
+
+fn effective_z_index(element: &HtmlElement) -> i32 {
+    let Some(window) = web_sys::window() else {
+        return 0;
+    };
+    let mut current = Some(element.clone().unchecked_into::<Element>());
+
+    while let Some(element) = current {
+        if let Ok(Some(style)) = window.get_computed_style(&element) {
+            if let Ok(z_index) = style.get_property_value("z-index") {
+                if let Ok(value) = z_index.trim().parse::<i32>() {
+                    return value;
+                }
+            }
+        }
+        current = element.parent_element();
+    }
+
+    0
 }
 
 fn squared_distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
@@ -855,18 +885,6 @@ fn dispatch_card_pane_dpad_action(
             return false;
         }
 
-        if is_alphabet_nav_button(current) {
-            if let Some(grid) = active_or_first_game_grid(document) {
-                if dispatch_game_grid_dpad_action(&grid, grid_action_name(action), None) {
-                    debug_log_nav(&format!(
-                        "grid custom dpad reclaimed from alphabet action={:?}",
-                        action
-                    ));
-                    return true;
-                }
-            }
-        }
-
         if !is_directional_action(action) {
             if let Some(grid) = active_or_first_game_grid(document) {
                 if dispatch_game_grid_dpad_action(&grid, grid_action_name(action), None) {
@@ -924,14 +942,6 @@ fn active_or_first_game_grid(document: &Document) -> Option<HtmlElement> {
     })
     .and_then(html_element_from)
     .filter(|grid| parse_usize_attr(grid, "data-nav-game-count").unwrap_or(0) > 0)
-}
-
-fn is_alphabet_nav_button(element: &HtmlElement) -> bool {
-    element.get_attribute("class").is_some_and(|class_name| {
-        class_name
-            .split_whitespace()
-            .any(|class| class == "alphabet-btn")
-    })
 }
 
 fn grid_action_name(action: NavigationAction) -> &'static str {
@@ -1112,6 +1122,10 @@ fn clear_active_game_grid() {
         r#"[data-nav-kind="game-grid"][data-nav-active-grid="true"]"#,
     ) {
         let _ = grid.remove_attribute("data-nav-active-grid");
+        let _ = grid.remove_attribute("data-nav-selected-index");
+        if let Ok(event) = web_sys::Event::new(GAME_GRID_SELECT_EVENT) {
+            let _ = grid.dispatch_event(&event);
+        }
     }
 }
 
