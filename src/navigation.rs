@@ -290,7 +290,7 @@ fn focus_game_grid_index(
             view_mode,
             list_row_height,
         );
-        let _ = element.focus();
+        let _ = focus_without_scroll(&element);
         return;
     }
 
@@ -319,7 +319,7 @@ fn focus_game_grid_index(
                         list_row_height,
                     );
                 }
-                let _ = element.focus();
+                let _ = focus_without_scroll(&element);
                 return;
             }
         }
@@ -629,7 +629,27 @@ fn focus_candidate(candidate: &HtmlElement) -> bool {
     if candidate.get_attribute("data-nav-kind").as_deref() != Some("game-item") {
         candidate.scroll_into_view();
     }
-    candidate.focus().is_ok()
+    focus_without_scroll(candidate).is_ok()
+}
+
+fn focus_without_scroll(element: &HtmlElement) -> Result<(), wasm_bindgen::JsValue> {
+    let options = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(
+        options.as_ref(),
+        &wasm_bindgen::JsValue::from_str("preventScroll"),
+        &wasm_bindgen::JsValue::TRUE,
+    );
+
+    match js_sys::Reflect::get(element.as_ref(), &wasm_bindgen::JsValue::from_str("focus"))
+        .ok()
+        .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
+    {
+        Some(focus_fn) => {
+            focus_fn.call1(element.as_ref(), options.as_ref())?;
+            Ok(())
+        }
+        None => element.focus(),
+    }
 }
 
 fn current_navigation_element(document: &Document, scope: Option<&Element>) -> Option<HtmlElement> {
