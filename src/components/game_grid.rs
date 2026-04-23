@@ -1,8 +1,8 @@
 //! Game grid and list views with virtual scrolling
 
 use crate::app::{
-    ArtworkDisplayType, GameFilters, ViewMode, PLATFORM_SELECTION_ALL_GAMES,
-    PLATFORM_SELECTION_MINIGAMES,
+    ArtworkDisplayType, GameFilters, PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES,
+    ViewMode,
 };
 use crate::backend_api::{self, Game};
 use chrono::{Datelike, NaiveDate};
@@ -1447,7 +1447,7 @@ fn GameCard(
     #[prop(default = false)]
     in_viewport: bool,
 ) -> impl IntoView {
-    use crate::components::{minerva_downloads_signal, LazyImage};
+    use crate::components::{LazyImage, minerva_downloads_signal};
 
     let display_title = game.display_title.clone();
     let first_char = game.display_title.chars().next().unwrap_or('?').to_string();

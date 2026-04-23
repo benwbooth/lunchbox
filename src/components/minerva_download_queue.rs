@@ -144,7 +144,8 @@ pub fn MinervaDownloadQueue() -> impl IntoView {
     let (recent_downloads, set_recent_downloads) = minerva_recent_signal();
     let (refresh_tick, _) = minerva_download_refresh_signal();
     let (expanded, set_expanded) = signal(false);
-    let (dismissed_recent_ids, set_dismissed_recent_ids) = signal::<HashSet<String>>(HashSet::new());
+    let (dismissed_recent_ids, set_dismissed_recent_ids) =
+        signal::<HashSet<String>>(HashSet::new());
 
     Effect::new(move || {
         let _ = refresh_tick.get();
@@ -179,11 +180,27 @@ pub fn MinervaDownloadQueue() -> impl IntoView {
     });
 
     let active_count = move || downloads.get().len();
-    let total_speed = move || downloads.get().iter().map(|item| item.download_speed).sum::<u64>();
-    let active_downloaded_bytes =
-        move || downloads.get().iter().map(|item| item.downloaded_bytes).sum::<u64>();
-    let active_total_bytes =
-        move || downloads.get().iter().map(|item| item.total_bytes).sum::<u64>();
+    let total_speed = move || {
+        downloads
+            .get()
+            .iter()
+            .map(|item| item.download_speed)
+            .sum::<u64>()
+    };
+    let active_downloaded_bytes = move || {
+        downloads
+            .get()
+            .iter()
+            .map(|item| item.downloaded_bytes)
+            .sum::<u64>()
+    };
+    let active_total_bytes = move || {
+        downloads
+            .get()
+            .iter()
+            .map(|item| item.total_bytes)
+            .sum::<u64>()
+    };
 
     let dismiss_finished = move || {
         let visible_recent = visible_recent_downloads.get_untracked();
@@ -197,7 +214,11 @@ pub fn MinervaDownloadQueue() -> impl IntoView {
             .collect::<HashSet<_>>();
         set_dismissed_recent_ids.update(|ids| ids.extend(dismissed_ids));
         set_recent_downloads.update(|items| {
-            items.retain(|item| !visible_recent.iter().any(|recent| recent.job_id == item.job_id))
+            items.retain(|item| {
+                !visible_recent
+                    .iter()
+                    .any(|recent| recent.job_id == item.job_id)
+            })
         });
         if downloads.get_untracked().is_empty() {
             set_expanded.set(false);
