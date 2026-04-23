@@ -9,6 +9,10 @@ pub enum NavigationAction {
     Down,
     Left,
     Right,
+    PageUp,
+    PageDown,
+    Home,
+    End,
     Next,
     Previous,
     Activate,
@@ -43,6 +47,10 @@ pub fn keyboard_action(event: &KeyboardEvent) -> Option<NavigationAction> {
         "ArrowDown" => Some(NavigationAction::Down),
         "ArrowLeft" => Some(NavigationAction::Left),
         "ArrowRight" => Some(NavigationAction::Right),
+        "PageUp" => Some(NavigationAction::PageUp),
+        "PageDown" => Some(NavigationAction::PageDown),
+        "Home" => Some(NavigationAction::Home),
+        "End" => Some(NavigationAction::End),
         "Tab" if event.shift_key() => Some(NavigationAction::Previous),
         "Tab" => Some(NavigationAction::Next),
         "Enter" | " " | "Spacebar" => Some(NavigationAction::Activate),
@@ -69,6 +77,10 @@ pub fn should_ignore_keyboard_action(event: &KeyboardEvent, action: NavigationAc
             | NavigationAction::Down
             | NavigationAction::Left
             | NavigationAction::Right
+            | NavigationAction::PageUp
+            | NavigationAction::PageDown
+            | NavigationAction::Home
+            | NavigationAction::End
             | NavigationAction::Activate
     )
 }
@@ -78,6 +90,10 @@ pub fn handle_navigation_action(action: NavigationAction) -> bool {
         NavigationAction::Activate => activate_current(),
         NavigationAction::Back => invoke_back_action(),
         NavigationAction::Next | NavigationAction::Previous => move_linear(action),
+        NavigationAction::PageUp
+        | NavigationAction::PageDown
+        | NavigationAction::Home
+        | NavigationAction::End => move_card_pane(action),
         NavigationAction::Up
         | NavigationAction::Down
         | NavigationAction::Left
@@ -120,6 +136,20 @@ fn move_linear(action: NavigationAction) -> bool {
     };
 
     focus_candidate(&candidates[next_index])
+}
+
+fn move_card_pane(action: NavigationAction) -> bool {
+    let Some(document) = document() else {
+        return false;
+    };
+    let active_scope = active_scope_root(&document);
+    if active_scope.is_some() {
+        return false;
+    }
+
+    let candidates = navigation_candidates(&document, None);
+    let current = current_navigation_element(&document, None);
+    dispatch_card_pane_dpad_action(&document, current.as_ref(), &candidates, action)
 }
 
 fn move_directional(action: NavigationAction) -> bool {
@@ -799,7 +829,7 @@ fn dispatch_card_pane_dpad_action(
 ) -> bool {
     if let Some(current) = current {
         if let Some(grid) = game_grid_container_for_element(current) {
-            if dispatch_game_grid_dpad_action(&grid, grid_dpad_action_name(action), None) {
+            if dispatch_game_grid_dpad_action(&grid, grid_action_name(action), None) {
                 debug_log_nav(&format!("grid custom dpad handled action={:?}", action));
                 return true;
             }
@@ -808,7 +838,7 @@ fn dispatch_card_pane_dpad_action(
 
         if is_alphabet_nav_button(current) {
             if let Some(grid) = active_or_first_game_grid(document) {
-                if dispatch_game_grid_dpad_action(&grid, grid_dpad_action_name(action), None) {
+                if dispatch_game_grid_dpad_action(&grid, grid_action_name(action), None) {
                     debug_log_nav(&format!(
                         "grid custom dpad reclaimed from alphabet action={:?}",
                         action
@@ -816,6 +846,17 @@ fn dispatch_card_pane_dpad_action(
                     return true;
                 }
             }
+        }
+
+        if !is_directional_action(action) {
+            if let Some(grid) = active_or_first_game_grid(document) {
+                if dispatch_game_grid_dpad_action(&grid, grid_action_name(action), None) {
+                    debug_log_nav(&format!("grid custom pane action={:?}", action));
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         if let Some(grid_entry) = find_game_grid_entry_candidate(current, candidates, action) {
@@ -838,8 +879,13 @@ fn dispatch_card_pane_dpad_action(
         return false;
     };
 
-    if dispatch_game_grid_dpad_action(&grid, "enter", None) {
-        debug_log_nav("grid custom enter from empty focus");
+    let action_name = if is_directional_action(action) {
+        "enter"
+    } else {
+        grid_action_name(action)
+    };
+    if dispatch_game_grid_dpad_action(&grid, action_name, None) {
+        debug_log_nav(&format!("grid custom {} from empty focus", action_name));
         return true;
     }
 
@@ -869,14 +915,28 @@ fn is_alphabet_nav_button(element: &HtmlElement) -> bool {
     })
 }
 
-fn grid_dpad_action_name(action: NavigationAction) -> &'static str {
+fn grid_action_name(action: NavigationAction) -> &'static str {
     match action {
         NavigationAction::Up => "up",
         NavigationAction::Down => "down",
         NavigationAction::Left => "left",
         NavigationAction::Right => "right",
+        NavigationAction::PageUp => "page-up",
+        NavigationAction::PageDown => "page-down",
+        NavigationAction::Home => "home",
+        NavigationAction::End => "end",
         _ => "unknown",
     }
+}
+
+fn is_directional_action(action: NavigationAction) -> bool {
+    matches!(
+        action,
+        NavigationAction::Up
+            | NavigationAction::Down
+            | NavigationAction::Left
+            | NavigationAction::Right
+    )
 }
 
 fn dispatch_game_grid_dpad_action(

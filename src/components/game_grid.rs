@@ -145,6 +145,23 @@ fn grid_nav_columns(width: i32, zoom: f64) -> usize {
     (width / scaled_item_width).max(1) as usize
 }
 
+fn grid_nav_page_step(
+    container: &web_sys::HtmlElement,
+    mode: ViewMode,
+    cols: usize,
+    zoom: f64,
+) -> usize {
+    let client_height = container.client_height().max(1);
+    match mode {
+        ViewMode::Grid => {
+            let row_height = scaled_grid_item_height(zoom);
+            let rows = (client_height / row_height).max(1) as usize;
+            rows * cols.max(1)
+        }
+        ViewMode::List => (client_height / LIST_ITEM_HEIGHT).max(1) as usize,
+    }
+}
+
 fn default_grid_nav_index(
     container: &web_sys::HtmlElement,
     mode: ViewMode,
@@ -173,13 +190,25 @@ fn next_grid_nav_index(
     count: usize,
     mode: ViewMode,
     cols: usize,
+    page_step: usize,
     action: &str,
 ) -> Option<usize> {
     if count == 0 {
         return None;
     }
-    if action == "enter" {
-        return Some(current_index.min(count.saturating_sub(1)));
+    match action {
+        "enter" => return Some(current_index.min(count.saturating_sub(1))),
+        "home" => return Some(0),
+        "end" => return Some(count.saturating_sub(1)),
+        "page-up" => return Some(current_index.saturating_sub(page_step.max(1))),
+        "page-down" => {
+            return Some(
+                current_index
+                    .saturating_add(page_step.max(1))
+                    .min(count.saturating_sub(1)),
+            );
+        }
+        _ => {}
     }
 
     match mode {
@@ -1211,6 +1240,7 @@ pub fn GameGrid(
 
                     let zoom = zoom_level.get_untracked();
                     let cols = grid_nav_columns(container.client_width(), zoom);
+                    let page_step = grid_nav_page_step(&container, mode, cols, zoom);
                     let target_index = container
                         .get_attribute(GAME_GRID_DPAD_TARGET_ATTR)
                         .and_then(|value| value.parse::<usize>().ok())
@@ -1225,7 +1255,7 @@ pub fn GameGrid(
                     }
                     .unwrap_or_else(|| default_grid_nav_index(&container, mode, count, cols, zoom));
                     let Some(next_index) =
-                        next_grid_nav_index(current_index, count, mode, cols, &action)
+                        next_grid_nav_index(current_index, count, mode, cols, page_step, &action)
                     else {
                         let _ = container.set_attribute(GAME_GRID_DPAD_HANDLED_ATTR, "false");
                         return;

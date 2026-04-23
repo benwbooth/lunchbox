@@ -30,14 +30,21 @@ struct GamepadRepeatState {
     down: RepeatState,
     left: RepeatState,
     right: RepeatState,
+    left_shoulder: RepeatState,
+    right_shoulder: RepeatState,
+    left_trigger: RepeatState,
+    right_trigger: RepeatState,
     primary: RepeatState,
     secondary: RepeatState,
 }
 
-fn consume_repeat(now_ms: f64, is_pressed: bool, state: &mut RepeatState) -> bool {
-    const INITIAL_REPEAT_DELAY_MS: f64 = 260.0;
-    const HELD_REPEAT_DELAY_MS: f64 = 120.0;
-
+fn consume_repeat(
+    now_ms: f64,
+    is_pressed: bool,
+    state: &mut RepeatState,
+    initial_delay_ms: f64,
+    held_delay_ms: f64,
+) -> bool {
     if !is_pressed {
         state.active = false;
         state.next_allowed_ms = 0.0;
@@ -46,12 +53,12 @@ fn consume_repeat(now_ms: f64, is_pressed: bool, state: &mut RepeatState) -> boo
 
     if !state.active {
         state.active = true;
-        state.next_allowed_ms = now_ms + INITIAL_REPEAT_DELAY_MS;
+        state.next_allowed_ms = now_ms + initial_delay_ms;
         return true;
     }
 
     if now_ms >= state.next_allowed_ms {
-        state.next_allowed_ms = now_ms + HELD_REPEAT_DELAY_MS;
+        state.next_allowed_ms = now_ms + held_delay_ms;
         return true;
     }
 
@@ -110,6 +117,10 @@ fn next_gamepad_action(
     repeat_state: &Rc<RefCell<GamepadRepeatState>>,
 ) -> Option<NavigationAction> {
     const AXIS_THRESHOLD: f64 = 0.55;
+    const DPAD_INITIAL_REPEAT_DELAY_MS: f64 = 180.0;
+    const DPAD_HELD_REPEAT_DELAY_MS: f64 = 75.0;
+    const BUTTON_INITIAL_REPEAT_DELAY_MS: f64 = 260.0;
+    const BUTTON_HELD_REPEAT_DELAY_MS: f64 = 120.0;
 
     let gamepad = first_connected_gamepad()?;
     let buttons = gamepad.buttons();
@@ -121,27 +132,103 @@ fn next_gamepad_action(
     let down_pressed = button_pressed(&buttons, 13) || axis_y >= AXIS_THRESHOLD;
     let left_pressed = button_pressed(&buttons, 14) || axis_x <= -AXIS_THRESHOLD;
     let right_pressed = button_pressed(&buttons, 15) || axis_x >= AXIS_THRESHOLD;
+    let left_shoulder_pressed = button_pressed(&buttons, 4);
+    let right_shoulder_pressed = button_pressed(&buttons, 5);
+    let left_trigger_pressed = button_pressed(&buttons, 6);
+    let right_trigger_pressed = button_pressed(&buttons, 7);
     let primary_pressed = button_pressed(&buttons, 0);
     let secondary_pressed = button_pressed(&buttons, 1);
 
     let mut repeat_state = repeat_state.borrow_mut();
 
-    if consume_repeat(now_ms, up_pressed, &mut repeat_state.up) {
+    if consume_repeat(
+        now_ms,
+        up_pressed,
+        &mut repeat_state.up,
+        DPAD_INITIAL_REPEAT_DELAY_MS,
+        DPAD_HELD_REPEAT_DELAY_MS,
+    ) {
         return Some(NavigationAction::Up);
     }
-    if consume_repeat(now_ms, down_pressed, &mut repeat_state.down) {
+    if consume_repeat(
+        now_ms,
+        down_pressed,
+        &mut repeat_state.down,
+        DPAD_INITIAL_REPEAT_DELAY_MS,
+        DPAD_HELD_REPEAT_DELAY_MS,
+    ) {
         return Some(NavigationAction::Down);
     }
-    if consume_repeat(now_ms, left_pressed, &mut repeat_state.left) {
+    if consume_repeat(
+        now_ms,
+        left_pressed,
+        &mut repeat_state.left,
+        DPAD_INITIAL_REPEAT_DELAY_MS,
+        DPAD_HELD_REPEAT_DELAY_MS,
+    ) {
         return Some(NavigationAction::Left);
     }
-    if consume_repeat(now_ms, right_pressed, &mut repeat_state.right) {
+    if consume_repeat(
+        now_ms,
+        right_pressed,
+        &mut repeat_state.right,
+        DPAD_INITIAL_REPEAT_DELAY_MS,
+        DPAD_HELD_REPEAT_DELAY_MS,
+    ) {
         return Some(NavigationAction::Right);
     }
-    if consume_repeat(now_ms, primary_pressed, &mut repeat_state.primary) {
+    if consume_repeat(
+        now_ms,
+        left_shoulder_pressed,
+        &mut repeat_state.left_shoulder,
+        DPAD_INITIAL_REPEAT_DELAY_MS,
+        DPAD_HELD_REPEAT_DELAY_MS,
+    ) {
+        return Some(NavigationAction::PageUp);
+    }
+    if consume_repeat(
+        now_ms,
+        right_shoulder_pressed,
+        &mut repeat_state.right_shoulder,
+        DPAD_INITIAL_REPEAT_DELAY_MS,
+        DPAD_HELD_REPEAT_DELAY_MS,
+    ) {
+        return Some(NavigationAction::PageDown);
+    }
+    if consume_repeat(
+        now_ms,
+        left_trigger_pressed,
+        &mut repeat_state.left_trigger,
+        BUTTON_INITIAL_REPEAT_DELAY_MS,
+        BUTTON_HELD_REPEAT_DELAY_MS,
+    ) {
+        return Some(NavigationAction::Home);
+    }
+    if consume_repeat(
+        now_ms,
+        right_trigger_pressed,
+        &mut repeat_state.right_trigger,
+        BUTTON_INITIAL_REPEAT_DELAY_MS,
+        BUTTON_HELD_REPEAT_DELAY_MS,
+    ) {
+        return Some(NavigationAction::End);
+    }
+    if consume_repeat(
+        now_ms,
+        primary_pressed,
+        &mut repeat_state.primary,
+        BUTTON_INITIAL_REPEAT_DELAY_MS,
+        BUTTON_HELD_REPEAT_DELAY_MS,
+    ) {
         return Some(NavigationAction::Activate);
     }
-    if consume_repeat(now_ms, secondary_pressed, &mut repeat_state.secondary) {
+    if consume_repeat(
+        now_ms,
+        secondary_pressed,
+        &mut repeat_state.secondary,
+        BUTTON_INITIAL_REPEAT_DELAY_MS,
+        BUTTON_HELD_REPEAT_DELAY_MS,
+    ) {
         return Some(NavigationAction::Back);
     }
 
