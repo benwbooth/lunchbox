@@ -391,33 +391,52 @@ fn animate_grid_scroll_top(
     let token = format!("{:.3}", js_sys::Date::now());
     let _ = container.set_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR, &token);
     let start_time = js_sys::Date::now();
-    let handle = Rc::new(RefCell::new(None::<Interval>));
-    let handle_for_tick = handle.clone();
+    let Some(window) = web_sys::window() else {
+        set_grid_scroll_top(&container, target_scroll, set_scroll_top);
+        return;
+    };
+    let frame = Rc::new(RefCell::new(
+        None::<wasm_bindgen::closure::Closure<dyn FnMut(f64)>>,
+    ));
+    let frame_for_tick = frame.clone();
+    let window_for_tick = window.clone();
 
-    *handle.borrow_mut() = Some(Interval::new(16, move || {
-        let still_current = container
-            .get_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR)
-            .as_deref()
-            == Some(token.as_str());
-        if !still_current {
-            handle_for_tick.borrow_mut().take();
-            return;
-        }
+    *frame.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(
+        move |_timestamp: f64| {
+            let still_current = container
+                .get_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR)
+                .as_deref()
+                == Some(token.as_str());
+            if !still_current {
+                frame_for_tick.borrow_mut().take();
+                return;
+            }
 
-        let elapsed = js_sys::Date::now() - start_time;
-        let progress = (elapsed / GAME_GRID_SCROLL_ANIMATION_MS).clamp(0.0, 1.0);
-        let eased = 1.0 - (1.0 - progress).powi(3);
-        let next_scroll = start_scroll as f64 + (target_scroll - start_scroll) as f64 * eased;
-        let next_scroll = next_scroll.round() as i32;
+            let elapsed = js_sys::Date::now() - start_time;
+            let progress = (elapsed / GAME_GRID_SCROLL_ANIMATION_MS).clamp(0.0, 1.0);
+            let eased = 1.0 - (1.0 - progress).powi(3);
+            let next_scroll = start_scroll as f64 + (target_scroll - start_scroll) as f64 * eased;
+            let next_scroll = next_scroll.round() as i32;
 
-        set_grid_scroll_top(&container, next_scroll, set_scroll_top);
+            container.set_scroll_top(next_scroll);
 
-        if progress >= 1.0 {
-            set_grid_scroll_top(&container, target_scroll, set_scroll_top);
-            let _ = container.remove_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR);
-            handle_for_tick.borrow_mut().take();
-        }
-    }));
+            if progress >= 1.0 {
+                set_grid_scroll_top(&container, target_scroll, set_scroll_top);
+                let _ = container.remove_attribute(GAME_GRID_SCROLL_ANIMATION_ATTR);
+                frame_for_tick.borrow_mut().take();
+                return;
+            }
+
+            if let Some(callback) = frame_for_tick.borrow().as_ref() {
+                let _ = window_for_tick.request_animation_frame(callback.as_ref().unchecked_ref());
+            }
+        },
+    )
+        as Box<dyn FnMut(f64)>));
+
+    if let Some(callback) = frame.borrow().as_ref() {
+        let _ = window.request_animation_frame(callback.as_ref().unchecked_ref());
+    }
 }
 
 fn select_grid_nav_index(

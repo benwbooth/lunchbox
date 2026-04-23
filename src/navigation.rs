@@ -562,7 +562,6 @@ fn find_directional_candidate(
 ) -> Option<HtmlElement> {
     let current_rect = navigation_rect(current);
     let (ray_origin_x, ray_origin_y) = directional_ray_origin(&current_rect, action)?;
-    let current_z_index = effective_z_index(current);
 
     candidates
         .iter()
@@ -571,8 +570,7 @@ fn find_directional_candidate(
         })
         .filter_map(|candidate| {
             let rect = navigation_rect(candidate);
-            let z_index_distance = effective_z_index(candidate).abs_diff(current_z_index);
-            directional_score(ray_origin_x, ray_origin_y, &rect, action, z_index_distance)
+            directional_score(ray_origin_x, ray_origin_y, &rect, action)
                 .map(|score| (score, candidate.clone()))
         })
         .min_by(|(score_a, _), (score_b, _)| {
@@ -580,7 +578,6 @@ fn find_directional_candidate(
                 .overlaps_ray
                 .cmp(&score_b.overlaps_ray)
                 .reverse()
-                .then_with(|| score_a.z_index_distance.cmp(&score_b.z_index_distance))
                 .then_with(|| {
                     score_a
                         .primary_distance
@@ -640,7 +637,6 @@ fn find_nearest_candidate(
 
 struct DirectionalScore {
     overlaps_ray: bool,
-    z_index_distance: u32,
     primary_distance: f64,
     perpendicular_distance: f64,
     center_distance: f64,
@@ -677,7 +673,6 @@ fn directional_score(
     ray_origin_y: f64,
     candidate: &NavigationRect,
     action: NavigationAction,
-    z_index_distance: u32,
 ) -> Option<DirectionalScore> {
     let candidate_center_x = candidate.left + candidate.width / 2.0;
     let candidate_center_y = candidate.top + candidate.height / 2.0;
@@ -700,7 +695,6 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
-                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -717,7 +711,6 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
-                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -734,7 +727,6 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
-                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -751,7 +743,6 @@ fn directional_score(
             };
             Some(DirectionalScore {
                 overlaps_ray,
-                z_index_distance,
                 primary_distance,
                 perpendicular_distance,
                 center_distance,
@@ -799,26 +790,6 @@ fn distance_from_value_to_span(value: f64, start: f64, end: f64) -> f64 {
     } else {
         0.0
     }
-}
-
-fn effective_z_index(element: &HtmlElement) -> i32 {
-    let Some(window) = web_sys::window() else {
-        return 0;
-    };
-    let mut current = Some(element.clone().unchecked_into::<Element>());
-
-    while let Some(element) = current {
-        if let Ok(Some(style)) = window.get_computed_style(&element) {
-            if let Ok(z_index) = style.get_property_value("z-index") {
-                if let Ok(value) = z_index.trim().parse::<i32>() {
-                    return value;
-                }
-            }
-        }
-        current = element.parent_element();
-    }
-
-    0
 }
 
 fn squared_distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
@@ -877,6 +848,11 @@ fn dispatch_card_pane_dpad_action(
     action: NavigationAction,
 ) -> bool {
     if let Some(current) = current {
+        if is_directional_action(action) && focus_adjacent_alphabet_button(current, action) {
+            debug_log_nav(&format!("alphabet rail handled action={:?}", action));
+            return true;
+        }
+
         if let Some(grid) = game_grid_container_for_element(current) {
             if dispatch_game_grid_dpad_action(&grid, grid_action_name(action), None) {
                 debug_log_nav(&format!("grid custom dpad handled action={:?}", action));
@@ -894,11 +870,6 @@ fn dispatch_card_pane_dpad_action(
             }
 
             return false;
-        }
-
-        if focus_adjacent_alphabet_button(current, action) {
-            debug_log_nav(&format!("alphabet rail handled action={:?}", action));
-            return true;
         }
 
         if let Some(grid_entry) = find_game_grid_entry_candidate(current, candidates, action) {
