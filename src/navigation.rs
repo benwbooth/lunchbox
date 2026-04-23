@@ -272,48 +272,37 @@ fn focus_game_grid_index(
     row_height: i32,
     list_row_height: i32,
 ) {
-    if let Some(container_html) = html_element_from(container.clone()) {
-        let current_scroll_top = container_html.scroll_top().max(0);
-        let client_height = container_html.client_height().max(0);
-
-        if client_height > 0 {
-            let (target_top, target_bottom, visible_top) = if view_mode == "list" {
-                let top = (next_index as i32 + 1) * list_row_height;
-                let bottom = top + list_row_height;
-                let visible_top = current_scroll_top + list_row_height;
-                (top, bottom, visible_top)
-            } else {
-                let top = (next_index as i32 / cols as i32) * row_height;
-                let bottom = top + row_height;
-                (top, bottom, current_scroll_top)
-            };
-
-            let visible_bottom = current_scroll_top + client_height;
-            let mut next_scroll_top = current_scroll_top;
-
-            if target_top < visible_top {
-                next_scroll_top = if view_mode == "list" {
-                    (target_top - list_row_height).max(0)
-                } else {
-                    target_top.max(0)
-                };
-            } else if target_bottom > visible_bottom {
-                next_scroll_top = (target_bottom - client_height).max(0);
-            }
-
-            if next_scroll_top != current_scroll_top {
-                container_html.set_scroll_top(next_scroll_top);
-            }
-        }
-    }
-
+    let view_mode_owned = view_mode.to_string();
     let selector = format!(
         r#"[data-nav-kind="game-item"][data-game-index="{}"]"#,
         next_index
     );
-    if let Some(element) = query_selector(&container, &selector).and_then(html_element_from) {
+    let maybe_container_html = html_element_from(container.clone());
+
+    if let (Some(container_html), Some(element)) = (
+        maybe_container_html.as_ref(),
+        query_selector(&container, &selector).and_then(html_element_from),
+    ) {
+        reveal_target_in_game_grid(
+            container_html,
+            &container,
+            &element,
+            view_mode,
+            list_row_height,
+        );
         let _ = element.focus();
         return;
+    }
+
+    if let Some(container_html) = maybe_container_html.as_ref() {
+        scroll_game_grid_to_estimated_index(
+            container_html,
+            view_mode,
+            next_index,
+            cols,
+            row_height,
+            list_row_height,
+        );
     }
 
     spawn_local(async move {
@@ -321,11 +310,103 @@ fn focus_game_grid_index(
             delay_ms(16).await;
             if let Some(element) = query_selector(&container, &selector).and_then(html_element_from)
             {
+                if let Some(container_html) = html_element_from(container.clone()) {
+                    reveal_target_in_game_grid(
+                        &container_html,
+                        &container,
+                        &element,
+                        &view_mode_owned,
+                        list_row_height,
+                    );
+                }
                 let _ = element.focus();
                 return;
             }
         }
     });
+}
+
+fn reveal_target_in_game_grid(
+    container_html: &HtmlElement,
+    container: &Element,
+    target: &HtmlElement,
+    view_mode: &str,
+    list_row_height: i32,
+) {
+    let current_scroll_top = container_html.scroll_top().max(0);
+    let client_height = container_html.client_height().max(0);
+    if client_height <= 0 {
+        return;
+    }
+
+    let container_rect = container_html.get_bounding_client_rect();
+    let list_header_height = if view_mode == "list" {
+        query_selector(container, ".game-list-header")
+            .and_then(html_element_from)
+            .map(|header| header.get_bounding_client_rect().height())
+            .unwrap_or(list_row_height as f64)
+    } else {
+        0.0
+    };
+
+    let visible_top = container_rect.top() + list_header_height;
+    let visible_bottom = container_rect.bottom();
+    let target_rect = target.get_bounding_client_rect();
+    let mut next_scroll_top = current_scroll_top as f64;
+
+    if target_rect.top() < visible_top {
+        next_scroll_top -= visible_top - target_rect.top();
+    } else if target_rect.bottom() > visible_bottom {
+        next_scroll_top += target_rect.bottom() - visible_bottom;
+    }
+
+    let next_scroll_top = next_scroll_top.max(0.0).round() as i32;
+    if next_scroll_top != current_scroll_top {
+        container_html.set_scroll_top(next_scroll_top);
+    }
+}
+
+fn scroll_game_grid_to_estimated_index(
+    container_html: &HtmlElement,
+    view_mode: &str,
+    next_index: usize,
+    cols: usize,
+    row_height: i32,
+    list_row_height: i32,
+) {
+    let current_scroll_top = container_html.scroll_top().max(0);
+    let client_height = container_html.client_height().max(0);
+    if client_height <= 0 {
+        return;
+    }
+
+    let (target_top, target_bottom, visible_top) = if view_mode == "list" {
+        let top = (next_index as i32 + 1) * list_row_height;
+        let bottom = top + list_row_height;
+        let visible_top = current_scroll_top + list_row_height;
+        (top, bottom, visible_top)
+    } else {
+        let top = (next_index as i32 / cols as i32) * row_height;
+        let bottom = top + row_height;
+        (top, bottom, current_scroll_top)
+    };
+
+    let visible_bottom = current_scroll_top + client_height;
+    let mut next_scroll_top = current_scroll_top;
+
+    if target_top < visible_top {
+        next_scroll_top = if view_mode == "list" {
+            (target_top - list_row_height).max(0)
+        } else {
+            target_top.max(0)
+        };
+    } else if target_bottom > visible_bottom {
+        next_scroll_top = (target_bottom - client_height).max(0);
+    }
+
+    if next_scroll_top != current_scroll_top {
+        container_html.set_scroll_top(next_scroll_top);
+    }
 }
 
 async fn delay_ms(ms: i32) {
