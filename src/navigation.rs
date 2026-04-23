@@ -1,8 +1,9 @@
+use crate::backend_api;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{Document, Element, HtmlElement, KeyboardEvent};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NavigationAction {
     Up,
     Down,
@@ -131,17 +132,37 @@ fn move_directional(action: NavigationAction) -> bool {
         return focus_default_candidate(&candidates, active_scope.as_ref());
     };
 
+    let current_kind = current.get_attribute("data-nav-kind").unwrap_or_default();
+    if current_kind == "game-grid" {
+        debug_log_nav(&format!(
+            "grid move start action={:?} selected_index={:?}",
+            action,
+            parse_usize_attr(&current, "data-nav-selected-index")
+        ));
+    }
+
     if handle_game_grid_direction(&current, action) {
+        if current_kind == "game-grid" {
+            debug_log_nav("grid move handled internally");
+        }
         return true;
     }
 
     if current.get_attribute("data-nav-kind").as_deref() == Some("game-grid") {
         if let Some(selected_item) = selected_game_grid_item(&current) {
             if let Some(next) = find_directional_candidate(&selected_item, &candidates, action) {
+                debug_log_nav(&format!(
+                    "grid spatial next kind={}",
+                    next.get_attribute("data-nav-kind").unwrap_or_default()
+                ));
                 return focus_candidate(&next);
             }
 
             if let Some(fallback) = find_nearest_candidate(&selected_item, &candidates) {
+                debug_log_nav(&format!(
+                    "grid spatial fallback kind={}",
+                    fallback.get_attribute("data-nav-kind").unwrap_or_default()
+                ));
                 return focus_candidate(&fallback);
             }
         }
@@ -754,6 +775,12 @@ fn focus_without_scroll(element: &HtmlElement) -> Result<(), wasm_bindgen::JsVal
             Ok(())
         }
         None => element.focus(),
+    }
+}
+
+fn debug_log_nav(message: &str) {
+    if cfg!(debug_assertions) {
+        backend_api::log_to_backend("debug", &format!("frontend-nav: {}", message));
     }
 }
 

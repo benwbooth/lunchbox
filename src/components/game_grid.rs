@@ -1290,6 +1290,7 @@ pub fn GameGrid(
                                                             set_nav_selected_index.set(Some(index));
                                                             if let Some(container) = container_ref.get() {
                                                                 let _ = container.set_attribute("data-nav-selected-index", &index.to_string());
+                                                                let _ = container.focus();
                                                             }
                                                         })
                                                     />
@@ -1458,6 +1459,7 @@ pub fn GameGrid(
                                                                 set_nav_selected_index.set(Some(index));
                                                                 if let Some(container) = container_ref.get() {
                                                                     let _ = container.set_attribute("data-nav-selected-index", &index.to_string());
+                                                                    let _ = container.focus();
                                                                 }
                                                             })
                                                         />
