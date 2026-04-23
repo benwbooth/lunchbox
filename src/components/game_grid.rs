@@ -675,7 +675,6 @@ pub fn GameGrid(
     let (container_height, set_container_height) = signal(600);
     let (container_width, set_container_width) = signal(800);
     let (nav_selected_index, set_nav_selected_index) = signal::<Option<usize>>(None);
-    let (grid_has_focus, set_grid_has_focus) = signal(false);
 
     // Track current filters
     let (current_platform, set_current_platform) = signal::<Option<String>>(None);
@@ -1240,7 +1239,6 @@ pub fn GameGrid(
                     let next_scroll =
                         reveal_grid_nav_index(&container, mode, next_index, cols, zoom);
                     set_scroll_top.set(next_scroll);
-                    set_grid_has_focus.set(true);
                     let _ = container.focus();
                     if container.scroll_top() != next_scroll {
                         container.set_scroll_top(next_scroll);
@@ -1357,7 +1355,6 @@ pub fn GameGrid(
             attr:data-nav-grid-row-height=move || ((ITEM_HEIGHT as f64 * zoom_level.get()) as i32).to_string()
             attr:data-nav-list-row-height=LIST_ITEM_HEIGHT.to_string()
             on:focus=move |_| {
-                set_grid_has_focus.set(true);
                 let available_games = navigation_games();
                 if available_games.is_empty() {
                     return;
@@ -1374,9 +1371,6 @@ pub fn GameGrid(
                     let _ = container.set_attribute("data-nav-selected-index", &default_index.to_string());
                     let _ = container.set_attribute("data-nav-active-grid", "true");
                 }
-            }
-            on:blur=move |_| {
-                set_grid_has_focus.set(false);
             }
             on:scroll=on_scroll
             on:touchstart=on_touchstart
@@ -1505,7 +1499,7 @@ pub fn GameGrid(
                                                         render_index=index
                                                         in_viewport=in_viewport
                                                         nav_selected=Signal::derive(move || {
-                                                            grid_has_focus.get() && nav_selected_index.get() == Some(index)
+                                                            nav_selected_index.get() == Some(index)
                                                         })
                                                         on_nav_select=Callback::new(move |_| {
                                                             set_nav_selected_index.set(Some(index));
@@ -1675,7 +1669,7 @@ pub fn GameGrid(
                                                             search_query=current_search.get()
                                                             render_index=index
                                                             nav_selected=Signal::derive(move || {
-                                                                grid_has_focus.get() && nav_selected_index.get() == Some(index)
+                                                                nav_selected_index.get() == Some(index)
                                                             })
                                                             on_nav_select=Callback::new(move |_| {
                                                                 set_nav_selected_index.set(Some(index));
