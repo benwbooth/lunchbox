@@ -1,8 +1,6 @@
 //! Sidebar component with platforms and collections
 
-use crate::app::{
-    GamepadFocusArea, GamepadNavAction, PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES,
-};
+use crate::app::{PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES};
 use crate::backend_api::{self, Collection, Platform};
 use crate::components::QueueStatus;
 use leptos::html;
@@ -18,12 +16,6 @@ const SIDEBAR_UI_STATE_KEY: &str = "lunchbox.ui.sidebar.v1";
 struct SidebarUiState {
     platform_search: String,
     sidebar_width: i32,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-enum SidebarNavEntry {
-    Platform(String),
-    Collection(String),
 }
 
 impl Default for SidebarUiState {
@@ -56,10 +48,6 @@ pub fn Sidebar(
     set_selected_collection: WriteSignal<Option<String>>,
     collections_refresh: ReadSignal<u32>,
     set_collections_refresh: WriteSignal<u32>,
-    gamepad_focus_area: ReadSignal<GamepadFocusArea>,
-    set_gamepad_focus_area: WriteSignal<GamepadFocusArea>,
-    gamepad_nav_action: ReadSignal<Option<GamepadNavAction>>,
-    gamepad_nav_action_seq: ReadSignal<u64>,
 ) -> impl IntoView {
     let persisted =
         crate::ui_state::load_json::<SidebarUiState>(SIDEBAR_UI_STATE_KEY).unwrap_or_default();
@@ -107,9 +95,6 @@ pub fn Sidebar(
     let (collections, set_collections) = signal::<Vec<Collection>>(Vec::new());
     let (show_create_dialog, set_show_create_dialog) = signal(false);
     let (new_collection_name, set_new_collection_name) = signal(String::new());
-    let (gamepad_nav_index, set_gamepad_nav_index) = signal(0usize);
-    let (last_handled_gamepad_seq, set_last_handled_gamepad_seq) = signal(0u64);
-
     // Load collections and refresh when trigger changes
     Effect::new(move || {
         let _ = collections_refresh.get(); // Subscribe to refresh trigger
@@ -161,31 +146,8 @@ pub fn Sidebar(
         set_selected_platform.set(None);
     };
 
-    let sidebar_nav_entries = move || {
-        let mut entries = Vec::new();
-        entries.push(SidebarNavEntry::Platform(
-            PLATFORM_SELECTION_MINIGAMES.to_string(),
-        ));
-        entries.push(SidebarNavEntry::Platform(
-            PLATFORM_SELECTION_ALL_GAMES.to_string(),
-        ));
-        entries.extend(
-            filtered_platforms()
-                .into_iter()
-                .map(|platform| SidebarNavEntry::Platform(platform.name)),
-        );
-        entries.extend(
-            collections
-                .get()
-                .into_iter()
-                .map(|collection| SidebarNavEntry::Collection(collection.id)),
-        );
-        entries
-    };
-
     // Sidebar resize state
     let (is_resizing, set_is_resizing) = signal(false);
-    let sidebar_ref = NodeRef::<html::Aside>::new();
 
     Effect::new(move || {
         crate::ui_state::save_json(
@@ -195,92 +157,6 @@ pub fn Sidebar(
                 sidebar_width: sidebar_width.get().clamp(180, 400),
             },
         );
-    });
-
-    Effect::new(move || {
-        let entries = sidebar_nav_entries();
-        if entries.is_empty() {
-            set_gamepad_nav_index.set(0);
-            return;
-        }
-
-        let current = if let Some(collection_id) = selected_collection.get() {
-            SidebarNavEntry::Collection(collection_id)
-        } else {
-            SidebarNavEntry::Platform(
-                selected_platform
-                    .get()
-                    .unwrap_or_else(|| PLATFORM_SELECTION_MINIGAMES.to_string()),
-            )
-        };
-
-        if let Some(idx) = entries.iter().position(|entry| *entry == current) {
-            set_gamepad_nav_index.set(idx);
-        } else {
-            let clamped = gamepad_nav_index.get().min(entries.len().saturating_sub(1));
-            if clamped != gamepad_nav_index.get() {
-                set_gamepad_nav_index.set(clamped);
-            }
-        }
-    });
-
-    Effect::new(move || {
-        let action_seq = gamepad_nav_action_seq.get();
-        if gamepad_focus_area.get() != GamepadFocusArea::Sidebar {
-            return;
-        }
-        if action_seq == 0 || action_seq == last_handled_gamepad_seq.get() {
-            return;
-        }
-
-        let entries = sidebar_nav_entries();
-        if entries.is_empty() {
-            return;
-        }
-
-        set_last_handled_gamepad_seq.set(action_seq);
-
-        match gamepad_nav_action.get() {
-            Some(GamepadNavAction::Up) => {
-                set_gamepad_nav_index.update(|idx| *idx = idx.saturating_sub(1));
-            }
-            Some(GamepadNavAction::Down) => {
-                let last = entries.len().saturating_sub(1);
-                set_gamepad_nav_index.update(|idx| *idx = (*idx + 1).min(last));
-            }
-            Some(GamepadNavAction::Right) => {
-                set_gamepad_focus_area.set(GamepadFocusArea::Grid);
-            }
-            Some(GamepadNavAction::Primary) => {
-                if let Some(entry) = entries.get(gamepad_nav_index.get()) {
-                    match entry {
-                        SidebarNavEntry::Platform(platform_name) => {
-                            on_platform_click(Some(platform_name.clone()));
-                            set_gamepad_focus_area.set(GamepadFocusArea::Grid);
-                        }
-                        SidebarNavEntry::Collection(collection_id) => {
-                            on_collection_click(collection_id.clone());
-                            set_gamepad_focus_area.set(GamepadFocusArea::Grid);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    });
-
-    Effect::new(move || {
-        if gamepad_focus_area.get() != GamepadFocusArea::Sidebar {
-            return;
-        }
-
-        let nav_index = gamepad_nav_index.get();
-        let selector = format!(r#"[data-sidebar-nav-index="{}"]"#, nav_index);
-        if let Some(sidebar) = sidebar_ref.get() {
-            if let Ok(Some(item)) = sidebar.query_selector(&selector) {
-                item.scroll_into_view();
-            }
-        }
     });
 
     // Handle resize drag
@@ -336,7 +212,6 @@ pub fn Sidebar(
     view! {
         <aside
             class="sidebar"
-            node_ref=sidebar_ref
             style=move || format!("width: {}px;", sidebar_width.get())
         >
             <div class="sidebar-header platform-search-header">
@@ -363,14 +238,9 @@ pub fn Sidebar(
             <nav class="platform-list">
                 <button
                     class="platform-item platform-item-minigames"
-                    attr:data-sidebar-nav-index="0"
                     class:selected=move || {
                         selected_platform.get().as_deref() == Some(PLATFORM_SELECTION_MINIGAMES)
                             && selected_collection.get().is_none()
-                    }
-                    class:gamepad-active=move || {
-                        gamepad_focus_area.get() == GamepadFocusArea::Sidebar
-                            && gamepad_nav_index.get() == 0
                     }
                     on:click=move |_| on_platform_click(Some(PLATFORM_SELECTION_MINIGAMES.to_string()))
                 >
@@ -379,14 +249,9 @@ pub fn Sidebar(
                 </button>
                 <button
                     class="platform-item"
-                    attr:data-sidebar-nav-index="1"
                     class:selected=move || {
                         selected_platform.get().as_deref() == Some(PLATFORM_SELECTION_ALL_GAMES)
                             && selected_collection.get().is_none()
-                    }
-                    class:gamepad-active=move || {
-                        gamepad_focus_area.get() == GamepadFocusArea::Sidebar
-                            && gamepad_nav_index.get() == 1
                     }
                     on:click=move |_| on_platform_click(Some(PLATFORM_SELECTION_ALL_GAMES.to_string()))
                 >
@@ -404,19 +269,14 @@ pub fn Sidebar(
                 } else if filtered_platforms().is_empty() {
                     view! { <div class="empty-platforms">"No platforms found"</div> }.into_any()
                 } else {
-                    let sidebar_has_focus = gamepad_focus_area.get() == GamepadFocusArea::Sidebar;
-                    let nav_index = gamepad_nav_index.get();
                     filtered_platforms()
                         .into_iter()
-                        .enumerate()
-                        .map(|(platform_index, platform)| view! {
+                        .map(|platform| view! {
                             <PlatformItem
                                 platform=platform.clone()
                                 selected_platform=selected_platform
                                 on_click=on_platform_click
                                 search_query=platform_search
-                                nav_index=platform_index + 2
-                                gamepad_active=sidebar_has_focus && nav_index == platform_index + 2
                             />
                         })
                         .collect::<Vec<_>>()
@@ -436,18 +296,12 @@ pub fn Sidebar(
             </div>
             <nav class="collection-list">
                 {move || {
-                    let sidebar_has_focus = gamepad_focus_area.get() == GamepadFocusArea::Sidebar;
-                    let nav_index = gamepad_nav_index.get();
-                    let collection_base = filtered_platforms().len() + 2;
-                    collections.get().into_iter().enumerate().map(|(collection_index, collection)| view! {
+                    collections.get().into_iter().map(|collection| view! {
                         <CollectionItem
                             collection=collection
                             selected_collection=selected_collection
                             on_click=on_collection_click
                             set_collections_refresh=set_collections_refresh
-                            nav_index=collection_base + collection_index
-                            gamepad_active=sidebar_has_focus
-                                && nav_index == collection_base + collection_index
                         />
                     }).collect::<Vec<_>>()
                 }}
@@ -461,7 +315,13 @@ pub fn Sidebar(
 
             // Create collection dialog
             <Show when=move || show_create_dialog.get()>
-                <div class="dialog-overlay" on:click=move |_| set_show_create_dialog.set(false)>
+                <div
+                    class="dialog-overlay"
+                    attr:data-nav-scope="create-collection"
+                    attr:data-nav-scope-active="true"
+                    attr:data-nav-scope-priority="220"
+                    on:click=move |_| set_show_create_dialog.set(false)
+                >
                     <div class="dialog" on:click=|ev| ev.stop_propagation()>
                         <h3>"Create Collection"</h3>
                         <input
@@ -475,6 +335,7 @@ pub fn Sidebar(
                         <div class="dialog-actions">
                             <button
                                 class="dialog-cancel"
+                                attr:data-nav-back="true"
                                 on:click=move |_| set_show_create_dialog.set(false)
                             >
                                 "Cancel"
@@ -541,8 +402,6 @@ fn PlatformItem(
     selected_platform: ReadSignal<Option<String>>,
     on_click: impl Fn(Option<String>) + Copy + 'static,
     search_query: ReadSignal<String>,
-    #[prop(default = 0)] nav_index: usize,
-    #[prop(default = false)] gamepad_active: bool,
 ) -> impl IntoView {
     let name = platform.name.clone();
     let name_for_click = name.clone();
@@ -585,9 +444,7 @@ fn PlatformItem(
     view! {
         <button
             class="platform-item"
-            attr:data-sidebar-nav-index=nav_index.to_string()
             class:selected=move || selected_platform.get().as_ref() == Some(&name)
-            class:gamepad-active=gamepad_active
             on:click=move |_| on_click(Some(name_for_click.clone()))
             data-tooltip=tooltip
         >
@@ -620,8 +477,6 @@ fn CollectionItem(
     selected_collection: ReadSignal<Option<String>>,
     on_click: impl Fn(String) + Copy + 'static,
     set_collections_refresh: WriteSignal<u32>,
-    #[prop(default = 0)] nav_index: usize,
-    #[prop(default = false)] gamepad_active: bool,
 ) -> impl IntoView {
     let id = collection.id.clone();
     let id_for_click = id.clone();
@@ -643,9 +498,7 @@ fn CollectionItem(
     view! {
         <button
             class="collection-item"
-            attr:data-sidebar-nav-index=nav_index.to_string()
             class:selected=move || selected_collection.get().as_ref() == Some(&id)
-            class:gamepad-active=gamepad_active
             on:click=move |_| on_click(id_for_click.clone())
         >
             <span class="collection-name">{name}</span>

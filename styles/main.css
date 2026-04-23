@@ -541,6 +541,14 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--logo-yellow) 72%, transparent);
 }
 
+.platform-item:focus,
+.platform-item:focus-visible {
+    outline: none;
+    background-color: color-mix(in srgb, var(--bg-active) 72%, transparent);
+    color: var(--text-highlight);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--logo-yellow) 72%, transparent);
+}
+
 .platform-item-minigames .platform-name {
     font-family: 'Press Start 2P', 'Oxanium', sans-serif;
     font-size: 10px;
@@ -615,6 +623,17 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .game-card-anchor.gamepad-active .game-card {
+    border-color: var(--logo-yellow);
+    box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.65), 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.game-card-anchor:focus,
+.game-card-anchor:focus-visible {
+    outline: none;
+}
+
+.game-card-anchor:focus .game-card,
+.game-card-anchor:focus-visible .game-card {
     border-color: var(--logo-yellow);
     box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.65), 0 12px 30px rgba(0, 0, 0, 0.35);
 }
@@ -1060,6 +1079,13 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .game-list-item.gamepad-active {
+    background-color: color-mix(in srgb, var(--bg-active) 68%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--logo-yellow) 70%, transparent);
+}
+
+.game-list-item:focus,
+.game-list-item:focus-visible {
+    outline: none;
     background-color: color-mix(in srgb, var(--bg-active) 68%, transparent);
     box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--logo-yellow) 70%, transparent);
 }
@@ -2161,6 +2187,14 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .collection-item.gamepad-active {
+    background-color: color-mix(in srgb, var(--bg-active) 72%, transparent);
+    color: var(--text-highlight);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--logo-yellow) 72%, transparent);
+}
+
+.collection-item:focus,
+.collection-item:focus-visible {
+    outline: none;
     background-color: color-mix(in srgb, var(--bg-active) 72%, transparent);
     color: var(--text-highlight);
     box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--logo-yellow) 72%, transparent);
@@ -4865,6 +4899,13 @@ body.sidebar-resizing * {
 .file-picker-row.selected {
     background: rgba(59, 130, 246, 0.15);
     border-left: 3px solid #3b82f6;
+}
+
+.file-picker-row:focus,
+.file-picker-row:focus-visible {
+    outline: none;
+    background: rgba(59, 130, 246, 0.15);
+    box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.7);
 }
 
 .file-picker-row-torrent {

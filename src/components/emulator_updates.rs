@@ -135,7 +135,12 @@ pub fn EmulatorUpdates(
 
     view! {
         <Show when=move || show.get()>
-            <div class="settings-overlay" on:click=move |_| {
+            <div
+                class="settings-overlay"
+                attr:data-nav-scope="emulator-updates"
+                attr:data-nav-scope-active="true"
+                attr:data-nav-scope-priority="210"
+                on:click=move |_| {
                 if !updating.get() {
                     on_close.set(false);
                 }
@@ -143,6 +148,7 @@ pub fn EmulatorUpdates(
                 <div class="emulator-updates-panel" on:click=|ev| ev.stop_propagation()>
                     <button
                         class="close-btn"
+                        attr:data-nav-back="true"
                         on:click=move |_| {
                             if !updating.get() {
                                 on_close.set(false);

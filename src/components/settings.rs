@@ -141,9 +141,19 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
 
     view! {
         <Show when=move || show.get()>
-            <div class="settings-overlay" on:click=move |_| on_close.set(false)>
+            <div
+                class="settings-overlay"
+                attr:data-nav-scope="settings"
+                attr:data-nav-scope-active="true"
+                attr:data-nav-scope-priority="200"
+                on:click=move |_| on_close.set(false)
+            >
                 <div class="settings-panel" on:click=|ev| ev.stop_propagation()>
-                    <button class="close-btn" on:click=move |_| on_close.set(false)>
+                    <button
+                        class="close-btn"
+                        attr:data-nav-back="true"
+                        on:click=move |_| on_close.set(false)
+                    >
                         "×"
                     </button>
                     <h2 class="settings-title">

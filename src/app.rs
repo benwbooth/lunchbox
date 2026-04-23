@@ -2,6 +2,7 @@ use crate::backend_api::Game;
 use crate::components::{
     EmulatorUpdates, GameDetails, GameGrid, MinervaDownloadQueue, Settings, Sidebar, Toolbar,
 };
+use crate::navigation::{self, NavigationAction};
 use gloo_timers::callback::Interval;
 use js_sys::{Array, Function, Reflect};
 use leptos::prelude::*;
@@ -16,23 +17,6 @@ pub const PLATFORM_SELECTION_MINIGAMES: &str = "__minigames__";
 pub const PLATFORM_SELECTION_ALL_GAMES: &str = "__all_games__";
 const APP_UI_STATE_KEY: &str = "lunchbox.ui.app.v1";
 const FILTER_DEFAULTS_VERSION_NON_RETAIL: u8 = 1;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum GamepadFocusArea {
-    Sidebar,
-    Grid,
-    Details,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum GamepadNavAction {
-    Up,
-    Down,
-    Left,
-    Right,
-    Primary,
-    Secondary,
-}
 
 #[derive(Default)]
 struct RepeatState {
@@ -124,7 +108,7 @@ fn axis_value(axes: &Array, index: u32) -> f64 {
 fn next_gamepad_action(
     now_ms: f64,
     repeat_state: &Rc<RefCell<GamepadRepeatState>>,
-) -> Option<GamepadNavAction> {
+) -> Option<NavigationAction> {
     const AXIS_THRESHOLD: f64 = 0.55;
 
     let gamepad = first_connected_gamepad()?;
@@ -143,22 +127,22 @@ fn next_gamepad_action(
     let mut repeat_state = repeat_state.borrow_mut();
 
     if consume_repeat(now_ms, up_pressed, &mut repeat_state.up) {
-        return Some(GamepadNavAction::Up);
+        return Some(NavigationAction::Up);
     }
     if consume_repeat(now_ms, down_pressed, &mut repeat_state.down) {
-        return Some(GamepadNavAction::Down);
+        return Some(NavigationAction::Down);
     }
     if consume_repeat(now_ms, left_pressed, &mut repeat_state.left) {
-        return Some(GamepadNavAction::Left);
+        return Some(NavigationAction::Left);
     }
     if consume_repeat(now_ms, right_pressed, &mut repeat_state.right) {
-        return Some(GamepadNavAction::Right);
+        return Some(NavigationAction::Right);
     }
     if consume_repeat(now_ms, primary_pressed, &mut repeat_state.primary) {
-        return Some(GamepadNavAction::Primary);
+        return Some(NavigationAction::Activate);
     }
     if consume_repeat(now_ms, secondary_pressed, &mut repeat_state.secondary) {
-        return Some(GamepadNavAction::Secondary);
+        return Some(NavigationAction::Back);
     }
 
     None
@@ -307,10 +291,6 @@ pub fn App() -> impl IntoView {
     let (zoom_level, set_zoom_level) = signal(persisted.zoom_level.clamp(0.5, 2.0));
     // State for game list filters
     let (game_filters, set_game_filters) = signal(persisted.game_filters);
-    // Gamepad navigation state
-    let (gamepad_focus_area, set_gamepad_focus_area) = signal(GamepadFocusArea::Grid);
-    let (gamepad_nav_action, set_gamepad_nav_action) = signal::<Option<GamepadNavAction>>(None);
-    let (gamepad_nav_action_seq, set_gamepad_nav_action_seq) = signal(0u64);
 
     let repeat_state = Rc::new(RefCell::new(GamepadRepeatState::default()));
 
@@ -345,42 +325,42 @@ pub fn App() -> impl IntoView {
         });
     });
 
-    Effect::new(move || {
-        if selected_game.get().is_some() {
-            set_gamepad_focus_area.set(GamepadFocusArea::Details);
-        } else if gamepad_focus_area.get() == GamepadFocusArea::Details {
-            set_gamepad_focus_area.set(GamepadFocusArea::Grid);
-        }
-    });
-
     {
         let repeat_state = repeat_state.clone();
         let _gamepad_interval = Interval::new(50, move || {
-            if show_settings.get_untracked() || show_emulator_updates.get_untracked() {
-                return;
-            }
-
             let Some(action) = next_gamepad_action(js_sys::Date::now(), &repeat_state) else {
                 return;
             };
 
-            match gamepad_focus_area.get_untracked() {
-                GamepadFocusArea::Details => {
-                    if action == GamepadNavAction::Secondary {
-                        set_selected_game.set(None);
-                    }
-                }
-                GamepadFocusArea::Sidebar | GamepadFocusArea::Grid => {
-                    set_gamepad_nav_action.set(Some(action));
-                    set_gamepad_nav_action_seq.update(|seq| *seq += 1);
-                }
-            }
+            let _ = navigation::handle_navigation_action(action);
         });
 
         Effect::new(move || {
             let _keep_interval_alive = &_gamepad_interval;
         });
     }
+
+    Effect::new(move || {
+        let keydown =
+            wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |ev| {
+                let Some(action) = navigation::keyboard_action(&ev) else {
+                    return;
+                };
+                if navigation::should_ignore_keyboard_action(&ev, action) {
+                    return;
+                }
+                if navigation::handle_navigation_action(action) {
+                    ev.prevent_default();
+                    ev.stop_propagation();
+                }
+            });
+
+        if let Some(window) = web_sys::window() {
+            let _ = window
+                .add_event_listener_with_callback("keydown", keydown.as_ref().unchecked_ref());
+            keydown.forget();
+        }
+    });
 
     view! {
         <div class="app-container" class:details-modal-open=move || selected_game.get().is_some()>
@@ -407,10 +387,6 @@ pub fn App() -> impl IntoView {
                     set_selected_collection=set_selected_collection
                     collections_refresh=collections_refresh
                     set_collections_refresh=set_collections_refresh
-                    gamepad_focus_area=gamepad_focus_area
-                    set_gamepad_focus_area=set_gamepad_focus_area
-                    gamepad_nav_action=gamepad_nav_action
-                    gamepad_nav_action_seq=gamepad_nav_action_seq
                 />
                 <GameGrid
                     platform=selected_platform
@@ -422,10 +398,6 @@ pub fn App() -> impl IntoView {
                     zoom_level=zoom_level
                     set_zoom_level=set_zoom_level
                     game_filters=game_filters
-                    gamepad_focus_area=gamepad_focus_area
-                    set_gamepad_focus_area=set_gamepad_focus_area
-                    gamepad_nav_action=gamepad_nav_action
-                    gamepad_nav_action_seq=gamepad_nav_action_seq
                 />
             </div>
             <GameDetails

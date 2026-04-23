@@ -1,6 +1,7 @@
 mod app;
 mod backend_api;
 mod components;
+mod navigation;
 mod ui_state;
 
 use wasm_bindgen::prelude::*;

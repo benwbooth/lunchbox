@@ -1651,12 +1651,24 @@ pub fn GameDetails(
                     };
 
                     view! {
-                        <div class="game-details-overlay" on:click=move |_| on_close.set(None)>
+                        <div
+                            class="game-details-overlay"
+                            attr:data-nav-scope="game-details"
+                            attr:data-nav-scope-active="true"
+                            attr:data-nav-scope-priority="100"
+                            on:click=move |_| on_close.set(None)
+                        >
                             <div class="game-details-panel" on:click=|e| e.stop_propagation()>
                                 // Title bar with game name and close button
                                 <div class="game-details-titlebar">
                                     <h1 class="titlebar-title">{display_title.clone()}</h1>
-                                    <button class="titlebar-close" on:click=move |_| on_close.set(None)>"×"</button>
+                                    <button
+                                        class="titlebar-close"
+                                        attr:data-nav-back="true"
+                                        on:click=move |_| on_close.set(None)
+                                    >
+                                        "×"
+                                    </button>
                                 </div>
 
                                 // Info area on its own row
@@ -1971,10 +1983,21 @@ pub fn GameDetails(
 
                                             // File picker dialog
                                             <Show when=move || show_file_picker.get()>
-                                                <div class="file-picker-dialog">
+                                                <div
+                                                    class="file-picker-dialog"
+                                                    attr:data-nav-scope="minerva-picker"
+                                                    attr:data-nav-scope-active="true"
+                                                    attr:data-nav-scope-priority="120"
+                                                >
                                                     <div class="file-picker-header">
                                                         <h4>"Select Minerva download"</h4>
-                                                        <button class="file-picker-close" on:click=move |_| set_show_file_picker.set(false)>"X"</button>
+                                                        <button
+                                                            class="file-picker-close"
+                                                            attr:data-nav-back="true"
+                                                            on:click=move |_| set_show_file_picker.set(false)
+                                                        >
+                                                            "X"
+                                                        </button>
                                                     </div>
                                                     <div class="import-status-hint">
                                                         "Each Minerva torrent shows a highlighted whole-torrent row first, followed by matching game files. Whole-torrent rows download the full set to your torrent library; file rows only download the selected game."
@@ -2063,6 +2086,9 @@ pub fn GameDetails(
                                                                     {show_whole_torrent_row.then(|| view! {
                                                                         <div
                                                                             class="file-picker-row file-picker-row-torrent"
+                                                                            tabindex="0"
+                                                                            role="button"
+                                                                            attr:data-nav="true"
                                                                             class:selected=whole_torrent_selected
                                                                             on:click=move |_| set_selected_download.set(Some(whole_torrent_click.clone()))
                                                                         >
@@ -2102,6 +2128,9 @@ pub fn GameDetails(
                                                                         view! {
                                                                             <div
                                                                                 class="file-picker-row file-picker-row-file"
+                                                                                tabindex="0"
+                                                                                role="button"
+                                                                                attr:data-nav="true"
                                                                                 class:selected=is_selected
                                                                                 on:click=move |_| set_selected_download.set(Some(click_selection.clone()))
                                                                             >
@@ -2241,6 +2270,7 @@ pub fn GameDetails(
                                                         </button>
                                                         <button
                                                             class="cancel-import-btn"
+                                                            attr:data-nav-back="true"
                                                             on:click=move |_| set_show_file_picker.set(false)
                                                         >"Cancel"</button>
                                                     </div>
@@ -3002,7 +3032,12 @@ fn EmulatorPickerModal(
     let can_close = move || progress_state.get().is_none();
 
     view! {
-        <div class="emulator-picker-overlay" on:click=move |e| {
+        <div
+            class="emulator-picker-overlay"
+            attr:data-nav-scope="emulator-picker"
+            attr:data-nav-scope-active="true"
+            attr:data-nav-scope-priority="130"
+            on:click=move |e| {
             e.stop_propagation();
             if can_close() {
                 set_show_emulator_picker.set(false);
@@ -3013,6 +3048,7 @@ fn EmulatorPickerModal(
                     <h3>"Select Emulator"</h3>
                     <button
                         class="emulator-picker-close"
+                        attr:data-nav-back="true"
                         on:click=move |_| {
                             if can_close() {
                                 set_show_emulator_picker.set(false);
