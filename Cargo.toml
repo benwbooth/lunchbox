@@ -20,7 +20,7 @@ web-sys = { version = "0.3", features = [
     "Request", "RequestInit", "RequestMode", "Response", "Headers",
     "IntersectionObserver", "IntersectionObserverEntry", "IntersectionObserverInit",
     "DomRect", "DomRectReadOnly", "HtmlCanvasElement", "CanvasRenderingContext2d",
-    "ImageData", "KeyboardEvent", "Performance", "Navigator",
+    "ImageData", "KeyboardEvent", "Performance", "Navigator", "Gamepad", "GamepadButton",
     "TouchEvent", "TouchList", "Touch", "MouseEvent", "WheelEvent",
     "Storage",
     # WebGPU types (snake_case feature names)

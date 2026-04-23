@@ -1,8 +1,8 @@
 //! Game grid and list views with virtual scrolling
 
 use crate::app::{
-    ArtworkDisplayType, GameFilters, PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES,
-    ViewMode,
+    ArtworkDisplayType, GameFilters, GamepadFocusArea, GamepadNavAction,
+    PLATFORM_SELECTION_ALL_GAMES, PLATFORM_SELECTION_MINIGAMES, ViewMode,
 };
 use crate::backend_api::{self, Game};
 use chrono::{Datelike, NaiveDate};
@@ -84,7 +84,8 @@ fn title_matches_alphabet_target(title: &str, target: char) -> bool {
 }
 
 fn find_first_game_index_for_target(games: &[Game], target: char) -> Option<usize> {
-    games.iter()
+    games
+        .iter()
         .position(|game| title_matches_alphabet_target(&game.display_title, target))
 }
 
@@ -448,6 +449,34 @@ impl Default for GameGridUiState {
 /// Column filters - maps column to set of allowed values (empty = no filter)
 pub type ColumnFilters = HashMap<Column, HashSet<String>>;
 
+fn apply_list_view_state(
+    games: &[Game],
+    filters: &ColumnFilters,
+    sort: Option<SortState>,
+) -> Vec<Game> {
+    let mut displayed_games: Vec<Game> = games.to_vec();
+
+    if !filters.is_empty() {
+        displayed_games.retain(|game| {
+            filters
+                .iter()
+                .all(|(col, allowed)| col.passes_filter(game, allowed))
+        });
+    }
+
+    if let Some(sort) = sort {
+        displayed_games.sort_by(|a, b| {
+            let cmp = sort.column.compare(a, b);
+            match sort.direction {
+                SortDirection::Ascending => cmp,
+                SortDirection::Descending => cmp.reverse(),
+            }
+        });
+    }
+
+    displayed_games
+}
+
 impl Column {
     /// Get unique values for this column from a list of games (for filter dropdown)
     pub fn unique_values(&self, games: &[Game]) -> Vec<String> {
@@ -484,6 +513,10 @@ pub fn GameGrid(
     zoom_level: ReadSignal<f64>,
     set_zoom_level: WriteSignal<f64>,
     game_filters: ReadSignal<GameFilters>,
+    gamepad_focus_area: ReadSignal<GamepadFocusArea>,
+    set_gamepad_focus_area: WriteSignal<GamepadFocusArea>,
+    gamepad_nav_action: ReadSignal<Option<GamepadNavAction>>,
+    gamepad_nav_action_seq: ReadSignal<u64>,
 ) -> impl IntoView {
     let is_minigames_selection =
         |plat: &Option<String>| plat.as_deref() == Some(PLATFORM_SELECTION_MINIGAMES);
@@ -529,6 +562,7 @@ pub fn GameGrid(
     // Column filters
     let (column_filters, set_column_filters) = signal::<ColumnFilters>(HashMap::new());
     let (filter_menu, set_filter_menu) = signal::<Option<(Column, i32, i32)>>(None); // (column, x, y) position
+    let (gamepad_selected_index, set_gamepad_selected_index) = signal(0usize);
 
     // Container ref for scroll handling
     let container_ref = NodeRef::<html::Main>::new();
@@ -690,6 +724,7 @@ pub fn GameGrid(
             set_current_collection.set(coll.clone());
             set_current_search.set(search.clone());
             set_current_filters.set(filters);
+            set_gamepad_selected_index.set(0);
             set_games.set(Vec::new());
             set_loaded_up_to.set(0);
             set_total_count.set(0);
@@ -895,7 +930,11 @@ pub fn GameGrid(
 
         let query_plat = query_platform(current_platform.get());
         let search = current_search.get();
-        let search_param = if search.is_empty() { None } else { Some(search) };
+        let search_param = if search.is_empty() {
+            None
+        } else {
+            Some(search)
+        };
         let filters = current_filters.get();
         let query_filters = backend_api::GameQueryFilters {
             installed_only: filters.installed_only,
@@ -961,6 +1000,78 @@ pub fn GameGrid(
             }
         });
     };
+
+    let navigation_games = move || match view_mode.get() {
+        ViewMode::Grid => games.get(),
+        ViewMode::List => {
+            apply_list_view_state(&games.get(), &column_filters.get(), sort_state.get())
+        }
+    };
+
+    Effect::new(move || {
+        let displayed_games = navigation_games();
+        if displayed_games.is_empty() {
+            set_gamepad_selected_index.set(0);
+            return;
+        }
+
+        let max_index = displayed_games.len().saturating_sub(1);
+        if gamepad_selected_index.get() > max_index {
+            set_gamepad_selected_index.set(max_index);
+        }
+    });
+
+    Effect::new(move || {
+        let _ = gamepad_nav_action_seq.get();
+        if gamepad_focus_area.get() != GamepadFocusArea::Grid {
+            return;
+        }
+
+        let displayed_games = navigation_games();
+        if displayed_games.is_empty() {
+            if matches!(gamepad_nav_action.get(), Some(GamepadNavAction::Left)) {
+                set_gamepad_focus_area.set(GamepadFocusArea::Sidebar);
+            }
+            return;
+        }
+
+        let max_index = displayed_games.len().saturating_sub(1);
+        let current_index = gamepad_selected_index.get().min(max_index);
+        let mode = view_mode.get();
+        let width = container_width.get();
+        let zoom = zoom_level.get();
+        let cols = match mode {
+            ViewMode::Grid => ((width / (ITEM_WIDTH as f64 * zoom) as i32).max(1)) as usize,
+            ViewMode::List => 1,
+        };
+
+        let next_index = match gamepad_nav_action.get() {
+            Some(GamepadNavAction::Up) => Some(current_index.saturating_sub(cols)),
+            Some(GamepadNavAction::Down) => Some((current_index + cols).min(max_index)),
+            Some(GamepadNavAction::Left) => {
+                if mode == ViewMode::List || current_index % cols == 0 {
+                    set_gamepad_focus_area.set(GamepadFocusArea::Sidebar);
+                    None
+                } else {
+                    Some(current_index.saturating_sub(1))
+                }
+            }
+            Some(GamepadNavAction::Right) => Some((current_index + 1).min(max_index)),
+            Some(GamepadNavAction::Primary) => {
+                if let Some(game) = displayed_games.get(current_index).cloned() {
+                    selected_game.set(Some(game));
+                }
+                None
+            }
+            Some(GamepadNavAction::Secondary) | None => None,
+        };
+
+        if let Some(next_index) = next_index {
+            set_gamepad_selected_index.set(next_index);
+            scroll_to_index(next_index);
+            ensure_loaded(next_index as i64);
+        }
+    });
 
     // Pinch-to-zoom state
     let (initial_pinch_distance, set_initial_pinch_distance) = signal::<Option<f64>>(None);
@@ -1076,6 +1187,8 @@ pub fn GameGrid(
                     let zoom = zoom_level.get();
                     let scaled_item_width = (ITEM_WIDTH as f64 * zoom) as i32;
                     let scaled_item_height = (ITEM_HEIGHT as f64 * zoom) as i32;
+                    let gamepad_grid_has_focus = gamepad_focus_area.get() == GamepadFocusArea::Grid;
+                    let gamepad_index = gamepad_selected_index.get();
 
                     // Calculate actual viewport range (without buffer) for priority
                     let scroll = scroll_top.get();
@@ -1135,7 +1248,16 @@ pub fn GameGrid(
                                                     style:width=format!("{}px", scaled_item_width)
                                                     style:height=format!("{}px", scaled_item_height)
                                                 >
-                                                    <GameCard game=game on_select=selected_game search_query=current_search.get() artwork_type=current_artwork_type render_index=index in_viewport=in_viewport />
+                                                    <GameCard
+                                                        game=game
+                                                        on_select=selected_game
+                                                        search_query=current_search.get()
+                                                        artwork_type=current_artwork_type
+                                                        render_index=index
+                                                        in_viewport=in_viewport
+                                                        gamepad_active=gamepad_grid_has_focus
+                                                            && gamepad_index == index
+                                                    />
                                                 </div>
                                             }
                                         }).collect::<Vec<_>>()}
@@ -1147,30 +1269,11 @@ pub fn GameGrid(
                                     let filters = column_filters.get();
                                     let col_count = columns.len();
 
-                                    // Filter and sort games
-                                    let mut filtered_games: Vec<Game> = games_list.clone();
-
-                                    // Apply column filters
-                                    if !filters.is_empty() {
-                                        filtered_games.retain(|game| {
-                                            filters.iter().all(|(col, allowed)| {
-                                                col.passes_filter(game, allowed)
-                                            })
-                                        });
-                                    }
-
-                                    // Sort if needed
-                                    if let Some(sort) = current_sort {
-                                        filtered_games.sort_by(|a, b| {
-                                            let cmp = sort.column.compare(a, b);
-                                            match sort.direction {
-                                                SortDirection::Ascending => cmp,
-                                                SortDirection::Descending => cmp.reverse(),
-                                            }
-                                        });
-                                    }
-
-                                    let sorted_games: Vec<(usize, Game)> = filtered_games
+                                    let sorted_games: Vec<(usize, Game)> = apply_list_view_state(
+                                        &games_list,
+                                        &filters,
+                                        current_sort,
+                                    )
                                         .into_iter()
                                         .enumerate()
                                         .skip(start)
@@ -1312,6 +1415,8 @@ pub fn GameGrid(
                                                             on_select=selected_game
                                                             columns=columns
                                                             search_query=current_search.get()
+                                                            gamepad_active=gamepad_grid_has_focus
+                                                                && gamepad_index == index
                                                         />
                                                     </div>
                                                 }
@@ -1531,6 +1636,7 @@ fn GameCard(
     /// Whether this item is in the actual viewport (not just buffer)
     #[prop(default = false)]
     in_viewport: bool,
+    #[prop(default = false)] gamepad_active: bool,
 ) -> impl IntoView {
     use crate::components::{LazyImage, minerva_downloads_signal};
 
@@ -2032,6 +2138,7 @@ fn GameCard(
         <>
         <div
             class="game-card-anchor"
+            class:gamepad-active=gamepad_active
             on:mouseenter=on_mouse_enter
             on:mouseleave=on_mouse_leave
             on:click=on_card_click
@@ -2255,6 +2362,7 @@ fn GameListItem(
     /// Search query for highlighting matches
     #[prop(default = String::new())]
     search_query: String,
+    #[prop(default = false)] gamepad_active: bool,
 ) -> impl IntoView {
     let game_for_click = game.clone();
     let col_count = columns.len();
@@ -2262,6 +2370,7 @@ fn GameListItem(
     view! {
         <div
             class="game-list-item"
+            class:gamepad-active=gamepad_active
             style:grid-template-columns=format!("repeat({}, 1fr)", col_count)
             on:click=move |_| on_select.set(Some(game_for_click.clone()))
         >

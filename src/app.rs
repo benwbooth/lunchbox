@@ -2,14 +2,149 @@ use crate::backend_api::Game;
 use crate::components::{
     EmulatorUpdates, GameDetails, GameGrid, MinervaDownloadQueue, Settings, Sidebar, Toolbar,
 };
+use gloo_timers::callback::Interval;
+use js_sys::Array;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::rc::Rc;
+use wasm_bindgen::JsCast;
+use web_sys::{Gamepad, GamepadButton};
 
 pub const PLATFORM_SELECTION_MINIGAMES: &str = "__minigames__";
 pub const PLATFORM_SELECTION_ALL_GAMES: &str = "__all_games__";
 const APP_UI_STATE_KEY: &str = "lunchbox.ui.app.v1";
 const FILTER_DEFAULTS_VERSION_NON_RETAIL: u8 = 1;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GamepadFocusArea {
+    Sidebar,
+    Grid,
+    Details,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GamepadNavAction {
+    Up,
+    Down,
+    Left,
+    Right,
+    Primary,
+    Secondary,
+}
+
+#[derive(Default)]
+struct RepeatState {
+    active: bool,
+    next_allowed_ms: f64,
+}
+
+#[derive(Default)]
+struct GamepadRepeatState {
+    up: RepeatState,
+    down: RepeatState,
+    left: RepeatState,
+    right: RepeatState,
+    primary: RepeatState,
+    secondary: RepeatState,
+}
+
+fn consume_repeat(now_ms: f64, is_pressed: bool, state: &mut RepeatState) -> bool {
+    const INITIAL_REPEAT_DELAY_MS: f64 = 260.0;
+    const HELD_REPEAT_DELAY_MS: f64 = 120.0;
+
+    if !is_pressed {
+        state.active = false;
+        state.next_allowed_ms = 0.0;
+        return false;
+    }
+
+    if !state.active {
+        state.active = true;
+        state.next_allowed_ms = now_ms + INITIAL_REPEAT_DELAY_MS;
+        return true;
+    }
+
+    if now_ms >= state.next_allowed_ms {
+        state.next_allowed_ms = now_ms + HELD_REPEAT_DELAY_MS;
+        return true;
+    }
+
+    false
+}
+
+fn array_item_as<T: JsCast>(array: &Array, index: u32) -> Option<T> {
+    array.get(index).dyn_into::<T>().ok()
+}
+
+fn first_connected_gamepad() -> Option<Gamepad> {
+    let window = web_sys::window()?;
+    let pads = window.navigator().get_gamepads().ok()?;
+
+    for index in 0..pads.length() {
+        if let Some(gamepad) = array_item_as::<Gamepad>(&pads, index) {
+            if gamepad.connected() {
+                return Some(gamepad);
+            }
+        }
+    }
+
+    None
+}
+
+fn button_pressed(buttons: &Array, index: u32) -> bool {
+    array_item_as::<GamepadButton>(buttons, index)
+        .map(|button| button.pressed() || button.value() > 0.5)
+        .unwrap_or(false)
+}
+
+fn axis_value(axes: &Array, index: u32) -> f64 {
+    axes.get(index).as_f64().unwrap_or(0.0)
+}
+
+fn next_gamepad_action(
+    now_ms: f64,
+    repeat_state: &Rc<RefCell<GamepadRepeatState>>,
+) -> Option<GamepadNavAction> {
+    const AXIS_THRESHOLD: f64 = 0.55;
+
+    let gamepad = first_connected_gamepad()?;
+    let buttons = gamepad.buttons();
+    let axes = gamepad.axes();
+    let axis_x = axis_value(&axes, 0);
+    let axis_y = axis_value(&axes, 1);
+
+    let up_pressed = button_pressed(&buttons, 12) || axis_y <= -AXIS_THRESHOLD;
+    let down_pressed = button_pressed(&buttons, 13) || axis_y >= AXIS_THRESHOLD;
+    let left_pressed = button_pressed(&buttons, 14) || axis_x <= -AXIS_THRESHOLD;
+    let right_pressed = button_pressed(&buttons, 15) || axis_x >= AXIS_THRESHOLD;
+    let primary_pressed = button_pressed(&buttons, 0);
+    let secondary_pressed = button_pressed(&buttons, 1);
+
+    let mut repeat_state = repeat_state.borrow_mut();
+
+    if consume_repeat(now_ms, up_pressed, &mut repeat_state.up) {
+        return Some(GamepadNavAction::Up);
+    }
+    if consume_repeat(now_ms, down_pressed, &mut repeat_state.down) {
+        return Some(GamepadNavAction::Down);
+    }
+    if consume_repeat(now_ms, left_pressed, &mut repeat_state.left) {
+        return Some(GamepadNavAction::Left);
+    }
+    if consume_repeat(now_ms, right_pressed, &mut repeat_state.right) {
+        return Some(GamepadNavAction::Right);
+    }
+    if consume_repeat(now_ms, primary_pressed, &mut repeat_state.primary) {
+        return Some(GamepadNavAction::Primary);
+    }
+    if consume_repeat(now_ms, secondary_pressed, &mut repeat_state.secondary) {
+        return Some(GamepadNavAction::Secondary);
+    }
+
+    None
+}
 
 /// Artwork type to display in grid view
 #[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -154,6 +289,12 @@ pub fn App() -> impl IntoView {
     let (zoom_level, set_zoom_level) = signal(persisted.zoom_level.clamp(0.5, 2.0));
     // State for game list filters
     let (game_filters, set_game_filters) = signal(persisted.game_filters);
+    // Gamepad navigation state
+    let (gamepad_focus_area, set_gamepad_focus_area) = signal(GamepadFocusArea::Grid);
+    let (gamepad_nav_action, set_gamepad_nav_action) = signal::<Option<GamepadNavAction>>(None);
+    let (gamepad_nav_action_seq, set_gamepad_nav_action_seq) = signal(0u64);
+
+    let repeat_state = Rc::new(RefCell::new(GamepadRepeatState::default()));
 
     Effect::new(move || {
         crate::ui_state::save_json(
@@ -186,6 +327,43 @@ pub fn App() -> impl IntoView {
         });
     });
 
+    Effect::new(move || {
+        if selected_game.get().is_some() {
+            set_gamepad_focus_area.set(GamepadFocusArea::Details);
+        } else if gamepad_focus_area.get() == GamepadFocusArea::Details {
+            set_gamepad_focus_area.set(GamepadFocusArea::Grid);
+        }
+    });
+
+    {
+        let repeat_state = repeat_state.clone();
+        let _gamepad_interval = Interval::new(50, move || {
+            if show_settings.get_untracked() || show_emulator_updates.get_untracked() {
+                return;
+            }
+
+            let Some(action) = next_gamepad_action(js_sys::Date::now(), &repeat_state) else {
+                return;
+            };
+
+            match gamepad_focus_area.get_untracked() {
+                GamepadFocusArea::Details => {
+                    if action == GamepadNavAction::Secondary {
+                        set_selected_game.set(None);
+                    }
+                }
+                GamepadFocusArea::Sidebar | GamepadFocusArea::Grid => {
+                    set_gamepad_nav_action.set(Some(action));
+                    set_gamepad_nav_action_seq.update(|seq| *seq += 1);
+                }
+            }
+        });
+
+        Effect::new(move || {
+            let _keep_interval_alive = &_gamepad_interval;
+        });
+    }
+
     view! {
         <div class="app-container" class:details-modal-open=move || selected_game.get().is_some()>
             <Toolbar
@@ -211,6 +389,10 @@ pub fn App() -> impl IntoView {
                     set_selected_collection=set_selected_collection
                     collections_refresh=collections_refresh
                     set_collections_refresh=set_collections_refresh
+                    gamepad_focus_area=gamepad_focus_area
+                    set_gamepad_focus_area=set_gamepad_focus_area
+                    gamepad_nav_action=gamepad_nav_action
+                    gamepad_nav_action_seq=gamepad_nav_action_seq
                 />
                 <GameGrid
                     platform=selected_platform
@@ -222,6 +404,10 @@ pub fn App() -> impl IntoView {
                     zoom_level=zoom_level
                     set_zoom_level=set_zoom_level
                     game_filters=game_filters
+                    gamepad_focus_area=gamepad_focus_area
+                    set_gamepad_focus_area=set_gamepad_focus_area
+                    gamepad_nav_action=gamepad_nav_action
+                    gamepad_nav_action_seq=gamepad_nav_action_seq
                 />
             </div>
             <GameDetails
