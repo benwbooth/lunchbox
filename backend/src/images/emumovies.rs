@@ -155,7 +155,9 @@ fn emumovies_platform_search_candidates(platform: &str) -> Vec<String> {
     match key.as_str() {
         "arcade" | "mame" => candidates.push("MAME".to_string()),
         "nes" | "nintendoentertainmentsystem" => {
-            candidates.push("Nintendo Entertainment System".to_string())
+            candidates.push("Nintendo Entertainment System".to_string());
+            candidates.push("Nintendo NES".to_string());
+            candidates.push("NES".to_string());
         }
         "snes" | "nintendosnes" | "supernintendoentertainmentsystem" => {
             candidates.push("Super Nintendo Entertainment System".to_string());
@@ -184,9 +186,9 @@ fn emumovies_platform_search_candidates(platform: &str) -> Vec<String> {
             candidates.push("Sega Genesis - Mega Drive".to_string())
         }
         "segacd" | "megacd" => candidates.push("Sega CD".to_string()),
-        "psx" | "ps1" => candidates.push("Sony PlayStation".to_string()),
-        "ps2" => candidates.push("Sony PlayStation 2".to_string()),
-        "ps3" => candidates.push("Sony PlayStation 3".to_string()),
+        "psx" | "ps1" | "sonyplaystation" => candidates.push("Sony PlayStation".to_string()),
+        "ps2" | "sonyplaystation2" => candidates.push("Sony PlayStation 2".to_string()),
+        "ps3" | "sonyplaystation3" => candidates.push("Sony PlayStation 3".to_string()),
         "psp" | "sonypsp" | "sonyplaystationportable" => {
             candidates.push("Sony Playstation Portable".to_string());
             candidates.push("Sony PSP".to_string());
@@ -567,6 +569,18 @@ fn video_folder_platform_stem(folder_path: &str) -> &str {
     folder_name.split(" (").next().unwrap_or(folder_name).trim()
 }
 
+fn manual_folder_platform_stem(folder_path: &str) -> &str {
+    let folder_name = video_folder_name(folder_path);
+    folder_name
+        .split(" (")
+        .next()
+        .unwrap_or(folder_name)
+        .split(" [")
+        .next()
+        .unwrap_or(folder_name)
+        .trim()
+}
+
 fn artwork_folder_name(folder_path: &str) -> &str {
     folder_path.rsplit('/').next().unwrap_or(folder_path)
 }
@@ -623,6 +637,54 @@ fn video_folder_match_rank_for_platform(folder_path: &str, platform: &str) -> Op
         })
 }
 
+fn manual_folder_match_rank(folder_path: &str, candidate: &str) -> Option<u8> {
+    let stem = manual_folder_platform_stem(folder_path);
+    if exact_platform_key_match(stem, candidate) {
+        return Some(0);
+    }
+
+    let stem_tokens = tokenize_emumovies_platform_name(stem);
+    let candidate_tokens = tokenize_emumovies_platform_name(candidate);
+    if candidate_tokens.is_empty() || stem_tokens.len() <= candidate_tokens.len() {
+        return None;
+    }
+
+    if tokens_start_with(&stem_tokens, &candidate_tokens) {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+fn manual_folder_match_rank_for_platform(folder_path: &str, platform: &str) -> Option<u8> {
+    emumovies_platform_search_candidates(platform)
+        .iter()
+        .enumerate()
+        .find_map(|(idx, candidate)| {
+            manual_folder_match_rank(folder_path, candidate).and_then(|match_rank| {
+                let base = idx.saturating_mul(2);
+                if base > u8::MAX as usize {
+                    None
+                } else {
+                    Some((base as u8).saturating_add(match_rank))
+                }
+            })
+        })
+}
+
+fn manual_folder_format_rank(folder_path: &str) -> u8 {
+    let lower = folder_path.to_ascii_lowercase();
+    if lower.contains("extras") {
+        3
+    } else if lower.contains("(pdf)") || lower.contains("[pdf]") || lower.contains("game manuals") {
+        0
+    } else if lower.contains("(cbz)") || lower.contains("[cbz]") {
+        1
+    } else {
+        2
+    }
+}
+
 fn select_artwork_folder_from_list<'a>(folders: &'a [String], platform: &str) -> Option<&'a str> {
     for candidate in emumovies_platform_search_candidates(platform) {
         if let Some(folder) = folders
@@ -640,6 +702,14 @@ struct VideoFolderCandidate {
     path: String,
     source_order: usize,
     match_rank: u8,
+}
+
+#[derive(Debug, Clone)]
+struct ManualFolderCandidate {
+    path: String,
+    source_order: usize,
+    match_rank: u8,
+    format_rank: u8,
 }
 
 fn tokenize_for_match(normalized_name: &str) -> Vec<String> {
@@ -1232,6 +1302,9 @@ impl EmuMoviesClient {
         if media_type.is_video() {
             anyhow::bail!("Use get_video() for video content");
         }
+        if media_type == EmuMoviesMediaType::Manual {
+            return self.get_manual(platform, game_name, game_cache_dir, progress);
+        }
 
         let archive_path = self.get_archive_path(platform, media_type);
         let index = {
@@ -1287,6 +1360,244 @@ impl EmuMoviesClient {
 
         // Extract the file
         self.extract_from_archive(&archive_path, entry_path, &output_path)?;
+
+        Ok(output_path)
+    }
+
+    fn find_existing_manual(game_cache_dir: &Path) -> Option<PathBuf> {
+        let manual_dir = game_cache_dir.join("emumovies");
+        ["pdf", "cbz", "zip"]
+            .iter()
+            .map(|ext| manual_dir.join(format!("manual.{ext}")))
+            .find(|path| path.exists())
+    }
+
+    /// Find candidate manual folders for a platform under `/Official/Game Manuals`.
+    pub fn find_manual_folders(&self, platform: &str) -> Result<Vec<String>> {
+        const MANUAL_BASE: &str = "/Official/Game Manuals";
+        let search_candidates = emumovies_platform_search_candidates(platform);
+        tracing::info!(
+            "Searching for manual folder for {} in {} using candidates {:?}",
+            platform,
+            MANUAL_BASE,
+            search_candidates
+        );
+
+        let folders = self.list_files(MANUAL_BASE)?;
+        let mut matches: Vec<ManualFolderCandidate> = folders
+            .into_iter()
+            .enumerate()
+            .filter_map(|(source_order, folder)| {
+                manual_folder_match_rank_for_platform(&folder, platform).map(|match_rank| {
+                    ManualFolderCandidate {
+                        format_rank: manual_folder_format_rank(&folder),
+                        path: folder,
+                        source_order,
+                        match_rank,
+                    }
+                })
+            })
+            .collect();
+
+        matches.sort_by(|a, b| {
+            a.match_rank
+                .cmp(&b.match_rank)
+                .then_with(|| a.format_rank.cmp(&b.format_rank))
+                .then_with(|| a.source_order.cmp(&b.source_order))
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        matches.dedup_by(|a, b| a.path == b.path);
+
+        let ordered_paths: Vec<String> = matches.into_iter().map(|m| m.path).collect();
+        if ordered_paths.is_empty() {
+            tracing::info!("No manual folder found for {}", platform);
+        }
+        Ok(ordered_paths)
+    }
+
+    fn build_manual_index(&self, manual_folder: &str) -> Result<Vec<VideoIndexEntry>> {
+        let files = self.list_files(manual_folder)?;
+        Ok(files
+            .into_iter()
+            .filter_map(|file| {
+                let filename = file.rsplit('/').next().unwrap_or(&file);
+                let extension = filename
+                    .rsplit('.')
+                    .next()
+                    .map(|ext| ext.to_ascii_lowercase())?;
+                if !matches!(extension.as_str(), "pdf" | "cbz" | "zip") {
+                    return None;
+                }
+
+                let manual_name = std::path::Path::new(filename)
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or(filename);
+                let normalized = normalize_game_name(manual_name);
+                let no_region = remove_region_codes(&normalized);
+                let tokens = tokenize_for_match(&no_region);
+
+                Some(VideoIndexEntry {
+                    path: file,
+                    normalized,
+                    no_region,
+                    tokens,
+                })
+            })
+            .collect())
+    }
+
+    fn download_direct_file(
+        &self,
+        remote_path: &str,
+        output_path: &Path,
+        progress: Option<&ProgressCallback>,
+        label: &str,
+    ) -> Result<()> {
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut ftp = self.connect()?;
+        ftp.transfer_type(suppaftp::types::FileType::Binary)?;
+
+        let file_size = ftp.size(remote_path).ok().map(|size| size as u64);
+        tracing::info!("{} size: {:?} bytes", label, file_size);
+
+        let temp_path = output_path.with_extension("tmp");
+        let temp_file = File::create(&temp_path)?;
+        let mut writer = BufWriter::new(temp_file);
+
+        let mut stream = ftp
+            .retr_as_stream(remote_path)
+            .with_context(|| format!("Failed to download: {remote_path}"))?;
+        stream
+            .get_ref()
+            .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies data read timeout")?;
+        stream
+            .get_ref()
+            .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+            .context("Failed to configure EmuMovies data write timeout")?;
+
+        let mut buffer = [0u8; 64 * 1024];
+        let mut downloaded_bytes = 0u64;
+        loop {
+            let bytes_read = stream
+                .read(&mut buffer)
+                .with_context(|| format!("Failed while reading: {remote_path}"))?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            writer.write_all(&buffer[..bytes_read])?;
+            downloaded_bytes += bytes_read as u64;
+
+            if let Some(progress_fn) = progress {
+                if let Some(total_bytes) = file_size {
+                    if total_bytes > 0 {
+                        progress_fn((downloaded_bytes as f32 / total_bytes as f32).clamp(0.0, 1.0));
+                    }
+                }
+            }
+        }
+
+        writer.flush()?;
+        ftp.finalize_retr_stream(stream)
+            .with_context(|| format!("Failed to finalize download: {remote_path}"))?;
+        let _ = ftp.quit();
+
+        if let Some(progress_fn) = progress {
+            progress_fn(1.0);
+        }
+
+        std::fs::rename(&temp_path, output_path)?;
+        Ok(())
+    }
+
+    /// Download a game manual from EmuMovies' direct manual folders.
+    pub fn get_manual(
+        &self,
+        platform: &str,
+        game_name: &str,
+        game_cache_dir: &Path,
+        progress: Option<&ProgressCallback>,
+    ) -> Result<PathBuf> {
+        if let Some(cached) = Self::find_existing_manual(game_cache_dir) {
+            return Ok(cached);
+        }
+
+        let manual_folders = self.find_manual_folders(platform)?;
+        if manual_folders.is_empty() {
+            anyhow::bail!("No manual folder found for platform {}", platform);
+        }
+
+        let mut selected_manual: Option<(String, String, VideoMatchKind, f32, u8, usize)> = None;
+        for (source_order, manual_folder) in manual_folders.iter().enumerate() {
+            let index = match self.build_manual_index(manual_folder) {
+                Ok(index) => index,
+                Err(e) => {
+                    tracing::warn!("Failed to build manual index for {}: {}", manual_folder, e);
+                    continue;
+                }
+            };
+
+            if let Some((path, kind, score)) = find_best_video_match(index.as_slice(), game_name) {
+                let folder_rank =
+                    manual_folder_match_rank_for_platform(manual_folder, platform).unwrap_or(255);
+                let replace = match selected_manual.as_ref() {
+                    Some((_, _, cur_kind, cur_score, cur_rank, cur_order)) => {
+                        compare_video_candidates(
+                            kind,
+                            folder_rank,
+                            score,
+                            source_order,
+                            *cur_kind,
+                            *cur_rank,
+                            *cur_score,
+                            *cur_order,
+                        ) == Ordering::Greater
+                    }
+                    None => true,
+                };
+
+                if replace {
+                    selected_manual = Some((
+                        path,
+                        manual_folder.clone(),
+                        kind,
+                        score,
+                        folder_rank,
+                        source_order,
+                    ));
+                }
+            }
+        }
+
+        let (manual_path, selected_folder, selected_kind, selected_score, folder_rank, _) =
+            selected_manual
+                .ok_or_else(|| anyhow::anyhow!("No manual found for game '{}'", game_name))?;
+
+        tracing::info!(
+            "Selected manual for '{}' from {} using {:?} match (score {:.2}, folder_rank={})",
+            game_name,
+            selected_folder,
+            selected_kind,
+            selected_score,
+            folder_rank
+        );
+
+        let ext = manual_path
+            .rsplit('.')
+            .next()
+            .unwrap_or("pdf")
+            .to_ascii_lowercase();
+        let output_path = game_cache_dir
+            .join("emumovies")
+            .join(format!("manual.{ext}"));
+
+        self.download_direct_file(&manual_path, &output_path, progress, "Manual")?;
+        tracing::info!("Downloaded manual to {}", output_path.display());
 
         Ok(output_path)
     }
@@ -2097,6 +2408,9 @@ mod tests {
 
     #[test]
     fn test_platform_search_candidates_cover_cross_media_aliases() {
+        let nes = emumovies_platform_search_candidates("Nintendo Entertainment System");
+        assert!(nes.contains(&"Nintendo NES".to_string()));
+
         let snes = emumovies_platform_search_candidates("Super Nintendo Entertainment System");
         assert!(snes.contains(&"Nintendo Super Nintendo".to_string()));
         assert!(snes.contains(&"Nintendo Super Famicom".to_string()));
@@ -2124,6 +2438,24 @@ mod tests {
 
         let three_do = emumovies_platform_search_candidates("3DO Interactive Multiplayer");
         assert!(three_do.contains(&"Panasonic 3DO".to_string()));
+    }
+
+    #[test]
+    fn test_manual_folder_match_rank_uses_game_manual_folder_names() {
+        assert_eq!(
+            manual_folder_match_rank_for_platform(
+                "/Official/Game Manuals/Nintendo NES (Game Manuals)(EM 1.3.1)",
+                "Nintendo Entertainment System"
+            ),
+            Some(2)
+        );
+        assert_eq!(
+            manual_folder_match_rank_for_platform(
+                "/Official/Game Manuals/Sony PlayStation (Game Manuals)(ReDump)(EM 1.4)",
+                "Sony Playstation"
+            ),
+            Some(0)
+        );
     }
 
     #[test]
