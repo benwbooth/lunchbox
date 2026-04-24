@@ -770,7 +770,6 @@ pub struct SortState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GameGridUiState {
-    scroll_top: i32,
     visible_columns: Vec<Column>,
     sort_state: Option<SortState>,
 }
@@ -778,7 +777,6 @@ struct GameGridUiState {
 impl Default for GameGridUiState {
     fn default() -> Self {
         Self {
-            scroll_top: 0,
             visible_columns: Column::default_visible(),
             sort_state: None,
         }
@@ -863,7 +861,6 @@ pub fn GameGrid(
 
     let persisted =
         crate::ui_state::load_json::<GameGridUiState>(GAME_GRID_UI_STATE_KEY).unwrap_or_default();
-    let initial_scroll_top = persisted.scroll_top.max(0);
     let initial_visible_columns = sanitize_visible_columns(persisted.visible_columns);
     let initial_sort_state = persisted.sort_state;
 
@@ -875,7 +872,7 @@ pub fn GameGrid(
     let (loaded_up_to, set_loaded_up_to) = signal(0i64); // How many games we've loaded
 
     // Scroll state
-    let (scroll_top, set_scroll_top) = signal(initial_scroll_top);
+    let (scroll_top, set_scroll_top) = signal(0);
     let (container_height, set_container_height) = signal(600);
     let (container_width, set_container_width) = signal(800);
     let (nav_selected_index, set_nav_selected_index) = signal::<Option<usize>>(None);
@@ -885,7 +882,6 @@ pub fn GameGrid(
     let (current_collection, set_current_collection) = signal::<Option<String>>(None);
     let (current_search, set_current_search) = signal(String::new());
     let (current_filters, set_current_filters) = signal(GameFilters::default());
-    let (did_initial_load, set_did_initial_load) = signal(false);
     let resize_listener_attached = Rc::new(Cell::new(false));
     let nav_listener_attached = Rc::new(Cell::new(false));
     let dpad_listener_attached = Rc::new(Cell::new(false));
@@ -903,13 +899,11 @@ pub fn GameGrid(
 
     // Container ref for scroll handling
     let container_ref = NodeRef::<html::Main>::new();
-    let last_scroll_persist_ms = Rc::new(Cell::new(0.0));
 
     Effect::new(move || {
         crate::ui_state::save_json(
             GAME_GRID_UI_STATE_KEY,
             &GameGridUiState {
-                scroll_top: scroll_top.get_untracked().max(0),
                 visible_columns: visible_columns.get(),
                 sort_state: sort_state.get(),
             },
@@ -970,30 +964,13 @@ pub fn GameGrid(
     };
 
     // Handle scroll events
-    let on_scroll = {
-        let last_scroll_persist_ms = last_scroll_persist_ms.clone();
-        move |ev: web_sys::Event| {
-            if let Some(target) = ev.target() {
-                let element: web_sys::HtmlElement = target.unchecked_into();
-                let current_scroll = element.scroll_top().max(0);
-                set_scroll_top.set(current_scroll);
-                set_container_height.set(element.client_height());
-                set_container_width.set(element.client_width());
-
-                // Persist frequently enough for restoration, but avoid hot-path writes each frame.
-                let now_ms = js_sys::Date::now();
-                if now_ms - last_scroll_persist_ms.get() > 250.0 {
-                    last_scroll_persist_ms.set(now_ms);
-                    crate::ui_state::save_json(
-                        GAME_GRID_UI_STATE_KEY,
-                        &GameGridUiState {
-                            scroll_top: current_scroll,
-                            visible_columns: visible_columns.get_untracked(),
-                            sort_state: sort_state.get_untracked(),
-                        },
-                    );
-                }
-            }
+    let on_scroll = move |ev: web_sys::Event| {
+        if let Some(target) = ev.target() {
+            let element: web_sys::HtmlElement = target.unchecked_into();
+            let current_scroll = element.scroll_top().max(0);
+            set_scroll_top.set(current_scroll);
+            set_container_height.set(element.client_height());
+            set_container_width.set(element.client_width());
         }
     };
 
@@ -1082,7 +1059,6 @@ pub fn GameGrid(
         let coll = collection.get();
         let search = search_query.get();
         let filters = game_filters.get();
-        let is_initial_load = !did_initial_load.get();
 
         if plat != current_platform.get()
             || coll != current_collection.get()
@@ -1097,15 +1073,12 @@ pub fn GameGrid(
             set_nav_selected_index.set(None);
             set_loaded_up_to.set(0);
             set_total_count.set(0);
-            if !is_initial_load {
-                set_scroll_top.set(0);
-                if let Some(container) = container_ref.get() {
-                    container.set_scroll_top(0);
-                }
+            set_load_error.set(None);
+            set_scroll_top.set(0);
+            if let Some(container) = container_ref.get() {
+                container.set_scroll_top(0);
             }
             set_loading.set(true);
-            let container_ref_for_restore = container_ref.clone();
-            let restore_scroll_top = initial_scroll_top;
 
             spawn_local(async move {
                 // Collections - load all (they're small)
@@ -1117,20 +1090,12 @@ pub fn GameGrid(
                     set_games.set(result);
                     set_total_count.set(count);
                     set_loaded_up_to.set(count);
-                    if is_initial_load && restore_scroll_top > 0 {
-                        if let Some(container) = container_ref_for_restore.get() {
-                            container.set_scroll_top(restore_scroll_top);
-                            set_scroll_top.set(restore_scroll_top);
-                        }
-                    }
                     set_loading.set(false);
-                    set_did_initial_load.set(true);
                     return;
                 }
 
                 if is_minigames_selection(&plat) {
                     set_loading.set(false);
-                    set_did_initial_load.set(true);
                     return;
                 }
 
@@ -1191,14 +1156,7 @@ pub fn GameGrid(
                         set_load_error.set(Some(message));
                     }
                 }
-                if is_initial_load && restore_scroll_top > 0 {
-                    if let Some(container) = container_ref_for_restore.get() {
-                        container.set_scroll_top(restore_scroll_top);
-                        set_scroll_top.set(restore_scroll_top);
-                    }
-                }
                 set_loading.set(false);
-                set_did_initial_load.set(true);
             });
         }
     });
