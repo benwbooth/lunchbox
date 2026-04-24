@@ -1257,12 +1257,17 @@ async fn get_settings(
 
 async fn save_settings_http(
     State(state): State<SharedState>,
-    Json(settings): Json<crate::state::AppSettings>,
+    Json(mut settings): Json<crate::state::AppSettings>,
 ) -> Result<(), (StatusCode, String)> {
     let mut state_guard = state.write().await;
 
+    preserve_blank_credentials(&mut settings, &state_guard.settings);
+
     if let Some(ref pool) = state_guard.db_pool {
         crate::state::save_settings(pool, &settings)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        settings = crate::state::load_settings(pool)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
@@ -1273,6 +1278,43 @@ async fn save_settings_http(
 
 async fn get_credential_storage() -> Json<String> {
     Json(crate::keyring_store::get_credential_storage_name().to_string())
+}
+
+fn preserve_blank_credentials(
+    settings: &mut crate::state::AppSettings,
+    current: &crate::state::AppSettings,
+) {
+    if settings.steamgriddb.api_key.is_empty() && !current.steamgriddb.api_key.is_empty() {
+        settings.steamgriddb.api_key = current.steamgriddb.api_key.clone();
+    }
+    if settings.igdb.client_id.is_empty() && !current.igdb.client_id.is_empty() {
+        settings.igdb.client_id = current.igdb.client_id.clone();
+    }
+    if settings.igdb.client_secret.is_empty() && !current.igdb.client_secret.is_empty() {
+        settings.igdb.client_secret = current.igdb.client_secret.clone();
+    }
+    if settings.emumovies.username.is_empty() && !current.emumovies.username.is_empty() {
+        settings.emumovies.username = current.emumovies.username.clone();
+    }
+    if settings.emumovies.password.is_empty() && !current.emumovies.password.is_empty() {
+        settings.emumovies.password = current.emumovies.password.clone();
+    }
+    if settings.screenscraper.dev_id.is_empty() && !current.screenscraper.dev_id.is_empty() {
+        settings.screenscraper.dev_id = current.screenscraper.dev_id.clone();
+    }
+    if settings.screenscraper.dev_password.is_empty()
+        && !current.screenscraper.dev_password.is_empty()
+    {
+        settings.screenscraper.dev_password = current.screenscraper.dev_password.clone();
+    }
+    if settings.screenscraper.user_id.is_none() && current.screenscraper.user_id.is_some() {
+        settings.screenscraper.user_id = current.screenscraper.user_id.clone();
+    }
+    if settings.screenscraper.user_password.is_none()
+        && current.screenscraper.user_password.is_some()
+    {
+        settings.screenscraper.user_password = current.screenscraper.user_password.clone();
+    }
 }
 
 // ============================================================================
@@ -2500,14 +2542,18 @@ async fn rspc_download_game_manual(
     }
 
     if emumovies_username.is_empty() || emumovies_password.is_empty() {
-        let message = match minerva_error {
-            Some(err) => format!(
-                "Minerva manual download failed: {err}. EmuMovies credentials are not configured."
-            ),
-            None => {
-                "No matching Minerva manual was found. Configure EmuMovies credentials in Settings to download manuals from EmuMovies."
-                    .to_string()
+        let emumovies_missing = match (emumovies_username.is_empty(), emumovies_password.is_empty())
+        {
+            (true, true) => {
+                "EmuMovies username and password are not configured in Settings.".to_string()
             }
+            (true, false) => "EmuMovies username is not configured in Settings.".to_string(),
+            (false, true) => "EmuMovies password is not configured in Settings.".to_string(),
+            (false, false) => unreachable!(),
+        };
+        let message = match minerva_error {
+            Some(err) => format!("Minerva manual download failed: {err}. {emumovies_missing}"),
+            None => format!("No matching Minerva manual was found. {emumovies_missing}"),
         };
         return rspc_err::<String>(message).into_response();
     }

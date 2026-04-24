@@ -289,23 +289,29 @@ pub fn store_image_source_credentials(
         return Ok(()); // Skip keyring storage
     }
 
-    store_credential(keys::STEAMGRIDDB_API_KEY, steamgriddb_api_key)?;
-    store_credential(keys::IGDB_CLIENT_ID, igdb_client_id)?;
-    store_credential(keys::IGDB_CLIENT_SECRET, igdb_client_secret)?;
-    store_credential(keys::EMUMOVIES_USERNAME, emumovies_username)?;
-    store_credential(keys::EMUMOVIES_PASSWORD, emumovies_password)?;
-    store_credential(keys::SCREENSCRAPER_DEV_ID, screenscraper_dev_id)?;
-    store_credential(keys::SCREENSCRAPER_DEV_PASSWORD, screenscraper_dev_password)?;
-    store_credential(
-        keys::SCREENSCRAPER_USER_ID,
-        screenscraper_user_id.unwrap_or(""),
-    )?;
-    store_credential(
-        keys::SCREENSCRAPER_USER_PASSWORD,
-        screenscraper_user_password.unwrap_or(""),
-    )?;
+    store_credential_if_present(keys::STEAMGRIDDB_API_KEY, steamgriddb_api_key)?;
+    store_credential_if_present(keys::IGDB_CLIENT_ID, igdb_client_id)?;
+    store_credential_if_present(keys::IGDB_CLIENT_SECRET, igdb_client_secret)?;
+    store_credential_if_present(keys::EMUMOVIES_USERNAME, emumovies_username)?;
+    store_credential_if_present(keys::EMUMOVIES_PASSWORD, emumovies_password)?;
+    store_credential_if_present(keys::SCREENSCRAPER_DEV_ID, screenscraper_dev_id)?;
+    store_credential_if_present(keys::SCREENSCRAPER_DEV_PASSWORD, screenscraper_dev_password)?;
+    if let Some(user_id) = screenscraper_user_id {
+        store_credential_if_present(keys::SCREENSCRAPER_USER_ID, user_id)?;
+    }
+    if let Some(user_password) = screenscraper_user_password {
+        store_credential_if_present(keys::SCREENSCRAPER_USER_PASSWORD, user_password)?;
+    }
 
     Ok(())
+}
+
+fn store_credential_if_present(key: &str, value: &str) -> Result<()> {
+    if value.is_empty() {
+        Ok(())
+    } else {
+        store_credential(key, value)
+    }
 }
 
 /// Load all image source credentials from keyring
