@@ -338,6 +338,16 @@ fn file_picker_path_detail(path: &str) -> Option<String> {
     }
 }
 
+fn torrent_file_picker_display_name(file: &backend_api::TorrentFileMatch) -> String {
+    file.group_display_name
+        .clone()
+        .unwrap_or_else(|| file_picker_display_name(&file.filename))
+}
+
+fn torrent_file_picker_type_badge(file: &backend_api::TorrentFileMatch) -> Option<String> {
+    file.group_disc_count.map(|_| "Multi-disc".to_string())
+}
+
 fn normalized_listing_path(path: &str) -> String {
     path.trim_start_matches("./")
         .replace('\\', "/")
@@ -564,7 +574,19 @@ fn picker_optical_disc_info_from_path(path: &str) -> Option<PickerOpticalDiscInf
 fn is_picker_optical_primary_extension(ext: &str) -> bool {
     matches!(
         ext,
-        "cue" | "chd" | "ccd" | "mds" | "gdi" | "iso" | "cso" | "pbp" | "bin" | "img"
+        "cue"
+            | "chd"
+            | "ccd"
+            | "mds"
+            | "gdi"
+            | "iso"
+            | "cso"
+            | "pbp"
+            | "bin"
+            | "img"
+            | "zip"
+            | "7z"
+            | "rar"
     )
 }
 
@@ -578,6 +600,7 @@ fn picker_optical_primary_priority(ext: &str) -> u8 {
         "pbp" => 5,
         "iso" | "cso" => 6,
         "bin" | "img" => 7,
+        "zip" | "7z" | "rar" => 8,
         _ => 100,
     }
 }
@@ -707,13 +730,13 @@ fn build_optical_disc_picker_items(
                     torrent_url: rom.torrent_url.clone(),
                     file_index: file.index,
                 },
-                display_name: file_picker_display_name(&file.filename),
+                display_name: torrent_file_picker_display_name(file),
                 path_detail: file_picker_path_detail(&file.filename),
                 size: file.size,
                 match_score: file.match_score,
                 region: file.region.clone(),
                 suggested_emulator: None,
-                type_badge: None,
+                type_badge: torrent_file_picker_type_badge(file),
             },
         ));
     }
@@ -1013,13 +1036,13 @@ fn build_minerva_picker_items(
                     torrent_url: rom.torrent_url.clone(),
                     file_index: file.index,
                 },
-                display_name: file_picker_display_name(&file.filename),
+                display_name: torrent_file_picker_display_name(&file),
                 path_detail: file_picker_path_detail(&file.filename),
                 size: file.size,
                 match_score: file.match_score,
-                region: file.region,
+                region: file.region.clone(),
                 suggested_emulator: None,
-                type_badge: None,
+                type_badge: torrent_file_picker_type_badge(&file),
             })
             .collect();
     }

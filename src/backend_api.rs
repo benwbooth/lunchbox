@@ -2346,6 +2346,10 @@ pub struct TorrentFileMatch {
     pub size: u64,
     pub match_score: f64,
     pub region: Option<String>,
+    #[serde(default)]
+    pub group_display_name: Option<String>,
+    #[serde(default)]
+    pub group_disc_count: Option<usize>,
 }
 
 pub async fn list_torrent_files(

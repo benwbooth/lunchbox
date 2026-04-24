@@ -3048,7 +3048,7 @@ fn is_preferred_optical_primary_extension(ext: &str) -> bool {
 }
 
 fn is_fallback_optical_primary_extension(ext: &str) -> bool {
-    matches!(ext, "bin" | "img")
+    matches!(ext, "bin" | "img" | "zip" | "7z" | "rar")
 }
 
 fn is_optical_primary_extension(ext: &str) -> bool {
@@ -3069,6 +3069,7 @@ fn optical_primary_extension_priority(ext: &str, selected_ext: &str) -> u8 {
         "pbp" => 6,
         "iso" | "cso" => 7,
         "bin" | "img" => 8,
+        "zip" | "7z" | "rar" => 9,
         _ => 100,
     }
 }
@@ -3225,6 +3226,57 @@ fn build_optical_disc_download_plan(
         requested_indices,
         playlist_entries,
     })
+}
+
+fn collapse_optical_disc_matches_for_picker(
+    files: &[crate::torrent::TorrentFileInfo],
+    matches: Vec<TorrentFileMatch>,
+) -> Vec<TorrentFileMatch> {
+    let mut collapsed = Vec::new();
+    let mut grouped_keys = BTreeSet::new();
+
+    for file_match in matches {
+        let optical_info = optical_disc_info_from_torrent_path(&file_match.filename);
+        if let Some(info) = optical_info.as_ref() {
+            if grouped_keys.contains(&info.key) {
+                continue;
+            }
+
+            if let Some(plan) = build_optical_disc_download_plan(files, file_match.index) {
+                grouped_keys.insert(info.key.clone());
+                let representative_filename = plan
+                    .playlist_entries
+                    .first()
+                    .map(|entry| entry.filename.clone())
+                    .unwrap_or_else(|| file_match.filename.clone());
+                let total_size = plan
+                    .requested_indices
+                    .iter()
+                    .filter_map(|idx| files.iter().find(|file| file.index == *idx))
+                    .map(|file| file.size)
+                    .sum();
+                let disc_count = plan.playlist_entries.len();
+
+                collapsed.push(TorrentFileMatch {
+                    index: plan.representative_index,
+                    filename: representative_filename,
+                    size: total_size,
+                    match_score: file_match.match_score,
+                    region: file_match.region,
+                    group_display_name: Some(format!(
+                        "{} ({} discs)",
+                        plan.playlist_stem, disc_count
+                    )),
+                    group_disc_count: Some(disc_count),
+                });
+                continue;
+            }
+        }
+
+        collapsed.push(file_match);
+    }
+
+    collapsed
 }
 
 fn common_parent_for_paths(paths: &[PathBuf]) -> Option<PathBuf> {
@@ -5809,6 +5861,10 @@ pub struct TorrentFileMatch {
     pub size: u64,
     pub match_score: f64,
     pub region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_disc_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6282,6 +6338,8 @@ fn build_torrent_match_candidate(
             size: file.size,
             match_score: score.score,
             region,
+            group_display_name: None,
+            group_disc_count: None,
         },
         exact_match: score.exact_match,
         full_query_match: score.full_query_match,
@@ -6586,6 +6644,8 @@ fn select_arcade_mame_laserdisc_matches(
                     region: crate::tags::get_region_tags(&file.filename)
                         .into_iter()
                         .next(),
+                    group_display_name: None,
+                    group_disc_count: None,
                 })
         })
         .collect()
@@ -6753,6 +6813,8 @@ fn select_arcade_hypseus_laserdisc_matches(
                     region: crate::tags::get_region_tags(&file.filename)
                         .into_iter()
                         .next(),
+                    group_display_name: None,
+                    group_disc_count: None,
                 })
         })
         .collect()
@@ -6905,6 +6967,8 @@ fn select_arcade_daphne_laserdisc_matches(
                     region: crate::tags::get_region_tags(&file.filename)
                         .into_iter()
                         .next(),
+                    group_display_name: None,
+                    group_disc_count: None,
                 })
         })
         .collect()
@@ -7168,7 +7232,7 @@ pub async fn list_torrent_files(
         }
     }
 
-    Ok(matches)
+    Ok(collapse_optical_disc_matches_for_picker(&files, matches))
 }
 
 // ============================================================================
@@ -7512,7 +7576,8 @@ pub async fn confirm_rom_import(
 mod tests {
     use super::{
         ArcadeDaphneLaserdiscAssetKind, ArcadeHypseusLaserdiscAssetKind,
-        ArcadeMameLaserdiscAssetKind, MinervaRom, build_optical_disc_download_plan,
+        ArcadeMameLaserdiscAssetKind, MinervaRom, TorrentFileMatch,
+        build_optical_disc_download_plan, collapse_optical_disc_matches_for_picker,
         expand_arcade_laserdisc_roms, expand_torrent_match_lookup_titles,
         is_platform_specific_torrent_candidate, locate_downloaded_file, minerva_platform_fallbacks,
         parse_arcade_daphne_laserdisc_asset, parse_arcade_hypseus_laserdisc_asset,
@@ -7564,6 +7629,106 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![1, 2, 3]
         );
+    }
+
+    #[test]
+    fn plans_multi_disc_zip_downloads_as_one_playlist() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 3475,
+                filename: "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Disc 1).zip"
+                    .to_string(),
+                size: 543_773_232,
+            },
+            TorrentFileInfo {
+                index: 3476,
+                filename: "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Disc 2).zip"
+                    .to_string(),
+                size: 531_554_833,
+            },
+            TorrentFileInfo {
+                index: 3477,
+                filename: "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Disc 3).zip"
+                    .to_string(),
+                size: 478_128_600,
+            },
+            TorrentFileInfo {
+                index: 3478,
+                filename:
+                    "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Interactive Sampler CD).zip"
+                        .to_string(),
+                size: 92_973_559,
+            },
+        ];
+
+        let plan = build_optical_disc_download_plan(&files, 3475).expect("multi-disc zip plan");
+
+        assert_eq!(plan.playlist_stem, "Final Fantasy VII (USA)");
+        assert_eq!(plan.representative_index, 3475);
+        assert_eq!(plan.requested_indices, vec![3475, 3476, 3477]);
+        assert_eq!(
+            plan.playlist_entries
+                .iter()
+                .map(|entry| entry.file_index)
+                .collect::<Vec<_>>(),
+            vec![3475, 3476, 3477]
+        );
+    }
+
+    #[test]
+    fn collapses_multi_disc_zip_matches_for_picker() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 3475,
+                filename: "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Disc 1).zip"
+                    .to_string(),
+                size: 543_773_232,
+            },
+            TorrentFileInfo {
+                index: 3476,
+                filename: "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Disc 2).zip"
+                    .to_string(),
+                size: 531_554_833,
+            },
+            TorrentFileInfo {
+                index: 3477,
+                filename: "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Disc 3).zip"
+                    .to_string(),
+                size: 478_128_600,
+            },
+            TorrentFileInfo {
+                index: 3478,
+                filename:
+                    "Redump/Sony - PlayStation/Final Fantasy VII (USA) (Interactive Sampler CD).zip"
+                        .to_string(),
+                size: 92_973_559,
+            },
+        ];
+        let matches = files
+            .iter()
+            .map(|file| TorrentFileMatch {
+                index: file.index,
+                filename: file.filename.clone(),
+                size: file.size,
+                match_score: 1.0,
+                region: Some("USA".to_string()),
+                group_display_name: None,
+                group_disc_count: None,
+            })
+            .collect();
+
+        let collapsed = collapse_optical_disc_matches_for_picker(&files, matches);
+
+        assert_eq!(collapsed.len(), 2);
+        assert_eq!(collapsed[0].index, 3475);
+        assert_eq!(
+            collapsed[0].group_display_name.as_deref(),
+            Some("Final Fantasy VII (USA) (3 discs)")
+        );
+        assert_eq!(collapsed[0].group_disc_count, Some(3));
+        assert_eq!(collapsed[0].size, 543_773_232 + 531_554_833 + 478_128_600);
+        assert_eq!(collapsed[1].index, 3478);
+        assert_eq!(collapsed[1].group_disc_count, None);
     }
 
     #[test]

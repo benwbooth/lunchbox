@@ -3170,12 +3170,122 @@ fn cleanup_extracted_roms(paths: &[PathBuf]) {
     }
 }
 
+fn is_m3u_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("m3u"))
+}
+
+fn m3u_file_references(path: &Path) -> Result<Vec<PathBuf>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read playlist {}: {}", path.display(), e))?;
+    let parent_dir = path.parent().ok_or_else(|| {
+        format!(
+            "Playlist {} does not have a parent directory",
+            path.display()
+        )
+    })?;
+
+    Ok(content
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            let reference = PathBuf::from(trimmed);
+            if reference.is_absolute() {
+                Some(reference)
+            } else {
+                Some(parent_dir.join(reference))
+            }
+        })
+        .collect())
+}
+
+fn m3u_file_line(playlist_parent: &Path, target: &Path) -> String {
+    target
+        .strip_prefix(playlist_parent)
+        .unwrap_or(target)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn prepare_m3u_for_launch(path: &Path) -> Result<Option<PreparedRomLaunch>, String> {
+    let references = m3u_file_references(path)?;
+    if references.is_empty() {
+        return Ok(None);
+    }
+
+    let mut launch_paths = Vec::new();
+    let mut cleanup_paths = Vec::new();
+    let mut extracted_archive = false;
+
+    for reference in references {
+        if let Some(kind) = archive_kind_for_path(&reference) {
+            let prepared = extract_launchable_content_from_archive(&reference, kind)?;
+            if let Some(rom_path) = prepared.rom_path {
+                launch_paths.push(PathBuf::from(rom_path));
+            }
+            cleanup_paths.extend(prepared.cleanup_paths);
+            extracted_archive = true;
+        } else {
+            launch_paths.push(reference);
+        }
+    }
+
+    if !extracted_archive {
+        return Ok(None);
+    }
+
+    let parent_dir = path.parent().ok_or_else(|| {
+        format!(
+            "Playlist {} does not have a parent directory",
+            path.display()
+        )
+    })?;
+    let playlist_stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.trim().is_empty())
+        .unwrap_or("playlist");
+    let generated_path = unique_extracted_rom_path(
+        parent_dir,
+        Path::new(&format!("{playlist_stem}.lunchbox-launch.m3u")),
+    );
+    let mut content = String::new();
+    for launch_path in &launch_paths {
+        content.push_str(&m3u_file_line(parent_dir, launch_path));
+        content.push('\n');
+    }
+
+    std::fs::write(&generated_path, content).map_err(|e| {
+        format!(
+            "Failed to write launch playlist {}: {}",
+            generated_path.display(),
+            e
+        )
+    })?;
+    cleanup_paths.push(generated_path.clone());
+
+    Ok(Some(PreparedRomLaunch {
+        rom_path: Some(generated_path.to_string_lossy().to_string()),
+        cleanup_paths,
+    }))
+}
+
 fn prepare_rom_for_launch(rom_path: Option<&str>) -> Result<PreparedRomLaunch, String> {
     let Some(rom_path) = rom_path else {
         return Ok(PreparedRomLaunch::default());
     };
 
     let path = Path::new(rom_path);
+    if is_m3u_path(path) {
+        if let Some(prepared) = prepare_m3u_for_launch(path)? {
+            return Ok(prepared);
+        }
+    }
+
     let Some(kind) = archive_kind_for_path(path) else {
         return Ok(PreparedRomLaunch {
             rom_path: Some(rom_path.to_string()),
@@ -6547,6 +6657,79 @@ mod tests {
         assert_eq!(
             std::fs::read(temp_dir.path().join("Disc/Game (Track 1).bin")).unwrap(),
             b"TRACK"
+        );
+    }
+
+    #[test]
+    fn prepares_m3u_with_zip_disc_archives_for_launch() {
+        fn write_disc_zip(path: &Path, dir: &str, cue_name: &str, bin_name: &str) {
+            let archive_file = File::create(path).unwrap();
+            let mut writer = zip::ZipWriter::new(archive_file);
+            writer
+                .start_file::<_, ()>(
+                    format!("{dir}/{cue_name}"),
+                    zip::write::FileOptions::default(),
+                )
+                .unwrap();
+            writer
+                .write_all(
+                    format!("FILE \"{bin_name}\" BINARY\n  TRACK 01 MODE1/2352\n").as_bytes(),
+                )
+                .unwrap();
+            writer
+                .start_file::<_, ()>(
+                    format!("{dir}/{bin_name}"),
+                    zip::write::FileOptions::default(),
+                )
+                .unwrap();
+            writer.write_all(b"TRACK").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let disc1_zip = temp_dir.path().join("Final Fantasy VII (USA) (Disc 1).zip");
+        let disc2_zip = temp_dir.path().join("Final Fantasy VII (USA) (Disc 2).zip");
+        write_disc_zip(
+            &disc1_zip,
+            "Disc 1",
+            "Final Fantasy VII (USA) (Disc 1).cue",
+            "Final Fantasy VII (USA) (Disc 1).bin",
+        );
+        write_disc_zip(
+            &disc2_zip,
+            "Disc 2",
+            "Final Fantasy VII (USA) (Disc 2).cue",
+            "Final Fantasy VII (USA) (Disc 2).bin",
+        );
+
+        let playlist_path = temp_dir.path().join("Final Fantasy VII (USA).m3u");
+        std::fs::write(
+            &playlist_path,
+            "Final Fantasy VII (USA) (Disc 1).zip\nFinal Fantasy VII (USA) (Disc 2).zip\n",
+        )
+        .unwrap();
+
+        let prepared = prepare_rom_for_launch(Some(playlist_path.to_str().unwrap())).unwrap();
+        let launch_playlist = PathBuf::from(prepared.rom_path.unwrap());
+        let launch_content = std::fs::read_to_string(&launch_playlist).unwrap();
+
+        assert_ne!(launch_playlist, playlist_path);
+        assert!(launch_content.contains("Disc 1/Final Fantasy VII (USA) (Disc 1).cue"));
+        assert!(launch_content.contains("Disc 2/Final Fantasy VII (USA) (Disc 2).cue"));
+        assert!(prepared.cleanup_paths.contains(&launch_playlist));
+        assert!(
+            prepared.cleanup_paths.contains(
+                &temp_dir
+                    .path()
+                    .join("Disc 1/Final Fantasy VII (USA) (Disc 1).cue")
+            )
+        );
+        assert!(
+            prepared.cleanup_paths.contains(
+                &temp_dir
+                    .path()
+                    .join("Disc 2/Final Fantasy VII (USA) (Disc 2).bin")
+            )
         );
     }
 
