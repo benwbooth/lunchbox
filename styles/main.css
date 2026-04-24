@@ -1603,6 +1603,41 @@ h1, h2, h3, h4, h5, h6 {
     cursor: not-allowed;
 }
 
+.manual-btn {
+    padding: 12px 18px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.manual-btn:hover:not(:disabled) {
+    background-color: var(--bg-hover);
+    border-color: var(--accent-color);
+}
+
+.manual-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.manual-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 6px;
+    color: #fca5a5;
+    font-size: 13px;
+}
+
 .game-details-description {
     padding: 24px;
 }
@@ -2636,6 +2671,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Game Actions */
 .game-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
     margin-top: 16px;
 }

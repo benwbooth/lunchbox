@@ -146,6 +146,13 @@ fn pause_game_details_video() {
     let _ = pause_fn.call0(video_el.as_ref());
 }
 
+fn open_asset_path(path: &str) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let _ = window.open_with_url_and_target(&file_to_asset_url(path), "_blank");
+}
+
 fn format_bytes(bytes: u64) -> String {
     if bytes >= 1_000_000_000 {
         format!("{:.1} GB", bytes as f64 / 1_000_000_000.0)
@@ -1458,6 +1465,9 @@ pub fn GameDetails(
     let (details_ready, set_details_ready) = signal(false);
     let (details_min_delay_elapsed, set_details_min_delay_elapsed) = signal(false);
     let (preloaded_video_state, set_preloaded_video_state) = signal::<Option<VideoState>>(None);
+    let (manual_path, set_manual_path) = signal::<Option<String>>(None);
+    let (manual_loading, set_manual_loading) = signal(false);
+    let (manual_error, set_manual_error) = signal::<Option<String>>(None);
     // Minerva download state
     let (minerva_rom, set_minerva_rom) = signal::<Option<backend_api::MinervaRom>>(None);
     let (minerva_starting, set_minerva_starting) = signal(false);
@@ -1493,6 +1503,9 @@ pub fn GameDetails(
             set_details_ready.set(false);
             set_details_min_delay_elapsed.set(false);
             set_preloaded_video_state.set(None);
+            set_manual_path.set(None);
+            set_manual_loading.set(false);
+            set_manual_error.set(None);
             set_minerva_rom.set(None);
             set_minerva_starting.set(false);
             set_minerva_job_id.set(None);
@@ -1517,6 +1530,9 @@ pub fn GameDetails(
             set_details_ready.set(false);
             set_details_min_delay_elapsed.set(false);
             set_preloaded_video_state.set(None);
+            set_manual_path.set(None);
+            set_manual_loading.set(false);
+            set_manual_error.set(None);
             set_minerva_starting.set(false);
             set_files_loading.set(false);
             set_files_loading_progress.set(None);
@@ -1566,6 +1582,40 @@ pub fn GameDetails(
                 }
             });
         }
+    });
+
+    Effect::new(move || {
+        let Some(g) = display_game.get() else {
+            return;
+        };
+
+        let expected_game_id = g.id.clone();
+        let manual_title = g.display_title.clone();
+        let manual_platform = g.platform.clone();
+        let manual_db_id = if g.database_id > 0 {
+            Some(g.database_id)
+        } else {
+            None
+        };
+
+        set_manual_path.set(None);
+        set_manual_error.set(None);
+        set_manual_loading.set(false);
+
+        spawn_local(async move {
+            if let Ok(Some(cached)) =
+                backend_api::check_cached_manual(manual_title, manual_platform, manual_db_id).await
+            {
+                let still_current = display_game
+                    .get_untracked()
+                    .as_ref()
+                    .map(|current| current.id.as_str() == expected_game_id.as_str())
+                    .unwrap_or(false);
+                if still_current {
+                    set_manual_path.set(Some(cached.path));
+                }
+            }
+        });
     });
 
     let request_minerva_torrent_groups =
@@ -2818,6 +2868,65 @@ pub fn GameDetails(
                                             </Show>
 
                                             <button
+                                                class="manual-btn"
+                                                disabled=move || manual_loading.get()
+                                                title=move || {
+                                                    if manual_path.get().is_some() {
+                                                        "Open the cached game manual"
+                                                    } else {
+                                                        "Download the game manual"
+                                                    }
+                                                }
+                                                on:click=move |_| {
+                                                    if let Some(path) = manual_path.get_untracked() {
+                                                        open_asset_path(&path);
+                                                        return;
+                                                    }
+
+                                                    let Some(current_game) = display_game.get_untracked() else {
+                                                        return;
+                                                    };
+
+                                                    set_manual_loading.set(true);
+                                                    set_manual_error.set(None);
+                                                    let title = current_game.display_title.clone();
+                                                    let platform = current_game.platform.clone();
+                                                    let db_id = if current_game.database_id > 0 {
+                                                        Some(current_game.database_id)
+                                                    } else {
+                                                        None
+                                                    };
+
+                                                    spawn_local(async move {
+                                                        match backend_api::download_game_manual(
+                                                            title,
+                                                            platform,
+                                                            db_id,
+                                                        )
+                                                        .await
+                                                        {
+                                                            Ok(path) => {
+                                                                set_manual_path.set(Some(path.clone()));
+                                                                open_asset_path(&path);
+                                                            }
+                                                            Err(e) => set_manual_error.set(Some(e)),
+                                                        }
+                                                        set_manual_loading.set(false);
+                                                    });
+                                                }
+                                            >
+                                                {move || {
+                                                    if manual_loading.get() {
+                                                        "Downloading Manual..."
+                                                    } else if manual_path.get().is_some() {
+                                                        "View Manual"
+                                                    } else {
+                                                        "Download Manual"
+                                                    }
+                                                }}
+                                            </button>
+
+                                            <button
                                                 class="favorite-btn"
                                                 class:is-favorite=move || is_fav.get()
                                                 on:click=on_toggle_favorite
@@ -2825,6 +2934,15 @@ pub fn GameDetails(
                                                 {move || if is_fav.get() { "Unfavorite" } else { "Favorite" }}
                                             </button>
                                         </div>
+
+                                        <Show when=move || manual_error.get().is_some()>
+                                            {move || manual_error.get().map(|err| view! {
+                                                <div class="manual-error">
+                                                    <span>{err}</span>
+                                                    <button class="import-error-dismiss" on:click=move |_| set_manual_error.set(None)>"Dismiss"</button>
+                                                </div>
+                                            })}
+                                        </Show>
 
                                     </div>
 

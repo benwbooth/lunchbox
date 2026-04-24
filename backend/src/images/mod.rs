@@ -60,6 +60,8 @@ pub enum ImageSource {
     EmuMovies,
     /// ScreenScraper (requires account, best with ROM checksums)
     ScreenScraper,
+    /// Minerva manual scan torrents
+    Minerva,
     /// Web search fallback (DuckDuckGo image search)
     WebSearch,
 }
@@ -75,6 +77,7 @@ impl ImageSource {
             ImageSource::IGDB => "igdb",
             ImageSource::EmuMovies => "emumovies",
             ImageSource::ScreenScraper => "screenscraper",
+            ImageSource::Minerva => "minerva",
             ImageSource::WebSearch => "websearch",
         }
     }
@@ -86,6 +89,7 @@ impl ImageSource {
             ImageSource::LibRetro,
             ImageSource::SteamGridDB,
             ImageSource::IGDB,
+            ImageSource::Minerva,
             ImageSource::EmuMovies,
             ImageSource::ScreenScraper,
             ImageSource::WebSearch,
@@ -102,6 +106,7 @@ impl ImageSource {
             "igdb" => Some(ImageSource::IGDB),
             "emumovies" => Some(ImageSource::EmuMovies),
             "screenscraper" => Some(ImageSource::ScreenScraper),
+            "minerva" => Some(ImageSource::Minerva),
             "websearch" => Some(ImageSource::WebSearch),
             _ => None,
         }
@@ -117,6 +122,7 @@ impl ImageSource {
             ImageSource::IGDB => "IG",
             ImageSource::EmuMovies => "EM",
             ImageSource::ScreenScraper => "SS",
+            ImageSource::Minerva => "MV",
             ImageSource::WebSearch => "WS",
         }
     }
@@ -131,6 +137,7 @@ impl ImageSource {
             "IG" => Some(ImageSource::IGDB),
             "EM" => Some(ImageSource::EmuMovies),
             "SS" => Some(ImageSource::ScreenScraper),
+            "MV" => Some(ImageSource::Minerva),
             "WS" => Some(ImageSource::WebSearch),
             _ => None,
         }
@@ -195,8 +202,8 @@ pub fn find_cached_media(
         normalized_type
     );
 
-    // Check common image extensions. PNG first (most common), then others.
-    let extensions = ["png", "jpg", "webp", "gif"];
+    // Check common image and document extensions. Manuals reuse this cache path.
+    let extensions = ["png", "jpg", "jpeg", "webp", "gif", "pdf", "zip", "cbz"];
 
     for source in ImageSource::all_sources() {
         let source_dir = game_dir.join(source.folder_name());
@@ -223,7 +230,7 @@ pub fn delete_cached_media(cache_dir: &Path, game_id: &str, image_type: &str) ->
         return deleted;
     }
 
-    let extensions = ["png", "jpg", "webp", "gif"];
+    let extensions = ["png", "jpg", "jpeg", "webp", "gif", "pdf", "zip", "cbz"];
 
     for source in ImageSource::all_sources() {
         let source_dir = game_dir.join(source.folder_name());

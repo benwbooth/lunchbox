@@ -162,6 +162,8 @@ pub fn create_router(state: SharedState) -> Router {
             get(rspc_get_video_download_progress),
         )
         .route("/rspc/download_game_video", get(rspc_download_game_video))
+        .route("/rspc/check_cached_manual", get(rspc_check_cached_manual))
+        .route("/rspc/download_game_manual", get(rspc_download_game_manual))
         // rspc-style endpoints for emulator handling
         .route(
             "/rspc/get_emulators_for_platform",
@@ -2152,6 +2154,9 @@ async fn serve_asset(
         Some("svg") => "image/svg+xml",
         Some("mp4") => "video/mp4",
         Some("webm") => "video/webm",
+        Some("pdf") => "application/pdf",
+        Some("zip") => "application/zip",
+        Some("cbz") => "application/vnd.comicbook+zip",
         _ => "application/octet-stream",
     };
 
@@ -2169,6 +2174,389 @@ async fn serve_asset(
         .header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
         .body(axum::body::Body::from(data))
         .unwrap())
+}
+
+// ============================================================================
+// Manual Handlers
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManualInput {
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+struct MinervaManualCandidate {
+    torrent_url: String,
+    file_index: usize,
+    filename: String,
+}
+
+fn sanitize_manual_path_component(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    if sanitized.is_empty() {
+        "manual".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn locate_manual_downloaded_file(
+    download_dir: &std::path::Path,
+    target_filename: &str,
+) -> Option<std::path::PathBuf> {
+    let target_components = target_filename
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty())
+        .map(|component| component.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let target_name = target_components.last()?.clone();
+    let mut basename_match = None;
+
+    for entry in walkdir::WalkDir::new(download_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let candidate_path = entry.into_path();
+        let candidate_components = candidate_path
+            .components()
+            .filter_map(|component| match component {
+                std::path::Component::Normal(value) => {
+                    Some(value.to_string_lossy().to_ascii_lowercase())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        if candidate_components.ends_with(&target_components) {
+            return Some(candidate_path);
+        }
+
+        if candidate_components
+            .last()
+            .is_some_and(|candidate_name| candidate_name == &target_name)
+        {
+            basename_match = Some(candidate_path);
+        }
+    }
+
+    basename_match
+}
+
+async fn find_minerva_manual_candidate(
+    state: &AppState,
+    input: &ManualInput,
+) -> Result<Option<MinervaManualCandidate>, String> {
+    let Some(minerva_pool) = state.minerva_db_pool.as_ref() else {
+        return Ok(None);
+    };
+
+    let Some(torrent_url) = sqlx::query_scalar::<_, String>(
+        "SELECT torrent_url FROM minerva_torrents
+         WHERE torrent_file LIKE '%Video Game Manual Scans%'
+         ORDER BY id
+         LIMIT 1",
+    )
+    .fetch_optional(minerva_pool)
+    .await
+    .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+
+    let mut matches = handlers::list_torrent_files(
+        state,
+        handlers::ListTorrentFilesInput {
+            torrent_url: torrent_url.clone(),
+            game_title: input.game_title.clone(),
+            platform: None,
+            launchbox_db_id: input.launchbox_db_id,
+            collection: Some("No-Intro".to_string()),
+            minerva_platform: Some("Unofficial - Video Game Manual Scans (JPEG)".to_string()),
+        },
+    )
+    .await?;
+
+    matches.retain(|item| {
+        item.match_score >= 0.90 && item.filename.to_ascii_lowercase().ends_with(".zip")
+    });
+
+    Ok(matches
+        .into_iter()
+        .max_by(|a, b| {
+            a.match_score
+                .partial_cmp(&b.match_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|item| MinervaManualCandidate {
+            torrent_url,
+            file_index: item.index,
+            filename: item.filename,
+        }))
+}
+
+async fn download_minerva_manual_candidate(
+    settings: crate::state::AppSettings,
+    cache_dir: std::path::PathBuf,
+    game_id: String,
+    game_title: String,
+    candidate: MinervaManualCandidate,
+) -> Result<String, String> {
+    let client = crate::torrent::create_client(&settings)
+        .map_err(|e| format!("qBittorrent configuration error: {e}"))?;
+    let download_dir = settings
+        .get_torrent_library_directory()
+        .join("Manuals")
+        .join(sanitize_manual_path_component(&game_title));
+    std::fs::create_dir_all(&download_dir).map_err(|e| e.to_string())?;
+
+    let client_job_id = client
+        .add_torrent(
+            &candidate.torrent_url,
+            &download_dir,
+            Some(vec![candidate.file_index]),
+        )
+        .await
+        .map_err(|e| format!("Failed to start Minerva manual download: {e}"))?;
+
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(3600);
+
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        if start.elapsed() > timeout {
+            return Err("Minerva manual download timed out after 1 hour".to_string());
+        }
+
+        let Some(progress) = client
+            .get_progress(&client_job_id)
+            .await
+            .map_err(|e| format!("Failed to read Minerva manual progress: {e}"))?
+        else {
+            continue;
+        };
+
+        match progress.status {
+            crate::torrent::DownloadStatus::Completed => break,
+            crate::torrent::DownloadStatus::Failed => return Err(progress.status_message),
+            crate::torrent::DownloadStatus::Cancelled => {
+                return Err("Minerva manual download was cancelled".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    let source_path = client
+        .get_downloaded_file_path(&client_job_id, candidate.file_index, &download_dir)
+        .await
+        .ok()
+        .flatten()
+        .or_else(|| locate_manual_downloaded_file(&download_dir, &candidate.filename))
+        .ok_or_else(|| {
+            "Minerva manual download finished, but the downloaded file was not found on disk."
+                .to_string()
+        })?;
+
+    let extension = source_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("zip");
+    let target_path = cache_dir
+        .join(game_id)
+        .join("minerva")
+        .join(format!("manual.{extension}"));
+
+    if let Some(parent) = target_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    tokio::fs::copy(&source_path, &target_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(target_path.to_string_lossy().to_string())
+}
+
+async fn rspc_check_cached_manual(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => {
+            return rspc_err::<Option<CachedMediaResult>>("Missing 'input' parameter".to_string())
+                .into_response();
+        }
+    };
+
+    let input: ManualInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => {
+            return rspc_err::<Option<CachedMediaResult>>(format!("Invalid input: {}", e))
+                .into_response();
+        }
+    };
+
+    let cache_dir = {
+        let state_guard = state.read().await;
+        state_guard.settings.get_media_directory()
+    };
+    let game_id =
+        crate::images::get_game_cache_id(input.launchbox_db_id, &input.game_title, &input.platform);
+
+    if let Some((path, source)) = crate::images::find_cached_media(&cache_dir, &game_id, "Manual") {
+        return rspc_ok(Some(CachedMediaResult {
+            path: path.to_string_lossy().to_string(),
+            source: source.abbreviation().to_string(),
+        }))
+        .into_response();
+    }
+
+    rspc_ok::<Option<CachedMediaResult>>(None).into_response()
+}
+
+async fn rspc_download_game_manual(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<String>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: ManualInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    let (cache_dir, app_settings, emumovies_username, emumovies_password) = {
+        let state_guard = state.read().await;
+        (
+            state_guard.settings.get_media_directory(),
+            state_guard.settings.clone(),
+            state_guard.settings.emumovies.username.clone(),
+            state_guard.settings.emumovies.password.clone(),
+        )
+    };
+
+    let game_id =
+        crate::images::get_game_cache_id(input.launchbox_db_id, &input.game_title, &input.platform);
+
+    if let Some((path, _source)) = crate::images::find_cached_media(&cache_dir, &game_id, "Manual")
+    {
+        return rspc_ok(path.to_string_lossy().to_string()).into_response();
+    }
+
+    let minerva_candidate = {
+        let state_guard = state.read().await;
+        match find_minerva_manual_candidate(&state_guard, &input).await {
+            Ok(candidate) => candidate,
+            Err(e) => {
+                tracing::warn!("Minerva manual lookup failed: {}", e);
+                None
+            }
+        }
+    };
+
+    let mut minerva_error = None;
+    if let Some(candidate) = minerva_candidate {
+        match download_minerva_manual_candidate(
+            app_settings.clone(),
+            cache_dir.clone(),
+            game_id.clone(),
+            input.game_title.clone(),
+            candidate,
+        )
+        .await
+        {
+            Ok(path) => return rspc_ok(path).into_response(),
+            Err(e) => {
+                tracing::warn!("Minerva manual download failed: {}", e);
+                minerva_error = Some(e);
+            }
+        }
+    }
+
+    if emumovies_username.is_empty() || emumovies_password.is_empty() {
+        let message = match minerva_error {
+            Some(err) => format!(
+                "Minerva manual download failed: {err}. EmuMovies credentials are not configured."
+            ),
+            None => {
+                "No matching Minerva manual was found. Configure EmuMovies credentials in Settings to download manuals from EmuMovies."
+                    .to_string()
+            }
+        };
+        return rspc_err::<String>(message).into_response();
+    }
+
+    let client = crate::images::EmuMoviesClient::new(
+        crate::images::EmuMoviesConfig {
+            username: emumovies_username,
+            password: emumovies_password,
+        },
+        cache_dir.clone(),
+    );
+    let platform = input.platform.clone();
+    let lookup_title = crate::images::emumovies::resolve_arcade_download_lookup_name(
+        &input.platform,
+        &input.game_title,
+        input.launchbox_db_id,
+    )
+    .into_owned();
+    let game_cache_dir = cache_dir.join(game_id);
+
+    let handle = tokio::task::spawn_blocking(move || {
+        client.get_media_from_archive(
+            &platform,
+            crate::images::EmuMoviesMediaType::Manual,
+            &lookup_title,
+            &game_cache_dir,
+            None,
+        )
+    });
+
+    match tokio::time::timeout(std::time::Duration::from_secs(600), handle).await {
+        Ok(Ok(Ok(path))) => rspc_ok(path.to_string_lossy().to_string()).into_response(),
+        Ok(Ok(Err(e))) => {
+            let message = match minerva_error {
+                Some(err) => format!("Minerva failed: {err}. EmuMovies failed: {e}"),
+                None => format!(
+                    "No matching Minerva manual was found. EmuMovies manual download failed: {e}"
+                ),
+            };
+            rspc_err::<String>(message).into_response()
+        }
+        Ok(Err(e)) => {
+            rspc_err::<String>(format!("Manual download task failed: {}", e)).into_response()
+        }
+        Err(_) => rspc_err::<String>(
+            "Manual download timed out while fetching the EmuMovies archive.".to_string(),
+        )
+        .into_response(),
+    }
 }
 
 // ============================================================================

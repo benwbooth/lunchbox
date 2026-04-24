@@ -1294,6 +1294,54 @@ pub async fn get_cached_media_path(
     .await
 }
 
+/// Check if a game manual is cached locally.
+pub async fn check_cached_manual(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+) -> Result<Option<CachedMediaResult>, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke(
+        "check_cached_manual",
+        Args {
+            game_title,
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
+}
+
+/// Download a game manual from the configured manual source.
+pub async fn download_game_manual(
+    game_title: String,
+    platform: String,
+    launchbox_db_id: Option<i64>,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        game_title: String,
+        platform: String,
+        launchbox_db_id: Option<i64>,
+    }
+    invoke(
+        "download_game_manual",
+        Args {
+            game_title,
+            platform,
+            launchbox_db_id,
+        },
+    )
+    .await
+}
+
 // ============ Video Download Commands ============
 
 /// Video download event from backend

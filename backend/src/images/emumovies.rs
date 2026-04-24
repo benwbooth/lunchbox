@@ -105,6 +105,7 @@ impl EmuMoviesMediaType {
             "Fanart - Background" => Some(EmuMoviesMediaType::Fanart),
             "Clear Logo" => Some(EmuMoviesMediaType::ClearLogo),
             "Banner" => Some(EmuMoviesMediaType::Banner),
+            "Manual" => Some(EmuMoviesMediaType::Manual),
             _ => None,
         }
     }
@@ -570,6 +571,15 @@ fn artwork_folder_name(folder_path: &str) -> &str {
     folder_path.rsplit('/').next().unwrap_or(folder_path)
 }
 
+fn artwork_folder_path(folder: &str) -> String {
+    let folder = folder.trim_end_matches('/');
+    if folder.starts_with('/') {
+        folder.to_string()
+    } else {
+        format!("/Official/Artwork/{folder}")
+    }
+}
+
 fn exact_platform_key_match(name_a: &str, name_b: &str) -> bool {
     normalize_emumovies_platform_key(name_a) == normalize_emumovies_platform_key(name_b)
 }
@@ -970,7 +980,7 @@ impl EmuMoviesClient {
                 format!("NLST {}", path),
                 &[suppaftp::Status::AboutToSend, suppaftp::Status::AlreadyOpen],
             )
-            .context("Failed to list directory")?;
+            .with_context(|| format!("Failed to list directory {path}"))?;
         data_stream
             .get_ref()
             .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
@@ -1003,7 +1013,7 @@ impl EmuMoviesClient {
                 Err(err) => {
                     let _ = ftp.close_data_connection(data_stream);
                     let _ = ftp.quit();
-                    return Err(anyhow::anyhow!("Failed to list directory: {}", err));
+                    return Err(anyhow::anyhow!("Failed to list directory {path}: {err}"));
                 }
             }
         }
@@ -1048,7 +1058,7 @@ impl EmuMoviesClient {
             return Ok(None);
         };
 
-        let artwork_path = format!("/Official/Artwork/{}", system_folder);
+        let artwork_path = artwork_folder_path(&system_folder);
         let pattern = media_type.archive_pattern();
 
         tracing::info!("Searching for {} archives in {}", pattern, artwork_path);
@@ -1861,6 +1871,10 @@ mod tests {
             EmuMoviesMediaType::from_launchbox_type("Screenshot - Gameplay"),
             Some(EmuMoviesMediaType::Screenshot)
         );
+        assert_eq!(
+            EmuMoviesMediaType::from_launchbox_type("Manual"),
+            Some(EmuMoviesMediaType::Manual)
+        );
     }
 
     #[test]
@@ -2125,6 +2139,18 @@ mod tests {
         assert_eq!(
             select_artwork_folder_from_list(&folders, "Sony Playstation 3"),
             Some("/Official/Artwork/Sony PlayStation 3")
+        );
+    }
+
+    #[test]
+    fn test_artwork_folder_path_accepts_folder_names_and_full_paths() {
+        assert_eq!(
+            artwork_folder_path("Nintendo Entertainment System"),
+            "/Official/Artwork/Nintendo Entertainment System"
+        );
+        assert_eq!(
+            artwork_folder_path("/Official/Artwork/Nintendo Entertainment System"),
+            "/Official/Artwork/Nintendo Entertainment System"
         );
     }
 
