@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
-pub use clients::create_client;
+pub use clients::{TorrentClient, create_client};
 
 // ============================================================================
 // Types (always available, no feature gate)

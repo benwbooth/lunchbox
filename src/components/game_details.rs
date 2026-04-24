@@ -10,7 +10,7 @@ use crate::backend_api::{
 use futures::stream::{self, StreamExt};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use wasm_bindgen::{JsCast, JsValue};
 
 async fn launch_game_with_resolved_rom(
@@ -344,6 +344,384 @@ fn normalized_listing_path(path: &str) -> String {
         .to_ascii_lowercase()
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct PickerOpticalDiscKey {
+    title: String,
+    variant_tags: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PickerOpticalDiscInfo {
+    key: PickerOpticalDiscKey,
+    disc_index: u32,
+    playlist_stem: String,
+}
+
+fn picker_file_extension(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn picker_basename_without_extension(path: &str) -> Option<String> {
+    let file_name = std::path::Path::new(path).file_name()?.to_str()?;
+    Some(
+        file_name
+            .rsplit_once('.')
+            .map(|(base, _)| base)
+            .unwrap_or(file_name)
+            .to_string(),
+    )
+}
+
+fn normalize_picker_disc_key_text(value: &str) -> String {
+    value
+        .to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_picker_title_tags(stem: &str) -> (String, Vec<(String, String)>) {
+    let mut tags = Vec::new();
+    let mut base = stem.to_string();
+    let mut search_start = 0usize;
+    while let Some(relative_start) = base[search_start..].find('(') {
+        let start = search_start + relative_start;
+        let Some(relative_end) = base[start..].find(')') else {
+            break;
+        };
+        let end = start + relative_end + 1;
+        let original = base[start..end].to_string();
+        let text = base[start + 1..end - 1].to_string();
+        tags.push((text, original));
+        search_start = end;
+    }
+    for (_, original) in &tags {
+        base = base.replace(original, "");
+    }
+    (base.trim().to_string(), tags)
+}
+
+fn roman_picker_disc_number(value: &str) -> Option<u32> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "i" => Some(1),
+        "ii" => Some(2),
+        "iii" => Some(3),
+        "iv" => Some(4),
+        "v" => Some(5),
+        "vi" => Some(6),
+        _ => None,
+    }
+}
+
+fn parse_picker_disc_index(value: &str) -> Option<u32> {
+    let lower = value.trim().to_ascii_lowercase();
+    let prefix = [
+        "disc", "disk", "cd", "side", "part", "volume", "vol", "card",
+    ]
+    .iter()
+    .find(|prefix| lower.starts_with(**prefix))?;
+    let mut rest = lower[prefix.len()..]
+        .trim_start_matches(|ch: char| ch.is_whitespace() || matches!(ch, '#' | '-' | '_' | ':'))
+        .chars()
+        .peekable();
+    let mut digits = String::new();
+    while let Some(ch) = rest.peek().copied() {
+        if ch.is_ascii_digit() {
+            digits.push(ch);
+            rest.next();
+        } else {
+            break;
+        }
+    }
+    if !digits.is_empty() {
+        return digits.parse::<u32>().ok().filter(|value| *value > 0);
+    }
+
+    let token = rest
+        .take_while(|ch| ch.is_ascii_alphabetic())
+        .collect::<String>();
+    if token.len() == 1 {
+        let ch = token.as_bytes()[0];
+        if ch.is_ascii_alphabetic() {
+            return Some((ch.to_ascii_lowercase() - b'a' + 1) as u32);
+        }
+    }
+    roman_picker_disc_number(&token)
+}
+
+fn picker_loose_disc_marker(stem: &str) -> Option<(String, u32)> {
+    let lower = stem.to_ascii_lowercase();
+    for marker in ["disc", "disk", "cd", "side", "part"] {
+        let mut search_start = 0usize;
+        while let Some(relative_pos) = lower[search_start..].find(marker) {
+            let pos = search_start + relative_pos;
+            let prev_ok = pos == 0
+                || lower[..pos]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|ch| !ch.is_ascii_alphanumeric());
+            let marker_end = pos + marker.len();
+            let next_ok = lower[marker_end..].chars().next().is_some_and(|ch| {
+                ch.is_ascii_digit() || ch.is_whitespace() || matches!(ch, '#' | '-' | '_' | ':')
+            });
+            if prev_ok && next_ok {
+                if let Some(index) = parse_picker_disc_index(&stem[pos..]) {
+                    let base = stem[..pos]
+                        .trim_end_matches(|ch: char| {
+                            ch.is_whitespace() || matches!(ch, '-' | '_' | ',' | ':')
+                        })
+                        .trim()
+                        .to_string();
+                    if !base.is_empty() {
+                        return Some((base, index));
+                    }
+                }
+            }
+            search_start = marker_end;
+        }
+    }
+    None
+}
+
+fn picker_optical_disc_info_from_component(stem: &str) -> Option<PickerOpticalDiscInfo> {
+    let (base, tags) = parse_picker_title_tags(stem);
+    let mut disc_index = None;
+    let mut key_tags = Vec::new();
+    let mut display_tags = Vec::new();
+
+    for (tag, original) in tags {
+        if let Some(index) = parse_picker_disc_index(&tag) {
+            disc_index = Some(index);
+            continue;
+        }
+        if tag.trim().to_ascii_lowercase().starts_with("track ") {
+            continue;
+        }
+        let normalized = normalize_picker_disc_key_text(&tag);
+        if !normalized.is_empty() {
+            key_tags.push(normalized);
+            display_tags.push(original);
+        }
+    }
+
+    let (base, disc_index) = if let Some(index) = disc_index {
+        (base, index)
+    } else if let Some((loose_base, index)) = picker_loose_disc_marker(stem) {
+        (loose_base, index)
+    } else {
+        return None;
+    };
+
+    let title = normalize_picker_disc_key_text(&base);
+    if title.is_empty() {
+        return None;
+    }
+
+    key_tags.sort();
+    key_tags.dedup();
+
+    let playlist_stem = if display_tags.is_empty() {
+        base.trim().to_string()
+    } else {
+        format!("{} {}", base.trim(), display_tags.join(" "))
+    };
+
+    Some(PickerOpticalDiscInfo {
+        key: PickerOpticalDiscKey {
+            title,
+            variant_tags: key_tags,
+        },
+        disc_index,
+        playlist_stem,
+    })
+}
+
+fn picker_optical_disc_info_from_path(path: &str) -> Option<PickerOpticalDiscInfo> {
+    let normalized = path.trim_start_matches("./").replace('\\', "/");
+    let mut components = normalized
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if let Some(last) = components.last_mut() {
+        if let Some(stem) = picker_basename_without_extension(last) {
+            *last = stem;
+        }
+    }
+
+    components
+        .iter()
+        .rev()
+        .find_map(|component| picker_optical_disc_info_from_component(component))
+}
+
+fn is_picker_optical_primary_extension(ext: &str) -> bool {
+    matches!(
+        ext,
+        "cue" | "chd" | "ccd" | "mds" | "gdi" | "iso" | "cso" | "pbp" | "bin" | "img"
+    )
+}
+
+fn picker_optical_primary_priority(ext: &str) -> u8 {
+    match ext {
+        "chd" => 0,
+        "cue" => 1,
+        "ccd" => 2,
+        "mds" => 3,
+        "gdi" => 4,
+        "pbp" => 5,
+        "iso" | "cso" => 6,
+        "bin" | "img" => 7,
+        _ => 100,
+    }
+}
+
+fn build_optical_disc_picker_items(
+    rom: &backend_api::MinervaRom,
+    files: &[backend_api::TorrentFileMatch],
+) -> Option<Vec<MinervaPickerItem>> {
+    let mut primary_groups: BTreeMap<
+        PickerOpticalDiscKey,
+        Vec<(backend_api::TorrentFileMatch, PickerOpticalDiscInfo, String)>,
+    > = BTreeMap::new();
+    let mut info_by_index = BTreeMap::new();
+
+    for file in files {
+        let Some(info) = picker_optical_disc_info_from_path(&file.filename) else {
+            continue;
+        };
+        info_by_index.insert(file.index, info.clone());
+        let Some(ext) = picker_file_extension(&file.filename) else {
+            continue;
+        };
+        if is_picker_optical_primary_extension(&ext) {
+            primary_groups
+                .entry(info.key.clone())
+                .or_default()
+                .push((file.clone(), info, ext));
+        }
+    }
+
+    let mut covered_indices = HashSet::new();
+    let mut positioned_items = Vec::new();
+
+    for (key, candidates) in primary_groups {
+        let distinct_discs = candidates
+            .iter()
+            .map(|(_, info, _)| info.disc_index)
+            .collect::<BTreeSet<_>>();
+        if distinct_discs.len() < 2 {
+            continue;
+        }
+
+        let mut best_by_disc: BTreeMap<
+            u32,
+            (backend_api::TorrentFileMatch, PickerOpticalDiscInfo, String),
+        > = BTreeMap::new();
+        for (file, info, ext) in candidates {
+            let replace = best_by_disc.get(&info.disc_index).is_none_or(
+                |(current_file, _current_info, current_ext)| {
+                    picker_optical_primary_priority(&ext)
+                        < picker_optical_primary_priority(current_ext)
+                        || (picker_optical_primary_priority(&ext)
+                            == picker_optical_primary_priority(current_ext)
+                            && file.filename < current_file.filename)
+                },
+            );
+            if replace {
+                best_by_disc.insert(info.disc_index, (file, info, ext));
+            }
+        }
+        if best_by_disc.len() < 2 {
+            continue;
+        }
+
+        let playlist_stem = best_by_disc
+            .values()
+            .next()
+            .map(|(_, info, _)| info.playlist_stem.clone())
+            .unwrap_or_else(|| "Multi-disc game".to_string());
+        let first_file = best_by_disc
+            .values()
+            .next()
+            .map(|(file, _, _)| file.clone())?;
+        let mut first_position = usize::MAX;
+        let mut total_size = 0_u64;
+        let mut match_score = 0.0_f64;
+        let mut region = None;
+        for (position, file) in files.iter().enumerate() {
+            if info_by_index
+                .get(&file.index)
+                .is_some_and(|info| info.key == key)
+            {
+                first_position = first_position.min(position);
+                covered_indices.insert(file.index);
+                total_size = total_size.saturating_add(file.size);
+                match_score = match_score.max(file.match_score);
+                if region.is_none() {
+                    region = file.region.clone();
+                }
+            }
+        }
+
+        positioned_items.push((
+            first_position,
+            MinervaPickerItem {
+                selection: MinervaDownloadSelection::File {
+                    torrent_url: rom.torrent_url.clone(),
+                    file_index: first_file.index,
+                },
+                display_name: format!("{} ({} discs)", playlist_stem, best_by_disc.len()),
+                path_detail: file_picker_path_detail(&first_file.filename).and_then(|path| {
+                    std::path::Path::new(&path)
+                        .parent()
+                        .map(|p| p.display().to_string())
+                }),
+                size: total_size,
+                match_score,
+                region,
+                suggested_emulator: None,
+                type_badge: Some("Multi-disc".to_string()),
+            },
+        ));
+    }
+
+    if positioned_items.is_empty() {
+        return None;
+    }
+
+    for (position, file) in files.iter().enumerate() {
+        if covered_indices.contains(&file.index) {
+            continue;
+        }
+        positioned_items.push((
+            position,
+            MinervaPickerItem {
+                selection: MinervaDownloadSelection::File {
+                    torrent_url: rom.torrent_url.clone(),
+                    file_index: file.index,
+                },
+                display_name: file_picker_display_name(&file.filename),
+                path_detail: file_picker_path_detail(&file.filename),
+                size: file.size,
+                match_score: file.match_score,
+                region: file.region.clone(),
+                suggested_emulator: None,
+                type_badge: None,
+            },
+        ));
+    }
+
+    positioned_items.sort_by_key(|(position, _)| *position);
+    Some(positioned_items.into_iter().map(|(_, item)| item).collect())
+}
+
 fn is_arcade_mame_merged_or_split_rom(rom: &backend_api::MinervaRom) -> bool {
     if !rom.collection.eq_ignore_ascii_case("MAME") {
         return false;
@@ -624,6 +1002,10 @@ fn build_minerva_picker_items(
     files: Vec<backend_api::TorrentFileMatch>,
 ) -> Vec<MinervaPickerItem> {
     if !is_laserdisc_collection_rom(rom) {
+        if let Some(items) = build_optical_disc_picker_items(rom, &files) {
+            return items;
+        }
+
         return files
             .into_iter()
             .map(|file| MinervaPickerItem {

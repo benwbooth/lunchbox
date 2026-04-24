@@ -2806,6 +2806,34 @@ enum ArcadeLaserdiscPlan {
     Daphne(ArcadeDaphneLaserdiscPlan),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct OpticalDiscGroupKey {
+    title: String,
+    variant_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct OpticalDiscInfo {
+    key: OpticalDiscGroupKey,
+    disc_index: u32,
+    playlist_stem: String,
+}
+
+#[derive(Debug, Clone)]
+struct OpticalDiscPlaylistEntry {
+    file_index: usize,
+    filename: String,
+    disc_index: u32,
+}
+
+#[derive(Debug, Clone)]
+struct OpticalDiscDownloadPlan {
+    playlist_stem: String,
+    representative_index: usize,
+    requested_indices: Vec<usize>,
+    playlist_entries: Vec<OpticalDiscPlaylistEntry>,
+}
+
 #[derive(Debug)]
 enum MinervaBatchDownloadError {
     Failed(String),
@@ -2816,6 +2844,480 @@ fn normalize_torrent_listing_path(path: &str) -> String {
     path.trim_start_matches("./")
         .replace('\\', "/")
         .to_ascii_lowercase()
+}
+
+fn torrent_file_extension(path: &str) -> Option<String> {
+    Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn basename_without_known_extension(path: &str) -> Option<String> {
+    let file_name = Path::new(path).file_name()?.to_str()?;
+    Some(
+        file_name
+            .rsplit_once('.')
+            .map(|(base, _)| base)
+            .unwrap_or(file_name)
+            .to_string(),
+    )
+}
+
+fn normalize_optical_disc_key_text(value: &str) -> String {
+    value
+        .to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn is_optical_track_tag(tag: &str) -> bool {
+    tag.trim().to_ascii_lowercase().starts_with("track ")
+}
+
+fn roman_disc_number(value: &str) -> Option<u32> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "i" => Some(1),
+        "ii" => Some(2),
+        "iii" => Some(3),
+        "iv" => Some(4),
+        "v" => Some(5),
+        "vi" => Some(6),
+        _ => None,
+    }
+}
+
+fn parse_disc_index_from_text(value: &str) -> Option<u32> {
+    let lower = value.trim().to_ascii_lowercase();
+    let prefixes = [
+        "disc", "disk", "cd", "side", "part", "volume", "vol", "card",
+    ];
+
+    let prefix = prefixes.iter().find(|prefix| lower.starts_with(**prefix))?;
+    let mut rest = lower[prefix.len()..]
+        .trim_start_matches(|ch: char| ch.is_whitespace() || matches!(ch, '#' | '-' | '_' | ':'))
+        .chars()
+        .peekable();
+
+    let mut digits = String::new();
+    while let Some(ch) = rest.peek().copied() {
+        if ch.is_ascii_digit() {
+            digits.push(ch);
+            rest.next();
+        } else {
+            break;
+        }
+    }
+    if !digits.is_empty() {
+        return digits.parse::<u32>().ok().filter(|value| *value > 0);
+    }
+
+    let token = rest
+        .take_while(|ch| ch.is_ascii_alphabetic())
+        .collect::<String>();
+    if token.len() == 1 {
+        let ch = token.as_bytes()[0];
+        if ch.is_ascii_alphabetic() {
+            return Some((ch.to_ascii_lowercase() - b'a' + 1) as u32);
+        }
+    }
+
+    roman_disc_number(&token)
+}
+
+fn find_loose_disc_marker(stem: &str) -> Option<(String, u32)> {
+    let lower = stem.to_ascii_lowercase();
+    for marker in ["disc", "disk", "cd", "side", "part"] {
+        let mut search_start = 0usize;
+        while let Some(relative_pos) = lower[search_start..].find(marker) {
+            let pos = search_start + relative_pos;
+            let prev_is_boundary = pos == 0
+                || lower[..pos]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|ch| !ch.is_ascii_alphanumeric());
+            let marker_end = pos + marker.len();
+            let next = lower[marker_end..].chars().next();
+            let next_is_valid = next.is_some_and(|ch| {
+                ch.is_ascii_digit() || ch.is_whitespace() || matches!(ch, '#' | '-' | '_' | ':')
+            });
+            if prev_is_boundary && next_is_valid {
+                let candidate = &stem[pos..];
+                if let Some(disc_index) = parse_disc_index_from_text(candidate) {
+                    let base = stem[..pos]
+                        .trim_end_matches(|ch: char| {
+                            ch.is_whitespace() || matches!(ch, '-' | '_' | ',' | ':')
+                        })
+                        .trim()
+                        .to_string();
+                    if !base.is_empty() {
+                        return Some((base, disc_index));
+                    }
+                }
+            }
+            search_start = marker_end;
+        }
+    }
+
+    None
+}
+
+fn optical_disc_info_from_component(component_stem: &str) -> Option<OpticalDiscInfo> {
+    let (base_title, tags) = crate::tags::parse_title_tags(component_stem);
+    let mut disc_index = None;
+    let mut display_tags = Vec::new();
+    let mut key_tags = Vec::new();
+
+    for tag in tags {
+        if let Some(index) = parse_disc_index_from_text(&tag.text) {
+            disc_index = Some(index);
+            continue;
+        }
+        if is_optical_track_tag(&tag.text) {
+            continue;
+        }
+
+        let normalized = normalize_optical_disc_key_text(&tag.text);
+        if !normalized.is_empty() {
+            key_tags.push(normalized);
+            display_tags.push(tag.original);
+        }
+    }
+
+    let (base_title, disc_index) = if let Some(index) = disc_index {
+        (base_title, index)
+    } else if let Some((loose_base, index)) = find_loose_disc_marker(component_stem) {
+        (loose_base, index)
+    } else {
+        return None;
+    };
+
+    let normalized_title = normalize_optical_disc_key_text(&base_title);
+    if normalized_title.is_empty() {
+        return None;
+    }
+
+    key_tags.sort();
+    key_tags.dedup();
+
+    let playlist_stem = if display_tags.is_empty() {
+        base_title.trim().to_string()
+    } else {
+        format!("{} {}", base_title.trim(), display_tags.join(" "))
+    };
+
+    Some(OpticalDiscInfo {
+        key: OpticalDiscGroupKey {
+            title: normalized_title,
+            variant_tags: key_tags,
+        },
+        disc_index,
+        playlist_stem,
+    })
+}
+
+fn optical_disc_info_from_torrent_path(path: &str) -> Option<OpticalDiscInfo> {
+    let normalized = path.trim_start_matches("./").replace('\\', "/");
+    let mut components = normalized
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    if let Some(last) = components.last_mut() {
+        if let Some(stem) = basename_without_known_extension(last) {
+            *last = stem;
+        }
+    }
+
+    components
+        .iter()
+        .rev()
+        .find_map(|component| optical_disc_info_from_component(component))
+}
+
+fn is_preferred_optical_primary_extension(ext: &str) -> bool {
+    matches!(
+        ext,
+        "cue" | "chd" | "ccd" | "mds" | "gdi" | "iso" | "cso" | "pbp"
+    )
+}
+
+fn is_fallback_optical_primary_extension(ext: &str) -> bool {
+    matches!(ext, "bin" | "img")
+}
+
+fn is_optical_primary_extension(ext: &str) -> bool {
+    is_preferred_optical_primary_extension(ext) || is_fallback_optical_primary_extension(ext)
+}
+
+fn optical_primary_extension_priority(ext: &str, selected_ext: &str) -> u8 {
+    if ext == selected_ext {
+        return 0;
+    }
+
+    match ext {
+        "chd" => 1,
+        "cue" => 2,
+        "ccd" => 3,
+        "mds" => 4,
+        "gdi" => 5,
+        "pbp" => 6,
+        "iso" | "cso" => 7,
+        "bin" | "img" => 8,
+        _ => 100,
+    }
+}
+
+fn sidecar_extensions_for_primary(ext: &str) -> &'static [&'static str] {
+    match ext {
+        "cue" => &["bin", "wav", "flac", "ape", "ogg", "mp3", "aif", "aiff"],
+        "ccd" => &["img", "sub", "cue"],
+        "mds" => &["mdf"],
+        "gdi" => &["bin", "raw"],
+        _ => &[],
+    }
+}
+
+fn normalized_torrent_path_without_extension(path: &str) -> String {
+    let normalized = normalize_torrent_listing_path(path);
+    normalized
+        .rsplit_once('.')
+        .map(|(base, _)| base.to_string())
+        .unwrap_or(normalized)
+}
+
+fn optical_sidecar_indices_for_primary(
+    files: &[crate::torrent::TorrentFileInfo],
+    primary: &crate::torrent::TorrentFileInfo,
+    primary_info: &OpticalDiscInfo,
+) -> Vec<usize> {
+    let Some(primary_ext) = torrent_file_extension(&primary.filename) else {
+        return Vec::new();
+    };
+    let sidecar_extensions = sidecar_extensions_for_primary(&primary_ext);
+    if sidecar_extensions.is_empty() {
+        return Vec::new();
+    }
+
+    let primary_stem = normalized_torrent_path_without_extension(&primary.filename);
+    files
+        .iter()
+        .filter(|file| file.index != primary.index)
+        .filter(|file| {
+            let Some(ext) = torrent_file_extension(&file.filename) else {
+                return false;
+            };
+            sidecar_extensions.contains(&ext.as_str())
+        })
+        .filter(|file| {
+            let candidate_stem = normalized_torrent_path_without_extension(&file.filename);
+            if matches!(primary_ext.as_str(), "ccd" | "mds") && candidate_stem == primary_stem {
+                return true;
+            }
+
+            optical_disc_info_from_torrent_path(&file.filename).is_some_and(|candidate_info| {
+                candidate_info.key == primary_info.key
+                    && candidate_info.disc_index == primary_info.disc_index
+            })
+        })
+        .map(|file| file.index)
+        .collect()
+}
+
+fn build_optical_disc_download_plan(
+    files: &[crate::torrent::TorrentFileInfo],
+    selected_index: usize,
+) -> Option<OpticalDiscDownloadPlan> {
+    let selected = files.iter().find(|file| file.index == selected_index)?;
+    let selected_ext = torrent_file_extension(&selected.filename)?;
+    if !is_optical_primary_extension(&selected_ext) {
+        return None;
+    }
+
+    let selected_info = optical_disc_info_from_torrent_path(&selected.filename)?;
+    let all_candidates = files
+        .iter()
+        .filter_map(|file| {
+            let ext = torrent_file_extension(&file.filename)?;
+            if !is_optical_primary_extension(&ext) {
+                return None;
+            }
+            let info = optical_disc_info_from_torrent_path(&file.filename)?;
+            (info.key == selected_info.key).then_some((file, info, ext))
+        })
+        .collect::<Vec<_>>();
+
+    let selected_extension_candidates = all_candidates
+        .iter()
+        .filter(|(_, _, ext)| ext == &selected_ext)
+        .cloned()
+        .collect::<Vec<_>>();
+    let distinct_selected_ext_discs = selected_extension_candidates
+        .iter()
+        .map(|(_, info, _)| info.disc_index)
+        .collect::<BTreeSet<_>>()
+        .len();
+
+    let candidate_pool = if distinct_selected_ext_discs >= 2 {
+        selected_extension_candidates
+    } else {
+        all_candidates.clone()
+    };
+
+    let mut best_by_disc: BTreeMap<
+        u32,
+        (&crate::torrent::TorrentFileInfo, OpticalDiscInfo, String),
+    > = BTreeMap::new();
+
+    for (file, info, ext) in candidate_pool {
+        let replace = best_by_disc.get(&info.disc_index).is_none_or(
+            |(current_file, _current_info, current_ext)| {
+                optical_primary_extension_priority(&ext, &selected_ext)
+                    < optical_primary_extension_priority(current_ext, &selected_ext)
+                    || (optical_primary_extension_priority(&ext, &selected_ext)
+                        == optical_primary_extension_priority(current_ext, &selected_ext)
+                        && file.filename < current_file.filename)
+            },
+        );
+        if replace {
+            best_by_disc.insert(info.disc_index, (file, info, ext));
+        }
+    }
+
+    if best_by_disc.len() < 2 {
+        return None;
+    }
+
+    let playlist_entries = best_by_disc
+        .iter()
+        .map(
+            |(disc_index, (file, _info, _ext))| OpticalDiscPlaylistEntry {
+                file_index: file.index,
+                filename: file.filename.clone(),
+                disc_index: *disc_index,
+            },
+        )
+        .collect::<Vec<_>>();
+    let representative_index = playlist_entries.first()?.file_index;
+    let playlist_stem = best_by_disc
+        .values()
+        .next()
+        .map(|(_, info, _)| info.playlist_stem.clone())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "multi-disc-game".to_string());
+
+    let mut requested_indices = Vec::new();
+    for (file, info, _ext) in best_by_disc.values() {
+        requested_indices.push(file.index);
+        requested_indices.extend(optical_sidecar_indices_for_primary(files, file, info));
+    }
+    requested_indices.sort_unstable();
+    requested_indices.dedup();
+
+    Some(OpticalDiscDownloadPlan {
+        playlist_stem,
+        representative_index,
+        requested_indices,
+        playlist_entries,
+    })
+}
+
+fn common_parent_for_paths(paths: &[PathBuf]) -> Option<PathBuf> {
+    let first_parent = paths.first()?.parent()?.to_path_buf();
+    let mut common_components = first_parent.components().collect::<Vec<_>>();
+
+    for path in paths.iter().skip(1) {
+        let parent = path.parent()?;
+        let components = parent.components().collect::<Vec<_>>();
+        let len = common_components
+            .iter()
+            .zip(components.iter())
+            .take_while(|(left, right)| left == right)
+            .count();
+        common_components.truncate(len);
+    }
+
+    if common_components.is_empty() {
+        return None;
+    }
+
+    let mut common = PathBuf::new();
+    for component in common_components {
+        common.push(component.as_os_str());
+    }
+    Some(common)
+}
+
+fn m3u_path_line(playlist_parent: &Path, target: &Path) -> String {
+    target
+        .strip_prefix(playlist_parent)
+        .unwrap_or(target)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+async fn write_optical_disc_m3u(
+    client: &dyn crate::torrent::TorrentClient,
+    client_job_id: &str,
+    download_dir: &Path,
+    plan: &OpticalDiscDownloadPlan,
+) -> Result<PathBuf, String> {
+    let mut disc_paths = Vec::new();
+    for entry in &plan.playlist_entries {
+        let path = if let Some(path) = client
+            .get_downloaded_file_path(client_job_id, entry.file_index, download_dir)
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to locate downloaded disc {} on disk: {e}",
+                    entry.disc_index
+                )
+            })? {
+            path
+        } else {
+            locate_downloaded_file(download_dir, &entry.filename).ok_or_else(|| {
+                format!(
+                    "Download finished, but Disc {} could not be found on disk.",
+                    entry.disc_index
+                )
+            })?
+        };
+        disc_paths.push(path);
+    }
+
+    let playlist_parent =
+        common_parent_for_paths(&disc_paths).unwrap_or_else(|| download_dir.to_path_buf());
+    std::fs::create_dir_all(&playlist_parent).map_err(|e| {
+        format!(
+            "Failed to create playlist directory {}: {e}",
+            playlist_parent.display()
+        )
+    })?;
+
+    let playlist_name = format!(
+        "{}.m3u",
+        sanitize_download_directory_component(&plan.playlist_stem)
+    );
+    let playlist_path = playlist_parent.join(playlist_name);
+    let mut content = String::new();
+    for disc_path in &disc_paths {
+        content.push_str(&m3u_path_line(&playlist_parent, disc_path));
+        content.push('\n');
+    }
+
+    std::fs::write(&playlist_path, content).map_err(|e| {
+        format!(
+            "Failed to write multi-disc playlist {}: {e}",
+            playlist_path.display()
+        )
+    })?;
+
+    Ok(playlist_path)
 }
 
 fn parse_arcade_mame_laserdisc_asset(path: &str) -> Option<(String, ArcadeMameLaserdiscAssetKind)> {
@@ -3616,6 +4118,7 @@ fn stale_minerva_job_message(updated_at: &str, has_live_progress: bool) -> Optio
 fn minerva_requested_indices(
     download_mode: MinervaDownloadMode,
     arcade_laserdisc_plan: Option<&ArcadeLaserdiscPlan>,
+    optical_disc_plan: Option<&OpticalDiscDownloadPlan>,
     selection_plan: Option<&crate::exo::DownloadSelectionPlan>,
     file_index: Option<usize>,
 ) -> Option<Vec<usize>> {
@@ -3630,8 +4133,9 @@ fn minerva_requested_indices(
                     .map(|asset| asset.asset.file_index)
                     .collect(),
             ),
-            _ => selection_plan
+            _ => optical_disc_plan
                 .map(|plan| plan.requested_indices.clone())
+                .or_else(|| selection_plan.map(|plan| plan.requested_indices.clone()))
                 .or_else(|| file_index.map(|idx| vec![idx])),
         },
         MinervaDownloadMode::FullTorrent => None,
@@ -4214,15 +4718,25 @@ pub async fn start_minerva_download(
     let files = crate::torrent::get_torrent_file_listing(&torrent_url)
         .await
         .map_err(|e| format!("Failed to parse torrent: {e}"))?;
+    let optical_disc_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
+        file_index.and_then(|idx| build_optical_disc_download_plan(&files, idx))
+    } else {
+        None
+    };
     let selection_plan = if matches!(download_mode, MinervaDownloadMode::GameOnly) {
         file_index
             .and_then(|idx| crate::exo::plan_related_downloads(&canonical_platform, idx, &files))
     } else {
         None
     };
-    let representative_index = selection_plan
+    let representative_index = optical_disc_plan
         .as_ref()
         .map(|plan| plan.representative_index)
+        .or_else(|| {
+            selection_plan
+                .as_ref()
+                .map(|plan| plan.representative_index)
+        })
         .or(file_index);
     let target_file = representative_index
         .and_then(|idx| files.iter().find(|f| f.index == idx))
@@ -4257,6 +4771,7 @@ pub async fn start_minerva_download(
     let requested_indices = minerva_requested_indices(
         download_mode,
         arcade_laserdisc_plan.as_ref(),
+        optical_disc_plan.as_ref(),
         selection_plan.as_ref(),
         file_index,
     );
@@ -4328,6 +4843,7 @@ pub async fn start_minerva_download(
     let download_dir_bg = download_dir.clone();
     let files_bg = files.clone();
     let selection_plan_bg = selection_plan.clone();
+    let optical_disc_plan_bg = optical_disc_plan.clone();
     let target_file_bg = target_file.clone();
     let target_filename_bg = target_filename.clone();
     let target_size_bg = target_size;
@@ -4348,6 +4864,7 @@ pub async fn start_minerva_download(
 
         let files = files_bg;
         let selection_plan = selection_plan_bg;
+        let optical_disc_plan = optical_disc_plan_bg;
         let target_file = target_file_bg;
         let target_filename = target_filename_bg;
         let target_size = target_size_bg;
@@ -4393,6 +4910,14 @@ pub async fn start_minerva_download(
                     plan.bundle_name
                 )
             }
+            (MinervaDownloadMode::GameOnly, None) if optical_disc_plan.is_some() => {
+                let plan = optical_disc_plan.as_ref().unwrap();
+                format!(
+                    "Downloading {}-disc set for {}",
+                    plan.playlist_entries.len(),
+                    plan.playlist_stem
+                )
+            }
             (MinervaDownloadMode::GameOnly, None) => format!("Downloading: {target_filename}"),
             (MinervaDownloadMode::FullTorrent, _) => {
                 format!("Downloading full torrent for {game_title}")
@@ -4409,6 +4934,14 @@ pub async fn start_minerva_download(
                 .sum(),
             (MinervaDownloadMode::GameOnly, Some(ArcadeLaserdiscPlan::Hypseus(plan))) => {
                 plan.assets.iter().map(|asset| asset.size).sum()
+            }
+            (MinervaDownloadMode::GameOnly, None) if optical_disc_plan.is_some() => {
+                let plan = optical_disc_plan.as_ref().unwrap();
+                plan.requested_indices
+                    .iter()
+                    .filter_map(|idx| files.iter().find(|file| file.index == *idx))
+                    .map(|file| file.size)
+                    .sum()
             }
             (MinervaDownloadMode::GameOnly, None) => selection_plan
                 .as_ref()
@@ -4827,6 +5360,39 @@ pub async fn start_minerva_download(
                             }
                         }
                     }
+                    _ if optical_disc_plan.is_some() => {
+                        let plan = optical_disc_plan.as_ref().unwrap();
+                        match write_optical_disc_m3u(
+                            client.as_ref(),
+                            &client_job_id,
+                            &download_dir_bg,
+                            plan,
+                        )
+                        .await
+                        {
+                            Ok(path) => path,
+                            Err(message) => {
+                                crate::torrent::update_progress(
+                                    &job_id_bg,
+                                    crate::torrent::DownloadStatus::Failed,
+                                    100.0,
+                                    0,
+                                    progress_total,
+                                    progress_total,
+                                    &message,
+                                );
+                                persist_graboid_job_status(
+                                    db_path.as_ref(),
+                                    &job_id_bg,
+                                    "failed",
+                                    &message,
+                                )
+                                .await;
+                                crate::torrent::clear_client_job_id(&job_id_bg);
+                                return;
+                            }
+                        }
+                    }
                     _ => {
                         let Some(found_path) = representative_path else {
                             crate::torrent::update_progress(
@@ -4855,25 +5421,36 @@ pub async fn start_minerva_download(
                 let file_size = std::fs::metadata(&found_path)
                     .map(|meta| meta.len() as i64)
                     .unwrap_or(target_size as i64);
-                let stored_size = match arcade_laserdisc_plan.as_ref() {
-                    Some(ArcadeLaserdiscPlan::Daphne(_)) => progress_total as i64,
-                    Some(ArcadeLaserdiscPlan::Hypseus(_)) => progress_total as i64,
-                    _ => file_size,
+                let stored_size = if optical_disc_plan.is_some() {
+                    progress_total as i64
+                } else {
+                    match arcade_laserdisc_plan.as_ref() {
+                        Some(ArcadeLaserdiscPlan::Daphne(_)) => progress_total as i64,
+                        Some(ArcadeLaserdiscPlan::Hypseus(_)) => progress_total as i64,
+                        _ => file_size,
+                    }
                 };
-                let completion_message = match arcade_laserdisc_plan.as_ref() {
-                    Some(ArcadeLaserdiscPlan::Daphne(plan)) => {
-                        format!(
-                            "Download complete (Hypseus bundle for {})",
-                            plan.bundle_name
-                        )
+                let completion_message = if let Some(plan) = optical_disc_plan.as_ref() {
+                    format!(
+                        "Download complete ({}-disc playlist)",
+                        plan.playlist_entries.len()
+                    )
+                } else {
+                    match arcade_laserdisc_plan.as_ref() {
+                        Some(ArcadeLaserdiscPlan::Daphne(plan)) => {
+                            format!(
+                                "Download complete (Hypseus bundle for {})",
+                                plan.bundle_name
+                            )
+                        }
+                        Some(ArcadeLaserdiscPlan::Hypseus(plan)) => {
+                            format!(
+                                "Download complete (Hypseus bundle for {})",
+                                plan.bundle_name
+                            )
+                        }
+                        _ => "Download complete".to_string(),
                     }
-                    Some(ArcadeLaserdiscPlan::Hypseus(plan)) => {
-                        format!(
-                            "Download complete (Hypseus bundle for {})",
-                            plan.bundle_name
-                        )
-                    }
-                    _ => "Download complete".to_string(),
                 };
                 (
                     found_path.display().to_string(),
@@ -6429,15 +7006,29 @@ fn torrent_match_lookup_titles(
             .is_some_and(|value| !value.eq_ignore_ascii_case("MAME"));
 
     if is_non_mame_laserdisc {
-        if resolved_lookup_title != game_title {
-            titles.push(resolved_lookup_title.to_string());
-            if let Some(stripped) = resolved_lookup_title.strip_prefix('d') {
-                if stripped != resolved_lookup_title && !stripped.is_empty() {
-                    titles.push(stripped.to_string());
+        let is_derived_laserdisc_platform =
+            platform.map(str::trim) == Some(crate::arcade::ARCADE_LASERDISC_PLATFORM);
+        if is_derived_laserdisc_platform {
+            if resolved_lookup_title != game_title {
+                titles.push(resolved_lookup_title.to_string());
+                if let Some(stripped) = resolved_lookup_title.strip_prefix('d') {
+                    if stripped != resolved_lookup_title && !stripped.is_empty() {
+                        titles.push(stripped.to_string());
+                    }
+                }
+            }
+            titles.push(game_title.to_string());
+        } else {
+            titles.push(game_title.to_string());
+            if resolved_lookup_title != game_title {
+                titles.push(resolved_lookup_title.to_string());
+                if let Some(stripped) = resolved_lookup_title.strip_prefix('d') {
+                    if stripped != resolved_lookup_title && !stripped.is_empty() {
+                        titles.push(stripped.to_string());
+                    }
                 }
             }
         }
-        titles.push(game_title.to_string());
         return titles;
     }
 
@@ -6921,19 +7512,97 @@ pub async fn confirm_rom_import(
 mod tests {
     use super::{
         ArcadeDaphneLaserdiscAssetKind, ArcadeHypseusLaserdiscAssetKind,
-        ArcadeMameLaserdiscAssetKind, MinervaRom, expand_arcade_laserdisc_roms,
-        expand_torrent_match_lookup_titles, is_platform_specific_torrent_candidate,
-        locate_downloaded_file, minerva_platform_fallbacks, parse_arcade_daphne_laserdisc_asset,
-        parse_arcade_hypseus_laserdisc_asset, parse_arcade_mame_laserdisc_asset,
-        select_arcade_daphne_laserdisc_matches, select_arcade_hypseus_laserdisc_matches,
-        select_arcade_mame_laserdisc_matches, select_arcade_mame_laserdisc_or_generic_matches,
-        select_best_matches_for_lookup_titles, select_torrent_file_matches, sort_emulator_statuses,
-        torrent_match_lookup_titles, verify_staged_daphne_framefile_assets,
+        ArcadeMameLaserdiscAssetKind, MinervaRom, build_optical_disc_download_plan,
+        expand_arcade_laserdisc_roms, expand_torrent_match_lookup_titles,
+        is_platform_specific_torrent_candidate, locate_downloaded_file, minerva_platform_fallbacks,
+        parse_arcade_daphne_laserdisc_asset, parse_arcade_hypseus_laserdisc_asset,
+        parse_arcade_mame_laserdisc_asset, select_arcade_daphne_laserdisc_matches,
+        select_arcade_hypseus_laserdisc_matches, select_arcade_mame_laserdisc_matches,
+        select_arcade_mame_laserdisc_or_generic_matches, select_best_matches_for_lookup_titles,
+        select_torrent_file_matches, sort_emulator_statuses, torrent_match_lookup_titles,
+        verify_staged_daphne_framefile_assets,
     };
     use crate::db::schema::EmulatorInfo;
     use crate::emulator::EmulatorWithStatus;
     use crate::torrent::TorrentFileInfo;
     use std::fs;
+
+    #[test]
+    fn plans_multi_disc_chd_downloads_as_one_playlist() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 2,
+                filename: "Sony - PlayStation/Final Fantasy VII (USA) (Disc 2).chd".to_string(),
+                size: 200,
+            },
+            TorrentFileInfo {
+                index: 1,
+                filename: "Sony - PlayStation/Final Fantasy VII (USA) (Disc 1).chd".to_string(),
+                size: 100,
+            },
+            TorrentFileInfo {
+                index: 3,
+                filename: "Sony - PlayStation/Final Fantasy VII (USA) (Disc 3).chd".to_string(),
+                size: 300,
+            },
+            TorrentFileInfo {
+                index: 4,
+                filename: "Sony - PlayStation/Final Fantasy VII (Japan) (Disc 1).chd".to_string(),
+                size: 400,
+            },
+        ];
+
+        let plan = build_optical_disc_download_plan(&files, 2).expect("multi-disc plan");
+
+        assert_eq!(plan.playlist_stem, "Final Fantasy VII (USA)");
+        assert_eq!(plan.representative_index, 1);
+        assert_eq!(plan.requested_indices, vec![1, 2, 3]);
+        assert_eq!(
+            plan.playlist_entries
+                .iter()
+                .map(|entry| entry.file_index)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn plans_cue_downloads_with_disc_sidecars() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 10,
+                filename: "Final Fantasy VII (USA) (Disc 1).cue".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 11,
+                filename: "Final Fantasy VII (USA) (Disc 1) (Track 01).bin".to_string(),
+                size: 100,
+            },
+            TorrentFileInfo {
+                index: 12,
+                filename: "Final Fantasy VII (USA) (Disc 2).cue".to_string(),
+                size: 1,
+            },
+            TorrentFileInfo {
+                index: 13,
+                filename: "Final Fantasy VII (USA) (Disc 2) (Track 01).bin".to_string(),
+                size: 200,
+            },
+        ];
+
+        let plan = build_optical_disc_download_plan(&files, 10).expect("multi-disc cue plan");
+
+        assert_eq!(plan.representative_index, 10);
+        assert_eq!(plan.requested_indices, vec![10, 11, 12, 13]);
+        assert_eq!(
+            plan.playlist_entries
+                .iter()
+                .map(|entry| entry.file_index)
+                .collect::<Vec<_>>(),
+            vec![10, 12]
+        );
+    }
 
     #[test]
     fn prefers_exact_title_matches_over_partial_word_overlap() {
