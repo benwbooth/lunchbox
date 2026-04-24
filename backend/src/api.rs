@@ -19,6 +19,8 @@ use axum::{
 };
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
@@ -164,6 +166,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/download_game_video", get(rspc_download_game_video))
         .route("/rspc/check_cached_manual", get(rspc_check_cached_manual))
         .route("/rspc/download_game_manual", get(rspc_download_game_manual))
+        .route("/rspc/open_local_file", get(rspc_open_local_file))
         // rspc-style endpoints for emulator handling
         .route(
             "/rspc/get_emulators_for_platform",
@@ -2230,11 +2233,41 @@ struct ManualInput {
     launchbox_db_id: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenLocalFileInput {
+    path: String,
+}
+
 #[derive(Debug, Clone)]
 struct MinervaManualCandidate {
     torrent_url: String,
     file_index: usize,
     filename: String,
+}
+
+fn open_file_with_system_handler(path: &Path) -> Result<(), String> {
+    let mut command = if cfg!(target_os = "windows") {
+        let mut cmd = Command::new("cmd");
+        cmd.arg("/C").arg("start").arg("").arg(path);
+        cmd
+    } else if cfg!(target_os = "macos") {
+        let mut cmd = Command::new("open");
+        cmd.arg(path);
+        cmd
+    } else {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(path);
+        cmd
+    };
+
+    command.spawn().map(|_| ()).map_err(|e| {
+        format!(
+            "Failed to open {} with the system handler: {}",
+            path.display(),
+            e
+        )
+    })
 }
 
 fn sanitize_manual_path_component(value: &str) -> String {
@@ -2477,6 +2510,81 @@ async fn rspc_check_cached_manual(
     }
 
     rspc_ok::<Option<CachedMediaResult>>(None).into_response()
+}
+
+async fn rspc_open_local_file(
+    State(state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let input: OpenLocalFileInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    if input.path.trim().is_empty() {
+        return rspc_err::<()>("Missing file path".to_string()).into_response();
+    }
+
+    let requested_path = PathBuf::from(&input.path);
+    let canonical_path = match tokio::fs::canonicalize(&requested_path).await {
+        Ok(path) => path,
+        Err(e) => {
+            return rspc_err::<()>(format!(
+                "File does not exist or cannot be opened: {} ({})",
+                requested_path.display(),
+                e
+            ))
+            .into_response();
+        }
+    };
+
+    let metadata = match tokio::fs::metadata(&canonical_path).await {
+        Ok(metadata) => metadata,
+        Err(e) => {
+            return rspc_err::<()>(format!(
+                "Failed to inspect {}: {}",
+                canonical_path.display(),
+                e
+            ))
+            .into_response();
+        }
+    };
+
+    if !metadata.is_file() {
+        return rspc_err::<()>(format!("Path is not a file: {}", canonical_path.display()))
+            .into_response();
+    }
+
+    let media_dir = {
+        let state_guard = state.read().await;
+        state_guard.settings.get_media_directory()
+    };
+    let canonical_media_dir = match tokio::fs::canonicalize(&media_dir).await {
+        Ok(path) => path,
+        Err(e) => {
+            return rspc_err::<()>(format!(
+                "Media directory does not exist or cannot be opened: {} ({})",
+                media_dir.display(),
+                e
+            ))
+            .into_response();
+        }
+    };
+
+    if !canonical_path.starts_with(&canonical_media_dir) {
+        return rspc_err::<()>("Refusing to open a file outside the media directory".to_string())
+            .into_response();
+    }
+
+    match open_file_with_system_handler(&canonical_path) {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
+    }
 }
 
 async fn rspc_download_game_manual(

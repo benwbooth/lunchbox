@@ -1342,6 +1342,16 @@ pub async fn download_game_manual(
     .await
 }
 
+/// Open a cached local media file with the system file handler.
+pub async fn open_local_file(path: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        path: String,
+    }
+    invoke("open_local_file", Args { path }).await
+}
+
 // ============ Video Download Commands ============
 
 /// Video download event from backend

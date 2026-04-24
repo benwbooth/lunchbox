@@ -146,11 +146,12 @@ fn pause_game_details_video() {
     let _ = pause_fn.call0(video_el.as_ref());
 }
 
-fn open_asset_path(path: &str) {
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let _ = window.open_with_url_and_target(&file_to_asset_url(path), "_blank");
+fn open_with_system_handler(path: String, set_manual_error: WriteSignal<Option<String>>) {
+    spawn_local(async move {
+        if let Err(e) = backend_api::open_local_file(path).await {
+            set_manual_error.set(Some(e));
+        }
+    });
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -2879,7 +2880,11 @@ pub fn GameDetails(
                                                 }
                                                 on:click=move |_| {
                                                     if let Some(path) = manual_path.get_untracked() {
-                                                        open_asset_path(&path);
+                                                        set_manual_error.set(None);
+                                                        open_with_system_handler(
+                                                            path,
+                                                            set_manual_error,
+                                                        );
                                                         return;
                                                     }
 
@@ -2907,7 +2912,11 @@ pub fn GameDetails(
                                                         {
                                                             Ok(path) => {
                                                                 set_manual_path.set(Some(path.clone()));
-                                                                open_asset_path(&path);
+                                                                if let Err(e) =
+                                                                    backend_api::open_local_file(path).await
+                                                                {
+                                                                    set_manual_error.set(Some(e));
+                                                                }
                                                             }
                                                             Err(e) => set_manual_error.set(Some(e)),
                                                         }
