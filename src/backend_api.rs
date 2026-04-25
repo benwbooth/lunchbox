@@ -376,7 +376,6 @@ pub struct AppSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ControllerMappingSettings {
     #[serde(default)]
     pub enabled: bool,

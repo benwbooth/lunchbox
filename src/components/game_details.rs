@@ -1554,7 +1554,8 @@ fn ControllerProfileDetails(
 ) -> impl IntoView {
     let settings = RwSignal::new(None::<backend_api::AppSettings>);
     let inventory = RwSignal::new(None::<backend_api::ControllerInventory>);
-    let (loading, set_loading) = signal(false);
+    let (settings_loading, set_settings_loading) = signal(false);
+    let (inventory_loading, set_inventory_loading) = signal(false);
     let (saving, set_saving) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
 
@@ -1563,20 +1564,24 @@ fn ControllerProfileDetails(
             return;
         }
 
-        set_loading.set(true);
+        set_settings_loading.set(true);
+        set_inventory_loading.set(true);
         set_error.set(None);
+
         spawn_local(async move {
             match backend_api::get_settings().await {
                 Ok(loaded_settings) => settings.set(Some(loaded_settings)),
                 Err(e) => set_error.set(Some(format!("Failed to load controller settings: {e}"))),
             }
+            set_settings_loading.set(false);
+        });
 
+        spawn_local(async move {
             match backend_api::list_controllers().await {
                 Ok(loaded_inventory) => inventory.set(Some(loaded_inventory)),
                 Err(e) => set_error.set(Some(format!("Failed to list controllers: {e}"))),
             }
-
-            set_loading.set(false);
+            set_inventory_loading.set(false);
         });
     });
 
@@ -1630,7 +1635,7 @@ fn ControllerProfileDetails(
         )
     };
     let status_label = move || {
-        if loading.get() {
+        if settings_loading.get() {
             return "Loading".to_string();
         }
         if saving.get() {
@@ -1642,6 +1647,9 @@ fn ControllerProfileDetails(
         if !settings.controller_mapping.enabled {
             return "Disabled".to_string();
         }
+        if inventory_loading.get() {
+            return "Enabled, checking controllers".to_string();
+        }
         let managed_count = inventory
             .get()
             .map(|inventory| inventory.managed_devices.len())
@@ -1649,7 +1657,7 @@ fn ControllerProfileDetails(
         format!("Enabled, {managed_count} managed")
     };
     let game_profile_disabled = move || {
-        loading.get()
+        settings_loading.get()
             || saving.get()
             || settings.get().is_none()
             || game
@@ -1657,7 +1665,8 @@ fn ControllerProfileDetails(
                 .map(|current_game| current_game.database_id <= 0)
                 .unwrap_or(true)
     };
-    let controls_disabled = move || loading.get() || saving.get() || settings.get().is_none();
+    let controls_disabled =
+        move || settings_loading.get() || saving.get() || settings.get().is_none();
     let settings_button = set_show_settings.map(|setter| {
         view! {
             <button
