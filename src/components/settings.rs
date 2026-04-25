@@ -779,7 +779,12 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                     prop:checked=move || settings.get().controller_mapping.enabled
                     on:change=move |ev| {
                         let checked = event_target_checked(&ev);
-                        settings.update(|s| s.controller_mapping.enabled = checked);
+                        settings.update(|s| {
+                            s.controller_mapping.enabled = checked;
+                            if checked {
+                                s.controller_mapping.manage_all = true;
+                            }
+                        });
                     }
                 />
                 <span>"Enable launch-time controller mapping"</span>
@@ -851,6 +856,8 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                     class="settings-test-btn"
                     on:click=move |_| {
                         settings.update(|s| {
+                            s.controller_mapping.enabled = true;
+                            s.controller_mapping.manage_all = true;
                             for platform in [
                                 "Nintendo Entertainment System",
                                 "Nintendo Game Boy",

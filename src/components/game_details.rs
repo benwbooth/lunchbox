@@ -1693,6 +1693,9 @@ fn ControllerProfileDetails(
                                 set_error,
                                 move |settings| {
                                     settings.controller_mapping.enabled = checked;
+                                    if checked {
+                                        settings.controller_mapping.manage_all = true;
+                                    }
                                 },
                             );
                         }
@@ -1745,6 +1748,7 @@ fn ControllerProfileDetails(
                                         && selected != CONTROLLER_PROFILE_NONE
                                     {
                                         settings.controller_mapping.enabled = true;
+                                        settings.controller_mapping.manage_all = true;
                                     }
                                     set_controller_profile_override(
                                         &mut settings.controller_mapping.platform_profile_ids,
@@ -1790,6 +1794,7 @@ fn ControllerProfileDetails(
                                         && selected != CONTROLLER_PROFILE_NONE
                                     {
                                         settings.controller_mapping.enabled = true;
+                                        settings.controller_mapping.manage_all = true;
                                     }
                                     set_controller_profile_override(
                                         &mut settings.controller_mapping.game_profile_ids,

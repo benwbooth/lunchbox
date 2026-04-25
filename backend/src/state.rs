@@ -88,7 +88,7 @@ pub struct ControllerMappingSettings {
     #[serde(default = "default_controller_mapping_target")]
     pub output_target: String,
     /// Allow Lunchbox to ask InputPlumber to manage all supported devices.
-    #[serde(default)]
+    #[serde(default = "default_controller_mapping_manage_all")]
     pub manage_all: bool,
     /// Built-in profile id or custom profile path used when no scope override matches.
     #[serde(default)]
@@ -110,7 +110,7 @@ impl Default for ControllerMappingSettings {
             enabled: false,
             provider: default_controller_mapping_provider(),
             output_target: default_controller_mapping_target(),
-            manage_all: false,
+            manage_all: true,
             default_profile_id: None,
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
@@ -125,6 +125,10 @@ fn default_controller_mapping_provider() -> String {
 
 fn default_controller_mapping_target() -> String {
     "xb360".to_string()
+}
+
+fn default_controller_mapping_manage_all() -> bool {
+    true
 }
 
 /// ScreenScraper API settings

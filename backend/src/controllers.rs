@@ -76,6 +76,7 @@ pub struct ControllerLaunchSession {
 #[derive(Debug)]
 struct InputPlumberRestoreEntry {
     device_id: String,
+    intercept_mode: Option<String>,
     profile_path: Option<String>,
     target_ids: Vec<String>,
 }
@@ -116,9 +117,6 @@ pub async fn activate_for_launch(
     }
 
     let selected_profile = resolve_profile_id(mapping, platform_name, launchbox_db_id);
-    if selected_profile.is_none() && mapping.hidden_controller_ids.is_empty() {
-        return Ok(ControllerLaunchSession::default());
-    }
 
     if !cfg!(target_os = "linux") {
         return Err(
@@ -139,14 +137,16 @@ pub async fn activate_for_launch(
         return Err("InputPlumber is not available on PATH.".to_string());
     }
 
-    if mapping.manage_all {
-        run_inputplumber(&["devices", "manage-all", "--enable"])?;
-    }
-
     let mut warnings = Vec::new();
     let controllers = list_local_controllers(&mut warnings);
-    let managed_devices = list_inputplumber_composite_devices()
+    let mut managed_devices = list_inputplumber_composite_devices()
         .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?;
+
+    if mapping.manage_all || managed_devices.is_empty() {
+        run_inputplumber(&["devices", "manage-all", "--enable"])?;
+        managed_devices = list_inputplumber_composite_devices()
+            .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?;
+    }
 
     if managed_devices.is_empty() {
         return Err(
@@ -157,22 +157,29 @@ pub async fn activate_for_launch(
 
     let selected_controller_paths =
         selected_controller_source_paths(&controllers, &mapping.hidden_controller_ids);
+    let managed_controller_paths = if selected_controller_paths.is_empty() {
+        controller_source_paths(&controllers)
+    } else {
+        selected_controller_paths
+    };
     let target_device_ids = normalize_target_ids(&mapping.output_target);
     let profile_path = if let Some(profile_id) = selected_profile.as_deref() {
         Some(resolve_profile_path(settings, profile_id)?)
     } else {
         None
     };
+    let should_hide_selected_devices =
+        profile_path.is_none() && !mapping.hidden_controller_ids.is_empty();
 
     let mut session = ControllerLaunchSession::default();
     let mut matched_any = false;
 
     for device in managed_devices {
-        let matches_selection = selected_controller_paths.is_empty()
+        let matches_selection = managed_controller_paths.is_empty()
             || device
                 .source_paths
                 .iter()
-                .any(|path| selected_controller_paths.contains(path));
+                .any(|path| managed_controller_paths.contains(path));
 
         if !matches_selection {
             continue;
@@ -181,27 +188,40 @@ pub async fn activate_for_launch(
         matched_any = true;
         let restore = InputPlumberRestoreEntry {
             device_id: device.id.clone(),
+            intercept_mode: Some(inputplumber_device_intercept_mode(&device.id)?),
             profile_path: device.profile_path.clone(),
             target_ids: device.target_ids.clone(),
         };
 
-        if let Some(path) = profile_path.as_ref() {
-            run_inputplumber_with_dynamic_args(
-                ["device", &device.id, "targets", "set"],
-                &target_device_ids,
-            )?;
-            run_inputplumber(&[
-                "device",
-                &device.id,
-                "profile",
-                "load",
-                path.to_string_lossy().as_ref(),
-            ])?;
-        } else {
-            run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
-        }
-
         session.restore_entries.push(restore);
+
+        let apply_result = (|| {
+            run_inputplumber(&["device", &device.id, "intercept", "set", "gamepad-only"])?;
+
+            if should_hide_selected_devices {
+                run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
+            } else {
+                run_inputplumber_with_dynamic_args(
+                    ["device", &device.id, "targets", "set"],
+                    &target_device_ids,
+                )?;
+                if let Some(path) = profile_path.as_ref() {
+                    run_inputplumber(&[
+                        "device",
+                        &device.id,
+                        "profile",
+                        "load",
+                        path.to_string_lossy().as_ref(),
+                    ])?;
+                }
+            }
+            Ok(())
+        })();
+
+        if let Err(e) = apply_result {
+            session.restore();
+            return Err(e);
+        }
     }
 
     if !matched_any {
@@ -236,6 +256,15 @@ impl ControllerLaunchSession {
                         &profile_path,
                     ]);
                 }
+            }
+            if let Some(intercept_mode) = entry.intercept_mode {
+                let _ = run_inputplumber(&[
+                    "device",
+                    &entry.device_id,
+                    "intercept",
+                    "set",
+                    &intercept_mode,
+                ]);
             }
         }
     }
@@ -374,6 +403,16 @@ fn normalize_target_ids(output_target: &str) -> Vec<String> {
     } else {
         targets
     }
+}
+
+fn controller_source_paths(controllers: &[ControllerDevice]) -> HashSet<String> {
+    controllers
+        .iter()
+        .flat_map(|controller| {
+            std::iter::once(controller.device_path.clone())
+                .chain(controller.event_paths.iter().cloned())
+        })
+        .collect()
 }
 
 fn selected_controller_source_paths(
@@ -534,6 +573,17 @@ fn inputplumber_device_targets(id: &str) -> Result<Vec<String>, String> {
             }
         })
         .collect())
+}
+
+fn inputplumber_device_intercept_mode(id: &str) -> Result<String, String> {
+    let output = run_inputplumber(&["device", id, "intercept", "get"])?;
+    output
+        .split(':')
+        .nth(1)
+        .map(str::trim)
+        .filter(|mode| !mode.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| format!("Failed to parse InputPlumber intercept mode for device {id}"))
 }
 
 fn list_inputplumber_supported_targets() -> Result<Vec<InputPlumberTargetDevice>, String> {

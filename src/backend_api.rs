@@ -384,7 +384,7 @@ pub struct ControllerMappingSettings {
     pub provider: String,
     #[serde(default = "default_controller_mapping_target")]
     pub output_target: String,
-    #[serde(default)]
+    #[serde(default = "default_controller_mapping_manage_all")]
     pub manage_all: bool,
     #[serde(default)]
     pub default_profile_id: Option<String>,
@@ -402,7 +402,7 @@ impl Default for ControllerMappingSettings {
             enabled: false,
             provider: default_controller_mapping_provider(),
             output_target: default_controller_mapping_target(),
-            manage_all: false,
+            manage_all: true,
             default_profile_id: None,
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
@@ -417,6 +417,10 @@ fn default_controller_mapping_provider() -> String {
 
 fn default_controller_mapping_target() -> String {
     "xb360".to_string()
+}
+
+fn default_controller_mapping_manage_all() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
