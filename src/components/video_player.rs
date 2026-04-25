@@ -19,7 +19,7 @@ use wasm_bindgen::JsCast;
 
 /// Loading state for a video
 #[derive(Debug, Clone, PartialEq)]
-pub enum VideoState {
+enum VideoState {
     /// Initial state - not yet checked
     Initial,
     /// Checking if video exists
@@ -88,61 +88,6 @@ fn format_video_progress_label(progress: &backend_api::VideoDownloadProgress) ->
         .unwrap_or(status)
 }
 
-pub async fn preload_video_state(
-    game_title: String,
-    platform: String,
-    launchbox_db_id: i64,
-) -> VideoState {
-    let key = video_cache_key(&game_title, &platform, launchbox_db_id);
-    if let Some(cached) = get_cached_video_state(&key) {
-        return cached;
-    }
-
-    let db_id_opt = if launchbox_db_id > 0 {
-        Some(launchbox_db_id)
-    } else {
-        None
-    };
-
-    match backend_api::check_cached_video(game_title.clone(), platform.clone(), db_id_opt).await {
-        Ok(Some(cached_path)) => {
-            let ready = VideoState::Ready(video_asset_url(&cached_path, false));
-            put_cached_video_state(&key, &ready);
-            return ready;
-        }
-        Ok(None) => {}
-        Err(_) => {
-            let no_video = VideoState::NoVideo;
-            put_cached_video_state(&key, &no_video);
-            return no_video;
-        }
-    }
-
-    match backend_api::probe_game_video_available(game_title, platform, db_id_opt).await {
-        Ok(true) => VideoState::Downloading(None),
-        Ok(false) => {
-            let no_video = VideoState::NoVideo;
-            put_cached_video_state(&key, &no_video);
-            no_video
-        }
-        Err(e) => {
-            let msg = e.to_lowercase();
-            if msg.contains("not configured")
-                || msg.contains("unknown platform")
-                || msg.contains("no video")
-            {
-                let no_video = VideoState::NoVideo;
-                put_cached_video_state(&key, &no_video);
-                no_video
-            } else if msg.contains("timed out") || msg.contains("task failed") {
-                VideoState::Initial
-            } else {
-                VideoState::Error(e)
-            }
-        }
-    }
-}
-
 /// Video player component
 ///
 /// Auto-loads and auto-plays video at the top of the game details panel.
@@ -154,12 +99,9 @@ pub fn VideoPlayer(
     platform: String,
     /// LaunchBox database ID
     launchbox_db_id: i64,
-    #[prop(optional)] initial_state: Option<VideoState>,
 ) -> impl IntoView {
     let cache_key_str = video_cache_key(&game_title, &platform, launchbox_db_id);
-    let initial_state = initial_state
-        .or_else(|| get_cached_video_state(&cache_key_str))
-        .unwrap_or(VideoState::Initial);
+    let initial_state = get_cached_video_state(&cache_key_str).unwrap_or(VideoState::Initial);
     let (state, set_state) = signal(initial_state);
     let (download_status, set_download_status) = signal("Preparing video lookup...".to_string());
     let (load_retry_count, set_load_retry_count) = signal(0u8);

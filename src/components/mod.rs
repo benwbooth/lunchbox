@@ -31,4 +31,4 @@ pub use rom_import::RomImport;
 pub use settings::Settings;
 pub use sidebar::Sidebar;
 pub use toolbar::Toolbar;
-pub use video_player::{VideoPlayer, VideoState, preload_video_state};
+pub use video_player::VideoPlayer;

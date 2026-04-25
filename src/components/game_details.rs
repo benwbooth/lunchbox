@@ -1,7 +1,7 @@
 //! Game details panel
 
 use super::{
-    Box3DViewer, LazyImage, VideoPlayer, VideoState, minerva_downloads_signal, preload_video_state,
+    Box3DViewer, LazyImage, VideoPlayer, minerva_downloads_signal,
     refresh_minerva_download_queue_now, request_minerva_download_queue_refresh,
 };
 use crate::backend_api::{
@@ -1883,7 +1883,6 @@ pub fn GameDetails(
     let (game_uninstalling, set_game_uninstalling) = signal(false);
     let (details_ready, set_details_ready) = signal(false);
     let (details_min_delay_elapsed, set_details_min_delay_elapsed) = signal(false);
-    let (preloaded_video_state, set_preloaded_video_state) = signal::<Option<VideoState>>(None);
     let (manual_path, set_manual_path) = signal::<Option<String>>(None);
     let (manual_loading, set_manual_loading) = signal(false);
     let (manual_error, set_manual_error) = signal::<Option<String>>(None);
@@ -1921,7 +1920,6 @@ pub fn GameDetails(
             set_game_uninstalling.set(false);
             set_details_ready.set(false);
             set_details_min_delay_elapsed.set(false);
-            set_preloaded_video_state.set(None);
             set_manual_path.set(None);
             set_manual_loading.set(false);
             set_manual_error.set(None);
@@ -1948,7 +1946,6 @@ pub fn GameDetails(
             set_show_import_loading_hint.set(false);
             set_details_ready.set(false);
             set_details_min_delay_elapsed.set(false);
-            set_preloaded_video_state.set(None);
             set_manual_path.set(None);
             set_manual_loading.set(false);
             set_manual_error.set(None);
@@ -1965,38 +1962,19 @@ pub fn GameDetails(
     Effect::new(move || {
         if let Some(g) = display_game.get() {
             let expected_game_id = g.id.clone();
-            let video_title = g.title.clone();
-            let video_platform = g.platform.clone();
-            let video_db_id = g.database_id;
 
             set_details_ready.set(false);
             set_details_min_delay_elapsed.set(false);
-            set_preloaded_video_state.set(None);
 
-            let expected_game_id_for_min_delay = expected_game_id.clone();
             spawn_local(async move {
                 delay_ms(200).await;
-                let still_current = display_game
-                    .get_untracked()
-                    .as_ref()
-                    .map(|current| current.id.as_str() == expected_game_id_for_min_delay.as_str())
-                    .unwrap_or(false);
-                if still_current {
-                    set_details_min_delay_elapsed.set(true);
-                }
-            });
-
-            spawn_local(async move {
-                let video_state =
-                    preload_video_state(video_title, video_platform, video_db_id).await;
-
                 let still_current = display_game
                     .get_untracked()
                     .as_ref()
                     .map(|current| current.id.as_str() == expected_game_id.as_str())
                     .unwrap_or(false);
                 if still_current {
-                    set_preloaded_video_state.set(Some(video_state));
+                    set_details_min_delay_elapsed.set(true);
                     set_details_ready.set(true);
                 }
             });
@@ -3383,7 +3361,6 @@ pub fn GameDetails(
                                     game_title=g.title.clone()
                                     platform=g.platform.clone()
                                     launchbox_db_id=db_id
-                                    initial_state=preloaded_video_state.get().unwrap_or(VideoState::Initial)
                                 />
 
                                 // Media carousel with arrows, full width
