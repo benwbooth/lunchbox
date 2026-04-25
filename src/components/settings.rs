@@ -865,25 +865,11 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                         let checked = event_target_checked(&ev);
                         settings.update(|s| {
                             s.controller_mapping.enabled = checked;
-                            if checked {
-                                s.controller_mapping.manage_all = true;
-                            }
+                            s.controller_mapping.manage_all = checked;
                         });
                     }
                 />
-                <span>"Enable launch-time controller mapping"</span>
-            </label>
-
-            <label class="controller-toggle-row">
-                <input
-                    type="checkbox"
-                    prop:checked=move || settings.get().controller_mapping.manage_all
-                    on:change=move |ev| {
-                        let checked = event_target_checked(&ev);
-                        settings.update(|s| s.controller_mapping.manage_all = checked);
-                    }
-                />
-                <span>"Ask InputPlumber to manage all supported controllers before launch"</span>
+                <span>"Turn on controller mapping"</span>
             </label>
 
             <div class="controller-settings-grid">

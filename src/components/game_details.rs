@@ -1660,12 +1660,6 @@ fn ControllerProfileDetails(
             .map(|settings| settings.controller_mapping.enabled)
             .unwrap_or(false)
     };
-    let manage_all = move || {
-        settings
-            .get()
-            .map(|settings| settings.controller_mapping.manage_all)
-            .unwrap_or(false)
-    };
     let output_target = move || {
         settings
             .get()
@@ -1804,33 +1798,12 @@ fn ControllerProfileDetails(
                                         set_error,
                                         move |settings| {
                                             settings.controller_mapping.enabled = checked;
-                                            if checked {
-                                                settings.controller_mapping.manage_all = true;
-                                            }
-                                        },
-                                    );
-                                }
-                            />
-                            <span>"Enable launch-time mapping"</span>
-                        </label>
-                        <label>
-                            <input
-                                type="checkbox"
-                                prop:checked=manage_all
-                                disabled=controls_disabled
-                                on:change=move |ev| {
-                                    let checked = event_target_checked(&ev);
-                                    save_controller_mapping_change(
-                                        settings,
-                                        set_saving,
-                                        set_error,
-                                        move |settings| {
                                             settings.controller_mapping.manage_all = checked;
                                         },
                                     );
                                 }
                             />
-                            <span>"Manage supported controllers"</span>
+                            <span>"Turn on controller mapping"</span>
                         </label>
                     </div>
 
