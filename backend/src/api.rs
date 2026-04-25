@@ -1873,18 +1873,35 @@ async fn rspc_download_image_with_fallback(
     );
 
     let state_guard = state.read().await;
+    let cache_dir = state_guard.settings.get_media_directory();
+    let game_id =
+        crate::images::get_game_cache_id(input.launchbox_db_id, &input.game_title, &input.platform);
 
-    let games_pool = match state_guard.games_db_pool.as_ref() {
+    if let Some((path, source)) =
+        crate::images::find_cached_media(&cache_dir, &game_id, &input.image_type)
+    {
+        tracing::info!(
+            "  Cache hit before DB lookup from {:?}: {}",
+            source,
+            path.display()
+        );
+        return rspc_ok(path.to_string_lossy().to_string()).into_response();
+    }
+
+    let games_pool = match state_guard.games_db_pool.clone() {
         Some(p) => p,
         None => {
             return rspc_err::<String>("Games database not initialized".to_string())
                 .into_response();
         }
     };
+    let images_pool = state_guard.images_db_pool.clone();
+    let settings = state_guard.settings.clone();
+    drop(state_guard);
 
     // Look up platform info to get launchbox_name and libretro_name
     let (launchbox_platform, libretro_platform) =
-        match get_coalesced_platform_info(games_pool, &input.platform).await {
+        match get_coalesced_platform_info(&games_pool, &input.platform).await {
             Ok(info) => info,
             Err(e) => return rspc_err::<String>(e.1).into_response(),
         };
@@ -1893,7 +1910,7 @@ async fn rspc_download_image_with_fallback(
     let libretro_title: Option<String> = if let Some(db_id) = input.launchbox_db_id {
         sqlx::query_scalar("SELECT libretro_title FROM games WHERE launchbox_db_id = ?")
             .bind(db_id)
-            .fetch_optional(games_pool)
+            .fetch_optional(&games_pool)
             .await
             .ok()
             .flatten()
@@ -1901,17 +1918,16 @@ async fn rspc_download_image_with_fallback(
         None
     };
 
-    let cache_dir = state_guard.settings.get_media_directory();
     let mut service = crate::images::ImageService::new(games_pool.clone(), cache_dir.clone());
-    if let Some(ref images_pool) = state_guard.images_db_pool {
+    if let Some(ref images_pool) = images_pool {
         service = service.with_images_pool(images_pool.clone());
     }
 
     // Create SteamGridDB client if configured
-    let steamgriddb_client = if !state_guard.settings.steamgriddb.api_key.is_empty() {
+    let steamgriddb_client = if !settings.steamgriddb.api_key.is_empty() {
         Some(crate::scraper::SteamGridDBClient::new(
             crate::scraper::SteamGridDBConfig {
-                api_key: state_guard.settings.steamgriddb.api_key.clone(),
+                api_key: settings.steamgriddb.api_key.clone(),
             },
         ))
     } else {
@@ -1919,44 +1935,42 @@ async fn rspc_download_image_with_fallback(
     };
 
     // Create IGDB client if configured
-    let igdb_client = if !state_guard.settings.igdb.client_id.is_empty()
-        && !state_guard.settings.igdb.client_secret.is_empty()
-    {
-        Some(crate::scraper::IGDBClient::new(
-            crate::scraper::IGDBConfig {
-                client_id: state_guard.settings.igdb.client_id.clone(),
-                client_secret: state_guard.settings.igdb.client_secret.clone(),
-            },
-        ))
-    } else {
-        None
-    };
+    let igdb_client =
+        if !settings.igdb.client_id.is_empty() && !settings.igdb.client_secret.is_empty() {
+            Some(crate::scraper::IGDBClient::new(
+                crate::scraper::IGDBConfig {
+                    client_id: settings.igdb.client_id.clone(),
+                    client_secret: settings.igdb.client_secret.clone(),
+                },
+            ))
+        } else {
+            None
+        };
 
     // Create EmuMovies client if configured
-    let emumovies_client = if !state_guard.settings.emumovies.username.is_empty()
-        && !state_guard.settings.emumovies.password.is_empty()
-    {
-        Some(crate::images::EmuMoviesClient::new(
-            crate::images::EmuMoviesConfig {
-                username: state_guard.settings.emumovies.username.clone(),
-                password: state_guard.settings.emumovies.password.clone(),
-            },
-            cache_dir.clone(),
-        ))
-    } else {
-        None
-    };
+    let emumovies_client =
+        if !settings.emumovies.username.is_empty() && !settings.emumovies.password.is_empty() {
+            Some(crate::images::EmuMoviesClient::new(
+                crate::images::EmuMoviesConfig {
+                    username: settings.emumovies.username.clone(),
+                    password: settings.emumovies.password.clone(),
+                },
+                cache_dir.clone(),
+            ))
+        } else {
+            None
+        };
 
     // Create ScreenScraper client if configured
-    let screenscraper_client = if !state_guard.settings.screenscraper.dev_id.is_empty()
-        && !state_guard.settings.screenscraper.dev_password.is_empty()
+    let screenscraper_client = if !settings.screenscraper.dev_id.is_empty()
+        && !settings.screenscraper.dev_password.is_empty()
     {
         Some(crate::scraper::ScreenScraperClient::new(
             crate::scraper::ScreenScraperConfig {
-                dev_id: state_guard.settings.screenscraper.dev_id.clone(),
-                dev_password: state_guard.settings.screenscraper.dev_password.clone(),
-                user_id: state_guard.settings.screenscraper.user_id.clone(),
-                user_password: state_guard.settings.screenscraper.user_password.clone(),
+                dev_id: settings.screenscraper.dev_id.clone(),
+                dev_password: settings.screenscraper.dev_password.clone(),
+                user_id: settings.screenscraper.user_id.clone(),
+                user_password: settings.screenscraper.user_password.clone(),
             },
         ))
     } else {

@@ -3422,41 +3422,93 @@ fn MediaCarousel(
         signal::<Vec<String>>(MEDIA_TYPES.iter().map(|&s| s.to_string()).collect());
     let (box_front_url, set_box_front_url) = signal::<Option<String>>(None);
     let (box_back_url, set_box_back_url) = signal::<Option<String>>(None);
+    let (box_3d_loading, set_box_3d_loading) = signal(false);
+    let (box_3d_requested, set_box_3d_requested) = signal(false);
 
-    // Store props for async use
-    let title = StoredValue::new(game_title.clone());
-    let plat = StoredValue::new(platform.clone());
     let db_id = launchbox_db_id;
+    let db_id_opt = if db_id > 0 { Some(db_id) } else { None };
 
-    // Pre-load box URLs for 3D viewer in background
+    // Check for cached box images without kicking off downloads on pane open.
+    let cached_title = game_title.clone();
+    let cached_platform = platform.clone();
     Effect::new(move || {
-        let title = title.get_value();
-        let plat = plat.get_value();
+        let title = cached_title.clone();
+        let plat = cached_platform.clone();
 
         spawn_local(async move {
-            // Pre-load box front URL for 3D viewer
-            if let Ok(path) = backend_api::download_image_with_fallback(
+            if let Ok(Some(cached)) = backend_api::check_cached_media(
                 title.clone(),
                 plat.clone(),
                 "Box - Front".to_string(),
-                Some(db_id),
+                db_id_opt,
             )
             .await
             {
-                set_box_front_url.set(Some(file_to_asset_url(&path)));
+                set_box_front_url.set(Some(file_to_asset_url(&cached.path)));
             }
 
-            // Pre-load box back URL for 3D viewer
-            if let Ok(path) = backend_api::download_image_with_fallback(
+            if let Ok(Some(cached)) = backend_api::check_cached_media(
                 title.clone(),
                 plat.clone(),
                 "Box - Back".to_string(),
-                Some(db_id),
+                db_id_opt,
             )
             .await
             {
-                set_box_back_url.set(Some(file_to_asset_url(&path)));
+                set_box_back_url.set(Some(file_to_asset_url(&cached.path)));
             }
+        });
+    });
+
+    let box_3d_title = game_title.clone();
+    let box_3d_platform = platform.clone();
+    Effect::new(move || {
+        let types = available_types.get();
+        let idx = current_index.get().min(types.len().saturating_sub(1));
+        let is_box_3d = types.get(idx).map(|ty| ty.as_str()) == Some("Box - 3D");
+        let box_front_ready = box_front_url.get_untracked().is_some();
+        let box_back_ready = box_back_url.get_untracked().is_some();
+        if !is_box_3d
+            || (box_front_ready && box_back_ready)
+            || box_3d_loading.get_untracked()
+            || box_3d_requested.get_untracked()
+        {
+            return;
+        }
+
+        set_box_3d_requested.set(true);
+        set_box_3d_loading.set(true);
+        let title = box_3d_title.clone();
+        let plat = box_3d_platform.clone();
+
+        spawn_local(async move {
+            if box_front_url.get_untracked().is_none() {
+                if let Ok(path) = backend_api::download_image_with_fallback(
+                    title.clone(),
+                    plat.clone(),
+                    "Box - Front".to_string(),
+                    db_id_opt,
+                )
+                .await
+                {
+                    set_box_front_url.set(Some(file_to_asset_url(&path)));
+                }
+            }
+
+            if box_back_url.get_untracked().is_none() {
+                if let Ok(path) = backend_api::download_image_with_fallback(
+                    title.clone(),
+                    plat.clone(),
+                    "Box - Back".to_string(),
+                    db_id_opt,
+                )
+                .await
+                {
+                    set_box_back_url.set(Some(file_to_asset_url(&path)));
+                }
+            }
+
+            set_box_3d_loading.set(false);
         });
     });
 
