@@ -1331,6 +1331,7 @@ async fn load_minerva_torrent_groups(
     platform_name: String,
     platform_id: i64,
     region_priority: Vec<String>,
+    max_concurrent: usize,
     mut on_progress: impl FnMut(usize, usize),
 ) -> Result<Vec<MinervaTorrentGroup>, String> {
     let mut roms = backend_api::search_minerva(
@@ -1365,7 +1366,7 @@ async fn load_minerva_torrent_groups(
             (rom, result)
         }
     }))
-    .buffer_unordered(2);
+    .buffer_unordered(max_concurrent.max(1));
 
     let mut completed_groups = 0usize;
     while let Some((rom, result)) = group_results.next().await {
@@ -2053,6 +2054,7 @@ pub fn GameDetails(
             }
 
             let region_priority = effective_download_region_priority(&[]);
+            let max_concurrent = if open_picker_immediately { 2 } else { 1 };
             spawn_local(async move {
                 let result = load_minerva_torrent_groups(
                     launchbox_db_id,
@@ -2060,6 +2062,7 @@ pub fn GameDetails(
                     platform_name,
                     platform_id,
                     region_priority,
+                    max_concurrent,
                     {
                         let request_key = request_key.clone();
                         move |completed, total| {
@@ -2374,6 +2377,61 @@ pub fn GameDetails(
                 set_minerva_starting.set(false);
             }
         }
+    });
+
+    // Warm Minerva choices after the visible details media has had a chance to request first.
+    Effect::new(move || {
+        let Some(current_game) = display_game.get() else {
+            return;
+        };
+
+        if !details_ready.get() || !details_min_delay_elapsed.get() || minerva_rom.get().is_none() {
+            return;
+        }
+
+        let request_key = minerva_torrent_groups_request_key(
+            current_game.database_id,
+            &current_game.display_title,
+            &current_game.platform,
+            current_game.platform_id,
+        );
+        if torrent_groups_request_key.get_untracked().as_deref() == Some(request_key.as_str()) {
+            return;
+        }
+
+        let expected_game_id = current_game.id.clone();
+        let launchbox_db_id = current_game.database_id;
+        let game_title = current_game.display_title.clone();
+        let platform_name = current_game.platform.clone();
+        let platform_id = current_game.platform_id;
+
+        spawn_local(async move {
+            delay_ms(1_500).await;
+
+            let still_current = display_game
+                .get_untracked()
+                .as_ref()
+                .map(|game| game.id.as_str() == expected_game_id.as_str())
+                .unwrap_or(false);
+            if !still_current || minerva_rom.get_untracked().is_none() {
+                return;
+            }
+
+            if torrent_groups_request_key.get_untracked().as_deref() == Some(request_key.as_str())
+                || !torrent_groups.get_untracked().is_empty()
+            {
+                return;
+            }
+
+            request_minerva_torrent_groups(
+                launchbox_db_id,
+                game_title,
+                platform_name,
+                platform_id,
+                false,
+                false,
+            );
+        });
     });
 
     // Load variant game when pending_variant_load changes
