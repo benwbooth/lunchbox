@@ -144,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
                 tracing::info!("Found games database at: {}", path.display());
                 let db_url = format!("sqlite:{}?mode=ro", path.display());
                 match SqlitePoolOptions::new()
-                    .max_connections(4)
+                    .max_connections(16)
                     .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
                     .await
                 {
@@ -172,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
                 tracing::info!("Found images database at: {}", path.display());
                 let db_url = format!("sqlite:{}?mode=ro", path.display());
                 match SqlitePoolOptions::new()
-                    .max_connections(4)
+                    .max_connections(16)
                     .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
                     .await
                 {
@@ -200,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
                 tracing::info!("Found emulators database at: {}", path.display());
                 let db_url = format!("sqlite:{}?mode=ro", path.display());
                 match SqlitePoolOptions::new()
-                    .max_connections(4)
+                    .max_connections(16)
                     .connect_with(SqliteConnectOptions::from_str(&db_url)?.read_only(true))
                     .await
                 {
@@ -233,7 +233,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(path) => {
                     let db_url = format!("sqlite:{}?mode=ro", path.display());
                     SqlitePoolOptions::new()
-                        .max_connections(4)
+                        .max_connections(16)
                         .connect_with(
                             SqliteConnectOptions::from_str(&db_url)
                                 .unwrap()

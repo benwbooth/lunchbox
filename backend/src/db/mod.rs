@@ -33,7 +33,7 @@ pub async fn init_pool(db_path: &Path) -> Result<DbPool, sqlx::Error> {
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(5)
+        .max_connections(12)
         .connect(&db_url)
         .await?;
 

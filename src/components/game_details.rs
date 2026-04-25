@@ -3422,6 +3422,8 @@ fn MediaCarousel(
         signal::<Vec<String>>(MEDIA_TYPES.iter().map(|&s| s.to_string()).collect());
     let (box_front_url, set_box_front_url) = signal::<Option<String>>(None);
     let (box_back_url, set_box_back_url) = signal::<Option<String>>(None);
+    let (box_front_checked, set_box_front_checked) = signal(false);
+    let (box_back_checked, set_box_back_checked) = signal(false);
     let (box_3d_loading, set_box_3d_loading) = signal(false);
     let (box_3d_requested, set_box_3d_requested) = signal(false);
 
@@ -3432,13 +3434,15 @@ fn MediaCarousel(
     let cached_title = game_title.clone();
     let cached_platform = platform.clone();
     Effect::new(move || {
-        let title = cached_title.clone();
-        let plat = cached_platform.clone();
+        let front_title = cached_title.clone();
+        let front_platform = cached_platform.clone();
+        let back_title = cached_title.clone();
+        let back_platform = cached_platform.clone();
 
         spawn_local(async move {
             if let Ok(Some(cached)) = backend_api::check_cached_media(
-                title.clone(),
-                plat.clone(),
+                front_title,
+                front_platform,
                 "Box - Front".to_string(),
                 db_id_opt,
             )
@@ -3446,10 +3450,13 @@ fn MediaCarousel(
             {
                 set_box_front_url.set(Some(file_to_asset_url(&cached.path)));
             }
+            set_box_front_checked.set(true);
+        });
 
+        spawn_local(async move {
             if let Ok(Some(cached)) = backend_api::check_cached_media(
-                title.clone(),
-                plat.clone(),
+                back_title,
+                back_platform,
                 "Box - Back".to_string(),
                 db_id_opt,
             )
@@ -3457,6 +3464,7 @@ fn MediaCarousel(
             {
                 set_box_back_url.set(Some(file_to_asset_url(&cached.path)));
             }
+            set_box_back_checked.set(true);
         });
     });
 
@@ -3565,6 +3573,70 @@ fn MediaCarousel(
                                     <div class="loading-spinner"></div>
                                     <span>"Loading 3D view..."</span>
                                 </div>
+                            }.into_any()
+                        }
+                    } else if current_type == "Box - Front" {
+                        if let Some(url) = box_front_url.get() {
+                            view! {
+                                <img
+                                    class="carousel-image"
+                                    src=url
+                                    alt=current_type.clone()
+                                    fetchpriority="high"
+                                />
+                            }.into_any()
+                        } else if !box_front_checked.get() {
+                            view! {
+                                <div class="carousel-loading">
+                                    <div class="loading-spinner"></div>
+                                    <span>"Loading media..."</span>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <LazyImage
+                                    launchbox_db_id=db_id
+                                    game_title=game_title_for_render.clone()
+                                    platform=platform_for_render.clone()
+                                    image_type=current_type.clone()
+                                    alt=current_type.clone()
+                                    class="carousel-image".to_string()
+                                    placeholder=placeholder_for_render.clone()
+                                    render_index=0
+                                    in_viewport=true
+                                />
+                            }.into_any()
+                        }
+                    } else if current_type == "Box - Back" {
+                        if let Some(url) = box_back_url.get() {
+                            view! {
+                                <img
+                                    class="carousel-image"
+                                    src=url
+                                    alt=current_type.clone()
+                                    fetchpriority="high"
+                                />
+                            }.into_any()
+                        } else if !box_back_checked.get() {
+                            view! {
+                                <div class="carousel-loading">
+                                    <div class="loading-spinner"></div>
+                                    <span>"Loading media..."</span>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <LazyImage
+                                    launchbox_db_id=db_id
+                                    game_title=game_title_for_render.clone()
+                                    platform=platform_for_render.clone()
+                                    image_type=current_type.clone()
+                                    alt=current_type.clone()
+                                    class="carousel-image".to_string()
+                                    placeholder=placeholder_for_render.clone()
+                                    render_index=0
+                                    in_viewport=true
+                                />
                             }.into_any()
                         }
                     } else {

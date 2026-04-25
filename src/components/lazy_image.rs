@@ -11,9 +11,10 @@ use leptos::task::spawn_local;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-/// Maximum concurrent image operations (cache checks + downloads)
-/// Keep this moderate to avoid saturating backend source fallbacks.
-const MAX_CONCURRENT_REQUESTS: usize = 4;
+/// Maximum concurrent image operations (cache checks + downloads).
+/// Keep headroom for details-pane video/media requests, which share the same
+/// browser connection pool as card artwork.
+const MAX_CONCURRENT_REQUESTS: usize = 2;
 
 /// Maximum pending requests in queue
 /// Can be lower now that we properly cancel requests when components unmount
