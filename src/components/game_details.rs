@@ -1763,9 +1763,25 @@ fn ControllerProfileDetails(
                     <button
                         class="controller-details-toggle"
                         aria-expanded=move || expanded.get().to_string()
+                        aria-label=move || {
+                            if expanded.get() {
+                                "Hide controller mapping"
+                            } else {
+                                "Show controller mapping"
+                            }
+                        }
+                        title=move || {
+                            if expanded.get() {
+                                "Hide controller mapping"
+                            } else {
+                                "Show controller mapping"
+                            }
+                        }
                         on:click=move |_| set_expanded.update(|value| *value = !*value)
                     >
-                        {move || if expanded.get() { "Hide" } else { "Show" }}
+                        <span class="controller-details-toggle-glyph" aria-hidden="true">
+                            {move || if expanded.get() { "▾" } else { "▸" }}
+                        </span>
                     </button>
                 </div>
             </div>

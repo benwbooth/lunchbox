@@ -2817,13 +2817,26 @@ h1, h2, h3, h4, h5, h6 {
 
 .controller-details-toggle {
     flex-shrink: 0;
-    padding: 6px 10px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: 15px;
+    line-height: 1;
     cursor: pointer;
+}
+
+.controller-details-toggle-glyph {
+    display: block;
+    width: 1em;
+    line-height: 1;
+    text-align: center;
 }
 
 .controller-details-secondary-btn:hover {
