@@ -1622,7 +1622,6 @@ fn ControllerProfileDetails(
         }
 
         set_settings_loading.set(true);
-        set_inventory_loading.set(true);
         set_error.set(None);
 
         spawn_local(async move {
@@ -1632,7 +1631,15 @@ fn ControllerProfileDetails(
             }
             set_settings_loading.set(false);
         });
+    });
 
+    Effect::new(move || {
+        if game.get().is_none() || !expanded.get() || inventory.get_untracked().is_some() {
+            return;
+        }
+
+        set_inventory_loading.set(true);
+        set_error.set(None);
         spawn_local(async move {
             match backend_api::list_controllers().await {
                 Ok(loaded_inventory) => inventory.set(Some(loaded_inventory)),
@@ -1716,11 +1723,10 @@ fn ControllerProfileDetails(
         if inventory_loading.get() {
             return "Enabled, checking controllers".to_string();
         }
-        let managed_count = inventory
+        inventory
             .get()
-            .map(|inventory| inventory.managed_devices.len())
-            .unwrap_or(0);
-        format!("Enabled, {managed_count} managed")
+            .map(|inventory| format!("Enabled, {} managed", inventory.managed_devices.len()))
+            .unwrap_or_else(|| "Enabled".to_string())
     };
     let game_profile_disabled = move || {
         settings_loading.get()
@@ -2525,7 +2531,7 @@ pub fn GameDetails(
         let platform_id = current_game.platform_id;
 
         spawn_local(async move {
-            delay_ms(1_500).await;
+            delay_ms(8_000).await;
 
             let still_current = display_game
                 .get_untracked()
@@ -2669,6 +2675,20 @@ pub fn GameDetails(
                                         "×"
                                     </button>
                                 </div>
+
+                                // Media first so cached images/video request before slower secondary panels.
+                                <VideoPlayer
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    launchbox_db_id=db_id
+                                />
+
+                                <MediaCarousel
+                                    launchbox_db_id=db_id
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    placeholder=first_char.clone()
+                                />
 
                                 // Info area on its own row
                                 <div class="game-details-info">
@@ -3502,21 +3522,6 @@ pub fn GameDetails(
                                         </Show>
 
                                     </div>
-
-                                // Video player, full width
-                                <VideoPlayer
-                                    game_title=g.title.clone()
-                                    platform=g.platform.clone()
-                                    launchbox_db_id=db_id
-                                />
-
-                                // Media carousel with arrows, full width
-                                <MediaCarousel
-                                    launchbox_db_id=db_id
-                                    game_title=g.title.clone()
-                                    platform=g.platform.clone()
-                                    placeholder=first_char.clone()
-                                />
 
                                 <div class="game-details-description">
                                     <h2>"Description"</h2>
