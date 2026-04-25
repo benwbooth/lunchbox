@@ -262,6 +262,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/update_emulator", get(rspc_update_emulator))
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
         .route("/rspc/launch_game", get(rspc_launch_game))
+        .route("/rspc/is_process_running", get(rspc_is_process_running))
         .route("/rspc/get_current_os", get(rspc_get_current_os))
         // Game file and import endpoints
         .route("/rspc/get_game_file", get(rspc_get_game_file))
@@ -4218,6 +4219,22 @@ async fn rspc_launch_game(
 
 async fn rspc_get_current_os() -> impl IntoResponse {
     rspc_ok(handlers::get_current_os())
+}
+
+async fn rspc_is_process_running(
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<bool>("Missing 'input' parameter".to_string()).into_response(),
+    };
+
+    let pid: u32 = match serde_json::from_str(input_str) {
+        Ok(pid) => pid,
+        Err(e) => return rspc_err::<bool>(format!("Invalid input: {}", e)).into_response(),
+    };
+
+    rspc_ok(handlers::is_process_running(pid)).into_response()
 }
 
 // ============================================================================

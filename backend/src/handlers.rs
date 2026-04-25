@@ -1907,6 +1907,11 @@ pub fn get_current_os() -> String {
     emulator::current_os().to_string()
 }
 
+/// Check whether a launched emulator process is still running.
+pub fn is_process_running(pid: u32) -> bool {
+    emulator::is_process_running(pid)
+}
+
 // ============================================================================
 // Graboid Import Types
 // ============================================================================

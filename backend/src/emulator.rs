@@ -508,6 +508,49 @@ pub fn current_os() -> &'static str {
     }
 }
 
+/// Best-effort process liveness check for launched emulator child processes.
+pub fn is_process_running(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return PathBuf::from(format!("/proc/{pid}")).exists();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return Command::new("tasklist")
+            .arg("/FI")
+            .arg(format!("PID eq {pid}"))
+            .arg("/NH")
+            .output()
+            .map(|output| {
+                let pid_text = pid.to_string();
+                String::from_utf8_lossy(&output.stdout)
+                    .split_whitespace()
+                    .any(|part| part == pid_text)
+            })
+            .unwrap_or(false);
+    }
+
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        return Command::new("kill")
+            .arg("-0")
+            .arg(pid.to_string())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+    }
+
+    #[cfg(not(any(unix, target_os = "windows")))]
+    {
+        false
+    }
+}
+
 /// Get the install method available for the current OS
 fn get_install_method(emulator: &EmulatorInfo) -> Option<String> {
     match current_os() {

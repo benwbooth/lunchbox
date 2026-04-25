@@ -8,7 +8,7 @@ use js_sys::{Array, Function, Reflect};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Gamepad, GamepadButton};
@@ -371,6 +371,7 @@ pub fn App() -> impl IntoView {
     // State for emulator updates pane and available update count
     let (show_emulator_updates, set_show_emulator_updates) = signal(false);
     let (emulator_update_count, set_emulator_update_count) = signal::<Option<usize>>(None);
+    let (running_emulator_pid, set_running_emulator_pid) = signal::<Option<u32>>(None);
     // Trigger for refreshing collections
     let (collections_refresh, set_collections_refresh) = signal(0u32);
     // State for artwork display type in grid
@@ -414,8 +415,66 @@ pub fn App() -> impl IntoView {
     });
 
     {
+        let launch_listener =
+            wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+                if let Some(pid) = crate::backend_api::last_launched_emulator_pid() {
+                    set_running_emulator_pid.set(Some(pid));
+                }
+            });
+
+        if let Some(window) = web_sys::window() {
+            let _ = window.add_event_listener_with_callback(
+                crate::backend_api::EMULATOR_LAUNCHED_EVENT,
+                launch_listener.as_ref().unchecked_ref(),
+            );
+            launch_listener.forget();
+        }
+    }
+
+    {
+        let process_poll_in_flight = Rc::new(Cell::new(false));
+        let poll_in_flight = process_poll_in_flight.clone();
+        let _emulator_process_interval = Interval::new(1000, move || {
+            let Some(pid) = running_emulator_pid.get_untracked() else {
+                return;
+            };
+
+            if poll_in_flight.get() {
+                return;
+            }
+            poll_in_flight.set(true);
+
+            let poll_in_flight = poll_in_flight.clone();
+            spawn_local(async move {
+                match crate::backend_api::is_process_running(pid).await {
+                    Ok(true) => {}
+                    Ok(false) => set_running_emulator_pid.set(None),
+                    Err(err) => {
+                        crate::backend_api::log_to_backend(
+                            "warn",
+                            &format!("Failed to poll emulator process {}: {}", pid, err),
+                        );
+                        set_running_emulator_pid.set(None);
+                    }
+                }
+                poll_in_flight.set(false);
+            });
+        });
+
+        Effect::new(move || {
+            let _keep_interval_alive = &_emulator_process_interval;
+            let _keep_flag_alive = &process_poll_in_flight;
+        });
+    }
+
+    {
         let repeat_state = repeat_state.clone();
         let _gamepad_interval = Interval::new(50, move || {
+            if running_emulator_pid.get_untracked().is_some() {
+                *repeat_state.borrow_mut() = GamepadRepeatState::default();
+                return;
+            }
+
             let Some(action) = next_gamepad_action(js_sys::Date::now(), &repeat_state) else {
                 return;
             };

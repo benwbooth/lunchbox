@@ -6,6 +6,8 @@ use wasm_bindgen::prelude::*;
 
 /// The HTTP API base URL for browser mode
 const HTTP_API_BASE: &str = "http://127.0.0.1:3001";
+pub const EMULATOR_LAUNCHED_EVENT: &str = "lunchbox-emulator-launched";
+const RUNNING_EMULATOR_PID_WINDOW_KEY: &str = "__lunchboxRunningEmulatorPid";
 
 // ============ Backend Logging ============
 
@@ -2072,6 +2074,45 @@ pub struct LaunchResult {
     pub error: Option<String>,
 }
 
+fn notify_emulator_launched(result: &LaunchResult) {
+    if !result.success {
+        return;
+    }
+
+    let Some(pid) = result.pid else {
+        return;
+    };
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+
+    let _ = js_sys::Reflect::set(
+        window.as_ref(),
+        &JsValue::from_str(RUNNING_EMULATOR_PID_WINDOW_KEY),
+        &JsValue::from_f64(pid as f64),
+    );
+
+    if let Ok(event) = web_sys::Event::new(EMULATOR_LAUNCHED_EVENT) {
+        let _ = window.dispatch_event(&event);
+    }
+}
+
+pub fn last_launched_emulator_pid() -> Option<u32> {
+    let window = web_sys::window()?;
+    let value = js_sys::Reflect::get(
+        window.as_ref(),
+        &JsValue::from_str(RUNNING_EMULATOR_PID_WINDOW_KEY),
+    )
+    .ok()?;
+    let pid = value.as_f64()?;
+    if pid.is_finite() && pid >= 1.0 {
+        Some(pid as u32)
+    } else {
+        None
+    }
+}
+
 /// Get all emulators for a platform with installation status
 pub async fn get_emulators_with_status(
     platform_name: String,
@@ -2198,14 +2239,16 @@ pub async fn launch_emulator(
         emulator_name: String,
         is_retroarch_core: bool,
     }
-    invoke(
+    let result = invoke(
         "launch_emulator",
         Args {
             emulator_name,
             is_retroarch_core,
         },
     )
-    .await
+    .await?;
+    notify_emulator_launched(&result);
+    Ok(result)
 }
 
 /// Launch a game with the specified emulator
@@ -2225,7 +2268,7 @@ pub async fn launch_game(
         platform: Option<String>,
         is_retroarch_core: bool,
     }
-    invoke(
+    let result = invoke(
         "launch_game",
         Args {
             emulator_name,
@@ -2235,7 +2278,14 @@ pub async fn launch_game(
             is_retroarch_core,
         },
     )
-    .await
+    .await?;
+    notify_emulator_launched(&result);
+    Ok(result)
+}
+
+/// Check whether a launched emulator process is still running.
+pub async fn is_process_running(pid: u32) -> Result<bool, String> {
+    invoke("is_process_running", pid).await
 }
 
 /// Get the current operating system
