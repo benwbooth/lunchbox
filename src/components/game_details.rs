@@ -2694,20 +2694,6 @@ pub fn GameDetails(
                                     </button>
                                 </div>
 
-                                // Media first so cached images/video request before slower secondary panels.
-                                <VideoPlayer
-                                    game_title=g.title.clone()
-                                    platform=g.platform.clone()
-                                    launchbox_db_id=db_id
-                                />
-
-                                <MediaCarousel
-                                    launchbox_db_id=db_id
-                                    game_title=g.title.clone()
-                                    platform=g.platform.clone()
-                                    placeholder=first_char.clone()
-                                />
-
                                 // Info area on its own row
                                 <div class="game-details-info">
                                     <p class="game-details-platform">{platform}</p>
@@ -2838,6 +2824,27 @@ pub fn GameDetails(
                                             })}
                                         </Show>
 
+                                    </div>
+
+                                <div class="game-details-description">
+                                    <h2>"Description"</h2>
+                                    <p>{description}</p>
+                                </div>
+
+                                <VideoPlayer
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    launchbox_db_id=db_id
+                                />
+
+                                <MediaCarousel
+                                    launchbox_db_id=db_id
+                                    game_title=g.title.clone()
+                                    platform=g.platform.clone()
+                                    placeholder=first_char.clone()
+                                />
+
+                                <div class="game-details-info game-details-controls">
                                         <ControllerProfileDetails
                                             game=display_game
                                             set_show_settings=set_show_settings
@@ -3540,11 +3547,6 @@ pub fn GameDetails(
                                         </Show>
 
                                     </div>
-
-                                <div class="game-details-description">
-                                    <h2>"Description"</h2>
-                                    <p>{description}</p>
-                                </div>
                             </div>
 
                             <Show when=move || show_emulator_picker.get()>
