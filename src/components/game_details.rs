@@ -5,12 +5,13 @@ use super::{
     refresh_minerva_download_queue_now, request_minerva_download_queue_refresh,
 };
 use crate::backend_api::{
-    self, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats, file_to_asset_url,
+    self, ControllerProfileInfo, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats,
+    file_to_asset_url,
 };
 use futures::stream::{self, StreamExt};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use wasm_bindgen::{JsCast, JsValue};
 
 async fn launch_game_with_resolved_rom(
@@ -1436,6 +1437,418 @@ async fn load_minerva_torrent_groups(
     }
 }
 
+const CONTROLLER_PROFILE_INHERIT: &str = "__inherit";
+const CONTROLLER_PROFILE_NONE: &str = "__none";
+const TWO_BUTTON_CLOCKWISE_PROFILE_ID: &str = "two-button-clockwise";
+
+fn fallback_controller_profiles() -> Vec<ControllerProfileInfo> {
+    vec![ControllerProfileInfo {
+        id: TWO_BUTTON_CLOCKWISE_PROFILE_ID.to_string(),
+        name: "2-button clockwise diamond".to_string(),
+        description:
+            "Maps physical bottom/right face buttons to target left/bottom for NES-style layouts."
+                .to_string(),
+    }]
+}
+
+fn available_controller_profiles(
+    inventory: Option<backend_api::ControllerInventory>,
+) -> Vec<ControllerProfileInfo> {
+    inventory
+        .map(|inventory| inventory.built_in_profiles)
+        .filter(|profiles| !profiles.is_empty())
+        .unwrap_or_else(fallback_controller_profiles)
+}
+
+fn controller_target_options(
+    inventory: Option<backend_api::ControllerInventory>,
+) -> Vec<(String, String)> {
+    let targets = inventory
+        .map(|inventory| inventory.supported_targets)
+        .unwrap_or_default();
+    let filtered = targets
+        .into_iter()
+        .filter(|target| {
+            matches!(
+                target.id.as_str(),
+                "xb360" | "xbox-series" | "xbox-elite" | "ds5" | "gamepad"
+            )
+        })
+        .map(|target| (target.id, target.name))
+        .collect::<Vec<_>>();
+
+    if filtered.is_empty() {
+        vec![
+            ("xb360".to_string(), "Microsoft X-Box 360 pad".to_string()),
+            (
+                "xbox-series".to_string(),
+                "Microsoft Xbox Series S|X Controller".to_string(),
+            ),
+            ("ds5".to_string(), "Sony DualSense".to_string()),
+            ("gamepad".to_string(), "InputPlumber Gamepad".to_string()),
+        ]
+    } else {
+        filtered
+    }
+}
+
+fn controller_profile_select_value(map: &HashMap<String, String>, key: &str) -> String {
+    match map.get(key).map(|value| value.trim()) {
+        Some("") | Some("none") => CONTROLLER_PROFILE_NONE.to_string(),
+        Some(profile_id) => profile_id.to_string(),
+        None => CONTROLLER_PROFILE_INHERIT.to_string(),
+    }
+}
+
+fn set_controller_profile_override(
+    map: &mut HashMap<String, String>,
+    key: String,
+    selected_value: String,
+) {
+    match selected_value.as_str() {
+        CONTROLLER_PROFILE_INHERIT => {
+            map.remove(&key);
+        }
+        CONTROLLER_PROFILE_NONE => {
+            map.insert(key, "none".to_string());
+        }
+        _ => {
+            map.insert(key, selected_value);
+        }
+    }
+}
+
+fn save_controller_mapping_change(
+    settings: RwSignal<Option<backend_api::AppSettings>>,
+    set_saving: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+    update: impl FnOnce(&mut backend_api::AppSettings) + 'static,
+) {
+    let Some(mut next_settings) = settings.get_untracked() else {
+        return;
+    };
+
+    update(&mut next_settings);
+    settings.set(Some(next_settings.clone()));
+    set_saving.set(true);
+    set_error.set(None);
+
+    spawn_local(async move {
+        match backend_api::save_settings(next_settings.clone()).await {
+            Ok(()) => {
+                settings.set(Some(next_settings));
+            }
+            Err(e) => {
+                set_error.set(Some(e));
+            }
+        }
+        set_saving.set(false);
+    });
+}
+
+#[component]
+fn ControllerProfileDetails(
+    game: ReadSignal<Option<Game>>,
+    set_show_settings: Option<WriteSignal<bool>>,
+) -> impl IntoView {
+    let settings = RwSignal::new(None::<backend_api::AppSettings>);
+    let inventory = RwSignal::new(None::<backend_api::ControllerInventory>);
+    let (loading, set_loading) = signal(false);
+    let (saving, set_saving) = signal(false);
+    let (error, set_error) = signal::<Option<String>>(None);
+
+    Effect::new(move || {
+        if game.get().is_none() {
+            return;
+        }
+
+        set_loading.set(true);
+        set_error.set(None);
+        spawn_local(async move {
+            match backend_api::get_settings().await {
+                Ok(loaded_settings) => settings.set(Some(loaded_settings)),
+                Err(e) => set_error.set(Some(format!("Failed to load controller settings: {e}"))),
+            }
+
+            match backend_api::list_controllers().await {
+                Ok(loaded_inventory) => inventory.set(Some(loaded_inventory)),
+                Err(e) => set_error.set(Some(format!("Failed to list controllers: {e}"))),
+            }
+
+            set_loading.set(false);
+        });
+    });
+
+    let system_profile_options = move || available_controller_profiles(inventory.get());
+    let game_profile_options = move || available_controller_profiles(inventory.get());
+    let target_options = move || controller_target_options(inventory.get());
+
+    let mapping_enabled = move || {
+        settings
+            .get()
+            .map(|settings| settings.controller_mapping.enabled)
+            .unwrap_or(false)
+    };
+    let manage_all = move || {
+        settings
+            .get()
+            .map(|settings| settings.controller_mapping.manage_all)
+            .unwrap_or(false)
+    };
+    let output_target = move || {
+        settings
+            .get()
+            .map(|settings| settings.controller_mapping.output_target)
+            .unwrap_or_else(|| "xb360".to_string())
+    };
+    let system_profile_value = move || {
+        let Some(settings) = settings.get() else {
+            return CONTROLLER_PROFILE_INHERIT.to_string();
+        };
+        let Some(current_game) = game.get() else {
+            return CONTROLLER_PROFILE_INHERIT.to_string();
+        };
+        controller_profile_select_value(
+            &settings.controller_mapping.platform_profile_ids,
+            &current_game.platform,
+        )
+    };
+    let game_profile_value = move || {
+        let Some(settings) = settings.get() else {
+            return CONTROLLER_PROFILE_INHERIT.to_string();
+        };
+        let Some(current_game) = game.get() else {
+            return CONTROLLER_PROFILE_INHERIT.to_string();
+        };
+        if current_game.database_id <= 0 {
+            return CONTROLLER_PROFILE_INHERIT.to_string();
+        }
+        controller_profile_select_value(
+            &settings.controller_mapping.game_profile_ids,
+            &current_game.database_id.to_string(),
+        )
+    };
+    let status_label = move || {
+        if loading.get() {
+            return "Loading".to_string();
+        }
+        if saving.get() {
+            return "Saving".to_string();
+        }
+        let Some(settings) = settings.get() else {
+            return "Unavailable".to_string();
+        };
+        if !settings.controller_mapping.enabled {
+            return "Disabled".to_string();
+        }
+        let managed_count = inventory
+            .get()
+            .map(|inventory| inventory.managed_devices.len())
+            .unwrap_or(0);
+        format!("Enabled, {managed_count} managed")
+    };
+    let game_profile_disabled = move || {
+        loading.get()
+            || saving.get()
+            || settings.get().is_none()
+            || game
+                .get()
+                .map(|current_game| current_game.database_id <= 0)
+                .unwrap_or(true)
+    };
+    let controls_disabled = move || loading.get() || saving.get() || settings.get().is_none();
+    let settings_button = set_show_settings.map(|setter| {
+        view! {
+            <button
+                class="controller-details-secondary-btn"
+                on:click=move |_| setter.set(true)
+            >
+                "Advanced"
+            </button>
+        }
+        .into_any()
+    });
+
+    view! {
+        <div class="game-controller-profile">
+            <div class="game-controller-profile-header">
+                <div>
+                    <h2>"Controller Mapping"</h2>
+                    <span>{move || status_label()}</span>
+                </div>
+                {settings_button.unwrap_or_else(|| ().into_any())}
+            </div>
+
+            <div class="game-controller-toggles">
+                <label>
+                    <input
+                        type="checkbox"
+                        prop:checked=mapping_enabled
+                        disabled=controls_disabled
+                        on:change=move |ev| {
+                            let checked = event_target_checked(&ev);
+                            save_controller_mapping_change(
+                                settings,
+                                set_saving,
+                                set_error,
+                                move |settings| {
+                                    settings.controller_mapping.enabled = checked;
+                                },
+                            );
+                        }
+                    />
+                    <span>"Enable launch-time mapping"</span>
+                </label>
+                <label>
+                    <input
+                        type="checkbox"
+                        prop:checked=manage_all
+                        disabled=controls_disabled
+                        on:change=move |ev| {
+                            let checked = event_target_checked(&ev);
+                            save_controller_mapping_change(
+                                settings,
+                                set_saving,
+                                set_error,
+                                move |settings| {
+                                    settings.controller_mapping.manage_all = checked;
+                                },
+                            );
+                        }
+                    />
+                    <span>"Manage supported controllers"</span>
+                </label>
+            </div>
+
+            <div class="game-controller-profile-grid">
+                <label class="game-controller-field">
+                    <span>{move || {
+                        game.get()
+                            .map(|current_game| format!("System profile ({})", current_game.platform))
+                            .unwrap_or_else(|| "System profile".to_string())
+                    }}</span>
+                    <select
+                        prop:value=system_profile_value
+                        disabled=controls_disabled
+                        on:change=move |ev| {
+                            let Some(current_game) = game.get_untracked() else {
+                                return;
+                            };
+                            let platform = current_game.platform.clone();
+                            let selected = event_target_value(&ev);
+                            save_controller_mapping_change(
+                                settings,
+                                set_saving,
+                                set_error,
+                                move |settings| {
+                                    if selected != CONTROLLER_PROFILE_INHERIT
+                                        && selected != CONTROLLER_PROFILE_NONE
+                                    {
+                                        settings.controller_mapping.enabled = true;
+                                    }
+                                    set_controller_profile_override(
+                                        &mut settings.controller_mapping.platform_profile_ids,
+                                        platform,
+                                        selected,
+                                    );
+                                },
+                            );
+                        }
+                    >
+                        <option value=CONTROLLER_PROFILE_INHERIT>"Use default"</option>
+                        <option value=CONTROLLER_PROFILE_NONE>"Off for this system"</option>
+                        <For
+                            each=system_profile_options
+                            key=|profile| profile.id.clone()
+                            children=move |profile| view! {
+                                <option value=profile.id>{profile.name}</option>
+                            }
+                        />
+                    </select>
+                </label>
+
+                <label class="game-controller-field">
+                    <span>"Game profile"</span>
+                    <select
+                        prop:value=game_profile_value
+                        disabled=game_profile_disabled
+                        on:change=move |ev| {
+                            let Some(current_game) = game.get_untracked() else {
+                                return;
+                            };
+                            if current_game.database_id <= 0 {
+                                return;
+                            }
+                            let game_key = current_game.database_id.to_string();
+                            let selected = event_target_value(&ev);
+                            save_controller_mapping_change(
+                                settings,
+                                set_saving,
+                                set_error,
+                                move |settings| {
+                                    if selected != CONTROLLER_PROFILE_INHERIT
+                                        && selected != CONTROLLER_PROFILE_NONE
+                                    {
+                                        settings.controller_mapping.enabled = true;
+                                    }
+                                    set_controller_profile_override(
+                                        &mut settings.controller_mapping.game_profile_ids,
+                                        game_key,
+                                        selected,
+                                    );
+                                },
+                            );
+                        }
+                    >
+                        <option value=CONTROLLER_PROFILE_INHERIT>"Use system/default"</option>
+                        <option value=CONTROLLER_PROFILE_NONE>"Off for this game"</option>
+                        <For
+                            each=game_profile_options
+                            key=|profile| profile.id.clone()
+                            children=move |profile| view! {
+                                <option value=profile.id>{profile.name}</option>
+                            }
+                        />
+                    </select>
+                </label>
+
+                <label class="game-controller-field">
+                    <span>"Virtual target"</span>
+                    <select
+                        prop:value=output_target
+                        disabled=controls_disabled
+                        on:change=move |ev| {
+                            let selected = event_target_value(&ev);
+                            save_controller_mapping_change(
+                                settings,
+                                set_saving,
+                                set_error,
+                                move |settings| {
+                                    settings.controller_mapping.output_target = selected;
+                                },
+                            );
+                        }
+                    >
+                        <For
+                            each=target_options
+                            key=|(id, _)| id.clone()
+                            children=move |(id, name)| view! {
+                                <option value=id>{name}</option>
+                            }
+                        />
+                    </select>
+                </label>
+            </div>
+
+            <Show when=move || error.get().is_some()>
+                {move || error.get().map(|error| view! {
+                    <div class="game-controller-error">{error}</div>
+                })}
+            </Show>
+        </div>
+    }
+}
+
 #[component]
 pub fn GameDetails(
     game: ReadSignal<Option<Game>>,
@@ -2256,6 +2669,11 @@ pub fn GameDetails(
                                                 }
                                             })}
                                         </Show>
+
+                                        <ControllerProfileDetails
+                                            game=display_game
+                                            set_show_settings=set_show_settings
+                                        />
 
                                         <div class="game-actions">
 
