@@ -2178,8 +2178,15 @@ async fn rspc_redownload_image_from_next_source(
 
 async fn serve_asset(
     axum::extract::Path(path): axum::extract::Path<String>,
-) -> Result<impl axum::response::IntoResponse, (StatusCode, String)> {
+    headers: axum::http::HeaderMap,
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    use axum::body::Body;
+    use axum::http::header::{
+        ACCEPT_RANGES, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE,
+    };
     use axum::response::Response;
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    use tokio_util::io::ReaderStream;
 
     // The path comes in URL-encoded, decode it
     let decoded_path = urlencoding::decode(&path).map_err(|e| {
@@ -2198,17 +2205,25 @@ async fn serve_asset(
 
     let file_path = std::path::Path::new(&full_path);
 
-    // Check that the path exists and is a file
-    if !file_path.exists() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            format!("File not found: {}", decoded_path),
-        ));
-    }
+    let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            (
+                StatusCode::NOT_FOUND,
+                format!("File not found: {}", decoded_path),
+            )
+        } else {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to stat file: {}", e),
+            )
+        }
+    })?;
 
-    if !file_path.is_file() {
+    if !metadata.is_file() {
         return Err((StatusCode::BAD_REQUEST, "Not a file".to_string()));
     }
+
+    let file_len = metadata.len();
 
     // Determine content type based on extension
     let content_type = match file_path.extension().and_then(|e| e.to_str()) {
@@ -2225,20 +2240,101 @@ async fn serve_asset(
         _ => "application/octet-stream",
     };
 
-    // Read the file
-    let data = tokio::fs::read(&file_path).await.map_err(|e| {
+    if let Some(range_header) = headers.get(RANGE).and_then(|value| value.to_str().ok()) {
+        let Some((start, end)) = parse_single_byte_range(range_header, file_len) else {
+            return Ok(Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(CONTENT_RANGE, format!("bytes */{file_len}"))
+                .header(ACCEPT_RANGES, "bytes")
+                .body(Body::empty())
+                .unwrap());
+        };
+
+        let mut file = tokio::fs::File::open(file_path).await.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to open file: {}", e),
+            )
+        })?;
+        file.seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to seek file: {}", e),
+                )
+            })?;
+
+        let content_len = end - start + 1;
+        let stream = ReaderStream::new(file.take(content_len));
+        return Ok(Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header(CONTENT_TYPE, content_type)
+            .header(CACHE_CONTROL, "public, max-age=31536000")
+            .header(ACCEPT_RANGES, "bytes")
+            .header(CONTENT_LENGTH, content_len.to_string())
+            .header(CONTENT_RANGE, format!("bytes {start}-{end}/{file_len}"))
+            .body(Body::from_stream(stream))
+            .unwrap());
+    }
+
+    let file = tokio::fs::File::open(file_path).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to read file: {}", e),
+            format!("Failed to open file: {}", e),
         )
     })?;
+    let stream = ReaderStream::new(file);
 
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type", content_type)
-        .header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
-        .body(axum::body::Body::from(data))
+        .header(CONTENT_TYPE, content_type)
+        .header(CACHE_CONTROL, "public, max-age=31536000")
+        .header(ACCEPT_RANGES, "bytes")
+        .header(CONTENT_LENGTH, file_len.to_string())
+        .body(Body::from_stream(stream))
         .unwrap())
+}
+
+fn parse_single_byte_range(range_header: &str, file_len: u64) -> Option<(u64, u64)> {
+    if file_len == 0 {
+        return None;
+    }
+
+    let range = range_header.trim().strip_prefix("bytes=")?;
+    if range.contains(',') {
+        return None;
+    }
+
+    let (start, end) = range.split_once('-')?;
+    let start = start.trim();
+    let end = end.trim();
+
+    if start.is_empty() {
+        let suffix_len = end.parse::<u64>().ok()?;
+        if suffix_len == 0 {
+            return None;
+        }
+        let start = file_len.saturating_sub(suffix_len);
+        return Some((start, file_len - 1));
+    }
+
+    let start = start.parse::<u64>().ok()?;
+    if start >= file_len {
+        return None;
+    }
+
+    let end = if end.is_empty() {
+        file_len - 1
+    } else {
+        end.parse::<u64>().ok()?.min(file_len - 1)
+    };
+
+    if end < start {
+        return None;
+    }
+
+    Some((start, end))
 }
 
 // ============================================================================
