@@ -2785,6 +2785,13 @@ h1, h2, h3, h4, h5, h6 {
     gap: 12px;
 }
 
+.game-controller-profile-title {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+}
+
 .game-controller-profile-actions {
     display: inline-flex;
     align-items: center;

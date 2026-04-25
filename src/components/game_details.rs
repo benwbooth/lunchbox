@@ -1754,12 +1754,7 @@ fn ControllerProfileDetails(
     view! {
         <div class="game-controller-profile">
             <div class="game-controller-profile-header">
-                <div>
-                    <h2>"Controller Mapping"</h2>
-                    <span>{move || status_label()}</span>
-                </div>
-                <div class="game-controller-profile-actions">
-                    {settings_button.unwrap_or_else(|| ().into_any())}
+                <div class="game-controller-profile-title">
                     <button
                         class="controller-details-toggle"
                         aria-expanded=move || expanded.get().to_string()
@@ -1783,6 +1778,13 @@ fn ControllerProfileDetails(
                             {move || if expanded.get() { "▾" } else { "▸" }}
                         </span>
                     </button>
+                    <div>
+                        <h2>"Controller Mapping"</h2>
+                        <span>{move || status_label()}</span>
+                    </div>
+                </div>
+                <div class="game-controller-profile-actions">
+                    {settings_button.unwrap_or_else(|| ().into_any())}
                 </div>
             </div>
 
