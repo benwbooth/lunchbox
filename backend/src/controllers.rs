@@ -155,33 +155,40 @@ pub async fn activate_for_launch(
         );
     }
 
-    let selected_controller_paths =
-        selected_controller_source_paths(&controllers, &mapping.hidden_controller_ids);
-    let managed_controller_paths = if selected_controller_paths.is_empty() {
+    let profile_scope_is_all = mapping
+        .profile_controller_ids
+        .iter()
+        .all(|id| id.trim().is_empty());
+    let profile_controller_paths = if profile_scope_is_all {
         controller_source_paths(&controllers)
     } else {
-        selected_controller_paths
+        selected_controller_source_paths(&controllers, &mapping.profile_controller_ids)
     };
+    let hidden_controller_paths =
+        selected_controller_source_paths(&controllers, &mapping.hidden_controller_ids);
     let target_device_ids = normalize_target_ids(&mapping.output_target);
     let profile_path = if let Some(profile_id) = selected_profile.as_deref() {
         Some(resolve_profile_path(settings, profile_id)?)
     } else {
         None
     };
-    let should_hide_selected_devices =
-        profile_path.is_none() && !mapping.hidden_controller_ids.is_empty();
 
     let mut session = ControllerLaunchSession::default();
     let mut matched_any = false;
 
     for device in managed_devices {
-        let matches_selection = managed_controller_paths.is_empty()
+        let matches_hidden = !hidden_controller_paths.is_empty()
+            && device
+                .source_paths
+                .iter()
+                .any(|path| hidden_controller_paths.contains(path));
+        let matches_profile = profile_scope_is_all
             || device
                 .source_paths
                 .iter()
-                .any(|path| managed_controller_paths.contains(path));
+                .any(|path| profile_controller_paths.contains(path));
 
-        if !matches_selection {
+        if !matches_hidden && !matches_profile {
             continue;
         }
 
@@ -198,7 +205,7 @@ pub async fn activate_for_launch(
         let apply_result = (|| {
             run_inputplumber(&["device", &device.id, "intercept", "set", "gamepad-only"])?;
 
-            if should_hide_selected_devices {
+            if matches_hidden {
                 run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
             } else {
                 run_inputplumber_with_dynamic_args(

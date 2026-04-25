@@ -388,6 +388,8 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub default_profile_id: Option<String>,
     #[serde(default)]
+    pub profile_controller_ids: Vec<String>,
+    #[serde(default)]
     pub platform_profile_ids: HashMap<String, String>,
     #[serde(default)]
     pub game_profile_ids: HashMap<String, String>,
@@ -403,6 +405,7 @@ impl Default for ControllerMappingSettings {
             output_target: default_controller_mapping_target(),
             manage_all: true,
             default_profile_id: None,
+            profile_controller_ids: Vec::new(),
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
             hidden_controller_ids: Vec::new(),

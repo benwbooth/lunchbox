@@ -1440,6 +1440,7 @@ async fn load_minerva_torrent_groups(
 
 const CONTROLLER_PROFILE_INHERIT: &str = "__inherit";
 const CONTROLLER_PROFILE_NONE: &str = "__none";
+const CONTROLLER_SCOPE_ALL: &str = "__all";
 const TWO_BUTTON_CLOCKWISE_PROFILE_ID: &str = "two-button-clockwise";
 
 fn fallback_controller_profiles() -> Vec<ControllerProfileInfo> {
@@ -1519,6 +1520,61 @@ fn set_controller_profile_override(
     }
 }
 
+fn controller_scope_select_value(controller_ids: &[String]) -> String {
+    controller_ids
+        .iter()
+        .map(|id| id.trim())
+        .find(|id| !id.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| CONTROLLER_SCOPE_ALL.to_string())
+}
+
+fn set_controller_profile_scope(
+    mapping: &mut backend_api::ControllerMappingSettings,
+    selected_value: String,
+) {
+    mapping.profile_controller_ids.clear();
+    if selected_value != CONTROLLER_SCOPE_ALL && !selected_value.trim().is_empty() {
+        mapping
+            .profile_controller_ids
+            .push(selected_value.trim().to_string());
+    }
+}
+
+fn controller_scope_label(controller: &backend_api::ControllerDevice) -> String {
+    let ids = match (
+        controller.vendor_id.as_deref(),
+        controller.product_id.as_deref(),
+        controller.unique_id.as_deref(),
+    ) {
+        (Some(vendor), Some(product), Some(unique)) if !unique.trim().is_empty() => {
+            format!("{vendor}:{product} {unique}")
+        }
+        (Some(vendor), Some(product), _) => format!("{vendor}:{product}"),
+        _ => controller.device_path.clone(),
+    };
+    format!("{} ({ids})", controller.name)
+}
+
+fn controller_scope_options(
+    inventory: Option<backend_api::ControllerInventory>,
+) -> Vec<(String, String)> {
+    inventory
+        .map(|inventory| {
+            inventory
+                .controllers
+                .into_iter()
+                .map(|controller| {
+                    (
+                        controller.stable_id.clone(),
+                        controller_scope_label(&controller),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn save_controller_mapping_change(
     settings: RwSignal<Option<backend_api::AppSettings>>,
     set_saving: WriteSignal<bool>,
@@ -1558,6 +1614,7 @@ fn ControllerProfileDetails(
     let (inventory_loading, set_inventory_loading) = signal(false);
     let (saving, set_saving) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
+    let (expanded, set_expanded) = signal(false);
 
     Effect::new(move || {
         if game.get().is_none() {
@@ -1588,6 +1645,7 @@ fn ControllerProfileDetails(
     let system_profile_options = move || available_controller_profiles(inventory.get());
     let game_profile_options = move || available_controller_profiles(inventory.get());
     let target_options = move || controller_target_options(inventory.get());
+    let controller_options = move || controller_scope_options(inventory.get());
 
     let mapping_enabled = move || {
         settings
@@ -1606,6 +1664,14 @@ fn ControllerProfileDetails(
             .get()
             .map(|settings| settings.controller_mapping.output_target)
             .unwrap_or_else(|| "xb360".to_string())
+    };
+    let controller_scope_value = move || {
+        settings
+            .get()
+            .map(|settings| {
+                controller_scope_select_value(&settings.controller_mapping.profile_controller_ids)
+            })
+            .unwrap_or_else(|| CONTROLLER_SCOPE_ALL.to_string())
     };
     let system_profile_value = move || {
         let Some(settings) = settings.get() else {
@@ -1686,179 +1752,223 @@ fn ControllerProfileDetails(
                     <h2>"Controller Mapping"</h2>
                     <span>{move || status_label()}</span>
                 </div>
-                {settings_button.unwrap_or_else(|| ().into_any())}
+                <div class="game-controller-profile-actions">
+                    {settings_button.unwrap_or_else(|| ().into_any())}
+                    <button
+                        class="controller-details-toggle"
+                        aria-expanded=move || expanded.get().to_string()
+                        on:click=move |_| set_expanded.update(|value| *value = !*value)
+                    >
+                        {move || if expanded.get() { "Hide" } else { "Show" }}
+                    </button>
+                </div>
             </div>
 
-            <div class="game-controller-toggles">
-                <label>
-                    <input
-                        type="checkbox"
-                        prop:checked=mapping_enabled
-                        disabled=controls_disabled
-                        on:change=move |ev| {
-                            let checked = event_target_checked(&ev);
-                            save_controller_mapping_change(
-                                settings,
-                                set_saving,
-                                set_error,
-                                move |settings| {
-                                    settings.controller_mapping.enabled = checked;
-                                    if checked {
-                                        settings.controller_mapping.manage_all = true;
-                                    }
-                                },
-                            );
-                        }
-                    />
-                    <span>"Enable launch-time mapping"</span>
-                </label>
-                <label>
-                    <input
-                        type="checkbox"
-                        prop:checked=manage_all
-                        disabled=controls_disabled
-                        on:change=move |ev| {
-                            let checked = event_target_checked(&ev);
-                            save_controller_mapping_change(
-                                settings,
-                                set_saving,
-                                set_error,
-                                move |settings| {
-                                    settings.controller_mapping.manage_all = checked;
-                                },
-                            );
-                        }
-                    />
-                    <span>"Manage supported controllers"</span>
-                </label>
-            </div>
-
-            <div class="game-controller-profile-grid">
-                <label class="game-controller-field">
-                    <span>{move || {
-                        game.get()
-                            .map(|current_game| format!("System profile ({})", current_game.platform))
-                            .unwrap_or_else(|| "System profile".to_string())
-                    }}</span>
-                    <select
-                        prop:value=system_profile_value
-                        disabled=controls_disabled
-                        on:change=move |ev| {
-                            let Some(current_game) = game.get_untracked() else {
-                                return;
-                            };
-                            let platform = current_game.platform.clone();
-                            let selected = event_target_value(&ev);
-                            save_controller_mapping_change(
-                                settings,
-                                set_saving,
-                                set_error,
-                                move |settings| {
-                                    if selected != CONTROLLER_PROFILE_INHERIT
-                                        && selected != CONTROLLER_PROFILE_NONE
-                                    {
-                                        settings.controller_mapping.enabled = true;
-                                        settings.controller_mapping.manage_all = true;
-                                    }
-                                    set_controller_profile_override(
-                                        &mut settings.controller_mapping.platform_profile_ids,
-                                        platform,
-                                        selected,
+            <Show when=move || expanded.get()>
+                <div class="game-controller-profile-body">
+                    <div class="game-controller-toggles">
+                        <label>
+                            <input
+                                type="checkbox"
+                                prop:checked=mapping_enabled
+                                disabled=controls_disabled
+                                on:change=move |ev| {
+                                    let checked = event_target_checked(&ev);
+                                    save_controller_mapping_change(
+                                        settings,
+                                        set_saving,
+                                        set_error,
+                                        move |settings| {
+                                            settings.controller_mapping.enabled = checked;
+                                            if checked {
+                                                settings.controller_mapping.manage_all = true;
+                                            }
+                                        },
                                     );
-                                },
-                            );
-                        }
-                    >
-                        <option value=CONTROLLER_PROFILE_INHERIT>"Use default"</option>
-                        <option value=CONTROLLER_PROFILE_NONE>"Off for this system"</option>
-                        <For
-                            each=system_profile_options
-                            key=|profile| profile.id.clone()
-                            children=move |profile| view! {
-                                <option value=profile.id>{profile.name}</option>
-                            }
-                        />
-                    </select>
-                </label>
-
-                <label class="game-controller-field">
-                    <span>"Game profile"</span>
-                    <select
-                        prop:value=game_profile_value
-                        disabled=game_profile_disabled
-                        on:change=move |ev| {
-                            let Some(current_game) = game.get_untracked() else {
-                                return;
-                            };
-                            if current_game.database_id <= 0 {
-                                return;
-                            }
-                            let game_key = current_game.database_id.to_string();
-                            let selected = event_target_value(&ev);
-                            save_controller_mapping_change(
-                                settings,
-                                set_saving,
-                                set_error,
-                                move |settings| {
-                                    if selected != CONTROLLER_PROFILE_INHERIT
-                                        && selected != CONTROLLER_PROFILE_NONE
-                                    {
-                                        settings.controller_mapping.enabled = true;
-                                        settings.controller_mapping.manage_all = true;
-                                    }
-                                    set_controller_profile_override(
-                                        &mut settings.controller_mapping.game_profile_ids,
-                                        game_key,
-                                        selected,
+                                }
+                            />
+                            <span>"Enable launch-time mapping"</span>
+                        </label>
+                        <label>
+                            <input
+                                type="checkbox"
+                                prop:checked=manage_all
+                                disabled=controls_disabled
+                                on:change=move |ev| {
+                                    let checked = event_target_checked(&ev);
+                                    save_controller_mapping_change(
+                                        settings,
+                                        set_saving,
+                                        set_error,
+                                        move |settings| {
+                                            settings.controller_mapping.manage_all = checked;
+                                        },
                                     );
-                                },
-                            );
-                        }
-                    >
-                        <option value=CONTROLLER_PROFILE_INHERIT>"Use system/default"</option>
-                        <option value=CONTROLLER_PROFILE_NONE>"Off for this game"</option>
-                        <For
-                            each=game_profile_options
-                            key=|profile| profile.id.clone()
-                            children=move |profile| view! {
-                                <option value=profile.id>{profile.name}</option>
-                            }
-                        />
-                    </select>
-                </label>
+                                }
+                            />
+                            <span>"Manage supported controllers"</span>
+                        </label>
+                    </div>
 
-                <label class="game-controller-field">
-                    <span>"Virtual target"</span>
-                    <select
-                        prop:value=output_target
-                        disabled=controls_disabled
-                        on:change=move |ev| {
-                            let selected = event_target_value(&ev);
-                            save_controller_mapping_change(
-                                settings,
-                                set_saving,
-                                set_error,
-                                move |settings| {
-                                    settings.controller_mapping.output_target = selected;
-                                },
-                            );
-                        }
-                    >
-                        <For
-                            each=target_options
-                            key=|(id, _)| id.clone()
-                            children=move |(id, name)| view! {
-                                <option value=id>{name}</option>
-                            }
-                        />
-                    </select>
-                </label>
-            </div>
+                    <div class="game-controller-profile-grid">
+                        <label class="game-controller-field">
+                            <span>{move || {
+                                game.get()
+                                    .map(|current_game| format!("System profile ({})", current_game.platform))
+                                    .unwrap_or_else(|| "System profile".to_string())
+                            }}</span>
+                            <select
+                                prop:value=system_profile_value
+                                disabled=controls_disabled
+                                on:change=move |ev| {
+                                    let Some(current_game) = game.get_untracked() else {
+                                        return;
+                                    };
+                                    let platform = current_game.platform.clone();
+                                    let selected = event_target_value(&ev);
+                                    save_controller_mapping_change(
+                                        settings,
+                                        set_saving,
+                                        set_error,
+                                        move |settings| {
+                                            if selected != CONTROLLER_PROFILE_INHERIT
+                                                && selected != CONTROLLER_PROFILE_NONE
+                                            {
+                                                settings.controller_mapping.enabled = true;
+                                                settings.controller_mapping.manage_all = true;
+                                            }
+                                            set_controller_profile_override(
+                                                &mut settings.controller_mapping.platform_profile_ids,
+                                                platform,
+                                                selected,
+                                            );
+                                        },
+                                    );
+                                }
+                            >
+                                <option value=CONTROLLER_PROFILE_INHERIT>"Use default"</option>
+                                <option value=CONTROLLER_PROFILE_NONE>"Off for this system"</option>
+                                <For
+                                    each=system_profile_options
+                                    key=|profile| profile.id.clone()
+                                    children=move |profile| view! {
+                                        <option value=profile.id>{profile.name}</option>
+                                    }
+                                />
+                            </select>
+                        </label>
 
-            <Show when=move || error.get().is_some()>
-                {move || error.get().map(|error| view! {
-                    <div class="game-controller-error">{error}</div>
-                })}
+                        <label class="game-controller-field">
+                            <span>"Game profile"</span>
+                            <select
+                                prop:value=game_profile_value
+                                disabled=game_profile_disabled
+                                on:change=move |ev| {
+                                    let Some(current_game) = game.get_untracked() else {
+                                        return;
+                                    };
+                                    if current_game.database_id <= 0 {
+                                        return;
+                                    }
+                                    let game_key = current_game.database_id.to_string();
+                                    let selected = event_target_value(&ev);
+                                    save_controller_mapping_change(
+                                        settings,
+                                        set_saving,
+                                        set_error,
+                                        move |settings| {
+                                            if selected != CONTROLLER_PROFILE_INHERIT
+                                                && selected != CONTROLLER_PROFILE_NONE
+                                            {
+                                                settings.controller_mapping.enabled = true;
+                                                settings.controller_mapping.manage_all = true;
+                                            }
+                                            set_controller_profile_override(
+                                                &mut settings.controller_mapping.game_profile_ids,
+                                                game_key,
+                                                selected,
+                                            );
+                                        },
+                                    );
+                                }
+                            >
+                                <option value=CONTROLLER_PROFILE_INHERIT>"Use system/default"</option>
+                                <option value=CONTROLLER_PROFILE_NONE>"Off for this game"</option>
+                                <For
+                                    each=game_profile_options
+                                    key=|profile| profile.id.clone()
+                                    children=move |profile| view! {
+                                        <option value=profile.id>{profile.name}</option>
+                                    }
+                                />
+                            </select>
+                        </label>
+
+                        <label class="game-controller-field">
+                            <span>"Load profile on"</span>
+                            <select
+                                prop:value=controller_scope_value
+                                disabled=controls_disabled
+                                on:change=move |ev| {
+                                    let selected = event_target_value(&ev);
+                                    save_controller_mapping_change(
+                                        settings,
+                                        set_saving,
+                                        set_error,
+                                        move |settings| {
+                                            set_controller_profile_scope(
+                                                &mut settings.controller_mapping,
+                                                selected,
+                                            );
+                                        },
+                                    );
+                                }
+                            >
+                                <option value=CONTROLLER_SCOPE_ALL>"All plugged in controllers"</option>
+                                <For
+                                    each=controller_options
+                                    key=|(id, _)| id.clone()
+                                    children=move |(id, label)| view! {
+                                        <option value=id>{label}</option>
+                                    }
+                                />
+                            </select>
+                        </label>
+
+                        <label class="game-controller-field">
+                            <span>"Virtual target"</span>
+                            <select
+                                prop:value=output_target
+                                disabled=controls_disabled
+                                on:change=move |ev| {
+                                    let selected = event_target_value(&ev);
+                                    save_controller_mapping_change(
+                                        settings,
+                                        set_saving,
+                                        set_error,
+                                        move |settings| {
+                                            settings.controller_mapping.output_target = selected;
+                                        },
+                                    );
+                                }
+                            >
+                                <For
+                                    each=target_options
+                                    key=|(id, _)| id.clone()
+                                    children=move |(id, name)| view! {
+                                        <option value=id>{name}</option>
+                                    }
+                                />
+                            </select>
+                        </label>
+                    </div>
+
+                    <Show when=move || error.get().is_some()>
+                        {move || error.get().map(|error| view! {
+                            <div class="game-controller-error">{error}</div>
+                        })}
+                    </Show>
+                </div>
             </Show>
         </div>
     }

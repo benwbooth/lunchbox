@@ -16,6 +16,61 @@ use leptos::task::spawn_local;
 use std::cell::Cell;
 use std::rc::Rc;
 
+const CONTROLLER_SCOPE_ALL: &str = "__all";
+
+fn controller_scope_select_value(controller_ids: &[String]) -> String {
+    controller_ids
+        .iter()
+        .map(|id| id.trim())
+        .find(|id| !id.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| CONTROLLER_SCOPE_ALL.to_string())
+}
+
+fn set_controller_profile_scope(
+    mapping: &mut crate::backend_api::ControllerMappingSettings,
+    selected_value: String,
+) {
+    mapping.profile_controller_ids.clear();
+    if selected_value != CONTROLLER_SCOPE_ALL && !selected_value.trim().is_empty() {
+        mapping
+            .profile_controller_ids
+            .push(selected_value.trim().to_string());
+    }
+}
+
+fn controller_scope_label(controller: &crate::backend_api::ControllerDevice) -> String {
+    let ids = match (
+        controller.vendor_id.as_deref(),
+        controller.product_id.as_deref(),
+        controller.unique_id.as_deref(),
+    ) {
+        (Some(vendor), Some(product), Some(unique)) if !unique.trim().is_empty() => {
+            format!("{vendor}:{product} {unique}")
+        }
+        (Some(vendor), Some(product), _) => format!("{vendor}:{product}"),
+        _ => controller.device_path.clone(),
+    };
+    format!("{} ({ids})", controller.name)
+}
+
+fn controller_scope_options(inventory: Option<ControllerInventory>) -> Vec<(String, String)> {
+    inventory
+        .map(|inventory| {
+            inventory
+                .controllers
+                .into_iter()
+                .map(|controller| {
+                    (
+                        controller.stable_id.clone(),
+                        controller_scope_label(&controller),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[component]
 pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl IntoView {
     // Settings state: current values and last-saved values
@@ -705,6 +760,7 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
     let (inventory, set_inventory) = signal::<Option<ControllerInventory>>(None);
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
+    let (expanded, set_expanded) = signal(true);
 
     let refresh = move || {
         set_loading.set(true);
@@ -741,6 +797,7 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
             .map(|inventory| inventory.built_in_profiles)
             .unwrap_or_default()
     };
+    let controller_options = move || controller_scope_options(inventory.get());
 
     let target_options = move || {
         let targets = inventory
@@ -773,7 +830,18 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
 
     view! {
         <div class="controller-settings">
-            <label class="controller-toggle-row">
+            <div class="controller-settings-header">
+                <button
+                    class="controller-details-toggle"
+                    aria-expanded=move || expanded.get().to_string()
+                    on:click=move |_| set_expanded.update(|value| *value = !*value)
+                >
+                    {move || if expanded.get() { "Hide" } else { "Show" }}
+                </button>
+            </div>
+
+            <Show when=move || expanded.get()>
+                <label class="controller-toggle-row">
                 <input
                     type="checkbox"
                     prop:checked=move || settings.get().controller_mapping.enabled
@@ -845,6 +913,33 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                             key=|(id, _)| id.clone()
                             children=move |(id, name)| view! {
                                 <option value=id>{name}</option>
+                            }
+                        />
+                    </select>
+                </label>
+
+                <label class="settings-label">
+                    "Load profile on"
+                    <select
+                        class="settings-input"
+                        prop:value=move || {
+                            controller_scope_select_value(
+                                &settings.get().controller_mapping.profile_controller_ids,
+                            )
+                        }
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            settings.update(|s| {
+                                set_controller_profile_scope(&mut s.controller_mapping, value);
+                            });
+                        }
+                    >
+                        <option value=CONTROLLER_SCOPE_ALL>"All plugged in controllers"</option>
+                        <For
+                            each=controller_options
+                            key=|(id, _)| id.clone()
+                            children=move |(id, label)| view! {
+                                <option value=id>{label}</option>
                             }
                         />
                     </select>
@@ -989,6 +1084,7 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                         </div>
                     }
                 })}
+                </Show>
             </Show>
         </div>
     }
