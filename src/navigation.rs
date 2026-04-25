@@ -824,9 +824,60 @@ fn focus_candidate(candidate: &HtmlElement) -> bool {
         clear_active_game_grid();
     }
     if nav_kind.as_deref() != Some("game-item") && nav_kind.as_deref() != Some("game-grid") {
-        candidate.scroll_into_view();
+        reveal_navigation_candidate(candidate);
     }
     focus_without_scroll(candidate).is_ok()
+}
+
+fn reveal_navigation_candidate(candidate: &HtmlElement) {
+    if let Some(container) = platform_list_container(candidate) {
+        reveal_platform_candidate(candidate, &container);
+    } else {
+        candidate.scroll_into_view();
+    }
+}
+
+fn platform_list_container(candidate: &HtmlElement) -> Option<HtmlElement> {
+    candidate
+        .closest(".platform-list")
+        .ok()
+        .flatten()
+        .and_then(html_element_from)
+}
+
+fn reveal_platform_candidate(candidate: &HtmlElement, container: &HtmlElement) {
+    let client_height = container.client_height();
+    if client_height <= 0 {
+        return;
+    }
+
+    let container_rect = container.get_bounding_client_rect();
+    let candidate_rect = candidate.get_bounding_client_rect();
+    let current_scroll = container.scroll_top().max(0);
+    let current_scroll_f = current_scroll as f64;
+    let candidate_top = candidate_rect.top() - container_rect.top() + current_scroll_f;
+    let candidate_bottom = candidate_rect.bottom() - container_rect.top() + current_scroll_f;
+    let viewport_top = current_scroll_f;
+    let viewport_bottom = viewport_top + client_height as f64;
+    let margin = platform_list_reveal_margin(client_height);
+
+    let target_scroll = if candidate_top < viewport_top + margin {
+        candidate_top - margin
+    } else if candidate_bottom > viewport_bottom - margin {
+        candidate_bottom - client_height as f64 + margin
+    } else {
+        return;
+    };
+
+    let max_scroll = (container.scroll_height() - client_height).max(0) as f64;
+    let target_scroll = target_scroll.max(0.0).min(max_scroll).round() as i32;
+    if target_scroll != current_scroll {
+        container.set_scroll_top(target_scroll);
+    }
+}
+
+fn platform_list_reveal_margin(client_height: i32) -> f64 {
+    (client_height as f64 * 0.18).max(48.0).min(96.0)
 }
 
 fn game_grid_container_for_element(element: &HtmlElement) -> Option<HtmlElement> {
