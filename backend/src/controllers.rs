@@ -719,7 +719,9 @@ fn list_linux_joystick_controllers(warnings: &mut Vec<String>) -> Vec<Controller
             continue;
         }
         if let Some(device) = linux_controller_from_js(&name, &entry.path()) {
-            devices.push(device);
+            if !device.is_virtual {
+                devices.push(device);
+            }
         }
     }
 
@@ -741,18 +743,19 @@ fn linux_controller_from_js(js_name: &str, js_sys_path: &Path) -> Option<Control
     let unique_id = read_trimmed(device_dir.join("uniq"));
     let device_path = format!("/dev/input/{js_name}");
     let event_paths = linux_input_child_paths(&device_dir, "event");
+    let canonical_device_dir = std::fs::canonicalize(&device_dir).ok();
     let stable_id = stable_controller_id(
         &name,
         vendor_id.as_deref(),
         product_id.as_deref(),
         unique_id.as_deref(),
     );
-    let is_virtual = name.to_ascii_lowercase().contains("virtual")
-        || name.to_ascii_lowercase().contains("inputplumber")
-        || physical_path
-            .as_deref()
-            .map(|path| path.to_ascii_lowercase().contains("virtual"))
-            .unwrap_or(false);
+    let is_virtual = is_virtual_linux_controller(
+        &name,
+        physical_path.as_deref(),
+        canonical_device_dir.as_deref(),
+        bus_type.as_deref(),
+    );
 
     Some(ControllerDevice {
         stable_id,
@@ -767,6 +770,43 @@ fn linux_controller_from_js(js_name: &str, js_sys_path: &Path) -> Option<Control
         unique_id,
         is_virtual,
     })
+}
+
+fn is_virtual_linux_controller(
+    name: &str,
+    physical_path: Option<&str>,
+    canonical_device_dir: Option<&Path>,
+    bus_type: Option<&str>,
+) -> bool {
+    let lower_name = name.to_ascii_lowercase();
+    if lower_name.contains("virtual") || lower_name.contains("inputplumber") {
+        return true;
+    }
+
+    if physical_path
+        .map(|path| path.to_ascii_lowercase().contains("virtual"))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    let Some(canonical_device_dir) = canonical_device_dir else {
+        return false;
+    };
+    let canonical = canonical_device_dir.to_string_lossy().to_ascii_lowercase();
+    if canonical.contains("/devices/virtual/input/") {
+        return true;
+    }
+
+    // Bluetooth HID controllers also use UHID, but report the Bluetooth bus
+    // type. InputPlumber virtual targets are UHID devices that present as USB.
+    if canonical.contains("/devices/virtual/misc/uhid/") {
+        return !bus_type
+            .map(|value| value.eq_ignore_ascii_case("0005"))
+            .unwrap_or(false);
+    }
+
+    false
 }
 
 fn is_likely_non_game_controller(name: &str) -> bool {
