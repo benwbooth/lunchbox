@@ -1,6 +1,7 @@
 //! Backend API bindings for the frontend.
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 /// The HTTP API base URL for browser mode
@@ -368,6 +369,115 @@ pub struct AppSettings {
     pub emumovies: EmuMoviesSettings,
     #[serde(default)]
     pub torrent: TorrentSettings,
+    #[serde(default)]
+    pub controller_mapping: ControllerMappingSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerMappingSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_controller_mapping_provider")]
+    pub provider: String,
+    #[serde(default = "default_controller_mapping_target")]
+    pub output_target: String,
+    #[serde(default)]
+    pub manage_all: bool,
+    #[serde(default)]
+    pub default_profile_id: Option<String>,
+    #[serde(default)]
+    pub platform_profile_ids: HashMap<String, String>,
+    #[serde(default)]
+    pub game_profile_ids: HashMap<String, String>,
+    #[serde(default)]
+    pub hidden_controller_ids: Vec<String>,
+}
+
+impl Default for ControllerMappingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_controller_mapping_provider(),
+            output_target: default_controller_mapping_target(),
+            manage_all: false,
+            default_profile_id: None,
+            platform_profile_ids: HashMap::new(),
+            game_profile_ids: HashMap::new(),
+            hidden_controller_ids: Vec::new(),
+        }
+    }
+}
+
+fn default_controller_mapping_provider() -> String {
+    "auto".to_string()
+}
+
+fn default_controller_mapping_target() -> String {
+    "xb360".to_string()
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerInventory {
+    pub provider: ControllerProviderStatus,
+    pub controllers: Vec<ControllerDevice>,
+    pub managed_devices: Vec<InputPlumberCompositeDevice>,
+    pub supported_targets: Vec<InputPlumberTargetDevice>,
+    pub built_in_profiles: Vec<ControllerProfileInfo>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerProviderStatus {
+    pub provider: String,
+    pub available: bool,
+    pub version: Option<String>,
+    pub service_accessible: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerDevice {
+    pub stable_id: String,
+    pub name: String,
+    pub device_path: String,
+    pub event_paths: Vec<String>,
+    pub vendor_id: Option<String>,
+    pub product_id: Option<String>,
+    pub version: Option<String>,
+    pub bus_type: Option<String>,
+    pub physical_path: Option<String>,
+    pub unique_id: Option<String>,
+    pub is_virtual: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputPlumberCompositeDevice {
+    pub id: String,
+    pub name: String,
+    pub profile_name: Option<String>,
+    pub profile_path: Option<String>,
+    pub source_paths: Vec<String>,
+    pub target_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputPlumberTargetDevice {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerProfileInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -653,6 +763,11 @@ pub async fn get_game_variants(
 /// Get settings
 pub async fn get_settings() -> Result<AppSettings, String> {
     http_get("/api/settings").await
+}
+
+/// List connected controllers and controller mapping provider state.
+pub async fn list_controllers() -> Result<ControllerInventory, String> {
+    invoke_no_args("list_controllers").await
 }
 
 /// Get the name of where credentials are stored (keyring or database)

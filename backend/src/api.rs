@@ -167,6 +167,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/check_cached_manual", get(rspc_check_cached_manual))
         .route("/rspc/download_game_manual", get(rspc_download_game_manual))
         .route("/rspc/open_local_file", get(rspc_open_local_file))
+        .route("/rspc/list_controllers", get(rspc_list_controllers))
         // rspc-style endpoints for emulator handling
         .route(
             "/rspc/get_emulators_for_platform",
@@ -1671,6 +1672,10 @@ fn rspc_err<T: serde::Serialize>(message: String) -> (StatusCode, Json<RspcRespo
             result: RspcResult::Error { code: -1, message },
         }),
     )
+}
+
+async fn rspc_list_controllers() -> impl IntoResponse {
+    rspc_ok(crate::controllers::controller_inventory()).into_response()
 }
 
 #[derive(Debug, Deserialize)]

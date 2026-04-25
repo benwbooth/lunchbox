@@ -2,11 +2,11 @@
 
 use super::ImageSourcesWizard;
 use crate::backend_api::{
-    AppSettings, EmulatorInfo, EmulatorLaunchTemplateOverride, EmulatorPreferences,
-    clear_emulator_launch_template_override, clear_game_emulator_preference,
+    AppSettings, ControllerInventory, EmulatorInfo, EmulatorLaunchTemplateOverride,
+    EmulatorPreferences, clear_emulator_launch_template_override, clear_game_emulator_preference,
     clear_platform_emulator_preference, get_all_emulator_launch_template_overrides,
     get_all_emulator_preferences, get_all_emulators, get_all_regions, get_credential_storage_name,
-    get_emulators_for_platform, get_platforms, get_settings, save_settings,
+    get_emulators_for_platform, get_platforms, get_settings, list_controllers, save_settings,
     set_emulator_launch_template_override, set_platform_emulator_preference, test_igdb_connection,
     test_screenscraper_connection, test_steamgriddb_connection, test_torrent_connection,
 };
@@ -197,6 +197,14 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                         settings=settings
                                     />
                                 </Show>
+                            </div>
+
+                            <div class="settings-section">
+                                <h3>"Controller Mapping"</h3>
+                                <p class="settings-hint">
+                                    "List connected controllers and configure launch-time InputPlumber mapping."
+                                </p>
+                                <ControllerMappingSection settings=settings />
                             </div>
 
                             // ScreenScraper Section
@@ -689,6 +697,293 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                 on_close=set_show_wizard
             />
         </Show>
+    }
+}
+
+#[component]
+fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
+    let (inventory, set_inventory) = signal::<Option<ControllerInventory>>(None);
+    let (loading, set_loading) = signal(false);
+    let (error, set_error) = signal::<Option<String>>(None);
+
+    let refresh = move || {
+        set_loading.set(true);
+        set_error.set(None);
+        spawn_local(async move {
+            match list_controllers().await {
+                Ok(value) => set_inventory.set(Some(value)),
+                Err(e) => set_error.set(Some(e)),
+            }
+            set_loading.set(false);
+        });
+    };
+
+    Effect::new(move || {
+        refresh();
+    });
+
+    let set_hidden_controller = move |stable_id: String, hidden: bool| {
+        settings.update(|settings| {
+            let ids = &mut settings.controller_mapping.hidden_controller_ids;
+            if hidden {
+                if !ids.iter().any(|id| id == &stable_id) {
+                    ids.push(stable_id);
+                }
+            } else {
+                ids.retain(|id| id != &stable_id);
+            }
+        });
+    };
+
+    let profile_options = move || {
+        inventory
+            .get()
+            .map(|inventory| inventory.built_in_profiles)
+            .unwrap_or_default()
+    };
+
+    let target_options = move || {
+        let targets = inventory
+            .get()
+            .map(|inventory| inventory.supported_targets)
+            .unwrap_or_default();
+        if targets.is_empty() {
+            vec![
+                ("xb360".to_string(), "Microsoft X-Box 360 pad".to_string()),
+                (
+                    "xbox-series".to_string(),
+                    "Microsoft Xbox Series S|X Controller".to_string(),
+                ),
+                ("ds5".to_string(), "Sony DualSense".to_string()),
+                ("gamepad".to_string(), "InputPlumber Gamepad".to_string()),
+            ]
+        } else {
+            targets
+                .into_iter()
+                .filter(|target| {
+                    matches!(
+                        target.id.as_str(),
+                        "xb360" | "xbox-series" | "xbox-elite" | "ds5" | "gamepad"
+                    )
+                })
+                .map(|target| (target.id, target.name))
+                .collect()
+        }
+    };
+
+    view! {
+        <div class="controller-settings">
+            <label class="controller-toggle-row">
+                <input
+                    type="checkbox"
+                    prop:checked=move || settings.get().controller_mapping.enabled
+                    on:change=move |ev| {
+                        let checked = event_target_checked(&ev);
+                        settings.update(|s| s.controller_mapping.enabled = checked);
+                    }
+                />
+                <span>"Enable launch-time controller mapping"</span>
+            </label>
+
+            <label class="controller-toggle-row">
+                <input
+                    type="checkbox"
+                    prop:checked=move || settings.get().controller_mapping.manage_all
+                    on:change=move |ev| {
+                        let checked = event_target_checked(&ev);
+                        settings.update(|s| s.controller_mapping.manage_all = checked);
+                    }
+                />
+                <span>"Ask InputPlumber to manage all supported controllers before launch"</span>
+            </label>
+
+            <div class="controller-settings-grid">
+                <label class="settings-label">
+                    "Default launch profile"
+                    <select
+                        class="settings-input"
+                        prop:value=move || settings.get().controller_mapping.default_profile_id.unwrap_or_default()
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            settings.update(|s| {
+                                s.controller_mapping.default_profile_id = if value.is_empty() {
+                                    None
+                                } else {
+                                    Some(value)
+                                };
+                            });
+                        }
+                    >
+                        <option value="">"Off"</option>
+                        <For
+                            each=profile_options
+                            key=|profile| profile.id.clone()
+                            children=move |profile| view! {
+                                <option value=profile.id>{profile.name}</option>
+                            }
+                        />
+                    </select>
+                </label>
+
+                <label class="settings-label">
+                    "Virtual target"
+                    <select
+                        class="settings-input"
+                        prop:value=move || settings.get().controller_mapping.output_target
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            settings.update(|s| s.controller_mapping.output_target = value);
+                        }
+                    >
+                        <For
+                            each=target_options
+                            key=|(id, _)| id.clone()
+                            children=move |(id, name)| view! {
+                                <option value=id>{name}</option>
+                            }
+                        />
+                    </select>
+                </label>
+            </div>
+
+            <div class="controller-action-row">
+                <button
+                    class="settings-test-btn"
+                    on:click=move |_| {
+                        settings.update(|s| {
+                            for platform in [
+                                "Nintendo Entertainment System",
+                                "Nintendo Game Boy",
+                                "Nintendo Game Boy Color",
+                                "NEC TurboGrafx-16",
+                            ] {
+                                s.controller_mapping
+                                    .platform_profile_ids
+                                    .insert(platform.to_string(), "two-button-clockwise".to_string());
+                            }
+                        });
+                    }
+                >
+                    "Use 2-button profile for NES/Game Boy/TG16"
+                </button>
+                <button
+                    class="settings-test-btn"
+                    on:click=move |_| {
+                        settings.update(|s| {
+                            for platform in [
+                                "Nintendo Entertainment System",
+                                "Nintendo Game Boy",
+                                "Nintendo Game Boy Color",
+                                "NEC TurboGrafx-16",
+                            ] {
+                                s.controller_mapping.platform_profile_ids.remove(platform);
+                            }
+                        });
+                    }
+                >
+                    "Clear 2-button platforms"
+                </button>
+                <button
+                    class="settings-test-btn"
+                    disabled=move || loading.get()
+                    on:click=move |_| refresh()
+                >
+                    {move || if loading.get() { "Refreshing..." } else { "Refresh Controllers" }}
+                </button>
+            </div>
+
+            <Show when=move || error.get().is_some()>
+                <div class="settings-error">{move || error.get().unwrap_or_default()}</div>
+            </Show>
+
+            <Show when=move || inventory.get().is_some()>
+                {move || inventory.get().map(|inventory| {
+                    let warnings = inventory.warnings.clone();
+                    let controllers = inventory.controllers.clone();
+                    let has_warnings = !warnings.is_empty();
+                    let controllers_empty = controllers.is_empty();
+                    let managed_count = inventory.managed_devices.len();
+                    let provider_label = if inventory.provider.available {
+                        inventory.provider.version.clone().unwrap_or_else(|| "available".to_string())
+                    } else {
+                        inventory.provider.message.clone().unwrap_or_else(|| "not available".to_string())
+                    };
+                    let warning_rows = warnings
+                        .into_iter()
+                        .map(|warning| view! { <div class="settings-hint">{warning}</div> })
+                        .collect_view();
+                    let controller_rows = controllers
+                        .into_iter()
+                        .map(|controller| {
+                            let stable_id = controller.stable_id.clone();
+                            let stable_id_for_checked = stable_id.clone();
+                            let stable_id_for_change = stable_id.clone();
+                            view! {
+                                <label class="controller-device-row">
+                                    <input
+                                        type="checkbox"
+                                        prop:checked=move || {
+                                            settings
+                                                .get()
+                                                .controller_mapping
+                                                .hidden_controller_ids
+                                                .iter()
+                                                .any(|id| id == &stable_id_for_checked)
+                                        }
+                                        on:change=move |ev| {
+                                            set_hidden_controller(
+                                                stable_id_for_change.clone(),
+                                                event_target_checked(&ev),
+                                            );
+                                        }
+                                    />
+                                    <span class="controller-device-info">
+                                        <span class="controller-device-name">{controller.name}</span>
+                                        <span class="controller-device-meta">
+                                            {format!(
+                                                "{}  {}:{}",
+                                                controller.device_path,
+                                                controller.vendor_id.unwrap_or_else(|| "????".to_string()),
+                                                controller.product_id.unwrap_or_else(|| "????".to_string()),
+                                            )}
+                                        </span>
+                                    </span>
+                                </label>
+                            }
+                        })
+                        .collect_view();
+                    let warning_section = if has_warnings {
+                        view! {
+                            <div class="controller-warning-list">
+                                {warning_rows}
+                            </div>
+                        }
+                        .into_any()
+                    } else {
+                        ().into_any()
+                    };
+                    view! {
+                        <div class="controller-inventory">
+                            <div class="controller-provider-row">
+                                <span>"InputPlumber"</span>
+                                <strong>{provider_label}</strong>
+                                <span>{format!("{} managed", managed_count)}</span>
+                            </div>
+
+                            {warning_section}
+
+                            <div class="controller-list">
+                                {if controllers_empty {
+                                    view! { <p class="settings-hint">"No joystick controllers were found."</p> }.into_any()
+                                } else {
+                                    controller_rows.into_any()
+                                }}
+                            </div>
+                        </div>
+                    }
+                })}
+            </Show>
+        </div>
     }
 }
 

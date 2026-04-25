@@ -3,6 +3,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::db;
@@ -71,6 +72,59 @@ pub struct AppSettings {
     pub emumovies: EmuMoviesSettings,
     #[serde(default)]
     pub torrent: TorrentSettings,
+    #[serde(default)]
+    pub controller_mapping: ControllerMappingSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControllerMappingSettings {
+    /// Enables launch-time controller remapping. Disabled by default.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Provider backend. "auto" currently resolves to InputPlumber on Linux.
+    #[serde(default = "default_controller_mapping_provider")]
+    pub provider: String,
+    /// InputPlumber target device to expose when a profile is active.
+    #[serde(default = "default_controller_mapping_target")]
+    pub output_target: String,
+    /// Allow Lunchbox to ask InputPlumber to manage all supported devices.
+    #[serde(default)]
+    pub manage_all: bool,
+    /// Built-in profile id or custom profile path used when no scope override matches.
+    #[serde(default)]
+    pub default_profile_id: Option<String>,
+    /// Platform name -> built-in profile id or custom profile path.
+    #[serde(default)]
+    pub platform_profile_ids: HashMap<String, String>,
+    /// LaunchBox DB id string -> built-in profile id or custom profile path.
+    #[serde(default)]
+    pub game_profile_ids: HashMap<String, String>,
+    /// Stable controller ids to suppress or remap during launch.
+    #[serde(default)]
+    pub hidden_controller_ids: Vec<String>,
+}
+
+impl Default for ControllerMappingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_controller_mapping_provider(),
+            output_target: default_controller_mapping_target(),
+            manage_all: false,
+            default_profile_id: None,
+            platform_profile_ids: HashMap::new(),
+            game_profile_ids: HashMap::new(),
+            hidden_controller_ids: Vec::new(),
+        }
+    }
+}
+
+fn default_controller_mapping_provider() -> String {
+    "auto".to_string()
+}
+
+fn default_controller_mapping_target() -> String {
+    "xb360".to_string()
 }
 
 /// ScreenScraper API settings
@@ -194,6 +248,7 @@ impl Default for AppSettings {
             igdb: IGDBSettings::default(),
             emumovies: EmuMoviesSettings::default(),
             torrent: TorrentSettings::default(),
+            controller_mapping: ControllerMappingSettings::default(),
         }
     }
 }

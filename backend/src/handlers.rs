@@ -1691,6 +1691,22 @@ pub async fn launch_game_with_emulator(
                 false,
             )
             .await?;
+            let controller_session = match crate::controllers::activate_for_launch(
+                &settings,
+                Some(runtime_platform),
+                Some(db_id),
+            )
+            .await
+            {
+                Ok(session) => session,
+                Err(e) => {
+                    return Ok(LaunchResult {
+                        success: false,
+                        pid: None,
+                        error: Some(e),
+                    });
+                }
+            };
 
             return match emulator::launch_prepared_install(
                 emulator,
@@ -1700,16 +1716,22 @@ pub async fn launch_game_with_emulator(
                 as_retroarch_core,
                 &launch_configuration,
             ) {
-                Ok(pid) => Ok(LaunchResult {
-                    success: true,
-                    pid: Some(pid),
-                    error: None,
-                }),
-                Err(e) => Ok(LaunchResult {
-                    success: false,
-                    pid: None,
-                    error: Some(e),
-                }),
+                Ok(pid) => {
+                    controller_session.restore_when_process_exits(pid);
+                    Ok(LaunchResult {
+                        success: true,
+                        pid: Some(pid),
+                        error: None,
+                    })
+                }
+                Err(e) => {
+                    controller_session.restore();
+                    Ok(LaunchResult {
+                        success: false,
+                        pid: None,
+                        error: Some(e),
+                    })
+                }
             };
         }
 
@@ -1755,6 +1777,22 @@ pub async fn launch_game_with_emulator(
         launch_configuration
             .legacy_args
             .extend(firmware_launch_args);
+        let controller_session = match crate::controllers::activate_for_launch(
+            &settings,
+            Some(runtime_platform),
+            Some(db_id),
+        )
+        .await
+        {
+            Ok(session) => session,
+            Err(e) => {
+                return Ok(LaunchResult {
+                    success: false,
+                    pid: None,
+                    error: Some(e),
+                });
+            }
+        };
 
         match emulator::launch_emulator(
             emulator,
@@ -1764,6 +1802,7 @@ pub async fn launch_game_with_emulator(
             &launch_configuration,
         ) {
             Ok(pid) => {
+                controller_session.restore_when_process_exits(pid);
                 return Ok(LaunchResult {
                     success: true,
                     pid: Some(pid),
@@ -1771,6 +1810,7 @@ pub async fn launch_game_with_emulator(
                 });
             }
             Err(e) => {
+                controller_session.restore();
                 return Ok(LaunchResult {
                     success: false,
                     pid: None,
@@ -1788,6 +1828,7 @@ pub async fn launch_game_with_emulator(
         });
     };
 
+    let settings = state.settings.clone();
     let launch_configuration = build_launch_configuration(
         state,
         launchbox_db_id,
@@ -1797,6 +1838,17 @@ pub async fn launch_game_with_emulator(
         true,
     )
     .await?;
+    let controller_session =
+        match crate::controllers::activate_for_launch(&settings, None, launchbox_db_id).await {
+            Ok(session) => session,
+            Err(e) => {
+                return Ok(LaunchResult {
+                    success: false,
+                    pid: None,
+                    error: Some(e),
+                });
+            }
+        };
 
     match emulator::launch_emulator(
         emulator,
@@ -1805,16 +1857,22 @@ pub async fn launch_game_with_emulator(
         as_retroarch_core,
         &launch_configuration,
     ) {
-        Ok(pid) => Ok(LaunchResult {
-            success: true,
-            pid: Some(pid),
-            error: None,
-        }),
-        Err(e) => Ok(LaunchResult {
-            success: false,
-            pid: None,
-            error: Some(e),
-        }),
+        Ok(pid) => {
+            controller_session.restore_when_process_exits(pid);
+            Ok(LaunchResult {
+                success: true,
+                pid: Some(pid),
+                error: None,
+            })
+        }
+        Err(e) => {
+            controller_session.restore();
+            Ok(LaunchResult {
+                success: false,
+                pid: None,
+                error: Some(e),
+            })
+        }
     }
 }
 
