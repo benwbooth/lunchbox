@@ -1365,7 +1365,7 @@ async fn load_minerva_torrent_groups(
             (rom, result)
         }
     }))
-    .buffer_unordered(6);
+    .buffer_unordered(2);
 
     let mut completed_groups = 0usize;
     while let Some((rom, result)) = group_results.next().await {
@@ -2374,36 +2374,6 @@ pub fn GameDetails(
                 set_minerva_starting.set(false);
             }
         }
-    });
-
-    // Preload Minerva torrent matches when the details panel resolves a Minerva source.
-    Effect::new(move || {
-        let Some(current_game) = display_game.get() else {
-            return;
-        };
-
-        if minerva_rom.get().is_none() {
-            return;
-        }
-
-        let request_key = minerva_torrent_groups_request_key(
-            current_game.database_id,
-            &current_game.display_title,
-            &current_game.platform,
-            current_game.platform_id,
-        );
-        if torrent_groups_request_key.get_untracked().as_deref() == Some(request_key.as_str()) {
-            return;
-        }
-
-        request_minerva_torrent_groups(
-            current_game.database_id,
-            current_game.display_title.clone(),
-            current_game.platform.clone(),
-            current_game.platform_id,
-            false,
-            false,
-        );
     });
 
     // Load variant game when pending_variant_load changes
