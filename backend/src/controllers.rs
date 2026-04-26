@@ -1,9 +1,12 @@
 use crate::state::{AppSettings, ControllerMappingSettings, ControllerPlayerMapping};
 use serde::Serialize;
 use std::collections::HashSet;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+const INPUTPLUMBER_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,12 +76,26 @@ pub struct ControllerLaunchSession {
     restore_entries: Vec<InputPlumberRestoreEntry>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct InputPlumberRestoreEntry {
     device_id: String,
     intercept_mode: Option<String>,
     profile_path: Option<String>,
     target_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct InputPlumberCompositeDeviceSummary {
+    id: String,
+    name: String,
+}
+
+#[derive(Debug)]
+struct InputPlumberLaunchDevice {
+    id: String,
+    hidden: bool,
+    target_device_ids: Vec<String>,
+    profile_path: Option<PathBuf>,
 }
 
 pub fn built_in_profiles() -> Vec<ControllerProfileInfo> {
@@ -137,14 +154,21 @@ pub async fn activate_for_launch(
         return Err("InputPlumber is not available on PATH.".to_string());
     }
 
+    let started = Instant::now();
     let mut warnings = Vec::new();
     let controllers = list_local_controllers(&mut warnings);
-    let mut managed_devices = list_inputplumber_composite_devices()
-        .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?;
-
-    if mapping.manage_all || managed_devices.is_empty() {
+    let mut managed_devices = if mapping.manage_all {
         run_inputplumber(&["devices", "manage-all", "--enable"])?;
-        managed_devices = list_inputplumber_composite_devices()
+        list_inputplumber_device_summaries()
+            .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?
+    } else {
+        list_inputplumber_device_summaries()
+            .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?
+    };
+
+    if managed_devices.is_empty() {
+        run_inputplumber(&["devices", "manage-all", "--enable"])?;
+        managed_devices = list_inputplumber_device_summaries()
             .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?;
     }
 
@@ -165,18 +189,18 @@ pub async fn activate_for_launch(
     )?;
 
     if !active_player_mappings.is_empty() {
-        let mut session = ControllerLaunchSession::default();
+        let mut launch_devices = Vec::new();
         let mut matched_any = false;
 
         for device in managed_devices {
+            let info = inputplumber_device_info(&device.id).unwrap_or_default();
             let matches_hidden = !hidden_controller_paths.is_empty()
-                && device
+                && info
                     .source_paths
                     .iter()
                     .any(|path| hidden_controller_paths.contains(path));
             let matched_player = active_player_mappings.iter().find(|mapping| {
-                device
-                    .source_paths
+                info.source_paths
                     .iter()
                     .any(|path| mapping.source_paths.contains(path))
             });
@@ -186,42 +210,22 @@ pub async fn activate_for_launch(
             }
 
             matched_any = true;
-            let restore = InputPlumberRestoreEntry {
-                device_id: device.id.clone(),
-                intercept_mode: Some(inputplumber_device_intercept_mode(&device.id)?),
-                profile_path: device.profile_path.clone(),
-                target_ids: device.target_ids.clone(),
+            let Some(player_mapping) = matched_player else {
+                launch_devices.push(InputPlumberLaunchDevice {
+                    id: device.id,
+                    hidden: true,
+                    target_device_ids: Vec::new(),
+                    profile_path: None,
+                });
+                continue;
             };
 
-            session.restore_entries.push(restore);
-
-            let apply_result = (|| {
-                run_inputplumber(&["device", &device.id, "intercept", "set", "gamepad-only"])?;
-
-                if matches_hidden {
-                    run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
-                } else if let Some(player_mapping) = matched_player {
-                    run_inputplumber_with_dynamic_args(
-                        ["device", &device.id, "targets", "set"],
-                        &player_mapping.target_device_ids,
-                    )?;
-                    if let Some(path) = player_mapping.profile_path.as_ref() {
-                        run_inputplumber(&[
-                            "device",
-                            &device.id,
-                            "profile",
-                            "load",
-                            path.to_string_lossy().as_ref(),
-                        ])?;
-                    }
-                }
-                Ok(())
-            })();
-
-            if let Err(e) = apply_result {
-                session.restore();
-                return Err(e);
-            }
+            launch_devices.push(InputPlumberLaunchDevice {
+                id: device.id,
+                hidden: matches_hidden,
+                target_device_ids: player_mapping.target_device_ids.clone(),
+                profile_path: player_mapping.profile_path.clone(),
+            });
         }
 
         if !matched_any {
@@ -231,6 +235,8 @@ pub async fn activate_for_launch(
             );
         }
 
+        let session = apply_inputplumber_launch_devices(launch_devices)?;
+        log_slow_controller_activation(started, session.restore_entries.len());
         return Ok(session);
     }
 
@@ -250,18 +256,24 @@ pub async fn activate_for_launch(
         None
     };
 
-    let mut session = ControllerLaunchSession::default();
+    let mut launch_devices = Vec::new();
     let mut matched_any = false;
+    let needs_source_paths = !hidden_controller_paths.is_empty() || !profile_scope_is_all;
 
     for device in managed_devices {
+        let source_paths = if needs_source_paths {
+            inputplumber_device_info(&device.id)
+                .map(|info| info.source_paths)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let matches_hidden = !hidden_controller_paths.is_empty()
-            && device
-                .source_paths
+            && source_paths
                 .iter()
                 .any(|path| hidden_controller_paths.contains(path));
         let matches_profile = profile_scope_is_all
-            || device
-                .source_paths
+            || source_paths
                 .iter()
                 .any(|path| profile_controller_paths.contains(path));
 
@@ -270,42 +282,12 @@ pub async fn activate_for_launch(
         }
 
         matched_any = true;
-        let restore = InputPlumberRestoreEntry {
-            device_id: device.id.clone(),
-            intercept_mode: Some(inputplumber_device_intercept_mode(&device.id)?),
-            profile_path: device.profile_path.clone(),
-            target_ids: device.target_ids.clone(),
-        };
-
-        session.restore_entries.push(restore);
-
-        let apply_result = (|| {
-            run_inputplumber(&["device", &device.id, "intercept", "set", "gamepad-only"])?;
-
-            if matches_hidden {
-                run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
-            } else {
-                run_inputplumber_with_dynamic_args(
-                    ["device", &device.id, "targets", "set"],
-                    &target_device_ids,
-                )?;
-                if let Some(path) = profile_path.as_ref() {
-                    run_inputplumber(&[
-                        "device",
-                        &device.id,
-                        "profile",
-                        "load",
-                        path.to_string_lossy().as_ref(),
-                    ])?;
-                }
-            }
-            Ok(())
-        })();
-
-        if let Err(e) = apply_result {
-            session.restore();
-            return Err(e);
-        }
+        launch_devices.push(InputPlumberLaunchDevice {
+            id: device.id,
+            hidden: matches_hidden,
+            target_device_ids: target_device_ids.clone(),
+            profile_path: profile_path.clone(),
+        });
     }
 
     if !matched_any {
@@ -314,7 +296,91 @@ pub async fn activate_for_launch(
         );
     }
 
+    let session = apply_inputplumber_launch_devices(launch_devices)?;
+    log_slow_controller_activation(started, session.restore_entries.len());
     Ok(session)
+}
+
+fn log_slow_controller_activation(started: Instant, device_count: usize) {
+    let elapsed = started.elapsed();
+    if elapsed > Duration::from_secs(2) {
+        tracing::warn!(
+            elapsed_ms = elapsed.as_millis(),
+            device_count = device_count,
+            "Slow controller mapping activation"
+        );
+    }
+}
+
+fn apply_inputplumber_launch_devices(
+    devices: Vec<InputPlumberLaunchDevice>,
+) -> Result<ControllerLaunchSession, String> {
+    let handles = devices
+        .into_iter()
+        .map(|device| std::thread::spawn(move || apply_inputplumber_launch_device(device)))
+        .collect::<Vec<_>>();
+
+    let mut session = ControllerLaunchSession::default();
+    let mut first_error = None;
+
+    for handle in handles {
+        match handle.join() {
+            Ok(Ok(restore)) => session.restore_entries.push(restore),
+            Ok(Err(e)) => {
+                first_error.get_or_insert(e);
+            }
+            Err(_) => {
+                first_error.get_or_insert_with(|| {
+                    "InputPlumber controller setup worker panicked.".to_string()
+                });
+            }
+        }
+    }
+
+    if let Some(error) = first_error {
+        session.restore();
+        Err(error)
+    } else {
+        Ok(session)
+    }
+}
+
+fn apply_inputplumber_launch_device(
+    device: InputPlumberLaunchDevice,
+) -> Result<InputPlumberRestoreEntry, String> {
+    let restore = inputplumber_restore_entry(&device.id, device.profile_path.is_some())?;
+    let apply_result = (|| {
+        run_inputplumber(&["device", &device.id, "intercept", "set", "gamepad-only"])?;
+
+        if device.hidden {
+            run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
+        } else {
+            run_inputplumber_with_dynamic_args(
+                ["device", &device.id, "targets", "set"],
+                &device.target_device_ids,
+            )?;
+            if let Some(path) = device.profile_path.as_ref() {
+                run_inputplumber(&[
+                    "device",
+                    &device.id,
+                    "profile",
+                    "load",
+                    path.to_string_lossy().as_ref(),
+                ])?;
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(e) = apply_result {
+        ControllerLaunchSession {
+            restore_entries: vec![restore.clone()],
+        }
+        .restore();
+        Err(e)
+    } else {
+        Ok(restore)
+    }
 }
 
 impl ControllerLaunchSession {
@@ -670,6 +736,13 @@ fn inputplumber_version() -> Option<String> {
 }
 
 fn list_inputplumber_composite_devices() -> Result<Vec<InputPlumberCompositeDevice>, String> {
+    list_inputplumber_device_summaries()?
+        .into_iter()
+        .map(hydrate_inputplumber_composite_device)
+        .collect()
+}
+
+fn list_inputplumber_device_summaries() -> Result<Vec<InputPlumberCompositeDeviceSummary>, String> {
     let output = run_inputplumber(&["devices", "list"])?;
     let mut devices = Vec::new();
 
@@ -679,19 +752,25 @@ fn list_inputplumber_composite_devices() -> Result<Vec<InputPlumberCompositeDevi
         }
         let id = row[0].clone();
         let name = row[1].clone();
-        let info = inputplumber_device_info(&id).unwrap_or_default();
-        let target_ids = inputplumber_device_targets(&id).unwrap_or_default();
-        devices.push(InputPlumberCompositeDevice {
-            id,
-            name,
-            profile_name: info.profile_name,
-            profile_path: info.profile_path,
-            source_paths: info.source_paths,
-            target_ids,
-        });
+        devices.push(InputPlumberCompositeDeviceSummary { id, name });
     }
 
     Ok(devices)
+}
+
+fn hydrate_inputplumber_composite_device(
+    summary: InputPlumberCompositeDeviceSummary,
+) -> Result<InputPlumberCompositeDevice, String> {
+    let info = inputplumber_device_info(&summary.id).unwrap_or_default();
+    let target_ids = inputplumber_device_targets(&summary.id).unwrap_or_default();
+    Ok(InputPlumberCompositeDevice {
+        id: summary.id,
+        name: summary.name,
+        profile_name: info.profile_name,
+        profile_path: info.profile_path,
+        source_paths: info.source_paths,
+        target_ids,
+    })
 }
 
 #[derive(Default)]
@@ -717,12 +796,14 @@ fn inputplumber_device_info(id: &str) -> Result<InputPlumberDeviceInfo, String> 
         }
     }
 
-    let profile_path = run_inputplumber(&["device", id, "profile", "path"]).ok();
-    info.profile_path = profile_path.and_then(|output| {
-        extract_first_path(&output).or_else(|| normalized_optional_string(output.trim()))
-    });
+    info.profile_path = inputplumber_device_profile_path(id).ok().flatten();
 
     Ok(info)
+}
+
+fn inputplumber_device_profile_path(id: &str) -> Result<Option<String>, String> {
+    let output = run_inputplumber(&["device", id, "profile", "path"])?;
+    Ok(extract_first_path(&output).or_else(|| normalized_optional_string(output.trim())))
 }
 
 fn inputplumber_device_targets(id: &str) -> Result<Vec<String>, String> {
@@ -748,6 +829,22 @@ fn inputplumber_device_intercept_mode(id: &str) -> Result<String, String> {
         .filter(|mode| !mode.is_empty())
         .map(ToOwned::to_owned)
         .ok_or_else(|| format!("Failed to parse InputPlumber intercept mode for device {id}"))
+}
+
+fn inputplumber_restore_entry(
+    id: &str,
+    capture_profile_path: bool,
+) -> Result<InputPlumberRestoreEntry, String> {
+    Ok(InputPlumberRestoreEntry {
+        device_id: id.to_string(),
+        intercept_mode: Some(inputplumber_device_intercept_mode(id)?),
+        profile_path: if capture_profile_path {
+            inputplumber_device_profile_path(id).ok().flatten()
+        } else {
+            None
+        },
+        target_ids: inputplumber_device_targets(id).unwrap_or_default(),
+    })
 }
 
 fn list_inputplumber_supported_targets() -> Result<Vec<InputPlumberTargetDevice>, String> {
@@ -785,24 +882,56 @@ fn run_inputplumber_with_dynamic_args<const N: usize>(
 }
 
 fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
+    let started = Instant::now();
+    let mut child = Command::new(program)
         .args(args)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to run {}: {}", program, e))?;
 
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let message = if stderr.is_empty() { stdout } else { stderr };
-        Err(format!(
-            "{} {} failed: {}",
-            program,
-            args.join(" "),
-            message
-        ))
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = read_child_pipe(child.stdout.take());
+                let stderr = read_child_pipe(child.stderr.take());
+                if status.success() {
+                    return Ok(stdout);
+                }
+
+                let stderr = stderr.trim().to_string();
+                let stdout = stdout.trim().to_string();
+                let message = if stderr.is_empty() { stdout } else { stderr };
+                return Err(format!(
+                    "{} {} failed: {}",
+                    program,
+                    args.join(" "),
+                    message
+                ));
+            }
+            Ok(None) if started.elapsed() >= INPUTPLUMBER_COMMAND_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "{} {} timed out after {}s",
+                    program,
+                    args.join(" "),
+                    INPUTPLUMBER_COMMAND_TIMEOUT.as_secs()
+                ));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
+            Err(e) => return Err(format!("Failed to wait for {}: {}", program, e)),
+        }
     }
+}
+
+fn read_child_pipe<T: Read>(pipe: Option<T>) -> String {
+    let Some(mut pipe) = pipe else {
+        return String::new();
+    };
+    let mut bytes = Vec::new();
+    let _ = pipe.read_to_end(&mut bytes);
+    String::from_utf8_lossy(&bytes).to_string()
 }
 
 fn parse_box_rows(output: &str) -> Vec<Vec<String>> {
