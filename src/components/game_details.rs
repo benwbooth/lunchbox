@@ -1811,6 +1811,7 @@ fn save_controller_mapping_change(
     };
 
     update(&mut next_settings);
+    trim_default_player_mappings(&mut next_settings.controller_mapping);
     settings.set(Some(next_settings.clone()));
     set_saving.set(true);
     set_error.set(None);
@@ -1941,7 +1942,6 @@ fn ControllerProfileDetails(
     };
     let game_profile_disabled = move || {
         settings_loading.get()
-            || saving.get()
             || settings.get().is_none()
             || game
                 .get()

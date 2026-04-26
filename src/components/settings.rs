@@ -374,7 +374,12 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
             return;
         }
 
-        let current = settings.get();
+        let mut current = settings.get();
+        trim_default_player_mappings(&mut current.controller_mapping);
+        if current != settings.get_untracked() {
+            settings.set(current.clone());
+        }
+
         // Only save if settings actually changed
         if current == saved_settings.get() {
             return;
