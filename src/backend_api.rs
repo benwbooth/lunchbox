@@ -799,6 +799,11 @@ pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
     http_post_empty("/api/settings", &settings).await
 }
 
+/// Save controller mapping settings without running the full app settings save path.
+pub async fn save_controller_mapping(settings: ControllerMappingSettings) -> Result<(), String> {
+    http_post_empty("/api/settings/controller-mapping", &settings).await
+}
+
 /// Greet (test command)
 pub async fn greet(name: &str) -> Result<String, String> {
     #[derive(Serialize)]

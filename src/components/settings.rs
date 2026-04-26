@@ -6,9 +6,10 @@ use crate::backend_api::{
     EmulatorPreferences, clear_emulator_launch_template_override, clear_game_emulator_preference,
     clear_platform_emulator_preference, get_all_emulator_launch_template_overrides,
     get_all_emulator_preferences, get_all_emulators, get_all_regions, get_credential_storage_name,
-    get_emulators_for_platform, get_platforms, get_settings, list_controllers, save_settings,
-    set_emulator_launch_template_override, set_platform_emulator_preference, test_igdb_connection,
-    test_screenscraper_connection, test_steamgriddb_connection, test_torrent_connection,
+    get_emulators_for_platform, get_platforms, get_settings, list_controllers,
+    save_controller_mapping, save_settings, set_emulator_launch_template_override,
+    set_platform_emulator_preference, test_igdb_connection, test_screenscraper_connection,
+    test_steamgriddb_connection, test_torrent_connection,
 };
 use futures::future::join_all;
 use leptos::prelude::*;
@@ -311,6 +312,31 @@ fn set_player_mapping_target(
     trim_default_player_mappings(mapping);
 }
 
+fn save_controller_mapping_settings(
+    settings: RwSignal<AppSettings>,
+    saved_settings: RwSignal<AppSettings>,
+    set_save_error: WriteSignal<Option<String>>,
+    update: impl FnOnce(&mut crate::backend_api::ControllerMappingSettings) + 'static,
+) {
+    let mut next_mapping = settings.get_untracked().controller_mapping.clone();
+    update(&mut next_mapping);
+    trim_default_player_mappings(&mut next_mapping);
+
+    settings.update(|settings| {
+        settings.controller_mapping = next_mapping.clone();
+    });
+    saved_settings.update(|settings| {
+        settings.controller_mapping = next_mapping.clone();
+    });
+    set_save_error.set(None);
+
+    spawn_local(async move {
+        if let Err(e) = save_controller_mapping(next_mapping).await {
+            set_save_error.set(Some(e));
+        }
+    });
+}
+
 #[component]
 pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl IntoView {
     // Settings state: current values and last-saved values
@@ -504,7 +530,11 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                 <p class="settings-hint">
                                     "List connected controllers and configure launch-time InputPlumber mapping."
                                 </p>
-                                <ControllerMappingSection settings=settings />
+                                <ControllerMappingSection
+                                    settings=settings
+                                    saved_settings=saved_settings
+                                    set_save_error=set_save_error
+                                />
                             </div>
 
                             // ScreenScraper Section
@@ -1001,7 +1031,11 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
 }
 
 #[component]
-fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
+fn ControllerMappingSection(
+    settings: RwSignal<AppSettings>,
+    saved_settings: RwSignal<AppSettings>,
+    set_save_error: WriteSignal<Option<String>>,
+) -> impl IntoView {
     let (inventory, set_inventory) = signal::<Option<ControllerInventory>>(None);
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
@@ -1025,16 +1059,21 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
     });
 
     let set_hidden_controller = move |stable_id: String, hidden: bool| {
-        settings.update(|settings| {
-            let ids = &mut settings.controller_mapping.hidden_controller_ids;
-            if hidden {
-                if !ids.iter().any(|id| id == &stable_id) {
-                    ids.push(stable_id);
+        save_controller_mapping_settings(
+            settings,
+            saved_settings,
+            set_save_error,
+            move |mapping| {
+                let ids = &mut mapping.hidden_controller_ids;
+                if hidden {
+                    if !ids.iter().any(|id| id == &stable_id) {
+                        ids.push(stable_id);
+                    }
+                } else {
+                    ids.retain(|id| id != &stable_id);
                 }
-            } else {
-                ids.retain(|id| id != &stable_id);
-            }
-        });
+            },
+        );
     };
 
     let profile_options = move || {
@@ -1119,10 +1158,15 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                     prop:checked=move || settings.get().controller_mapping.enabled
                     on:change=move |ev| {
                         let checked = event_target_checked(&ev);
-                        settings.update(|s| {
-                            s.controller_mapping.enabled = checked;
-                            s.controller_mapping.manage_all = checked;
-                        });
+                        save_controller_mapping_settings(
+                            settings,
+                            saved_settings,
+                            set_save_error,
+                            move |mapping| {
+                                mapping.enabled = checked;
+                                mapping.manage_all = checked;
+                            },
+                        );
                     }
                 />
                 <span>"Turn on controller mapping"</span>
@@ -1136,17 +1180,22 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                         prop:value=move || settings.get().controller_mapping.default_profile_id.unwrap_or_default()
                         on:change=move |ev| {
                             let value = event_target_value(&ev);
-                            settings.update(|s| {
-                                if !value.is_empty() {
-                                    s.controller_mapping.enabled = true;
-                                    s.controller_mapping.manage_all = true;
-                                }
-                                s.controller_mapping.default_profile_id = if value.is_empty() {
-                                    None
-                                } else {
-                                    Some(value)
-                                };
-                            });
+                            save_controller_mapping_settings(
+                                settings,
+                                saved_settings,
+                                set_save_error,
+                                move |mapping| {
+                                    if !value.is_empty() {
+                                        mapping.enabled = true;
+                                        mapping.manage_all = true;
+                                    }
+                                    mapping.default_profile_id = if value.is_empty() {
+                                        None
+                                    } else {
+                                        Some(value)
+                                    };
+                                },
+                            );
                         }
                     >
                         <option value="">"Off"</option>
@@ -1167,7 +1216,12 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                         prop:value=move || settings.get().controller_mapping.output_target
                         on:change=move |ev| {
                             let value = event_target_value(&ev);
-                            settings.update(|s| s.controller_mapping.output_target = value);
+                            save_controller_mapping_settings(
+                                settings,
+                                saved_settings,
+                                set_save_error,
+                                move |mapping| mapping.output_target = value,
+                            );
                         }
                     >
                         <For
@@ -1216,15 +1270,20 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                                                 prop:value=controller_value
                                                 on:change=move |ev| {
                                                     let value = event_target_value(&ev);
-                                                    settings.update(|s| {
-                                                        s.controller_mapping.enabled = true;
-                                                        s.controller_mapping.manage_all = true;
-                                                        set_player_mapping_controller(
-                                                            &mut s.controller_mapping,
-                                                            player_index,
-                                                            value,
-                                                        );
-                                                    });
+                                                    save_controller_mapping_settings(
+                                                        settings,
+                                                        saved_settings,
+                                                        set_save_error,
+                                                        move |mapping| {
+                                                            mapping.enabled = true;
+                                                            mapping.manage_all = true;
+                                                            set_player_mapping_controller(
+                                                                mapping,
+                                                                player_index,
+                                                                value,
+                                                            );
+                                                        },
+                                                    );
                                                 }
                                             >
                                                 <option value=CONTROLLER_PLAYER_UNUSED>"Unused"</option>
@@ -1264,16 +1323,21 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                                                             player_index,
                                                             inventory.get_untracked(),
                                                         );
-                                                    settings.update(|s| {
-                                                        s.controller_mapping.enabled = true;
-                                                        s.controller_mapping.manage_all = true;
-                                                        set_player_mapping_profile(
-                                                            &mut s.controller_mapping,
-                                                            player_index,
-                                                            value,
-                                                            activation_controller_id,
-                                                        );
-                                                    });
+                                                    save_controller_mapping_settings(
+                                                        settings,
+                                                        saved_settings,
+                                                        set_save_error,
+                                                        move |mapping| {
+                                                            mapping.enabled = true;
+                                                            mapping.manage_all = true;
+                                                            set_player_mapping_profile(
+                                                                mapping,
+                                                                player_index,
+                                                                value,
+                                                                activation_controller_id,
+                                                            );
+                                                        },
+                                                    );
                                                 }
                                             >
                                                 <option value=CONTROLLER_PROFILE_INHERIT>"Use default"</option>
@@ -1309,16 +1373,21 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                                                             player_index,
                                                             inventory.get_untracked(),
                                                         );
-                                                    settings.update(|s| {
-                                                        s.controller_mapping.enabled = true;
-                                                        s.controller_mapping.manage_all = true;
-                                                        set_player_mapping_target(
-                                                            &mut s.controller_mapping,
-                                                            player_index,
-                                                            value,
-                                                            activation_controller_id,
-                                                        );
-                                                    });
+                                                    save_controller_mapping_settings(
+                                                        settings,
+                                                        saved_settings,
+                                                        set_save_error,
+                                                        move |mapping| {
+                                                            mapping.enabled = true;
+                                                            mapping.manage_all = true;
+                                                            set_player_mapping_target(
+                                                                mapping,
+                                                                player_index,
+                                                                value,
+                                                                activation_controller_id,
+                                                            );
+                                                        },
+                                                    );
                                                 }
                                             >
                                                 <option value=CONTROLLER_TARGET_INHERIT>"Default target"</option>
@@ -1349,20 +1418,25 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                 <button
                     class="settings-test-btn"
                     on:click=move |_| {
-                        settings.update(|s| {
-                            s.controller_mapping.enabled = true;
-                            s.controller_mapping.manage_all = true;
-                            for platform in [
-                                "Nintendo Entertainment System",
-                                "Nintendo Game Boy",
-                                "Nintendo Game Boy Color",
-                                "NEC TurboGrafx-16",
-                            ] {
-                                s.controller_mapping
-                                    .platform_profile_ids
-                                    .insert(platform.to_string(), "two-button-clockwise".to_string());
-                            }
-                        });
+                        save_controller_mapping_settings(
+                            settings,
+                            saved_settings,
+                            set_save_error,
+                            move |mapping| {
+                                mapping.enabled = true;
+                                mapping.manage_all = true;
+                                for platform in [
+                                    "Nintendo Entertainment System",
+                                    "Nintendo Game Boy",
+                                    "Nintendo Game Boy Color",
+                                    "NEC TurboGrafx-16",
+                                ] {
+                                    mapping
+                                        .platform_profile_ids
+                                        .insert(platform.to_string(), "two-button-clockwise".to_string());
+                                }
+                            },
+                        );
                     }
                 >
                     "Use 2-button profile for NES/Game Boy/TG16"
@@ -1370,16 +1444,21 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                 <button
                     class="settings-test-btn"
                     on:click=move |_| {
-                        settings.update(|s| {
-                            for platform in [
-                                "Nintendo Entertainment System",
-                                "Nintendo Game Boy",
-                                "Nintendo Game Boy Color",
-                                "NEC TurboGrafx-16",
-                            ] {
-                                s.controller_mapping.platform_profile_ids.remove(platform);
-                            }
-                        });
+                        save_controller_mapping_settings(
+                            settings,
+                            saved_settings,
+                            set_save_error,
+                            move |mapping| {
+                                for platform in [
+                                    "Nintendo Entertainment System",
+                                    "Nintendo Game Boy",
+                                    "Nintendo Game Boy Color",
+                                    "NEC TurboGrafx-16",
+                                ] {
+                                    mapping.platform_profile_ids.remove(platform);
+                                }
+                            },
+                        );
                     }
                 >
                     "Clear 2-button platforms"

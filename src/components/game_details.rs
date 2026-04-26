@@ -1833,7 +1833,7 @@ fn load_controller_inventory(
 
 fn save_controller_mapping_change(
     settings: RwSignal<Option<backend_api::AppSettings>>,
-    set_saving: WriteSignal<bool>,
+    _set_saving: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     update: impl FnOnce(&mut backend_api::AppSettings) + 'static,
 ) {
@@ -1843,20 +1843,14 @@ fn save_controller_mapping_change(
 
     update(&mut next_settings);
     trim_default_player_mappings(&mut next_settings.controller_mapping);
+    let controller_mapping = next_settings.controller_mapping.clone();
     settings.set(Some(next_settings.clone()));
-    set_saving.set(true);
     set_error.set(None);
 
     spawn_local(async move {
-        match backend_api::save_settings(next_settings.clone()).await {
-            Ok(()) => {
-                settings.set(Some(next_settings));
-            }
-            Err(e) => {
-                set_error.set(Some(e));
-            }
+        if let Err(e) = backend_api::save_controller_mapping(controller_mapping).await {
+            set_error.set(Some(e));
         }
-        set_saving.set(false);
     });
 }
 

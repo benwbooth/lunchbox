@@ -121,6 +121,10 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/games/:uuid", get(get_game_by_uuid))
         .route("/api/games/:uuid/variants", get(get_game_variants))
         .route("/api/settings", get(get_settings).post(save_settings_http))
+        .route(
+            "/api/settings/controller-mapping",
+            post(save_controller_mapping_settings_http),
+        )
         .route("/api/credential-storage", get(get_credential_storage))
         .route("/api/stats/:db_id", get(get_play_stats))
         .route("/api/favorites", get(get_favorites))
@@ -1281,6 +1285,30 @@ async fn save_settings_http(
     }
 
     state_guard.settings = settings;
+    Ok(())
+}
+
+async fn save_controller_mapping_settings_http(
+    State(state): State<SharedState>,
+    Json(mut controller_mapping): Json<crate::state::ControllerMappingSettings>,
+) -> Result<(), (StatusCode, String)> {
+    normalize_controller_mapping(&mut controller_mapping);
+
+    let (pool, settings) = {
+        let state_guard = state.read().await;
+        let mut settings = state_guard.settings.clone();
+        settings.controller_mapping = controller_mapping;
+        (state_guard.db_pool.clone(), settings)
+    };
+
+    if let Some(pool) = pool {
+        crate::state::save_settings_preserving_credentials(&pool, &settings)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    state.write().await.settings.controller_mapping = settings.controller_mapping;
+
     Ok(())
 }
 
