@@ -164,11 +164,7 @@ pub async fn activate_for_launch(
         selected_profile.as_deref(),
     )?;
 
-    if !mapping.player_mappings.is_empty() {
-        if active_player_mappings.is_empty() {
-            return Ok(ControllerLaunchSession::default());
-        }
-
+    if !active_player_mappings.is_empty() {
         let mut session = ControllerLaunchSession::default();
         let mut matched_any = false;
 

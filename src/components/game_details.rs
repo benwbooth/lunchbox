@@ -1569,7 +1569,9 @@ fn controller_scope_options(
 
     let selected = selected_value.trim();
     if selected != CONTROLLER_SCOPE_ALL
+        && selected != CONTROLLER_PLAYER_UNUSED
         && !selected.is_empty()
+        && !selected.starts_with("__")
         && !options.iter().any(|(id, _)| id == selected)
     {
         options.insert(
@@ -1637,11 +1639,36 @@ fn has_configured_player_mappings(mapping: &backend_api::ControllerMappingSettin
     })
 }
 
+fn player_mapping_value_is_empty(value: &Option<String>) -> bool {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none()
+}
+
+fn player_mapping_is_default(player: &backend_api::ControllerPlayerMapping) -> bool {
+    player_mapping_value_is_empty(&player.controller_id)
+        && player_mapping_value_is_empty(&player.profile_id)
+        && player_mapping_value_is_empty(&player.output_target)
+}
+
 fn ensure_player_mapping_slots(mapping: &mut backend_api::ControllerMappingSettings) {
     mapping.player_mappings.resize_with(
         CONTROLLER_PLAYER_SLOTS,
         backend_api::ControllerPlayerMapping::default,
     );
+}
+
+fn trim_default_player_mappings(mapping: &mut backend_api::ControllerMappingSettings) {
+    while mapping
+        .player_mappings
+        .last()
+        .map(player_mapping_is_default)
+        .unwrap_or(false)
+    {
+        mapping.player_mappings.pop();
+    }
 }
 
 fn player_mapping_controller_value(
@@ -1707,6 +1734,7 @@ fn set_player_mapping_controller(
     } else {
         mapping.player_mappings[player_index].controller_id = Some(selected.to_string());
     }
+    trim_default_player_mappings(mapping);
 }
 
 fn set_player_mapping_profile(
@@ -1729,6 +1757,7 @@ fn set_player_mapping_profile(
         CONTROLLER_PROFILE_NONE => Some("none".to_string()),
         _ => Some(selected_value),
     };
+    trim_default_player_mappings(mapping);
 }
 
 fn set_player_mapping_target(
@@ -1752,6 +1781,7 @@ fn set_player_mapping_target(
         } else {
             Some(selected_value.trim().to_string())
         };
+    trim_default_player_mappings(mapping);
 }
 
 fn load_controller_inventory(
@@ -1918,8 +1948,7 @@ fn ControllerProfileDetails(
                 .map(|current_game| current_game.database_id <= 0)
                 .unwrap_or(true)
     };
-    let controls_disabled =
-        move || settings_loading.get() || saving.get() || settings.get().is_none();
+    let controls_disabled = move || settings_loading.get() || settings.get().is_none();
     let settings_button = set_show_settings.map(|setter| {
         view! {
             <button
