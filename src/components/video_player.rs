@@ -137,6 +137,7 @@ pub fn VideoPlayer(
 
         spawn_local(async move {
             if !should_skip_cache_probe {
+                set_download_status.set("Checking cached video...".to_string());
                 set_state.set(VideoState::Checking);
 
                 match backend_api::check_cached_video(title.clone(), plat.clone(), db_id_opt).await
@@ -150,6 +151,7 @@ pub fn VideoPlayer(
                         return;
                     }
                     Ok(None) => {
+                        set_download_status.set("Checking video provider...".to_string());
                         match backend_api::probe_game_video_available(
                             title.clone(),
                             plat.clone(),
@@ -279,8 +281,20 @@ pub fn VideoPlayer(
     view! {
         <div class="video-player-section">
             {move || match state.get() {
-                VideoState::Initial | VideoState::Checking => view! {
+                VideoState::Initial => view! {
                     <div class="video-not-available"></div>
+                }.into_any(),
+                VideoState::Checking => view! {
+                    <div class="video-downloading">
+                        <div class="loading-spinner"></div>
+                        <span>"Preparing video..."</span>
+                        <div class="download-progress">
+                            <div class="progress-bar indeterminate"></div>
+                        </div>
+                        <span class="video-hint">
+                            {move || download_status.get()}
+                        </span>
+                    </div>
                 }.into_any(),
                 VideoState::Downloading(progress) => view! {
                     <div class="video-downloading">

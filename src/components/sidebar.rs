@@ -265,7 +265,14 @@ pub fn Sidebar(
                     </span>
                 </button>
                 {move || if platforms_loading.get() {
-                    view! { <div class="loading">"Loading platforms..."</div> }.into_any()
+                    view! {
+                        <div class="loading loading-with-progress">
+                            <span>"Loading platforms..."</span>
+                            <div class="operation-progress-bar">
+                                <div class="operation-progress-fill indeterminate"></div>
+                            </div>
+                        </div>
+                    }.into_any()
                 } else if filtered_platforms().is_empty() {
                     view! { <div class="empty-platforms">"No platforms found"</div> }.into_any()
                 } else {

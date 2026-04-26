@@ -188,6 +188,111 @@ async fn delay_ms(ms: i32) {
     .unwrap();
 }
 
+fn start_timed_progress(
+    token: RwSignal<u64>,
+    set_progress: WriteSignal<Option<String>>,
+    initial: String,
+    stages: Vec<(i32, String)>,
+) {
+    token.update(|value| *value = value.wrapping_add(1));
+    let active_token = token.get_untracked();
+    set_progress.set(Some(initial));
+
+    spawn_local(async move {
+        for (delay, message) in stages {
+            delay_ms(delay).await;
+            if token.get_untracked() != active_token {
+                return;
+            }
+            set_progress.set(Some(message));
+        }
+    });
+}
+
+fn clear_timed_progress(token: RwSignal<u64>, set_progress: WriteSignal<Option<String>>) {
+    token.update(|value| *value = value.wrapping_add(1));
+    set_progress.set(None);
+}
+
+fn launch_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
+    vec![
+        (
+            1_500,
+            format!("Resolving ROM path for {}...", emulator_name),
+        ),
+        (
+            2_500,
+            "Checking firmware, launch files, and controller mapping...".to_string(),
+        ),
+        (
+            4_000,
+            "Applying controller profile and preparing emulator process...".to_string(),
+        ),
+        (
+            7_000,
+            format!(
+                "Waiting for {} to report a running process...",
+                emulator_name
+            ),
+        ),
+        (
+            12_000,
+            "Still launching. First-run emulator setup can take longer than usual.".to_string(),
+        ),
+    ]
+}
+
+fn install_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
+    vec![
+        (
+            2_000,
+            format!("Resolving install method for {}...", emulator_name),
+        ),
+        (
+            5_000,
+            "Downloading package metadata and emulator files...".to_string(),
+        ),
+        (
+            10_000,
+            "Installing into the Lunchbox-managed emulator profile...".to_string(),
+        ),
+        (
+            20_000,
+            "Still installing. Package downloads can take a while on the first run.".to_string(),
+        ),
+    ]
+}
+
+fn firmware_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
+    vec![
+        (
+            2_000,
+            format!("Resolving firmware source for {}...", emulator_name),
+        ),
+        (
+            5_000,
+            "Downloading or syncing firmware package files...".to_string(),
+        ),
+        (
+            12_000,
+            "Still preparing firmware. Large packages can take a while.".to_string(),
+        ),
+    ]
+}
+
+fn uninstall_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
+    vec![
+        (
+            2_000,
+            format!("Removing Lunchbox-managed files for {}...", emulator_name),
+        ),
+        (
+            8_000,
+            "Still uninstalling. Waiting for the package manager to finish...".to_string(),
+        ),
+    ]
+}
+
 #[derive(Clone, Debug)]
 struct MinervaTorrentGroup {
     rom: backend_api::MinervaRom,
@@ -3897,6 +4002,15 @@ pub fn GameDetails(
                                                 }}
                                             </button>
 
+                                            <Show when=move || manual_loading.get()>
+                                                <div class="manual-progress">
+                                                    <span>"Downloading manual and opening it with the system handler..."</span>
+                                                    <div class="operation-progress-bar">
+                                                        <div class="operation-progress-fill indeterminate"></div>
+                                                    </div>
+                                                </div>
+                                            </Show>
+
                                             <button
                                                 class="favorite-btn"
                                                 class:is-favorite=move || is_fav.get()
@@ -4113,6 +4227,9 @@ fn MediaCarousel(
                                 <div class="carousel-loading">
                                     <div class="loading-spinner"></div>
                                     <span>"Loading 3D view..."</span>
+                                    <div class="operation-progress-bar">
+                                        <div class="operation-progress-fill indeterminate"></div>
+                                    </div>
                                 </div>
                             }.into_any()
                         }
@@ -4131,6 +4248,9 @@ fn MediaCarousel(
                                 <div class="carousel-loading">
                                     <div class="loading-spinner"></div>
                                     <span>"Loading media..."</span>
+                                    <div class="operation-progress-bar">
+                                        <div class="operation-progress-fill indeterminate"></div>
+                                    </div>
                                 </div>
                             }.into_any()
                         } else {
@@ -4163,6 +4283,9 @@ fn MediaCarousel(
                                 <div class="carousel-loading">
                                     <div class="loading-spinner"></div>
                                     <span>"Loading media..."</span>
+                                    <div class="operation-progress-bar">
+                                        <div class="operation-progress-fill indeterminate"></div>
+                                    </div>
                                 </div>
                             }.into_any()
                         } else {
@@ -4613,13 +4736,17 @@ fn EmulatorPickerModal(
     let (current_pref, set_current_pref) = signal::<Option<String>>(None);
     // Track launching/installing state with progress message
     let (progress_state, set_progress_state) = signal::<Option<String>>(None);
+    let progress_token = RwSignal::new(0_u64);
+    let loading_token = RwSignal::new(0_u64);
+    let (emulator_loading_message, set_emulator_loading_message) =
+        signal("Checking installed emulators and firmware...".to_string());
     // Track error state
     let (error_state, set_error_state) = signal::<Option<String>>(None);
     // Track success state
     let (success_state, set_success_state) = signal::<Option<String>>(None);
 
     let show_launch_success = move |emulator_name: String| {
-        set_progress_state.set(None);
+        clear_timed_progress(progress_token, set_progress_state);
         set_error_state.set(None);
         set_success_state.set(Some(format!(
             "Launched {emulator_name}. If no window surfaced, check another workspace or an existing emulator window."
@@ -4637,6 +4764,39 @@ fn EmulatorPickerModal(
             set_show_emulator_picker.set(false);
         });
     };
+
+    Effect::new(move || {
+        if !emulators_loading.get() {
+            loading_token.update(|value| *value = value.wrapping_add(1));
+            return;
+        }
+
+        loading_token.update(|value| *value = value.wrapping_add(1));
+        let active_token = loading_token.get_untracked();
+        set_emulator_loading_message
+            .set("Checking installed emulators and firmware...".to_string());
+
+        spawn_local(async move {
+            let stages = [
+                (
+                    1_500,
+                    "Checking emulator install status and RetroArch cores...",
+                ),
+                (4_000, "Checking firmware status for available emulators..."),
+                (
+                    8_000,
+                    "Still loading emulator status. Package manager checks can be slow.",
+                ),
+            ];
+            for (delay, message) in stages {
+                delay_ms(delay).await;
+                if loading_token.get_untracked() != active_token {
+                    return;
+                }
+                set_emulator_loading_message.set(message.to_string());
+            }
+        });
+    });
 
     // Load current preference when modal opens
     Effect::new(move || {
@@ -4685,6 +4845,9 @@ fn EmulatorPickerModal(
                             <div class="emulator-progress">
                                 <div class="loading-spinner"></div>
                                 <span>{msg}</span>
+                                <div class="operation-progress-bar">
+                                    <div class="operation-progress-fill indeterminate"></div>
+                                </div>
                             </div>
                         })}
                     </Show>
@@ -4719,7 +4882,15 @@ fn EmulatorPickerModal(
                         when=move || !emulators_loading.get() && progress_state.get().is_none()
                         fallback=move || {
                             if emulators_loading.get() {
-                                view! { <div class="emulator-loading"><div class="loading-spinner"></div>"Loading emulators..."</div> }.into_any()
+                                view! {
+                                    <div class="emulator-loading">
+                                        <div class="loading-spinner"></div>
+                                        <span>{move || emulator_loading_message.get()}</span>
+                                        <div class="operation-progress-bar">
+                                            <div class="operation-progress-fill indeterminate"></div>
+                                        </div>
+                                    </div>
+                                }.into_any()
                             } else {
                                 view! {}.into_any()
                             }
@@ -4903,7 +5074,12 @@ fn EmulatorPickerModal(
 
                                             if is_installed {
                                                 // Just launch
-                                                set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
+                                                start_timed_progress(
+                                                    progress_token,
+                                                    set_progress_state,
+                                                    format!("Preparing launch for {}...", emulator_name),
+                                                    launch_progress_stages(&emulator_name),
+                                                );
                                                 spawn_local(async move {
                                                     // Record play session
                                                     let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
@@ -4919,19 +5095,24 @@ fn EmulatorPickerModal(
                                                             if result.success {
                                                                 show_launch_success(emulator_name.clone());
                                                             } else {
-                                                                set_progress_state.set(None);
+                                                                clear_timed_progress(progress_token, set_progress_state);
                                                                 set_error_state.set(result.error);
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            set_progress_state.set(None);
+                                                            clear_timed_progress(progress_token, set_progress_state);
                                                             set_error_state.set(Some(format!("Launch failed: {}", e)));
                                                         }
                                                     }
                                                 });
                                             } else {
                                                 // Install then launch
-                                                set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
+                                                start_timed_progress(
+                                                    progress_token,
+                                                    set_progress_state,
+                                                    format!("Installing {}...", emulator_name),
+                                                    install_progress_stages(&emulator_name),
+                                                );
                                                 let emulator_for_install = emulator_name.clone();
                                                 spawn_local(async move {
                                                     match backend_api::install_emulator(
@@ -4942,7 +5123,15 @@ fn EmulatorPickerModal(
                                                     .await
                                                     {
                                                         Ok(_path) => {
-                                                            set_progress_state.set(Some(format!("Launching {}...", emulator_for_install)));
+                                                            start_timed_progress(
+                                                                progress_token,
+                                                                set_progress_state,
+                                                                format!(
+                                                                    "Preparing launch for {}...",
+                                                                    emulator_for_install
+                                                                ),
+                                                                launch_progress_stages(&emulator_for_install),
+                                                            );
                                                             // Record play session
                                                             let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                             // Launch selected emulator with ROM path
@@ -4957,18 +5146,18 @@ fn EmulatorPickerModal(
                                                                     if result.success {
                                                                         show_launch_success(emulator_for_install.clone());
                                                                     } else {
-                                                                        set_progress_state.set(None);
+                                                                        clear_timed_progress(progress_token, set_progress_state);
                                                                         set_error_state.set(result.error);
                                                                     }
                                                                 }
                                                                 Err(e) => {
-                                                                    set_progress_state.set(None);
+                                                                    clear_timed_progress(progress_token, set_progress_state);
                                                                     set_error_state.set(Some(format!("Launch failed: {}", e)));
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            set_progress_state.set(None);
+                                                            clear_timed_progress(progress_token, set_progress_state);
                                                             set_error_state.set(Some(format!("Install failed: {}", e)));
                                                         }
                                                     }
@@ -4987,7 +5176,12 @@ fn EmulatorPickerModal(
                                             let is_ra = is_retroarch_core;
 
                                             if is_installed {
-                                                set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
+                                                start_timed_progress(
+                                                    progress_token,
+                                                    set_progress_state,
+                                                    format!("Preparing launch for {}...", emulator_name),
+                                                    launch_progress_stages(&emulator_name),
+                                                );
                                                 spawn_local(async move {
                                                     let _ = backend_api::set_game_emulator_preference(db_id, emulator_name.clone()).await;
                                                     let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
@@ -5002,18 +5196,23 @@ fn EmulatorPickerModal(
                                                             if result.success {
                                                                 show_launch_success(emulator_name.clone());
                                                             } else {
-                                                                set_progress_state.set(None);
+                                                                clear_timed_progress(progress_token, set_progress_state);
                                                                 set_error_state.set(result.error);
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            set_progress_state.set(None);
+                                                            clear_timed_progress(progress_token, set_progress_state);
                                                             set_error_state.set(Some(format!("Launch failed: {}", e)));
                                                         }
                                                     }
                                                 });
                                             } else {
-                                                set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
+                                                start_timed_progress(
+                                                    progress_token,
+                                                    set_progress_state,
+                                                    format!("Installing {}...", emulator_name),
+                                                    install_progress_stages(&emulator_name),
+                                                );
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
                                                     match backend_api::install_emulator(
@@ -5025,7 +5224,15 @@ fn EmulatorPickerModal(
                                                     {
                                                         Ok(_) => {
                                                             let _ = backend_api::set_game_emulator_preference(db_id, emu_for_install.clone()).await;
-                                                            set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
+                                                            start_timed_progress(
+                                                                progress_token,
+                                                                set_progress_state,
+                                                                format!(
+                                                                    "Preparing launch for {}...",
+                                                                    emu_for_install
+                                                                ),
+                                                                launch_progress_stages(&emu_for_install),
+                                                            );
                                                             let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
@@ -5038,18 +5245,18 @@ fn EmulatorPickerModal(
                                                                     if result.success {
                                                                         show_launch_success(emu_for_install.clone());
                                                                     } else {
-                                                                        set_progress_state.set(None);
+                                                                        clear_timed_progress(progress_token, set_progress_state);
                                                                         set_error_state.set(result.error);
                                                                     }
                                                                 }
                                                                 Err(e) => {
-                                                                    set_progress_state.set(None);
+                                                                    clear_timed_progress(progress_token, set_progress_state);
                                                                     set_error_state.set(Some(format!("Launch failed: {}", e)));
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            set_progress_state.set(None);
+                                                            clear_timed_progress(progress_token, set_progress_state);
                                                             set_error_state.set(Some(format!("Install failed: {}", e)));
                                                         }
                                                     }
@@ -5068,7 +5275,12 @@ fn EmulatorPickerModal(
                                             let is_ra = is_retroarch_core;
 
                                             if is_installed {
-                                                set_progress_state.set(Some(format!("Launching {}...", emulator_name)));
+                                                start_timed_progress(
+                                                    progress_token,
+                                                    set_progress_state,
+                                                    format!("Preparing launch for {}...", emulator_name),
+                                                    launch_progress_stages(&emulator_name),
+                                                );
                                                 spawn_local(async move {
                                                     let _ = backend_api::set_platform_emulator_preference(platform.clone(), emulator_name.clone()).await;
                                                     let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
@@ -5083,18 +5295,23 @@ fn EmulatorPickerModal(
                                                             if result.success {
                                                                 show_launch_success(emulator_name.clone());
                                                             } else {
-                                                                set_progress_state.set(None);
+                                                                clear_timed_progress(progress_token, set_progress_state);
                                                                 set_error_state.set(result.error);
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            set_progress_state.set(None);
+                                                            clear_timed_progress(progress_token, set_progress_state);
                                                             set_error_state.set(Some(format!("Launch failed: {}", e)));
                                                         }
                                                     }
                                                 });
                                             } else {
-                                                set_progress_state.set(Some(format!("Installing {}...", emulator_name)));
+                                                start_timed_progress(
+                                                    progress_token,
+                                                    set_progress_state,
+                                                    format!("Installing {}...", emulator_name),
+                                                    install_progress_stages(&emulator_name),
+                                                );
                                                 let emu_for_install = emulator_name.clone();
                                                 spawn_local(async move {
                                                     match backend_api::install_emulator(
@@ -5106,7 +5323,15 @@ fn EmulatorPickerModal(
                                                     {
                                                         Ok(_) => {
                                                             let _ = backend_api::set_platform_emulator_preference(platform.clone(), emu_for_install.clone()).await;
-                                                            set_progress_state.set(Some(format!("Launching {}...", emu_for_install)));
+                                                            start_timed_progress(
+                                                                progress_token,
+                                                                set_progress_state,
+                                                                format!(
+                                                                    "Preparing launch for {}...",
+                                                                    emu_for_install
+                                                                ),
+                                                                launch_progress_stages(&emu_for_install),
+                                                            );
                                                             let _ = backend_api::record_play_session(db_id, title, platform.clone()).await;
                                                             match launch_game_with_resolved_rom(
                                                                 db_id,
@@ -5119,18 +5344,18 @@ fn EmulatorPickerModal(
                                                                     if result.success {
                                                                         show_launch_success(emu_for_install.clone());
                                                                     } else {
-                                                                        set_progress_state.set(None);
+                                                                        clear_timed_progress(progress_token, set_progress_state);
                                                                         set_error_state.set(result.error);
                                                                     }
                                                                 }
                                                                 Err(e) => {
-                                                                    set_progress_state.set(None);
+                                                                    clear_timed_progress(progress_token, set_progress_state);
                                                                     set_error_state.set(Some(format!("Launch failed: {}", e)));
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            set_progress_state.set(None);
+                                                            clear_timed_progress(progress_token, set_progress_state);
                                                             set_error_state.set(Some(format!("Install failed: {}", e)));
                                                         }
                                                     }
@@ -5213,10 +5438,15 @@ fn EmulatorPickerModal(
                                                                     let current_game_file = game_file.get_untracked();
                                                                     let is_ra = is_retroarch_core;
 
-                                                                    set_progress_state.set(Some(format!(
-                                                                        "Installing firmware for {}...",
-                                                                        display_name
-                                                                    )));
+                                                                    start_timed_progress(
+                                                                        progress_token,
+                                                                        set_progress_state,
+                                                                        format!(
+                                                                            "Installing firmware for {}...",
+                                                                            display_name
+                                                                        ),
+                                                                        firmware_progress_stages(&display_name),
+                                                                    );
                                                                     set_error_state.set(None);
                                                                     set_success_state.set(None);
 
@@ -5236,7 +5466,7 @@ fn EmulatorPickerModal(
                                                                                             current_game_file.as_ref(),
                                                                                             emu_list,
                                                                                         ));
-                                                                                        set_progress_state.set(None);
+                                                                                        clear_timed_progress(progress_token, set_progress_state);
                                                                                         set_error_state.set(None);
                                                                                         set_success_state.set(Some(format!(
                                                                                             "Firmware is ready for {}.",
@@ -5244,7 +5474,7 @@ fn EmulatorPickerModal(
                                                                                         )));
                                                                                     }
                                                                                     Err(e) => {
-                                                                                        set_progress_state.set(None);
+                                                                                        clear_timed_progress(progress_token, set_progress_state);
                                                                                         set_error_state.set(Some(format!(
                                                                                             "Firmware installed, but emulator status refresh failed: {}",
                                                                                             e
@@ -5253,7 +5483,7 @@ fn EmulatorPickerModal(
                                                                                 }
                                                                             }
                                                                             Err(e) => {
-                                                                                set_progress_state.set(None);
+                                                                                clear_timed_progress(progress_token, set_progress_state);
                                                                                 set_error_state.set(Some(format!(
                                                                                     "Firmware install failed: {}",
                                                                                     e
@@ -5373,10 +5603,12 @@ fn EmulatorPickerModal(
                                                                 let platform = stored_platform.get_value();
                                                                 let current_game_file = game_file.get_untracked();
                                                                 let display_name = uninstall_display_name;
-                                                                set_progress_state.set(Some(format!(
-                                                                    "Uninstalling {}...",
-                                                                    display_name
-                                                                )));
+                                                                start_timed_progress(
+                                                                    progress_token,
+                                                                    set_progress_state,
+                                                                    format!("Uninstalling {}...", display_name),
+                                                                    uninstall_progress_stages(&display_name),
+                                                                );
                                                                 set_error_state.set(None);
                                                                 set_success_state.set(None);
 
@@ -5395,14 +5627,14 @@ fn EmulatorPickerModal(
                                                                                     current_game_file.as_ref(),
                                                                                     emu_list,
                                                                                 ));
-                                                                                set_progress_state.set(None);
+                                                                                clear_timed_progress(progress_token, set_progress_state);
                                                                                 set_success_state.set(Some(format!(
                                                                                     "Uninstalled {}.",
                                                                                     display_name
                                                                                 )));
                                                                             }
                                                                             Err(e) => {
-                                                                                set_progress_state.set(None);
+                                                                                clear_timed_progress(progress_token, set_progress_state);
                                                                                 set_error_state.set(Some(format!(
                                                                                     "Uninstalled {}, but emulator status refresh failed: {}",
                                                                                     display_name, e
@@ -5410,7 +5642,7 @@ fn EmulatorPickerModal(
                                                                             }
                                                                         },
                                                                         Err(e) => {
-                                                                            set_progress_state.set(None);
+                                                                            clear_timed_progress(progress_token, set_progress_state);
                                                                             set_error_state.set(Some(format!(
                                                                                 "Uninstall failed: {}",
                                                                                 e

@@ -1720,7 +1720,14 @@ pub fn GameGrid(
                 let error = load_error.get();
 
                 if is_loading {
-                    view! { <div class="loading">"Loading games..."</div> }.into_any()
+                    view! {
+                        <div class="loading loading-with-progress">
+                            <span>"Loading games..."</span>
+                            <div class="operation-progress-bar">
+                                <div class="operation-progress-fill indeterminate"></div>
+                            </div>
+                        </div>
+                    }.into_any()
                 } else if let Some(error_message) = error {
                     view! {
                         <div class="empty-state">
@@ -2162,7 +2169,12 @@ pub fn GameGrid(
                             }}
                             // Loading indicator at bottom
                             {move || loading.get().then(|| view! {
-                                <div class="loading-more">"Loading more..."</div>
+                                <div class="loading-more loading-with-progress">
+                                    <span>"Loading more..."</span>
+                                    <div class="operation-progress-bar">
+                                        <div class="operation-progress-fill indeterminate"></div>
+                                    </div>
+                                </div>
                             })}
                             // Game count (with filter info if filtered)
                             <div class="game-count">
