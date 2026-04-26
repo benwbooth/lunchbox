@@ -12,7 +12,7 @@ use lunchbox_lib::{
         USER_DB_NAME,
     },
     logging, router,
-    state::AppState,
+    state::{AppState, default_settings_file_path, load_settings},
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
@@ -128,13 +128,19 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    // Load settings from database + keyring
-    let settings = if let Some(ref pool) = db_pool {
-        lunchbox_lib::state::load_settings(pool)
-            .await
-            .unwrap_or_default()
-    } else {
-        Default::default()
+    // Load settings from config TOML, migrating the legacy DB row if needed.
+    let settings_path = default_settings_file_path();
+    tracing::info!("Using settings file at: {}", settings_path.display());
+    let settings = match load_settings(&settings_path, db_pool.as_ref()).await {
+        Ok(settings) => settings,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to load settings from {}: {}",
+                settings_path.display(),
+                e
+            );
+            Default::default()
+        }
     };
 
     // Find or decompress games database, then connect
@@ -225,6 +231,7 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(RwLock::new(AppState {
         db_pool,
         user_db_path: Some(user_db_path),
+        settings_path: Some(settings_path),
         games_db_pool,
         images_db_pool,
         emulators_db_pool,

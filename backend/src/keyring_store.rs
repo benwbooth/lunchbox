@@ -4,7 +4,7 @@
 //! On macOS: Uses Keychain via keyring crate
 //! On Windows: Uses Credential Manager via keyring crate
 //!
-//! Falls back to database storage if keyring is unavailable.
+//! Falls back to settings-file storage if keyring is unavailable.
 
 use anyhow::Result;
 use std::sync::OnceLock;
@@ -73,7 +73,9 @@ fn detect_backend() -> KeyringBackend {
             }
         }
 
-        tracing::warn!("No keyring backend available. Credentials will be stored in database.");
+        tracing::warn!(
+            "No keyring backend available. Credentials will be stored in settings file."
+        );
         KeyringBackend::None
     })
 }

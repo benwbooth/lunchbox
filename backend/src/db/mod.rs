@@ -9,7 +9,7 @@ pub type DbPool = SqlitePool;
 // Database file names - defined once, used everywhere
 // ============================================================================
 
-/// User database (settings, favorites, collections, play sessions)
+/// User database (favorites, collections, play sessions)
 /// Named "lunchbox.db" for backward compatibility with existing installations
 pub const USER_DB_NAME: &str = "lunchbox.db";
 

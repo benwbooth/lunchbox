@@ -1263,28 +1263,35 @@ async fn save_settings_http(
     State(state): State<SharedState>,
     Json(mut settings): Json<crate::state::AppSettings>,
 ) -> Result<(), (StatusCode, String)> {
-    let mut state_guard = state.write().await;
+    let (settings_path, current_settings) = {
+        let state_guard = state.read().await;
+        (
+            state_guard
+                .settings_path
+                .clone()
+                .unwrap_or_else(crate::state::default_settings_file_path),
+            state_guard.settings.clone(),
+        )
+    };
 
-    preserve_blank_credentials(&mut settings, &state_guard.settings);
+    preserve_blank_credentials(&mut settings, &current_settings);
     normalize_controller_mapping(&mut settings.controller_mapping);
-    let credentials_changed = credential_settings_changed(&settings, &state_guard.settings);
+    let credentials_changed = credential_settings_changed(&settings, &current_settings);
 
-    if let Some(ref pool) = state_guard.db_pool {
-        if credentials_changed {
-            crate::state::save_settings(pool, &settings)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            settings = crate::state::load_settings(pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        } else {
-            crate::state::save_settings_preserving_credentials(pool, &settings)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        }
+    if credentials_changed {
+        crate::state::save_settings(&settings_path, &settings)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        settings = crate::state::load_settings(&settings_path, None)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    } else {
+        crate::state::save_settings_preserving_credentials(&settings_path, &settings)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
-    state_guard.settings = settings;
+    state.write().await.settings = settings;
     Ok(())
 }
 
@@ -1294,18 +1301,22 @@ async fn save_controller_mapping_settings_http(
 ) -> Result<(), (StatusCode, String)> {
     normalize_controller_mapping(&mut controller_mapping);
 
-    let (pool, settings) = {
+    let (settings_path, settings) = {
         let state_guard = state.read().await;
         let mut settings = state_guard.settings.clone();
         settings.controller_mapping = controller_mapping;
-        (state_guard.db_pool.clone(), settings)
+        (
+            state_guard
+                .settings_path
+                .clone()
+                .unwrap_or_else(crate::state::default_settings_file_path),
+            settings,
+        )
     };
 
-    if let Some(pool) = pool {
-        crate::state::save_settings_preserving_credentials(&pool, &settings)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    }
+    crate::state::save_settings_preserving_credentials(&settings_path, &settings)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     state.write().await.settings.controller_mapping = settings.controller_mapping;
 

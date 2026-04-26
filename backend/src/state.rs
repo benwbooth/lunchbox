@@ -10,11 +10,13 @@ use crate::db;
 
 /// Application state shared across commands
 pub struct AppState {
-    /// User database (collections, favorites, play stats, settings)
+    /// User database (collections, favorites, play stats)
     /// Only created when user actually saves something
     pub db_pool: Option<SqlitePool>,
     /// Path to user database (for lazy creation)
     pub user_db_path: Option<std::path::PathBuf>,
+    /// Path to the user settings TOML file.
+    pub settings_path: Option<std::path::PathBuf>,
     /// Shipped games database (read-only)
     pub games_db_pool: Option<SqlitePool>,
     /// Separate game images database (LaunchBox CDN metadata, read-only)
@@ -31,6 +33,7 @@ impl Default for AppState {
         Self {
             db_pool: None,
             user_db_path: None,
+            settings_path: None,
             games_db_pool: None,
             images_db_pool: None,
             emulators_db_pool: None,
@@ -43,7 +46,7 @@ impl Default for AppState {
 /// User-configurable settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
-    /// Directory for app data (database, settings). Defaults to OS app data dir.
+    /// Directory for app data (databases, media defaults, downloads). Defaults to OS app data dir.
     #[serde(default)]
     pub data_directory: Option<PathBuf>,
     /// Directory for media files (images, videos). Defaults to data_directory/media.
@@ -241,6 +244,21 @@ fn default_localhost() -> String {
 }
 fn default_qbittorrent_port() -> u16 {
     8080
+}
+
+pub const SETTINGS_FILE_NAME: &str = "settings.toml";
+
+/// Get the user config directory for settings.
+/// - Linux: ~/.config/lunchbox
+/// - macOS/Windows: OS-specific user config directory
+pub fn default_config_directory() -> PathBuf {
+    directories::BaseDirs::new()
+        .map(|dirs| dirs.config_dir().join(db::APP_DATA_DIR))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+pub fn default_settings_file_path() -> PathBuf {
+    default_config_directory().join(SETTINGS_FILE_NAME)
 }
 
 impl Default for TorrentSettings {
@@ -460,6 +478,7 @@ pub async fn initialize_app_state(
 
     // User database path - only created when needed (first write operation)
     let user_db_path = app_data_dir.join(db::USER_DB_NAME);
+    let settings_path = default_settings_file_path();
 
     // Initialize user database only if it already exists
     // This avoids creating empty database files
@@ -475,11 +494,17 @@ pub async fn initialize_app_state(
         None
     };
 
-    // Load settings from user database if it exists
-    let settings = if let Some(ref pool) = user_pool {
-        load_settings(pool).await.unwrap_or_default()
-    } else {
-        AppSettings::default()
+    // Load settings from config TOML, migrating the legacy DB row if needed.
+    let settings = match load_settings(&settings_path, user_pool.as_ref()).await {
+        Ok(settings) => settings,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to load settings from {}: {}",
+                settings_path.display(),
+                e
+            );
+            AppSettings::default()
+        }
     };
 
     // Find or decompress games database, then connect
@@ -622,6 +647,7 @@ pub async fn initialize_app_state(
     state_guard.minerva_db_pool = minerva_db_pool;
     state_guard.settings = settings;
     state_guard.user_db_path = Some(user_db_path);
+    state_guard.settings_path = Some(settings_path);
 
     tracing::info!("App state initialized successfully");
     Ok(())
@@ -649,20 +675,65 @@ pub async fn ensure_user_db(state: &mut AppState) -> Result<&SqlitePool> {
     Ok(state.db_pool.as_ref().unwrap())
 }
 
-/// Load settings from database and keyring
-pub async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
+/// Load settings from the config TOML file and keyring.
+///
+/// If no TOML file exists yet, the old SQLite settings row is used once as a
+/// migration source and then deleted after the TOML file is written.
+pub async fn load_settings(
+    settings_path: &Path,
+    legacy_pool: Option<&SqlitePool>,
+) -> Result<AppSettings> {
+    let mut settings = if settings_path.exists() {
+        load_settings_file(settings_path)?
+    } else if let Some(pool) = legacy_pool {
+        match load_legacy_settings_row(pool).await? {
+            Some(settings) => {
+                let mut migrated_settings = settings.clone();
+                load_credentials_into_settings(&mut migrated_settings);
+                save_settings(settings_path, &migrated_settings).await?;
+                delete_legacy_settings_row(pool).await?;
+                tracing::info!(
+                    "Migrated settings from user database to {}",
+                    settings_path.display()
+                );
+                migrated_settings
+            }
+            None => AppSettings::default(),
+        }
+    } else {
+        AppSettings::default()
+    };
+
+    load_credentials_into_settings(&mut settings);
+    Ok(settings)
+}
+
+fn load_settings_file(settings_path: &Path) -> Result<AppSettings> {
+    let toml = std::fs::read_to_string(settings_path)?;
+    Ok(toml::from_str(&toml)?)
+}
+
+async fn load_legacy_settings_row(pool: &SqlitePool) -> Result<Option<AppSettings>> {
     let row: Option<(String,)> =
         sqlx::query_as("SELECT value FROM settings WHERE key = 'app_settings'")
             .fetch_optional(pool)
             .await?;
 
-    let mut settings = if let Some((json,)) = row {
-        serde_json::from_str(&json)?
+    if let Some((json,)) = row {
+        Ok(Some(serde_json::from_str(&json)?))
     } else {
-        AppSettings::default()
-    };
+        Ok(None)
+    }
+}
 
-    // Load credentials from system keyring
+async fn delete_legacy_settings_row(pool: &SqlitePool) -> Result<()> {
+    sqlx::query("DELETE FROM settings WHERE key = 'app_settings'")
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+fn load_credentials_into_settings(settings: &mut AppSettings) {
     let creds = crate::keyring_store::load_image_source_credentials();
     if !creds.steamgriddb_api_key.is_empty() {
         settings.steamgriddb.api_key = creds.steamgriddb_api_key;
@@ -700,12 +771,10 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<AppSettings> {
             settings.torrent.qbittorrent_password = v;
         }
     }
-
-    Ok(settings)
 }
 
-/// Save settings to database and credentials to keyring (if available)
-pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<()> {
+/// Save settings to config TOML and credentials to keyring (if available).
+pub async fn save_settings(settings_path: &Path, settings: &AppSettings) -> Result<()> {
     // Try to save credentials to system keyring
     crate::keyring_store::store_image_source_credentials(
         &settings.steamgriddb.api_key,
@@ -725,9 +794,9 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         &settings.torrent.qbittorrent_password,
     )?;
 
-    // If keyring is available, clear credentials from DB copy
-    // If not, store them in DB as fallback
-    let settings_for_db = if crate::keyring_store::is_keyring_available() {
+    // If keyring is available, clear credentials from the file copy.
+    // If not, store them in the file as fallback.
+    let settings_for_file = if crate::keyring_store::is_keyring_available() {
         let mut s = settings.clone();
 
         if crate::keyring_store::credential_matches(
@@ -804,38 +873,47 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         settings.clone()
     };
 
-    write_settings_row(pool, &settings_for_db).await?;
+    write_settings_file(settings_path, &settings_for_file)?;
 
     Ok(())
 }
 
 /// Save settings when the credential fields did not change.
 ///
-/// This keeps the credential fields exactly as they already exist in the DB row
+/// This keeps the credential fields exactly as they already exist in the TOML file
 /// and avoids expensive keyring reads/writes for unrelated changes like
 /// controller mapping updates.
 pub async fn save_settings_preserving_credentials(
-    pool: &SqlitePool,
+    settings_path: &Path,
     settings: &AppSettings,
 ) -> Result<()> {
-    let mut settings_for_db = settings.clone();
+    let mut settings_for_file = settings.clone();
 
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = 'app_settings'")
-            .fetch_optional(pool)
-            .await?;
-
-    if let Some((json,)) = row {
-        if let Ok(existing_db_settings) = serde_json::from_str::<AppSettings>(&json) {
-            copy_credential_fields(&mut settings_for_db, &existing_db_settings);
-        } else if crate::keyring_store::is_keyring_available() {
-            clear_credential_fields(&mut settings_for_db);
+    if settings_path.exists() {
+        match load_settings_file(settings_path) {
+            Ok(existing_file_settings) => {
+                copy_credential_fields(&mut settings_for_file, &existing_file_settings);
+            }
+            Err(_) if crate::keyring_store::is_keyring_available() => {
+                clear_credential_fields(&mut settings_for_file);
+            }
+            Err(e) => return Err(e),
         }
     } else if crate::keyring_store::is_keyring_available() {
-        clear_credential_fields(&mut settings_for_db);
+        clear_credential_fields(&mut settings_for_file);
     }
 
-    write_settings_row(pool, &settings_for_db).await
+    write_settings_file(settings_path, &settings_for_file)
+}
+
+fn write_settings_file(settings_path: &Path, settings: &AppSettings) -> Result<()> {
+    if let Some(parent) = settings_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let toml = toml::to_string_pretty(settings)?;
+    std::fs::write(settings_path, toml)?;
+    Ok(())
 }
 
 fn copy_credential_fields(target: &mut AppSettings, source: &AppSettings) {
@@ -862,15 +940,4 @@ fn clear_credential_fields(settings: &mut AppSettings) {
     settings.screenscraper.user_id = None;
     settings.screenscraper.user_password = None;
     settings.torrent.qbittorrent_password.clear();
-}
-
-async fn write_settings_row(pool: &SqlitePool, settings: &AppSettings) -> Result<()> {
-    let json = serde_json::to_string(settings)?;
-
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_settings', ?)")
-        .bind(&json)
-        .execute(pool)
-        .await?;
-
-    Ok(())
 }
