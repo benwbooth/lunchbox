@@ -1107,14 +1107,9 @@ async fn get_game_by_uuid(
             } else if fallback_launchbox_db_id > 0 {
                 fallback_launchbox_db_id
             } else {
-                handlers::resolve_effective_launchbox_db_id(
-                    &state_guard,
-                    0,
-                    &title,
-                    &platform,
-                )
-                .await
-                .unwrap_or(0)
+                handlers::resolve_effective_launchbox_db_id(&state_guard, 0, &title, &platform)
+                    .await
+                    .unwrap_or(0)
             };
             let display_platform =
                 display_platform_name_for_game(&platform, &title, resolved_launchbox_db_id)

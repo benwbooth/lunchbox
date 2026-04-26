@@ -2053,7 +2053,8 @@ pub(crate) async fn resolve_effective_launchbox_db_id(
     };
 
     let canonical_platform = canonicalize_legacy_platform_name(platform).to_string();
-    let platform_ids = resolve_equivalent_platform_ids_by_name(games_pool, &canonical_platform).await?;
+    let platform_ids =
+        resolve_equivalent_platform_ids_by_name(games_pool, &canonical_platform).await?;
     let mut lookup_titles = vec![game_title.to_string()];
 
     if let Some(resolved) =
@@ -2137,7 +2138,8 @@ async fn recover_zero_launchbox_db_id_game_file(
         }
 
         let resolved_candidate_db_id =
-            resolve_effective_launchbox_db_id(state, 0, candidate_title, candidate_platform).await?;
+            resolve_effective_launchbox_db_id(state, 0, candidate_title, candidate_platform)
+                .await?;
         if resolved_candidate_db_id == launchbox_db_id {
             recovered_row = Some(row);
             break;
@@ -6057,10 +6059,7 @@ fn score_match_name(
     })
 }
 
-fn compare_named_match_scores(
-    a: &NamedMatchScore,
-    b: &NamedMatchScore,
-) -> std::cmp::Ordering {
+fn compare_named_match_scores(a: &NamedMatchScore, b: &NamedMatchScore) -> std::cmp::Ordering {
     a.exact_match
         .cmp(&b.exact_match)
         .then_with(|| a.full_query_match.cmp(&b.full_query_match))
