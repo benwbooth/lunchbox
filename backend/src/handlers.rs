@@ -16,6 +16,9 @@ use crate::state::{AppSettings, AppState};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+const EMULATOR_FIRMWARE_STATUS_TIMEOUT: Duration = Duration::from_millis(1_000);
 
 // ============================================================================
 // Shared types (used by both rspc and HTTP)
@@ -1377,8 +1380,23 @@ pub async fn get_emulators_with_status(
     state: &AppState,
     platform_name: &str,
 ) -> Result<Vec<EmulatorWithStatus>, String> {
-    let pool = state
-        .emulators_db_pool
+    get_emulators_with_status_from_context(
+        state.emulators_db_pool.clone(),
+        state.db_pool.clone(),
+        state.settings.clone(),
+        platform_name,
+    )
+    .await
+}
+
+pub async fn get_emulators_with_status_from_context(
+    emulators_db_pool: Option<sqlx::SqlitePool>,
+    db_pool: Option<sqlx::SqlitePool>,
+    settings: AppSettings,
+    platform_name: &str,
+) -> Result<Vec<EmulatorWithStatus>, String> {
+    let started = Instant::now();
+    let pool = emulators_db_pool
         .as_ref()
         .ok_or_else(|| "Emulators database not initialized".to_string())?;
 
@@ -1439,17 +1457,39 @@ pub async fn get_emulators_with_status(
     results.extend(standalone_entries);
     sort_emulator_statuses(&mut results);
 
-    if let Some(db_pool) = state.db_pool.as_ref() {
-        for emulator in &mut results {
-            emulator.firmware_statuses = crate::firmware::get_firmware_status(
-                &state.settings,
-                db_pool,
-                &emulator.info,
-                canonical_platform_name,
-                emulator.is_retroarch_core,
-            )
-            .await?;
+    if let Some(db_pool) = db_pool.as_ref() {
+        match tokio::time::timeout(
+            EMULATOR_FIRMWARE_STATUS_TIMEOUT,
+            add_firmware_statuses(&settings, db_pool, &mut results, canonical_platform_name),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                tracing::warn!(
+                    platform = canonical_platform_name,
+                    error = %err,
+                    "Skipping emulator firmware annotations because status lookup failed"
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    platform = canonical_platform_name,
+                    timeout_ms = EMULATOR_FIRMWARE_STATUS_TIMEOUT.as_millis(),
+                    "Skipping emulator firmware annotations because status lookup timed out"
+                );
+            }
         }
+    }
+
+    let elapsed = started.elapsed();
+    if elapsed > Duration::from_secs(2) {
+        tracing::warn!(
+            platform = canonical_platform_name,
+            elapsed_ms = elapsed.as_millis(),
+            count = results.len(),
+            "Slow emulator status lookup"
+        );
     }
 
     Ok(results)
@@ -1457,6 +1497,26 @@ pub async fn get_emulators_with_status(
 
 fn sort_emulator_statuses(results: &mut [EmulatorWithStatus]) {
     results.sort_by(|a, b| b.is_installed.cmp(&a.is_installed));
+}
+
+async fn add_firmware_statuses(
+    settings: &AppSettings,
+    db_pool: &sqlx::SqlitePool,
+    results: &mut [EmulatorWithStatus],
+    platform_name: &str,
+) -> Result<(), String> {
+    for emulator in results {
+        emulator.firmware_statuses = crate::firmware::get_firmware_status(
+            settings,
+            db_pool,
+            &emulator.info,
+            platform_name,
+            emulator.is_retroarch_core,
+        )
+        .await?;
+    }
+
+    Ok(())
 }
 
 async fn maybe_append_exodos_scummvm(

@@ -13,6 +13,8 @@ use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 #[cfg(target_os = "linux")]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
@@ -20,6 +22,59 @@ const FLATPAK_INSTALL_PREFIX: &str = "flatpak::";
 const APPIMAGE_INSTALL_PREFIX: &str = "appimage::";
 const WINE_INSTALL_PREFIX: &str = "wine::";
 const HYPSEUS_MAX_SAFE_PATH_LEN: usize = 80;
+const INSTALLATION_PROBE_CACHE_TTL: Duration = Duration::from_secs(10);
+
+#[derive(Debug, Clone)]
+struct ProbeCacheEntry<T> {
+    checked_at: Instant,
+    value: T,
+}
+
+static FLATPAK_AVAILABLE_CACHE: OnceLock<Mutex<Option<ProbeCacheEntry<bool>>>> = OnceLock::new();
+static NIX_AVAILABLE_CACHE: OnceLock<Mutex<Option<ProbeCacheEntry<bool>>>> = OnceLock::new();
+static FLATPAK_INSTALLED_APPS_CACHE: OnceLock<Mutex<Option<ProbeCacheEntry<HashSet<String>>>>> =
+    OnceLock::new();
+
+fn cached_probe<T, F>(
+    cache: &'static OnceLock<Mutex<Option<ProbeCacheEntry<T>>>>,
+    ttl: Duration,
+    load: F,
+) -> T
+where
+    T: Clone,
+    F: FnOnce() -> T,
+{
+    let now = Instant::now();
+    let cache = cache.get_or_init(|| Mutex::new(None));
+
+    {
+        let guard = cache.lock().unwrap_or_else(|err| err.into_inner());
+        if let Some(entry) = guard.as_ref() {
+            if now.duration_since(entry.checked_at) < ttl {
+                return entry.value.clone();
+            }
+        }
+    }
+
+    let value = load();
+    let mut guard = cache.lock().unwrap_or_else(|err| err.into_inner());
+    *guard = Some(ProbeCacheEntry {
+        checked_at: Instant::now(),
+        value: value.clone(),
+    });
+    value
+}
+
+fn clear_probe_cache<T>(cache: &'static OnceLock<Mutex<Option<ProbeCacheEntry<T>>>>) {
+    if let Some(cache) = cache.get() {
+        let mut guard = cache.lock().unwrap_or_else(|err| err.into_inner());
+        *guard = None;
+    }
+}
+
+fn clear_installation_probe_caches() {
+    clear_probe_cache(&FLATPAK_INSTALLED_APPS_CACHE);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WineInstallInfo {
@@ -798,7 +853,11 @@ fn is_retroarch_installed() -> bool {
 fn is_flatpak_available() -> bool {
     #[cfg(target_os = "linux")]
     {
-        which::which("flatpak").is_ok()
+        cached_probe(
+            &FLATPAK_AVAILABLE_CACHE,
+            INSTALLATION_PROBE_CACHE_TTL,
+            || which::which("flatpak").is_ok(),
+        )
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -809,7 +868,9 @@ fn is_flatpak_available() -> bool {
 fn is_nix_available() -> bool {
     #[cfg(target_os = "linux")]
     {
-        which::which("nix").is_ok()
+        cached_probe(&NIX_AVAILABLE_CACHE, INSTALLATION_PROBE_CACHE_TTL, || {
+            which::which("nix").is_ok()
+        })
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -860,20 +921,41 @@ fn is_wine_available() -> bool {
 fn is_flatpak_installed(app_id: &str) -> bool {
     #[cfg(target_os = "linux")]
     {
-        if !is_flatpak_available() {
-            return false;
-        }
-        Command::new("flatpak")
-            .args(["info", app_id])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        flatpak_installed_apps().contains(app_id)
     }
     #[cfg(not(target_os = "linux"))]
     {
         let _ = app_id;
         false
     }
+}
+
+#[cfg(target_os = "linux")]
+fn flatpak_installed_apps() -> HashSet<String> {
+    cached_probe(
+        &FLATPAK_INSTALLED_APPS_CACHE,
+        INSTALLATION_PROBE_CACHE_TTL,
+        || {
+            if !is_flatpak_available() {
+                return HashSet::new();
+            }
+
+            Command::new("flatpak")
+                .args(["list", "--app", "--columns=application"])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| {
+                    String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .map(str::trim)
+                        .filter(|line| !line.is_empty())
+                        .map(ToString::to_string)
+                        .collect()
+                })
+                .unwrap_or_default()
+        },
+    )
 }
 
 fn lunchbox_nix_profile_path() -> PathBuf {
@@ -2564,6 +2646,7 @@ async fn install_flatpak(app_id: &str) -> Result<(), String> {
             .map_err(|e| format!("Failed to run flatpak: {}", e))?;
 
         if output.status.success() {
+            clear_installation_probe_caches();
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2587,6 +2670,7 @@ async fn uninstall_flatpak(app_id: &str) -> Result<(), String> {
             .map_err(|e| format!("Failed to run flatpak: {}", e))?;
 
         if output.status.success() {
+            clear_installation_probe_caches();
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2610,6 +2694,7 @@ async fn update_flatpak(app_id: &str, scope: FlatpakScope) -> Result<(), String>
             .map_err(|e| format!("Failed to run flatpak update: {}", e))?;
 
         if output.status.success() {
+            clear_installation_probe_caches();
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2647,6 +2732,7 @@ async fn install_nix_package(package: &str) -> Result<(), String> {
             .map_err(|e| format!("Failed to run nix profile install: {}", e))?;
 
         if output.status.success() {
+            clear_installation_probe_caches();
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2691,6 +2777,7 @@ async fn uninstall_nix_package(package: &str) -> Result<(), String> {
             .map_err(|e| format!("Failed to run nix profile remove: {}", e))?;
 
         if output.status.success() {
+            clear_installation_probe_caches();
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
