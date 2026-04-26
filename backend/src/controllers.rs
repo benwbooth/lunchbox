@@ -1,4 +1,4 @@
-use crate::state::{AppSettings, ControllerMappingSettings};
+use crate::state::{AppSettings, ControllerMappingSettings, ControllerPlayerMapping};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -155,6 +155,89 @@ pub async fn activate_for_launch(
         );
     }
 
+    let hidden_controller_paths =
+        selected_controller_source_paths(&controllers, &mapping.hidden_controller_ids);
+    let active_player_mappings = resolve_active_player_mappings(
+        settings,
+        mapping,
+        &controllers,
+        selected_profile.as_deref(),
+    )?;
+
+    if !mapping.player_mappings.is_empty() {
+        if active_player_mappings.is_empty() {
+            return Ok(ControllerLaunchSession::default());
+        }
+
+        let mut session = ControllerLaunchSession::default();
+        let mut matched_any = false;
+
+        for device in managed_devices {
+            let matches_hidden = !hidden_controller_paths.is_empty()
+                && device
+                    .source_paths
+                    .iter()
+                    .any(|path| hidden_controller_paths.contains(path));
+            let matched_player = active_player_mappings.iter().find(|mapping| {
+                device
+                    .source_paths
+                    .iter()
+                    .any(|path| mapping.source_paths.contains(path))
+            });
+
+            if !matches_hidden && matched_player.is_none() {
+                continue;
+            }
+
+            matched_any = true;
+            let restore = InputPlumberRestoreEntry {
+                device_id: device.id.clone(),
+                intercept_mode: Some(inputplumber_device_intercept_mode(&device.id)?),
+                profile_path: device.profile_path.clone(),
+                target_ids: device.target_ids.clone(),
+            };
+
+            session.restore_entries.push(restore);
+
+            let apply_result = (|| {
+                run_inputplumber(&["device", &device.id, "intercept", "set", "gamepad-only"])?;
+
+                if matches_hidden {
+                    run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
+                } else if let Some(player_mapping) = matched_player {
+                    run_inputplumber_with_dynamic_args(
+                        ["device", &device.id, "targets", "set"],
+                        &player_mapping.target_device_ids,
+                    )?;
+                    if let Some(path) = player_mapping.profile_path.as_ref() {
+                        run_inputplumber(&[
+                            "device",
+                            &device.id,
+                            "profile",
+                            "load",
+                            path.to_string_lossy().as_ref(),
+                        ])?;
+                    }
+                }
+                Ok(())
+            })();
+
+            if let Err(e) = apply_result {
+                session.restore();
+                return Err(e);
+            }
+        }
+
+        if !matched_any {
+            return Err(
+                "No InputPlumber managed device matched the selected player controller list."
+                    .to_string(),
+            );
+        }
+
+        return Ok(session);
+    }
+
     let profile_scope_is_all = mapping
         .profile_controller_ids
         .iter()
@@ -164,8 +247,6 @@ pub async fn activate_for_launch(
     } else {
         selected_controller_source_paths(&controllers, &mapping.profile_controller_ids)
     };
-    let hidden_controller_paths =
-        selected_controller_source_paths(&controllers, &mapping.hidden_controller_ids);
     let target_device_ids = normalize_target_ids(&mapping.output_target);
     let profile_path = if let Some(profile_id) = selected_profile.as_deref() {
         Some(resolve_profile_path(settings, profile_id)?)
@@ -291,6 +372,86 @@ impl ControllerLaunchSession {
 }
 
 const TWO_BUTTON_CLOCKWISE_PROFILE_ID: &str = "two-button-clockwise";
+const CONTROLLER_SCOPE_ALL: &str = "__all";
+
+struct ResolvedPlayerMapping {
+    source_paths: HashSet<String>,
+    target_device_ids: Vec<String>,
+    profile_path: Option<PathBuf>,
+}
+
+fn resolve_active_player_mappings(
+    settings: &AppSettings,
+    mapping: &ControllerMappingSettings,
+    controllers: &[ControllerDevice],
+    inherited_profile_id: Option<&str>,
+) -> Result<Vec<ResolvedPlayerMapping>, String> {
+    mapping
+        .player_mappings
+        .iter()
+        .filter_map(|player_mapping| {
+            player_mapping
+                .controller_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|controller_id| !controller_id.is_empty())
+                .map(|controller_id| (player_mapping, controller_id.to_string()))
+        })
+        .map(|(player_mapping, controller_id)| {
+            resolve_active_player_mapping(
+                settings,
+                mapping,
+                controllers,
+                inherited_profile_id,
+                player_mapping,
+                &controller_id,
+            )
+        })
+        .collect()
+}
+
+fn resolve_active_player_mapping(
+    settings: &AppSettings,
+    mapping: &ControllerMappingSettings,
+    controllers: &[ControllerDevice],
+    inherited_profile_id: Option<&str>,
+    player_mapping: &ControllerPlayerMapping,
+    controller_id: &str,
+) -> Result<ResolvedPlayerMapping, String> {
+    let source_paths = if controller_id == CONTROLLER_SCOPE_ALL {
+        controller_source_paths(controllers)
+    } else {
+        selected_controller_source_paths(controllers, &[controller_id.to_string()])
+    };
+    let target_setting = player_mapping
+        .output_target
+        .as_deref()
+        .map(str::trim)
+        .filter(|target| !target.is_empty())
+        .unwrap_or(mapping.output_target.as_str());
+    let profile_id = resolve_player_profile_id(player_mapping, inherited_profile_id);
+    let profile_path = profile_id
+        .as_deref()
+        .map(|profile_id| resolve_profile_path(settings, profile_id))
+        .transpose()?;
+
+    Ok(ResolvedPlayerMapping {
+        source_paths,
+        target_device_ids: normalize_target_ids(target_setting),
+        profile_path,
+    })
+}
+
+fn resolve_player_profile_id(
+    player_mapping: &ControllerPlayerMapping,
+    inherited_profile_id: Option<&str>,
+) -> Option<String> {
+    match player_mapping.profile_id.as_deref().map(str::trim) {
+        Some("") | None => inherited_profile_id.map(ToOwned::to_owned),
+        Some("none") => None,
+        Some(profile_id) => Some(profile_id.to_string()),
+    }
+}
 
 fn resolve_profile_id(
     mapping: &ControllerMappingSettings,

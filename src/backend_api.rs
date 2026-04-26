@@ -390,11 +390,21 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub profile_controller_ids: Vec<String>,
     #[serde(default)]
+    pub player_mappings: Vec<ControllerPlayerMapping>,
+    #[serde(default)]
     pub platform_profile_ids: HashMap<String, String>,
     #[serde(default)]
     pub game_profile_ids: HashMap<String, String>,
     #[serde(default)]
     pub hidden_controller_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerPlayerMapping {
+    pub controller_id: Option<String>,
+    pub profile_id: Option<String>,
+    pub output_target: Option<String>,
 }
 
 impl Default for ControllerMappingSettings {
@@ -406,6 +416,7 @@ impl Default for ControllerMappingSettings {
             manage_all: true,
             default_profile_id: None,
             profile_controller_ids: Vec::new(),
+            player_mappings: Vec::new(),
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
             hidden_controller_ids: Vec::new(),

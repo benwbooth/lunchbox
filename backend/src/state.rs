@@ -96,6 +96,9 @@ pub struct ControllerMappingSettings {
     /// Stable controller ids that should receive the launch profile. Empty means all controllers.
     #[serde(default)]
     pub profile_controller_ids: Vec<String>,
+    /// Per-player controller/profile/target rows. Empty preserves the legacy global scope.
+    #[serde(default)]
+    pub player_mappings: Vec<ControllerPlayerMapping>,
     /// Platform name -> built-in profile id or custom profile path.
     #[serde(default)]
     pub platform_profile_ids: HashMap<String, String>,
@@ -107,6 +110,19 @@ pub struct ControllerMappingSettings {
     pub hidden_controller_ids: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ControllerPlayerMapping {
+    /// Stable controller id for this player, or "__all" for every plugged in controller.
+    #[serde(default)]
+    pub controller_id: Option<String>,
+    /// Built-in profile id/custom profile path, "none", or empty to inherit the resolved profile.
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    /// InputPlumber target id, or empty to inherit the global target.
+    #[serde(default)]
+    pub output_target: Option<String>,
+}
+
 impl Default for ControllerMappingSettings {
     fn default() -> Self {
         Self {
@@ -116,6 +132,7 @@ impl Default for ControllerMappingSettings {
             manage_all: true,
             default_profile_id: None,
             profile_controller_ids: Vec::new(),
+            player_mappings: Vec::new(),
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
             hidden_controller_ids: Vec::new(),
