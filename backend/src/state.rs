@@ -804,7 +804,68 @@ pub async fn save_settings(pool: &SqlitePool, settings: &AppSettings) -> Result<
         settings.clone()
     };
 
-    let json = serde_json::to_string(&settings_for_db)?;
+    write_settings_row(pool, &settings_for_db).await?;
+
+    Ok(())
+}
+
+/// Save settings when the credential fields did not change.
+///
+/// This keeps the credential fields exactly as they already exist in the DB row
+/// and avoids expensive keyring reads/writes for unrelated changes like
+/// controller mapping updates.
+pub async fn save_settings_preserving_credentials(
+    pool: &SqlitePool,
+    settings: &AppSettings,
+) -> Result<()> {
+    let mut settings_for_db = settings.clone();
+
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'app_settings'")
+            .fetch_optional(pool)
+            .await?;
+
+    if let Some((json,)) = row {
+        if let Ok(existing_db_settings) = serde_json::from_str::<AppSettings>(&json) {
+            copy_credential_fields(&mut settings_for_db, &existing_db_settings);
+        } else if crate::keyring_store::is_keyring_available() {
+            clear_credential_fields(&mut settings_for_db);
+        }
+    } else if crate::keyring_store::is_keyring_available() {
+        clear_credential_fields(&mut settings_for_db);
+    }
+
+    write_settings_row(pool, &settings_for_db).await
+}
+
+fn copy_credential_fields(target: &mut AppSettings, source: &AppSettings) {
+    target.steamgriddb.api_key = source.steamgriddb.api_key.clone();
+    target.igdb.client_id = source.igdb.client_id.clone();
+    target.igdb.client_secret = source.igdb.client_secret.clone();
+    target.emumovies.username = source.emumovies.username.clone();
+    target.emumovies.password = source.emumovies.password.clone();
+    target.screenscraper.dev_id = source.screenscraper.dev_id.clone();
+    target.screenscraper.dev_password = source.screenscraper.dev_password.clone();
+    target.screenscraper.user_id = source.screenscraper.user_id.clone();
+    target.screenscraper.user_password = source.screenscraper.user_password.clone();
+    target.torrent.qbittorrent_password = source.torrent.qbittorrent_password.clone();
+}
+
+fn clear_credential_fields(settings: &mut AppSettings) {
+    settings.steamgriddb.api_key.clear();
+    settings.igdb.client_id.clear();
+    settings.igdb.client_secret.clear();
+    settings.emumovies.username.clear();
+    settings.emumovies.password.clear();
+    settings.screenscraper.dev_id.clear();
+    settings.screenscraper.dev_password.clear();
+    settings.screenscraper.user_id = None;
+    settings.screenscraper.user_password = None;
+    settings.torrent.qbittorrent_password.clear();
+}
+
+async fn write_settings_row(pool: &SqlitePool, settings: &AppSettings) -> Result<()> {
+    let json = serde_json::to_string(settings)?;
 
     sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_settings', ?)")
         .bind(&json)

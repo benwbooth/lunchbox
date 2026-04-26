@@ -1262,14 +1262,21 @@ async fn save_settings_http(
     let mut state_guard = state.write().await;
 
     preserve_blank_credentials(&mut settings, &state_guard.settings);
+    let credentials_changed = credential_settings_changed(&settings, &state_guard.settings);
 
     if let Some(ref pool) = state_guard.db_pool {
-        crate::state::save_settings(pool, &settings)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        settings = crate::state::load_settings(pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if credentials_changed {
+            crate::state::save_settings(pool, &settings)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            settings = crate::state::load_settings(pool)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        } else {
+            crate::state::save_settings_preserving_credentials(pool, &settings)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
     }
 
     state_guard.settings = settings;
@@ -1315,6 +1322,22 @@ fn preserve_blank_credentials(
     {
         settings.screenscraper.user_password = current.screenscraper.user_password.clone();
     }
+}
+
+fn credential_settings_changed(
+    settings: &crate::state::AppSettings,
+    current: &crate::state::AppSettings,
+) -> bool {
+    settings.steamgriddb.api_key != current.steamgriddb.api_key
+        || settings.igdb.client_id != current.igdb.client_id
+        || settings.igdb.client_secret != current.igdb.client_secret
+        || settings.emumovies.username != current.emumovies.username
+        || settings.emumovies.password != current.emumovies.password
+        || settings.screenscraper.dev_id != current.screenscraper.dev_id
+        || settings.screenscraper.dev_password != current.screenscraper.dev_password
+        || settings.screenscraper.user_id != current.screenscraper.user_id
+        || settings.screenscraper.user_password != current.screenscraper.user_password
+        || settings.torrent.qbittorrent_password != current.torrent.qbittorrent_password
 }
 
 // ============================================================================
