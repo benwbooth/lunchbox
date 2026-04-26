@@ -1575,6 +1575,22 @@ fn controller_scope_options(
         .unwrap_or_default()
 }
 
+fn load_controller_inventory(
+    inventory: RwSignal<Option<backend_api::ControllerInventory>>,
+    set_inventory_loading: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+) {
+    set_inventory_loading.set(true);
+    set_error.set(None);
+    spawn_local(async move {
+        match backend_api::list_controllers().await {
+            Ok(loaded_inventory) => inventory.set(Some(loaded_inventory)),
+            Err(e) => set_error.set(Some(format!("Failed to list controllers: {e}"))),
+        }
+        set_inventory_loading.set(false);
+    });
+}
+
 fn save_controller_mapping_change(
     settings: RwSignal<Option<backend_api::AppSettings>>,
     set_saving: WriteSignal<bool>,
@@ -1634,19 +1650,14 @@ fn ControllerProfileDetails(
     });
 
     Effect::new(move || {
-        if game.get().is_none() || !expanded.get() || inventory.get_untracked().is_some() {
+        if game.get().is_none()
+            || inventory.get_untracked().is_some()
+            || inventory_loading.get_untracked()
+        {
             return;
         }
 
-        set_inventory_loading.set(true);
-        set_error.set(None);
-        spawn_local(async move {
-            match backend_api::list_controllers().await {
-                Ok(loaded_inventory) => inventory.set(Some(loaded_inventory)),
-                Err(e) => set_error.set(Some(format!("Failed to list controllers: {e}"))),
-            }
-            set_inventory_loading.set(false);
-        });
+        load_controller_inventory(inventory, set_inventory_loading, set_error);
     });
 
     let system_profile_options = move || available_controller_profiles(inventory.get());
@@ -1778,6 +1789,15 @@ fn ControllerProfileDetails(
                     </div>
                 </div>
                 <div class="game-controller-profile-actions">
+                    <button
+                        class="controller-details-secondary-btn"
+                        disabled=move || inventory_loading.get()
+                        on:click=move |_| {
+                            load_controller_inventory(inventory, set_inventory_loading, set_error);
+                        }
+                    >
+                        {move || if inventory_loading.get() { "Refreshing" } else { "Refresh" }}
+                    </button>
                     {settings_button.unwrap_or_else(|| ().into_any())}
                 </div>
             </div>
