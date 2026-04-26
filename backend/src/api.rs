@@ -1262,6 +1262,7 @@ async fn save_settings_http(
     let mut state_guard = state.write().await;
 
     preserve_blank_credentials(&mut settings, &state_guard.settings);
+    normalize_controller_mapping(&mut settings.controller_mapping);
     let credentials_changed = credential_settings_changed(&settings, &state_guard.settings);
 
     if let Some(ref pool) = state_guard.db_pool {
@@ -1338,6 +1339,31 @@ fn credential_settings_changed(
         || settings.screenscraper.user_id != current.screenscraper.user_id
         || settings.screenscraper.user_password != current.screenscraper.user_password
         || settings.torrent.qbittorrent_password != current.torrent.qbittorrent_password
+}
+
+fn normalize_controller_mapping(mapping: &mut crate::state::ControllerMappingSettings) {
+    while mapping
+        .player_mappings
+        .last()
+        .map(controller_player_mapping_is_default)
+        .unwrap_or(false)
+    {
+        mapping.player_mappings.pop();
+    }
+}
+
+fn controller_player_mapping_is_default(player: &crate::state::ControllerPlayerMapping) -> bool {
+    optional_string_is_empty(&player.controller_id)
+        && optional_string_is_empty(&player.profile_id)
+        && optional_string_is_empty(&player.output_target)
+}
+
+fn optional_string_is_empty(value: &Option<String>) -> bool {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none()
 }
 
 // ============================================================================

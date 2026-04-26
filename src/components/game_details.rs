@@ -1692,6 +1692,27 @@ fn player_mapping_controller_value(
     CONTROLLER_PLAYER_UNUSED.to_string()
 }
 
+fn first_inventory_controller_id(
+    inventory: Option<backend_api::ControllerInventory>,
+) -> Option<String> {
+    inventory
+        .and_then(|inventory| inventory.controllers.into_iter().next())
+        .map(|controller| controller.stable_id)
+}
+
+fn player_mapping_activation_controller(
+    mapping: &backend_api::ControllerMappingSettings,
+    player_index: usize,
+    inventory: Option<backend_api::ControllerInventory>,
+) -> String {
+    let current = player_mapping_controller_value(mapping, player_index);
+    if current != CONTROLLER_PLAYER_UNUSED {
+        return current;
+    }
+
+    first_inventory_controller_id(inventory).unwrap_or_else(|| CONTROLLER_SCOPE_ALL.to_string())
+}
+
 fn player_mapping_profile_value(
     mapping: &backend_api::ControllerMappingSettings,
     player_index: usize,
@@ -1741,21 +1762,26 @@ fn set_player_mapping_profile(
     mapping: &mut backend_api::ControllerMappingSettings,
     player_index: usize,
     selected_value: String,
+    activation_controller_id: String,
 ) {
     ensure_player_mapping_slots(mapping);
-    if player_index == 0
+    let selected = selected_value.trim();
+    if !selected.is_empty()
+        && selected != CONTROLLER_PROFILE_INHERIT
         && mapping.player_mappings[player_index]
             .controller_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|controller_id| !controller_id.is_empty())
             .is_none()
     {
-        mapping.player_mappings[player_index].controller_id = Some(controller_scope_select_value(
-            &mapping.profile_controller_ids,
-        ));
+        mapping.player_mappings[player_index].controller_id =
+            Some(activation_controller_id.trim().to_string());
     }
-    mapping.player_mappings[player_index].profile_id = match selected_value.as_str() {
-        CONTROLLER_PROFILE_INHERIT => None,
+    mapping.player_mappings[player_index].profile_id = match selected {
+        "" | CONTROLLER_PROFILE_INHERIT => None,
         CONTROLLER_PROFILE_NONE => Some("none".to_string()),
-        _ => Some(selected_value),
+        _ => Some(selected.to_string()),
     };
     trim_default_player_mappings(mapping);
 }
@@ -1764,22 +1790,27 @@ fn set_player_mapping_target(
     mapping: &mut backend_api::ControllerMappingSettings,
     player_index: usize,
     selected_value: String,
+    activation_controller_id: String,
 ) {
     ensure_player_mapping_slots(mapping);
-    if player_index == 0
+    let selected = selected_value.trim();
+    if selected != CONTROLLER_TARGET_INHERIT
+        && !selected.is_empty()
         && mapping.player_mappings[player_index]
             .controller_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|controller_id| !controller_id.is_empty())
             .is_none()
     {
-        mapping.player_mappings[player_index].controller_id = Some(controller_scope_select_value(
-            &mapping.profile_controller_ids,
-        ));
+        mapping.player_mappings[player_index].controller_id =
+            Some(activation_controller_id.trim().to_string());
     }
     mapping.player_mappings[player_index].output_target =
-        if selected_value == CONTROLLER_TARGET_INHERIT || selected_value.trim().is_empty() {
+        if selected == CONTROLLER_TARGET_INHERIT || selected.is_empty() {
             None
         } else {
-            Some(selected_value.trim().to_string())
+            Some(selected.to_string())
         };
     trim_default_player_mappings(mapping);
 }
@@ -2159,7 +2190,7 @@ fn ControllerProfileDetails(
                                                 .unwrap_or_else(|| CONTROLLER_PLAYER_UNUSED.to_string())
                                         };
                                         let row_disabled = move || {
-                                            controls_disabled() || controller_value() == CONTROLLER_PLAYER_UNUSED
+                                            controls_disabled()
                                         };
                                         view! {
                                             <tr>
@@ -2222,6 +2253,18 @@ fn ControllerProfileDetails(
                                                         disabled=row_disabled
                                                         on:change=move |ev| {
                                                             let selected = event_target_value(&ev);
+                                                            let activation_controller_id = settings
+                                                                .get_untracked()
+                                                                .map(|settings| {
+                                                                    player_mapping_activation_controller(
+                                                                        &settings.controller_mapping,
+                                                                        player_index,
+                                                                        inventory.get_untracked(),
+                                                                    )
+                                                                })
+                                                                .unwrap_or_else(|| {
+                                                                    CONTROLLER_SCOPE_ALL.to_string()
+                                                                });
                                                             save_controller_mapping_change(
                                                                 settings,
                                                                 set_saving,
@@ -2233,6 +2276,7 @@ fn ControllerProfileDetails(
                                                                         &mut settings.controller_mapping,
                                                                         player_index,
                                                                         selected,
+                                                                        activation_controller_id,
                                                                     );
                                                                 },
                                                             );
@@ -2265,6 +2309,18 @@ fn ControllerProfileDetails(
                                                         disabled=row_disabled
                                                         on:change=move |ev| {
                                                             let selected = event_target_value(&ev);
+                                                            let activation_controller_id = settings
+                                                                .get_untracked()
+                                                                .map(|settings| {
+                                                                    player_mapping_activation_controller(
+                                                                        &settings.controller_mapping,
+                                                                        player_index,
+                                                                        inventory.get_untracked(),
+                                                                    )
+                                                                })
+                                                                .unwrap_or_else(|| {
+                                                                    CONTROLLER_SCOPE_ALL.to_string()
+                                                                });
                                                             save_controller_mapping_change(
                                                                 settings,
                                                                 set_saving,
@@ -2276,6 +2332,7 @@ fn ControllerProfileDetails(
                                                                         &mut settings.controller_mapping,
                                                                         player_index,
                                                                         selected,
+                                                                        activation_controller_id,
                                                                     );
                                                                 },
                                                             );
