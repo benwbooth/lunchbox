@@ -322,10 +322,10 @@ fn save_controller_mapping_settings(
     update(&mut next_mapping);
     trim_default_player_mappings(&mut next_mapping);
 
-    settings.update(|settings| {
+    saved_settings.update(|settings| {
         settings.controller_mapping = next_mapping.clone();
     });
-    saved_settings.update(|settings| {
+    settings.update(|settings| {
         settings.controller_mapping = next_mapping.clone();
     });
     set_save_error.set(None);
@@ -436,7 +436,7 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
         }
 
         // Only save if settings actually changed
-        if current == saved_settings.get() {
+        if current == saved_settings.get_untracked() {
             return;
         }
 
