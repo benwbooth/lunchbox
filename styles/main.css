@@ -2958,6 +2958,12 @@ h1, h2, h3, h4, h5, h6 {
     cursor: not-allowed;
 }
 
+.game-controller-field-hint {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.3;
+}
+
 .game-controller-error {
     padding: 8px 10px;
     border: 1px solid rgba(239, 68, 68, 0.35);

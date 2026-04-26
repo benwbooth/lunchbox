@@ -54,8 +54,11 @@ fn controller_scope_label(controller: &crate::backend_api::ControllerDevice) -> 
     format!("{} ({ids})", controller.name)
 }
 
-fn controller_scope_options(inventory: Option<ControllerInventory>) -> Vec<(String, String)> {
-    inventory
+fn controller_scope_options(
+    inventory: Option<ControllerInventory>,
+    selected_value: String,
+) -> Vec<(String, String)> {
+    let mut options: Vec<(String, String)> = inventory
         .map(|inventory| {
             inventory
                 .controllers
@@ -68,7 +71,62 @@ fn controller_scope_options(inventory: Option<ControllerInventory>) -> Vec<(Stri
                 })
                 .collect()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+
+    let selected = selected_value.trim();
+    if selected != CONTROLLER_SCOPE_ALL
+        && !selected.is_empty()
+        && !options.iter().any(|(id, _)| id == selected)
+    {
+        options.insert(
+            0,
+            (
+                selected.to_string(),
+                "Selected controller (not currently detected)".to_string(),
+            ),
+        );
+    }
+
+    options
+}
+
+fn controller_scope_status_options(
+    inventory: Option<ControllerInventory>,
+    loading: bool,
+) -> Vec<(String, String)> {
+    if loading {
+        return vec![(
+            "__loading_controllers".to_string(),
+            "Checking controllers...".to_string(),
+        )];
+    }
+
+    match inventory {
+        None => vec![(
+            "__controllers_not_checked".to_string(),
+            "Controllers not checked yet".to_string(),
+        )],
+        Some(inventory) if inventory.controllers.is_empty() => vec![(
+            "__no_controllers".to_string(),
+            "No plugged in controllers found".to_string(),
+        )],
+        Some(_) => Vec::new(),
+    }
+}
+
+fn controller_scope_hint(inventory: Option<ControllerInventory>, loading: bool) -> String {
+    if loading {
+        return "Checking controllers".to_string();
+    }
+
+    match inventory {
+        None => "Controllers not checked".to_string(),
+        Some(inventory) => match inventory.controllers.len() {
+            0 => "No plugged in controllers".to_string(),
+            1 => "1 plugged in controller".to_string(),
+            count => format!("{count} plugged in controllers"),
+        },
+    }
 }
 
 #[component]
@@ -797,7 +855,17 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
             .map(|inventory| inventory.built_in_profiles)
             .unwrap_or_default()
     };
-    let controller_options = move || controller_scope_options(inventory.get());
+    let controller_options = move || {
+        controller_scope_options(
+            inventory.get(),
+            controller_scope_select_value(
+                &settings.get().controller_mapping.profile_controller_ids,
+            ),
+        )
+    };
+    let controller_status_options =
+        move || controller_scope_status_options(inventory.get(), loading.get());
+    let controller_scope_hint_text = move || controller_scope_hint(inventory.get(), loading.get());
 
     let target_options = move || {
         let targets = inventory
@@ -938,6 +1006,13 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                     >
                         <option value=CONTROLLER_SCOPE_ALL>"All plugged in controllers"</option>
                         <For
+                            each=controller_status_options
+                            key=|(id, _)| id.clone()
+                            children=move |(id, label)| view! {
+                                <option value=id disabled=true>{label}</option>
+                            }
+                        />
+                        <For
                             each=controller_options
                             key=|(id, _)| id.clone()
                             children=move |(id, label)| view! {
@@ -945,6 +1020,7 @@ fn ControllerMappingSection(settings: RwSignal<AppSettings>) -> impl IntoView {
                             }
                         />
                     </select>
+                    <span class="settings-hint">{move || controller_scope_hint_text()}</span>
                 </label>
             </div>
 

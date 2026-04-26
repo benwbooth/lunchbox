@@ -1558,8 +1558,9 @@ fn controller_scope_label(controller: &backend_api::ControllerDevice) -> String 
 
 fn controller_scope_options(
     inventory: Option<backend_api::ControllerInventory>,
+    selected_value: String,
 ) -> Vec<(String, String)> {
-    inventory
+    let mut options: Vec<(String, String)> = inventory
         .map(|inventory| {
             inventory
                 .controllers
@@ -1572,7 +1573,65 @@ fn controller_scope_options(
                 })
                 .collect()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+
+    let selected = selected_value.trim();
+    if selected != CONTROLLER_SCOPE_ALL
+        && !selected.is_empty()
+        && !options.iter().any(|(id, _)| id == selected)
+    {
+        options.insert(
+            0,
+            (
+                selected.to_string(),
+                "Selected controller (not currently detected)".to_string(),
+            ),
+        );
+    }
+
+    options
+}
+
+fn controller_scope_status_options(
+    inventory: Option<backend_api::ControllerInventory>,
+    loading: bool,
+) -> Vec<(String, String)> {
+    if loading {
+        return vec![(
+            "__loading_controllers".to_string(),
+            "Checking controllers...".to_string(),
+        )];
+    }
+
+    match inventory {
+        None => vec![(
+            "__controllers_not_checked".to_string(),
+            "Controllers not checked yet".to_string(),
+        )],
+        Some(inventory) if inventory.controllers.is_empty() => vec![(
+            "__no_controllers".to_string(),
+            "No plugged in controllers found".to_string(),
+        )],
+        Some(_) => Vec::new(),
+    }
+}
+
+fn controller_scope_hint(
+    inventory: Option<backend_api::ControllerInventory>,
+    loading: bool,
+) -> String {
+    if loading {
+        return "Checking controllers".to_string();
+    }
+
+    match inventory {
+        None => "Controllers not checked".to_string(),
+        Some(inventory) => match inventory.controllers.len() {
+            0 => "No plugged in controllers".to_string(),
+            1 => "1 plugged in controller".to_string(),
+            count => format!("{count} plugged in controllers"),
+        },
+    }
 }
 
 fn load_controller_inventory(
@@ -1660,11 +1719,6 @@ fn ControllerProfileDetails(
         load_controller_inventory(inventory, set_inventory_loading, set_error);
     });
 
-    let system_profile_options = move || available_controller_profiles(inventory.get());
-    let game_profile_options = move || available_controller_profiles(inventory.get());
-    let target_options = move || controller_target_options(inventory.get());
-    let controller_options = move || controller_scope_options(inventory.get());
-
     let mapping_enabled = move || {
         settings
             .get()
@@ -1685,6 +1739,15 @@ fn ControllerProfileDetails(
             })
             .unwrap_or_else(|| CONTROLLER_SCOPE_ALL.to_string())
     };
+    let system_profile_options = move || available_controller_profiles(inventory.get());
+    let game_profile_options = move || available_controller_profiles(inventory.get());
+    let target_options = move || controller_target_options(inventory.get());
+    let controller_options =
+        move || controller_scope_options(inventory.get(), controller_scope_value());
+    let controller_status_options =
+        move || controller_scope_status_options(inventory.get(), inventory_loading.get());
+    let controller_scope_hint_text =
+        move || controller_scope_hint(inventory.get(), inventory_loading.get());
     let system_profile_value = move || {
         let Some(settings) = settings.get() else {
             return CONTROLLER_PROFILE_INHERIT.to_string();
@@ -1943,6 +2006,13 @@ fn ControllerProfileDetails(
                             >
                                 <option value=CONTROLLER_SCOPE_ALL>"All plugged in controllers"</option>
                                 <For
+                                    each=controller_status_options
+                                    key=|(id, _)| id.clone()
+                                    children=move |(id, label)| view! {
+                                        <option value=id disabled=true>{label}</option>
+                                    }
+                                />
+                                <For
                                     each=controller_options
                                     key=|(id, _)| id.clone()
                                     children=move |(id, label)| view! {
@@ -1950,6 +2020,9 @@ fn ControllerProfileDetails(
                                     }
                                 />
                             </select>
+                            <small class="game-controller-field-hint">
+                                {move || controller_scope_hint_text()}
+                            </small>
                         </label>
 
                         <label class="game-controller-field">
