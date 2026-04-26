@@ -643,10 +643,10 @@ fn get_install_method(emulator: &EmulatorInfo) -> Option<String> {
 fn get_retroarch_install_method() -> Option<String> {
     match current_os() {
         "Linux" => {
-            if is_flatpak_available() {
-                Some("flatpak".to_string())
-            } else if is_nix_available() {
+            if is_nix_available() {
                 Some("nix".to_string())
+            } else if is_flatpak_available() {
+                Some("flatpak".to_string())
             } else {
                 None
             }
@@ -831,15 +831,10 @@ fn check_retroarch_core_installed(core_name: &str) -> Option<PathBuf> {
 fn is_retroarch_installed() -> bool {
     match current_os() {
         "Linux" => {
-            // Check flatpak first
-            if is_flatpak_installed("org.libretro.RetroArch") {
+            if find_retroarch_binary().is_some() {
                 return true;
             }
-            if find_lunchbox_nix_profile_executable("retroarch").is_some() {
-                return true;
-            }
-            // Check native
-            which::which("retroarch").is_ok()
+            is_flatpak_installed("org.libretro.RetroArch")
         }
         "Windows" => which::which("retroarch").is_ok() || which::which("retroarch.exe").is_ok(),
         "macOS" => {
@@ -1434,17 +1429,13 @@ fn get_retroarch_core_dirs() -> Vec<PathBuf> {
 
     match current_os() {
         "Linux" => {
-            // Flatpak RetroArch core location
             if let Some(home) = dirs::home_dir() {
+                dirs.push(home.join(".config/retroarch/cores"));
                 dirs.push(home.join(".var/app/org.libretro.RetroArch/config/retroarch/cores"));
             }
             // System-wide cores
             dirs.push(PathBuf::from("/usr/lib/libretro"));
             dirs.push(PathBuf::from("/usr/lib64/libretro"));
-            // User cores
-            if let Some(home) = dirs::home_dir() {
-                dirs.push(home.join(".config/retroarch/cores"));
-            }
         }
         "Windows" => {
             if let Some(app_data) = dirs::data_local_dir() {
@@ -3035,7 +3026,7 @@ async fn install_homebrew(formula: &str) -> Result<(), String> {
 /// Install a RetroArch core
 async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
     // First ensure RetroArch is installed
-    if !is_retroarch_installed() {
+    if !is_retroarch_installed() || (current_os() == "Linux" && find_retroarch_binary().is_none()) {
         install_retroarch().await?;
     }
 
@@ -3120,10 +3111,10 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
 async fn install_retroarch() -> Result<(), String> {
     match current_os() {
         "Linux" => {
-            if is_flatpak_available() {
-                install_flatpak("org.libretro.RetroArch").await
-            } else if is_nix_available() {
+            if is_nix_available() {
                 install_nix_package("retroarch").await
+            } else if is_flatpak_available() {
+                install_flatpak("org.libretro.RetroArch").await
             } else {
                 Err("No Linux installation method available for RetroArch".to_string())
             }
@@ -5483,6 +5474,8 @@ fn find_retroarch_binary() -> Option<PathBuf> {
                 }
             }
         }
+        "Linux" => find_lunchbox_nix_profile_executable("retroarch")
+            .or_else(|| which::which("retroarch").ok()),
         _ => which::which("retroarch").ok(),
     }
 }
@@ -5765,8 +5758,22 @@ fn launch_retroarch(
 
     match current_os() {
         "Linux" => {
-            let is_flatpak = is_flatpak_installed("org.libretro.RetroArch");
-            if is_flatpak {
+            if let Some(retroarch_path) = find_retroarch_binary() {
+                let mut cmd = Command::new(retroarch_path);
+                cmd.arg("--verbose");
+                cmd.arg("-L").arg(&core_path_str);
+                append_launch_args_native(&mut cmd, effective_launch_args);
+                if let Some(rom) = rom_path {
+                    cmd.arg(rom);
+                }
+                tracing::info!(
+                    command = ?cmd,
+                    core = %core_name,
+                    rom = ?rom_path,
+                    "Spawning RetroArch native"
+                );
+                spawn_and_verify(cmd, "RetroArch", cleanup_paths)
+            } else if is_flatpak_installed("org.libretro.RetroArch") {
                 let mut cmd = Command::new("flatpak");
                 cmd.arg("run");
                 let mut filesystem_paths = vec![(core_path.as_path(), true)];
@@ -5794,22 +5801,7 @@ fn launch_retroarch(
                 );
                 spawn_and_verify(cmd, "RetroArch", cleanup_paths)
             } else {
-                let retroarch_path = find_retroarch_binary()
-                    .ok_or_else(|| "Could not find RetroArch executable".to_string())?;
-                let mut cmd = Command::new(retroarch_path);
-                cmd.arg("--verbose");
-                cmd.arg("-L").arg(&core_path_str);
-                append_launch_args_native(&mut cmd, effective_launch_args);
-                if let Some(rom) = rom_path {
-                    cmd.arg(rom);
-                }
-                tracing::info!(
-                    command = ?cmd,
-                    core = %core_name,
-                    rom = ?rom_path,
-                    "Spawning RetroArch native"
-                );
-                spawn_and_verify(cmd, "RetroArch", cleanup_paths)
+                Err("Could not find RetroArch executable".to_string())
             }
         }
         "Windows" | "macOS" => {
@@ -6617,18 +6609,12 @@ pub fn add_status_as_standalone(emulator: EmulatorInfo) -> EmulatorWithStatus {
 
 /// Find the RetroArch executable
 fn find_retroarch_executable() -> Option<PathBuf> {
-    // Check flatpak first
-    if is_flatpak_installed("org.libretro.RetroArch") {
+    if let Some(path) = find_retroarch_binary() {
+        return Some(path);
+    }
+
+    if current_os() == "Linux" && is_flatpak_installed("org.libretro.RetroArch") {
         return Some(PathBuf::from("flatpak run org.libretro.RetroArch"));
-    }
-
-    if let Some(path) = find_lunchbox_nix_profile_executable("retroarch") {
-        return Some(path);
-    }
-
-    // Check PATH
-    if let Ok(path) = which::which("retroarch") {
-        return Some(path);
     }
 
     None
