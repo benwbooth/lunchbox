@@ -206,6 +206,14 @@ pub async fn activate_for_launch(
             });
 
             if !matches_hidden && matched_player.is_none() {
+                if inputplumber_device_has_gamepad_target(&device.id) {
+                    launch_devices.push(InputPlumberLaunchDevice {
+                        id: device.id,
+                        hidden: true,
+                        target_device_ids: Vec::new(),
+                        profile_path: None,
+                    });
+                }
                 continue;
             }
 
@@ -258,26 +266,28 @@ pub async fn activate_for_launch(
 
     let mut launch_devices = Vec::new();
     let mut matched_any = false;
-    let needs_source_paths = !hidden_controller_paths.is_empty() || !profile_scope_is_all;
 
     for device in managed_devices {
-        let source_paths = if needs_source_paths {
-            inputplumber_device_info(&device.id)
-                .map(|info| info.source_paths)
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let source_paths = inputplumber_device_info(&device.id)
+            .map(|info| info.source_paths)
+            .unwrap_or_default();
         let matches_hidden = !hidden_controller_paths.is_empty()
             && source_paths
                 .iter()
                 .any(|path| hidden_controller_paths.contains(path));
-        let matches_profile = profile_scope_is_all
-            || source_paths
-                .iter()
-                .any(|path| profile_controller_paths.contains(path));
+        let matches_profile = source_paths
+            .iter()
+            .any(|path| profile_controller_paths.contains(path));
 
         if !matches_hidden && !matches_profile {
+            if inputplumber_device_has_gamepad_target(&device.id) {
+                launch_devices.push(InputPlumberLaunchDevice {
+                    id: device.id,
+                    hidden: true,
+                    target_device_ids: Vec::new(),
+                    profile_path: None,
+                });
+            }
             continue;
         }
 
@@ -818,6 +828,27 @@ fn inputplumber_device_targets(id: &str) -> Result<Vec<String>, String> {
             }
         })
         .collect())
+}
+
+fn inputplumber_device_has_gamepad_target(id: &str) -> bool {
+    inputplumber_device_targets(id)
+        .unwrap_or_default()
+        .iter()
+        .any(|target| {
+            matches!(
+                target.as_str(),
+                "deck"
+                    | "deck-uhid"
+                    | "ds5"
+                    | "ds5-edge"
+                    | "gamepad"
+                    | "hori-steam"
+                    | "unified-gamepad"
+                    | "xb360"
+                    | "xbox-elite"
+                    | "xbox-series"
+            )
+        })
 }
 
 fn inputplumber_device_intercept_mode(id: &str) -> Result<String, String> {
