@@ -222,7 +222,7 @@ fn launch_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
         ),
         (
             2_500,
-            "Checking firmware, launch files, and controller mapping...".to_string(),
+            "Resolving launch files and controller mapping...".to_string(),
         ),
         (
             4_000,
@@ -254,11 +254,12 @@ fn install_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
         ),
         (
             10_000,
-            "Installing into the Lunchbox-managed emulator profile...".to_string(),
+            "Installing emulator files and required firmware...".to_string(),
         ),
         (
             20_000,
-            "Still installing. Package downloads can take a while on the first run.".to_string(),
+            "Still installing. Emulator or firmware downloads can take a while on the first run."
+                .to_string(),
         ),
     ]
 }
@@ -4739,7 +4740,7 @@ fn EmulatorPickerModal(
     let progress_token = RwSignal::new(0_u64);
     let loading_token = RwSignal::new(0_u64);
     let (emulator_loading_message, set_emulator_loading_message) =
-        signal("Checking installed emulators and firmware...".to_string());
+        signal("Checking installed emulators...".to_string());
     // Track error state
     let (error_state, set_error_state) = signal::<Option<String>>(None);
     // Track success state
@@ -4773,8 +4774,7 @@ fn EmulatorPickerModal(
 
         loading_token.update(|value| *value = value.wrapping_add(1));
         let active_token = loading_token.get_untracked();
-        set_emulator_loading_message
-            .set("Checking installed emulators and firmware...".to_string());
+        set_emulator_loading_message.set("Checking installed emulators...".to_string());
 
         spawn_local(async move {
             let stages = [
@@ -4782,7 +4782,7 @@ fn EmulatorPickerModal(
                     1_500,
                     "Checking emulator install status and RetroArch cores...",
                 ),
-                (4_000, "Checking firmware status for available emulators..."),
+                (4_000, "Checking installed emulator firmware..."),
                 (
                     8_000,
                     "Still loading emulator status. Package manager checks can be slow.",

@@ -1505,7 +1505,7 @@ async fn add_firmware_statuses(
     results: &mut [EmulatorWithStatus],
     platform_name: &str,
 ) -> Result<(), String> {
-    for emulator in results {
+    for emulator in results.iter_mut().filter(|emulator| emulator.is_installed) {
         emulator.firmware_statuses = crate::firmware::get_firmware_status(
             settings,
             db_pool,
@@ -1585,6 +1585,37 @@ pub async fn install_emulator(
 ) -> Result<String, String> {
     let path = emulator::install_emulator(emulator, is_retroarch_core).await?;
     Ok(path.to_string_lossy().to_string())
+}
+
+pub async fn install_emulator_with_firmware(
+    settings: &AppSettings,
+    db_pool: Option<&sqlx::SqlitePool>,
+    minerva_pool: Option<&sqlx::SqlitePool>,
+    emulator: &EmulatorInfo,
+    platform_name: Option<&str>,
+    is_retroarch_core: bool,
+) -> Result<String, String> {
+    let path = install_emulator(emulator, is_retroarch_core).await?;
+
+    if let (Some(db_pool), Some(platform_name)) = (db_pool, platform_name) {
+        install_firmware_for_emulator_with_context(
+            settings,
+            db_pool,
+            minerva_pool,
+            emulator,
+            platform_name,
+            is_retroarch_core,
+        )
+        .await
+        .map_err(|e| {
+            format!(
+                "{} installed at {}, but firmware setup failed: {}",
+                emulator.name, path, e
+            )
+        })?;
+    }
+
+    Ok(path)
 }
 
 pub async fn uninstall_emulator(
@@ -1799,22 +1830,29 @@ pub async fn launch_game_with_emulator(
         let db_pool = crate::state::ensure_user_db(state)
             .await
             .map_err(|e| e.to_string())?;
-        if let Err(e) = crate::firmware::ensure_runtime_firmware_for_launch(
-            &settings,
-            db_pool,
-            minerva_pool.as_ref(),
+        if crate::firmware::requires_launch_scoped_firmware_staging(
             emulator,
             runtime_platform,
             as_retroarch_core,
             Path::new(&resolved_rom_path),
-        )
-        .await
-        {
-            return Ok(LaunchResult {
-                success: false,
-                pid: None,
-                error: Some(e),
-            });
+        ) {
+            if let Err(e) = crate::firmware::ensure_runtime_firmware_for_launch(
+                &settings,
+                db_pool,
+                minerva_pool.as_ref(),
+                emulator,
+                runtime_platform,
+                as_retroarch_core,
+                Path::new(&resolved_rom_path),
+            )
+            .await
+            {
+                return Ok(LaunchResult {
+                    success: false,
+                    pid: None,
+                    error: Some(e),
+                });
+            }
         }
 
         let firmware_launch_args = crate::firmware::get_launch_firmware_args(

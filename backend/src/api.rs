@@ -4051,39 +4051,67 @@ async fn rspc_install_emulator(
         Err(e) => return rspc_err::<String>(format!("Invalid input: {}", e)).into_response(),
     };
 
-    let state_guard = state.read().await;
+    let platform_name = input.platform_name.clone();
+    let (emulator, settings, minerva_pool, db_pool) = {
+        let mut state_guard = state.write().await;
 
-    let emulator = match input.platform_name.as_deref() {
-        Some(platform_name) => {
-            match handlers::get_emulator_for_platform(
-                &state_guard,
-                &input.emulator_name,
-                platform_name,
-            )
-            .await
-            {
+        let emulator = match platform_name.as_deref() {
+            Some(platform_name) => {
+                match handlers::get_emulator_for_platform(
+                    &state_guard,
+                    &input.emulator_name,
+                    platform_name,
+                )
+                .await
+                {
+                    Ok(Some(e)) => e,
+                    Ok(None) => {
+                        return rspc_err::<String>(format!(
+                            "Emulator '{}' not found for platform '{}'",
+                            input.emulator_name, platform_name
+                        ))
+                        .into_response();
+                    }
+                    Err(e) => return rspc_err::<String>(e).into_response(),
+                }
+            }
+            None => match handlers::get_emulator(&state_guard, &input.emulator_name).await {
                 Ok(Some(e)) => e,
                 Ok(None) => {
                     return rspc_err::<String>(format!(
-                        "Emulator '{}' not found for platform '{}'",
-                        input.emulator_name, platform_name
+                        "Emulator '{}' not found",
+                        input.emulator_name
                     ))
                     .into_response();
                 }
                 Err(e) => return rspc_err::<String>(e).into_response(),
+            },
+        };
+
+        let settings = state_guard.settings.clone();
+        let minerva_pool = state_guard.minerva_db_pool.clone();
+        let db_pool = if platform_name.is_some() {
+            match crate::state::ensure_user_db(&mut state_guard).await {
+                Ok(pool) => Some(pool.clone()),
+                Err(e) => return rspc_err::<String>(e.to_string()).into_response(),
             }
-        }
-        None => match handlers::get_emulator(&state_guard, &input.emulator_name).await {
-            Ok(Some(e)) => e,
-            Ok(None) => {
-                return rspc_err::<String>(format!("Emulator '{}' not found", input.emulator_name))
-                    .into_response();
-            }
-            Err(e) => return rspc_err::<String>(e).into_response(),
-        },
+        } else {
+            None
+        };
+
+        (emulator, settings, minerva_pool, db_pool)
     };
 
-    match handlers::install_emulator(&emulator, input.is_retroarch_core).await {
+    match handlers::install_emulator_with_firmware(
+        &settings,
+        db_pool.as_ref(),
+        minerva_pool.as_ref(),
+        &emulator,
+        platform_name.as_deref(),
+        input.is_retroarch_core,
+    )
+    .await
+    {
         Ok(path) => rspc_ok(path).into_response(),
         Err(e) => rspc_err::<String>(e).into_response(),
     }

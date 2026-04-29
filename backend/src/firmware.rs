@@ -1873,6 +1873,21 @@ pub async fn ensure_runtime_firmware_for_launch(
     ensure_firmware_for_runtime(settings, pool, minerva_pool, &runtime, platform_name).await
 }
 
+pub fn requires_launch_scoped_firmware_staging(
+    emulator_info: &EmulatorInfo,
+    platform_name: &str,
+    as_retroarch_core: bool,
+    rom_path: &Path,
+) -> bool {
+    resolve_runtime_context_for_launch(
+        emulator_info,
+        platform_name,
+        as_retroarch_core,
+        Some(rom_path),
+    )
+    .is_some_and(|runtime| runtime.launch_scoped && runtime.runtime_dir.is_some())
+}
+
 pub async fn get_launch_firmware_args(
     pool: &SqlitePool,
     emulator_info: &EmulatorInfo,
@@ -2317,6 +2332,18 @@ async fn ensure_firmware_for_runtime(
                 rule.rule_key, runtime.display_name
             )
         })?;
+        let expected_target_path = match rule.install_mode.as_str() {
+            "merge_tree" => target_root.clone(),
+            "copy_archive" => target_root.join(&rule.source_package_name),
+            _ => unreachable!(),
+        };
+        if expected_target_path.exists()
+            && firmware_install_is_synced(pool, &rule.rule_key, system_dir, &expected_target_path)
+                .await?
+        {
+            continue;
+        }
+
         let installed_target_path = match rule.install_mode.as_str() {
             "merge_tree" => {
                 let source_root =
@@ -2377,6 +2404,31 @@ async fn ensure_firmware_for_runtime(
 
     let _ = settings;
     Ok(())
+}
+
+async fn firmware_install_is_synced(
+    pool: &SqlitePool,
+    rule_key: &str,
+    runtime_install_path: &Path,
+    target_path: &Path,
+) -> Result<bool, String> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM firmware_installs
+        WHERE rule_key = ?
+          AND runtime_install_path = ?
+          AND target_path = ?
+          AND status = 'synced'
+        "#,
+    )
+    .bind(rule_key)
+    .bind(runtime_install_path.display().to_string())
+    .bind(target_path.display().to_string())
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?
+        > 0)
 }
 
 async fn get_imported_package_row(
