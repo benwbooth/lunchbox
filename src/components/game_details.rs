@@ -1939,7 +1939,9 @@ fn load_controller_inventory(
 
 fn save_controller_mapping_change(
     settings: RwSignal<Option<backend_api::AppSettings>>,
-    _set_saving: WriteSignal<bool>,
+    pending_save: RwSignal<Option<backend_api::ControllerMappingSettings>>,
+    save_in_flight: RwSignal<bool>,
+    set_saving: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     update: impl FnOnce(&mut backend_api::AppSettings) + 'static,
 ) {
@@ -1950,12 +1952,49 @@ fn save_controller_mapping_change(
     update(&mut next_settings);
     trim_default_player_mappings(&mut next_settings.controller_mapping);
     let controller_mapping = next_settings.controller_mapping.clone();
-    settings.set(Some(next_settings.clone()));
+    settings.set(Some(next_settings));
     set_error.set(None);
+    pending_save.set(Some(controller_mapping));
+    flush_controller_mapping_save_queue(pending_save, save_in_flight, set_saving, set_error);
+}
 
+fn flush_controller_mapping_save_queue(
+    pending_save: RwSignal<Option<backend_api::ControllerMappingSettings>>,
+    save_in_flight: RwSignal<bool>,
+    set_saving: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+) {
+    if save_in_flight.get_untracked() {
+        return;
+    }
+
+    save_in_flight.set(true);
+    set_saving.set(true);
     spawn_local(async move {
-        if let Err(e) = backend_api::save_controller_mapping(controller_mapping).await {
-            set_error.set(Some(e));
+        delay_ms(150).await;
+
+        loop {
+            let Some(controller_mapping) = pending_save.get_untracked() else {
+                break;
+            };
+            pending_save.set(None);
+
+            match backend_api::save_controller_mapping(controller_mapping).await {
+                Ok(()) => set_error.set(None),
+                Err(e) => set_error.set(Some(e)),
+            }
+        }
+
+        save_in_flight.set(false);
+        set_saving.set(false);
+
+        if pending_save.get_untracked().is_some() {
+            flush_controller_mapping_save_queue(
+                pending_save,
+                save_in_flight,
+                set_saving,
+                set_error,
+            );
         }
     });
 }
@@ -1970,6 +2009,8 @@ fn ControllerProfileDetails(
     let (settings_loading, set_settings_loading) = signal(false);
     let (inventory_loading, set_inventory_loading) = signal(false);
     let (saving, set_saving) = signal(false);
+    let pending_save = RwSignal::new(None::<backend_api::ControllerMappingSettings>);
+    let save_in_flight = RwSignal::new(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (expanded, set_expanded) = signal(false);
     let (show_all_players, set_show_all_players) = signal(false);
@@ -2150,6 +2191,8 @@ fn ControllerProfileDetails(
                                     let checked = event_target_checked(&ev);
                                     save_controller_mapping_change(
                                         settings,
+                                        pending_save,
+                                        save_in_flight,
                                         set_saving,
                                         set_error,
                                         move |settings| {
@@ -2181,6 +2224,8 @@ fn ControllerProfileDetails(
                                     let selected = event_target_value(&ev);
                                     save_controller_mapping_change(
                                         settings,
+                                        pending_save,
+                                        save_in_flight,
                                         set_saving,
                                         set_error,
                                         move |settings| {
@@ -2227,6 +2272,8 @@ fn ControllerProfileDetails(
                                     let selected = event_target_value(&ev);
                                     save_controller_mapping_change(
                                         settings,
+                                        pending_save,
+                                        save_in_flight,
                                         set_saving,
                                         set_error,
                                         move |settings| {
@@ -2303,6 +2350,8 @@ fn ControllerProfileDetails(
                                                             let selected = event_target_value(&ev);
                                                             save_controller_mapping_change(
                                                                 settings,
+                                                                pending_save,
+                                                                save_in_flight,
                                                                 set_saving,
                                                                 set_error,
                                                                 move |settings| {
@@ -2367,6 +2416,8 @@ fn ControllerProfileDetails(
                                                                 });
                                                             save_controller_mapping_change(
                                                                 settings,
+                                                                pending_save,
+                                                                save_in_flight,
                                                                 set_saving,
                                                                 set_error,
                                                                 move |settings| {
@@ -2423,6 +2474,8 @@ fn ControllerProfileDetails(
                                                                 });
                                                             save_controller_mapping_change(
                                                                 settings,
+                                                                pending_save,
+                                                                save_in_flight,
                                                                 set_saving,
                                                                 set_error,
                                                                 move |settings| {
