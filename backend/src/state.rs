@@ -116,13 +116,13 @@ pub struct ControllerMappingSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ControllerPlayerMapping {
     /// Stable controller id for this player, or "__all" for every plugged in controller.
-    #[serde(default)]
+    #[serde(default, alias = "controllerId")]
     pub controller_id: Option<String>,
     /// Built-in profile id/custom profile path, "none", or empty to inherit the resolved profile.
-    #[serde(default)]
+    #[serde(default, alias = "profileId")]
     pub profile_id: Option<String>,
     /// InputPlumber target id, or empty to inherit the global target.
-    #[serde(default)]
+    #[serde(default, alias = "outputTarget")]
     pub output_target: Option<String>,
 }
 

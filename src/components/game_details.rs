@@ -1983,7 +1983,6 @@ fn flush_controller_mapping_save_queue(
     save_in_flight.set(true);
     set_saving.set(true);
     spawn_local(async move {
-        delay_ms(150).await;
         let mut latest_save_succeeded = false;
 
         loop {

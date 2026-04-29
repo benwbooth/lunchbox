@@ -1,7 +1,10 @@
 //! Backend API bindings for the frontend.
 
+use futures::future::{Either, select};
+use futures::pin_mut;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
+use std::future::Future;
 use wasm_bindgen::prelude::*;
 
 /// The HTTP API base URL for browser mode
@@ -157,6 +160,32 @@ async fn http_post_empty<B: Serialize>(path: &str, body: &B) -> Result<(), Strin
     }
 
     Ok(())
+}
+
+async fn timeout_ms(ms: i32) {
+    let _ = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
+        if let Some(window) = web_sys::window() {
+            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);
+        } else {
+            let _ = resolve.call0(&JsValue::NULL);
+        }
+    }))
+    .await;
+}
+
+async fn with_timeout<T>(
+    future: impl Future<Output = Result<T, String>>,
+    timeout: i32,
+    message: &'static str,
+) -> Result<T, String> {
+    let timeout = timeout_ms(timeout);
+    pin_mut!(future);
+    pin_mut!(timeout);
+
+    match select(future, timeout).await {
+        Either::Left((result, _)) => result,
+        Either::Right((_, _)) => Err(message.to_string()),
+    }
 }
 
 async fn http_delete(path: &str) -> Result<(), String> {
@@ -400,10 +429,12 @@ pub struct ControllerMappingSettings {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ControllerPlayerMapping {
+    #[serde(default, alias = "controllerId")]
     pub controller_id: Option<String>,
+    #[serde(default, alias = "profileId")]
     pub profile_id: Option<String>,
+    #[serde(default, alias = "outputTarget")]
     pub output_target: Option<String>,
 }
 
@@ -801,7 +832,12 @@ pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
 
 /// Save controller mapping settings without running the full app settings save path.
 pub async fn save_controller_mapping(settings: ControllerMappingSettings) -> Result<(), String> {
-    http_post_empty("/api/settings/controller-mapping", &settings).await
+    with_timeout(
+        http_post_empty("/api/settings/controller-mapping", &settings),
+        4_000,
+        "Timed out saving controller mapping",
+    )
+    .await
 }
 
 /// Greet (test command)
