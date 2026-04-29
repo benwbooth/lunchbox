@@ -2051,19 +2051,39 @@ fn ControllerProfileDetails(
     let save_in_flight = RwSignal::new(false);
     let saved_notice_visible = RwSignal::new(false);
     let saved_notice_sequence = RwSignal::new(0_u64);
+    let settings_refresh_key = RwSignal::new(None::<String>);
     let (error, set_error) = signal::<Option<String>>(None);
     let (expanded, set_expanded) = signal(false);
     let (show_all_players, set_show_all_players) = signal(false);
 
     Effect::new(move || {
-        if game.get().is_none() {
+        let Some(current_game) = game.get() else {
+            settings_refresh_key.set(None);
+            return;
+        };
+
+        let refresh_key = if current_game.database_id > 0 {
+            format!("db:{}", current_game.database_id)
+        } else {
+            format!("id:{}", current_game.id)
+        };
+
+        if settings_refresh_key
+            .get_untracked()
+            .as_deref()
+            .is_some_and(|loaded_key| loaded_key == refresh_key)
+        {
             return;
         }
-        if settings.get_untracked().is_some() || settings_loading.get_untracked() {
+        if settings_loading.get() {
             return;
         }
 
-        set_settings_loading.set(true);
+        settings_refresh_key.set(Some(refresh_key));
+        let first_load = settings.get_untracked().is_none();
+        if first_load {
+            set_settings_loading.set(true);
+        }
         set_error.set(None);
 
         spawn_local(async move {
@@ -2071,7 +2091,9 @@ fn ControllerProfileDetails(
                 Ok(loaded_settings) => settings.set(Some(loaded_settings)),
                 Err(e) => set_error.set(Some(format!("Failed to load controller settings: {e}"))),
             }
-            set_settings_loading.set(false);
+            if first_load {
+                set_settings_loading.set(false);
+            }
         });
     });
 
