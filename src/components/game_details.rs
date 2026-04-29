@@ -1942,6 +1942,8 @@ fn save_controller_mapping_change(
     pending_save: RwSignal<Option<backend_api::ControllerMappingSettings>>,
     save_in_flight: RwSignal<bool>,
     set_saving: WriteSignal<bool>,
+    saved_notice_visible: RwSignal<bool>,
+    saved_notice_sequence: RwSignal<u64>,
     set_error: WriteSignal<Option<String>>,
     update: impl FnOnce(&mut backend_api::AppSettings) + 'static,
 ) {
@@ -1954,14 +1956,24 @@ fn save_controller_mapping_change(
     let controller_mapping = next_settings.controller_mapping.clone();
     settings.set(Some(next_settings));
     set_error.set(None);
+    saved_notice_visible.set(false);
     pending_save.set(Some(controller_mapping));
-    flush_controller_mapping_save_queue(pending_save, save_in_flight, set_saving, set_error);
+    flush_controller_mapping_save_queue(
+        pending_save,
+        save_in_flight,
+        set_saving,
+        saved_notice_visible,
+        saved_notice_sequence,
+        set_error,
+    );
 }
 
 fn flush_controller_mapping_save_queue(
     pending_save: RwSignal<Option<backend_api::ControllerMappingSettings>>,
     save_in_flight: RwSignal<bool>,
     set_saving: WriteSignal<bool>,
+    saved_notice_visible: RwSignal<bool>,
+    saved_notice_sequence: RwSignal<u64>,
     set_error: WriteSignal<Option<String>>,
 ) {
     if save_in_flight.get_untracked() {
@@ -1972,6 +1984,7 @@ fn flush_controller_mapping_save_queue(
     set_saving.set(true);
     spawn_local(async move {
         delay_ms(150).await;
+        let mut latest_save_succeeded = false;
 
         loop {
             let Some(controller_mapping) = pending_save.get_untracked() else {
@@ -1980,8 +1993,14 @@ fn flush_controller_mapping_save_queue(
             pending_save.set(None);
 
             match backend_api::save_controller_mapping(controller_mapping).await {
-                Ok(()) => set_error.set(None),
-                Err(e) => set_error.set(Some(e)),
+                Ok(()) => {
+                    latest_save_succeeded = true;
+                    set_error.set(None);
+                }
+                Err(e) => {
+                    latest_save_succeeded = false;
+                    set_error.set(Some(e));
+                }
             }
         }
 
@@ -1993,8 +2012,28 @@ fn flush_controller_mapping_save_queue(
                 pending_save,
                 save_in_flight,
                 set_saving,
+                saved_notice_visible,
+                saved_notice_sequence,
                 set_error,
             );
+        } else if latest_save_succeeded {
+            show_controller_mapping_saved_notice(saved_notice_visible, saved_notice_sequence);
+        }
+    });
+}
+
+fn show_controller_mapping_saved_notice(
+    saved_notice_visible: RwSignal<bool>,
+    saved_notice_sequence: RwSignal<u64>,
+) {
+    let sequence = saved_notice_sequence.get_untracked().wrapping_add(1);
+    saved_notice_sequence.set(sequence);
+    saved_notice_visible.set(true);
+
+    spawn_local(async move {
+        delay_ms(1800).await;
+        if saved_notice_sequence.get_untracked() == sequence {
+            saved_notice_visible.set(false);
         }
     });
 }
@@ -2011,6 +2050,8 @@ fn ControllerProfileDetails(
     let (saving, set_saving) = signal(false);
     let pending_save = RwSignal::new(None::<backend_api::ControllerMappingSettings>);
     let save_in_flight = RwSignal::new(false);
+    let saved_notice_visible = RwSignal::new(false);
+    let saved_notice_sequence = RwSignal::new(0_u64);
     let (error, set_error) = signal::<Option<String>>(None);
     let (expanded, set_expanded) = signal(false);
     let (show_all_players, set_show_all_players) = signal(false);
@@ -2166,6 +2207,15 @@ fn ControllerProfileDetails(
                     </div>
                 </div>
                 <div class="game-controller-profile-actions">
+                    <Show when=move || saved_notice_visible.get()>
+                        <div
+                            class="controller-saved-tooltip"
+                            role="status"
+                            aria-live="polite"
+                        >
+                            "Setting saved"
+                        </div>
+                    </Show>
                     <button
                         class="controller-details-secondary-btn"
                         disabled=move || inventory_loading.get()
@@ -2194,6 +2244,8 @@ fn ControllerProfileDetails(
                                         pending_save,
                                         save_in_flight,
                                         set_saving,
+                                        saved_notice_visible,
+                                        saved_notice_sequence,
                                         set_error,
                                         move |settings| {
                                             settings.controller_mapping.enabled = checked;
@@ -2227,6 +2279,8 @@ fn ControllerProfileDetails(
                                         pending_save,
                                         save_in_flight,
                                         set_saving,
+                                        saved_notice_visible,
+                                        saved_notice_sequence,
                                         set_error,
                                         move |settings| {
                                             if selected != CONTROLLER_PROFILE_INHERIT
@@ -2275,6 +2329,8 @@ fn ControllerProfileDetails(
                                         pending_save,
                                         save_in_flight,
                                         set_saving,
+                                        saved_notice_visible,
+                                        saved_notice_sequence,
                                         set_error,
                                         move |settings| {
                                             if selected != CONTROLLER_PROFILE_INHERIT
@@ -2353,6 +2409,8 @@ fn ControllerProfileDetails(
                                                                 pending_save,
                                                                 save_in_flight,
                                                                 set_saving,
+                                                                saved_notice_visible,
+                                                                saved_notice_sequence,
                                                                 set_error,
                                                                 move |settings| {
                                                                     settings.controller_mapping.enabled = true;
@@ -2419,6 +2477,8 @@ fn ControllerProfileDetails(
                                                                 pending_save,
                                                                 save_in_flight,
                                                                 set_saving,
+                                                                saved_notice_visible,
+                                                                saved_notice_sequence,
                                                                 set_error,
                                                                 move |settings| {
                                                                     settings.controller_mapping.enabled = true;
@@ -2477,6 +2537,8 @@ fn ControllerProfileDetails(
                                                                 pending_save,
                                                                 save_in_flight,
                                                                 set_saving,
+                                                                saved_notice_visible,
+                                                                saved_notice_sequence,
                                                                 set_error,
                                                                 move |settings| {
                                                                     settings.controller_mapping.enabled = true;

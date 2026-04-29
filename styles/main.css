@@ -2843,6 +2843,56 @@ h1, h2, h3, h4, h5, h6 {
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+    position: relative;
+}
+
+.controller-saved-tooltip {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 20;
+    padding: 6px 9px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    color: var(--text-highlight);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    animation: controller-saved-tooltip-pop 1.8s ease both;
+}
+
+.controller-saved-tooltip::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    bottom: -5px;
+    width: 8px;
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-right: 1px solid var(--accent-color);
+    border-bottom: 1px solid var(--accent-color);
+    transform: rotate(45deg);
+}
+
+@keyframes controller-saved-tooltip-pop {
+    0% {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    12%,
+    78% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-3px);
+    }
 }
 
 .game-controller-profile-header h2 {
