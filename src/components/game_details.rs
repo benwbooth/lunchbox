@@ -2060,6 +2060,9 @@ fn ControllerProfileDetails(
         if game.get().is_none() {
             return;
         }
+        if settings.get_untracked().is_some() || settings_loading.get_untracked() {
+            return;
+        }
 
         set_settings_loading.set(true);
         set_error.set(None);
