@@ -77,6 +77,7 @@
 
             makeWrapper ${pkgs.electron}/bin/electron "$out/bin/lunchbox" \
               --add-flags "$out/share/lunchbox/electron/main.cjs" \
+              --prefix PATH : ${lib.makeBinPath [ pkgs.libsecret ]} \
               --set LUNCHBOX_RELEASE 1 \
               --set LUNCHBOX_FRONTEND_DIR "$out/share/lunchbox/frontend" \
               --set LUNCHBOX_BACKEND_BIN "$out/libexec/lunchbox/lunchbox-server" \
