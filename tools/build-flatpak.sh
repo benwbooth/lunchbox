@@ -7,12 +7,15 @@ VERSION="$(node -p "require('$ROOT_DIR/electron/package.json').version")"
 BUILD_DIR="$ROOT_DIR/build-flatpak"
 MANIFEST="$ROOT_DIR/packaging/flatpak/$APP_ID.yml"
 ARCH="$(flatpak --default-arch)"
+RUNTIME_VERSION="24.08"
 
 if ! flatpak --user remotes --columns=name | grep -qx flathub; then
   flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 fi
 
-flatpak --user install -y --noninteractive flathub "org.freedesktop.Platform//$ARCH/24.08" "org.freedesktop.Sdk//$ARCH/24.08"
+flatpak --user install -y --noninteractive flathub \
+  "runtime/org.freedesktop.Platform/$ARCH/$RUNTIME_VERSION" \
+  "runtime/org.freedesktop.Sdk/$ARCH/$RUNTIME_VERSION"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/prebuilt" "$ROOT_DIR/dist"
