@@ -111,6 +111,9 @@ pub struct ControllerMappingSettings {
     /// Stable controller ids to suppress or remap during launch.
     #[serde(default)]
     pub hidden_controller_ids: Vec<String>,
+    /// User-created InputPlumber button remapping profiles.
+    #[serde(default)]
+    pub custom_profiles: Vec<ControllerCustomProfile>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -126,6 +129,26 @@ pub struct ControllerPlayerMapping {
     pub output_target: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ControllerCustomProfile {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub layout: String,
+    #[serde(default)]
+    pub mappings: Vec<ControllerButtonMapping>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ControllerButtonMapping {
+    #[serde(default, alias = "sourceButton")]
+    pub source_button: String,
+    #[serde(default, alias = "targetButton")]
+    pub target_button: String,
+}
+
 impl Default for ControllerMappingSettings {
     fn default() -> Self {
         Self {
@@ -139,6 +162,7 @@ impl Default for ControllerMappingSettings {
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
             hidden_controller_ids: Vec::new(),
+            custom_profiles: Vec::new(),
         }
     }
 }

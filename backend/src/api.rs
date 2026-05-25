@@ -1440,6 +1440,22 @@ fn normalize_controller_mapping(mapping: &mut crate::state::ControllerMappingSet
     {
         mapping.player_mappings.pop();
     }
+
+    mapping
+        .custom_profiles
+        .retain(|profile| !profile.id.trim().is_empty() && !profile.name.trim().is_empty());
+    for profile in &mut mapping.custom_profiles {
+        profile.id = profile.id.trim().to_string();
+        profile.name = profile.name.trim().to_string();
+        if profile.layout.trim().is_empty() {
+            profile.layout = "xbox".to_string();
+        }
+        profile.mappings.retain(|button_mapping| {
+            !button_mapping.source_button.trim().is_empty()
+                && !button_mapping.target_button.trim().is_empty()
+                && button_mapping.source_button.trim() != button_mapping.target_button.trim()
+        });
+    }
 }
 
 fn controller_player_mapping_is_default(player: &crate::state::ControllerPlayerMapping) -> bool {

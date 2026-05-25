@@ -1,4 +1,5 @@
 mod box_3d_viewer;
+pub mod controller_mapping;
 mod emulator_updates;
 mod game_details;
 mod game_grid;

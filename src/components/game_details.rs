@@ -1,17 +1,17 @@
 //! Game details panel
 
 use super::{
-    Box3DViewer, LazyImage, VideoPlayer, minerva_downloads_signal,
-    refresh_minerva_download_queue_now, request_minerva_download_queue_refresh,
+    Box3DViewer, LazyImage, VideoPlayer, controller_mapping as controller_ui,
+    minerva_downloads_signal, refresh_minerva_download_queue_now,
+    request_minerva_download_queue_refresh,
 };
 use crate::backend_api::{
-    self, ControllerProfileInfo, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats,
-    file_to_asset_url,
+    self, EmulatorWithStatus, Game, GameFile, GameVariant, PlayStats, file_to_asset_url,
 };
 use futures::stream::{self, StreamExt};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use wasm_bindgen::{JsCast, JsValue};
 
 async fn launch_game_with_resolved_rom(
@@ -1546,380 +1546,6 @@ async fn load_minerva_torrent_groups(
 
 const CONTROLLER_PROFILE_INHERIT: &str = "__inherit";
 const CONTROLLER_PROFILE_NONE: &str = "__none";
-const CONTROLLER_PLAYER_UNUSED: &str = "__unused";
-const CONTROLLER_SCOPE_ALL: &str = "__all";
-const CONTROLLER_TARGET_INHERIT: &str = "__inherit_target";
-const CONTROLLER_PLAYER_SLOTS: usize = 8;
-const CONTROLLER_DEFAULT_VISIBLE_PLAYERS: usize = 4;
-const TWO_BUTTON_CLOCKWISE_PROFILE_ID: &str = "two-button-clockwise";
-
-fn fallback_controller_profiles() -> Vec<ControllerProfileInfo> {
-    vec![ControllerProfileInfo {
-        id: TWO_BUTTON_CLOCKWISE_PROFILE_ID.to_string(),
-        name: "2-button clockwise diamond".to_string(),
-        description:
-            "Maps physical bottom/right face buttons to target left/bottom for NES-style layouts."
-                .to_string(),
-    }]
-}
-
-fn available_controller_profiles(
-    inventory: Option<backend_api::ControllerInventory>,
-) -> Vec<ControllerProfileInfo> {
-    inventory
-        .map(|inventory| inventory.built_in_profiles)
-        .filter(|profiles| !profiles.is_empty())
-        .unwrap_or_else(fallback_controller_profiles)
-}
-
-fn controller_target_options(
-    inventory: Option<backend_api::ControllerInventory>,
-) -> Vec<(String, String)> {
-    let targets = inventory
-        .map(|inventory| inventory.supported_targets)
-        .unwrap_or_default();
-    let filtered = targets
-        .into_iter()
-        .filter(|target| {
-            matches!(
-                target.id.as_str(),
-                "xb360" | "xbox-series" | "xbox-elite" | "ds5" | "gamepad"
-            )
-        })
-        .map(|target| (target.id, target.name))
-        .collect::<Vec<_>>();
-
-    if filtered.is_empty() {
-        vec![
-            ("xb360".to_string(), "Microsoft X-Box 360 pad".to_string()),
-            (
-                "xbox-series".to_string(),
-                "Microsoft Xbox Series S|X Controller".to_string(),
-            ),
-            ("ds5".to_string(), "Sony DualSense".to_string()),
-            ("gamepad".to_string(), "InputPlumber Gamepad".to_string()),
-        ]
-    } else {
-        filtered
-    }
-}
-
-fn controller_profile_select_value(map: &HashMap<String, String>, key: &str) -> String {
-    match map.get(key).map(|value| value.trim()) {
-        Some("") | Some("none") => CONTROLLER_PROFILE_NONE.to_string(),
-        Some(profile_id) => profile_id.to_string(),
-        None => CONTROLLER_PROFILE_INHERIT.to_string(),
-    }
-}
-
-fn set_controller_profile_override(
-    map: &mut HashMap<String, String>,
-    key: String,
-    selected_value: String,
-) {
-    match selected_value.as_str() {
-        CONTROLLER_PROFILE_INHERIT => {
-            map.remove(&key);
-        }
-        CONTROLLER_PROFILE_NONE => {
-            map.insert(key, "none".to_string());
-        }
-        _ => {
-            map.insert(key, selected_value);
-        }
-    }
-}
-
-fn controller_scope_select_value(controller_ids: &[String]) -> String {
-    controller_ids
-        .iter()
-        .map(|id| id.trim())
-        .find(|id| !id.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| CONTROLLER_SCOPE_ALL.to_string())
-}
-
-fn controller_scope_label(controller: &backend_api::ControllerDevice) -> String {
-    let ids = match (
-        controller.vendor_id.as_deref(),
-        controller.product_id.as_deref(),
-        controller.unique_id.as_deref(),
-    ) {
-        (Some(vendor), Some(product), Some(unique)) if !unique.trim().is_empty() => {
-            format!("{vendor}:{product} {unique}")
-        }
-        (Some(vendor), Some(product), _) => format!("{vendor}:{product}"),
-        _ => controller.device_path.clone(),
-    };
-    format!("{} ({ids})", controller.name)
-}
-
-fn controller_scope_options(
-    inventory: Option<backend_api::ControllerInventory>,
-    selected_value: String,
-) -> Vec<(String, String)> {
-    let mut options: Vec<(String, String)> = inventory
-        .map(|inventory| {
-            inventory
-                .controllers
-                .into_iter()
-                .map(|controller| {
-                    (
-                        controller.stable_id.clone(),
-                        controller_scope_label(&controller),
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let selected = selected_value.trim();
-    if selected != CONTROLLER_SCOPE_ALL
-        && selected != CONTROLLER_PLAYER_UNUSED
-        && !selected.is_empty()
-        && !selected.starts_with("__")
-        && !options.iter().any(|(id, _)| id == selected)
-    {
-        options.insert(
-            0,
-            (
-                selected.to_string(),
-                "Selected controller (not currently detected)".to_string(),
-            ),
-        );
-    }
-
-    options
-}
-
-fn controller_scope_status_options(
-    inventory: Option<backend_api::ControllerInventory>,
-    loading: bool,
-) -> Vec<(String, String)> {
-    if loading {
-        return vec![(
-            "__loading_controllers".to_string(),
-            "Checking controllers...".to_string(),
-        )];
-    }
-
-    match inventory {
-        None => vec![(
-            "__controllers_not_checked".to_string(),
-            "Controllers not checked yet".to_string(),
-        )],
-        Some(inventory) if inventory.controllers.is_empty() => vec![(
-            "__no_controllers".to_string(),
-            "No plugged in controllers found".to_string(),
-        )],
-        Some(_) => Vec::new(),
-    }
-}
-
-fn controller_scope_hint(
-    inventory: Option<backend_api::ControllerInventory>,
-    loading: bool,
-) -> String {
-    if loading {
-        return "Checking controllers".to_string();
-    }
-
-    match inventory {
-        None => "Controllers not checked".to_string(),
-        Some(inventory) => match inventory.controllers.len() {
-            0 => "No plugged in controllers".to_string(),
-            1 => "1 plugged in controller".to_string(),
-            count => format!("{count} plugged in controllers"),
-        },
-    }
-}
-
-fn has_configured_player_mappings(mapping: &backend_api::ControllerMappingSettings) -> bool {
-    mapping.player_mappings.iter().any(|player| {
-        player
-            .controller_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|controller_id| !controller_id.is_empty())
-            .is_some()
-    })
-}
-
-fn player_mapping_value_is_empty(value: &Option<String>) -> bool {
-    value
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_none()
-}
-
-fn player_mapping_is_default(player: &backend_api::ControllerPlayerMapping) -> bool {
-    player_mapping_value_is_empty(&player.controller_id)
-        && player_mapping_value_is_empty(&player.profile_id)
-        && player_mapping_value_is_empty(&player.output_target)
-}
-
-fn ensure_player_mapping_slots(mapping: &mut backend_api::ControllerMappingSettings) {
-    mapping.player_mappings.resize_with(
-        CONTROLLER_PLAYER_SLOTS,
-        backend_api::ControllerPlayerMapping::default,
-    );
-}
-
-fn trim_default_player_mappings(mapping: &mut backend_api::ControllerMappingSettings) {
-    while mapping
-        .player_mappings
-        .last()
-        .map(player_mapping_is_default)
-        .unwrap_or(false)
-    {
-        mapping.player_mappings.pop();
-    }
-}
-
-fn player_mapping_controller_value(
-    mapping: &backend_api::ControllerMappingSettings,
-    player_index: usize,
-) -> String {
-    if let Some(controller_id) = mapping
-        .player_mappings
-        .get(player_index)
-        .and_then(|player| player.controller_id.as_deref())
-        .map(str::trim)
-        .filter(|controller_id| !controller_id.is_empty())
-    {
-        return controller_id.to_string();
-    }
-
-    if player_index == 0 && !has_configured_player_mappings(mapping) {
-        return controller_scope_select_value(&mapping.profile_controller_ids);
-    }
-
-    CONTROLLER_PLAYER_UNUSED.to_string()
-}
-
-fn first_inventory_controller_id(
-    inventory: Option<backend_api::ControllerInventory>,
-) -> Option<String> {
-    inventory
-        .and_then(|inventory| inventory.controllers.into_iter().next())
-        .map(|controller| controller.stable_id)
-}
-
-fn player_mapping_activation_controller(
-    mapping: &backend_api::ControllerMappingSettings,
-    player_index: usize,
-    inventory: Option<backend_api::ControllerInventory>,
-) -> String {
-    let current = player_mapping_controller_value(mapping, player_index);
-    if current != CONTROLLER_PLAYER_UNUSED {
-        return current;
-    }
-
-    first_inventory_controller_id(inventory).unwrap_or_else(|| CONTROLLER_SCOPE_ALL.to_string())
-}
-
-fn player_mapping_profile_value(
-    mapping: &backend_api::ControllerMappingSettings,
-    player_index: usize,
-) -> String {
-    match mapping
-        .player_mappings
-        .get(player_index)
-        .and_then(|player| player.profile_id.as_deref())
-        .map(str::trim)
-    {
-        Some("") | None => CONTROLLER_PROFILE_INHERIT.to_string(),
-        Some("none") => CONTROLLER_PROFILE_NONE.to_string(),
-        Some(profile_id) => profile_id.to_string(),
-    }
-}
-
-fn player_mapping_target_value(
-    mapping: &backend_api::ControllerMappingSettings,
-    player_index: usize,
-) -> String {
-    mapping
-        .player_mappings
-        .get(player_index)
-        .and_then(|player| player.output_target.as_deref())
-        .map(str::trim)
-        .filter(|target| !target.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| CONTROLLER_TARGET_INHERIT.to_string())
-}
-
-fn set_player_mapping_controller(
-    mapping: &mut backend_api::ControllerMappingSettings,
-    player_index: usize,
-    selected_value: String,
-) {
-    ensure_player_mapping_slots(mapping);
-    let selected = selected_value.trim();
-    if selected == CONTROLLER_PLAYER_UNUSED || selected.is_empty() {
-        mapping.player_mappings[player_index] = backend_api::ControllerPlayerMapping::default();
-    } else {
-        mapping.player_mappings[player_index].controller_id = Some(selected.to_string());
-    }
-    trim_default_player_mappings(mapping);
-}
-
-fn set_player_mapping_profile(
-    mapping: &mut backend_api::ControllerMappingSettings,
-    player_index: usize,
-    selected_value: String,
-    activation_controller_id: String,
-) {
-    ensure_player_mapping_slots(mapping);
-    let selected = selected_value.trim();
-    if !selected.is_empty()
-        && selected != CONTROLLER_PROFILE_INHERIT
-        && mapping.player_mappings[player_index]
-            .controller_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|controller_id| !controller_id.is_empty())
-            .is_none()
-    {
-        mapping.player_mappings[player_index].controller_id =
-            Some(activation_controller_id.trim().to_string());
-    }
-    mapping.player_mappings[player_index].profile_id = match selected {
-        "" | CONTROLLER_PROFILE_INHERIT => None,
-        CONTROLLER_PROFILE_NONE => Some("none".to_string()),
-        _ => Some(selected.to_string()),
-    };
-    trim_default_player_mappings(mapping);
-}
-
-fn set_player_mapping_target(
-    mapping: &mut backend_api::ControllerMappingSettings,
-    player_index: usize,
-    selected_value: String,
-    activation_controller_id: String,
-) {
-    ensure_player_mapping_slots(mapping);
-    let selected = selected_value.trim();
-    if selected != CONTROLLER_TARGET_INHERIT
-        && !selected.is_empty()
-        && mapping.player_mappings[player_index]
-            .controller_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|controller_id| !controller_id.is_empty())
-            .is_none()
-    {
-        mapping.player_mappings[player_index].controller_id =
-            Some(activation_controller_id.trim().to_string());
-    }
-    mapping.player_mappings[player_index].output_target =
-        if selected == CONTROLLER_TARGET_INHERIT || selected.is_empty() {
-            None
-        } else {
-            Some(selected.to_string())
-        };
-    trim_default_player_mappings(mapping);
-}
 
 fn load_controller_inventory(
     inventory: RwSignal<Option<backend_api::ControllerInventory>>,
@@ -1952,7 +1578,7 @@ fn save_controller_mapping_change(
     };
 
     update(&mut next_settings);
-    trim_default_player_mappings(&mut next_settings.controller_mapping);
+    controller_ui::trim_default_player_mappings(&mut next_settings.controller_mapping);
     let controller_mapping = next_settings.controller_mapping.clone();
     settings.set(Some(next_settings));
     set_error.set(None);
@@ -2054,7 +1680,7 @@ fn ControllerProfileDetails(
     let settings_refresh_key = RwSignal::new(None::<String>);
     let (error, set_error) = signal::<Option<String>>(None);
     let (expanded, set_expanded) = signal(false);
-    let (show_all_players, set_show_all_players) = signal(false);
+    let profile_designer_controller = RwSignal::new(None::<String>);
 
     Effect::new(move || {
         let Some(current_game) = game.get() else {
@@ -2114,21 +1740,33 @@ fn ControllerProfileDetails(
             .map(|settings| settings.controller_mapping.enabled)
             .unwrap_or(false)
     };
-    let system_profile_options = move || available_controller_profiles(inventory.get());
-    let game_profile_options = move || available_controller_profiles(inventory.get());
-    let target_options = move || controller_target_options(inventory.get());
-    let controller_status_options =
-        move || controller_scope_status_options(inventory.get(), inventory_loading.get());
-    let controller_scope_hint_text =
-        move || controller_scope_hint(inventory.get(), inventory_loading.get());
-    let visible_player_rows = move || {
-        let visible_count = if show_all_players.get() {
-            CONTROLLER_PLAYER_SLOTS
-        } else {
-            CONTROLLER_DEFAULT_VISIBLE_PLAYERS
-        };
-        (0..visible_count).collect::<Vec<_>>()
+    let system_profile_options = move || {
+        controller_ui::controller_profile_options(
+            inventory.get(),
+            settings
+                .get()
+                .map(|settings| settings.controller_mapping.custom_profiles)
+                .unwrap_or_default(),
+        )
     };
+    let game_profile_options = move || {
+        controller_ui::controller_profile_options(
+            inventory.get(),
+            settings
+                .get()
+                .map(|settings| settings.controller_mapping.custom_profiles)
+                .unwrap_or_default(),
+        )
+    };
+    let target_options =
+        Signal::derive(move || controller_ui::controller_target_options(inventory.get()));
+    let mapping_signal = Signal::derive(move || {
+        settings
+            .get()
+            .map(|settings| settings.controller_mapping)
+            .unwrap_or_default()
+    });
+    let inventory_loading_signal = Signal::derive(move || inventory_loading.get());
     let system_profile_value = move || {
         let Some(settings) = settings.get() else {
             return CONTROLLER_PROFILE_INHERIT.to_string();
@@ -2136,7 +1774,7 @@ fn ControllerProfileDetails(
         let Some(current_game) = game.get() else {
             return CONTROLLER_PROFILE_INHERIT.to_string();
         };
-        controller_profile_select_value(
+        controller_ui::controller_profile_select_value(
             &settings.controller_mapping.platform_profile_ids,
             &current_game.platform,
         )
@@ -2151,7 +1789,7 @@ fn ControllerProfileDetails(
         if current_game.database_id <= 0 {
             return CONTROLLER_PROFILE_INHERIT.to_string();
         }
-        controller_profile_select_value(
+        controller_ui::controller_profile_select_value(
             &settings.controller_mapping.game_profile_ids,
             &current_game.database_id.to_string(),
         )
@@ -2186,6 +1824,58 @@ fn ControllerProfileDetails(
                 .unwrap_or(true)
     };
     let controls_disabled = move || settings_loading.get() || settings.get().is_none();
+    let controls_disabled_signal =
+        Signal::derive(move || settings_loading.get() || settings.get().is_none());
+    let on_controller_update =
+        Callback::new(
+            move |update: controller_ui::ControllerRowUpdate| match update {
+                controller_ui::ControllerRowUpdate::CreateProfile { controller_id } => {
+                    profile_designer_controller.set(Some(controller_id));
+                }
+                update => save_controller_mapping_change(
+                    settings,
+                    pending_save,
+                    save_in_flight,
+                    set_saving,
+                    saved_notice_visible,
+                    saved_notice_sequence,
+                    set_error,
+                    move |settings| {
+                        controller_ui::apply_controller_row_update(
+                            &mut settings.controller_mapping,
+                            inventory.get_untracked(),
+                            update,
+                        );
+                    },
+                ),
+            },
+        );
+    let on_profile_cancel = Callback::new(move |_| profile_designer_controller.set(None));
+    let on_profile_save = Callback::new(
+        move |(profile, controller_id): (backend_api::ControllerCustomProfile, Option<String>)| {
+            let profile_id = profile.id.clone();
+            save_controller_mapping_change(
+                settings,
+                pending_save,
+                save_in_flight,
+                set_saving,
+                saved_notice_visible,
+                saved_notice_sequence,
+                set_error,
+                move |settings| {
+                    controller_ui::add_custom_profile(&mut settings.controller_mapping, profile);
+                    if let Some(controller_id) = controller_id.as_deref() {
+                        controller_ui::apply_created_profile_to_controller(
+                            &mut settings.controller_mapping,
+                            controller_id,
+                            &profile_id,
+                        );
+                    }
+                },
+            );
+            profile_designer_controller.set(None);
+        },
+    );
     let settings_button = set_show_settings.map(|setter| {
         view! {
             <button
@@ -2313,7 +2003,7 @@ fn ControllerProfileDetails(
                                                 settings.controller_mapping.enabled = true;
                                                 settings.controller_mapping.manage_all = true;
                                             }
-                                            set_controller_profile_override(
+                                            controller_ui::set_controller_profile_override(
                                                 &mut settings.controller_mapping.platform_profile_ids,
                                                 platform,
                                                 selected,
@@ -2363,7 +2053,7 @@ fn ControllerProfileDetails(
                                                 settings.controller_mapping.enabled = true;
                                                 settings.controller_mapping.manage_all = true;
                                             }
-                                            set_controller_profile_override(
+                                            controller_ui::set_controller_profile_override(
                                                 &mut settings.controller_mapping.game_profile_ids,
                                                 game_key,
                                                 selected,
@@ -2386,220 +2076,31 @@ fn ControllerProfileDetails(
 
                     </div>
 
-                    <div class="controller-player-table-wrap">
-                        <div class="controller-player-table-header">
-                            <span>"Player mappings"</span>
-                            <small>{move || controller_scope_hint_text()}</small>
-                        </div>
-                        <table class="controller-player-table">
-                            <thead>
-                                <tr>
-                                    <th>"Player"</th>
-                                    <th>"Controller"</th>
-                                    <th>"Profile"</th>
-                                    <th>"Virtual target"</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <For
-                                    each=visible_player_rows
-                                    key=|player_index| *player_index
-                                    children=move |player_index| {
-                                        let controller_value = move || {
-                                            settings
-                                                .get()
-                                                .map(|settings| {
-                                                    player_mapping_controller_value(
-                                                        &settings.controller_mapping,
-                                                        player_index,
-                                                    )
-                                                })
-                                                .unwrap_or_else(|| CONTROLLER_PLAYER_UNUSED.to_string())
-                                        };
-                                        let row_disabled = move || {
-                                            controls_disabled()
-                                        };
-                                        view! {
-                                            <tr>
-                                                <td>{format!("P{}", player_index + 1)}</td>
-                                                <td>
-                                                    <select
-                                                        prop:value=controller_value
-                                                        disabled=controls_disabled
-                                                        on:change=move |ev| {
-                                                            let selected = event_target_value(&ev);
-                                                            save_controller_mapping_change(
-                                                                settings,
-                                                                pending_save,
-                                                                save_in_flight,
-                                                                set_saving,
-                                                                saved_notice_visible,
-                                                                saved_notice_sequence,
-                                                                set_error,
-                                                                move |settings| {
-                                                                    settings.controller_mapping.enabled = true;
-                                                                    settings.controller_mapping.manage_all = true;
-                                                                    set_player_mapping_controller(
-                                                                        &mut settings.controller_mapping,
-                                                                        player_index,
-                                                                        selected,
-                                                                    );
-                                                                },
-                                                            );
-                                                        }
-                                                    >
-                                                        <option value=CONTROLLER_PLAYER_UNUSED>"Unused"</option>
-                                                        <option value=CONTROLLER_SCOPE_ALL>"All plugged in controllers"</option>
-                                                        <For
-                                                            each=controller_status_options
-                                                            key=|(id, _)| id.clone()
-                                                            children=move |(id, label)| view! {
-                                                                <option value=id disabled=true>{label}</option>
-                                                            }
-                                                        />
-                                                        <For
-                                                            each=move || {
-                                                                controller_scope_options(inventory.get(), controller_value())
-                                                            }
-                                                            key=|(id, _)| id.clone()
-                                                            children=move |(id, label)| view! {
-                                                                <option value=id>{label}</option>
-                                                            }
-                                                        />
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <select
-                                                        prop:value=move || {
-                                                            settings
-                                                                .get()
-                                                                .map(|settings| {
-                                                                    player_mapping_profile_value(
-                                                                        &settings.controller_mapping,
-                                                                        player_index,
-                                                                    )
-                                                                })
-                                                                .unwrap_or_else(|| CONTROLLER_PROFILE_INHERIT.to_string())
-                                                        }
-                                                        disabled=row_disabled
-                                                        on:change=move |ev| {
-                                                            let selected = event_target_value(&ev);
-                                                            let activation_controller_id = settings
-                                                                .get_untracked()
-                                                                .map(|settings| {
-                                                                    player_mapping_activation_controller(
-                                                                        &settings.controller_mapping,
-                                                                        player_index,
-                                                                        inventory.get_untracked(),
-                                                                    )
-                                                                })
-                                                                .unwrap_or_else(|| {
-                                                                    CONTROLLER_SCOPE_ALL.to_string()
-                                                                });
-                                                            save_controller_mapping_change(
-                                                                settings,
-                                                                pending_save,
-                                                                save_in_flight,
-                                                                set_saving,
-                                                                saved_notice_visible,
-                                                                saved_notice_sequence,
-                                                                set_error,
-                                                                move |settings| {
-                                                                    settings.controller_mapping.enabled = true;
-                                                                    settings.controller_mapping.manage_all = true;
-                                                                    set_player_mapping_profile(
-                                                                        &mut settings.controller_mapping,
-                                                                        player_index,
-                                                                        selected,
-                                                                        activation_controller_id,
-                                                                    );
-                                                                },
-                                                            );
-                                                        }
-                                                    >
-                                                        <option value=CONTROLLER_PROFILE_INHERIT>"Use game/system/default"</option>
-                                                        <option value=CONTROLLER_PROFILE_NONE>"Off"</option>
-                                                        <For
-                                                            each=move || available_controller_profiles(inventory.get())
-                                                            key=|profile| profile.id.clone()
-                                                            children=move |profile| view! {
-                                                                <option value=profile.id>{profile.name}</option>
-                                                            }
-                                                        />
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <select
-                                                        prop:value=move || {
-                                                            settings
-                                                                .get()
-                                                                .map(|settings| {
-                                                                    player_mapping_target_value(
-                                                                        &settings.controller_mapping,
-                                                                        player_index,
-                                                                    )
-                                                                })
-                                                                .unwrap_or_else(|| CONTROLLER_TARGET_INHERIT.to_string())
-                                                        }
-                                                        disabled=row_disabled
-                                                        on:change=move |ev| {
-                                                            let selected = event_target_value(&ev);
-                                                            let activation_controller_id = settings
-                                                                .get_untracked()
-                                                                .map(|settings| {
-                                                                    player_mapping_activation_controller(
-                                                                        &settings.controller_mapping,
-                                                                        player_index,
-                                                                        inventory.get_untracked(),
-                                                                    )
-                                                                })
-                                                                .unwrap_or_else(|| {
-                                                                    CONTROLLER_SCOPE_ALL.to_string()
-                                                                });
-                                                            save_controller_mapping_change(
-                                                                settings,
-                                                                pending_save,
-                                                                save_in_flight,
-                                                                set_saving,
-                                                                saved_notice_visible,
-                                                                saved_notice_sequence,
-                                                                set_error,
-                                                                move |settings| {
-                                                                    settings.controller_mapping.enabled = true;
-                                                                    settings.controller_mapping.manage_all = true;
-                                                                    set_player_mapping_target(
-                                                                        &mut settings.controller_mapping,
-                                                                        player_index,
-                                                                        selected,
-                                                                        activation_controller_id,
-                                                                    );
-                                                                },
-                                                            );
-                                                        }
-                                                    >
-                                                        <option value=CONTROLLER_TARGET_INHERIT>"Default target"</option>
-                                                        <For
-                                                            each=target_options
-                                                            key=|(id, _)| id.clone()
-                                                            children=move |(id, name)| view! {
-                                                                <option value=id>{name}</option>
-                                                            }
-                                                        />
-                                                    </select>
-                                                </td>
-                                            </tr>
-                                        }
-                                    }
-                                />
-                            </tbody>
-                        </table>
-                        <button
-                            class="controller-details-secondary-btn controller-player-expand-btn"
-                            on:click=move |_| set_show_all_players.update(|value| *value = !*value)
-                        >
-                            {move || if show_all_players.get() { "Hide players 5-8" } else { "Show players 5-8" }}
-                        </button>
-                    </div>
+                    <controller_ui::ControllerDeviceMappingList
+                        inventory=inventory
+                        loading=inventory_loading_signal
+                        mapping=mapping_signal
+                        profile_options=Signal::derive(move || {
+                            controller_ui::controller_profile_options(
+                                inventory.get(),
+                                settings
+                                    .get()
+                                    .map(|settings| settings.controller_mapping.custom_profiles)
+                                    .unwrap_or_default(),
+                            )
+                        })
+                        target_options=target_options
+                        controls_disabled=controls_disabled_signal
+                        on_update=on_controller_update
+                    />
+
+                    <Show when=move || profile_designer_controller.get().is_some()>
+                        <controller_ui::ControllerProfileDesigner
+                            initial_controller_id=profile_designer_controller.get()
+                            on_save=on_profile_save
+                            on_cancel=on_profile_cancel
+                        />
+                    </Show>
 
                     <Show when=move || error.get().is_some()>
                         {move || error.get().map(|error| view! {

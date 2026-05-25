@@ -426,6 +426,8 @@ pub struct ControllerMappingSettings {
     pub game_profile_ids: HashMap<String, String>,
     #[serde(default)]
     pub hidden_controller_ids: Vec<String>,
+    #[serde(default)]
+    pub custom_profiles: Vec<ControllerCustomProfile>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -436,6 +438,26 @@ pub struct ControllerPlayerMapping {
     pub profile_id: Option<String>,
     #[serde(default, alias = "outputTarget")]
     pub output_target: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ControllerCustomProfile {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub layout: String,
+    #[serde(default)]
+    pub mappings: Vec<ControllerButtonMapping>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ControllerButtonMapping {
+    #[serde(default, alias = "sourceButton")]
+    pub source_button: String,
+    #[serde(default, alias = "targetButton")]
+    pub target_button: String,
 }
 
 impl Default for ControllerMappingSettings {
@@ -451,6 +473,7 @@ impl Default for ControllerMappingSettings {
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
             hidden_controller_ids: Vec::new(),
+            custom_profiles: Vec::new(),
         }
     }
 }

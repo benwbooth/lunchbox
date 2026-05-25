@@ -2098,8 +2098,241 @@ h1, h2, h3, h4, h5, h6 {
     overflow-wrap: anywhere;
 }
 
+.controller-device-mapping {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.controller-device-map-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.controller-device-map-row {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.controller-device-map-handle {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    color: var(--text-secondary);
+    cursor: grab;
+}
+
+.controller-device-map-grip {
+    padding: 2px 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+    letter-spacing: 0;
+}
+
+.controller-device-map-handle strong {
+    color: var(--text-highlight);
+    font-size: 14px;
+}
+
+.controller-device-map-move {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.controller-device-map-move button {
+    padding: 4px 6px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.controller-device-map-move button:hover {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.controller-device-map-main {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.controller-device-map-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.controller-device-map-title span {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.controller-device-map-title small {
+    color: var(--text-secondary);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.controller-device-map-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.controller-profile-designer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+}
+
+.controller-profile-designer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.controller-profile-designer-header h3 {
+    margin: 0 0 4px;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.controller-profile-designer-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(160px, 0.75fr);
+    gap: 10px;
+}
+
+.controller-profile-designer-fields input {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.controller-profile-designer-workspace {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(220px, 0.65fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.controller-map-svg {
+    width: 100%;
+    aspect-ratio: 19 / 12;
+    min-height: 220px;
+}
+
+.controller-map-shell {
+    fill: var(--bg-tertiary);
+    stroke: var(--border-color);
+    stroke-width: 2;
+}
+
+.controller-map-button {
+    cursor: pointer;
+}
+
+.controller-map-button circle {
+    fill: var(--bg-secondary);
+    stroke: var(--border-color);
+    stroke-width: 2;
+}
+
+.controller-map-button text {
+    fill: var(--text-primary);
+    font-size: 9px;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+}
+
+.controller-map-button:hover circle,
+.controller-map-button.is-selected circle {
+    stroke: var(--accent-color);
+    fill: rgba(255, 215, 64, 0.12);
+}
+
+.controller-profile-assignment {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.controller-profile-assignment-current {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+}
+
+.controller-profile-assignment-current span {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.controller-profile-assignment-current strong {
+    color: var(--text-highlight);
+    font-size: 13px;
+}
+
+.controller-profile-map-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.controller-profile-map-summary span {
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
 @media (max-width: 720px) {
     .controller-settings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .controller-device-map-row,
+    .controller-profile-designer-fields,
+    .controller-profile-designer-workspace,
+    .controller-device-map-controls {
         grid-template-columns: 1fr;
     }
 }

@@ -1,4 +1,6 @@
-use crate::state::{AppSettings, ControllerMappingSettings, ControllerPlayerMapping};
+use crate::state::{
+    AppSettings, ControllerCustomProfile, ControllerMappingSettings, ControllerPlayerMapping,
+};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::io::Read;
@@ -6,7 +8,47 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-const INPUTPLUMBER_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
+const INPUTPLUMBER_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+const INPUTPLUMBER_DEVICE_LIST_TIMEOUT: Duration = Duration::from_secs(20);
+const INPUTPLUMBER_DEVICE_LIST_RETRIES: usize = 1;
+const CUSTOM_PROFILE_PREFIX: &str = "custom:";
+const GAMEPAD_BUTTONS: &[&str] = &[
+    "South",
+    "East",
+    "North",
+    "West",
+    "Start",
+    "Select",
+    "Guide",
+    "QuickAccess",
+    "QuickAccess2",
+    "Keyboard",
+    "Screenshot",
+    "DPadUp",
+    "DPadDown",
+    "DPadLeft",
+    "DPadRight",
+    "LeftBumper",
+    "LeftTop",
+    "LeftTrigger",
+    "LeftPaddle1",
+    "LeftPaddle2",
+    "LeftPaddle3",
+    "LeftStick",
+    "LeftStickTouch",
+    "LeftTouchpadTouch",
+    "LeftTouchpadPress",
+    "RightBumper",
+    "RightTop",
+    "RightTrigger",
+    "RightPaddle1",
+    "RightPaddle2",
+    "RightPaddle3",
+    "RightStick",
+    "RightStickTouch",
+    "RightTouchpadTouch",
+    "RightTouchpadPress",
+];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,49 +233,59 @@ pub async fn activate_for_launch(
     if !active_player_mappings.is_empty() {
         let mut launch_devices = Vec::new();
         let mut matched_any = false;
+        let device_infos = managed_devices
+            .into_iter()
+            .map(|device| {
+                let info = inputplumber_device_info(&device.id).unwrap_or_default();
+                (device, info)
+            })
+            .collect::<Vec<_>>();
+        let mut used_device_ids = HashSet::new();
 
-        for device in managed_devices {
-            let info = inputplumber_device_info(&device.id).unwrap_or_default();
+        for player_mapping in &active_player_mappings {
+            let Some((device, info)) = device_infos.iter().find(|(device, info)| {
+                !used_device_ids.contains(&device.id)
+                    && info
+                        .source_paths
+                        .iter()
+                        .any(|path| player_mapping.source_paths.contains(path))
+            }) else {
+                continue;
+            };
             let matches_hidden = !hidden_controller_paths.is_empty()
                 && info
                     .source_paths
                     .iter()
                     .any(|path| hidden_controller_paths.contains(path));
-            let matched_player = active_player_mappings.iter().find(|mapping| {
-                info.source_paths
-                    .iter()
-                    .any(|path| mapping.source_paths.contains(path))
-            });
+            used_device_ids.insert(device.id.clone());
+            matched_any = true;
 
-            if !matches_hidden && matched_player.is_none() {
-                if inputplumber_device_has_gamepad_target(&device.id) {
-                    launch_devices.push(InputPlumberLaunchDevice {
-                        id: device.id,
-                        hidden: true,
-                        target_device_ids: Vec::new(),
-                        profile_path: None,
-                    });
-                }
+            launch_devices.push(InputPlumberLaunchDevice {
+                id: device.id.clone(),
+                hidden: matches_hidden,
+                target_device_ids: player_mapping.target_device_ids.clone(),
+                profile_path: player_mapping.profile_path.clone(),
+            });
+        }
+
+        for (device, info) in device_infos {
+            if used_device_ids.contains(&device.id) {
                 continue;
             }
+            let matches_hidden = !hidden_controller_paths.is_empty()
+                && info
+                    .source_paths
+                    .iter()
+                    .any(|path| hidden_controller_paths.contains(path));
 
-            matched_any = true;
-            let Some(player_mapping) = matched_player else {
+            if matches_hidden || inputplumber_device_has_gamepad_target(&device.id) {
                 launch_devices.push(InputPlumberLaunchDevice {
                     id: device.id,
                     hidden: true,
                     target_device_ids: Vec::new(),
                     profile_path: None,
                 });
-                continue;
-            };
-
-            launch_devices.push(InputPlumberLaunchDevice {
-                id: device.id,
-                hidden: matches_hidden,
-                target_device_ids: player_mapping.target_device_ids.clone(),
-                profile_path: player_mapping.profile_path.clone(),
-            });
+            }
         }
 
         if !matched_any {
@@ -325,34 +377,28 @@ fn log_slow_controller_activation(started: Instant, device_count: usize) {
 fn apply_inputplumber_launch_devices(
     devices: Vec<InputPlumberLaunchDevice>,
 ) -> Result<ControllerLaunchSession, String> {
-    let handles = devices
-        .into_iter()
-        .map(|device| std::thread::spawn(move || apply_inputplumber_launch_device(device)))
-        .collect::<Vec<_>>();
-
     let mut session = ControllerLaunchSession::default();
-    let mut first_error = None;
 
-    for handle in handles {
-        match handle.join() {
-            Ok(Ok(restore)) => session.restore_entries.push(restore),
-            Ok(Err(e)) => {
-                first_error.get_or_insert(e);
-            }
-            Err(_) => {
-                first_error.get_or_insert_with(|| {
-                    "InputPlumber controller setup worker panicked.".to_string()
-                });
+    let ordered_ids = devices
+        .iter()
+        .filter(|device| !device.hidden)
+        .map(|device| device.id.clone())
+        .collect::<Vec<_>>();
+    if ordered_ids.len() > 1 {
+        let _ = run_inputplumber_with_dynamic_args(["devices", "order"], &ordered_ids);
+    }
+
+    for device in devices {
+        match apply_inputplumber_launch_device(device) {
+            Ok(restore) => session.restore_entries.push(restore),
+            Err(e) => {
+                session.restore();
+                return Err(e);
             }
         }
     }
 
-    if let Some(error) = first_error {
-        session.restore();
-        Err(error)
-    } else {
-        Ok(session)
-    }
+    Ok(session)
 }
 
 fn apply_inputplumber_launch_device(
@@ -560,6 +606,8 @@ fn normalized_optional_string(value: &str) -> Option<String> {
 fn resolve_profile_path(settings: &AppSettings, profile_id: &str) -> Result<PathBuf, String> {
     if profile_id == TWO_BUTTON_CLOCKWISE_PROFILE_ID {
         write_two_button_clockwise_profile(settings)
+    } else if profile_id.starts_with(CUSTOM_PROFILE_PREFIX) {
+        write_custom_controller_profile(settings, profile_id)
     } else {
         let path = PathBuf::from(profile_id);
         if path.is_file() {
@@ -591,6 +639,118 @@ fn write_two_button_clockwise_profile(settings: &AppSettings) -> Result<PathBuf,
         )
     })?;
     Ok(path)
+}
+
+fn write_custom_controller_profile(
+    settings: &AppSettings,
+    profile_id: &str,
+) -> Result<PathBuf, String> {
+    let profile = settings
+        .controller_mapping
+        .custom_profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| format!("Custom controller profile '{}' was not found.", profile_id))?;
+
+    validate_custom_controller_profile(profile)?;
+
+    let dir = settings.get_data_directory().join("controller-profiles");
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "Failed to create controller profile directory {}: {}",
+            dir.display(),
+            e
+        )
+    })?;
+    let path = dir.join(format!("{}.yaml", sanitize_profile_file_name(profile_id)));
+    let yaml = custom_controller_profile_yaml(profile);
+    std::fs::write(&path, yaml).map_err(|e| {
+        format!(
+            "Failed to write controller profile {}: {}",
+            path.display(),
+            e
+        )
+    })?;
+    Ok(path)
+}
+
+fn validate_custom_controller_profile(profile: &ControllerCustomProfile) -> Result<(), String> {
+    if profile.name.trim().is_empty() {
+        return Err("Custom controller profile name is empty.".to_string());
+    }
+    for mapping in &profile.mappings {
+        if !is_valid_gamepad_button(&mapping.source_button) {
+            return Err(format!(
+                "Custom controller profile '{}' has an unsupported source button '{}'.",
+                profile.name, mapping.source_button
+            ));
+        }
+        if !is_valid_gamepad_button(&mapping.target_button) {
+            return Err(format!(
+                "Custom controller profile '{}' has an unsupported target button '{}'.",
+                profile.name, mapping.target_button
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_valid_gamepad_button(button: &str) -> bool {
+    GAMEPAD_BUTTONS.iter().any(|valid| valid == &button)
+}
+
+fn custom_controller_profile_yaml(profile: &ControllerCustomProfile) -> String {
+    let mut yaml = String::new();
+    yaml.push_str("# yaml-language-server: $schema=https://raw.githubusercontent.com/ShadowBlip/InputPlumber/main/rootfs/usr/share/inputplumber/schema/device_profile_v1.json\n");
+    yaml.push_str("version: 1\n");
+    yaml.push_str("kind: DeviceProfile\n");
+    yaml.push_str(&format!("name: {}\n", yaml_quote(&profile.name)));
+    yaml.push_str("description: \"Created by Lunchbox.\"\n");
+    let mappings = profile
+        .mappings
+        .iter()
+        .filter(|mapping| mapping.source_button != mapping.target_button)
+        .collect::<Vec<_>>();
+    if mappings.is_empty() {
+        yaml.push_str("mapping: []\n");
+        return yaml;
+    }
+
+    yaml.push_str("mapping:\n");
+    for mapping in mappings {
+        yaml.push_str(&format!(
+            "  - name: {} to {}\n",
+            mapping.source_button, mapping.target_button
+        ));
+        yaml.push_str("    source_event:\n");
+        yaml.push_str("      gamepad:\n");
+        yaml.push_str(&format!("        button: {}\n", mapping.source_button));
+        yaml.push_str("    target_events:\n");
+        yaml.push_str("      - gamepad:\n");
+        yaml.push_str(&format!("          button: {}\n", mapping.target_button));
+    }
+
+    yaml
+}
+
+fn yaml_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn sanitize_profile_file_name(profile_id: &str) -> String {
+    profile_id
+        .trim_start_matches(CUSTOM_PROFILE_PREFIX)
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
 }
 
 const TWO_BUTTON_CLOCKWISE_PROFILE: &str = r#"# yaml-language-server: $schema=https://raw.githubusercontent.com/ShadowBlip/InputPlumber/main/rootfs/usr/share/inputplumber/schema/device_profile_v1.json
@@ -753,7 +913,7 @@ fn list_inputplumber_composite_devices() -> Result<Vec<InputPlumberCompositeDevi
 }
 
 fn list_inputplumber_device_summaries() -> Result<Vec<InputPlumberCompositeDeviceSummary>, String> {
-    let output = run_inputplumber(&["devices", "list"])?;
+    let output = run_inputplumber_devices_list()?;
     let mut devices = Vec::new();
 
     for row in parse_box_rows(&output) {
@@ -896,7 +1056,28 @@ fn list_inputplumber_supported_targets() -> Result<Vec<InputPlumberTargetDevice>
 }
 
 fn run_inputplumber(args: &[&str]) -> Result<String, String> {
-    run_command("inputplumber", args)
+    run_command_with_timeout("inputplumber", args, INPUTPLUMBER_COMMAND_TIMEOUT)
+}
+
+fn run_inputplumber_devices_list() -> Result<String, String> {
+    let args = ["devices", "list"];
+    let mut last_error = None;
+
+    for attempt in 0..=INPUTPLUMBER_DEVICE_LIST_RETRIES {
+        match run_command_with_timeout("inputplumber", &args, INPUTPLUMBER_DEVICE_LIST_TIMEOUT) {
+            Ok(output) => return Ok(output),
+            Err(e) => {
+                let timed_out = e.contains("timed out");
+                last_error = Some(e);
+                if !timed_out || attempt == INPUTPLUMBER_DEVICE_LIST_RETRIES {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "inputplumber devices list failed".to_string()))
 }
 
 fn run_inputplumber_with_dynamic_args<const N: usize>(
@@ -912,7 +1093,11 @@ fn run_inputplumber_with_dynamic_args<const N: usize>(
     run_inputplumber(&refs)
 }
 
-fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
+fn run_command_with_timeout(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, String> {
     let started = Instant::now();
     let mut child = Command::new(program)
         .args(args)
@@ -940,14 +1125,14 @@ fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
                     message
                 ));
             }
-            Ok(None) if started.elapsed() >= INPUTPLUMBER_COMMAND_TIMEOUT => {
+            Ok(None) if started.elapsed() >= timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(format!(
                     "{} {} timed out after {}s",
                     program,
                     args.join(" "),
-                    INPUTPLUMBER_COMMAND_TIMEOUT.as_secs()
+                    timeout.as_secs()
                 ));
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(25)),
