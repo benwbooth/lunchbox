@@ -57,6 +57,22 @@ pub fn Sidebar(
     let (platforms_loading, set_platforms_loading) = signal(true);
     let (platform_search, set_platform_search) = signal(persisted.platform_search);
     let (sidebar_width, set_sidebar_width) = signal(persisted.sidebar_width.clamp(180, 400));
+    let (shared_ui_state_loaded, set_shared_ui_state_loaded) = signal(false);
+
+    spawn_local(async move {
+        match crate::ui_state::load_shared_json::<SidebarUiState>(SIDEBAR_UI_STATE_KEY).await {
+            Ok(Some(state)) => {
+                set_platform_search.set(state.platform_search);
+                set_sidebar_width.set(state.sidebar_width.clamp(180, 400));
+            }
+            Ok(None) => {}
+            Err(err) => crate::backend_api::log_to_backend(
+                "warn",
+                &format!("Failed to load shared sidebar UI state: {}", err),
+            ),
+        }
+        set_shared_ui_state_loaded.set(true);
+    });
 
     // Load platforms on component mount
     spawn_local(async move {
@@ -150,13 +166,25 @@ pub fn Sidebar(
     let (is_resizing, set_is_resizing) = signal(false);
 
     Effect::new(move || {
-        crate::ui_state::save_json(
-            SIDEBAR_UI_STATE_KEY,
-            &SidebarUiState {
-                platform_search: platform_search.get(),
-                sidebar_width: sidebar_width.get().clamp(180, 400),
-            },
-        );
+        let state = SidebarUiState {
+            platform_search: platform_search.get(),
+            sidebar_width: sidebar_width.get().clamp(180, 400),
+        };
+
+        if shared_ui_state_loaded.get() {
+            spawn_local(async move {
+                if let Err(err) =
+                    crate::ui_state::save_shared_json(SIDEBAR_UI_STATE_KEY, &state).await
+                {
+                    crate::backend_api::log_to_backend(
+                        "warn",
+                        &format!("Failed to save shared sidebar UI state: {}", err),
+                    );
+                }
+            });
+        } else {
+            crate::ui_state::save_json(SIDEBAR_UI_STATE_KEY, &state);
+        }
     });
 
     // Handle resize drag

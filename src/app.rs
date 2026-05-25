@@ -339,20 +339,24 @@ impl Default for AppUiState {
     }
 }
 
+fn sanitize_app_ui_state(state: &mut AppUiState) {
+    if state.selected_collection.is_some() {
+        state.selected_platform = None;
+    }
+    if state.selected_platform.is_none() && state.selected_collection.is_none() {
+        state.selected_platform = Some(PLATFORM_SELECTION_MINIGAMES.to_string());
+    }
+    if state.filter_defaults_version < FILTER_DEFAULTS_VERSION_NON_RETAIL {
+        state.game_filters.hide_homebrew = true;
+        state.filter_defaults_version = FILTER_DEFAULTS_VERSION_NON_RETAIL;
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     let mut persisted =
         crate::ui_state::load_json::<AppUiState>(APP_UI_STATE_KEY).unwrap_or_default();
-    if persisted.selected_collection.is_some() {
-        persisted.selected_platform = None;
-    }
-    if persisted.selected_platform.is_none() && persisted.selected_collection.is_none() {
-        persisted.selected_platform = Some(PLATFORM_SELECTION_MINIGAMES.to_string());
-    }
-    if persisted.filter_defaults_version < FILTER_DEFAULTS_VERSION_NON_RETAIL {
-        persisted.game_filters.hide_homebrew = true;
-        persisted.filter_defaults_version = FILTER_DEFAULTS_VERSION_NON_RETAIL;
-    }
+    sanitize_app_ui_state(&mut persisted);
 
     // State for selected platform (now uses platform name)
     let (selected_platform, set_selected_platform) =
@@ -380,23 +384,56 @@ pub fn App() -> impl IntoView {
     let (zoom_level, set_zoom_level) = signal(persisted.zoom_level.clamp(0.5, 2.0));
     // State for game list filters
     let (game_filters, set_game_filters) = signal(persisted.game_filters);
+    let (shared_ui_state_loaded, set_shared_ui_state_loaded) = signal(false);
 
     let repeat_state = Rc::new(RefCell::new(GamepadRepeatState::default()));
 
+    spawn_local(async move {
+        match crate::ui_state::load_shared_json::<AppUiState>(APP_UI_STATE_KEY).await {
+            Ok(Some(mut state)) => {
+                sanitize_app_ui_state(&mut state);
+                set_selected_platform.set(state.selected_platform);
+                set_selected_collection.set(state.selected_collection);
+                set_view_mode.set(state.view_mode);
+                set_search_query.set(state.search_query);
+                set_artwork_type.set(state.artwork_type);
+                set_zoom_level.set(state.zoom_level.clamp(0.5, 2.0));
+                set_game_filters.set(state.game_filters);
+            }
+            Ok(None) => {}
+            Err(err) => crate::backend_api::log_to_backend(
+                "warn",
+                &format!("Failed to load shared app UI state: {}", err),
+            ),
+        }
+        set_shared_ui_state_loaded.set(true);
+    });
+
     Effect::new(move || {
-        crate::ui_state::save_json(
-            APP_UI_STATE_KEY,
-            &AppUiState {
-                selected_platform: selected_platform.get(),
-                selected_collection: selected_collection.get(),
-                view_mode: view_mode.get(),
-                search_query: search_query.get(),
-                artwork_type: artwork_type.get(),
-                zoom_level: zoom_level.get().clamp(0.5, 2.0),
-                game_filters: game_filters.get(),
-                filter_defaults_version: FILTER_DEFAULTS_VERSION_NON_RETAIL,
-            },
-        );
+        let state = AppUiState {
+            selected_platform: selected_platform.get(),
+            selected_collection: selected_collection.get(),
+            view_mode: view_mode.get(),
+            search_query: search_query.get(),
+            artwork_type: artwork_type.get(),
+            zoom_level: zoom_level.get().clamp(0.5, 2.0),
+            game_filters: game_filters.get(),
+            filter_defaults_version: FILTER_DEFAULTS_VERSION_NON_RETAIL,
+        };
+
+        if shared_ui_state_loaded.get() {
+            spawn_local(async move {
+                if let Err(err) = crate::ui_state::save_shared_json(APP_UI_STATE_KEY, &state).await
+                {
+                    crate::backend_api::log_to_backend(
+                        "warn",
+                        &format!("Failed to save shared app UI state: {}", err),
+                    );
+                }
+            });
+        } else {
+            crate::ui_state::save_json(APP_UI_STATE_KEY, &state);
+        }
     });
 
     Effect::new(move || {

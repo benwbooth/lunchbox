@@ -168,7 +168,7 @@ pub fn Toolbar(
     view! {
         <header class="toolbar">
             <div class="toolbar-left">
-                <img src="/assets/logo.svg" alt="Lunchbox" class="app-logo" />
+                <img src="assets/logo.svg" alt="Lunchbox" class="app-logo" />
                 <h1 class="app-title">"Lunchbox"</h1>
                 <StatusIndicator />
             </div>

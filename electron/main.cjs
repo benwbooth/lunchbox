@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
@@ -15,6 +16,21 @@ const IS_RELEASE =
   app.isPackaged ||
   process.env.LUNCHBOX_RELEASE === '1' ||
   Boolean(process.env.LUNCHBOX_FRONTEND_DIR || process.env.LUNCHBOX_BACKEND_BIN);
+
+function configRootDir() {
+  if (process.env.LUNCHBOX_CONFIG_DIR) {
+    return process.env.LUNCHBOX_CONFIG_DIR;
+  }
+  if (process.platform === 'win32') {
+    return process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  }
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support');
+  }
+  return process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+}
+
+app.setPath('userData', path.join(configRootDir(), 'lunchbox', 'electron'));
 
 function backendExecutableName() {
   return process.platform === 'win32' ? 'lunchbox-server.exe' : 'lunchbox-server';

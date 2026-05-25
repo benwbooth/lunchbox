@@ -815,6 +815,12 @@ pub async fn get_settings() -> Result<AppSettings, String> {
     http_get("/api/settings").await
 }
 
+/// Load shared frontend UI state from the backend config directory.
+pub async fn get_ui_state<T: DeserializeOwned>(key: &str) -> Result<Option<T>, String> {
+    let path = format!("/api/ui-state/{}", urlencoding::encode(key));
+    http_get(&path).await
+}
+
 /// List connected controllers and controller mapping provider state.
 pub async fn list_controllers() -> Result<ControllerInventory, String> {
     invoke_no_args("list_controllers").await
@@ -828,6 +834,12 @@ pub async fn get_credential_storage_name() -> Result<String, String> {
 /// Save settings
 pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
     http_post_empty("/api/settings", &settings).await
+}
+
+/// Save shared frontend UI state through the backend config directory.
+pub async fn save_ui_state<T: Serialize>(key: &str, value: &T) -> Result<(), String> {
+    let path = format!("/api/ui-state/{}", urlencoding::encode(key));
+    http_post_empty(&path, value).await
 }
 
 /// Save controller mapping settings without running the full app settings save path.

@@ -889,6 +889,7 @@ pub fn GameGrid(
     // Column configuration for list view
     let (visible_columns, set_visible_columns) = signal(initial_visible_columns);
     let (sort_state, set_sort_state) = signal::<Option<SortState>>(initial_sort_state);
+    let (shared_ui_state_loaded, set_shared_ui_state_loaded) = signal(false);
     let (context_menu, set_context_menu) = signal::<Option<(i32, i32)>>(None); // (x, y) position
     let (dragging_column, set_dragging_column) = signal::<Option<usize>>(None);
     let (drag_over_column, set_drag_over_column) = signal::<Option<usize>>(None);
@@ -900,14 +901,41 @@ pub fn GameGrid(
     // Container ref for scroll handling
     let container_ref = NodeRef::<html::Main>::new();
 
+    spawn_local(async move {
+        match crate::ui_state::load_shared_json::<GameGridUiState>(GAME_GRID_UI_STATE_KEY).await {
+            Ok(Some(state)) => {
+                set_visible_columns.set(sanitize_visible_columns(state.visible_columns));
+                set_sort_state.set(state.sort_state);
+            }
+            Ok(None) => {}
+            Err(err) => crate::backend_api::log_to_backend(
+                "warn",
+                &format!("Failed to load shared game grid UI state: {}", err),
+            ),
+        }
+        set_shared_ui_state_loaded.set(true);
+    });
+
     Effect::new(move || {
-        crate::ui_state::save_json(
-            GAME_GRID_UI_STATE_KEY,
-            &GameGridUiState {
-                visible_columns: visible_columns.get(),
-                sort_state: sort_state.get(),
-            },
-        );
+        let state = GameGridUiState {
+            visible_columns: visible_columns.get(),
+            sort_state: sort_state.get(),
+        };
+
+        if shared_ui_state_loaded.get() {
+            spawn_local(async move {
+                if let Err(err) =
+                    crate::ui_state::save_shared_json(GAME_GRID_UI_STATE_KEY, &state).await
+                {
+                    crate::backend_api::log_to_backend(
+                        "warn",
+                        &format!("Failed to save shared game grid UI state: {}", err),
+                    );
+                }
+            });
+        } else {
+            crate::ui_state::save_json(GAME_GRID_UI_STATE_KEY, &state);
+        }
     });
 
     // Load more games if needed

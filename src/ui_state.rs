@@ -21,3 +21,14 @@ pub fn save_json<T: Serialize>(key: &str, value: &T) {
     };
     let _ = storage.set_item(key, &raw);
 }
+
+/// Load UI state from the backend config directory.
+pub async fn load_shared_json<T: DeserializeOwned>(key: &str) -> Result<Option<T>, String> {
+    crate::backend_api::get_ui_state(key).await
+}
+
+/// Save UI state to localStorage and the backend config directory.
+pub async fn save_shared_json<T: Serialize>(key: &str, value: &T) -> Result<(), String> {
+    save_json(key, value);
+    crate::backend_api::save_ui_state(key, value).await
+}

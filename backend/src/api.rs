@@ -121,6 +121,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/games/:uuid", get(get_game_by_uuid))
         .route("/api/games/:uuid/variants", get(get_game_variants))
         .route("/api/settings", get(get_settings).post(save_settings_http))
+        .route("/api/ui-state/:key", get(get_ui_state).post(save_ui_state))
         .route(
             "/api/settings/controller-mapping",
             post(save_controller_mapping_settings_http),
@@ -1325,6 +1326,56 @@ async fn save_controller_mapping_settings_http(
 
 async fn get_credential_storage() -> Json<String> {
     Json(crate::keyring_store::get_credential_storage_name().to_string())
+}
+
+fn ui_state_file_path(key: &str) -> Result<PathBuf, (StatusCode, String)> {
+    let valid = !key.is_empty()
+        && key.len() <= 128
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'));
+
+    if !valid {
+        return Err((StatusCode::BAD_REQUEST, "Invalid UI state key".to_string()));
+    }
+
+    Ok(crate::state::default_config_directory()
+        .join("ui-state")
+        .join(format!("{key}.json")))
+}
+
+async fn get_ui_state(
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> Result<Json<Option<serde_json::Value>>, (StatusCode, String)> {
+    let path = ui_state_file_path(&key)?;
+    let raw = match tokio::fs::read_to_string(&path).await {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Json(None)),
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    };
+
+    let value = serde_json::from_str(&raw)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(Some(value)))
+}
+
+async fn save_ui_state(
+    axum::extract::Path(key): axum::extract::Path<String>,
+    Json(value): Json<serde_json::Value>,
+) -> Result<(), (StatusCode, String)> {
+    let path = ui_state_file_path(&key)?;
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    let raw = serde_json::to_vec_pretty(&value)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    tokio::fs::write(&path, raw)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(())
 }
 
 fn preserve_blank_credentials(
