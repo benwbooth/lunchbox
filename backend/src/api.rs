@@ -654,7 +654,7 @@ async fn get_platforms(
         for (name, aggregate) in grouped {
             let aliases = aggregate.aliases;
             let filename = platform_name_to_filename(&name);
-            let icon_url = Some(format!("/assets/platforms/{}.png", filename));
+            let icon_url = Some(format!("assets/platforms/{}.png", filename));
             result.push(Platform {
                 id: aggregate.id,
                 name,
