@@ -87,6 +87,13 @@ Download `Lunchbox-0.1.0-mac-arm64.dmg`, open it, and drag Lunchbox into
 The macOS build is not currently notarized, so macOS may block the first launch.
 If that happens, right-click Lunchbox in Finder and choose `Open`.
 
+If macOS still refuses to open it, remove the quarantine attribute after copying
+the app to `Applications`:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Lunchbox.app
+```
+
 ### Windows
 
 Download and run `Lunchbox-0.1.0-win-x64.msi`.
