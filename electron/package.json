@@ -65,7 +65,8 @@
     "win": {
       "target": [
         "msi"
-      ]
+      ],
+      "icon": "release-resources/icons/icon.ico"
     }
   }
 }
