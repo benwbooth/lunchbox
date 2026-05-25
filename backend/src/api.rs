@@ -3029,13 +3029,8 @@ async fn rspc_check_cached_video(
         }
     };
 
-    let video_path = cache_dir
-        .join(game_id.directory_name())
-        .join("emumovies")
-        .join("video.mp4");
-
     let game_cache_dir = cache_dir.join(game_id.directory_name());
-    if video_path.exists() && crate::images::emumovies::is_video_cache_current(&game_cache_dir) {
+    if let Some(video_path) = crate::images::emumovies::get_cached_video_path(&game_cache_dir) {
         rspc_ok(Some(video_path.to_string_lossy().to_string())).into_response()
     } else {
         rspc_ok::<Option<String>>(None).into_response()

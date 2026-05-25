@@ -497,6 +497,96 @@ fn video_cache_version_path(game_cache_dir: &Path) -> PathBuf {
     game_cache_dir.join("emumovies").join("video.match-version")
 }
 
+fn video_output_path(game_cache_dir: &Path) -> PathBuf {
+    game_cache_dir.join("emumovies").join("video.mp4")
+}
+
+fn is_nonempty_file(path: &Path) -> bool {
+    path.metadata()
+        .map(|metadata| metadata.is_file() && metadata.len() > 0)
+        .unwrap_or(false)
+}
+
+fn legacy_nested_video_path(game_cache_dir: &Path) -> Option<PathBuf> {
+    let game_dir_name = game_cache_dir.file_name()?;
+    let media_dir = game_cache_dir.parent()?;
+    Some(
+        media_dir
+            .join("media")
+            .join(game_dir_name)
+            .join("emumovies")
+            .join("video.mp4"),
+    )
+}
+
+fn migrate_legacy_nested_video(game_cache_dir: &Path) -> Option<PathBuf> {
+    let current_path = video_output_path(game_cache_dir);
+    if is_nonempty_file(&current_path) {
+        return Some(current_path);
+    }
+
+    let legacy_path = legacy_nested_video_path(game_cache_dir)?;
+    if legacy_path == current_path || !is_nonempty_file(&legacy_path) {
+        return None;
+    }
+
+    if let Some(parent) = current_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "Failed to create video cache directory {}: {}",
+                parent.display(),
+                e
+            );
+            return Some(legacy_path);
+        }
+    }
+
+    match std::fs::rename(&legacy_path, &current_path) {
+        Ok(()) => {
+            tracing::info!(
+                "Migrated cached video from {} to {}",
+                legacy_path.display(),
+                current_path.display()
+            );
+            Some(current_path)
+        }
+        Err(rename_err) => match std::fs::copy(&legacy_path, &current_path) {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&legacy_path);
+                tracing::info!(
+                    "Copied cached video from {} to {} after rename failed: {}",
+                    legacy_path.display(),
+                    current_path.display(),
+                    rename_err
+                );
+                Some(current_path)
+            }
+            Err(copy_err) => {
+                tracing::warn!(
+                    "Failed to migrate cached video from {} to {}: rename: {}; copy: {}",
+                    legacy_path.display(),
+                    current_path.display(),
+                    rename_err,
+                    copy_err
+                );
+                Some(legacy_path)
+            }
+        },
+    }
+}
+
+pub fn get_cached_video_path(game_cache_dir: &Path) -> Option<PathBuf> {
+    let path = migrate_legacy_nested_video(game_cache_dir)?;
+    if let Err(e) = write_video_cache_version(game_cache_dir) {
+        tracing::warn!(
+            "Failed to update cached video marker for {}: {}",
+            game_cache_dir.display(),
+            e
+        );
+    }
+    Some(path)
+}
+
 pub fn is_video_cache_current(game_cache_dir: &Path) -> bool {
     std::fs::read_to_string(video_cache_version_path(game_cache_dir))
         .map(|v| v.trim() == VIDEO_MATCH_CACHE_VERSION)
@@ -1856,11 +1946,11 @@ impl EmuMoviesClient {
         game_cache_dir: &Path,
         progress: Option<&ProgressCallback>,
     ) -> Result<PathBuf> {
-        let output_path = game_cache_dir.join("emumovies").join("video.mp4");
+        let output_path = video_output_path(game_cache_dir);
 
         // Check cache first
-        if output_path.exists() && is_video_cache_current(game_cache_dir) {
-            return Ok(output_path);
+        if let Some(cached_path) = get_cached_video_path(game_cache_dir) {
+            return Ok(cached_path);
         }
 
         let download_lock = get_video_download_lock(game_cache_dir);
@@ -1871,8 +1961,8 @@ impl EmuMoviesClient {
             )
         })?;
 
-        if output_path.exists() && is_video_cache_current(game_cache_dir) {
-            return Ok(output_path);
+        if let Some(cached_path) = get_cached_video_path(game_cache_dir) {
+            return Ok(cached_path);
         }
 
         // Find candidate video folders (HQ first, then SQ fallback)
@@ -2136,6 +2226,46 @@ fn move_article_to_end(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepts_existing_video_with_stale_match_version() {
+        let temp = tempfile::tempdir().unwrap();
+        let game_cache_dir = temp.path().join("lb-123");
+        let video_dir = game_cache_dir.join("emumovies");
+        std::fs::create_dir_all(&video_dir).unwrap();
+        std::fs::write(video_dir.join("video.mp4"), b"cached video").unwrap();
+        std::fs::write(video_dir.join("video.match-version"), "3").unwrap();
+
+        let cached = get_cached_video_path(&game_cache_dir).expect("expected cached video");
+
+        assert_eq!(cached, video_dir.join("video.mp4"));
+        assert_eq!(
+            std::fs::read_to_string(video_dir.join("video.match-version")).unwrap(),
+            VIDEO_MATCH_CACHE_VERSION
+        );
+    }
+
+    #[test]
+    fn migrates_legacy_nested_video_cache_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let media_dir = temp.path().join("media");
+        let game_cache_dir = media_dir.join("lb-123");
+        let legacy_video_dir = media_dir.join("media").join("lb-123").join("emumovies");
+        std::fs::create_dir_all(&legacy_video_dir).unwrap();
+        std::fs::write(legacy_video_dir.join("video.mp4"), b"cached video").unwrap();
+        std::fs::write(legacy_video_dir.join("video.match-version"), "3").unwrap();
+
+        let cached = get_cached_video_path(&game_cache_dir).expect("expected cached video");
+        let current_video = game_cache_dir.join("emumovies").join("video.mp4");
+
+        assert_eq!(cached, current_video);
+        assert_eq!(std::fs::read(&current_video).unwrap(), b"cached video");
+        assert_eq!(
+            std::fs::read_to_string(game_cache_dir.join("emumovies").join("video.match-version"))
+                .unwrap(),
+            VIDEO_MATCH_CACHE_VERSION
+        );
+    }
 
     #[test]
     fn test_platform_mapping() {
