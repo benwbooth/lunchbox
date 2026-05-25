@@ -1,0 +1,44 @@
+app-id: io.github.benwbooth.lunchbox
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: lunchbox
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=home
+  - --talk-name=org.freedesktop.secrets
+modules:
+  - name: lunchbox
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ../../build-flatpak/prebuilt/linux-unpacked
+      - type: file
+        path: ../linux/io.github.benwbooth.lunchbox.desktop
+      - type: file
+        path: ../linux/io.github.benwbooth.lunchbox.metainfo.xml
+      - type: file
+        path: ../../backend/icons/128x128.png
+      - type: file
+        path: ../../backend/icons/icon.png
+    build-commands:
+      - mkdir -p /app/lunchbox /app/bin /app/share/applications /app/share/metainfo /app/share/icons/hicolor/128x128/apps /app/share/icons/hicolor/512x512/apps
+      - cp -a . /app/lunchbox
+      - install -Dm755 /app/lunchbox/lunchbox /app/lunchbox/lunchbox.real
+      - install -Dm644 io.github.benwbooth.lunchbox.desktop /app/share/applications/io.github.benwbooth.lunchbox.desktop
+      - install -Dm644 io.github.benwbooth.lunchbox.metainfo.xml /app/share/metainfo/io.github.benwbooth.lunchbox.metainfo.xml
+      - install -Dm644 128x128.png /app/share/icons/hicolor/128x128/apps/io.github.benwbooth.lunchbox.png
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.benwbooth.lunchbox.png
+    post-install:
+      - |
+        cat > /app/bin/lunchbox <<'EOF'
+        #!/bin/sh
+        export LUNCHBOX_SHARED_DATA_DIR="/app/lunchbox/resources/share/lunchbox"
+        exec /app/lunchbox/lunchbox.real "$@"
+        EOF
+        chmod 755 /app/bin/lunchbox

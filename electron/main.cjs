@@ -1,13 +1,47 @@
+const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
+const { spawn } = require('child_process');
 const { app, BrowserWindow, shell } = require('electron');
 
 const DEV_URL = process.env.LUNCHBOX_ELECTRON_URL || 'http://127.0.0.1:1420';
 const BACKEND_READY_URL = 'http://127.0.0.1:3001/api/health';
 const WINDOW_TITLE = 'Lunchbox';
 const RETRY_DELAY_MS = 1000;
-const WINDOW_ICON = path.join(__dirname, '..', 'backend', 'icons', 'icon.png');
+const SOURCE_WINDOW_ICON = path.join(__dirname, '..', 'backend', 'icons', 'icon.png');
 const USE_STABLE_CHROMIUM = process.env.LUNCHBOX_STABLE_CHROMIUM === '1';
 const USE_AGGRESSIVE_GPU = process.env.LUNCHBOX_AGGRESSIVE_GPU === '1';
+const IS_RELEASE =
+  app.isPackaged ||
+  process.env.LUNCHBOX_RELEASE === '1' ||
+  Boolean(process.env.LUNCHBOX_FRONTEND_DIR || process.env.LUNCHBOX_BACKEND_BIN);
+
+function backendExecutableName() {
+  return process.platform === 'win32' ? 'lunchbox-server.exe' : 'lunchbox-server';
+}
+
+function releaseFrontendDir() {
+  return process.env.LUNCHBOX_FRONTEND_DIR || path.join(process.resourcesPath, 'frontend');
+}
+
+function releaseBackendBin() {
+  return process.env.LUNCHBOX_BACKEND_BIN || path.join(process.resourcesPath, 'bin', backendExecutableName());
+}
+
+function releaseSharedDataDir() {
+  return process.env.LUNCHBOX_SHARED_DATA_DIR || path.join(process.resourcesPath, 'share', 'lunchbox');
+}
+
+function windowIcon() {
+  return process.env.LUNCHBOX_WINDOW_ICON || (app.isPackaged ? path.join(process.resourcesPath, 'icons', 'icon.png') : SOURCE_WINDOW_ICON);
+}
+
+function frontendUrl() {
+  if (!IS_RELEASE) {
+    return DEV_URL;
+  }
+  return pathToFileURL(path.join(releaseFrontendDir(), 'index.html')).toString();
+}
 
 let mainWindow = null;
 let retryTimer = null;
@@ -15,6 +49,8 @@ let splashLoaded = false;
 let showingSplash = false;
 let appLoadInFlight = false;
 let lastSplashState = null;
+let backendProcess = null;
+let quitting = false;
 
 if (USE_STABLE_CHROMIUM) {
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
@@ -49,12 +85,21 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+function pendingStatusLabel() {
+  return IS_RELEASE ? 'Starting' : 'Compiling';
+}
+
 function buildSplashHtml(state) {
-  const frontendStatus = state.frontendReady ? 'Ready' : 'Compiling';
-  const backendStatus = state.backendReady ? 'Ready' : 'Compiling';
+  const frontendStatus = state.frontendReady ? 'Ready' : pendingStatusLabel();
+  const backendStatus = state.backendReady ? 'Ready' : pendingStatusLabel();
   const frontendClass = state.frontendReady ? 'ready' : 'pending';
   const backendClass = state.backendReady ? 'ready' : 'pending';
   const percent = Math.max(8, Math.min(100, Math.round((state.progress || 0.08) * 100)));
+  const eyebrow = IS_RELEASE ? 'Lunchbox' : 'Lunchbox Development Shell';
+  const title = IS_RELEASE ? 'Starting Lunchbox' : 'Starting Electron';
+  const description = IS_RELEASE
+    ? 'Lunchbox is starting its local backend and loading the packaged app.'
+    : 'The slow part is compilation. The frontend WASM bundle and Rust backend are still building before the app can load.';
 
   return `<!doctype html>
 <html lang="en">
@@ -118,7 +163,7 @@ function buildSplashHtml(state) {
       margin: 14px 0 10px;
       font-size: 36px;
       line-height: 1.05;
-      letter-spacing: -0.03em;
+      letter-spacing: 0;
     }
     p {
       margin: 0;
@@ -199,9 +244,9 @@ function buildSplashHtml(state) {
 </head>
 <body>
   <div class="shell">
-    <div class="eyebrow"><span class="dot"></span>Lunchbox Development Shell</div>
-    <h1>Starting Electron</h1>
-    <p>The slow part is compilation. The frontend WASM bundle and Rust backend are still building before the app can load.</p>
+    <div class="eyebrow"><span class="dot"></span>${eyebrow}</div>
+    <h1>${title}</h1>
+    <p>${description}</p>
     <div class="bar"><div class="bar-fill" id="progress-fill"></div></div>
     <div class="percent" id="progress-label">${percent}% ready</div>
     <div class="status">
@@ -217,15 +262,16 @@ function buildSplashHtml(state) {
     <div class="footer" id="status-text">${escapeHtml(state.message)}</div>
   </div>
   <script>
+    const pendingStatusLabel = ${JSON.stringify(pendingStatusLabel())};
     window.__updateLunchboxSplash = (state) => {
       const percent = Math.max(8, Math.min(100, Math.round((state.progress || 0.08) * 100)));
       document.getElementById('progress-fill').style.width = percent + '%';
       document.getElementById('progress-label').textContent = percent + '% ready';
       const frontend = document.getElementById('frontend-state');
-      frontend.textContent = state.frontendReady ? 'Ready' : 'Compiling';
+      frontend.textContent = state.frontendReady ? 'Ready' : pendingStatusLabel;
       frontend.className = 'state ' + (state.frontendReady ? 'ready' : 'pending');
       const backend = document.getElementById('backend-state');
-      backend.textContent = state.backendReady ? 'Ready' : 'Compiling';
+      backend.textContent = state.backendReady ? 'Ready' : pendingStatusLabel;
       backend.className = 'state ' + (state.backendReady ? 'ready' : 'pending');
       document.getElementById('status-text').textContent = state.message;
     };
@@ -290,36 +336,103 @@ async function probeUrl(url) {
   }
 }
 
-function computeSplashState(frontendReady, backendReady) {
-  if (frontendReady && backendReady) {
+async function frontendReady() {
+  if (!IS_RELEASE) {
+    return probeUrl(DEV_URL);
+  }
+  return fs.existsSync(path.join(releaseFrontendDir(), 'index.html'));
+}
+
+function startBundledBackend() {
+  if (!IS_RELEASE || backendProcess) {
+    return;
+  }
+
+  const backendBin = releaseBackendBin();
+  if (!fs.existsSync(backendBin)) {
+    console.error(`Bundled Lunchbox backend is missing: ${backendBin}`);
+    return;
+  }
+
+  const env = {
+    ...process.env,
+    LUNCHBOX_RELEASE: '1',
+    LUNCHBOX_SHARED_DATA_DIR: releaseSharedDataDir(),
+  };
+
+  backendProcess = spawn(backendBin, [], {
+    cwd: path.dirname(backendBin),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  backendProcess.stdout.on('data', (chunk) => {
+    process.stdout.write(`[lunchbox-server] ${chunk}`);
+  });
+
+  backendProcess.stderr.on('data', (chunk) => {
+    process.stderr.write(`[lunchbox-server] ${chunk}`);
+  });
+
+  backendProcess.on('error', (error) => {
+    console.error(`Failed to launch bundled Lunchbox backend: ${error}`);
+  });
+
+  backendProcess.on('exit', (code, signal) => {
+    backendProcess = null;
+    if (!quitting) {
+      console.error(`Bundled Lunchbox backend exited with code ${code} and signal ${signal}`);
+      scheduleReload();
+    }
+  });
+}
+
+function stopBundledBackend() {
+  quitting = true;
+  clearRetryTimer();
+  if (!backendProcess) {
+    return;
+  }
+  const child = backendProcess;
+  backendProcess = null;
+  child.kill();
+}
+
+function computeSplashState(isFrontendReady, isBackendReady) {
+  if (isFrontendReady && isBackendReady) {
     return {
-      frontendReady,
-      backendReady,
+      frontendReady: isFrontendReady,
+      backendReady: isBackendReady,
       progress: 0.92,
-      message: 'Frontend and backend are ready. Launching the app shell…',
+      message: 'Frontend and backend are ready. Launching the app shell...',
     };
   }
-  if (frontendReady) {
+  if (isFrontendReady) {
     return {
-      frontendReady,
-      backendReady,
+      frontendReady: isFrontendReady,
+      backendReady: isBackendReady,
       progress: 0.7,
-      message: 'Frontend is ready. Waiting for the backend API to start…',
+      message: 'Frontend is ready. Waiting for the backend API to start...',
     };
   }
-  if (backendReady) {
+  if (isBackendReady) {
     return {
-      frontendReady,
-      backendReady,
+      frontendReady: isFrontendReady,
+      backendReady: isBackendReady,
       progress: 0.48,
-      message: 'Backend is ready. Waiting for the frontend bundle to finish compiling…',
+      message: IS_RELEASE
+        ? 'Backend is ready. Waiting for packaged frontend files...'
+        : 'Backend is ready. Waiting for the frontend bundle to finish compiling...',
     };
   }
   return {
-    frontendReady,
-    backendReady,
+    frontendReady: isFrontendReady,
+    backendReady: isBackendReady,
     progress: 0.18,
-    message: 'Compiling the frontend bundle and backend server…',
+    message: IS_RELEASE
+      ? 'Starting bundled services...'
+      : 'Compiling the frontend bundle and backend server...',
   };
 }
 
@@ -332,10 +445,10 @@ async function tryLoadApp() {
     frontendReady: true,
     backendReady: true,
     progress: 0.97,
-    message: 'Loading Lunchbox…',
+    message: 'Loading Lunchbox...',
   });
   try {
-    await mainWindow.loadURL(DEV_URL);
+    await mainWindow.loadURL(frontendUrl());
   } catch (error) {
     console.error(`Initial Electron load failed: ${error}`);
     appLoadInFlight = false;
@@ -349,17 +462,20 @@ function scheduleReload() {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return;
     }
-    const [frontendReady, backendReady] = await Promise.all([
-      probeUrl(DEV_URL),
+    if (IS_RELEASE) {
+      startBundledBackend();
+    }
+    const [isFrontendReady, isBackendReady] = await Promise.all([
+      frontendReady(),
       probeUrl(BACKEND_READY_URL),
     ]);
-    const splashState = computeSplashState(frontendReady, backendReady);
+    const splashState = computeSplashState(isFrontendReady, isBackendReady);
     if (!showingSplash) {
       showSplash(splashState);
     } else {
       updateSplash(splashState);
     }
-    if (frontendReady && backendReady) {
+    if (isFrontendReady && isBackendReady) {
       tryLoadApp();
       return;
     }
@@ -368,6 +484,10 @@ function scheduleReload() {
 }
 
 function createWindow() {
+  if (IS_RELEASE) {
+    startBundledBackend();
+  }
+
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 980,
@@ -378,7 +498,7 @@ function createWindow() {
     title: WINDOW_TITLE,
     backgroundColor: '#121212',
     frame: true,
-    icon: WINDOW_ICON,
+    icon: windowIcon(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -418,7 +538,9 @@ function createWindow() {
       frontendReady: false,
       backendReady: false,
       progress: 0.18,
-      message: `Waiting for dev servers… (${errorDescription})`,
+      message: IS_RELEASE
+        ? `Waiting for packaged app resources... (${errorDescription})`
+        : `Waiting for dev servers... (${errorDescription})`,
     });
     scheduleReload();
   });
@@ -432,7 +554,7 @@ function createWindow() {
     frontendReady: false,
     backendReady: false,
     progress: 0.08,
-    message: 'Starting dev services…',
+    message: IS_RELEASE ? 'Starting bundled services...' : 'Starting dev services...',
   });
   scheduleReload();
 }
@@ -447,6 +569,10 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  stopBundledBackend();
 });
 
 app.on('window-all-closed', () => {

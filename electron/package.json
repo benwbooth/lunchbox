@@ -2,6 +2,70 @@
   "name": "lunchbox",
   "productName": "Lunchbox",
   "version": "0.1.0",
+  "description": "Cross-platform emulator frontend",
+  "author": "Ben",
+  "license": "MIT",
   "main": "main.cjs",
-  "desktopName": "lunchbox.desktop"
+  "desktopName": "io.github.benwbooth.lunchbox.desktop",
+  "scripts": {
+    "prepare:release": "node scripts/prepare-release.cjs",
+    "dist": "npm run prepare:release && electron-builder",
+    "dist:linux": "npm run prepare:release && electron-builder --linux AppImage",
+    "dist:mac": "npm run prepare:release && electron-builder --mac dmg",
+    "dist:win": "npm run prepare:release && electron-builder --win msi",
+    "pack:linux-dir": "npm run prepare:release && electron-builder --linux dir"
+  },
+  "devDependencies": {
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "io.github.benwbooth.lunchbox",
+    "productName": "Lunchbox",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "../dist/electron"
+    },
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "release-resources/frontend",
+        "to": "frontend"
+      },
+      {
+        "from": "release-resources/bin",
+        "to": "bin"
+      },
+      {
+        "from": "release-resources/share",
+        "to": "share"
+      },
+      {
+        "from": "release-resources/icons",
+        "to": "icons"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game",
+      "executableName": "lunchbox",
+      "icon": "release-resources/icons"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games"
+    },
+    "win": {
+      "target": [
+        "msi"
+      ]
+    }
+  }
 }

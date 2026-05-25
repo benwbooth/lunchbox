@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lunchbox
+Comment=Cross-platform emulator frontend
+Exec=lunchbox
+Icon=io.github.benwbooth.lunchbox
+Terminal=false
+Categories=Game;Emulator;
+Keywords=emulator;games;retro;roms;

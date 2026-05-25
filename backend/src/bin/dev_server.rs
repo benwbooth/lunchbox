@@ -44,6 +44,17 @@ fn decompress_database(compressed_path: &Path, output_path: &Path) -> anyhow::Re
     Ok(())
 }
 
+fn shared_database_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(path) = std::env::var_os("LUNCHBOX_SHARED_DATA_DIR") {
+        dirs.push(PathBuf::from(path));
+    }
+    dirs.push(PathBuf::from("../db")); // Dev mode (from backend)
+    dirs.push(PathBuf::from("./db")); // Dev mode (from root)
+    dirs.push(PathBuf::from(format!("/usr/share/{}", APP_DATA_DIR)));
+    dirs
+}
+
 /// Find and decompress a database if the uncompressed version doesn't exist
 fn find_or_decompress_database(db_name: &str, data_dir: &Path) -> Option<PathBuf> {
     let db_file = format!("{}.db", db_name);
@@ -57,18 +68,10 @@ fn find_or_decompress_database(db_name: &str, data_dir: &Path) -> Option<PathBuf
         return Some(target_path);
     }
 
-    // Possible locations for compressed or uncompressed database
-    let possible_paths = [
-        PathBuf::from(format!("../db/{}", db_file)), // Dev mode (from backend)
-        PathBuf::from(format!("./db/{}", db_file)),  // Dev mode (from root)
-        PathBuf::from(format!("/usr/share/lunchbox/{}", db_file)),
-    ];
-
-    let possible_zst_paths = [
-        PathBuf::from(format!("../db/{}", zst_file)), // Dev mode (from backend)
-        PathBuf::from(format!("./db/{}", zst_file)),  // Dev mode (from root)
-        PathBuf::from(format!("/usr/share/lunchbox/{}", zst_file)),
-    ];
+    let shared_dirs = shared_database_dirs();
+    let possible_paths: Vec<PathBuf> = shared_dirs.iter().map(|dir| dir.join(&db_file)).collect();
+    let possible_zst_paths: Vec<PathBuf> =
+        shared_dirs.iter().map(|dir| dir.join(&zst_file)).collect();
 
     // First check if uncompressed exists anywhere
     for path in &possible_paths {
@@ -101,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize logging with rolling file appender
     let _log_guard = logging::init_dev_logging();
 
-    tracing::info!("Starting Lunchbox dev server...");
+    tracing::info!("Starting Lunchbox backend server...");
     tracing::info!(
         "Logs are being written to: {}",
         logging::logs_dir().display()
@@ -282,10 +285,12 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("═══════════════════════════════════════════════════════");
     tracing::info!("  HTTP API server running on http://{}", addr);
-    tracing::info!("  Frontend dev server:       http://127.0.0.1:1420");
-    tracing::info!("");
-    tracing::info!("  Run in another terminal:   trunk serve --port 1420");
-    tracing::info!("  Then open browser to:      http://127.0.0.1:1420");
+    if std::env::var_os("LUNCHBOX_RELEASE").is_none() {
+        tracing::info!("  Frontend dev server:       http://127.0.0.1:1420");
+        tracing::info!("");
+        tracing::info!("  Run in another terminal:   trunk serve --port 1420");
+        tracing::info!("  Then open browser to:      http://127.0.0.1:1420");
+    }
     tracing::info!("═══════════════════════════════════════════════════════");
 
     axum::serve(listener, combined_router).await?;

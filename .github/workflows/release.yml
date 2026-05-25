@@ -1,0 +1,194 @@
+name: Release artifacts
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+jobs:
+  appimage:
+    name: Linux AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 libgbm1 libatk-bridge2.0-0 libsecret-1-dev libssl-dev libsqlite3-dev binaryen zstd pkg-config
+          cargo install trunk --locked
+      - name: Install npm dependencies
+        run: npm --prefix electron ci
+      - name: Build AppImage
+        run: tools/build-appimage.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lunchbox-appimage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    name: Linux Flatpak
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder libgtk-3-0 libnss3 libxss1 libasound2t64 libgbm1 libatk-bridge2.0-0 libsecret-1-dev libssl-dev libsqlite3-dev binaryen zstd pkg-config
+          cargo install trunk --locked
+      - name: Install npm dependencies
+        run: npm --prefix electron ci
+      - name: Build Flatpak bundle and repo
+        run: dbus-run-session -- tools/build-flatpak.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lunchbox-flatpak
+          path: dist/*.flatpak
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lunchbox-flatpak-repo
+          path: dist/lunchbox-flatpak-repo-*.tar.gz
+          if-no-files-found: error
+
+  macos:
+    name: macOS DMG
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install Trunk
+        run: cargo install trunk --locked
+      - name: Install npm dependencies
+        run: npm --prefix electron ci
+      - name: Build DMG
+        run: npm --prefix electron run dist:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lunchbox-dmg
+          path: dist/electron/*.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Windows MSI
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install Trunk
+        run: cargo install trunk --locked
+      - name: Install npm dependencies
+        run: npm --prefix electron ci
+      - name: Build MSI
+        run: npm --prefix electron run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lunchbox-msi
+          path: dist/electron/*.msi
+          if-no-files-found: error
+
+  nix:
+    name: Nix package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Build flake package
+        run: nix build .#packages.x86_64-linux.default
+
+  pages:
+    name: Publish Flatpak repo
+    runs-on: ubuntu-24.04
+    needs: flatpak
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download Flatpak repo
+        uses: actions/download-artifact@v4
+        with:
+          name: lunchbox-flatpak-repo
+          path: flatpak-repo
+      - name: Build Pages directory
+        run: |
+          mkdir -p public
+          tar -xzf flatpak-repo/lunchbox-flatpak-repo-*.tar.gz -C public
+          cat > public/lunchbox.flatpakrepo <<EOF
+          [Flatpak Repo]
+          Title=Lunchbox
+          Url=https://${{ github.repository_owner }}.github.io/lunchbox/repo/
+          Homepage=https://github.com/${{ github.repository }}
+          Comment=Lunchbox Flatpak repository
+          Description=Nightly and tagged Lunchbox Flatpak builds.
+          NoGPGVerify=true
+          EOF
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - uses: actions/deploy-pages@v4
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-24.04
+    needs:
+      - appimage
+      - flatpak
+      - macos
+      - windows
+      - nix
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/**/*.AppImage
+            release-artifacts/**/*.flatpak
+            release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.dmg
+            release-artifacts/**/*.msi

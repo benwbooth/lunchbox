@@ -1,6 +1,5 @@
 # Rust
 /target/
-Cargo.lock
 
 # Nix
 /result
@@ -8,6 +7,10 @@ Cargo.lock
 
 # Build output
 /dist/
+/build-flatpak/
+/.flatpak-builder/
+/electron/release-resources/
+/electron/node_modules/
 
 # IDE
 .idea/
