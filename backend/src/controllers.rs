@@ -178,59 +178,43 @@ pub async fn activate_for_launch(
     let selected_profile = resolve_profile_id(mapping, platform_name, launchbox_db_id);
 
     if !cfg!(target_os = "linux") {
-        return Err(
+        tracing::warn!(
             "Controller remapping is currently implemented for Linux/InputPlumber only."
-                .to_string(),
         );
+        return Ok(ControllerLaunchSession::default());
     }
 
     let provider = mapping.provider.trim();
     if !provider.is_empty() && provider != "auto" && provider != "inputplumber" {
-        return Err(format!(
-            "Unsupported controller mapping provider '{}'.",
-            mapping.provider
-        ));
-    }
-
-    if which::which("inputplumber").is_err() {
-        return Err("InputPlumber is not available on PATH.".to_string());
+        tracing::warn!(
+            provider = %mapping.provider,
+            "Unsupported controller mapping provider; launching without controller remapping"
+        );
+        return Ok(ControllerLaunchSession::default());
     }
 
     let started = Instant::now();
     let mut warnings = Vec::new();
     let controllers = list_local_controllers(&mut warnings);
-    let mut managed_devices = if mapping.manage_all {
-        run_inputplumber(&["devices", "manage-all", "--enable"])?;
-        list_inputplumber_device_summaries()
-            .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?
-    } else {
-        list_inputplumber_device_summaries()
-            .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?
-    };
-
-    if managed_devices.is_empty() {
-        run_inputplumber(&["devices", "manage-all", "--enable"])?;
-        managed_devices = list_inputplumber_device_summaries()
-            .map_err(|e| format!("Failed to list InputPlumber managed devices: {e}"))?;
-    }
-
-    if managed_devices.is_empty() {
-        return Err(
-            "InputPlumber has no managed composite devices. Enable InputPlumber management for the controller first."
-                .to_string(),
-        );
-    }
+    let inputplumber_controllers = controllers
+        .iter()
+        .filter(|controller| is_inputplumber_manageable_controller(controller))
+        .cloned()
+        .collect::<Vec<_>>();
 
     let hidden_controller_paths =
-        selected_controller_source_paths(&controllers, &mapping.hidden_controller_ids);
+        selected_controller_source_paths(&inputplumber_controllers, &mapping.hidden_controller_ids);
     let active_player_mappings = resolve_active_player_mappings(
         settings,
         mapping,
-        &controllers,
+        &inputplumber_controllers,
         selected_profile.as_deref(),
     )?;
 
     if !active_player_mappings.is_empty() {
+        let Some(managed_devices) = managed_inputplumber_devices_for_launch(started)? else {
+            return Ok(ControllerLaunchSession::default());
+        };
         let mut launch_devices = Vec::new();
         let mut matched_any = false;
         let device_infos = managed_devices
@@ -289,10 +273,10 @@ pub async fn activate_for_launch(
         }
 
         if !matched_any {
-            return Err(
-                "No InputPlumber managed device matched the selected player controller list."
-                    .to_string(),
+            tracing::warn!(
+                "No InputPlumber managed device matched the selected player controller list; launching without controller remapping"
             );
+            return Ok(ControllerLaunchSession::default());
         }
 
         let session = apply_inputplumber_launch_devices(launch_devices)?;
@@ -305,10 +289,16 @@ pub async fn activate_for_launch(
         .iter()
         .all(|id| id.trim().is_empty());
     let profile_controller_paths = if profile_scope_is_all {
-        controller_source_paths(&controllers)
+        controller_source_paths(&inputplumber_controllers)
     } else {
-        selected_controller_source_paths(&controllers, &mapping.profile_controller_ids)
+        selected_controller_source_paths(&inputplumber_controllers, &mapping.profile_controller_ids)
     };
+    if hidden_controller_paths.is_empty() && profile_controller_paths.is_empty() {
+        tracing::debug!(
+            "No attached InputPlumber-manageable controllers matched controller mapping settings"
+        );
+        return Ok(ControllerLaunchSession::default());
+    }
     let target_device_ids = normalize_target_ids(&mapping.output_target);
     let profile_path = if let Some(profile_id) = selected_profile.as_deref() {
         Some(resolve_profile_path(settings, profile_id)?)
@@ -318,6 +308,9 @@ pub async fn activate_for_launch(
 
     let mut launch_devices = Vec::new();
     let mut matched_any = false;
+    let Some(managed_devices) = managed_inputplumber_devices_for_launch(started)? else {
+        return Ok(ControllerLaunchSession::default());
+    };
 
     for device in managed_devices {
         let source_paths = inputplumber_device_info(&device.id)
@@ -353,14 +346,85 @@ pub async fn activate_for_launch(
     }
 
     if !matched_any {
-        return Err(
-            "No InputPlumber managed device matched the selected controller list.".to_string(),
+        tracing::warn!(
+            "No InputPlumber managed device matched the selected controller list; launching without controller remapping"
         );
+        return Ok(ControllerLaunchSession::default());
     }
 
     let session = apply_inputplumber_launch_devices(launch_devices)?;
     log_slow_controller_activation(started, session.restore_entries.len());
     Ok(session)
+}
+
+fn managed_inputplumber_devices_for_launch(
+    started: Instant,
+) -> Result<Option<Vec<InputPlumberCompositeDeviceSummary>>, String> {
+    if which::which("inputplumber").is_err() {
+        tracing::warn!(
+            "InputPlumber is not available on PATH; launching without controller remapping"
+        );
+        return Ok(None);
+    }
+
+    let mapping_started = Instant::now();
+    let mut managed_devices = match list_inputplumber_device_summaries() {
+        Ok(devices) => devices,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "Failed to list InputPlumber managed devices; launching without controller remapping"
+            );
+            return Ok(None);
+        }
+    };
+    log_slow_controller_step("inputplumber devices list", mapping_started);
+
+    if managed_devices.is_empty() {
+        let manage_started = Instant::now();
+        if let Err(e) = run_inputplumber(&["devices", "manage-all", "--enable"]) {
+            tracing::warn!(
+                error = %e,
+                "Failed to enable InputPlumber device management; launching without controller remapping"
+            );
+            return Ok(None);
+        }
+        log_slow_controller_step("inputplumber devices manage-all --enable", manage_started);
+
+        let list_started = Instant::now();
+        managed_devices = match list_inputplumber_device_summaries() {
+            Ok(devices) => devices,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to list InputPlumber managed devices after manage-all; launching without controller remapping"
+                );
+                return Ok(None);
+            }
+        };
+        log_slow_controller_step("inputplumber devices list after manage-all", list_started);
+    }
+
+    if managed_devices.is_empty() {
+        tracing::warn!(
+            "InputPlumber has no managed composite devices; launching without controller remapping"
+        );
+        return Ok(None);
+    }
+
+    log_slow_controller_step("controller mapping preflight", started);
+    Ok(Some(managed_devices))
+}
+
+fn log_slow_controller_step(step: &str, started: Instant) {
+    let elapsed = started.elapsed();
+    if elapsed > Duration::from_millis(750) {
+        tracing::warn!(
+            step,
+            elapsed_ms = elapsed.as_millis(),
+            "Slow controller mapping launch step"
+        );
+    }
 }
 
 fn log_slow_controller_activation(started: Instant, device_count: usize) {
@@ -525,6 +589,11 @@ fn resolve_active_player_mappings(
                 &controller_id,
             )
         })
+        .filter_map(|result| match result {
+            Ok(Some(mapping)) => Some(Ok(mapping)),
+            Ok(None) => None,
+            Err(e) => Some(Err(e)),
+        })
         .collect()
 }
 
@@ -535,12 +604,15 @@ fn resolve_active_player_mapping(
     inherited_profile_id: Option<&str>,
     player_mapping: &ControllerPlayerMapping,
     controller_id: &str,
-) -> Result<ResolvedPlayerMapping, String> {
+) -> Result<Option<ResolvedPlayerMapping>, String> {
     let source_paths = if controller_id == CONTROLLER_SCOPE_ALL {
         controller_source_paths(controllers)
     } else {
         selected_controller_source_paths(controllers, &[controller_id.to_string()])
     };
+    if source_paths.is_empty() {
+        return Ok(None);
+    }
     let target_setting = player_mapping
         .output_target
         .as_deref()
@@ -553,11 +625,11 @@ fn resolve_active_player_mapping(
         .map(|profile_id| resolve_profile_path(settings, profile_id))
         .transpose()?;
 
-    Ok(ResolvedPlayerMapping {
+    Ok(Some(ResolvedPlayerMapping {
         source_paths,
         target_device_ids: normalize_target_ids(target_setting),
         profile_path,
-    })
+    }))
 }
 
 fn resolve_player_profile_id(
@@ -1315,6 +1387,10 @@ fn should_show_linux_controller(device: &ControllerDevice) -> bool {
     !device.is_virtual || is_steam_input_virtual_gamepad(device)
 }
 
+fn is_inputplumber_manageable_controller(device: &ControllerDevice) -> bool {
+    !device.is_virtual
+}
+
 fn is_steam_input_virtual_gamepad(device: &ControllerDevice) -> bool {
     let vendor_is_valve = device
         .vendor_id
@@ -1454,6 +1530,18 @@ mod tests {
         );
 
         assert!(should_show_linux_controller(&device));
+    }
+
+    #[test]
+    fn steam_input_virtual_xbox_gamepad_is_not_inputplumber_manageable() {
+        let device = test_controller(
+            "Microsoft X-Box 360 pad 0",
+            Some("28de"),
+            Some("11ff"),
+            true,
+        );
+
+        assert!(!is_inputplumber_manageable_controller(&device));
     }
 
     #[test]

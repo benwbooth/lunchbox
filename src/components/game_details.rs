@@ -214,32 +214,8 @@ fn clear_timed_progress(token: RwSignal<u64>, set_progress: WriteSignal<Option<S
     set_progress.set(None);
 }
 
-fn launch_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
-    vec![
-        (
-            1_500,
-            format!("Resolving ROM path for {}...", emulator_name),
-        ),
-        (
-            2_500,
-            "Resolving launch files and controller mapping...".to_string(),
-        ),
-        (
-            4_000,
-            "Applying controller profile and preparing emulator process...".to_string(),
-        ),
-        (
-            7_000,
-            format!(
-                "Waiting for {} to report a running process...",
-                emulator_name
-            ),
-        ),
-        (
-            12_000,
-            "Still launching. First-run emulator setup can take longer than usual.".to_string(),
-        ),
-    ]
+fn launch_progress_stages(_emulator_name: &str) -> Vec<(i32, String)> {
+    Vec::new()
 }
 
 fn install_progress_stages(emulator_name: &str) -> Vec<(i32, String)> {
