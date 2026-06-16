@@ -12,8 +12,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -146,29 +144,57 @@ jobs:
     needs: flatpak
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
+      - uses: actions/checkout@v4
       - name: Download Flatpak repo
         uses: actions/download-artifact@v4
         with:
           name: lunchbox-flatpak-repo
-          path: flatpak-repo
-      - name: Build Pages directory
+          path: .
+      - name: Stage gh-pages content
         run: |
-          mkdir -p public
-          tar -xzf flatpak-repo/lunchbox-flatpak-repo-*.tar.gz -C public
-          cat > public/lunchbox.flatpakrepo <<EOF
-          [Flatpak Repo]
-          Title=Lunchbox
-          Url=https://${{ github.repository_owner }}.github.io/lunchbox/repo/
-          Homepage=https://github.com/${{ github.repository }}
-          Comment=Lunchbox Flatpak repository
-          Description=Nightly and tagged Lunchbox Flatpak builds.
-          NoGPGVerify=true
-          EOF
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+          set -e
+          mkdir -p pages-out
+          repo_archive="$(find . -name 'lunchbox-flatpak-repo-*.tar.gz' -type f -print -quit)"
+          test -n "$repo_archive"
+          tar -C pages-out -xzf "$repo_archive"
+          REPO_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/lunchbox"
+          {
+            echo "[Flatpak Repo]"
+            echo "Title=Lunchbox"
+            echo "Url=$REPO_URL/repo/"
+            echo "Homepage=https://github.com/${GITHUB_REPOSITORY}"
+            echo "Description=Cross-platform emulator frontend. Self-published; add with --no-gpg-verify."
+            echo "NoGPGVerify=true"
+          } > pages-out/lunchbox.flatpakrepo
+          python3 - "$REPO_URL" "$GITHUB_REPOSITORY" > pages-out/index.html <<'PY'
+          import sys
+          repo_url, gh_repo = sys.argv[1], sys.argv[2]
+          print(f"""<!doctype html>
+          <html lang="en"><head><meta charset="utf-8">
+          <title>Lunchbox Flatpak repo</title>
+          <style>
+            body {{ font-family: system-ui, sans-serif; max-width: 720px; margin: 3em auto; padding: 0 1em; line-height: 1.5; }}
+            code, pre {{ font-family: ui-monospace, monospace; background: #f4f4f4; padding: .2em .4em; border-radius: 3px; }}
+            pre {{ padding: .8em 1em; overflow-x: auto; white-space: pre; }}
+            h1, h2 {{ margin-top: 1.5em; }}
+          </style></head><body>
+          <h1>Lunchbox Flatpak repo</h1>
+          <p>Cross-platform emulator frontend. Source on <a href="https://github.com/{gh_repo}">GitHub</a>.</p>
+          <h2>Install</h2>
+          <pre>flatpak --user remote-add --no-gpg-verify lunchbox \\
+              {repo_url}/lunchbox.flatpakrepo
+          flatpak --user install lunchbox io.github.benwbooth.lunchbox</pre>
+          <p>Update later with <code>flatpak --user update io.github.benwbooth.lunchbox</code>.</p>
+          <h2>Other downloads</h2>
+          <p>AppImage, Flatpak bundle, Windows, and macOS binaries: <a href="https://github.com/{gh_repo}/releases/latest">latest GitHub release</a>.</p>
+          </body></html>""")
+          PY
+          find pages-out -maxdepth 2 -type f -print
+      - uses: peaceiris/actions-gh-pages@v4
         with:
-          path: public
-      - uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./pages-out
+          force_orphan: true
 
   release:
     name: GitHub Release

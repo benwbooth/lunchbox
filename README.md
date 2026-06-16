@@ -28,7 +28,7 @@ To install from the Lunchbox Flatpak repository:
 ```sh
 flatpak remote-add --if-not-exists --user flathub \
   https://flathub.org/repo/flathub.flatpakrepo
-flatpak remote-add --if-not-exists --user lunchbox \
+flatpak remote-add --if-not-exists --user --no-gpg-verify lunchbox \
   https://benwbooth.github.io/lunchbox/lunchbox.flatpakrepo
 flatpak install --user lunchbox io.github.benwbooth.lunchbox
 flatpak run io.github.benwbooth.lunchbox
