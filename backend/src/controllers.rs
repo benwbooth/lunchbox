@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 const INPUTPLUMBER_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const INPUTPLUMBER_DEVICE_LIST_TIMEOUT: Duration = Duration::from_secs(20);
 const INPUTPLUMBER_DEVICE_LIST_RETRIES: usize = 1;
+const INPUTPLUMBER_LAUNCH_QUERY_TIMEOUT: Duration = Duration::from_millis(1_000);
+const INPUTPLUMBER_LAUNCH_APPLY_TIMEOUT: Duration = Duration::from_millis(1_500);
 const CUSTOM_PROFILE_PREFIX: &str = "custom:";
 const GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -217,28 +219,29 @@ pub async fn activate_for_launch(
         };
         let mut launch_devices = Vec::new();
         let mut matched_any = false;
-        let device_infos = managed_devices
+        let device_sources = managed_devices
             .into_iter()
             .map(|device| {
-                let info = inputplumber_device_info(&device.id).unwrap_or_default();
-                (device, info)
+                let source_paths =
+                    inputplumber_device_source_paths_for_launch(&device.id).unwrap_or_default();
+                (device, source_paths)
             })
             .collect::<Vec<_>>();
         let mut used_device_ids = HashSet::new();
 
         for player_mapping in &active_player_mappings {
-            let Some((device, info)) = device_infos.iter().find(|(device, info)| {
-                !used_device_ids.contains(&device.id)
-                    && info
-                        .source_paths
-                        .iter()
-                        .any(|path| player_mapping.source_paths.contains(path))
-            }) else {
+            let Some((device, source_paths)) =
+                device_sources.iter().find(|(device, source_paths)| {
+                    !used_device_ids.contains(&device.id)
+                        && source_paths
+                            .iter()
+                            .any(|path| player_mapping.source_paths.contains(path))
+                })
+            else {
                 continue;
             };
             let matches_hidden = !hidden_controller_paths.is_empty()
-                && info
-                    .source_paths
+                && source_paths
                     .iter()
                     .any(|path| hidden_controller_paths.contains(path));
             used_device_ids.insert(device.id.clone());
@@ -252,17 +255,16 @@ pub async fn activate_for_launch(
             });
         }
 
-        for (device, info) in device_infos {
+        for (device, source_paths) in device_sources {
             if used_device_ids.contains(&device.id) {
                 continue;
             }
             let matches_hidden = !hidden_controller_paths.is_empty()
-                && info
-                    .source_paths
+                && source_paths
                     .iter()
                     .any(|path| hidden_controller_paths.contains(path));
 
-            if matches_hidden || inputplumber_device_has_gamepad_target(&device.id) {
+            if matches_hidden {
                 launch_devices.push(InputPlumberLaunchDevice {
                     id: device.id,
                     hidden: true,
@@ -313,9 +315,8 @@ pub async fn activate_for_launch(
     };
 
     for device in managed_devices {
-        let source_paths = inputplumber_device_info(&device.id)
-            .map(|info| info.source_paths)
-            .unwrap_or_default();
+        let source_paths =
+            inputplumber_device_source_paths_for_launch(&device.id).unwrap_or_default();
         let matches_hidden = !hidden_controller_paths.is_empty()
             && source_paths
                 .iter()
@@ -325,14 +326,6 @@ pub async fn activate_for_launch(
             .any(|path| profile_controller_paths.contains(path));
 
         if !matches_hidden && !matches_profile {
-            if inputplumber_device_has_gamepad_target(&device.id) {
-                launch_devices.push(InputPlumberLaunchDevice {
-                    id: device.id,
-                    hidden: true,
-                    target_device_ids: Vec::new(),
-                    profile_path: None,
-                });
-            }
             continue;
         }
 
@@ -368,7 +361,7 @@ fn managed_inputplumber_devices_for_launch(
     }
 
     let mapping_started = Instant::now();
-    let mut managed_devices = match list_inputplumber_device_summaries() {
+    let managed_devices = match list_inputplumber_device_summaries_for_launch() {
         Ok(devices) => devices,
         Err(e) => {
             tracing::warn!(
@@ -379,31 +372,6 @@ fn managed_inputplumber_devices_for_launch(
         }
     };
     log_slow_controller_step("inputplumber devices list", mapping_started);
-
-    if managed_devices.is_empty() {
-        let manage_started = Instant::now();
-        if let Err(e) = run_inputplumber(&["devices", "manage-all", "--enable"]) {
-            tracing::warn!(
-                error = %e,
-                "Failed to enable InputPlumber device management; launching without controller remapping"
-            );
-            return Ok(None);
-        }
-        log_slow_controller_step("inputplumber devices manage-all --enable", manage_started);
-
-        let list_started = Instant::now();
-        managed_devices = match list_inputplumber_device_summaries() {
-            Ok(devices) => devices,
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "Failed to list InputPlumber managed devices after manage-all; launching without controller remapping"
-                );
-                return Ok(None);
-            }
-        };
-        log_slow_controller_step("inputplumber devices list after manage-all", list_started);
-    }
 
     if managed_devices.is_empty() {
         tracing::warn!(
@@ -449,7 +417,8 @@ fn apply_inputplumber_launch_devices(
         .map(|device| device.id.clone())
         .collect::<Vec<_>>();
     if ordered_ids.len() > 1 {
-        let _ = run_inputplumber_with_dynamic_args(["devices", "order"], &ordered_ids);
+        let _ =
+            run_inputplumber_apply_with_dynamic_args_for_launch(["devices", "order"], &ordered_ids);
     }
 
     for device in devices {
@@ -468,19 +437,25 @@ fn apply_inputplumber_launch_devices(
 fn apply_inputplumber_launch_device(
     device: InputPlumberLaunchDevice,
 ) -> Result<InputPlumberRestoreEntry, String> {
-    let restore = inputplumber_restore_entry(&device.id, device.profile_path.is_some())?;
+    let restore = inputplumber_restore_entry_for_launch(&device.id, device.profile_path.is_some())?;
     let apply_result = (|| {
-        run_inputplumber(&["device", &device.id, "intercept", "set", "gamepad-only"])?;
+        run_inputplumber_apply_for_launch(&[
+            "device",
+            &device.id,
+            "intercept",
+            "set",
+            "gamepad-only",
+        ])?;
 
         if device.hidden {
-            run_inputplumber(&["device", &device.id, "targets", "set", "null"])?;
+            run_inputplumber_apply_for_launch(&["device", &device.id, "targets", "set", "null"])?;
         } else {
-            run_inputplumber_with_dynamic_args(
+            run_inputplumber_apply_with_dynamic_args_for_launch(
                 ["device", &device.id, "targets", "set"],
                 &device.target_device_ids,
             )?;
             if let Some(path) = device.profile_path.as_ref() {
-                run_inputplumber(&[
+                run_inputplumber_apply_for_launch(&[
                     "device",
                     &device.id,
                     "profile",
@@ -1024,9 +999,21 @@ struct InputPlumberDeviceInfo {
 
 fn inputplumber_device_info(id: &str) -> Result<InputPlumberDeviceInfo, String> {
     let output = run_inputplumber(&["device", id, "info"])?;
+    let mut info = parse_inputplumber_device_info(id, &output);
+    info.profile_path = inputplumber_device_profile_path(id).ok().flatten();
+
+    Ok(info)
+}
+
+fn inputplumber_device_source_paths_for_launch(id: &str) -> Result<Vec<String>, String> {
+    let output = run_inputplumber_query_for_launch(&["device", id, "info"])?;
+    Ok(parse_inputplumber_device_info(id, &output).source_paths)
+}
+
+fn parse_inputplumber_device_info(id: &str, output: &str) -> InputPlumberDeviceInfo {
     let mut info = InputPlumberDeviceInfo::default();
 
-    for row in parse_box_rows(&output) {
+    for row in parse_box_rows(output) {
         if row.first().map(String::as_str) != Some(id) {
             continue;
         }
@@ -1038,19 +1025,35 @@ fn inputplumber_device_info(id: &str) -> Result<InputPlumberDeviceInfo, String> 
         }
     }
 
-    info.profile_path = inputplumber_device_profile_path(id).ok().flatten();
-
-    Ok(info)
+    info
 }
 
 fn inputplumber_device_profile_path(id: &str) -> Result<Option<String>, String> {
     let output = run_inputplumber(&["device", id, "profile", "path"])?;
-    Ok(extract_first_path(&output).or_else(|| normalized_optional_string(output.trim())))
+    Ok(parse_inputplumber_device_profile_path(&output))
+}
+
+fn inputplumber_device_profile_path_for_launch(id: &str) -> Result<Option<String>, String> {
+    let output = run_inputplumber_query_for_launch(&["device", id, "profile", "path"])?;
+    Ok(parse_inputplumber_device_profile_path(&output))
+}
+
+fn parse_inputplumber_device_profile_path(output: &str) -> Option<String> {
+    extract_first_path(output).or_else(|| normalized_optional_string(output.trim()))
 }
 
 fn inputplumber_device_targets(id: &str) -> Result<Vec<String>, String> {
     let output = run_inputplumber(&["device", id, "targets", "list"])?;
-    Ok(parse_box_rows(&output)
+    Ok(parse_inputplumber_device_targets(&output))
+}
+
+fn inputplumber_device_targets_for_launch(id: &str) -> Result<Vec<String>, String> {
+    let output = run_inputplumber_query_for_launch(&["device", id, "targets", "list"])?;
+    Ok(parse_inputplumber_device_targets(&output))
+}
+
+fn parse_inputplumber_device_targets(output: &str) -> Vec<String> {
+    parse_box_rows(output)
         .into_iter()
         .filter_map(|row| {
             if row.len() >= 2 && row[0] != "Id" {
@@ -1059,32 +1062,15 @@ fn inputplumber_device_targets(id: &str) -> Result<Vec<String>, String> {
                 None
             }
         })
-        .collect())
+        .collect()
 }
 
-fn inputplumber_device_has_gamepad_target(id: &str) -> bool {
-    inputplumber_device_targets(id)
-        .unwrap_or_default()
-        .iter()
-        .any(|target| {
-            matches!(
-                target.as_str(),
-                "deck"
-                    | "deck-uhid"
-                    | "ds5"
-                    | "ds5-edge"
-                    | "gamepad"
-                    | "hori-steam"
-                    | "unified-gamepad"
-                    | "xb360"
-                    | "xbox-elite"
-                    | "xbox-series"
-            )
-        })
+fn inputplumber_device_intercept_mode_for_launch(id: &str) -> Result<String, String> {
+    let output = run_inputplumber_query_for_launch(&["device", id, "intercept", "get"])?;
+    parse_inputplumber_device_intercept_mode(id, &output)
 }
 
-fn inputplumber_device_intercept_mode(id: &str) -> Result<String, String> {
-    let output = run_inputplumber(&["device", id, "intercept", "get"])?;
+fn parse_inputplumber_device_intercept_mode(id: &str, output: &str) -> Result<String, String> {
     output
         .split(':')
         .nth(1)
@@ -1094,19 +1080,21 @@ fn inputplumber_device_intercept_mode(id: &str) -> Result<String, String> {
         .ok_or_else(|| format!("Failed to parse InputPlumber intercept mode for device {id}"))
 }
 
-fn inputplumber_restore_entry(
+fn inputplumber_restore_entry_for_launch(
     id: &str,
     capture_profile_path: bool,
 ) -> Result<InputPlumberRestoreEntry, String> {
     Ok(InputPlumberRestoreEntry {
         device_id: id.to_string(),
-        intercept_mode: Some(inputplumber_device_intercept_mode(id)?),
+        intercept_mode: Some(inputplumber_device_intercept_mode_for_launch(id)?),
         profile_path: if capture_profile_path {
-            inputplumber_device_profile_path(id).ok().flatten()
+            inputplumber_device_profile_path_for_launch(id)
+                .ok()
+                .flatten()
         } else {
             None
         },
-        target_ids: inputplumber_device_targets(id).unwrap_or_default(),
+        target_ids: inputplumber_device_targets_for_launch(id).unwrap_or_default(),
     })
 }
 
@@ -1131,6 +1119,14 @@ fn run_inputplumber(args: &[&str]) -> Result<String, String> {
     run_command_with_timeout("inputplumber", args, INPUTPLUMBER_COMMAND_TIMEOUT)
 }
 
+fn run_inputplumber_query_for_launch(args: &[&str]) -> Result<String, String> {
+    run_command_with_timeout("inputplumber", args, INPUTPLUMBER_LAUNCH_QUERY_TIMEOUT)
+}
+
+fn run_inputplumber_apply_for_launch(args: &[&str]) -> Result<String, String> {
+    run_command_with_timeout("inputplumber", args, INPUTPLUMBER_LAUNCH_APPLY_TIMEOUT)
+}
+
 fn run_inputplumber_devices_list() -> Result<String, String> {
     let args = ["devices", "list"];
     let mut last_error = None;
@@ -1152,6 +1148,27 @@ fn run_inputplumber_devices_list() -> Result<String, String> {
     Err(last_error.unwrap_or_else(|| "inputplumber devices list failed".to_string()))
 }
 
+fn list_inputplumber_device_summaries_for_launch()
+-> Result<Vec<InputPlumberCompositeDeviceSummary>, String> {
+    let output = run_command_with_timeout(
+        "inputplumber",
+        &["devices", "list"],
+        INPUTPLUMBER_LAUNCH_QUERY_TIMEOUT,
+    )?;
+    let mut devices = Vec::new();
+
+    for row in parse_box_rows(&output) {
+        if row.len() < 2 || row[0] == "Id" {
+            continue;
+        }
+        let id = row[0].clone();
+        let name = row[1].clone();
+        devices.push(InputPlumberCompositeDeviceSummary { id, name });
+    }
+
+    Ok(devices)
+}
+
 fn run_inputplumber_with_dynamic_args<const N: usize>(
     prefix: [&str; N],
     dynamic_args: &[String],
@@ -1163,6 +1180,19 @@ fn run_inputplumber_with_dynamic_args<const N: usize>(
         .collect::<Vec<_>>();
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
     run_inputplumber(&refs)
+}
+
+fn run_inputplumber_apply_with_dynamic_args_for_launch<const N: usize>(
+    prefix: [&str; N],
+    dynamic_args: &[String],
+) -> Result<String, String> {
+    let args = prefix
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .chain(dynamic_args.iter().cloned())
+        .collect::<Vec<_>>();
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_inputplumber_apply_for_launch(&refs)
 }
 
 fn run_command_with_timeout(
@@ -1201,15 +1231,23 @@ fn run_command_with_timeout(
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(format!(
-                    "{} {} timed out after {}s",
+                    "{} {} timed out after {}",
                     program,
                     args.join(" "),
-                    timeout.as_secs()
+                    format_timeout(timeout)
                 ));
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(25)),
             Err(e) => return Err(format!("Failed to wait for {}: {}", program, e)),
         }
+    }
+}
+
+fn format_timeout(timeout: Duration) -> String {
+    if timeout.subsec_millis() == 0 {
+        format!("{}s", timeout.as_secs())
+    } else {
+        format!("{}ms", timeout.as_millis())
     }
 }
 

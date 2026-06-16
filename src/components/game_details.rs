@@ -4354,9 +4354,7 @@ fn EmulatorPickerModal(
     // Track launching/installing state with progress message
     let (progress_state, set_progress_state) = signal::<Option<String>>(None);
     let progress_token = RwSignal::new(0_u64);
-    let loading_token = RwSignal::new(0_u64);
-    let (emulator_loading_message, set_emulator_loading_message) =
-        signal("Checking installed emulators...".to_string());
+    let emulator_loading_message = "Loading emulators...".to_string();
     // Track error state
     let (error_state, set_error_state) = signal::<Option<String>>(None);
     // Track success state
@@ -4381,38 +4379,6 @@ fn EmulatorPickerModal(
             set_show_emulator_picker.set(false);
         });
     };
-
-    Effect::new(move || {
-        if !emulators_loading.get() {
-            loading_token.update(|value| *value = value.wrapping_add(1));
-            return;
-        }
-
-        loading_token.update(|value| *value = value.wrapping_add(1));
-        let active_token = loading_token.get_untracked();
-        set_emulator_loading_message.set("Checking installed emulators...".to_string());
-
-        spawn_local(async move {
-            let stages = [
-                (
-                    1_500,
-                    "Checking emulator install status and RetroArch cores...",
-                ),
-                (4_000, "Checking installed emulator firmware..."),
-                (
-                    8_000,
-                    "Still loading emulator status. Package manager checks can be slow.",
-                ),
-            ];
-            for (delay, message) in stages {
-                delay_ms(delay).await;
-                if loading_token.get_untracked() != active_token {
-                    return;
-                }
-                set_emulator_loading_message.set(message.to_string());
-            }
-        });
-    });
 
     // Load current preference when modal opens
     Effect::new(move || {
@@ -4501,7 +4467,7 @@ fn EmulatorPickerModal(
                                 view! {
                                     <div class="emulator-loading">
                                         <div class="loading-spinner"></div>
-                                        <span>{move || emulator_loading_message.get()}</span>
+                                        <span>{emulator_loading_message.clone()}</span>
                                         <div class="operation-progress-bar">
                                             <div class="operation-progress-fill indeterminate"></div>
                                         </div>

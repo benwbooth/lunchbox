@@ -4029,22 +4029,9 @@ async fn rspc_get_emulators_with_status(
         }
     };
 
-    let (emulators_db_pool, db_pool, settings) = {
-        let state_guard = state.read().await;
-        (
-            state_guard.emulators_db_pool.clone(),
-            state_guard.db_pool.clone(),
-            state_guard.settings.clone(),
-        )
-    };
+    let emulators_db_pool = state.read().await.emulators_db_pool.clone();
 
-    match handlers::get_emulators_with_status_from_context(
-        emulators_db_pool,
-        db_pool,
-        settings,
-        &platform_name,
-    )
-    .await
+    match handlers::get_emulators_with_status_from_context(emulators_db_pool, &platform_name).await
     {
         Ok(emulators) => rspc_ok(emulators).into_response(),
         Err(e) => rspc_err::<Vec<EmulatorWithStatus>>(e).into_response(),

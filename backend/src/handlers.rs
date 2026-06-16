@@ -18,8 +18,6 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const EMULATOR_FIRMWARE_STATUS_TIMEOUT: Duration = Duration::from_millis(1_000);
-
 // ============================================================================
 // Shared types (used by both rspc and HTTP)
 // ============================================================================
@@ -1380,19 +1378,11 @@ pub async fn get_emulators_with_status(
     state: &AppState,
     platform_name: &str,
 ) -> Result<Vec<EmulatorWithStatus>, String> {
-    get_emulators_with_status_from_context(
-        state.emulators_db_pool.clone(),
-        state.db_pool.clone(),
-        state.settings.clone(),
-        platform_name,
-    )
-    .await
+    get_emulators_with_status_from_context(state.emulators_db_pool.clone(), platform_name).await
 }
 
 pub async fn get_emulators_with_status_from_context(
     emulators_db_pool: Option<sqlx::SqlitePool>,
-    db_pool: Option<sqlx::SqlitePool>,
-    settings: AppSettings,
     platform_name: &str,
 ) -> Result<Vec<EmulatorWithStatus>, String> {
     let started = Instant::now();
@@ -1457,31 +1447,6 @@ pub async fn get_emulators_with_status_from_context(
     results.extend(standalone_entries);
     sort_emulator_statuses(&mut results);
 
-    if let Some(db_pool) = db_pool.as_ref() {
-        match tokio::time::timeout(
-            EMULATOR_FIRMWARE_STATUS_TIMEOUT,
-            add_firmware_statuses(&settings, db_pool, &mut results, canonical_platform_name),
-        )
-        .await
-        {
-            Ok(Ok(())) => {}
-            Ok(Err(err)) => {
-                tracing::warn!(
-                    platform = canonical_platform_name,
-                    error = %err,
-                    "Skipping emulator firmware annotations because status lookup failed"
-                );
-            }
-            Err(_) => {
-                tracing::warn!(
-                    platform = canonical_platform_name,
-                    timeout_ms = EMULATOR_FIRMWARE_STATUS_TIMEOUT.as_millis(),
-                    "Skipping emulator firmware annotations because status lookup timed out"
-                );
-            }
-        }
-    }
-
     let elapsed = started.elapsed();
     if elapsed > Duration::from_secs(2) {
         tracing::warn!(
@@ -1497,26 +1462,6 @@ pub async fn get_emulators_with_status_from_context(
 
 fn sort_emulator_statuses(results: &mut [EmulatorWithStatus]) {
     results.sort_by(|a, b| b.is_installed.cmp(&a.is_installed));
-}
-
-async fn add_firmware_statuses(
-    settings: &AppSettings,
-    db_pool: &sqlx::SqlitePool,
-    results: &mut [EmulatorWithStatus],
-    platform_name: &str,
-) -> Result<(), String> {
-    for emulator in results.iter_mut().filter(|emulator| emulator.is_installed) {
-        emulator.firmware_statuses = crate::firmware::get_firmware_status(
-            settings,
-            db_pool,
-            &emulator.info,
-            platform_name,
-            emulator.is_retroarch_core,
-        )
-        .await?;
-    }
-
-    Ok(())
 }
 
 async fn maybe_append_exodos_scummvm(
@@ -1705,6 +1650,23 @@ pub async fn install_firmware_for_emulator_with_context(
     .await
 }
 
+async fn activate_controller_mapping_for_launch(
+    settings: &AppSettings,
+    platform_name: Option<&str>,
+    launchbox_db_id: Option<i64>,
+) -> crate::controllers::ControllerLaunchSession {
+    match crate::controllers::activate_for_launch(settings, platform_name, launchbox_db_id).await {
+        Ok(session) => session,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "Controller mapping activation failed; launching without controller remapping"
+            );
+            crate::controllers::ControllerLaunchSession::default()
+        }
+    }
+}
+
 /// Launch a game with the specified emulator
 pub async fn launch_game_with_emulator(
     state: &mut AppState,
@@ -1782,22 +1744,12 @@ pub async fn launch_game_with_emulator(
                 false,
             )
             .await?;
-            let controller_session = match crate::controllers::activate_for_launch(
+            let controller_session = activate_controller_mapping_for_launch(
                 &settings,
                 Some(runtime_platform),
                 Some(db_id),
             )
-            .await
-            {
-                Ok(session) => session,
-                Err(e) => {
-                    return Ok(LaunchResult {
-                        success: false,
-                        pid: None,
-                        error: Some(e),
-                    });
-                }
-            };
+            .await;
 
             return match emulator::launch_prepared_install(
                 emulator,
@@ -1875,22 +1827,9 @@ pub async fn launch_game_with_emulator(
         launch_configuration
             .legacy_args
             .extend(firmware_launch_args);
-        let controller_session = match crate::controllers::activate_for_launch(
-            &settings,
-            Some(runtime_platform),
-            Some(db_id),
-        )
-        .await
-        {
-            Ok(session) => session,
-            Err(e) => {
-                return Ok(LaunchResult {
-                    success: false,
-                    pid: None,
-                    error: Some(e),
-                });
-            }
-        };
+        let controller_session =
+            activate_controller_mapping_for_launch(&settings, Some(runtime_platform), Some(db_id))
+                .await;
 
         match emulator::launch_emulator(
             emulator,
@@ -1937,16 +1876,7 @@ pub async fn launch_game_with_emulator(
     )
     .await?;
     let controller_session =
-        match crate::controllers::activate_for_launch(&settings, None, launchbox_db_id).await {
-            Ok(session) => session,
-            Err(e) => {
-                return Ok(LaunchResult {
-                    success: false,
-                    pid: None,
-                    error: Some(e),
-                });
-            }
-        };
+        activate_controller_mapping_for_launch(&settings, None, launchbox_db_id).await;
 
     match emulator::launch_emulator(
         emulator,
