@@ -1221,7 +1221,7 @@ fn list_linux_joystick_controllers(warnings: &mut Vec<String>) -> Vec<Controller
             continue;
         }
         if let Some(device) = linux_controller_from_js(&name, &entry.path()) {
-            if !device.is_virtual {
+            if should_show_linux_controller(&device) {
                 devices.push(device);
             }
         }
@@ -1311,6 +1311,31 @@ fn is_virtual_linux_controller(
     false
 }
 
+fn should_show_linux_controller(device: &ControllerDevice) -> bool {
+    !device.is_virtual || is_steam_input_virtual_gamepad(device)
+}
+
+fn is_steam_input_virtual_gamepad(device: &ControllerDevice) -> bool {
+    let vendor_is_valve = device
+        .vendor_id
+        .as_deref()
+        .is_some_and(|vendor| vendor.eq_ignore_ascii_case("28de"));
+    let product_is_steam_input = device
+        .product_id
+        .as_deref()
+        .is_some_and(|product| product.eq_ignore_ascii_case("11ff"));
+    if !vendor_is_valve || !product_is_steam_input {
+        return false;
+    }
+
+    let lower_name = device.name.to_ascii_lowercase();
+    lower_name.contains("x-box")
+        || lower_name.contains("xbox")
+        || lower_name.contains("gamepad")
+        || lower_name.contains("controller")
+        || lower_name.contains("pad")
+}
+
 fn is_likely_non_game_controller(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.contains("keyboard")
@@ -1391,5 +1416,67 @@ fn process_exists(pid: u32) -> bool {
         PathBuf::from(format!("/proc/{pid}")).exists()
     } else {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_controller(
+        name: &str,
+        vendor_id: Option<&str>,
+        product_id: Option<&str>,
+        is_virtual: bool,
+    ) -> ControllerDevice {
+        ControllerDevice {
+            stable_id: stable_controller_id(name, vendor_id, product_id, None),
+            name: name.to_string(),
+            device_path: "/dev/input/js0".to_string(),
+            event_paths: vec!["/dev/input/event0".to_string()],
+            vendor_id: vendor_id.map(ToOwned::to_owned),
+            product_id: product_id.map(ToOwned::to_owned),
+            version: None,
+            bus_type: None,
+            physical_path: None,
+            unique_id: None,
+            is_virtual,
+        }
+    }
+
+    #[test]
+    fn shows_steam_input_virtual_xbox_gamepad() {
+        let device = test_controller(
+            "Microsoft X-Box 360 pad 0",
+            Some("28de"),
+            Some("11ff"),
+            true,
+        );
+
+        assert!(should_show_linux_controller(&device));
+    }
+
+    #[test]
+    fn hides_non_steam_virtual_gamepad() {
+        let device = test_controller(
+            "Microsoft X-Box 360 pad 0",
+            Some("045e"),
+            Some("028e"),
+            true,
+        );
+
+        assert!(!should_show_linux_controller(&device));
+    }
+
+    #[test]
+    fn shows_physical_gamepad() {
+        let device = test_controller(
+            "Sony Interactive Entertainment DualSense Wireless Controller",
+            Some("054c"),
+            Some("0ce6"),
+            false,
+        );
+
+        assert!(should_show_linux_controller(&device));
     }
 }
