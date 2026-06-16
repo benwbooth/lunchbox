@@ -1667,6 +1667,42 @@ async fn activate_controller_mapping_for_launch(
     }
 }
 
+fn append_retroarch_controller_config_for_launch(
+    settings: &AppSettings,
+    platform_name: Option<&str>,
+    launchbox_db_id: Option<i64>,
+    as_retroarch_core: bool,
+    launch_configuration: &mut emulator::LaunchConfiguration,
+) -> Result<(), String> {
+    if !as_retroarch_core {
+        return Ok(());
+    }
+
+    let Some(config) = crate::controllers::write_retroarch_controller_config_for_launch(
+        settings,
+        platform_name,
+        launchbox_db_id,
+    )?
+    else {
+        return Ok(());
+    };
+
+    tracing::info!(
+        controller = %config.device_name,
+        config = %config.config_path.display(),
+        "Appending RetroArch controller launch config"
+    );
+    launch_configuration
+        .legacy_args
+        .push(emulator::LaunchArg::Literal("--appendconfig".to_string()));
+    launch_configuration
+        .legacy_args
+        .push(emulator::LaunchArg::Path(
+            config.config_path.to_string_lossy().to_string(),
+        ));
+    Ok(())
+}
+
 /// Launch a game with the specified emulator
 pub async fn launch_game_with_emulator(
     state: &mut AppState,
@@ -1735,7 +1771,7 @@ pub async fn launch_game_with_emulator(
                 }
             };
 
-            let launch_configuration = build_launch_configuration(
+            let mut launch_configuration = build_launch_configuration(
                 state,
                 Some(db_id),
                 emulator,
@@ -1744,6 +1780,13 @@ pub async fn launch_game_with_emulator(
                 false,
             )
             .await?;
+            append_retroarch_controller_config_for_launch(
+                &settings,
+                Some(runtime_platform),
+                Some(db_id),
+                as_retroarch_core,
+                &mut launch_configuration,
+            )?;
             let controller_session = activate_controller_mapping_for_launch(
                 &settings,
                 Some(runtime_platform),
@@ -1827,6 +1870,13 @@ pub async fn launch_game_with_emulator(
         launch_configuration
             .legacy_args
             .extend(firmware_launch_args);
+        append_retroarch_controller_config_for_launch(
+            &settings,
+            Some(runtime_platform),
+            Some(db_id),
+            as_retroarch_core,
+            &mut launch_configuration,
+        )?;
         let controller_session =
             activate_controller_mapping_for_launch(&settings, Some(runtime_platform), Some(db_id))
                 .await;
@@ -1866,7 +1916,7 @@ pub async fn launch_game_with_emulator(
     };
 
     let settings = state.settings.clone();
-    let launch_configuration = build_launch_configuration(
+    let mut launch_configuration = build_launch_configuration(
         state,
         launchbox_db_id,
         emulator,
@@ -1875,6 +1925,13 @@ pub async fn launch_game_with_emulator(
         true,
     )
     .await?;
+    append_retroarch_controller_config_for_launch(
+        &settings,
+        None,
+        launchbox_db_id,
+        as_retroarch_core,
+        &mut launch_configuration,
+    )?;
     let controller_session =
         activate_controller_mapping_for_launch(&settings, None, launchbox_db_id).await;
 

@@ -121,6 +121,12 @@ pub struct ControllerLaunchSession {
 }
 
 #[derive(Debug, Clone)]
+pub struct RetroArchControllerConfig {
+    pub device_name: String,
+    pub config_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
 struct InputPlumberRestoreEntry {
     device_id: String,
     intercept_mode: Option<String>,
@@ -348,6 +354,56 @@ pub async fn activate_for_launch(
     let session = apply_inputplumber_launch_devices(launch_devices)?;
     log_slow_controller_activation(started, session.restore_entries.len());
     Ok(session)
+}
+
+pub fn write_retroarch_controller_config_for_launch(
+    settings: &AppSettings,
+    platform_name: Option<&str>,
+    launchbox_db_id: Option<i64>,
+) -> Result<Option<RetroArchControllerConfig>, String> {
+    let mapping = &settings.controller_mapping;
+    if !mapping.enabled {
+        return Ok(None);
+    }
+
+    let selected_profile = resolve_profile_id(mapping, platform_name, launchbox_db_id);
+    let mut warnings = Vec::new();
+    let controllers = list_local_controllers(&mut warnings);
+    let Some((controller, profile_id)) =
+        preferred_retroarch_controller(mapping, &controllers, selected_profile.as_deref())
+    else {
+        return Ok(None);
+    };
+
+    if !is_retroarch_xbox_style_controller(&controller) {
+        return Ok(None);
+    }
+
+    let dir = settings.get_data_directory().join("retroarch");
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "Failed to create RetroArch launch config directory {}: {}",
+            dir.display(),
+            e
+        )
+    })?;
+    let config_path = dir.join("lunchbox-controller-p1.cfg");
+    let config = retroarch_xbox_style_controller_config(
+        &controller.name,
+        profile_id.as_deref() == Some(TWO_BUTTON_CLOCKWISE_PROFILE_ID),
+    );
+    std::fs::write(&config_path, config).map_err(|e| {
+        format!(
+            "Failed to write RetroArch launch config {}: {}",
+            config_path.display(),
+            e
+        )
+    })?;
+
+    Ok(Some(RetroArchControllerConfig {
+        device_name: controller.name,
+        config_path,
+    }))
 }
 
 fn managed_inputplumber_devices_for_launch(
@@ -607,6 +663,61 @@ fn resolve_active_player_mapping(
     }))
 }
 
+fn preferred_retroarch_controller(
+    mapping: &ControllerMappingSettings,
+    controllers: &[ControllerDevice],
+    inherited_profile_id: Option<&str>,
+) -> Option<(ControllerDevice, Option<String>)> {
+    for player_mapping in &mapping.player_mappings {
+        let Some(controller_id) = player_mapping
+            .controller_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|controller_id| !controller_id.is_empty())
+        else {
+            continue;
+        };
+        let controller = if controller_id == CONTROLLER_SCOPE_ALL {
+            controllers.first()
+        } else {
+            controllers
+                .iter()
+                .find(|controller| controller.stable_id == controller_id)
+        };
+        if let Some(controller) = controller {
+            return Some((
+                controller.clone(),
+                resolve_player_profile_id(player_mapping, inherited_profile_id),
+            ));
+        }
+    }
+
+    if !mapping.profile_controller_ids.is_empty() {
+        let selected_ids = mapping
+            .profile_controller_ids
+            .iter()
+            .map(|id| id.trim())
+            .filter(|id| !id.is_empty())
+            .collect::<HashSet<_>>();
+        if let Some(controller) = controllers
+            .iter()
+            .find(|controller| selected_ids.contains(controller.stable_id.as_str()))
+        {
+            return Some((
+                controller.clone(),
+                inherited_profile_id.map(ToOwned::to_owned),
+            ));
+        }
+    }
+
+    inherited_profile_id.map(|profile_id| {
+        controllers
+            .first()
+            .cloned()
+            .map(|controller| (controller, Some(profile_id.to_string())))
+    })?
+}
+
 fn resolve_player_profile_id(
     player_mapping: &ControllerPlayerMapping,
     inherited_profile_id: Option<&str>,
@@ -782,6 +893,66 @@ fn custom_controller_profile_yaml(profile: &ControllerCustomProfile) -> String {
 
 fn yaml_quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn retroarch_config_quote(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn is_retroarch_xbox_style_controller(controller: &ControllerDevice) -> bool {
+    let lower_name = controller.name.to_ascii_lowercase();
+    if lower_name.contains("x-box") || lower_name.contains("xbox") || lower_name.contains("xinput")
+    {
+        return true;
+    }
+
+    matches!(
+        (
+            controller.vendor_id.as_deref(),
+            controller.product_id.as_deref()
+        ),
+        (Some("28de"), Some("11ff")) | (Some("045e"), Some("028e"))
+    )
+}
+
+fn retroarch_xbox_style_controller_config(device_name: &str, two_button_clockwise: bool) -> String {
+    let escaped_name = retroarch_config_quote(device_name);
+    let (b_btn, y_btn, a_btn, x_btn) = if two_button_clockwise {
+        ("1", "0", "3", "2")
+    } else {
+        ("0", "2", "1", "3")
+    };
+
+    format!(
+        r#"# Generated by Lunchbox for the current launch.
+input_player1_device_reservation_type = "2"
+input_player1_reserved_device = "{escaped_name}"
+input_player1_b_btn = "{b_btn}"
+input_player1_y_btn = "{y_btn}"
+input_player1_select_btn = "6"
+input_player1_start_btn = "7"
+input_player1_up_btn = "h0up"
+input_player1_down_btn = "h0down"
+input_player1_left_btn = "h0left"
+input_player1_right_btn = "h0right"
+input_player1_a_btn = "{a_btn}"
+input_player1_x_btn = "{x_btn}"
+input_player1_l_btn = "4"
+input_player1_r_btn = "5"
+input_player1_l2_axis = "+2"
+input_player1_r2_axis = "+5"
+input_player1_l3_btn = "9"
+input_player1_r3_btn = "10"
+input_player1_l_x_plus_axis = "+0"
+input_player1_l_x_minus_axis = "-0"
+input_player1_l_y_plus_axis = "+1"
+input_player1_l_y_minus_axis = "-1"
+input_player1_r_x_plus_axis = "+3"
+input_player1_r_x_minus_axis = "-3"
+input_player1_r_y_plus_axis = "+4"
+input_player1_r_y_minus_axis = "-4"
+"#
+    )
 }
 
 fn sanitize_profile_file_name(profile_id: &str) -> String {
@@ -1604,5 +1775,17 @@ mod tests {
         );
 
         assert!(should_show_linux_controller(&device));
+    }
+
+    #[test]
+    fn retroarch_xbox_config_reserves_exact_device_without_forcing_index() {
+        let config = retroarch_xbox_style_controller_config("Microsoft X-Box 360 pad 0", true);
+
+        assert!(config.contains("input_player1_reserved_device = \"Microsoft X-Box 360 pad 0\""));
+        assert!(!config.contains("input_player1_joypad_index"));
+        assert!(config.contains("input_player1_b_btn = \"1\""));
+        assert!(config.contains("input_player1_y_btn = \"0\""));
+        assert!(config.contains("input_player1_a_btn = \"3\""));
+        assert!(config.contains("input_player1_x_btn = \"2\""));
     }
 }
