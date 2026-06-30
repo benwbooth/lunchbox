@@ -4660,52 +4660,28 @@ pub fn has_minerva_db(state: &AppState) -> bool {
 }
 
 /// Find a minerva torrent for a game's platform
-pub async fn get_minerva_rom_for_game(
-    state: &AppState,
-    launchbox_db_id: i64,
-    platform_id: Option<i64>,
-) -> Result<Option<MinervaRom>, String> {
-    let minerva_pool = state
-        .minerva_db_pool
-        .as_ref()
-        .ok_or_else(|| "Minerva database not available".to_string())?;
+/// Query Minerva for the torrents that serve a resolved platform.
+///
+/// Returns matching rows `(torrent_id, torrent_url, collection, minerva_platform,
+/// rom_count, total_size)` plus the canonical platform name. Matches by the
+/// mapped `lunchbox_platform_id`, any registered platform fallbacks, and — so
+/// platforms that Minerva mapped to a sibling id still resolve — the game's
+/// platform name(s) against Minerva's own platform strings (both use the same
+/// No-Intro/Redump naming, e.g. "Microsoft - Xbox 360 (Digital)").
+type MinervaTorrentRow = (i64, String, String, String, i64, i64);
 
-    // Look up the game's platform_id from games.db
-    let games_db = state
-        .games_db_pool
-        .as_ref()
-        .ok_or_else(|| "Games database not available".to_string())?;
-
-    // Resolve platform_id: use passed value, or look up from game
-    let resolved_platform_id = if let Some(pid) = platform_id {
-        pid
-    } else if launchbox_db_id > 0 {
-        match sqlx::query_as::<_, (i64,)>(
-            "SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1",
-        )
-        .bind(launchbox_db_id)
-        .fetch_optional(games_db)
-        .await
-        .map_err(|e| e.to_string())?
-        {
-            Some((pid,)) => pid,
-            None => return Ok(None),
-        }
-    } else {
-        return Ok(None);
-    };
-    let platform_id = resolved_platform_id;
+async fn minerva_torrent_rows_for_platform(
+    minerva_pool: &sqlx::SqlitePool,
+    games_db: &sqlx::SqlitePool,
+    platform_id: i64,
+    limit_one: bool,
+) -> Result<(Vec<MinervaTorrentRow>, String), String> {
     let equivalent_platform_ids = resolve_equivalent_platform_ids(games_db, platform_id).await?;
     let canonical_platform_name = resolve_canonical_platform_name(games_db, platform_id)
         .await?
         .unwrap_or_default();
     let fallback_specs = minerva_platform_fallbacks(&canonical_platform_name);
 
-    // Raw platform names for the equivalent ids. Minerva's `minerva_platform`
-    // strings follow the same No-Intro/Redump naming as our platform names
-    // (e.g. "Microsoft - Xbox 360 (Digital)"), so matching them directly also
-    // resolves platforms whose Minerva row was mapped to a sibling id (e.g. our
-    // "Microsoft - Xbox 360 (Digital)" vs. its mapping to "Microsoft Xbox 360").
     let platform_names: Vec<String> = if equivalent_platform_ids.is_empty() {
         Vec::new()
     } else {
@@ -4743,18 +4719,17 @@ pub async fn get_minerva_rom_for_game(
             vec!["?"; platform_names.len()].join(", ")
         )
     };
+    let limit_clause = if limit_one { " LIMIT 1" } else { "" };
 
-    // Find a torrent for this platform
     let sql = format!(
         "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
          WHERE tp.lunchbox_platform_id IN ({}){}{}
-         ORDER BY CASE WHEN tp.lunchbox_platform_id IN ({}) THEN 0 ELSE 1 END, tp.rom_count DESC
-         LIMIT 1",
-        placeholders, fallback_clause, name_clause, placeholders
+         ORDER BY CASE WHEN tp.lunchbox_platform_id IN ({}) THEN 0 ELSE 1 END, tp.rom_count DESC{}",
+        placeholders, fallback_clause, name_clause, placeholders, limit_clause
     );
-    let mut query = sqlx::query_as::<_, (i64, String, String, String, i64, i64)>(&sql);
+    let mut query = sqlx::query_as::<_, MinervaTorrentRow>(&sql);
     for pid in &equivalent_platform_ids {
         query = query.bind(pid);
     }
@@ -4770,12 +4745,52 @@ pub async fn get_minerva_rom_for_game(
     for pid in &equivalent_platform_ids {
         query = query.bind(pid);
     }
-    let row = query
-        .fetch_optional(minerva_pool)
+    let rows = query
+        .fetch_all(minerva_pool)
         .await
         .map_err(|e| e.to_string())?;
+    Ok((rows, canonical_platform_name))
+}
 
-    Ok(row.map(
+pub async fn get_minerva_rom_for_game(
+    state: &AppState,
+    launchbox_db_id: i64,
+    platform_id: Option<i64>,
+) -> Result<Option<MinervaRom>, String> {
+    let minerva_pool = state
+        .minerva_db_pool
+        .as_ref()
+        .ok_or_else(|| "Minerva database not available".to_string())?;
+
+    // Look up the game's platform_id from games.db
+    let games_db = state
+        .games_db_pool
+        .as_ref()
+        .ok_or_else(|| "Games database not available".to_string())?;
+
+    // Resolve platform_id: use passed value, or look up from game
+    let resolved_platform_id = if let Some(pid) = platform_id {
+        pid
+    } else if launchbox_db_id > 0 {
+        match sqlx::query_as::<_, (i64,)>(
+            "SELECT platform_id FROM games WHERE launchbox_db_id = ? LIMIT 1",
+        )
+        .bind(launchbox_db_id)
+        .fetch_optional(games_db)
+        .await
+        .map_err(|e| e.to_string())?
+        {
+            Some((pid,)) => pid,
+            None => return Ok(None),
+        }
+    } else {
+        return Ok(None);
+    };
+    let platform_id = resolved_platform_id;
+    let (rows, _) =
+        minerva_torrent_rows_for_platform(minerva_pool, games_db, platform_id, true).await?;
+
+    Ok(rows.into_iter().next().map(
         |(torrent_id, torrent_url, collection, minerva_platform, rom_count, total_size)| {
             MinervaRom {
                 torrent_id,
@@ -4810,51 +4825,8 @@ pub async fn search_minerva(
         .games_db_pool
         .as_ref()
         .ok_or_else(|| "Games database not available".to_string())?;
-    let equivalent_platform_ids = resolve_equivalent_platform_ids(games_db, pid).await?;
-    let canonical_platform_name = resolve_canonical_platform_name(games_db, pid)
-        .await?
-        .unwrap_or_default();
-    let fallback_specs = minerva_platform_fallbacks(&canonical_platform_name);
-    let placeholders = vec!["?"; equivalent_platform_ids.len()].join(", ");
-    let fallback_clause = if fallback_specs.is_empty() {
-        String::new()
-    } else {
-        let mut clauses = Vec::with_capacity(fallback_specs.len());
-        for spec in fallback_specs {
-            if spec.collection.is_some() {
-                clauses.push("(tp.minerva_platform = ? AND COALESCE(t.collection, '') = ?)");
-            } else {
-                clauses.push("(tp.minerva_platform = ?)");
-            }
-        }
-        format!(" OR {}", clauses.join(" OR "))
-    };
-
-    let sql = format!(
-        "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
-         FROM minerva_torrent_platforms tp
-         JOIN minerva_torrents t ON tp.torrent_id = t.id
-         WHERE tp.lunchbox_platform_id IN ({}){}
-         ORDER BY CASE WHEN tp.lunchbox_platform_id IN ({}) THEN 0 ELSE 1 END, tp.rom_count DESC",
-        placeholders, fallback_clause, placeholders
-    );
-    let mut query = sqlx::query_as::<_, (i64, String, String, String, i64, i64)>(&sql);
-    for platform_id in &equivalent_platform_ids {
-        query = query.bind(platform_id);
-    }
-    for spec in fallback_specs {
-        query = query.bind(spec.minerva_platform);
-        if let Some(collection) = spec.collection {
-            query = query.bind(collection);
-        }
-    }
-    for platform_id in &equivalent_platform_ids {
-        query = query.bind(platform_id);
-    }
-    let rows = query
-        .fetch_all(minerva_pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let (rows, canonical_platform_name) =
+        minerva_torrent_rows_for_platform(minerva_pool, games_db, pid, false).await?;
 
     let roms = rows
         .into_iter()
