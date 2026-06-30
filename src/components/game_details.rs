@@ -2123,6 +2123,10 @@ pub fn GameDetails(
     let (manual_error, set_manual_error) = signal::<Option<String>>(None);
     // Minerva download state
     let (minerva_rom, set_minerva_rom) = signal::<Option<backend_api::MinervaRom>>(None);
+    // Whether the Minerva index is installed at all (vs. this game simply having
+    // no Minerva match). Default true so the "missing db" hint never flashes
+    // before the check resolves.
+    let (has_minerva_db, set_has_minerva_db) = signal(true);
     let (minerva_starting, set_minerva_starting) = signal(false);
     let (minerva_job_id, set_minerva_job_id) = signal::<Option<String>>(None);
     let (minerva_downloads, _) = minerva_downloads_signal();
@@ -2546,6 +2550,13 @@ pub fn GameDetails(
                     {
                         if is_current_game() {
                             set_minerva_rom.set(rom);
+                        }
+                    }
+                    // Also note whether the Minerva index exists at all, so the
+                    // download button can tell "no db" from "no match for this game".
+                    if let Ok(installed) = backend_api::has_minerva_db().await {
+                        if is_current_game() {
+                            set_has_minerva_db.set(installed);
                         }
                     }
                 }
@@ -3059,7 +3070,13 @@ pub fn GameDetails(
                                                         class="import-btn-action minerva-download-btn"
                                                         data-nav-default="true"
                                                         disabled=move || minerva_rom.get().is_none()
-                                                        title=move || if minerva_rom.get().is_none() { "No minerva.db — run lunchbox-cli minerva-build first".to_string() } else { "Download ROM via torrent".to_string() }
+                                                        title=move || if minerva_rom.get().is_some() {
+                                                            "Download ROM via torrent".to_string()
+                                                        } else if has_minerva_db.get() {
+                                                            "No Minerva torrent found for this game".to_string()
+                                                        } else {
+                                                            "No minerva.db — run lunchbox-cli minerva-build first".to_string()
+                                                        }
                                                         on:click=move |_| {
                                                             if minerva_rom.get().is_some() {
                                                                 if let Some(g) = display_game.get_untracked() {
