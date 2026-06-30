@@ -4700,6 +4700,27 @@ pub async fn get_minerva_rom_for_game(
         .await?
         .unwrap_or_default();
     let fallback_specs = minerva_platform_fallbacks(&canonical_platform_name);
+
+    // Raw platform names for the equivalent ids. Minerva's `minerva_platform`
+    // strings follow the same No-Intro/Redump naming as our platform names
+    // (e.g. "Microsoft - Xbox 360 (Digital)"), so matching them directly also
+    // resolves platforms whose Minerva row was mapped to a sibling id (e.g. our
+    // "Microsoft - Xbox 360 (Digital)" vs. its mapping to "Microsoft Xbox 360").
+    let platform_names: Vec<String> = if equivalent_platform_ids.is_empty() {
+        Vec::new()
+    } else {
+        let name_ph = vec!["?"; equivalent_platform_ids.len()].join(", ");
+        let name_sql = format!("SELECT name FROM platforms WHERE id IN ({name_ph})");
+        let mut name_query = sqlx::query_scalar::<_, String>(&name_sql);
+        for pid in &equivalent_platform_ids {
+            name_query = name_query.bind(pid);
+        }
+        name_query
+            .fetch_all(games_db)
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
     let placeholders = vec!["?"; equivalent_platform_ids.len()].join(", ");
     let fallback_clause = if fallback_specs.is_empty() {
         String::new()
@@ -4714,16 +4735,24 @@ pub async fn get_minerva_rom_for_game(
         }
         format!(" OR {}", clauses.join(" OR "))
     };
+    let name_clause = if platform_names.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " OR tp.minerva_platform IN ({})",
+            vec!["?"; platform_names.len()].join(", ")
+        )
+    };
 
     // Find a torrent for this platform
     let sql = format!(
         "SELECT t.id, t.torrent_url, COALESCE(t.collection, ''), tp.minerva_platform, tp.rom_count, COALESCE(t.total_size, 0)
          FROM minerva_torrent_platforms tp
          JOIN minerva_torrents t ON tp.torrent_id = t.id
-         WHERE tp.lunchbox_platform_id IN ({}){}
+         WHERE tp.lunchbox_platform_id IN ({}){}{}
          ORDER BY CASE WHEN tp.lunchbox_platform_id IN ({}) THEN 0 ELSE 1 END, tp.rom_count DESC
          LIMIT 1",
-        placeholders, fallback_clause, placeholders
+        placeholders, fallback_clause, name_clause, placeholders
     );
     let mut query = sqlx::query_as::<_, (i64, String, String, String, i64, i64)>(&sql);
     for pid in &equivalent_platform_ids {
@@ -4734,6 +4763,9 @@ pub async fn get_minerva_rom_for_game(
         if let Some(collection) = spec.collection {
             query = query.bind(collection);
         }
+    }
+    for name in &platform_names {
+        query = query.bind(name);
     }
     for pid in &equivalent_platform_ids {
         query = query.bind(pid);
