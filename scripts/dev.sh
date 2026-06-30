@@ -63,8 +63,8 @@ install_desktop_entry() {
 [Desktop Entry]
 Type=Application
 Name=Lunchbox
-Comment=Lunchbox Electron Development Shell
-Exec=/nix/var/nix/profiles/system/sw/bin/nix develop $PROJECT_DIR --command electron $PROJECT_DIR/electron
+Comment=Lunchbox
+Exec=$PROJECT_DIR/scripts/launch-app.sh
 Icon=$PROJECT_DIR/backend/icons/icon.png
 StartupWMClass=Lunchbox
 Categories=Game;
