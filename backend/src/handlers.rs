@@ -2016,46 +2016,163 @@ pub async fn cancel_import(state: &AppState, job_id: &str) -> Result<(), String>
 // save_graboid_prompt, delete_graboid_prompt — all removed.
 
 /// Check if a game has an imported file
+type GameFileRow = (
+    i64,
+    String,
+    String,
+    String,
+    Option<i64>,
+    String,
+    String,
+    Option<String>,
+);
+
+const GAME_FILE_COLUMNS: &str = "launchbox_db_id, game_title, platform, file_path, file_size, imported_at, import_source, graboid_job_id";
+
+fn game_file_from_row(row: GameFileRow) -> GameFile {
+    let (
+        launchbox_db_id,
+        game_title,
+        platform,
+        file_path,
+        file_size,
+        imported_at,
+        import_source,
+        graboid_job_id,
+    ) = row;
+    GameFile {
+        launchbox_db_id,
+        game_title,
+        platform,
+        file_path,
+        file_size,
+        imported_at,
+        import_source,
+        graboid_job_id,
+    }
+}
+
+/// The basename of a path without its extension (No-Intro filenames equal the
+/// games.db title, so this matches a downloaded file to a game).
+fn file_stem_title(file_path: &str) -> String {
+    std::path::Path::new(file_path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+/// Link an already-downloaded but un-stamped file (game_uid NULL) to this game
+/// by matching the file's name to the game's title on the same platform, then
+/// adopt it by stamping the game_uid. Lets pre-existing downloads resolve.
+async fn backfill_game_uid_from_orphan(
+    state: &AppState,
+    db_pool: &sqlx::SqlitePool,
+    game_uid: &str,
+) -> Result<Option<GameFile>, String> {
+    let Some(games_db) = state.games_db_pool.as_ref() else {
+        return Ok(None);
+    };
+    let Some((game_title, platform)): Option<(String, String)> = sqlx::query_as(
+        "SELECT g.title, p.name FROM games g JOIN platforms p ON g.platform_id = p.id WHERE g.id = ? LIMIT 1",
+    )
+    .bind(game_uid)
+    .fetch_optional(games_db)
+    .await
+    .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    let canonical = canonicalize_legacy_platform_name(&platform).to_string();
+
+    let orphans: Vec<(i64, GameFileRow)> = sqlx::query_as(&format!(
+        "SELECT id, {GAME_FILE_COLUMNS} FROM game_files WHERE game_uid IS NULL"
+    ))
+    .fetch_all(db_pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .into_iter()
+    .map(|(id, a, b, c, d, e, f, g, h)| (id, (a, b, c, d, e, f, g, h)))
+    .collect();
+
+    for (row_id, row) in orphans {
+        let row_platform = &row.2;
+        let row_path = &row.3;
+        if canonicalize_legacy_platform_name(row_platform) != canonical {
+            continue;
+        }
+        if file_stem_title(row_path) != game_title {
+            continue;
+        }
+        sqlx::query("UPDATE game_files SET game_uid = ? WHERE id = ?")
+            .bind(game_uid)
+            .bind(row_id)
+            .execute(db_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(Some(game_file_from_row(row)));
+    }
+    Ok(None)
+}
+
+/// Open the folder containing a downloaded file in the system file manager.
+pub fn open_containing_folder(file_path: &str) -> Result<(), String> {
+    let path = std::path::Path::new(file_path);
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(path);
+    if !dir.exists() {
+        return Err(format!("Folder does not exist: {}", dir.display()));
+    }
+    std::process::Command::new("xdg-open")
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open folder: {e}"))
+}
+
 pub async fn get_game_file(
     state: &AppState,
     launchbox_db_id: i64,
+    game_uid: Option<String>,
 ) -> Result<Option<GameFile>, String> {
     let db_pool = state
         .db_pool
         .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
 
-    let row: Option<(i64, String, String, String, Option<i64>, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT launchbox_db_id, game_title, platform, file_path, file_size, imported_at, import_source, graboid_job_id FROM game_files WHERE launchbox_db_id = ?"
-    )
-    .bind(launchbox_db_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    if let Some(row) = row {
-        return Ok(Some((|(
-            db_id,
-            game_title,
-            platform,
-            file_path,
-            file_size,
-            imported_at,
-            import_source,
-            graboid_job_id,
-        )| GameFile {
-            launchbox_db_id: db_id,
-            game_title,
-            platform,
-            file_path,
-            file_size,
-            imported_at,
-            import_source,
-            graboid_job_id,
-        })(row)));
+    // Prefer the stable game UUID; it's the only reliable key for id-less games.
+    if let Some(uid) = game_uid.as_deref().filter(|s| !s.is_empty()) {
+        let row: Option<GameFileRow> = sqlx::query_as(&format!(
+            "SELECT {GAME_FILE_COLUMNS} FROM game_files WHERE game_uid = ?"
+        ))
+        .bind(uid)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        if let Some(row) = row {
+            return Ok(Some(game_file_from_row(row)));
+        }
+        if let Some(file) = backfill_game_uid_from_orphan(state, db_pool, uid).await? {
+            return Ok(Some(file));
+        }
     }
 
+    // launchbox_db_id = 0 is not a real identity (every id-less game shares it),
+    // so only fall back to it for genuine LaunchBox games.
     if launchbox_db_id > 0 {
+        let row: Option<GameFileRow> = sqlx::query_as(&format!(
+            "SELECT {GAME_FILE_COLUMNS} FROM game_files WHERE launchbox_db_id = ?"
+        ))
+        .bind(launchbox_db_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(row) = row {
+            return Ok(Some(game_file_from_row(row)));
+        }
+
         if let Some(recovered) =
             recover_zero_launchbox_db_id_game_file(state, db_pool, launchbox_db_id).await?
         {
@@ -2777,6 +2894,10 @@ pub struct StartMinervaDownloadInput {
     pub torrent_url: String,
     pub file_index: Option<usize>,
     pub launchbox_db_id: i64,
+    /// Stable games.db UUID for the game, so id-less (No-Intro) games are
+    /// tracked individually rather than colliding on launchbox_db_id = 0.
+    #[serde(default)]
+    pub game_uid: Option<String>,
     pub game_title: String,
     pub platform: String,
     #[serde(default)]
@@ -4359,7 +4480,7 @@ async fn find_reusable_minerva_job(
         }
 
         if status == "completed" {
-            if let Some(game_file) = get_game_file(state, launchbox_db_id).await? {
+            if let Some(game_file) = get_game_file(state, launchbox_db_id, None).await? {
                 if Path::new(&game_file.file_path).exists() {
                     return Ok(Some(ImportJob {
                         id,
@@ -4949,11 +5070,12 @@ pub async fn start_minerva_download(
     let job_id = uuid::Uuid::new_v4().to_string();
 
     sqlx::query(
-        "INSERT INTO graboid_jobs (id, launchbox_db_id, game_title, platform, status, progress_percent, status_message, client_job_id)
-         VALUES (?, ?, ?, ?, 'in_progress', 0, 'Preparing download...', ?)"
+        "INSERT INTO graboid_jobs (id, launchbox_db_id, game_uid, game_title, platform, status, progress_percent, status_message, client_job_id)
+         VALUES (?, ?, ?, ?, ?, 'in_progress', 0, 'Preparing download...', ?)"
     )
     .bind(&job_id)
     .bind(resolved_launchbox_db_id)
+    .bind(&input.game_uid)
     .bind(&input.game_title)
     .bind(&canonical_platform)
     .bind(&predicted_client_job_id)
@@ -5233,8 +5355,9 @@ pub async fn start_minerva_download(
             if let Some(ref db_path) = db_path {
                 if let Ok(pool) = crate::db::init_pool(db_path).await {
                     let _ = sqlx::query(
-                        "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')"
+                        "INSERT OR REPLACE INTO game_files (game_uid, launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES ((SELECT game_uid FROM graboid_jobs WHERE id = ?), ?, ?, ?, ?, ?, 'minerva')"
                     )
+                    .bind(&job_id_bg)
                     .bind(launchbox_db_id)
                     .bind(&game_title)
                     .bind(&platform)
@@ -5669,8 +5792,9 @@ pub async fn start_minerva_download(
         if let Some(ref db_path) = db_path {
             if let Ok(pool) = crate::db::init_pool(db_path).await {
                 let _ = sqlx::query(
-                    "INSERT OR REPLACE INTO game_files (launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES (?, ?, ?, ?, ?, 'minerva')"
+                    "INSERT OR REPLACE INTO game_files (game_uid, launchbox_db_id, game_title, platform, file_path, file_size, import_source) VALUES ((SELECT game_uid FROM graboid_jobs WHERE id = ?), ?, ?, ?, ?, ?, 'minerva')"
                 )
+                .bind(&job_id_bg)
                 .bind(launchbox_db_id).bind(&game_title).bind(&platform)
                 .bind(&stored_path).bind(stored_size)
                 .execute(&pool).await;
@@ -9242,7 +9366,10 @@ mod tests {
         .await
         .unwrap();
 
-        let file = super::get_game_file(&state, 1602).await.unwrap().unwrap();
+        let file = super::get_game_file(&state, 1602, None)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(file.launchbox_db_id, 1602);
         assert_eq!(file.file_path, "/tmp/mystic-quest.sfc");
 
@@ -9274,7 +9401,10 @@ mod tests {
         .await
         .unwrap();
 
-        let file = super::get_game_file(&state, 27106).await.unwrap().unwrap();
+        let file = super::get_game_file(&state, 27106, None)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(file.launchbox_db_id, 27106);
         assert_eq!(file.file_path, "/tmp/vampire-killer.rom");
 

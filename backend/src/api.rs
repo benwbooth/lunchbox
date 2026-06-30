@@ -271,6 +271,10 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/rspc/get_current_os", get(rspc_get_current_os))
         // Game file and import endpoints
         .route("/rspc/get_game_file", get(rspc_get_game_file))
+        .route(
+            "/rspc/open_containing_folder",
+            get(rspc_open_containing_folder),
+        )
         .route("/rspc/uninstall_game", get(rspc_uninstall_game))
         .route("/rspc/get_active_import", get(rspc_get_active_import))
         .route("/rspc/cancel_import", get(rspc_cancel_import))
@@ -4575,17 +4579,57 @@ async fn rspc_get_game_file(
                 .into_response();
         }
     };
-    let launchbox_db_id = match serde_json::from_str::<LaunchboxDbIdInput>(input_str) {
-        Ok(input) => input.into_value(),
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum GameFileInput {
+        Simple(i64),
+        #[serde(rename_all = "camelCase")]
+        Full {
+            launchbox_db_id: i64,
+            #[serde(default)]
+            game_uid: Option<String>,
+        },
+    }
+    let (launchbox_db_id, game_uid) = match serde_json::from_str::<GameFileInput>(input_str) {
+        Ok(GameFileInput::Simple(id)) => (id, None),
+        Ok(GameFileInput::Full {
+            launchbox_db_id,
+            game_uid,
+        }) => (launchbox_db_id, game_uid),
         Err(e) => {
             return rspc_err::<Option<handlers::GameFile>>(format!("Invalid input: {}", e))
                 .into_response();
         }
     };
     let state_guard = state.read().await;
-    match handlers::get_game_file(&state_guard, launchbox_db_id).await {
+    match handlers::get_game_file(&state_guard, launchbox_db_id, game_uid).await {
         Ok(file) => rspc_ok(file).into_response(),
         Err(e) => rspc_err::<Option<handlers::GameFile>>(e).into_response(),
+    }
+}
+
+async fn rspc_open_containing_folder(
+    State(_state): State<SharedState>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let input_str = match params.get("input") {
+        Some(s) => s,
+        None => return rspc_err::<()>("Missing 'input' parameter".to_string()).into_response(),
+    };
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum PathInput {
+        Simple(String),
+        Wrapped { path: String },
+    }
+    let path = match serde_json::from_str::<PathInput>(input_str) {
+        Ok(PathInput::Simple(p)) => p,
+        Ok(PathInput::Wrapped { path }) => path,
+        Err(e) => return rspc_err::<()>(format!("Invalid input: {}", e)).into_response(),
+    };
+    match handlers::open_containing_folder(&path) {
+        Ok(()) => rspc_ok(()).into_response(),
+        Err(e) => rspc_err::<()>(e).into_response(),
     }
 }
 

@@ -30,7 +30,7 @@ async fn launch_game_with_resolved_rom(
     }) {
         path
     } else {
-        match backend_api::get_game_file(launchbox_db_id).await {
+        match backend_api::get_game_file(launchbox_db_id, None).await {
             Ok(Some(file)) if !file.file_path.trim().is_empty() => file.file_path,
             _ => return Err("No ROM file path is available for this game".to_string()),
         }
@@ -47,13 +47,16 @@ async fn launch_game_with_resolved_rom(
 }
 
 async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
-    if game.database_id > 0 {
-        if let Ok(Some(file)) = backend_api::get_game_file(game.database_id).await {
-            return Some(file);
-        }
+    // The stable game UUID works for every game, including No-Intro/Minerva
+    // entries with no launchbox_db_id; try it first.
+    if let Ok(Some(file)) =
+        backend_api::get_game_file(game.database_id, Some(game.id.clone())).await
+    {
+        return Some(file);
     }
 
-    let mut checked_ids: HashSet<i64> = HashSet::new();
+    let mut checked_uids: HashSet<String> = HashSet::new();
+    checked_uids.insert(game.id.clone());
 
     let variants = backend_api::get_game_variants(
         game.id.clone(),
@@ -68,10 +71,13 @@ async fn resolve_game_file_for_display(game: &Game) -> Option<GameFile> {
             Ok(Some(g)) => g,
             _ => continue,
         };
-        if variant_game.database_id <= 0 || !checked_ids.insert(variant_game.database_id) {
+        if !checked_uids.insert(variant_game.id.clone()) {
             continue;
         }
-        if let Ok(Some(file)) = backend_api::get_game_file(variant_game.database_id).await {
+        if let Ok(Some(file)) =
+            backend_api::get_game_file(variant_game.database_id, Some(variant_game.id.clone()))
+                .await
+        {
             return Some(file);
         }
     }
@@ -3348,6 +3354,7 @@ pub fn GameDetails(
                                                             on:click=move |_| {
                                                                 if let (Some(selection), Some(g)) = (selected_download.get(), display_game.get_untracked()) {
                                                                     let db_id = g.database_id;
+                                                                    let game_uid = Some(g.id.clone());
                                                                     let title = g.display_title.clone();
                                                                     let platform = stored_platform.get_value();
                                                                     let (torrent_url, file_index, download_mode) = match selection {
@@ -3385,6 +3392,7 @@ pub fn GameDetails(
                                                                             torrent_url,
                                                                             file_index,
                                                                             db_id,
+                                                                            game_uid,
                                                                             title,
                                                                             platform,
                                                                             download_mode,
@@ -3495,6 +3503,19 @@ pub fn GameDetails(
                                                     });
                                                 }
                                                 >"Play"</button>
+                                                <button
+                                                    class="play-btn open-folder-btn"
+                                                    title="Open the folder containing this game's files"
+                                                    on:click=move |_| {
+                                                        if let Some(file) = game_file.get_untracked() {
+                                                            spawn_local(async move {
+                                                                if let Err(e) = backend_api::open_containing_folder(file.file_path).await {
+                                                                    web_sys::console::error_1(&format!("Open folder failed: {e}").into());
+                                                                }
+                                                            });
+                                                        }
+                                                    }
+                                                >"📁 Folder"</button>
                                                 <Show when=move || {
                                                     game_file
                                                         .get()

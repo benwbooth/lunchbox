@@ -2417,13 +2417,33 @@ pub struct ImportJob {
     pub updated_at: String,
 }
 
-pub async fn get_game_file(launchbox_db_id: i64) -> Result<Option<GameFile>, String> {
+pub async fn get_game_file(
+    launchbox_db_id: i64,
+    game_uid: Option<String>,
+) -> Result<Option<GameFile>, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         launchbox_db_id: i64,
+        game_uid: Option<String>,
     }
-    invoke("get_game_file", Args { launchbox_db_id }).await
+    invoke(
+        "get_game_file",
+        Args {
+            launchbox_db_id,
+            game_uid,
+        },
+    )
+    .await
+}
+
+/// Open the folder containing a downloaded file in the system file manager.
+pub async fn open_containing_folder(path: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        path: String,
+    }
+    invoke("open_containing_folder", Args { path }).await
 }
 
 pub async fn uninstall_game(launchbox_db_id: i64) -> Result<(), String> {
@@ -2557,6 +2577,7 @@ pub async fn start_minerva_download(
     torrent_url: String,
     file_index: Option<usize>,
     launchbox_db_id: i64,
+    game_uid: Option<String>,
     game_title: String,
     platform: String,
     download_mode: MinervaDownloadMode,
@@ -2572,6 +2593,7 @@ pub async fn start_minerva_download(
         torrent_url: String,
         file_index: Option<usize>,
         launchbox_db_id: i64,
+        game_uid: Option<String>,
         game_title: String,
         platform: String,
         download_mode: MinervaDownloadMode,
@@ -2583,6 +2605,7 @@ pub async fn start_minerva_download(
                 torrent_url,
                 file_index,
                 launchbox_db_id,
+                game_uid,
                 game_title,
                 platform,
                 download_mode,
