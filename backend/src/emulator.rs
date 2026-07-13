@@ -3107,6 +3107,106 @@ async fn install_retroarch_core(core_name: &str) -> Result<PathBuf, String> {
     }
 }
 
+/// RetroArch shader directories to install into: the `shaders/` subdir of every
+/// existing RetroArch config dir (native + flatpak on Linux), or the native
+/// default if none exist yet.
+fn get_retroarch_shaders_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    match current_os() {
+        "Linux" => {
+            if let Some(home) = dirs::home_dir() {
+                for cfg in [
+                    home.join(".config/retroarch"),
+                    home.join(".var/app/org.libretro.RetroArch/config/retroarch"),
+                ] {
+                    if cfg.exists() {
+                        dirs.push(cfg.join("shaders"));
+                    }
+                }
+                if dirs.is_empty() {
+                    dirs.push(home.join(".config/retroarch/shaders"));
+                }
+            }
+        }
+        "Windows" => {
+            if let Some(app_data) = dirs::data_local_dir() {
+                dirs.push(app_data.join("RetroArch").join("shaders"));
+            }
+        }
+        "macOS" => {
+            if let Some(home) = dirs::home_dir() {
+                dirs.push(home.join("Library/Application Support/RetroArch/shaders"));
+            }
+        }
+        _ => {}
+    }
+    dirs
+}
+
+/// Download and install the full RetroArch shader packs (slang + glsl) from the
+/// libretro buildbot into every RetroArch config's shaders directory. Returns a
+/// human-readable summary.
+pub async fn install_retroarch_shaders() -> Result<String, String> {
+    // slang = modern (Vulkan/glcore/D3D), glsl = GL/GLES. Cg is deprecated and
+    // unsupported by current RetroArch, so it is intentionally omitted.
+    const PACKS: [&str; 2] = ["shaders_slang", "shaders_glsl"];
+
+    let targets = get_retroarch_shaders_dirs();
+    if targets.is_empty() {
+        return Err("Could not determine a RetroArch shaders directory".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(900))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    for pack in PACKS {
+        let url = format!("https://buildbot.libretro.com/assets/frontend/{pack}.zip");
+        let response = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to download {pack}: {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "Failed to download {pack}: HTTP {}",
+                response.status()
+            ));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read {pack} data: {e}"))?;
+
+        for target in &targets {
+            tokio::fs::create_dir_all(target)
+                .await
+                .map_err(|e| format!("Failed to create {}: {e}", target.display()))?;
+            let bytes = bytes.clone();
+            let target = target.clone();
+            let pack_name = pack.to_string();
+            tokio::task::spawn_blocking(move || -> Result<(), String> {
+                let reader = std::io::Cursor::new(bytes);
+                let mut archive = zip::ZipArchive::new(reader)
+                    .map_err(|e| format!("Failed to read {pack_name} zip: {e}"))?;
+                archive
+                    .extract(&target)
+                    .map_err(|e| format!("Failed to extract {pack_name}: {e}"))?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| format!("Extract task failed: {e}"))??;
+        }
+    }
+
+    let locations: Vec<String> = targets.iter().map(|p| p.display().to_string()).collect();
+    Ok(format!(
+        "Installed slang + glsl shader packs to: {}",
+        locations.join(", ")
+    ))
+}
+
 /// Install RetroArch itself
 async fn install_retroarch() -> Result<(), String> {
     match current_os() {

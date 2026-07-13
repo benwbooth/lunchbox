@@ -62,6 +62,8 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
     let (ss_test_result, set_ss_test_result) = signal::<Option<(bool, String)>>(None);
     let (testing_sgdb, set_testing_sgdb) = signal(false);
     let (sgdb_test_result, set_sgdb_test_result) = signal::<Option<(bool, String)>>(None);
+    let (shaders_installing, set_shaders_installing) = signal(false);
+    let (shaders_result, set_shaders_result) = signal::<Option<(bool, String)>>(None);
     let (testing_igdb, set_testing_igdb) = signal(false);
     let (igdb_test_result, set_igdb_test_result) = signal::<Option<(bool, String)>>(None);
     let (testing_torrent, set_testing_torrent) = signal(false);
@@ -212,6 +214,45 @@ pub fn Settings(show: ReadSignal<bool>, on_close: WriteSignal<bool>) -> impl Int
                                 >
                                     "Setup Image Sources..."
                                 </button>
+                            </div>
+
+                            // RetroArch Shaders Section
+                            <div class="settings-section">
+                                <h3>"RetroArch Shaders"</h3>
+                                <p class="settings-hint">
+                                    "Download the full RetroArch shader packs (slang + glsl) from the libretro buildbot into your RetroArch shaders folder. This can take a minute."
+                                </p>
+                                <button
+                                    class="settings-wizard-btn"
+                                    disabled=move || shaders_installing.get()
+                                    on:click=move |_| {
+                                        set_shaders_installing.set(true);
+                                        set_shaders_result.set(None);
+                                        spawn_local(async move {
+                                            match crate::backend_api::install_retroarch_shaders().await {
+                                                Ok(msg) => set_shaders_result.set(Some((true, msg))),
+                                                Err(e) => set_shaders_result.set(Some((false, e))),
+                                            }
+                                            set_shaders_installing.set(false);
+                                        });
+                                    }
+                                >
+                                    {move || if shaders_installing.get() {
+                                        "Installing shaders…".to_string()
+                                    } else {
+                                        "Install Shader Pack".to_string()
+                                    }}
+                                </button>
+                                <Show when=move || shaders_result.get().is_some()>
+                                    {move || {
+                                        let (ok, msg) = shaders_result.get().unwrap_or((false, String::new()));
+                                        view! {
+                                            <span class=if ok { "test-success" } else { "test-failure" }>
+                                                {msg}
+                                            </span>
+                                        }
+                                    }}
+                                </Show>
                             </div>
 
                             // Region Priority Section

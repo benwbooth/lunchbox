@@ -2446,6 +2446,11 @@ pub async fn open_containing_folder(path: String) -> Result<(), String> {
     invoke("open_containing_folder", Args { path }).await
 }
 
+/// Download and install the full RetroArch shader packs (slang + glsl).
+pub async fn install_retroarch_shaders() -> Result<String, String> {
+    invoke("install_retroarch_shaders", ()).await
+}
+
 pub async fn uninstall_game(launchbox_db_id: i64) -> Result<(), String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]

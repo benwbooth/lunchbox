@@ -263,6 +263,10 @@ pub fn create_router(state: SharedState) -> Router {
             get(rspc_open_firmware_directory),
         )
         .route("/rspc/install_emulator", get(rspc_install_emulator))
+        .route(
+            "/rspc/install_retroarch_shaders",
+            get(rspc_install_retroarch_shaders),
+        )
         .route("/rspc/uninstall_emulator", get(rspc_uninstall_emulator))
         .route("/rspc/update_emulator", get(rspc_update_emulator))
         .route("/rspc/launch_emulator", get(rspc_launch_emulator))
@@ -4088,6 +4092,13 @@ struct OpenFirmwareDirectoryInput {
     platform_name: String,
     #[serde(default)]
     is_retroarch_core: bool,
+}
+
+async fn rspc_install_retroarch_shaders(State(_state): State<SharedState>) -> impl IntoResponse {
+    match crate::emulator::install_retroarch_shaders().await {
+        Ok(summary) => rspc_ok(summary).into_response(),
+        Err(e) => rspc_err::<String>(e).into_response(),
+    }
 }
 
 async fn rspc_install_emulator(
