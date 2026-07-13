@@ -2298,7 +2298,11 @@ pub fn GameDetails(
             }
 
             let region_priority = effective_download_region_priority(&[]);
-            let max_concurrent = if open_picker_immediately { 2 } else { 1 };
+            // Each torrent's file list is an independent (cached) network
+            // fetch+parse, so fetch them widely in parallel — total time then
+            // tracks the single slowest torrent instead of the sum. Foreground
+            // (user waiting on the picker) goes wider than background prefetch.
+            let max_concurrent = if open_picker_immediately { 8 } else { 3 };
             spawn_local(async move {
                 let result = load_minerva_torrent_groups(
                     launchbox_db_id,
