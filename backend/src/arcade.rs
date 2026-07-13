@@ -204,6 +204,22 @@ mod tests {
     }
 
     #[test]
+    fn galaxy_force_ii_prefers_arcade_over_pinball_forceii() {
+        // db id 36801 has both a "Force II" pinball entry (forceii) and the
+        // "Galaxy Force 2" arcade entry. Because the query "Galaxy Force II"
+        // literally contains "Force II", roman-numeral normalization (II -> 2)
+        // is what lets the real arcade game win instead of the pinball.
+        assert_eq!(
+            resolve_download_lookup_name("Galaxy Force II", Some(36801), false).as_ref(),
+            "gforce2sd"
+        );
+        assert_eq!(
+            resolve_video_lookup_name("Galaxy Force II", Some(36801)).as_ref(),
+            "gforce2"
+        );
+    }
+
+    #[test]
     fn space_ace_collision_prefers_laserdisc_entry() {
         assert_eq!(
             display_platform_name(ARCADE_PLATFORM, "Space Ace", Some(39466)).as_ref(),

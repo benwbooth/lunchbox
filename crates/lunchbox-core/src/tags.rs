@@ -488,6 +488,33 @@ pub fn strip_region_and_language_tags(title: &str) -> String {
 /// - Remove all tags
 /// - Remove special characters except alphanumeric and spaces
 /// - Collapse multiple spaces
+/// Map a common multi-character roman-numeral sequel token to its arabic form
+/// so "Galaxy Force II" and "Galaxy Force 2" match. Single letters (i, v, x, …)
+/// are intentionally excluded — they're ambiguous as words or names
+/// (e.g. "Mega Man X", "Project X"), while these multi-letter forms are not.
+fn roman_sequel_to_arabic(token: &str) -> Option<&'static str> {
+    Some(match token {
+        "ii" => "2",
+        "iii" => "3",
+        "iv" => "4",
+        "vi" => "6",
+        "vii" => "7",
+        "viii" => "8",
+        "ix" => "9",
+        "xi" => "11",
+        "xii" => "12",
+        "xiii" => "13",
+        "xiv" => "14",
+        "xv" => "15",
+        "xvi" => "16",
+        "xvii" => "17",
+        "xviii" => "18",
+        "xix" => "19",
+        "xx" => "20",
+        _ => return None,
+    })
+}
+
 pub fn normalize_title_for_matching(title: &str) -> String {
     let (base, _tags) = parse_title_tags(title);
 
@@ -496,6 +523,7 @@ pub fn normalize_title_for_matching(title: &str) -> String {
         .filter(|c| c.is_alphanumeric() || c.is_whitespace())
         .collect::<String>()
         .split_whitespace()
+        .map(|word| roman_sequel_to_arabic(word).unwrap_or(word))
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -582,6 +610,24 @@ pub fn filter_display_tags(tags: &[ParsedTag]) -> Vec<&ParsedTag> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn roman_numeral_sequels_normalize_to_arabic() {
+        assert_eq!(
+            normalize_title_for_matching("Galaxy Force II"),
+            "galaxy force 2"
+        );
+        assert_eq!(
+            normalize_title_for_matching("Galaxy Force II"),
+            normalize_title_for_matching("Galaxy Force 2")
+        );
+        assert_eq!(
+            normalize_title_for_matching("Final Fantasy VII"),
+            "final fantasy 7"
+        );
+        // Ambiguous single letters stay put (name, not sequel number).
+        assert_eq!(normalize_title_for_matching("Mega Man X"), "mega man x");
+    }
 
     #[test]
     fn test_parse_title_tags() {
