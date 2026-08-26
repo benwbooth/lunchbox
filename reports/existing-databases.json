@@ -1,0 +1,62 @@
+{
+  "legacy_catalog": {
+    "file": {
+      "path": "lunchbox-games.db",
+      "bytes": 284569600,
+      "sha256": "50b204be7afb2a25af3da349cec628fdf13fe4b8d14664837b489b99641d142b"
+    },
+    "games": 303560,
+    "platforms": 192,
+    "alternate_names": 63190,
+    "rows_by_source": {
+      "launchbox": 174463,
+      "libretro": 129097
+    },
+    "launchbox_and_libretro_hash_rows": 0,
+    "exact_title_platform_duplicate_groups": 10088,
+    "exact_title_platform_duplicate_rows": 21343,
+    "exact_cross_source_duplicate_groups": 8,
+    "shared_openvgdb_id_groups": 13958,
+    "shared_openvgdb_id_rows": 66385,
+    "openvgdb_ids_spanning_platforms": 7207,
+    "generated_ids_rebuild_stable": false
+  },
+  "openvgdb": {
+    "file": {
+      "path": "openvgdb.sqlite",
+      "bytes": 42288128,
+      "sha256": "a6df8311ff188d4136605b68bd74e171cfe110441c9c57e97053b650e075b601"
+    },
+    "systems": 43,
+    "releases": 53871,
+    "roms": 51742,
+    "regions": 39,
+    "orphan_release_roms": 0,
+    "duplicate_crc_groups": 4,
+    "duplicate_sha1_groups": 4
+  },
+  "emulators": {
+    "file": {
+      "path": "db/emulators.db",
+      "bytes": 135168,
+      "sha256": "1ef5c7f3382c099c419dc13164a50883d9763d8cebad4165c20926e838b96375"
+    },
+    "emulators": 244,
+    "platform_links": 493,
+    "distinct_platforms": 199,
+    "orphan_platform_links": 0,
+    "case_insensitive_duplicate_name_groups": 2
+  },
+  "minerva": {
+    "file": {
+      "path": "db/minerva.db",
+      "bytes": 618496,
+      "sha256": "f9035c127057a0f756520de9324bb7cdc727352945f1840e175357adb6663718"
+    },
+    "torrents": 1049,
+    "torrent_platform_rows": 1839,
+    "distinct_raw_platforms": 1717,
+    "unmapped_platform_rows": 1470,
+    "orphan_platform_links": 0
+  }
+}

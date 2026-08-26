@@ -1,0 +1,39 @@
+/target/
+/result
+/.direnv/
+/.codex
+/.vscode/
+/.local/
+/build/
+
+# Preserved local files from the legacy branch. These are migration inputs,
+# not source files for the new public database.
+/__MACOSX/
+/backend/
+/db/
+/dist/
+/electron/
+/launchbox-data/
+/launchbox-metadata/
+/minerva-cache/
+/rom_sources/
+/launchbox-metadata.zip
+/launchbox-platforms.zip
+/lunchbox-games.db
+/minerva-roms.csv
+/minerva-torrents.csv
+/minerva.db
+/openvgdb.sqlite
+/openvgdb.zip
+
+# Generated databases remain local. Verified compressed release artifacts are
+# explicitly allowed under artifacts/.
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.zip
+*.7z
+!artifacts/*.7z
+!artifacts/*.7z.sha256
