@@ -9,6 +9,8 @@ use serde::Serialize;
 use crate::audit;
 use crate::emulators::{self, EmulatorImportStats};
 use crate::ids::{sha256_file, stable_id};
+use crate::libretro::{self, LibretroImportStats};
+use crate::source;
 
 const SCHEMA: &str = include_str!("../../../schema/001_initial.sql");
 
@@ -18,6 +20,7 @@ pub struct BuildResult {
     pub database_bytes: u64,
     pub database_sha256: String,
     pub emulator_import: EmulatorImportStats,
+    pub libretro_import: LibretroImportStats,
     pub audit: audit::AuditReport,
 }
 
@@ -68,10 +71,7 @@ pub fn initialize_path(path: &Path) -> Result<()> {
 
 pub fn initialize_connection(connection: &Connection, timestamp: &str) -> Result<()> {
     connection.execute_batch(SCHEMA)?;
-    connection.execute(
-        "UPDATE schema_migrations SET applied_at = ?1 WHERE version = 1",
-        [timestamp],
-    )?;
+    connection.execute("UPDATE schema_migrations SET applied_at = ?1", [timestamp])?;
     Ok(())
 }
 
@@ -137,7 +137,13 @@ pub fn seed_providers(connection: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn build(database: &Path, emulator_source: &Path, timestamp: &str) -> Result<BuildResult> {
+pub fn build(
+    database: &Path,
+    emulator_source: &Path,
+    libretro_manifest_path: &Path,
+    libretro_rdb_directory: &Path,
+    timestamp: &str,
+) -> Result<BuildResult> {
     let parent = database.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
 
@@ -149,16 +155,32 @@ pub fn build(database: &Path, emulator_source: &Path, timestamp: &str) -> Result
     let mut connection = Connection::open(&temporary)
         .with_context(|| format!("creating temporary database {}", temporary.display()))?;
     configure(&connection)?;
+    // This connection only writes a disposable build candidate. Atomic publication and the
+    // post-build integrity audit provide the durability boundary, so journaling the import
+    // itself only wastes time and disk space.
+    connection.execute_batch(
+        "PRAGMA journal_mode = OFF;\nPRAGMA synchronous = OFF;\nPRAGMA locking_mode = EXCLUSIVE;\nPRAGMA cache_size = -1048576;",
+    )?;
     initialize_connection(&connection, timestamp)?;
     seed_providers(&connection)?;
 
     let emulator_import = emulators::import(&mut connection, emulator_source, timestamp)?;
     let emulator_source_hash = sha256_file(emulator_source)?;
+    let libretro_manifest = source::load_libretro_manifest(libretro_manifest_path)?;
+    let libretro_import = libretro::import(
+        &mut connection,
+        libretro_manifest_path,
+        libretro_rdb_directory,
+        timestamp,
+    )?;
+    let libretro_manifest_hash = sha256_file(libretro_manifest_path)?;
 
     let metadata = BTreeMap::from([
         ("build_timestamp", timestamp.to_owned()),
         ("emulator_source_sha256", emulator_source_hash),
-        ("schema_version", "1".to_owned()),
+        ("libretro_revision", libretro_manifest.revision),
+        ("libretro_source_manifest_sha256", libretro_manifest_hash),
+        ("schema_version", "2".to_owned()),
     ]);
     for (key, value) in metadata {
         connection.execute(
@@ -208,6 +230,7 @@ pub fn build(database: &Path, emulator_source: &Path, timestamp: &str) -> Result
         database_bytes: fs::metadata(database)?.len(),
         database_sha256: sha256_file(database)?,
         emulator_import,
+        libretro_import,
         audit: final_audit,
     })
 }

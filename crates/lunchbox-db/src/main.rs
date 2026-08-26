@@ -4,6 +4,8 @@ mod database;
 mod emulators;
 mod ids;
 mod inspect;
+mod libretro;
+mod source;
 
 use std::path::PathBuf;
 
@@ -26,6 +28,10 @@ enum Command {
         database: PathBuf,
         #[arg(long)]
         emulators: PathBuf,
+        #[arg(long)]
+        libretro_manifest: PathBuf,
+        #[arg(long)]
+        libretro_rdb_dir: PathBuf,
         #[arg(long, default_value = "1970-01-01T00:00:00Z")]
         build_timestamp: String,
     },
@@ -40,6 +46,24 @@ enum Command {
         database: PathBuf,
         #[arg(long)]
         source: PathBuf,
+        #[arg(long, default_value = "1970-01-01T00:00:00Z")]
+        import_timestamp: String,
+    },
+    /// Download, verify, and extract the exact pinned Libretro source snapshot.
+    PrepareLibretro {
+        #[arg(long)]
+        manifest: PathBuf,
+        #[arg(long)]
+        cache: PathBuf,
+    },
+    /// Import a verified Libretro RDB snapshot into an initialized database.
+    ImportLibretro {
+        #[arg(long)]
+        database: PathBuf,
+        #[arg(long)]
+        manifest: PathBuf,
+        #[arg(long)]
+        rdb_dir: PathBuf,
         #[arg(long, default_value = "1970-01-01T00:00:00Z")]
         import_timestamp: String,
     },
@@ -81,9 +105,17 @@ fn main() -> Result<()> {
         Command::Build {
             database,
             emulators,
+            libretro_manifest,
+            libretro_rdb_dir,
             build_timestamp,
         } => {
-            let result = database::build(&database, &emulators, &build_timestamp)?;
+            let result = database::build(
+                &database,
+                &emulators,
+                &libretro_manifest,
+                &libretro_rdb_dir,
+                &build_timestamp,
+            )?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         Command::Init { database } => {
@@ -98,6 +130,20 @@ fn main() -> Result<()> {
         } => {
             let mut connection = database::open_existing(&database)?;
             let stats = emulators::import(&mut connection, &source, &import_timestamp)?;
+            println!("{}", serde_json::to_string_pretty(&stats)?);
+        }
+        Command::PrepareLibretro { manifest, cache } => {
+            let prepared = source::prepare_libretro(&manifest, &cache)?;
+            println!("{}", serde_json::to_string_pretty(&prepared)?);
+        }
+        Command::ImportLibretro {
+            database,
+            manifest,
+            rdb_dir,
+            import_timestamp,
+        } => {
+            let mut connection = database::open_existing(&database)?;
+            let stats = libretro::import(&mut connection, &manifest, &rdb_dir, &import_timestamp)?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Command::Audit { database, strict } => {

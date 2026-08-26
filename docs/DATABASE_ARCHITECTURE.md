@@ -28,9 +28,23 @@ Identity evidence is ranked as follows:
 
 Normalized titles alone never create accepted links.
 
+Every imported Libretro evidence record points through `libretro_databases` to a pinned source
+snapshot and carries its RDB path and ordinal. Source snapshots record the exact upstream Git
+revision, archive digest, byte count, URI, and data license. These locators reconstruct the exact
+MessagePack record from the verified source archive, so the public SQLite file does not carry a
+second JSON copy of the same RDB data. Frequently queried fields, hashes, and serials use compact
+provider-pack tables; remaining metadata is retained as JSON. Sources without a pinned retrievable
+snapshot may instead materialize their JSON payload and payload SHA-256 in `source_records`.
+
+An evidence record is not a canonical entity. Exact hash or reviewed decisions can later create or
+link canonical games, releases, and artifacts without assigning a permanent Lunchbox UUID to every
+provider observation. This keeps duplicate dumps visible and prevents an upstream DAT layout from
+becoming Lunchbox's identity model.
+
 ## Provider roles
 
-- Libretro, No-Intro, Redump, MAME, and similar DAT sources identify exact artifacts.
+- Libretro, No-Intro, Redump, MAME, and similar DAT sources provide artifact evidence; they do not
+  define the complete Lunchbox game catalog.
 - IGDB and other licensed metadata services enrich games and releases.
 - Minerva contributes acquisition offers, not canonical identity.
 - Storefronts contribute authoritative identifiers for their own releases.
@@ -45,7 +59,11 @@ Every generated database must pass:
 - SQLite integrity and foreign-key checks.
 - Source-link target validation.
 - Duplicate release-fingerprint detection.
-- Globally unique exact artifact hashes.
+- Globally unique cryptographic artifact hashes. CRC32 collisions across artifacts are reported but
+  are not treated as identity proof.
+- Preservation of disagreeing CRC32 assertions for an artifact already identified by SHA-1 or MD5.
+- Complete Libretro snapshot/path/ordinal provenance and declared-record-count validation.
+- Exact byte-length validation for compact binary CRC32, MD5, and SHA-1 values.
 - At most one selected value per entity field.
 - No unresolved error-severity data-quality issue.
 - Verified 7z extraction test and a compressed size below 100,000,000 bytes.

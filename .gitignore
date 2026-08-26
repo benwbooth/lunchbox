@@ -5,6 +5,7 @@
 /.vscode/
 /.local/
 /build/
+/source-cache/
 
 # Preserved local files from the legacy branch. These are migration inputs,
 # not source files for the new public database.
