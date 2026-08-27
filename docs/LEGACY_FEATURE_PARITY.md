@@ -15,7 +15,7 @@ native vertical slice is completed so that features are not silently lost.
 | Regional/version variants and alternate titles | `backend/src/api.rs`, `backend/src/db/schema.rs` | Behavior recorded |
 | Favorites, playlists, normal collections and smart collections | `backend/migrations`, `src/components/sidebar.rs` | Behavior recorded |
 | Play count, play time, last played, completion state and sessions | `backend/migrations`, `backend/src/handlers.rs` | Behavior recorded |
-| ROM folder scan, checksum matching, import progress and cancellation | `backend/src/scanner`, `src/components/rom_import.rs`, `import_progress.rs` | Database scanner exists; native interactive flow remains in the ledger |
+| ROM folder scan, checksum matching, import progress and cancellation | `backend/src/scanner`, `src/components/rom_import.rs`, `import_progress.rs` | Implemented with a native folder picker, optional exact checksums, platform assignment, searchable/sortable preview, bulk and per-row selection, cooperative cancellation, persistent lossless paths, and immediate collection refresh. Archive members and manual ambiguous-identity resolution remain in the ledger. |
 
 ## Minerva acquisition
 

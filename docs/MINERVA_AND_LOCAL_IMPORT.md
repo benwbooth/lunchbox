@@ -49,6 +49,15 @@ source.
 
 ## Local scan behavior
 
+The desktop `Import ROMs` dialog provides the same operation without modifying
+the read-only packaged catalog. It writes a per-user inventory to `state.db`,
+uses the discovery catalog's Libretro SHA-1/MD5 evidence for unique exact game
+links, and refreshes both `My Collection` and the Minerva/not-installed filter
+as soon as selected results are committed. Ambiguous hashes and unmatched files
+remain selectable local-only entries; they never inherit a catalog identity by
+filename. The preview supports text/status filters, sorting, bulk or per-row
+selection, live progress, and cancellation.
+
 `scan-local` recursively inventories regular files without following symbolic links. An optional
 comma-separated extension filter limits the scan. Every included file is read once while CRC32,
 MD5, SHA-1, and SHA-256 are calculated together.

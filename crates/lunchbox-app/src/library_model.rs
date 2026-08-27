@@ -148,6 +148,7 @@ pub struct LibraryModelRust {
     filtered_indices: Vec<usize>,
     load_generation: u64,
     filter_generation: u64,
+    reload_pending: bool,
     load_started: Option<std::time::Instant>,
     filter_started: Option<std::time::Instant>,
 }
@@ -180,6 +181,7 @@ impl Default for LibraryModelRust {
             filtered_indices: Vec::new(),
             load_generation: 0,
             filter_generation: 0,
+            reload_pending: false,
             load_started: None,
             filter_started: None,
         }
@@ -204,6 +206,7 @@ impl qobject::LibraryModel {
 
     pub fn reload(mut self: Pin<&mut Self>) {
         if *self.as_ref().loading() {
+            self.as_mut().rust_mut().reload_pending = true;
             return;
         }
         self.as_mut().start_load();
@@ -316,6 +319,10 @@ impl qobject::LibraryModel {
                 self.as_mut().set_status_message(qstring(format!(
                     "Ready — {game_count} games across {platform_count} platforms — {source_label}"
                 )));
+                if self.as_ref().rust().reload_pending {
+                    self.as_mut().rust_mut().reload_pending = false;
+                    self.as_mut().start_load();
+                }
             }
             Err(error) => {
                 self.as_mut().set_ready(false);

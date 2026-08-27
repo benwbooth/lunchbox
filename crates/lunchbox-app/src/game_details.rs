@@ -87,6 +87,12 @@ pub fn load(
         ..GameDetails::default()
     };
 
+    if let Some(local_file_id) = id.strip_prefix("local-file:") {
+        let state_path = crate::settings::state_database_path()?;
+        load_local_only_details(&mut details, local_file_id, &state_path)?;
+        return Ok(details);
+    }
+
     if let Some(path) = catalog::requested_discovery_database_path() {
         let connection = catalog::open_read_only(&path, "Lunchbox discovery database")?;
         let row = connection
@@ -136,6 +142,59 @@ pub fn load(
     details.bundles = resolve_minerva_bundles(&details)?;
     details.downloadable = !details.local && !details.bundles.is_empty();
     Ok(details)
+}
+
+fn load_local_only_details(details: &mut GameDetails, id: &str, state_path: &Path) -> Result<()> {
+    let connection = catalog::open_read_only(state_path, "Lunchbox state database")?;
+    let row = connection
+        .query_row(
+            "SELECT path_display, path_bytes, path_encoding, file_size,
+                    match_state, match_method, sha1, md5
+             FROM local_rom_files
+             WHERE id=?1 AND included=1 AND availability='present'",
+            [id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
+            },
+        )
+        .optional()?
+        .with_context(|| format!("local collection file {id} is no longer available"))?;
+    let path = crate::local_import::decode_path(row.1, &row.2, row.0);
+    if !path.is_file() {
+        bail!("local collection file is missing: {}", path.display());
+    }
+    details.description =
+        "This file is in your local collection but has no proven catalog identity. Assigning metadata never changes identity unless an exact provider link or strong checksum is reviewed."
+            .to_owned();
+    details.release_type = "Local-only file".to_owned();
+    details.notes = format!(
+        "{}\n{} · {}\n{}{}",
+        path.display(),
+        format_bytes(u64::try_from(row.3).unwrap_or_default()),
+        row.5,
+        if row.6.is_empty() {
+            String::new()
+        } else {
+            format!("SHA-1 {}", row.6)
+        },
+        if row.7.is_empty() {
+            String::new()
+        } else {
+            format!(" · MD5 {}", row.7)
+        },
+    );
+    details.local = true;
+    details.downloadable = false;
+    Ok(())
 }
 
 pub fn resolve_minerva_bundles(details: &GameDetails) -> Result<Vec<MinervaBundle>> {
@@ -514,6 +573,50 @@ mod tests {
     fn byte_labels_are_binary_and_readable() {
         assert_eq!(format_bytes(1024), "1.0 KiB");
         assert_eq!(format_bytes(1024 * 1024 * 3), "3.0 MiB");
+    }
+
+    #[test]
+    fn local_only_details_expose_the_real_file_without_inventing_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let rom = directory.path().join("Mystery Game.nes");
+        std::fs::write(&rom, b"mystery").unwrap();
+        let encoded = crate::local_import::encode_path(&rom);
+        let state = directory.path().join("state.db");
+        let connection = rusqlite::Connection::open(&state).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE local_rom_files (
+                     id TEXT, path_display TEXT, path_bytes BLOB, path_encoding TEXT,
+                     file_size INTEGER, match_state TEXT, match_method TEXT,
+                     sha1 TEXT, md5 TEXT, included INTEGER, availability TEXT
+                 );",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO local_rom_files VALUES (
+                     'file-1', ?1, ?2, ?3, 7, 'unmatched', 'strong checksum',
+                     'ABC', 'DEF', 1, 'present'
+                 )",
+                rusqlite::params![encoded.display, encoded.bytes, encoded.encoding],
+            )
+            .unwrap();
+        drop(connection);
+
+        let mut details = GameDetails {
+            id: "local-file:file-1".into(),
+            title: "Mystery Game".into(),
+            platform: "Unassigned".into(),
+            local: true,
+            ..GameDetails::default()
+        };
+        load_local_only_details(&mut details, "file-1", &state).unwrap();
+        assert!(details.local);
+        assert!(!details.downloadable);
+        assert_eq!(details.release_type, "Local-only file");
+        assert!(details.notes.contains("Mystery Game.nes"));
+        assert!(details.notes.contains("SHA-1 ABC · MD5 DEF"));
+        assert!(details.description.contains("no proven catalog identity"));
     }
 
     #[test]

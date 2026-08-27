@@ -4,6 +4,8 @@ mod game_details;
 pub mod game_details_model;
 mod ingest;
 pub mod library_model;
+mod local_import;
+pub mod local_import_model;
 mod qbittorrent;
 mod settings;
 pub mod settings_model;

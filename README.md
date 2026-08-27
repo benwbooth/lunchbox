@@ -57,6 +57,15 @@ installed after the destination exists. That installed state immediately keeps
 the game out of the active Minerva/not-installed view; the catalog refreshes
 and reapplies the current search and platform filters after ingestion.
 
+`Import ROMs` opens the native local-collection workflow. It recursively scans
+supported files off the GUI thread, streams progress, can be cancelled during
+large-file hashing, and presents a searchable, sortable review table. Unique
+SHA-1/MD5 matches are selected by default; filenames never establish identity.
+Users can also include ambiguous or unmatched files, which remain visible as
+honest local-only entries in `My Collection` without suppressing an unrelated
+Minerva game. Imports and rescans are idempotent, retain missing-path history,
+and store lossless OS-native path bytes alongside display paths.
+
 The equivalent catalog environment variables are
 `LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and
 `LUNCHBOX_USER_DATABASE`. `--state-database` or

@@ -28,16 +28,21 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   credential storage, exact reviewed-file priority, optional whole-torrent
   mode, a restart-safe queue with pause/resume/cancel, and verified completed
   file ingestion through configurable link/copy policies.
+- Native local-ROM folder scan with a platform selector, extension-aware
+  discovery, optional SHA-1/MD5 identity verification, cancellable streaming
+  progress, searchable/sortable review, bulk/per-file selection, idempotent
+  persistence, lossless native paths, and immediate My Collection/Minerva
+  availability updates. Unmatched and ambiguous files remain local-only.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
 - Measurable shell-ready and catalog-ready probes.
 
 ## Collection management
 
-- Native folder chooser, platform assignment, extension presets, and scan
-  preview.
-- Streaming scan progress, cancellation, resumability, and clear reporting for
-  ignored, ambiguous, duplicate, changed, and missing files.
+- Extend the implemented folder chooser, platform assignment, scan preview,
+  progress, cancellation, exact/ambiguous reporting, and idempotent rescans
+  with named extension presets, resumable hash caches, duplicate/change audits,
+  and a missing-file management view.
 - Archive-member inspection, multidisc grouping, patches, alternate versions,
   and manual matching review.
 - Editable game and release metadata, favorites, tags, playlists, custom

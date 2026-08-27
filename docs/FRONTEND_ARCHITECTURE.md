@@ -42,6 +42,12 @@ The initial implementation enforces this shape:
   host paths use Rust `PathBuf` and native folder dialogs, while remote or
   container paths remain literal strings. The app never rewrites a Windows
   path as a POSIX path or assumes the client runs on the GUI host.
+- Local collection scanning enumerates without following symlinks and hashes on
+  a named worker. Progress is throttled before crossing the Qt bridge, and an
+  atomic cancellation token is checked between every read chunk. The review
+  view is virtualized; filtering and selection operate on compact Rust indices.
+  Imported paths retain native bytes (`unix_bytes`, `windows_utf16le`, or
+  `utf8`) instead of using a display string as identity.
 
 ## Performance budgets
 
@@ -74,6 +80,13 @@ exiting. Unlike the shell probe, this waits for the asynchronous catalog worker.
 Use `--filter-probe` to load the catalog, apply a representative Minerva search,
 print `LUNCHBOX_FILTER_READY_MS`, and exit.
 
+`--import-ui-probe --import-directory PATH` opens the local-import surface and
+starts a real checksum scan. It exists for deterministic virtual-display visual
+checks; it uses the same model, worker, database, and QML as an interactive
+folder selection. Adding `--import-commit-probe` selects the readable results
+and commits them to the chosen `--state-database`, enabling a fully unattended,
+idempotent scan-to-collection integration test.
+
 On the current Linux development host, the real preserved 303,560-game catalog
 loads on its worker in roughly 0.5–0.8 seconds, while a combined text plus
 Minerva filter completes in 13 ms. Warm shell-ready probes remain below the
@@ -90,6 +103,7 @@ for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, and completed-file
-ingestion are now native. Local-folder import is the next vertical slice; game
-media, emulator installation and launch, the remaining settings, and the
-controller-first full-screen interface follow on the same shared models.
+ingestion and local-folder scan/review/import are now native. Game media,
+emulator installation and launch, the remaining settings, archive-member and
+manual identity workflows, and the controller-first full-screen interface
+follow on the same shared models.

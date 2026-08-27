@@ -1325,6 +1325,7 @@ name = "lunchbox-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "crc32fast",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",
@@ -1332,6 +1333,7 @@ dependencies = [
  "directories",
  "keyring",
  "lava_torrent",
+ "md-5",
  "reflink-copy",
  "rusqlite",
  "serde",
@@ -1340,6 +1342,7 @@ dependencies = [
  "tempfile",
  "ureq",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

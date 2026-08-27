@@ -259,6 +259,8 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
 struct InstalledGames {
     database_ids: HashSet<i64>,
     game_uids: HashSet<String>,
+    local_only_games: Vec<Game>,
+    native_file_paths: HashSet<PathBuf>,
     file_count: usize,
 }
 
@@ -314,6 +316,7 @@ fn load_discovery_catalog(
             downloadable: minerva_covered && !local,
         });
     }
+    games.extend(installed.local_only_games.iter().cloned());
 
     let mut platform_statement = discovery.prepare(
         "SELECT p.name, count(g.id)
@@ -329,7 +332,26 @@ fn load_discovery_catalog(
             game_count: row.get(1)?,
         })
     })?;
-    let platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    for local_game in &installed.local_only_games {
+        if let Some(platform) = platforms
+            .iter_mut()
+            .find(|platform| platform.name == local_game.platform)
+        {
+            platform.game_count = platform.game_count.saturating_add(1);
+        } else {
+            platforms.push(Platform {
+                name: local_game.platform.clone(),
+                game_count: 1,
+            });
+        }
+    }
+    platforms.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
 
     Ok(Catalog {
         games,
@@ -383,23 +405,81 @@ fn load_native_installed_games(installed: &mut InstalledGames) -> Result<()> {
     if !path.is_file() {
         return Ok(());
     }
-    let connection = open_read_only(&path, "Lunchbox state database")?;
+    load_native_installed_games_at(installed, &path)
+}
+
+fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -> Result<()> {
+    let connection = open_read_only(path, "Lunchbox state database")?;
     if !table_exists(&connection, "installed_games")? {
         return Ok(());
     }
-    let mut statement =
-        connection.prepare("SELECT launchbox_db_id, game_uid, file_path FROM installed_games")?;
+    let mut statement = connection.prepare(
+        "SELECT launchbox_db_id, game_uid, file_path, import_source FROM installed_games",
+    )?;
     let rows = statement.query_map([], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, Option<String>>(1)?,
             row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
         ))
     })?;
     for row in rows {
-        let (database_id, game_uid, file_path) = row?;
-        if Path::new(&file_path).is_file() {
+        let (database_id, game_uid, file_path, import_source) = row?;
+        let file_path = PathBuf::from(file_path);
+        if import_source != "local"
+            && file_path.is_file()
+            && installed.native_file_paths.insert(file_path)
+        {
             add_installed_identity(installed, (database_id, game_uid));
+        }
+    }
+    drop(statement);
+
+    if !table_exists(&connection, "local_rom_files")? {
+        return Ok(());
+    }
+    let mut statement = connection.prepare(
+        "SELECT id, path_display, path_bytes, path_encoding, game_uid,
+                launchbox_db_id, display_title, platform
+         FROM local_rom_files
+         WHERE included=1 AND availability='present'
+         ORDER BY display_title COLLATE NOCASE, id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Vec<u8>>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, i64>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
+        ))
+    })?;
+    for row in rows {
+        let (id, display, bytes, encoding, game_uid, database_id, title, platform) = row?;
+        let path = crate::local_import::decode_path(bytes, &encoding, display);
+        if !path.is_file() || !installed.native_file_paths.insert(path) {
+            continue;
+        }
+        installed.file_count = installed.file_count.saturating_add(1);
+        if database_id > 0 {
+            installed.database_ids.insert(database_id);
+        }
+        if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
+            installed.game_uids.insert(game_uid);
+        } else {
+            installed.local_only_games.push(Game {
+                id: format!("local-file:{id}"),
+                search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+                title,
+                platform,
+                status: "local-only".to_owned(),
+                local: true,
+                downloadable: false,
+            });
         }
     }
     Ok(())
@@ -746,5 +826,67 @@ mod tests {
         );
         assert_eq!(downloadable.len(), 1);
         assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
+    }
+
+    #[test]
+    fn native_local_inventory_keeps_exact_and_unmatched_files_distinct() {
+        let directory = tempfile::tempdir().unwrap();
+        let state_path = directory.path().join("state.db");
+        let exact_path = directory.path().join("Exact.nes");
+        let unmatched_path = directory.path().join("Unknown.nes");
+        std::fs::write(&exact_path, b"exact").unwrap();
+        std::fs::write(&unmatched_path, b"unknown").unwrap();
+        let exact = crate::local_import::encode_path(&exact_path);
+        let unmatched = crate::local_import::encode_path(&unmatched_path);
+        let connection = Connection::open(&state_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE installed_games (
+                     launchbox_db_id INTEGER, game_uid TEXT, file_path TEXT, import_source TEXT
+                 );
+                 CREATE TABLE local_rom_files (
+                     id TEXT, path_display TEXT, path_bytes BLOB, path_encoding TEXT,
+                     game_uid TEXT, launchbox_db_id INTEGER, display_title TEXT,
+                     platform TEXT, included INTEGER, availability TEXT
+                 );",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO local_rom_files VALUES (
+                     'exact-file', ?1, ?2, ?3, 'catalog-game', 42,
+                     'Exact', 'System', 1, 'present'
+                 )",
+                rusqlite::params![exact.display, exact.bytes, exact.encoding],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO local_rom_files VALUES (
+                     'overlapping-root-copy', ?1, ?2, ?3, NULL, 0,
+                     'Unknown', 'Unassigned', 1, 'present'
+                 )",
+                rusqlite::params![unmatched.display, unmatched.bytes, unmatched.encoding],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO local_rom_files VALUES (
+                     'unknown-file', ?1, ?2, ?3, NULL, 0,
+                     'Unknown', 'Unassigned', 1, 'present'
+                 )",
+                rusqlite::params![unmatched.display, unmatched.bytes, unmatched.encoding],
+            )
+            .unwrap();
+        drop(connection);
+
+        let mut installed = InstalledGames::default();
+        load_native_installed_games_at(&mut installed, &state_path).unwrap();
+        assert_eq!(installed.file_count, 2);
+        assert!(installed.database_ids.contains(&42));
+        assert!(installed.game_uids.contains("catalog-game"));
+        assert_eq!(installed.local_only_games.len(), 1);
+        assert_eq!(installed.local_only_games[0].title, "Unknown");
+        assert_eq!(installed.local_only_games[0].status, "local-only");
     }
 }

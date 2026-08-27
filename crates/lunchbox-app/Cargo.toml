@@ -12,9 +12,11 @@ anyhow.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
+crc32fast.workspace = true
 directories.workspace = true
 keyring.workspace = true
 lava_torrent.workspace = true
+md5.workspace = true
 rusqlite.workspace = true
 reflink-copy.workspace = true
 serde.workspace = true
@@ -22,6 +24,7 @@ serde_json.workspace = true
 sha1.workspace = true
 ureq.workspace = true
 uuid.workspace = true
+walkdir.workspace = true
 
 [build-dependencies]
 cxx-qt-build.workspace = true

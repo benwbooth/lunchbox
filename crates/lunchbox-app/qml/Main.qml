@@ -28,6 +28,8 @@ ApplicationWindow {
     property bool gridMode: true
     property string selectedGameId: ""
     property string directoryTarget: ""
+    readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
+    readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -67,6 +69,11 @@ ApplicationWindow {
         gameDetails.select_game(gameId, title, platform, local, downloadable)
     }
 
+    function openImportDialog() {
+        importDialogLoader.active = true
+        importDialogLoader.item.open()
+    }
+
     LibraryModel {
         id: library
     }
@@ -81,6 +88,10 @@ ApplicationWindow {
 
     DownloadQueueModel {
         id: downloadQueue
+    }
+
+    LocalImportModel {
+        id: localImport
     }
 
     Connections {
@@ -103,7 +114,7 @@ ApplicationWindow {
 
     Connections {
         target: gameDetails
-        function onDownloadBusyChanged() {
+        function onDownload_busyChanged() {
             if (!gameDetails.download_busy)
                 downloadQueue.refresh()
         }
@@ -111,9 +122,31 @@ ApplicationWindow {
 
     Connections {
         target: downloadQueue
-        function onCollectionRevisionChanged() {
+        function onCollection_revisionChanged() {
             if (downloadQueue.collection_revision > 0)
                 library.reload()
+        }
+    }
+
+    Connections {
+        target: localImport
+        function onCollection_revisionChanged() {
+            if (localImport.collection_revision > 0) {
+                root.selectLibrary("local")
+                library.reload()
+            }
+        }
+        function onInitializedChanged() {
+            if (localImport.initialized && root.importUiProbe
+                    && localImport.directory.length > 0)
+                localImport.start_scan("", true)
+        }
+        function onResult_countChanged() {
+            if (root.importCommitProbe && localImport.result_count > 0
+                    && localImport.selected_count === 0) {
+                localImport.select_visible("all")
+                localImport.import_selected()
+            }
         }
     }
 
@@ -126,6 +159,8 @@ ApplicationWindow {
             library.shell_ready()
             if (library.startup_probe)
                 Qt.quit()
+            else if (root.importUiProbe)
+                root.openImportDialog()
         }
     }
 
@@ -138,6 +173,7 @@ ApplicationWindow {
             library.initialize()
             appSettings.initialize()
             downloadQueue.initialize()
+            localImport.initialize()
         }
     }
 
@@ -653,6 +689,11 @@ ApplicationWindow {
                 active: root.availability === "downloadable"
                 onClicked: root.selectLibrary("downloadable")
             }
+            NavButton {
+                label: "Import ROMs"
+                glyph: "+"
+                onClicked: root.openImportDialog()
+            }
         }
 
         Text {
@@ -1038,6 +1079,8 @@ ApplicationWindow {
                         Text { visible: gameDetails.rating.length > 0; text: gameDetails.rating + " / 5"; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.esrb.length > 0; text: "RATED"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.release_type.length > 0; text: "TYPE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                     }
 
                     Text {
@@ -1048,6 +1091,16 @@ ApplicationWindow {
                         font.pixelSize: 12
                         lineHeight: 1.35
                         wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        width: parent.width
+                        visible: gameDetails.notes.length > 0
+                        text: gameDetails.notes
+                        color: root.muted
+                        font.pixelSize: 10
+                        lineHeight: 1.3
+                        wrapMode: Text.WrapAnywhere
                     }
 
                     Rectangle {
@@ -1185,6 +1238,420 @@ ApplicationWindow {
         id: directoryDialog
         title: root.directoryTarget === "rom" ? "Choose ROM library" : "Choose torrent library"
         onAccepted: appSettings.set_directory(root.directoryTarget, selectedFolder)
+    }
+
+    FolderDialog {
+        id: importDirectoryDialog
+        title: "Choose a ROM collection to scan"
+        onAccepted: localImport.choose_directory(selectedFolder)
+    }
+
+    Loader {
+        id: importDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: importDialogComponent
+    }
+
+    Component {
+        id: importDialogComponent
+        Dialog {
+            id: importDialog
+            modal: true
+            anchors.centerIn: parent
+            width: Math.min(1060, root.width - 50)
+            height: Math.min(790, root.height - 42)
+            padding: 0
+            closePolicy: Popup.CloseOnEscape
+
+            Timer {
+                id: importFilterDelay
+                interval: 75
+                repeat: false
+                onTriggered: localImport.apply_result_filter(
+                                 importSearch.text,
+                                 importStatus.currentValue,
+                                 importSort.currentValue,
+                                 importSortAscending.checked)
+            }
+
+            Connections {
+                target: localImport
+                function onResult_countChanged() {
+                    if (localImport.result_count > 0)
+                        importFilterDelay.restart()
+                }
+            }
+
+            background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+
+            header: Rectangle {
+            width: parent.width
+            height: 64
+            color: root.panelRaised
+            radius: 14
+            Column {
+                anchors.left: parent.left
+                anchors.leftMargin: 22
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+                Text {
+                    text: "IMPORT LOCAL ROMS"
+                    color: root.ink
+                    font.pixelSize: 17
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                }
+                Text {
+                    text: "Review exact identities before adding files to My Collection"
+                    color: root.muted
+                    font.pixelSize: 10
+                }
+            }
+            RoundButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                text: "×"
+                flat: true
+                font.pixelSize: 20
+                onClicked: importDialog.close()
+            }
+        }
+
+            contentItem: Item {
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 10
+
+                RowLayout {
+                Layout.fillWidth: true
+                spacing: 9
+                TextField {
+                    Layout.fillWidth: true
+                    text: localImport.directory
+                    readOnly: true
+                    placeholderText: "Choose a folder containing ROMs"
+                }
+                Button {
+                    text: "Choose…"
+                    enabled: !localImport.busy
+                    onClicked: importDirectoryDialog.open()
+                }
+                ComboBox {
+                    id: importPlatform
+                    Layout.preferredWidth: 245
+                    model: {
+                        const values = ["Auto-detect platform"]
+                        const revision = localImport.platform_count
+                        for (let index = 0; index < revision; ++index)
+                            values.push(localImport.platform_name_at(index))
+                        return values
+                    }
+                }
+                CheckBox {
+                    id: importChecksums
+                    text: "Exact checksums"
+                    checked: true
+                    enabled: !localImport.busy
+                    ToolTip.visible: hovered
+                    ToolTip.text: checked
+                                      ? "Use SHA-1 and MD5 to prove catalog identity"
+                                      : "Inventory files without assigning catalog identity"
+                }
+                HeaderButton {
+                    text: localImport.scanning ? "Scanning…" : "Scan"
+                    active: true
+                    enabled: !localImport.busy && localImport.directory.length > 0
+                    onClicked: localImport.start_scan(
+                                   importPlatform.currentIndex === 0
+                                       ? ""
+                                       : localImport.platform_name_at(importPlatform.currentIndex - 1),
+                                   importChecksums.checked)
+                }
+                Button {
+                    text: "Cancel"
+                    visible: localImport.scanning
+                    onClicked: localImport.cancel_scan()
+                }
+                }
+
+                Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 58
+                radius: 9
+                color: "#111824"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 11
+                    BusyIndicator {
+                        visible: localImport.busy
+                        running: visible
+                        Layout.preferredWidth: 22
+                        Layout.preferredHeight: 22
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Text {
+                            Layout.fillWidth: true
+                            text: localImport.message
+                            color: root.muted
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 6
+                            visible: localImport.scanning
+                            radius: 3
+                            color: root.line
+                            clip: true
+                            Rectangle {
+                                id: importProgressFill
+                                height: parent.height
+                                radius: 3
+                                color: root.accentCool
+                                width: localImport.total_files > 0
+                                       ? parent.width * Math.min(1, localImport.scanned_files / localImport.total_files)
+                                       : parent.width * 0.28
+                                x: localImport.total_files > 0 ? 0 : -width
+                                NumberAnimation on x {
+                                    running: localImport.scanning && localImport.total_files === 0
+                                    from: -importProgressFill.width
+                                    to: importProgressFill.parent.width
+                                    duration: 850
+                                    loops: Animation.Infinite
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        visible: localImport.total_files > 0
+                        text: localImport.matched_count + " exact  ·  "
+                              + localImport.unmatched_count + " other"
+                        color: root.accentCool
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
+                }
+                }
+
+                RowLayout {
+                Layout.fillWidth: true
+                visible: localImport.total_files > 0
+                spacing: 8
+                TextField {
+                    id: importSearch
+                    Layout.fillWidth: true
+                    placeholderText: "Filter scan results"
+                    onTextEdited: importFilterDelay.restart()
+                }
+                ComboBox {
+                    id: importStatus
+                    Layout.preferredWidth: 150
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        { label: "All results", value: "all" },
+                        { label: "Exact", value: "exact" },
+                        { label: "Ambiguous", value: "ambiguous" },
+                        { label: "Unmatched", value: "unmatched" },
+                        { label: "Inventory only", value: "inventory_only" },
+                        { label: "Errors", value: "error" }
+                    ]
+                    onActivated: importFilterDelay.restart()
+                }
+                ComboBox {
+                    id: importSort
+                    Layout.preferredWidth: 135
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        { label: "File name", value: "name" },
+                        { label: "Match status", value: "status" },
+                        { label: "Platform", value: "platform" },
+                        { label: "File size", value: "size" }
+                    ]
+                    currentIndex: 1
+                    onActivated: importFilterDelay.restart()
+                }
+                ToolButton {
+                    id: importSortAscending
+                    checkable: true
+                    checked: true
+                    text: checked ? "↑" : "↓"
+                    onClicked: importFilterDelay.restart()
+                    ToolTip.visible: hovered
+                    ToolTip.text: checked ? "Ascending" : "Descending"
+                }
+                Button {
+                    text: "Exact"
+                    onClicked: localImport.select_visible("exact")
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Select only proven matches in the current results"
+                }
+                Button {
+                    text: "All"
+                    onClicked: localImport.select_visible("all")
+                }
+                Button {
+                    text: "None"
+                    onClicked: localImport.select_visible("none")
+                }
+                }
+
+                Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 34
+                visible: localImport.total_files > 0
+                color: root.panelRaised
+                border.color: root.line
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 45
+                    spacing: 0
+                    Text { width: 250; anchors.verticalCenter: parent.verticalCenter; text: "ROM FILE"; color: root.muted; font.pixelSize: 9; font.weight: Font.Bold }
+                    Text { width: 155; anchors.verticalCenter: parent.verticalCenter; text: "STATUS"; color: root.muted; font.pixelSize: 9; font.weight: Font.Bold }
+                    Text { width: 190; anchors.verticalCenter: parent.verticalCenter; text: "PLATFORM"; color: root.muted; font.pixelSize: 9; font.weight: Font.Bold }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: "MATCH / DETAILS"; color: root.muted; font.pixelSize: 9; font.weight: Font.Bold }
+                }
+                }
+
+                ListView {
+                id: importResults
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                reuseItems: true
+                spacing: 3
+                model: localImport.result_count
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                delegate: Rectangle {
+                    id: importRow
+                    required property int index
+                    property int importRevision: localImport.revision
+                    width: importResults.width
+                    height: 61
+                    radius: 7
+                    color: rowHover.hovered ? "#202a38" : index % 2 ? "#141b26" : "#111824"
+                    border.color: root.line
+                    HoverHandler { id: rowHover }
+                    ToolTip.visible: rowHover.hovered
+                    ToolTip.text: { importRevision; return localImport.result_path_at(index) }
+                    CheckBox {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 9
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: { importRow.importRevision; return localImport.result_selected_at(importRow.index) }
+                        onClicked: localImport.toggle_selected(importRow.index)
+                    }
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 45
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 240
+                        text: { importRow.importRevision; return localImport.result_file_name_at(importRow.index) }
+                        color: root.ink
+                        font.pixelSize: 11
+                        elide: Text.ElideMiddle
+                    }
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 295
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 125
+                        height: 24
+                        radius: 12
+                        color: statusText.text === "EXACT" ? "#18302c"
+                             : statusText.text === "ERROR" ? "#351d24" : "#292631"
+                        border.color: statusText.text === "EXACT" ? root.accentCool
+                                    : statusText.text === "ERROR" ? "#ef7182" : root.accent
+                        Text {
+                            id: statusText
+                            anchors.centerIn: parent
+                            text: { importRow.importRevision; return localImport.result_status_at(importRow.index) }
+                            color: parent.border.color
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                        }
+                    }
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 430
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 180
+                        text: { importRow.importRevision; return localImport.result_platform_at(importRow.index) }
+                        color: root.muted
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
+                    }
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 620
+                        anchors.right: sizeLabel.left
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 3
+                        Text {
+                            width: parent.width
+                            text: { importRow.importRevision; return localImport.result_title_at(importRow.index) }
+                            color: root.ink
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            width: parent.width
+                            text: { importRow.importRevision; return localImport.result_detail_at(importRow.index) }
+                            color: root.muted
+                            font.pixelSize: 9
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Text {
+                        id: sizeLabel
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 72
+                        horizontalAlignment: Text.AlignRight
+                        text: { importRow.importRevision; return localImport.result_size_at(importRow.index) }
+                        color: root.muted
+                        font.pixelSize: 9
+                    }
+                }
+                }
+
+                RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: localImport.selected_count + " selected · unmatched files are imported as local-only games"
+                    color: root.muted
+                    font.pixelSize: 11
+                }
+                Button {
+                    text: "Close"
+                    onClicked: importDialog.close()
+                }
+                HeaderButton {
+                    text: localImport.importing ? "Importing…" : "Import " + localImport.selected_count
+                    active: true
+                    enabled: !localImport.busy && localImport.selected_count > 0
+                    onClicked: localImport.import_selected()
+                }
+                }
+            }
+            }
+        }
     }
 
     Dialog {

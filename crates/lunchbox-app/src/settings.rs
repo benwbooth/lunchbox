@@ -472,7 +472,56 @@ fn migrate(connection: &Connection) -> Result<()> {
              installed_at INTEGER NOT NULL
          );
          CREATE INDEX IF NOT EXISTS installed_games_launchbox_id
-             ON installed_games(launchbox_db_id) WHERE launchbox_db_id > 0;",
+             ON installed_games(launchbox_db_id) WHERE launchbox_db_id > 0;
+         CREATE TABLE IF NOT EXISTS local_collection_roots (
+             id TEXT PRIMARY KEY,
+             path_display TEXT NOT NULL,
+             path_bytes BLOB NOT NULL,
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             platform_hint TEXT NOT NULL,
+             checksums_enabled INTEGER NOT NULL CHECK (checksums_enabled IN (0, 1)),
+             last_scanned_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS local_rom_files (
+             id TEXT PRIMARY KEY,
+             root_id TEXT NOT NULL REFERENCES local_collection_roots(id) ON DELETE CASCADE,
+             path_display TEXT NOT NULL,
+             path_bytes BLOB NOT NULL,
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             relative_path_display TEXT NOT NULL,
+             relative_path_bytes BLOB NOT NULL,
+             relative_path_encoding TEXT NOT NULL CHECK (
+                 relative_path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             file_name TEXT NOT NULL,
+             display_title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             file_size INTEGER NOT NULL CHECK (file_size >= 0),
+             modified_unix_ns INTEGER,
+             crc32 TEXT NOT NULL,
+             md5 TEXT NOT NULL,
+             sha1 TEXT NOT NULL,
+             game_uid TEXT,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             matched_title TEXT,
+             match_state TEXT NOT NULL CHECK (
+                 match_state IN ('exact', 'ambiguous', 'unmatched', 'inventory_only', 'error')
+             ),
+             match_method TEXT NOT NULL,
+             included INTEGER NOT NULL CHECK (included IN (0, 1)),
+             availability TEXT NOT NULL CHECK (availability IN ('present', 'missing')),
+             imported_at INTEGER NOT NULL
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS local_rom_files_root_relative
+             ON local_rom_files(root_id, relative_path_bytes);
+         CREATE INDEX IF NOT EXISTS local_rom_files_game_uid
+             ON local_rom_files(game_uid) WHERE game_uid IS NOT NULL;
+         CREATE INDEX IF NOT EXISTS local_rom_files_visible
+             ON local_rom_files(included, availability);",
     )?;
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
