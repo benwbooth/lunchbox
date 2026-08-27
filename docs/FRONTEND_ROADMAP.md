@@ -1,0 +1,86 @@
+# Native frontend parity roadmap
+
+The native frontend will absorb every useful capability from Lunchbox's own
+Electron implementation and then add the collection-management depth expected
+from a polished desktop emulator frontend. The work is organized as complete
+vertical slices rather than a reduced "first release".
+
+The Electron source remains intact on `legacy/electron`. It is a behavioral
+reference for Lunchbox-owned features, not a runtime dependency.
+
+## Completed foundation
+
+- Native Qt 6 Quick window compiled into the executable.
+- Rust `QAbstractListModel` with virtualized grid and list presentations.
+- Asynchronous, read-only schema-v3 catalog loading.
+- Asynchronous search, platform, local, and downloadable filtering with stale
+  result rejection.
+- Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
+  Windows.
+- Measurable shell-ready and catalog-ready probes.
+
+## Collection management
+
+- Native folder chooser, platform assignment, extension presets, and scan
+  preview.
+- Streaming scan progress, cancellation, resumability, and clear reporting for
+  ignored, ambiguous, duplicate, changed, and missing files.
+- Archive-member inspection, multidisc grouping, patches, alternate versions,
+  and manual matching review.
+- Editable game and release metadata, favorites, tags, playlists, custom
+  fields, completion state, play count, play time, and last-played history.
+- Non-destructive merge/split/relink tools backed by the database identity event
+  log.
+- Fast bulk editing, audits, backup/restore, and portable collection export.
+
+## Download-first experience
+
+- Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
+  into the GUI process.
+- Game-level offer resolution, bundle contents, size and disk-space previews,
+  file selection, region/version preferences, and duplicate avoidance.
+- qBittorrent connection setup, secure credential storage, queue priorities,
+  pause/resume/cancel, progress, errors, seeding state, and completed-file
+  ingestion.
+- BIOS availability audit and explicit acquisition workflows, with provenance
+  and checksums retained for every imported artifact.
+
+## Metadata and media
+
+- Canonical-game metadata enrichment with provenance and per-field conflict
+  review.
+- Box art, backgrounds, screenshots, logos, manuals, music, and video with an
+  asynchronous memory/disk cache and visibility-driven decoding.
+- Configurable media-source priority, image replacement, missing-media audit,
+  and background download queue.
+- Responsive game details, related games, alternate versions, 3D box display,
+  manuals, soundtrack playback, and video playback.
+
+## Emulators and launching
+
+- Host-aware emulator discovery for Linux, macOS, and Windows.
+- Managed downloads, updates, version pinning, core management, BIOS checks,
+  platform defaults, per-game overrides, and command preview.
+- RetroArch, standalone emulator, DOSBox, ScummVM, arcade, and PC launch
+  profiles.
+- Controller detection and mapping, pre-launch validation, process supervision,
+  pause/resume, clean shutdown, and play-stat recording.
+
+## Full-screen interface
+
+- A separate controller-first Qt Quick presentation backed by the same Rust
+  models and services—not a second database or duplicated backend.
+- Theme packages, platform/game wheels, details and game menus, attract mode,
+  startup/shutdown/pause screens, screensaver, background music, sound packs,
+  marquee monitor support, parental lock, and couch-safe settings.
+- Complete keyboard and gamepad navigation with deterministic focus restoration
+  and no mouse requirement.
+
+## Definition of done for every slice
+
+A slice is complete only when its UI is functional against real data, expensive
+work is cancellable and off the GUI thread, errors are actionable, keyboard and
+controller behavior is defined, state survives restart, unit and runtime tests
+cover the critical path, and performance is measured in a release build. Empty
+buttons, placeholder services, silent no-ops, and compile-only claims do not
+count as progress.

@@ -1,4 +1,5 @@
 /target/
+**/.qmlls.ini
 /result
 /.direnv/
 /.codex

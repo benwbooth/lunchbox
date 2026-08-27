@@ -3,6 +3,24 @@
 Lunchbox is a cross-platform, acquisition-first game browser, collection manager, and emulator frontend. The application will use Rust with CXX-Qt and QML. This branch begins with the canonical data layer shared by the desktop and couch interfaces.
 
 The previous Electron application is preserved in the `legacy/electron` branch.
+The new native desktop shell is now runnable and is described in [the frontend
+architecture](docs/FRONTEND_ARCHITECTURE.md).
+The ongoing vertical-slice plan is tracked in [the native frontend parity
+roadmap](docs/FRONTEND_ROADMAP.md).
+
+## Native Qt frontend
+
+Run the Rust/CXX-Qt application against the current development database:
+
+```console
+nix develop
+cargo run -p lunchbox-app -- --database build/lunchbox.db
+```
+
+The window paints before catalog work begins. SQLite loading and collection
+filtering run on worker threads, while virtualized Qt views consume a native
+`QAbstractListModel`. Use `--startup-probe` to measure shell construction without
+waiting for database loading.
 
 ## Database principles
 

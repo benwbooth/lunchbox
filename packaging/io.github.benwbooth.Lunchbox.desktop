@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Lunchbox
+Comment=Browse, manage, download, and play your game collection
+Exec=lunchbox
+Icon=io.github.benwbooth.Lunchbox
+Terminal=false
+Categories=Game;Emulator;
+Keywords=games;roms;emulator;library;
+StartupNotify=true
+StartupWMClass=lunchbox

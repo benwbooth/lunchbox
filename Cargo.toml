@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lunchbox-db"]
+members = ["crates/lunchbox-app", "crates/lunchbox-db"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,8 +12,13 @@ repository = "https://github.com/benwbooth/lunchbox"
 [workspace.dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+cxx = "1.0"
+cxx-qt = "0.8.1"
+cxx-qt-build = "0.8.1"
+cxx-qt-lib = { version = "0.8.1", features = ["qt_full"] }
 csv = "1.3"
 crc32fast = "1.4"
+directories = "6.0"
 flate2 = "1.1"
 hex = "0.4"
 md5 = { package = "md-5", version = "0.10" }
