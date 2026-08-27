@@ -21,6 +21,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Read-only layering of the preserved discovery catalog, Minerva bundle
   coverage, and legacy installed-game state. The Minerva filter contains only
   covered games that are not installed and composes with platform selection.
+- Responsive game selection and details with real catalog metadata, exact-name
+  Minerva bundle resolution, bounded off-thread torrent inspection, and
+  explicitly review-only title candidates.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
 - Measurable shell-ready and catalog-ready probes.
@@ -43,8 +46,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
-- Game-level offer resolution, bundle contents, size and disk-space previews,
-  file selection, region/version preferences, and duplicate avoidance.
+- Complete game-level offer selection beyond the implemented bundle-content
+  inspector: disk-space previews, file selection, region/version preferences,
+  and duplicate avoidance.
 - qBittorrent connection setup, secure credential storage, queue priorities,
   pause/resume/cancel, progress, errors, seeding state, and completed-file
   ingestion.

@@ -8,6 +8,7 @@ fn main() {
     )
     .qt_module("Quick")
     .qt_module("QuickControls2")
+    .file("src/game_details_model.rs")
     .file("src/library_model.rs")
     .build();
 }

@@ -66,7 +66,7 @@ pub fn requested_database_path() -> Option<PathBuf> {
         })
 }
 
-fn requested_discovery_database_path() -> Option<PathBuf> {
+pub(crate) fn requested_discovery_database_path() -> Option<PathBuf> {
     requested_path("--games-database", "LUNCHBOX_GAMES_DATABASE").or_else(|| {
         existing_path([
             PathBuf::from("lunchbox-games.db"),
@@ -77,7 +77,7 @@ fn requested_discovery_database_path() -> Option<PathBuf> {
     })
 }
 
-fn requested_minerva_database_path() -> Option<PathBuf> {
+pub(crate) fn requested_minerva_database_path() -> Option<PathBuf> {
     requested_path("--minerva-database", "LUNCHBOX_MINERVA_DATABASE").or_else(|| {
         existing_path([
             PathBuf::from("minerva.db"),
@@ -144,7 +144,7 @@ pub fn load(path: &Path) -> Result<Catalog> {
     load_canonical_catalog(&connection)
 }
 
-fn open_read_only(path: &Path, description: &str) -> Result<Connection> {
+pub(crate) fn open_read_only(path: &Path, description: &str) -> Result<Connection> {
     let connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -264,7 +264,6 @@ struct InstalledGames {
 
 #[derive(Default)]
 struct MinervaCoverage {
-    platform_ids: HashSet<i64>,
     platform_names: HashSet<String>,
     offer_count: usize,
 }
@@ -284,7 +283,7 @@ fn load_discovery_catalog(
     let mut games = Vec::with_capacity(game_capacity);
     let mut statement = discovery.prepare(
         "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
-                coalesce(g.launchbox_db_id, 0), g.platform_id
+                coalesce(g.launchbox_db_id, 0)
          FROM games g
          JOIN platforms p ON p.id = g.platform_id
          ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id",
@@ -296,17 +295,15 @@ fn load_discovery_catalog(
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
             row.get::<_, i64>(4)?,
-            row.get::<_, i64>(5)?,
         ))
     })?;
     for row in rows {
-        let (id, title, platform, status, database_id, platform_id) = row?;
+        let (id, title, platform, status, database_id) = row?;
         let local = (database_id > 0 && installed.database_ids.contains(&database_id))
             || installed.game_uids.contains(&id);
-        let minerva_covered = minerva.platform_ids.contains(&platform_id)
-            || minerva
-                .platform_names
-                .contains(&normalize_platform_key(&platform));
+        let minerva_covered = minerva
+            .platform_names
+            .contains(&normalize_platform_key(&platform));
         games.push(Game {
             id,
             search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
@@ -406,47 +403,50 @@ fn load_minerva_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
         ..MinervaCoverage::default()
     };
     let mut statement = connection.prepare(
-        "SELECT lunchbox_platform_id, lunchbox_platform_name, minerva_platform
-         FROM minerva_torrent_platforms",
+        "SELECT tp.lunchbox_platform_name, tp.minerva_platform,
+                coalesce(t.collection, '')
+         FROM minerva_torrent_platforms tp
+         JOIN minerva_torrents t ON t.id=tp.torrent_id",
     )?;
     let rows = statement.query_map([], |row| {
         Ok((
-            row.get::<_, Option<i64>>(0)?,
-            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(0)?,
+            row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
         ))
     })?;
+    let mut atari_800_fallback = false;
+    let mut arcade_fallback = false;
     for row in rows {
-        let (platform_id, mapped_name, provider_name) = row?;
-        if let Some(platform_id) = platform_id {
-            coverage.platform_ids.insert(platform_id);
-        }
+        let (mapped_name, provider_name, collection) = row?;
         if let Some(name) = mapped_name.filter(|name| !name.trim().is_empty()) {
             coverage
                 .platform_names
                 .insert(normalize_platform_key(&name));
         }
-        coverage
-            .platform_names
-            .insert(normalize_platform_key(&provider_name));
+        let provider_key = normalize_platform_key(&provider_name);
+        coverage.platform_names.insert(provider_key.clone());
+        atari_800_fallback |= provider_key == "atari" && collection == "TOSEC";
+        arcade_fallback |= collection == "MAME"
+            && matches!(
+                provider_key.as_str(),
+                "roms-merged" | "roms-split" | "roms-non-merged"
+            );
     }
 
     // Preserve the two explicit fallbacks used by the legacy frontend. These
     // are provider mappings, not inferred game identity links.
-    if coverage.platform_names.contains("atari") {
+    if atari_800_fallback {
         coverage.platform_names.insert("atari-800".to_owned());
     }
-    if ["roms-merged", "roms-split", "roms-non-merged"]
-        .iter()
-        .any(|name| coverage.platform_names.contains(*name))
-    {
+    if arcade_fallback {
         coverage.platform_names.insert("arcade".to_owned());
     }
 
     Ok(coverage)
 }
 
-fn normalize_platform_key(value: &str) -> String {
+pub(crate) fn normalize_platform_key(value: &str) -> String {
     let mut normalized = String::with_capacity(value.len());
     let mut separator = false;
     for character in value.chars().flat_map(char::to_lowercase) {
@@ -660,14 +660,17 @@ mod tests {
         let minerva = Connection::open(&minerva_path).unwrap();
         minerva
             .execute_batch(
-                "CREATE TABLE minerva_torrents (id INTEGER PRIMARY KEY);
+                "CREATE TABLE minerva_torrents (
+                   id INTEGER PRIMARY KEY, collection TEXT
+                 );
                  CREATE TABLE minerva_torrent_platforms (
+                   torrent_id INTEGER NOT NULL,
                    lunchbox_platform_id INTEGER, lunchbox_platform_name TEXT,
                    minerva_platform TEXT NOT NULL
                  );
-                 INSERT INTO minerva_torrents VALUES (1);
+                 INSERT INTO minerva_torrents VALUES (1, 'No-Intro');
                  INSERT INTO minerva_torrent_platforms
-                   VALUES (1, 'Nintendo Game Boy', 'Nintendo - Game Boy');",
+                   VALUES (1, 2, 'Nintendo Game Boy', 'Nintendo - Game Boy');",
             )
             .unwrap();
         drop(minerva);

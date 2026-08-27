@@ -13,7 +13,9 @@ cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
 directories.workspace = true
+lava_torrent.workspace = true
 rusqlite.workspace = true
+ureq.workspace = true
 
 [build-dependencies]
 cxx-qt-build.workspace = true

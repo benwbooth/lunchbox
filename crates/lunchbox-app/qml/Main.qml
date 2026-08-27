@@ -25,6 +25,7 @@ ApplicationWindow {
     property string selectedPlatform: ""
     property string availability: ""
     property bool gridMode: true
+    property string selectedGameId: ""
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -59,8 +60,17 @@ ApplicationWindow {
         return colors[value.charCodeAt(0) % colors.length]
     }
 
+    function openGame(gameId, title, platform, local, downloadable) {
+        selectedGameId = gameId
+        gameDetails.select_game(gameId, title, platform, local, downloadable)
+    }
+
     LibraryModel {
         id: library
+    }
+
+    GameDetailsModel {
+        id: gameDetails
     }
 
     Connections {
@@ -236,12 +246,30 @@ ApplicationWindow {
         delegate: Item {
             id: tile
             required property int index
+            required property string gameId
             required property string gameTitle
             required property string gamePlatform
             required property bool gameLocal
             required property bool gameDownloadable
             width: grid.cellWidth
             height: grid.cellHeight
+            activeFocusOnTab: true
+
+            TapHandler {
+                onTapped: {
+                    tile.forceActiveFocus()
+                    root.openGame(tile.gameId, tile.gameTitle, tile.gamePlatform,
+                                  tile.gameLocal, tile.gameDownloadable)
+                }
+            }
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    root.openGame(tile.gameId, tile.gameTitle, tile.gamePlatform,
+                                  tile.gameLocal, tile.gameDownloadable)
+                    event.accepted = true
+                }
+            }
 
             Rectangle {
                 id: card
@@ -249,8 +277,8 @@ ApplicationWindow {
                 anchors.margins: 8
                 radius: 12
                 color: tile.activeFocus ? "#263142" : cardHover.hovered ? "#202a39" : root.panelRaised
-                border.color: tile.activeFocus ? root.accent : cardHover.hovered ? "#3a485d" : root.line
-                border.width: tile.activeFocus ? 2 : 1
+                border.color: tile.activeFocus || root.selectedGameId === tile.gameId ? root.accent : cardHover.hovered ? "#3a485d" : root.line
+                border.width: tile.activeFocus || root.selectedGameId === tile.gameId ? 2 : 1
                 scale: cardHover.hovered ? 1.012 : 1
                 Behavior on scale { NumberAnimation { duration: 90 } }
 
@@ -343,6 +371,7 @@ ApplicationWindow {
         delegate: Rectangle {
             id: row
             required property int index
+            required property string gameId
             required property string gameTitle
             required property string gamePlatform
             required property string gameStatus
@@ -351,9 +380,26 @@ ApplicationWindow {
             width: list.width - 8
             height: 62
             radius: 9
-            color: rowHover.hovered ? "#202a39" : root.panelRaised
-            border.color: rowHover.hovered ? "#3a485d" : root.line
+            activeFocusOnTab: true
+            color: row.activeFocus ? "#263142" : rowHover.hovered ? "#202a39" : root.panelRaised
+            border.color: row.activeFocus || root.selectedGameId === row.gameId ? root.accent : rowHover.hovered ? "#3a485d" : root.line
+            border.width: row.activeFocus || root.selectedGameId === row.gameId ? 2 : 1
             HoverHandler { id: rowHover }
+            TapHandler {
+                onTapped: {
+                    row.forceActiveFocus()
+                    root.openGame(row.gameId, row.gameTitle, row.gamePlatform,
+                                  row.gameLocal, row.gameDownloadable)
+                }
+            }
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    root.openGame(row.gameId, row.gameTitle, row.gamePlatform,
+                                  row.gameLocal, row.gameDownloadable)
+                    event.accepted = true
+                }
+            }
             Rectangle {
                 width: 38
                 height: 38
@@ -599,7 +645,7 @@ ApplicationWindow {
     Item {
         id: content
         anchors.left: sidebar.right
-        anchors.right: parent.right
+        anchors.right: detailsPane.left
         anchors.top: header.bottom
         anchors.bottom: statusBar.top
 
@@ -629,9 +675,21 @@ ApplicationWindow {
                         font.pixelSize: 12
                     }
                 }
-                StatusPill { label: "local files"; value: library.local_file_count.toString() }
-                StatusPill { label: "offers"; value: library.offer_count.toString() }
-                StatusPill { label: "emulators"; value: library.emulator_count.toString() }
+                StatusPill {
+                    visible: content.width > 700
+                    label: "local files"
+                    value: library.local_file_count.toString()
+                }
+                StatusPill {
+                    visible: content.width > 700
+                    label: "offers"
+                    value: library.offer_count.toString()
+                }
+                StatusPill {
+                    visible: content.width > 700
+                    label: "emulators"
+                    value: library.emulator_count.toString()
+                }
                 Row {
                     spacing: 4
                     HeaderButton {
@@ -730,6 +788,327 @@ ApplicationWindow {
 
         Component { id: gameGridComponent; GameGrid {} }
         Component { id: gameListComponent; GameList {} }
+    }
+
+    Rectangle {
+        id: detailsPane
+        anchors.right: parent.right
+        anchors.top: header.bottom
+        anchors.bottom: statusBar.top
+        width: gameDetails.panel_open ? Math.min(440, Math.max(350, root.width * 0.32)) : 0
+        visible: width > 0
+        clip: true
+        color: "#101620"
+        border.color: root.line
+
+        Behavior on width {
+            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+        }
+
+        Rectangle {
+            id: detailHeader
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 56
+            color: root.panel
+            border.color: root.line
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 20
+                anchors.verticalCenter: parent.verticalCenter
+                text: "GAME DETAILS"
+                color: root.muted
+                font.pixelSize: 10
+                font.weight: Font.Bold
+                font.letterSpacing: 1.4
+            }
+            RoundButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: 34
+                height: 34
+                text: "×"
+                flat: true
+                font.pixelSize: 20
+                onClicked: {
+                    root.selectedGameId = ""
+                    gameDetails.close_panel()
+                }
+                ToolTip.visible: hovered
+                ToolTip.text: "Close details"
+            }
+        }
+
+        ScrollView {
+            id: detailScroll
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: detailHeader.bottom
+            anchors.bottom: parent.bottom
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+            Column {
+                width: detailScroll.availableWidth
+                spacing: 0
+
+                Rectangle {
+                    id: detailArtwork
+                    width: parent.width
+                    height: 214
+                    color: root.accentFor(gameDetails.title)
+                    clip: true
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: Qt.lighter(detailArtwork.color, 1.15) }
+                        GradientStop { position: 1; color: Qt.darker(detailArtwork.color, 1.8) }
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        text: gameDetails.title.length > 0 ? gameDetails.title.charAt(0).toUpperCase() : "?"
+                        color: "#35ffffff"
+                        font.pixelSize: 118
+                        font.weight: Font.Black
+                    }
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 112
+                        gradient: Gradient {
+                            GradientStop { position: 0; color: "transparent" }
+                            GradientStop { position: 1; color: "#d9101620" }
+                        }
+                    }
+                    BusyIndicator {
+                        anchors.centerIn: parent
+                        running: gameDetails.loading
+                        visible: running
+                    }
+                }
+
+                Column {
+                    x: 20
+                    width: parent.width - 40
+                    spacing: 12
+
+                    Text {
+                        width: parent.width
+                        text: gameDetails.title
+                        color: root.ink
+                        font.pixelSize: 24
+                        font.weight: Font.Bold
+                        wrapMode: Text.WordWrap
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: 8
+                        Text {
+                            text: gameDetails.platform.length > 0 ? gameDetails.platform : "Unassigned platform"
+                            color: root.muted
+                            font.pixelSize: 12
+                        }
+                        Rectangle {
+                            width: stateText.implicitWidth + 14
+                            height: 24
+                            radius: 7
+                            color: gameDetails.local ? "#1d3d35" : gameDetails.downloadable ? "#303540" : "#242b36"
+                            border.color: gameDetails.local ? root.accentCool : gameDetails.downloadable ? root.accent : root.line
+                            Text {
+                                id: stateText
+                                anchors.centerIn: parent
+                                text: gameDetails.local ? "INSTALLED" : gameDetails.downloadable ? "MINERVA" : "CATALOG"
+                                color: gameDetails.local ? root.accentCool : gameDetails.downloadable ? root.accent : root.muted
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.7
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: statusMessage.implicitHeight + 22
+                        radius: 9
+                        color: "#151d29"
+                        border.color: root.line
+                        Row {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 11
+                            anchors.rightMargin: 11
+                            spacing: 9
+                            BusyIndicator {
+                                id: statusBusy
+                                width: 18
+                                height: 18
+                                running: gameDetails.loading || gameDetails.torrent_loading
+                                visible: running
+                            }
+                            Text {
+                                id: statusMessage
+                                width: parent.width - (statusBusy.visible ? statusBusy.width + 9 : 0)
+                                text: gameDetails.message
+                                color: root.muted
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    GridLayout {
+                        width: parent.width
+                        columns: 2
+                        columnSpacing: 14
+                        rowSpacing: 9
+                        visible: !gameDetails.loading
+
+                        Text { visible: gameDetails.release_date.length > 0; text: "RELEASED"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.release_date.length > 0; text: gameDetails.release_date; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.developer.length > 0; text: "DEVELOPER"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.developer.length > 0; text: gameDetails.developer; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.publisher.length > 0; text: "PUBLISHER"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.publisher.length > 0; text: gameDetails.publisher; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.genre.length > 0; text: "GENRE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.genre.length > 0; text: gameDetails.genre; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.players.length > 0; text: "PLAYERS"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.players.length > 0; text: gameDetails.players; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.rating.length > 0; text: "RATING"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.rating.length > 0; text: gameDetails.rating + " / 5"; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.esrb.length > 0; text: "RATED"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                    }
+
+                    Text {
+                        width: parent.width
+                        visible: gameDetails.description.length > 0
+                        text: gameDetails.description
+                        color: "#c0c8d4"
+                        font.pixelSize: 12
+                        lineHeight: 1.35
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Rectangle {
+                        visible: !gameDetails.loading && gameDetails.bundle_count > 0
+                        width: parent.width
+                        height: 1
+                        color: root.line
+                    }
+                    Text {
+                        visible: !gameDetails.loading && gameDetails.bundle_count > 0
+                        width: parent.width
+                        text: "MINERVA SOURCES"
+                        color: "#687488"
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        visible: !gameDetails.loading && gameDetails.bundle_count > 0
+                        width: parent.width
+                        text: "Choose a verified platform bundle, then inspect title candidates before adding anything to the download queue."
+                        color: root.muted
+                        font.pixelSize: 11
+                        lineHeight: 1.25
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Repeater {
+                        model: gameDetails.bundle_count
+                        delegate: Rectangle {
+                            id: sourceRow
+                            required property int index
+                            property int revision: gameDetails.detail_revision
+                            width: detailsPane.width - 40
+                            height: 66
+                            radius: 9
+                            color: gameDetails.selected_bundle === index ? "#2a2e32" : sourceHover.hovered ? "#202a39" : root.panelRaised
+                            border.color: gameDetails.selected_bundle === index ? root.accent : root.line
+                            HoverHandler { id: sourceHover }
+                            TapHandler { onTapped: gameDetails.load_bundle_files(sourceRow.index) }
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
+                                Text {
+                                    width: parent.width
+                                    text: { sourceRow.revision; return gameDetails.bundle_title_at(sourceRow.index) }
+                                    color: root.ink
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: { sourceRow.revision; return gameDetails.bundle_detail_at(sourceRow.index) }
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        visible: gameDetails.file_count > 0
+                        width: parent.width
+                        topPadding: 6
+                        text: "TITLE CANDIDATES — REVIEW REQUIRED"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Repeater {
+                        model: gameDetails.file_count
+                        delegate: Rectangle {
+                            id: fileRow
+                            required property int index
+                            property int revision: gameDetails.detail_revision
+                            width: detailsPane.width - 40
+                            height: Math.max(58, fileName.implicitHeight + fileInfo.implicitHeight + 22)
+                            radius: 8
+                            color: "#151d29"
+                            border.color: root.line
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 11
+                                anchors.rightMargin: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
+                                Text {
+                                    id: fileName
+                                    width: parent.width
+                                    text: { fileRow.revision; return gameDetails.file_name_at(fileRow.index) }
+                                    color: root.ink
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WrapAnywhere
+                                }
+                                Text {
+                                    id: fileInfo
+                                    width: parent.width
+                                    text: { fileRow.revision; return gameDetails.file_detail_at(fileRow.index) }
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 10 }
+                }
+            }
+        }
     }
 
     Rectangle {

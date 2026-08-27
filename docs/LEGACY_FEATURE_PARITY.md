@@ -21,9 +21,9 @@ native vertical slice is completed so that features are not silently lost.
 
 | Legacy behavior | Source | Native state |
 | --- | --- | --- |
-| Detect Minerva catalog and resolve all bundles for a platform | `backend/src/handlers.rs` | Exact platform coverage drives the native Minerva filter |
+| Detect Minerva catalog and resolve all bundles for a platform | `backend/src/handlers.rs` | Implemented with exact normalized mapped/provider names; Atari 800 and Arcade retain only their collection-bounded legacy rules. Cross-database numeric platform IDs are deliberately not joined. |
 | Exclude already installed games by LaunchBox ID or stable game UUID | `backend/src/api.rs`, migration `0016_game_uid.sql` | Implemented in the native catalog layer |
-| Fetch and cache torrent metadata, list files, rank title/region candidates | `backend/src/torrent/mod.rs`, `backend/src/handlers.rs` | Behavior recorded |
+| Fetch and cache torrent metadata, list files, rank title/region candidates | `backend/src/torrent/mod.rs`, `backend/src/handlers.rs` | Native details pane fetches bounded torrent metadata off-thread, caches the current bundle, lists real files, and ranks review candidates; persistent cache and region preferences remain in the ledger |
 | Game-only and full-torrent modes | `backend/src/handlers.rs` | Behavior recorded |
 | Related-file plans for multidisc, eXo, MAME laserdisc, Daphne and Hypseus | `backend/src/exo.rs`, `arcade.rs`, `handlers.rs` | Behavior recorded |
 | qBittorrent Web API setup, connection testing and container path mapping | `backend/src/torrent/clients/qbittorrent.rs`, `state.rs` | Behavior recorded |
@@ -35,7 +35,7 @@ native vertical slice is completed so that features are not silently lost.
 
 | Legacy behavior | Source | Native state |
 | --- | --- | --- |
-| Metadata, variants, notes, related actions and launch controls | `src/components/game_details.rs` | Behavior recorded |
+| Metadata, variants, notes, related actions and launch controls | `src/components/game_details.rs` | Native responsive details pane implements core metadata and Minerva source inspection; variants, editing, related actions and launch controls remain in the ledger |
 | Box front, screenshots, title screens, fan art and clear logos | `backend/src/images`, `src/components/lazy_image.rs` | Behavior recorded |
 | Source priority, fallback, rotation, redownload and missing-media state | `backend/src/images/source_selector.rs`, `download_service.rs` | Behavior recorded |
 | Manuals, videos, video progress and local-file opening | `backend/src/api.rs`, `video_player.rs` | Behavior recorded |

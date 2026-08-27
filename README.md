@@ -36,8 +36,11 @@ cargo run --release -p lunchbox-app -- \
 
 The `Minerva` view contains only games whose platform has an exact Minerva
 bundle mapping and which are not already present in the user database. Selecting
-a platform keeps that availability filter active. The equivalent environment
-variables are `LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and
+a platform keeps that availability filter active. Select a game to open its
+native details pane; Minerva sources can be inspected against the real torrent
+contents, where title matches are presented as review candidates rather than
+silently accepted identities. The equivalent environment variables are
+`LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and
 `LUNCHBOX_USER_DATABASE`.
 
 The preserved game catalog is a local runtime input and is not added to the

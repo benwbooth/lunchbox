@@ -1,4 +1,6 @@
 mod catalog;
+mod game_details;
+pub mod game_details_model;
 pub mod library_model;
 
 use std::sync::OnceLock;

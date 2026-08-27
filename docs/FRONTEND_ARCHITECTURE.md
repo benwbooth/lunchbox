@@ -21,8 +21,10 @@ The initial implementation enforces this shape:
   generation number discards stale results when the user types quickly.
 - The initial query reads compact text and state fields only. The preserved
   discovery catalog can be layered read-only over the canonical database;
-  Minerva platform coverage and legacy user-file state are joined in memory by
-  exact provider IDs, stable game UUIDs, or exact normalized platform names.
+  Legacy user-file state is joined in memory by exact provider game IDs or
+  stable game UUIDs. Minerva platform coverage uses exact normalized mapped or
+  provider names because its numeric platform IDs are not in the discovery
+  database's internal ID namespace.
   Artwork, video, manuals, emulator inspection, torrent metadata, and hashing
   remain separately scheduled services rather than additions to startup.
 - Paths cross the Rust boundary as native paths. `--database PATH` and the
@@ -78,6 +80,8 @@ decompression cost at application startup.
 The Electron implementation remains on `legacy/electron` as the specification
 for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
-runtime gate. The next slices are local-folder import, Minerva browsing and
-download queue, game details/media, emulator installation and launch, settings,
-and the controller-first full-screen interface.
+runtime gate. Catalog details and Minerva bundle-content inspection are now
+native; the next acquisition slice is persistent qBittorrent setup, exact file
+selection, queue control, and completed-file ingestion. Local-folder import,
+game media, emulator installation and launch, settings, and the controller-first
+full-screen interface follow on the same shared models.
