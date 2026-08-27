@@ -58,7 +58,7 @@ ApplicationWindow {
     property bool downloadHistoryTriggered: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
-    property int multidiscProbeBundleIndex: 0
+    property int downloadPlanProbeBundleIndex: 0
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -87,6 +87,8 @@ ApplicationWindow {
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
+    readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
+    readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -440,16 +442,16 @@ ApplicationWindow {
             if (root.releaseCandidateUiProbe && gameDetails.bundle_count > 0
                     && gameDetails.selected_bundle < 0)
                 gameDetails.load_bundle_files(0)
-            if (root.multidiscUiProbe && gameDetails.bundle_count > 0
+            if (root.downloadPlanUiProbe && gameDetails.bundle_count > 0
                     && gameDetails.selected_bundle < 0) {
-                root.multidiscProbeBundleIndex = 0
+                root.downloadPlanProbeBundleIndex = 0
                 gameDetails.load_bundle_files(0)
             }
         }
         function onFile_countChanged() {
             if (root.releaseCandidateUiProbe && gameDetails.file_count > 0)
                 detailsProbeScrollTimer.restart()
-            if (root.multidiscUiProbe && gameDetails.file_count > 0) {
+            if (root.downloadPlanUiProbe && gameDetails.file_count > 0) {
                 for (let i = 0; i < gameDetails.file_count; ++i) {
                     if (gameDetails.file_has_download_plan(i)) {
                         root.pendingDownloadPlanIndex = i
@@ -457,9 +459,9 @@ ApplicationWindow {
                         return
                     }
                 }
-                if (root.multidiscProbeBundleIndex + 1 < gameDetails.bundle_count) {
-                    ++root.multidiscProbeBundleIndex
-                    gameDetails.load_bundle_files(root.multidiscProbeBundleIndex)
+                if (root.downloadPlanProbeBundleIndex + 1 < gameDetails.bundle_count) {
+                    ++root.downloadPlanProbeBundleIndex
+                    gameDetails.load_bundle_files(root.downloadPlanProbeBundleIndex)
                 }
             }
         }
@@ -526,6 +528,9 @@ ApplicationWindow {
             else if (root.multidiscUiProbe)
                 root.openGame("6119074e-d813-446d-a7ff-556f75e52320", 525,
                               "Final Fantasy VII", "Sony Playstation", false, true)
+            else if (root.exoArchiveUiProbe)
+                root.openGame("0faf424e-bb45-4d5f-b88d-771936a35f8a", 14329,
+                              "Prince of Persia", "MS-DOS", false, true)
         }
     }
 
@@ -2383,7 +2388,9 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 3
                 Text {
-                    text: "REVIEW MULTI-DISC DOWNLOAD"
+                    text: root.pendingDownloadPlanIndex >= 0
+                          && gameDetails.file_plan_kind_at(root.pendingDownloadPlanIndex) === "optical_multidisc"
+                          ? "REVIEW MULTI-DISC DOWNLOAD" : "REVIEW RELATED DOWNLOAD"
                     color: root.ink
                     font.pixelSize: 17
                     font.weight: Font.Bold
@@ -2403,7 +2410,10 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: appSettings.download_entire_torrent
                       ? "Whole-torrent mode is enabled. Lunchbox will download the complete source bundle; switch it off in Settings to select only the required set below."
-                      : "Lunchbox will select every required disc and companion file as one queue item, preserve their relative layout, and publish the M3U playlist only after the complete set is safely imported."
+                      : root.pendingDownloadPlanIndex >= 0
+                        && gameDetails.file_plan_kind_at(root.pendingDownloadPlanIndex) === "optical_multidisc"
+                        ? "Lunchbox will select every required disc and companion file as one queue item, preserve their relative layout, and publish the M3U playlist only after the complete set is safely imported."
+                        : "Lunchbox will select the exact eXo game, metadata, game-data, and utility archives available for this title as one queue item. Shared dependencies are retained in a per-source cache for later prepared installation."
                 color: appSettings.download_entire_torrent ? root.accent : root.muted
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap

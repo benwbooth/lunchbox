@@ -9,7 +9,9 @@ use lava_torrent::torrent::v1::Torrent;
 use rusqlite::OptionalExtension;
 
 use crate::catalog;
-use crate::download_plan::{DownloadPlan, TorrentPlanFile, build_optical_plan};
+use crate::download_plan::{
+    DownloadPlan, TorrentPlanFile, build_exo_plan, build_optical_plan, exo_primary_priority,
+};
 
 const MAX_TORRENT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILE_CANDIDATES: usize = 100;
@@ -454,15 +456,22 @@ fn rank_file_candidates(
             .match_score
             .total_cmp(&left.match_score)
             .then_with(|| release_preference_order(left, right, preferences))
+            .then_with(|| {
+                exo_primary_priority(&left.filename)
+                    .unwrap_or(u8::MAX)
+                    .cmp(&exo_primary_priority(&right.filename).unwrap_or(u8::MAX))
+            })
             .then_with(|| left.byte_size.cmp(&right.byte_size))
             .then_with(|| left.filename.cmp(&right.filename))
     });
     let mut seen_plans = HashSet::new();
     candidates.retain_mut(|candidate| {
-        let Some(plan) = build_optical_plan(&plan_files, candidate.index) else {
+        let Some(plan) = build_optical_plan(&plan_files, candidate.index)
+            .or_else(|| build_exo_plan(&plan_files, candidate.index))
+        else {
             return true;
         };
-        let plan_key = plan.display_name.to_ascii_lowercase();
+        let plan_key = format!("{}:{}", plan.kind, plan.display_name.to_ascii_lowercase());
         if !seen_plans.insert(plan_key) {
             return false;
         }
@@ -880,6 +889,34 @@ mod tests {
     }
 
     #[test]
+    fn exo_candidates_collapse_dependencies_into_one_reviewable_plan() {
+        let mut files = vec![
+            candidate(0, "Content/GameData/eXoDOS/Prince of Persia (1990).zip"),
+            candidate(1, "Content/!DOSmetadata.zip"),
+            candidate(2, "eXo/eXoDOS/Prince of Persia (1990).zip"),
+            candidate(3, "eXo/util/util.zip"),
+            candidate(
+                4,
+                "Spanish Language Pack/eXo/eXoDOS/!spanish/Prince of Persia (1990).zip",
+            ),
+        ];
+        files[0].byte_size = 10;
+        files[1].byte_size = 20;
+        files[2].byte_size = 30;
+        files[3].byte_size = 40;
+        files[4].byte_size = 1;
+
+        let ranked =
+            rank_file_candidates(files, "Prince of Persia", &preferences("USA", "latest")).unwrap();
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].index, 2);
+        assert_eq!(ranked[0].byte_size, 100);
+        let plan = ranked[0].download_plan.as_ref().expect("eXo plan");
+        assert!(plan.is_exo_archive_set());
+        assert_eq!(plan.members.len(), 4);
+    }
+
+    #[test]
     fn release_labels_do_not_mistake_language_lists_for_regions() {
         assert_eq!(
             release_labels("Game (USA, Europe) (En,Fr,De) (v1.2).zip"),
@@ -1084,5 +1121,36 @@ mod tests {
         assert_eq!(plan.disc_count(), 3);
         assert_eq!(plan.members.len(), 3);
         assert_eq!(plan.playlist_filename, "Final Fantasy VII (USA).m3u");
+    }
+
+    #[test]
+    #[ignore = "requires local discovery/Minerva databases and network access"]
+    fn live_minerva_metadata_builds_prince_of_persia_exodos_plan() {
+        let details = load(
+            "0faf424e-bb45-4d5f-b88d-771936a35f8a",
+            "Prince of Persia",
+            "MS-DOS",
+            false,
+            true,
+        )
+        .unwrap();
+        let plan = details
+            .bundles
+            .iter()
+            .filter(|bundle| bundle.collection.eq_ignore_ascii_case("eXo"))
+            .filter_map(|bundle| {
+                load_torrent_files(bundle, &details.title, &preferences("USA", "latest")).ok()
+            })
+            .flat_map(|files| files.into_iter())
+            .find_map(|file| file.download_plan)
+            .expect("live Prince of Persia eXoDOS plan");
+        assert!(plan.is_exo_archive_set());
+        let primary_path = &plan.representative_member().unwrap().torrent_path;
+        assert!(primary_path.contains("eXo/eXoDOS/Prince of Persia (1990).zip"));
+        assert!(!primary_path.to_ascii_lowercase().contains("/!english/"));
+        assert!(!primary_path.to_ascii_lowercase().contains("/!german/"));
+        assert!(!primary_path.to_ascii_lowercase().contains("/!polish/"));
+        assert!(!primary_path.to_ascii_lowercase().contains("/!spanish/"));
+        assert!(plan.members.iter().any(|member| member.role == "metadata"));
     }
 }

@@ -72,6 +72,9 @@ pub mod qobject {
         fn file_plan_summary_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn file_plan_kind_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn file_plan_members_at(self: &GameDetailsModel, index: i32) -> QString;
     }
 
@@ -399,12 +402,19 @@ impl qobject::GameDetailsModel {
         let title = self.as_ref().title().to_string();
         let platform = self.as_ref().platform().to_string();
         self.as_mut().set_download_busy(true);
-        self.as_mut()
-            .set_message(qstring(if file.download_plan.is_some() {
+        self.as_mut().set_message(qstring(
+            if file
+                .download_plan
+                .as_ref()
+                .is_some_and(|plan| plan.is_optical_multidisc())
+            {
                 "Adding the reviewed multi-disc set to qBittorrent…"
+            } else if file.download_plan.is_some() {
+                "Adding the reviewed eXo archive set to qBittorrent…"
             } else {
                 "Adding the reviewed file to qBittorrent…"
-            }));
+            },
+        ));
 
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
@@ -478,11 +488,15 @@ impl qobject::GameDetailsModel {
         self.file(index)
             .map(|file| {
                 if let Some(plan) = &file.download_plan {
-                    qstring(format!(
-                        "{} — {}-disc set",
-                        plan.display_name,
-                        plan.disc_count()
-                    ))
+                    if plan.is_optical_multidisc() {
+                        qstring(format!(
+                            "{} — {}-disc set",
+                            plan.display_name,
+                            plan.disc_count()
+                        ))
+                    } else {
+                        qstring(format!("{} — eXo archive set", plan.display_name))
+                    }
                 } else {
                     qstring(&file.filename)
                 }
@@ -498,7 +512,11 @@ impl qobject::GameDetailsModel {
                     details.push("BEST MATCH".to_owned());
                 }
                 if let Some(plan) = &file.download_plan {
-                    details.push("MULTI-DISC".to_owned());
+                    details.push(if plan.is_optical_multidisc() {
+                        "MULTI-DISC".to_owned()
+                    } else {
+                        "EXO ARCHIVE SET".to_owned()
+                    });
                     details.push(format!("{} required files", plan.members.len()));
                 }
                 if !file.region.is_empty() {
@@ -524,16 +542,31 @@ impl qobject::GameDetailsModel {
         self.file(index)
             .and_then(|file| file.download_plan.as_ref())
             .map(|plan| {
-                let companion_count = plan.members.len().saturating_sub(plan.disc_count());
-                qstring(format!(
-                    "{} discs · {} companion file{} · {} total · creates {}",
-                    plan.disc_count(),
-                    companion_count,
-                    if companion_count == 1 { "" } else { "s" },
-                    game_details::format_bytes(plan.total_bytes()),
-                    plan.playlist_filename
-                ))
+                if plan.is_optical_multidisc() {
+                    let companion_count = plan.members.len().saturating_sub(plan.disc_count());
+                    qstring(format!(
+                        "{} discs · {} companion file{} · {} total · creates {}",
+                        plan.disc_count(),
+                        companion_count,
+                        if companion_count == 1 { "" } else { "s" },
+                        game_details::format_bytes(plan.total_bytes()),
+                        plan.playlist_filename
+                    ))
+                } else {
+                    qstring(format!(
+                        "{} exact archives · {} total · shared dependencies retained for installation",
+                        plan.members.len(),
+                        game_details::format_bytes(plan.total_bytes())
+                    ))
+                }
             })
+            .unwrap_or_default()
+    }
+
+    pub fn file_plan_kind_at(&self, index: i32) -> QString {
+        self.file(index)
+            .and_then(|file| file.download_plan.as_ref())
+            .map(|plan| qstring(&plan.kind))
             .unwrap_or_default()
     }
 
@@ -545,7 +578,15 @@ impl qobject::GameDetailsModel {
                     plan.members
                         .iter()
                         .map(|member| {
-                            let role = if member.playlist_entry {
+                            let role = if plan.is_exo_archive_set() {
+                                match member.role.as_str() {
+                                    "primary" => "Game archive".to_owned(),
+                                    "game-data" => "Game data".to_owned(),
+                                    "metadata" => "Launch metadata".to_owned(),
+                                    "utilities" => "Shared utilities".to_owned(),
+                                    _ => "Required archive".to_owned(),
+                                }
+                            } else if member.playlist_entry {
                                 format!("Disc {}", member.disc_index.unwrap_or_default())
                             } else {
                                 format!("Disc {} companion", member.disc_index.unwrap_or_default())

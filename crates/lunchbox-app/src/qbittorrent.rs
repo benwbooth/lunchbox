@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -519,18 +520,13 @@ pub fn enqueue(
     let file_name = reviewed_relative_file
         .file_name()
         .context("selected torrent file has no filename")?;
-    let local_target_path = if let Some(plan) = &download_plan {
-        settings
-            .rom_directory
-            .join(safe_path_component(&request.platform))
-            .join(safe_path_component(&plan.display_name))
-            .join(&plan.playlist_filename)
-    } else {
-        settings
-            .rom_directory
-            .join(safe_path_component(&request.platform))
-            .join(file_name)
-    };
+    let local_target_path = planned_local_target_path(
+        &settings.rom_directory,
+        &request.platform,
+        &info_hash,
+        file_name,
+        download_plan.as_ref(),
+    )?;
 
     let client = QbittorrentClient::authenticated(settings, password)?;
     let actual_files = client.add(
@@ -580,6 +576,37 @@ pub fn enqueue(
         local_target_path,
         download_plan: serialized_plan,
     }))
+}
+
+fn planned_local_target_path(
+    rom_directory: &Path,
+    platform: &str,
+    info_hash: &str,
+    reviewed_file_name: &OsStr,
+    download_plan: Option<&DownloadPlan>,
+) -> Result<PathBuf> {
+    if let Some(plan) = download_plan
+        && plan.is_optical_multidisc()
+    {
+        return Ok(rom_directory
+            .join(safe_path_component(platform))
+            .join(safe_path_component(&plan.display_name))
+            .join(&plan.playlist_filename));
+    }
+    if let Some(plan) = download_plan {
+        let representative = plan
+            .representative_member()
+            .context("download plan representative is missing")?;
+        return Ok(rom_directory
+            .join(".lunchbox-pc-archives")
+            .join(info_hash)
+            .join(safe_torrent_relative_path(
+                &representative.target_relative_path,
+            )?));
+    }
+    Ok(rom_directory
+        .join(safe_path_component(platform))
+        .join(reviewed_file_name))
 }
 
 pub fn active_selection(
@@ -1159,6 +1186,52 @@ mod tests {
     }
 
     #[test]
+    fn exo_plan_targets_a_per_torrent_shared_archive_cache() {
+        let plan = DownloadPlan {
+            version: 1,
+            kind: "exo_archive_set".into(),
+            display_name: "Prince of Persia (1990)".into(),
+            playlist_filename: String::new(),
+            representative_index: 3,
+            members: vec![
+                DownloadPlanMember {
+                    index: 3,
+                    torrent_path: "eXo/eXoDOS/Prince of Persia (1990).zip".into(),
+                    target_relative_path: "eXo/eXoDOS/Prince of Persia (1990).zip".into(),
+                    byte_size: 30,
+                    disc_index: None,
+                    playlist_entry: false,
+                    role: "primary".into(),
+                },
+                DownloadPlanMember {
+                    index: 4,
+                    torrent_path: "Content/!DOSmetadata.zip".into(),
+                    target_relative_path: "Content/!DOSmetadata.zip".into(),
+                    byte_size: 40,
+                    disc_index: None,
+                    playlist_entry: false,
+                    role: "metadata".into(),
+                },
+            ],
+        };
+        plan.validate().unwrap();
+
+        assert_eq!(
+            planned_local_target_path(
+                Path::new("/roms"),
+                "MS-DOS",
+                "abc123",
+                OsStr::new("Prince of Persia (1990).zip"),
+                Some(&plan),
+            )
+            .unwrap(),
+            PathBuf::from(
+                "/roms/.lunchbox-pc-archives/abc123/eXo/eXoDOS/Prince of Persia (1990).zip"
+            )
+        );
+    }
+
+    #[test]
     fn active_selection_unions_files_from_a_shared_bundle() {
         let mut first = DownloadJob::queued(NewDownloadJob {
             game_id: "game-1".into(),
@@ -1202,6 +1275,7 @@ mod tests {
                     byte_size: 30,
                     disc_index: Some(1),
                     playlist_entry: true,
+                    role: "disc".into(),
                 },
                 DownloadPlanMember {
                     index: 4,
@@ -1210,6 +1284,7 @@ mod tests {
                     byte_size: 40,
                     disc_index: Some(2),
                     playlist_entry: true,
+                    role: "disc".into(),
                 },
             ],
         };

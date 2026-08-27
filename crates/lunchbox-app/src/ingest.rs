@@ -62,10 +62,14 @@ fn ingest_download_plan(
 ) -> Result<PathBuf> {
     plan.validate()?;
     let source_root = plan_source_root(job, plan)?;
-    let target_root = job
-        .local_target_path
-        .parent()
-        .context("download-plan playlist target has no parent directory")?;
+    let target_root = if plan.is_optical_multidisc() {
+        job.local_target_path
+            .parent()
+            .context("download-plan playlist target has no parent directory")?
+            .to_path_buf()
+    } else {
+        plan_target_root(job, plan)?
+    };
 
     let planned_files = plan
         .members
@@ -111,6 +115,15 @@ fn ingest_download_plan(
         }
     }
 
+    if !plan.is_optical_multidisc() {
+        let installed_path = planned_files
+            .iter()
+            .find(|(member, _, _)| member.index == plan.representative_index)
+            .map(|(_, _, installed)| installed.clone())
+            .context("download plan representative was not staged")?;
+        store.record_installed(job, &installed_path)?;
+        return Ok(installed_path);
+    }
     let playlist_parent = if settings.file_link_mode == "leave_in_place" {
         common_parent(
             &planned_files
@@ -120,7 +133,7 @@ fn ingest_download_plan(
         )
         .context("planned downloads do not have a common playlist directory")?
     } else {
-        target_root.to_path_buf()
+        target_root.clone()
     };
     fs::create_dir_all(&playlist_parent)
         .with_context(|| format!("creating playlist directory {}", playlist_parent.display()))?;
@@ -146,6 +159,23 @@ fn plan_source_root(job: &DownloadJob, plan: &DownloadPlan) -> Result<PathBuf> {
     }
     if root.join(&relative) != job.local_download_path {
         bail!("download plan source root does not match the representative file");
+    }
+    Ok(root)
+}
+
+fn plan_target_root(job: &DownloadJob, plan: &DownloadPlan) -> Result<PathBuf> {
+    let representative = plan
+        .representative_member()
+        .context("download plan has no representative member")?;
+    let relative = relative_path(&representative.target_relative_path);
+    let mut root = job.local_target_path.clone();
+    for _ in relative.components() {
+        if !root.pop() {
+            bail!("download plan target path is outside the configured archive cache");
+        }
+    }
+    if root.join(&relative) != job.local_target_path {
+        bail!("download plan target root does not match the representative file");
     }
     Ok(root)
 }
@@ -288,7 +318,7 @@ fn file_sha1(path: &Path) -> Result<[u8; 20]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::download_plan::{TorrentPlanFile, build_optical_plan};
+    use crate::download_plan::{TorrentPlanFile, build_exo_plan, build_optical_plan};
     use crate::settings::NewDownloadJob;
 
     fn job(root: &Path) -> DownloadJob {
@@ -436,5 +466,78 @@ mod tests {
         assert!(ingest_completed(&settings, &store, &job).is_err());
         assert!(!job.local_target_path.exists());
         assert!(!job.local_target_path.parent().unwrap().exists());
+    }
+
+    fn exo_job(root: &Path) -> (DownloadJob, DownloadPlan) {
+        let files = vec![
+            TorrentPlanFile {
+                index: 0,
+                filename: "Bundle/Content/GameData/eXoDOS/Prince of Persia (1990).zip".into(),
+                byte_size: 3,
+            },
+            TorrentPlanFile {
+                index: 1,
+                filename: "Bundle/Content/!DOSmetadata.zip".into(),
+                byte_size: 3,
+            },
+            TorrentPlanFile {
+                index: 2,
+                filename: "Bundle/eXo/eXoDOS/Prince of Persia (1990).zip".into(),
+                byte_size: 3,
+            },
+            TorrentPlanFile {
+                index: 3,
+                filename: "Bundle/eXo/util/util.zip".into(),
+                byte_size: 3,
+            },
+        ];
+        let plan = build_exo_plan(&files, 2).unwrap();
+        let representative = plan.representative_member().unwrap();
+        let mut job = job(root);
+        job.torrent_file_index = Some(2);
+        job.torrent_file_path = representative.torrent_path.clone();
+        job.local_download_path = root
+            .join("downloads")
+            .join(relative_path(&representative.torrent_path));
+        job.local_target_path = root
+            .join("roms/.lunchbox-pc-archives/test-hash")
+            .join(relative_path(&representative.target_relative_path));
+        job.download_plan = serde_json::to_string(&plan).unwrap();
+        (job, plan)
+    }
+
+    #[test]
+    fn exo_ingestion_stages_one_shared_layout_and_records_the_primary() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let (job, plan) = exo_job(directory.path());
+        for member in &plan.members {
+            let path = directory
+                .path()
+                .join("downloads")
+                .join(relative_path(&member.torrent_path));
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, format!("{:03}", member.index)).unwrap();
+        }
+        let settings = AppSettings {
+            file_link_mode: "copy".into(),
+            ..AppSettings::default()
+        };
+
+        let installed = ingest_completed(&settings, &store, &job).unwrap();
+        assert_eq!(installed, job.local_target_path);
+        let target_root = plan_target_root(&job, &plan).unwrap();
+        for member in &plan.members {
+            assert!(
+                target_root
+                    .join(relative_path(&member.target_relative_path))
+                    .is_file()
+            );
+        }
+        assert_eq!(
+            ingest_completed(&settings, &store, &job).unwrap(),
+            installed
+        );
+        assert!(!target_root.join("Prince of Persia (1990).m3u").exists());
     }
 }

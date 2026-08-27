@@ -82,6 +82,16 @@ The initial implementation enforces this shape:
   size-weighted progress. Import preflights every source and conflicting target,
   preserves the common relative layout, and publishes the M3U and installed-game
   record last. Retries are idempotent and never overwrite different content.
+- eXoDOS, eXoWin3x, and year-bucketed eXoWin9x matches become versioned related-
+  archive plans. The planner reproduces the legacy exact layouts for the primary
+  game, DOS `Content/GameData`, collection metadata, and shared DOS/Win9x
+  utilities; unrelated language and extras directories are never accepted as
+  dependencies. DOS primaries retain the legacy default, English, German,
+  Polish, then Spanish priority. One confirmation dialog and durable queue row
+  expose the exact roles and aggregate size. The completed layout is staged
+  idempotently below `ROM/.lunchbox-pc-archives/INFO_HASH`, so shared dependencies
+  can be reused by the later prepared-install pipeline without appearing as
+  separate installed games; only the exact primary archive is recorded.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -163,6 +173,10 @@ cards for deterministic visual review against the preserved discovery catalog.
 record, inspects its live Minerva sources, and opens the exact multi-disc review
 dialog when a plan is found. This route verifies real provider filenames,
 aggregate size, playlist naming and dialog layout without starting a download.
+`--exo-archive-ui-probe` opens the preserved MS-DOS Prince of Persia record and
+the live eXo related-archive review dialog. It verifies the canonical default
+game archive, same-name game data, Linux metadata, shared utilities, aggregate
+size, role labels, and layout without starting a download.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to
@@ -191,7 +205,8 @@ for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, completed-file
-ingestion, durable safe seeding policy, local-folder scan/review/import, legacy
+ingestion, optical and eXo related-file plans, durable safe seeding policy,
+local-folder scan/review/import, legacy
 content filters, and durable favorites are now native. Existing game media is
 now indexed and rendered natively. On-demand LibRetro retrieval and durable
 negative caching are native.

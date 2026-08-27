@@ -364,7 +364,13 @@ impl qobject::DownloadQueueModel {
                     .parsed_download_plan()
                     .ok()
                     .flatten()
-                    .map(|plan| format!("{}-disc set · ", plan.disc_count()))
+                    .map(|plan| {
+                        if plan.is_optical_multidisc() {
+                            format!("{}-disc set · ", plan.disc_count())
+                        } else {
+                            format!("{}-archive eXo set · ", plan.members.len())
+                        }
+                    })
                     .unwrap_or_default();
                 qstring(format!(
                     "{plan}{progress:.0}% · {bytes}{rate} · {}",

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 const PLAN_VERSION: u32 = 1;
 const OPTICAL_PLAN_KIND: &str = "optical_multidisc";
+const EXO_PLAN_KIND: &str = "exo_archive_set";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TorrentPlanFile {
@@ -22,6 +23,8 @@ pub struct DownloadPlanMember {
     pub byte_size: u64,
     pub disc_index: Option<u32>,
     pub playlist_entry: bool,
+    #[serde(default)]
+    pub role: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -39,19 +42,23 @@ impl DownloadPlan {
         if self.version != PLAN_VERSION {
             bail!("unsupported download plan version {}", self.version);
         }
-        if self.kind != OPTICAL_PLAN_KIND {
+        if !matches!(self.kind.as_str(), OPTICAL_PLAN_KIND | EXO_PLAN_KIND) {
             bail!("unsupported download plan kind {}", self.kind);
         }
         if self.display_name.trim().is_empty() {
             bail!("download plan display name is empty");
         }
-        if !safe_relative_path(&self.playlist_filename)
-            || Path::new(&self.playlist_filename)
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_none_or(|extension| !extension.eq_ignore_ascii_case("m3u"))
+        if self.kind == OPTICAL_PLAN_KIND
+            && (!safe_relative_path(&self.playlist_filename)
+                || Path::new(&self.playlist_filename)
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_none_or(|extension| !extension.eq_ignore_ascii_case("m3u")))
         {
             bail!("download plan playlist path is not a safe .m3u filename");
+        }
+        if self.kind == EXO_PLAN_KIND && !self.playlist_filename.is_empty() {
+            bail!("eXo archive plan must not contain a playlist filename");
         }
         if self.members.is_empty() {
             bail!("download plan has no members");
@@ -82,13 +89,69 @@ impl DownloadPlan {
                 representative_is_disc |= member.index == self.representative_index;
             }
         }
-        if disc_indices.len() < 2 {
-            bail!("optical download plan must contain at least two discs");
-        }
-        if !representative_is_disc {
-            bail!("download plan representative is not a playlist entry");
+        if self.kind == OPTICAL_PLAN_KIND {
+            if disc_indices.len() < 2 {
+                bail!("optical download plan must contain at least two discs");
+            }
+            if !representative_is_disc {
+                bail!("download plan representative is not a playlist entry");
+            }
+        } else {
+            if self.members.len() < 2 {
+                bail!("eXo archive plan must contain a primary and metadata archive");
+            }
+            let mut role_counts = BTreeMap::new();
+            for member in &self.members {
+                if !matches!(
+                    member.role.as_str(),
+                    "primary" | "game-data" | "metadata" | "utilities"
+                ) {
+                    bail!("eXo archive plan contains an unsupported member role");
+                }
+                *role_counts.entry(member.role.as_str()).or_insert(0_usize) += 1;
+            }
+            if role_counts.get("primary") != Some(&1) {
+                bail!("eXo archive plan must contain exactly one primary archive");
+            }
+            if role_counts.get("metadata") != Some(&1) {
+                bail!("eXo archive plan must contain exactly one metadata archive");
+            }
+            if role_counts.get("game-data").is_some_and(|count| *count > 1)
+                || role_counts.get("utilities").is_some_and(|count| *count > 1)
+            {
+                bail!("eXo archive plan repeats a dependency role");
+            }
+            let representative = self
+                .members
+                .iter()
+                .find(|member| member.index == self.representative_index)
+                .ok_or_else(|| anyhow::anyhow!("download plan representative is missing"))?;
+            if representative.role != "primary" {
+                bail!("eXo archive plan representative is not the primary archive");
+            }
+            if self
+                .members
+                .iter()
+                .any(|member| member.playlist_entry || member.disc_index.is_some())
+            {
+                bail!("eXo archive plan contains optical-disc metadata");
+            }
         }
         Ok(())
+    }
+
+    pub fn is_optical_multidisc(&self) -> bool {
+        self.kind == OPTICAL_PLAN_KIND
+    }
+
+    pub fn is_exo_archive_set(&self) -> bool {
+        self.kind == EXO_PLAN_KIND
+    }
+
+    pub fn representative_member(&self) -> Option<&DownloadPlanMember> {
+        self.members
+            .iter()
+            .find(|member| member.index == self.representative_index)
     }
 
     pub fn disc_count(&self) -> usize {
@@ -239,6 +302,11 @@ pub fn build_optical_plan(
                 disc_info_from_torrent_path(&file.filename).map(|info| info.disc_index)
             }),
             playlist_entry: disc_indices.contains_key(&file.index),
+            role: if disc_indices.contains_key(&file.index) {
+                "disc".to_owned()
+            } else {
+                "companion".to_owned()
+            },
         })
         .collect::<Vec<_>>();
     members.sort_by(|left, right| {
@@ -258,6 +326,229 @@ pub fn build_optical_plan(
     };
     plan.validate().ok()?;
     Some(plan)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExoCollection {
+    Dos,
+    Win3x,
+    Win9x,
+}
+
+impl ExoCollection {
+    fn primary_directory(self) -> &'static str {
+        match self {
+            Self::Dos => "eXo/eXoDOS",
+            Self::Win3x => "eXo/eXoWin3x",
+            Self::Win9x => "eXo/eXoWin9x",
+        }
+    }
+
+    fn metadata_candidates(self) -> &'static [&'static str] {
+        match self {
+            Self::Dos => &[
+                "Content/!DOS_linux_metadata.zip",
+                "Full Release/Content/!DOS_linux_metadata.zip",
+                "Linux Patches/eXoDOS/Content/!DOS_linux_metadata.zip",
+                "eXo/Linux Patches/eXoDOS/Content/!DOS_linux_metadata.zip",
+                "Content/!DOSmetadata.zip",
+                "Full Release/Content/!DOSmetadata.zip",
+            ],
+            Self::Win3x => &["Content/!Win3Xmetadata.zip"],
+            Self::Win9x => &["Content/!Win9Xmetadata.zip"],
+        }
+    }
+
+    fn utility_candidates(self) -> &'static [&'static str] {
+        match self {
+            Self::Dos => &[
+                "eXo/util/utilDOS_linux.zip",
+                "Full Release/eXo/util/utilDOS_linux.zip",
+                "eXo/util/util.zip",
+                "Full Release/eXo/util/util.zip",
+                "Linux Patches/eXoDOS/eXo/util/utilDOS_linux.zip",
+                "eXo/Linux Patches/eXoDOS/eXo/util/utilDOS_linux.zip",
+            ],
+            Self::Win3x => &[],
+            Self::Win9x => &[
+                "eXo/util/utilWin9x.zip",
+                "Full Release/eXo/util/utilWin9x.zip",
+            ],
+        }
+    }
+}
+
+pub fn build_exo_plan(files: &[TorrentPlanFile], selected_index: usize) -> Option<DownloadPlan> {
+    let selected = files.iter().find(|file| file.index == selected_index)?;
+    let selected_path = normalized_listing_path(&selected.filename);
+    let collection = exo_collection_from_path(&selected_path)?;
+    let archive_name = Path::new(&selected_path).file_name()?.to_str()?;
+    if !archive_name.to_ascii_lowercase().ends_with(".zip") {
+        return None;
+    }
+
+    let primary = if is_exo_primary(collection, &selected_path) {
+        selected
+    } else if collection != ExoCollection::Win9x {
+        files.iter().find(|file| {
+            is_exo_primary(collection, &file.filename)
+                && file_name(&file.filename)
+                    .is_some_and(|name| name.eq_ignore_ascii_case(archive_name))
+        })?
+    } else {
+        return None;
+    };
+
+    let mut roles = BTreeMap::from([(primary.index, "primary")]);
+    if collection == ExoCollection::Dos {
+        let companion_suffixes = [
+            format!("Content/GameData/eXoDOS/{archive_name}"),
+            format!("Full Release/Content/GameData/eXoDOS/{archive_name}"),
+        ];
+        if let Some(companion) = files.iter().find(|file| {
+            companion_suffixes
+                .iter()
+                .any(|suffix| path_ends_with(&file.filename, suffix))
+        }) {
+            roles.insert(companion.index, "game-data");
+        }
+    }
+    let metadata = files.iter().find(|file| {
+        collection
+            .metadata_candidates()
+            .iter()
+            .any(|suffix| path_ends_with(&file.filename, suffix))
+    })?;
+    roles.insert(metadata.index, "metadata");
+    if matches!(collection, ExoCollection::Dos | ExoCollection::Win9x)
+        && let Some(utilities) = files.iter().find(|file| {
+            collection
+                .utility_candidates()
+                .iter()
+                .any(|suffix| path_ends_with(&file.filename, suffix))
+        })
+    {
+        roles.insert(utilities.index, "utilities");
+    }
+
+    let requested_files = roles
+        .keys()
+        .filter_map(|index| files.iter().find(|file| file.index == *index))
+        .collect::<Vec<_>>();
+    let relative_targets = relative_targets(&requested_files)?;
+    let mut members = requested_files
+        .into_iter()
+        .map(|file| {
+            Some(DownloadPlanMember {
+                index: file.index,
+                torrent_path: normalized_listing_path(&file.filename),
+                target_relative_path: relative_targets.get(&file.index)?.clone(),
+                byte_size: file.byte_size,
+                disc_index: None,
+                playlist_entry: false,
+                role: roles.get(&file.index)?.to_string(),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    members.sort_by_key(|member| exo_role_priority(&member.role));
+    let display_name = path_stem(&primary.filename)?;
+    let plan = DownloadPlan {
+        version: PLAN_VERSION,
+        kind: EXO_PLAN_KIND.to_owned(),
+        display_name,
+        playlist_filename: String::new(),
+        representative_index: primary.index,
+        members,
+    };
+    plan.validate().ok()?;
+    Some(plan)
+}
+
+pub fn exo_primary_priority(path: &str) -> Option<u8> {
+    let collection = exo_collection_from_path(path)?;
+    if !is_exo_primary(collection, path) {
+        return None;
+    }
+    if collection != ExoCollection::Dos {
+        return Some(0);
+    }
+    let normalized =
+        format!("/{}", normalized_listing_path(path).trim_matches('/')).to_ascii_lowercase();
+    let prefix = format!("/{}/", collection.primary_directory().to_ascii_lowercase());
+    let (_, tail) = normalized.rsplit_once(&prefix)?;
+    let parts = tail
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    match parts.as_slice() {
+        [_archive] => Some(0),
+        ["!english", _archive] => Some(1),
+        ["!german", _archive] => Some(2),
+        ["!polish", _archive] => Some(3),
+        ["!spanish", _archive] => Some(4),
+        _ => None,
+    }
+}
+
+fn exo_collection_from_path(path: &str) -> Option<ExoCollection> {
+    let normalized =
+        format!("/{}/", normalized_listing_path(path).trim_matches('/')).to_ascii_lowercase();
+    if normalized.contains("/exo/exodos/") || normalized.contains("/content/gamedata/exodos/") {
+        Some(ExoCollection::Dos)
+    } else if normalized.contains("/exo/exowin3x/") {
+        Some(ExoCollection::Win3x)
+    } else if normalized.contains("/exo/exowin9x/") {
+        Some(ExoCollection::Win9x)
+    } else {
+        None
+    }
+}
+
+fn is_exo_primary(collection: ExoCollection, path: &str) -> bool {
+    let normalized = normalized_listing_path(path);
+    let normalized_lower = format!("/{}", normalized.trim_matches('/')).to_ascii_lowercase();
+    let primary_prefix = format!("/{}/", collection.primary_directory().to_ascii_lowercase());
+    let Some((_, tail)) = normalized_lower.rsplit_once(&primary_prefix) else {
+        return false;
+    };
+    let parts = tail
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    match collection {
+        ExoCollection::Dos => match parts.as_slice() {
+            [archive] => archive.ends_with(".zip"),
+            [language, archive] => {
+                matches!(*language, "!english" | "!german" | "!polish" | "!spanish")
+                    && archive.ends_with(".zip")
+            }
+            _ => false,
+        },
+        ExoCollection::Win3x => matches!(parts.as_slice(), [archive] if archive.ends_with(".zip")),
+        ExoCollection::Win9x => {
+            matches!(parts.as_slice(), [_year, archive] if archive.ends_with(".zip"))
+        }
+    }
+}
+
+fn path_ends_with(path: &str, suffix: &str) -> bool {
+    let path = normalized_listing_path(path).to_ascii_lowercase();
+    let suffix = suffix.replace('\\', "/").to_ascii_lowercase();
+    path == suffix || path.ends_with(&format!("/{suffix}"))
+}
+
+fn file_name(path: &str) -> Option<&str> {
+    path.rsplit(['/', '\\']).next()
+}
+
+fn exo_role_priority(role: &str) -> u8 {
+    match role {
+        "primary" => 0,
+        "game-data" => 1,
+        "metadata" => 2,
+        "utilities" => 3,
+        _ => 100,
+    }
 }
 
 fn relative_targets(files: &[&TorrentPlanFile]) -> Option<BTreeMap<usize, String>> {
@@ -751,5 +1042,127 @@ mod tests {
             disc_info_from_component("Game [Side B]").map(|info| info.disc_index),
             Some(2)
         );
+    }
+
+    #[test]
+    fn plans_exact_exodos_archives_and_shared_dependencies() {
+        let files = vec![
+            file(1, "Content/GameData/eXoDOS/Prince of Persia (1990).zip", 10),
+            file(2, "Content/!DOSmetadata.zip", 20),
+            file(3, "eXo/eXoDOS/Prince of Persia (1990).zip", 30),
+            file(4, "eXo/util/util.zip", 40),
+        ];
+        let plan = build_exo_plan(&files, 3).expect("eXoDOS plan");
+        assert!(plan.is_exo_archive_set());
+        assert_eq!(plan.representative_index, 3);
+        assert_eq!(plan.display_name, "Prince of Persia (1990)");
+        assert_eq!(plan.total_bytes(), 100);
+        assert_eq!(
+            plan.members
+                .iter()
+                .map(|member| (member.index, member.role.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (3, "primary"),
+                (1, "game-data"),
+                (2, "metadata"),
+                (4, "utilities"),
+            ]
+        );
+        let mut invalid = plan.clone();
+        invalid.members[1].role = "primary".to_owned();
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn plans_exodos_language_archive_with_full_release_dependencies() {
+        let files = vec![
+            file(
+                1,
+                "Full Release/Content/GameData/eXoDOS/11th Hour, The (1995).zip",
+                10,
+            ),
+            file(2, "Full Release/Content/!DOSmetadata.zip", 20),
+            file(4, "Full Release/eXo/util/util.zip", 40),
+            file(
+                5,
+                "German Language Pack/eXo/eXoDOS/!german/11th Hour, The (1995).zip",
+                30,
+            ),
+        ];
+        let plan = build_exo_plan(&files, 5).expect("language plan");
+        assert_eq!(plan.representative_index, 5);
+        assert_eq!(exo_primary_priority(&files[3].filename), Some(2));
+        assert_eq!(
+            plan.members
+                .iter()
+                .map(|member| member.index)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([1, 2, 4, 5])
+        );
+    }
+
+    #[test]
+    fn plans_exowin3x_and_exowin9x_dependencies() {
+        let win3x = vec![
+            file(4, "Content/!Win3Xmetadata.zip", 20),
+            file(
+                7,
+                "eXo/eXoWin3x/3-D Ultra Pinball - Creep Night (1996).zip",
+                30,
+            ),
+        ];
+        let win3x_plan = build_exo_plan(&win3x, 7).expect("Win3x plan");
+        assert_eq!(win3x_plan.selection().len(), 2);
+
+        let win9x = vec![
+            file(10, "Content/!Win9Xmetadata.zip", 20),
+            file(11, "eXo/eXoWin9x/1995/3-D Ultra Pinball (1995).zip", 30),
+            file(12, "eXo/util/utilWin9x.zip", 40),
+        ];
+        let win9x_plan = build_exo_plan(&win9x, 11).expect("Win9x plan");
+        assert_eq!(exo_primary_priority(&win9x[1].filename), Some(0));
+        assert_eq!(
+            win9x_plan
+                .members
+                .iter()
+                .map(|member| member.role.as_str())
+                .collect::<Vec<_>>(),
+            vec!["primary", "metadata", "utilities"]
+        );
+    }
+
+    #[test]
+    fn rejects_exo_extras_and_incomplete_archive_sets() {
+        let files = vec![
+            file(
+                1,
+                "eXo/eXoWin9x/1995/Extras/3-D Ultra Pinball (1995).zip",
+                10,
+            ),
+            file(2, "Content/!Win9Xmetadata.zip", 20),
+        ];
+        assert!(build_exo_plan(&files, 1).is_none());
+
+        let missing_metadata = vec![file(3, "eXo/eXoDOS/Prince of Persia (1990).zip", 30)];
+        assert!(build_exo_plan(&missing_metadata, 3).is_none());
+    }
+
+    #[test]
+    fn persisted_optical_version_one_plans_without_roles_remain_valid() {
+        let encoded = r#"{
+            "version":1,
+            "kind":"optical_multidisc",
+            "display_name":"Game",
+            "playlist_filename":"Game.m3u",
+            "representative_index":1,
+            "members":[
+                {"index":1,"torrent_path":"Game (Disc 1).chd","target_relative_path":"Game (Disc 1).chd","byte_size":10,"disc_index":1,"playlist_entry":true},
+                {"index":2,"torrent_path":"Game (Disc 2).chd","target_relative_path":"Game (Disc 2).chd","byte_size":20,"disc_index":2,"playlist_entry":true}
+            ]
+        }"#;
+        let plan: DownloadPlan = serde_json::from_str(encoded).unwrap();
+        assert!(plan.members.iter().all(|member| member.role.is_empty()));
+        plan.validate().unwrap();
     }
 }

@@ -36,6 +36,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   CCD, MDS and GDI sidecars, exact-member confirmation, aggregate progress,
   preserved relative layout, safe retry, and last-step M3U publication are
   native.
+- eXoDOS, eXoWin3x, and eXoWin9x related archives are represented as one
+  durable acquisition plan with exact game-data/metadata/utility dependencies,
+  legacy DOS language priority, role-aware confirmation, aggregate progress,
+  a shared per-torrent archive cache, idempotent staging, and exact-primary-only
+  collection identity. Prepared extraction and emulator launch remain separate
+  emulator-management work.
 - Native qBittorrent settings and connection testing, operating-system
   credential storage, exact reviewed-file priority, optional whole-torrent
   mode, a restart-safe queue with pause/resume/cancel, and verified completed
@@ -75,9 +81,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
-- Complete game-level offer selection beyond the implemented exact-file and
-  whole-torrent and generic optical-set paths: free-space enforcement,
-  eXo-specific related archives, arcade laserdisc layouts, and broader duplicate
+- Complete game-level offer selection beyond the implemented exact-file,
+  whole-torrent, generic optical-set, and eXo archive-set paths: free-space
+  enforcement, arcade laserdisc layouts, and broader duplicate
   avoidance. Extend the implemented primary-region choice into the legacy
   arbitrary fallback-order editor when variant-rich catalog browsing lands.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe

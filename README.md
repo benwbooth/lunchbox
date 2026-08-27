@@ -49,7 +49,12 @@ revision, filename, size, and match quality before download. A reviewed file
 can be sent to qBittorrent from that pane. Multi-disc optical matches collapse
 into one reviewable set that lists every required disc and CUE/CCD/MDS/GDI
 companion before download, preserves the source layout, and creates an M3U only
-after the full set imports safely. The native Downloads drawer
+after the full set imports safely. eXoDOS, eXoWin3x, and eXoWin9x matches likewise
+collapse into one reviewed archive set containing the exact game, required
+metadata, same-name game data, and collection utilities. DOS language variants
+follow the legacy default/English/German/Polish/Spanish order. Shared dependencies
+are staged once in a per-torrent hidden ROM cache, while only the exact primary
+game archive becomes the installed collection record. The native Downloads drawer
 persists progress and exposes pause, resume, and non-destructive cancel controls.
 The drawer reports aggregate and per-job transfer rates. Finished records can
 be removed individually or cleared in bulk after confirmation without deleting
