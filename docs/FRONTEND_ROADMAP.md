@@ -31,6 +31,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   sequels, then applies persisted region and latest/original-revision
   preferences only between equally strong title matches. The exact variant is
   always visible before download.
+- Generic multi-disc optical downloads are represented as a single durable plan:
+  numeric/alphabetic/Roman disc markers, primary-image selection, common CUE,
+  CCD, MDS and GDI sidecars, exact-member confirmation, aggregate progress,
+  preserved relative layout, safe retry, and last-step M3U publication are
+  native.
 - Native qBittorrent settings and connection testing, operating-system
   credential storage, exact reviewed-file priority, optional whole-torrent
   mode, a restart-safe queue with pause/resume/cancel, and verified completed
@@ -71,7 +76,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
 - Complete game-level offer selection beyond the implemented exact-file and
-  whole-torrent paths: disk-space previews, related-file plans, and duplicate
+  whole-torrent and generic optical-set paths: free-space enforcement,
+  eXo-specific related archives, arcade laserdisc layouts, and broader duplicate
   avoidance. Extend the implemented primary-region choice into the legacy
   arbitrary fallback-order editor when variant-rich catalog browsing lands.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe

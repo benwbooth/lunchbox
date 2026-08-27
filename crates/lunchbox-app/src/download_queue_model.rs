@@ -360,7 +360,16 @@ impl qobject::DownloadQueueModel {
                 } else {
                     String::new()
                 };
-                qstring(format!("{progress:.0}% · {bytes}{rate} · {}", job.message))
+                let plan = job
+                    .parsed_download_plan()
+                    .ok()
+                    .flatten()
+                    .map(|plan| format!("{}-disc set · ", plan.disc_count()))
+                    .unwrap_or_default();
+                qstring(format!(
+                    "{plan}{progress:.0}% · {bytes}{rate} · {}",
+                    job.message
+                ))
             })
             .unwrap_or_default()
     }
@@ -410,7 +419,9 @@ fn refresh_jobs() -> Result<QueueUpdate> {
     let password = settings::load_password()?.unwrap_or_default();
     let client = QbittorrentClient::authenticated(&settings, &password)?;
     for job in jobs.iter_mut().filter(|job| is_active(&job.state)) {
-        match client.snapshot(&job.info_hash, job.torrent_file_index) {
+        let snapshot = qbittorrent::job_exact_files(job)
+            .and_then(|selection| client.snapshot(&job.info_hash, selection.as_deref()));
+        match snapshot {
             Ok(snapshot) => {
                 job.state = snapshot.state;
                 job.progress = snapshot.progress;
@@ -542,7 +553,7 @@ fn control_job(mut job: DownloadJob, action: QueueAction) -> Result<QueueUpdate>
                 client.cancel(&job.info_hash)?;
                 job.message = "Cancelled; torrent removed and files preserved".to_owned();
             } else {
-                let selection = qbittorrent::active_selection(&remaining, false, None)?;
+                let selection = qbittorrent::active_selection(&remaining, false, &[])?;
                 let start_after = remaining.iter().any(|job| job.state != "paused");
                 client.reconfigure(&job.info_hash, &selection, start_after)?;
                 job.message =
@@ -623,6 +634,7 @@ mod tests {
             client_save_path: "/downloads".into(),
             local_download_path: PathBuf::from(format!("/downloads/{game_id}.zip")),
             local_target_path: PathBuf::from(format!("/roms/{game_id}.zip")),
+            download_plan: String::new(),
         });
         job.state = state.into();
         job.post_import_action = action.into();

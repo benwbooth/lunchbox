@@ -1,4 +1,5 @@
 mod catalog;
+mod download_plan;
 pub mod download_queue_model;
 mod game_details;
 pub mod game_details_model;

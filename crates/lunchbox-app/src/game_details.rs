@@ -9,6 +9,7 @@ use lava_torrent::torrent::v1::Torrent;
 use rusqlite::OptionalExtension;
 
 use crate::catalog;
+use crate::download_plan::{DownloadPlan, TorrentPlanFile, build_optical_plan};
 
 const MAX_TORRENT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILE_CANDIDATES: usize = 100;
@@ -71,6 +72,7 @@ pub struct TorrentFileCandidate {
     pub match_score: f64,
     pub region: String,
     pub version: String,
+    pub download_plan: Option<DownloadPlan>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -329,6 +331,7 @@ pub fn load_torrent_files(
                     match_score: 0.0,
                     region: String::new(),
                     version: String::new(),
+                    download_plan: None,
                 })
             })
             .collect::<Result<Vec<_>>>()?
@@ -341,6 +344,7 @@ pub fn load_torrent_files(
             match_score: 0.0,
             region: String::new(),
             version: String::new(),
+            download_plan: None,
         }]
     };
 
@@ -429,6 +433,14 @@ fn rank_file_candidates(
     }
 
     let query_tokens = significant_tokens(&query);
+    let plan_files = files
+        .iter()
+        .map(|file| TorrentPlanFile {
+            index: file.index,
+            filename: file.filename.clone(),
+            byte_size: file.byte_size,
+        })
+        .collect::<Vec<_>>();
     let mut candidates = files
         .into_iter()
         .filter_map(|mut file| {
@@ -444,6 +456,27 @@ fn rank_file_candidates(
             .then_with(|| release_preference_order(left, right, preferences))
             .then_with(|| left.byte_size.cmp(&right.byte_size))
             .then_with(|| left.filename.cmp(&right.filename))
+    });
+    let mut seen_plans = HashSet::new();
+    candidates.retain_mut(|candidate| {
+        let Some(plan) = build_optical_plan(&plan_files, candidate.index) else {
+            return true;
+        };
+        let plan_key = plan.display_name.to_ascii_lowercase();
+        if !seen_plans.insert(plan_key) {
+            return false;
+        }
+        if let Some(representative) = plan_files
+            .iter()
+            .find(|file| file.index == plan.representative_index)
+        {
+            candidate.index = representative.index;
+            candidate.filename = representative.filename.clone();
+            (candidate.region, candidate.version) = release_labels(&candidate.filename);
+        }
+        candidate.byte_size = plan.total_bytes();
+        candidate.download_plan = Some(plan);
+        true
     });
     candidates.truncate(MAX_FILE_CANDIDATES);
     Ok(candidates)
@@ -760,6 +793,7 @@ mod tests {
             match_score: 0.0,
             region: String::new(),
             version: String::new(),
+            download_plan: None,
         }
     }
 
@@ -819,6 +853,30 @@ mod tests {
             ranked.iter().map(|file| file.index).collect::<Vec<_>>(),
             [1, 0]
         );
+    }
+
+    #[test]
+    fn multidisc_candidates_collapse_into_one_reviewable_plan() {
+        let mut files = vec![
+            candidate(0, "Sony/Final Fantasy VII (USA) (Disc 1).cue"),
+            candidate(1, "Sony/Final Fantasy VII (USA) (Disc 1) (Track 01).bin"),
+            candidate(2, "Sony/Final Fantasy VII (USA) (Disc 2).cue"),
+            candidate(3, "Sony/Final Fantasy VII (USA) (Disc 2) (Track 01).bin"),
+        ];
+        files[0].byte_size = 100;
+        files[1].byte_size = 1_000;
+        files[2].byte_size = 200;
+        files[3].byte_size = 2_000;
+
+        let ranked =
+            rank_file_candidates(files, "Final Fantasy VII", &preferences("USA", "latest"))
+                .unwrap();
+        assert_eq!(ranked.len(), 1);
+        let plan = ranked[0].download_plan.as_ref().expect("optical plan");
+        assert_eq!(ranked[0].index, 0);
+        assert_eq!(ranked[0].byte_size, 3_300);
+        assert_eq!(plan.disc_count(), 2);
+        assert_eq!(plan.members.len(), 4);
     }
 
     #[test]
@@ -1001,5 +1059,30 @@ mod tests {
                 .iter()
                 .any(|file| file.filename.to_lowercase().contains("super mario land"))
         );
+    }
+
+    #[test]
+    #[ignore = "requires local discovery/Minerva databases and network access"]
+    fn live_minerva_metadata_builds_final_fantasy_multidisc_plan() {
+        let details = load(
+            "6119074e-d813-446d-a7ff-556f75e52320",
+            "Final Fantasy VII",
+            "Sony Playstation",
+            false,
+            true,
+        )
+        .unwrap();
+        let plan = details
+            .bundles
+            .iter()
+            .filter_map(|bundle| {
+                load_torrent_files(bundle, &details.title, &preferences("USA", "latest")).ok()
+            })
+            .flat_map(|files| files.into_iter())
+            .find_map(|file| file.download_plan)
+            .expect("live Final Fantasy VII multi-disc plan");
+        assert_eq!(plan.disc_count(), 3);
+        assert_eq!(plan.members.len(), 3);
+        assert_eq!(plan.playlist_filename, "Final Fantasy VII (USA).m3u");
     }
 }

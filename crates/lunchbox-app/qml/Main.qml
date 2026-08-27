@@ -33,6 +33,7 @@ ApplicationWindow {
     property string pendingHistoryJobId: ""
     property string pendingHistoryJobTitle: ""
     property bool clearAllDownloadHistory: false
+    property int pendingDownloadPlanIndex: -1
     property bool gridMode: true
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
@@ -57,6 +58,7 @@ ApplicationWindow {
     property bool downloadHistoryTriggered: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
+    property int multidiscProbeBundleIndex: 0
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -84,6 +86,7 @@ ApplicationWindow {
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
+    readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -437,10 +440,28 @@ ApplicationWindow {
             if (root.releaseCandidateUiProbe && gameDetails.bundle_count > 0
                     && gameDetails.selected_bundle < 0)
                 gameDetails.load_bundle_files(0)
+            if (root.multidiscUiProbe && gameDetails.bundle_count > 0
+                    && gameDetails.selected_bundle < 0) {
+                root.multidiscProbeBundleIndex = 0
+                gameDetails.load_bundle_files(0)
+            }
         }
         function onFile_countChanged() {
             if (root.releaseCandidateUiProbe && gameDetails.file_count > 0)
                 detailsProbeScrollTimer.restart()
+            if (root.multidiscUiProbe && gameDetails.file_count > 0) {
+                for (let i = 0; i < gameDetails.file_count; ++i) {
+                    if (gameDetails.file_has_download_plan(i)) {
+                        root.pendingDownloadPlanIndex = i
+                        downloadPlanDialog.open()
+                        return
+                    }
+                }
+                if (root.multidiscProbeBundleIndex + 1 < gameDetails.bundle_count) {
+                    ++root.multidiscProbeBundleIndex
+                    gameDetails.load_bundle_files(root.multidiscProbeBundleIndex)
+                }
+            }
         }
     }
 
@@ -502,6 +523,9 @@ ApplicationWindow {
             else if (root.releaseCandidateUiProbe)
                 root.openGame("52f67472-bddb-4e5b-951b-43364f996573", 1726,
                               "Super Mario Land", "Nintendo Game Boy", false, true)
+            else if (root.multidiscUiProbe)
+                root.openGame("6119074e-d813-446d-a7ff-556f75e52320", 525,
+                              "Final Fantasy VII", "Sony Playstation", false, true)
         }
     }
 
@@ -2307,18 +2331,140 @@ ApplicationWindow {
                                 anchors.right: parent.right
                                 anchors.rightMargin: 9
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: gameDetails.download_busy ? "…" : "GET"
+                                text: gameDetails.download_busy ? "…"
+                                      : gameDetails.file_has_download_plan(fileRow.index)
+                                        ? "GET SET" : "GET"
                                 enabled: !gameDetails.download_busy && !gameDetails.torrent_loading
                                 implicitWidth: 62
                                 implicitHeight: 34
                                 leftPadding: 8
                                 rightPadding: 8
-                                onClicked: gameDetails.queue_file(fileRow.index)
+                                onClicked: {
+                                    if (gameDetails.file_has_download_plan(fileRow.index)) {
+                                        root.pendingDownloadPlanIndex = fileRow.index
+                                        downloadPlanDialog.open()
+                                    } else {
+                                        gameDetails.queue_file(fileRow.index)
+                                    }
+                                }
                             }
                         }
                     }
 
                     Item { width: 1; height: 10 }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: downloadPlanDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(760, root.width - 48)
+        height: Math.min(620, root.height - 48)
+        padding: 20
+        closePolicy: Popup.CloseOnEscape
+        onClosed: root.pendingDownloadPlanIndex = -1
+
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.accentCool
+        }
+        header: Rectangle {
+            width: parent.width
+            height: 68
+            color: "#17272a"
+            radius: 14
+            Column {
+                anchors.left: parent.left
+                anchors.leftMargin: 22
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3
+                Text {
+                    text: "REVIEW MULTI-DISC DOWNLOAD"
+                    color: root.ink
+                    font.pixelSize: 17
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                }
+                Text {
+                    text: root.pendingDownloadPlanIndex >= 0
+                          ? gameDetails.file_plan_summary_at(root.pendingDownloadPlanIndex) : ""
+                    color: root.accentCool
+                    font.pixelSize: 10
+                }
+            }
+        }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: appSettings.download_entire_torrent
+                      ? "Whole-torrent mode is enabled. Lunchbox will download the complete source bundle; switch it off in Settings to select only the required set below."
+                      : "Lunchbox will select every required disc and companion file as one queue item, preserve their relative layout, and publish the M3U playlist only after the complete set is safely imported."
+                color: appSettings.download_entire_torrent ? root.accent : root.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+            Text {
+                text: "EXACT TORRENT MEMBERS"
+                color: root.accent
+                font.pixelSize: 10
+                font.weight: Font.Bold
+                font.letterSpacing: 1.2
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                Text {
+                    width: downloadPlanDialog.availableWidth - 40
+                    text: root.pendingDownloadPlanIndex >= 0
+                          ? gameDetails.file_plan_members_at(root.pendingDownloadPlanIndex) : ""
+                    color: root.ink
+                    font.family: "monospace"
+                    font.pixelSize: 10
+                    lineHeight: 1.35
+                    wrapMode: Text.WrapAnywhere
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "No filename match is treated as identity. The exact selection above remains visible for review before qBittorrent is changed."
+                color: root.muted
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+        }
+        footer: Rectangle {
+            width: parent.width
+            height: 66
+            color: root.panelRaised
+            radius: 14
+            Row {
+                anchors.right: parent.right
+                anchors.rightMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 9
+                Button {
+                    text: "Cancel"
+                    enabled: !gameDetails.download_busy
+                    onClicked: downloadPlanDialog.close()
+                }
+                Button {
+                    text: appSettings.download_entire_torrent
+                          ? "Download whole torrent" : "Download set"
+                    highlighted: true
+                    enabled: root.pendingDownloadPlanIndex >= 0
+                             && !gameDetails.download_busy
+                    onClicked: {
+                        const index = root.pendingDownloadPlanIndex
+                        downloadPlanDialog.close()
+                        gameDetails.queue_file(index)
+                    }
                 }
             }
         }

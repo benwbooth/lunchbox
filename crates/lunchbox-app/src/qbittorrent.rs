@@ -7,6 +7,7 @@ use lava_torrent::torrent::v1::Torrent;
 use serde::Deserialize;
 use ureq::unversioned::multipart::{Form, Part};
 
+use crate::download_plan::DownloadPlan;
 use crate::settings::{AppSettings, DownloadJob, NewDownloadJob};
 
 const LUNCHBOX_CATEGORY: &str = "lunchbox";
@@ -21,6 +22,7 @@ pub struct EnqueueRequest {
     pub torrent_bytes: Vec<u8>,
     pub selected_file_index: u32,
     pub selected_file_path: String,
+    pub download_plan: Option<DownloadPlan>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -124,8 +126,8 @@ impl QbittorrentClient {
         info_hash: &str,
         save_path: &str,
         selection: &DownloadSelection,
-        reviewed_file: (u32, &str),
-    ) -> Result<String> {
+        reviewed_files: &[(u32, String)],
+    ) -> Result<Vec<(u32, String)>> {
         let existed = if let Some(existing) = self.torrent_info(info_hash)? {
             ensure_owned(&existing)?;
             true
@@ -166,31 +168,27 @@ impl QbittorrentClient {
         };
 
         let files = self.apply_selection(info_hash, selection, existed, true)?;
-        let reviewed = verified_file(&files, reviewed_file.0, reviewed_file.1)?;
-        Ok(reviewed.name.clone())
+        reviewed_files
+            .iter()
+            .map(|(index, path)| {
+                verified_file(&files, *index, path).map(|file| (file.index, file.name.clone()))
+            })
+            .collect()
     }
 
     pub fn snapshot(
         &self,
         info_hash: &str,
-        selected_file_index: Option<u32>,
+        selected_files: Option<&[(u32, String)]>,
     ) -> Result<TorrentSnapshot> {
         let info = self
             .torrent_info(info_hash)?
             .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
         ensure_owned(&info)?;
 
-        let (progress, downloaded_bytes, total_bytes) = if let Some(index) = selected_file_index {
-            let file = self
-                .files(info_hash)?
-                .into_iter()
-                .find(|file| file.index == index)
-                .with_context(|| format!("torrent file index {index} is no longer available"))?;
-            (
-                file.progress,
-                (file.size as f64 * file.progress.clamp(0.0, 1.0)) as u64,
-                file.size,
-            )
+        let (progress, downloaded_bytes, total_bytes) = if let Some(selected_files) = selected_files
+        {
+            selected_snapshot(&self.files(info_hash)?, selected_files)?
         } else {
             (info.progress, info.downloaded, info.size)
         };
@@ -445,19 +443,55 @@ pub fn enqueue(
         .map_err(|error| anyhow::anyhow!("could not parse selected torrent: {error}"))?;
     let info_hash = torrent.info_hash();
     let existing_jobs = store.jobs_for_info_hash(&info_hash)?;
-    if existing_jobs.iter().any(|job| {
-        job.game_id == request.game_id
-            && normalized_torrent_path(&job.torrent_file_path)
-                == normalized_torrent_path(&request.selected_file_path)
-            && (is_managed_download(&job.state)
-                || (job.state == "imported"
-                    && if settings.file_link_mode == "leave_in_place" {
-                        job.local_download_path.is_file()
-                    } else {
-                        job.local_target_path.is_file()
-                    }))
-    }) {
-        bail!("this exact game file is already present in the download history");
+    let mut download_plan = if settings.download_entire_torrent {
+        None
+    } else {
+        request.download_plan
+    };
+    if let Some(plan) = &download_plan {
+        plan.validate()?;
+        if plan.representative_index
+            != usize::try_from(request.selected_file_index)
+                .context("torrent file index is too large")?
+        {
+            bail!("download plan representative does not match the reviewed file");
+        }
+    }
+    let requested_files = if let Some(plan) = &download_plan {
+        plan.selection()
+            .into_iter()
+            .map(|(index, path)| {
+                Ok((
+                    u32::try_from(index).context("torrent file index is too large")?,
+                    path,
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        vec![(
+            request.selected_file_index,
+            request.selected_file_path.clone(),
+        )]
+    };
+    for job in &existing_jobs {
+        let present = is_managed_download(&job.state)
+            || (job.state == "imported"
+                && if settings.file_link_mode == "leave_in_place" {
+                    job.local_download_path.is_file()
+                } else {
+                    job.local_target_path.is_file()
+                });
+        if job.game_id != request.game_id || !present {
+            continue;
+        }
+        let existing_files = job_exact_files(job)?.unwrap_or_default();
+        if requested_files.iter().any(|(_, requested_path)| {
+            existing_files.iter().any(|(_, existing_path)| {
+                normalized_torrent_path(existing_path) == normalized_torrent_path(requested_path)
+            })
+        }) {
+            bail!("this exact game download is already present in the download history");
+        }
     }
     let native_download_path = settings.torrent_library_directory.join("lunchbox");
     std::fs::create_dir_all(&native_download_path).with_context(|| {
@@ -479,30 +513,58 @@ pub fn enqueue(
     let selection = active_selection(
         &existing_jobs,
         settings.download_entire_torrent,
-        Some((
-            request.selected_file_index,
-            request.selected_file_path.clone(),
-        )),
+        &requested_files,
     )?;
     let reviewed_relative_file = safe_torrent_relative_path(&request.selected_file_path)?;
     let file_name = reviewed_relative_file
         .file_name()
         .context("selected torrent file has no filename")?;
-    let local_target_path = settings
-        .rom_directory
-        .join(safe_path_component(&request.platform))
-        .join(file_name);
+    let local_target_path = if let Some(plan) = &download_plan {
+        settings
+            .rom_directory
+            .join(safe_path_component(&request.platform))
+            .join(safe_path_component(&plan.display_name))
+            .join(&plan.playlist_filename)
+    } else {
+        settings
+            .rom_directory
+            .join(safe_path_component(&request.platform))
+            .join(file_name)
+    };
 
     let client = QbittorrentClient::authenticated(settings, password)?;
-    let actual_file_path = client.add(
+    let actual_files = client.add(
         &request.torrent_bytes,
         &info_hash,
         &client_save_path,
         &selection,
-        (request.selected_file_index, &request.selected_file_path),
+        &requested_files,
     )?;
+    if let Some(plan) = download_plan.as_mut() {
+        for member in &mut plan.members {
+            let member_index =
+                u32::try_from(member.index).context("torrent file index is too large")?;
+            member.torrent_path = actual_files
+                .iter()
+                .find(|(index, _)| *index == member_index)
+                .map(|(_, path)| path.clone())
+                .with_context(|| {
+                    format!("qBittorrent did not return planned file index {member_index}")
+                })?;
+        }
+        plan.validate()?;
+    }
+    let actual_file_path = actual_files
+        .iter()
+        .find(|(index, _)| *index == request.selected_file_index)
+        .map(|(_, path)| path.clone())
+        .context("qBittorrent did not return the reviewed representative file")?;
     let local_source_path =
         native_download_path.join(safe_torrent_relative_path(&actual_file_path)?);
+    let serialized_plan = download_plan
+        .map(|plan| serde_json::to_string(&plan).context("encoding download plan"))
+        .transpose()?
+        .unwrap_or_default();
 
     Ok(DownloadJob::queued(NewDownloadJob {
         game_id: request.game_id,
@@ -511,18 +573,19 @@ pub fn enqueue(
         platform: request.platform,
         torrent_url: request.torrent_url,
         torrent_file_index: progress_file_index,
-        torrent_file_path: request.selected_file_path,
+        torrent_file_path: actual_file_path,
         info_hash,
         client_save_path,
         local_download_path: local_source_path,
         local_target_path,
+        download_plan: serialized_plan,
     }))
 }
 
 pub fn active_selection(
     existing_jobs: &[DownloadJob],
     new_job_downloads_all: bool,
-    new_exact_file: Option<(u32, String)>,
+    new_exact_files: &[(u32, String)],
 ) -> Result<DownloadSelection> {
     let active_jobs = existing_jobs
         .iter()
@@ -536,22 +599,40 @@ pub fn active_selection(
         return Ok(DownloadSelection::All);
     }
 
-    let mut selected = active_jobs
-        .into_iter()
-        .filter_map(|job| {
-            job.torrent_file_index
-                .map(|index| (index, job.torrent_file_path.clone()))
-        })
-        .collect::<Vec<_>>();
-    if let Some(new_exact_file) = new_exact_file {
-        selected.push(new_exact_file);
+    let mut selected = Vec::new();
+    for job in active_jobs {
+        selected.extend(job_exact_files(job)?.unwrap_or_default());
     }
+    selected.extend_from_slice(new_exact_files);
     selected.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
     selected.dedup_by(|left, right| left.0 == right.0 && left.1 == right.1);
     if selected.is_empty() {
         bail!("at least one exact torrent file must be selected");
     }
     Ok(DownloadSelection::Exact(selected))
+}
+
+pub fn job_exact_files(job: &DownloadJob) -> Result<Option<Vec<(u32, String)>>> {
+    let Some(representative_index) = job.torrent_file_index else {
+        return Ok(None);
+    };
+    if let Some(plan) = job.parsed_download_plan()? {
+        return plan
+            .selection()
+            .into_iter()
+            .map(|(index, path)| {
+                Ok((
+                    u32::try_from(index).context("torrent file index is too large")?,
+                    path,
+                ))
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(Some);
+    }
+    Ok(Some(vec![(
+        representative_index,
+        job.torrent_file_path.clone(),
+    )]))
 }
 
 fn is_managed_download(state: &str) -> bool {
@@ -681,6 +762,29 @@ fn verified_file<'a>(
     Ok(selected)
 }
 
+fn selected_snapshot(
+    files: &[TorrentFileInfo],
+    selected_files: &[(u32, String)],
+) -> Result<(f64, u64, u64)> {
+    if selected_files.is_empty() {
+        bail!("download selection contains no files");
+    }
+    let mut downloaded_bytes = 0_u64;
+    let mut total_bytes = 0_u64;
+    for (index, path) in selected_files {
+        let file = verified_file(files, *index, path)?;
+        total_bytes = total_bytes.saturating_add(file.size);
+        downloaded_bytes = downloaded_bytes
+            .saturating_add((file.size as f64 * file.progress.clamp(0.0, 1.0)) as u64);
+    }
+    let progress = if total_bytes == 0 {
+        0.0
+    } else {
+        downloaded_bytes as f64 / total_bytes as f64
+    };
+    Ok((progress, downloaded_bytes, total_bytes))
+}
+
 fn reviewed_path_matches(actual_path: &str, expected_path: &str) -> bool {
     let actual = normalized_torrent_path(actual_path);
     let expected = normalized_torrent_path(expected_path);
@@ -703,6 +807,7 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
+    use crate::download_plan::{DownloadPlan, DownloadPlanMember};
 
     struct MockResponse {
         body: &'static str,
@@ -892,7 +997,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_file_add_is_owned_verified_prioritized_and_started() {
+    fn exact_file_set_add_is_owned_verified_prioritized_and_started() {
         let (address, requests, worker) = mock_server(vec![
             MockResponse {
                 body: "Ok.",
@@ -919,7 +1024,7 @@ mod tests {
                 cookie: false,
             },
             MockResponse {
-                body: r#"[{"index":0,"name":"Minerva Bundle/Other.zip","size":12,"progress":0.0},{"index":3,"name":"Minerva Bundle/Game Boy/Game.zip","size":42,"progress":0.0}]"#,
+                body: r#"[{"index":0,"name":"Minerva Bundle/Other.zip","size":12,"progress":0.0},{"index":3,"name":"Minerva Bundle/Game/Game (Disc 1).chd","size":42,"progress":0.0},{"index":4,"name":"Minerva Bundle/Game/Game (Disc 2).chd","size":84,"progress":0.0}]"#,
                 cookie: false,
             },
             MockResponse {
@@ -937,17 +1042,29 @@ mod tests {
         ]);
         let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
 
-        let actual_path = client
+        let actual_paths = client
             .add(
                 b"test torrent bytes",
                 "abc123",
                 r"D:\Downloads\lunchbox",
-                &DownloadSelection::Exact(vec![(3, r"Game Boy\Game.zip".to_owned())]),
-                (3, r"Game Boy\Game.zip"),
+                &DownloadSelection::Exact(vec![
+                    (3, r"Game\Game (Disc 1).chd".to_owned()),
+                    (4, r"Game\Game (Disc 2).chd".to_owned()),
+                ]),
+                &[
+                    (3, r"Game\Game (Disc 1).chd".to_owned()),
+                    (4, r"Game\Game (Disc 2).chd".to_owned()),
+                ],
             )
             .unwrap();
 
-        assert_eq!(actual_path, "Minerva Bundle/Game Boy/Game.zip");
+        assert_eq!(
+            actual_paths,
+            vec![
+                (3, "Minerva Bundle/Game/Game (Disc 1).chd".to_owned()),
+                (4, "Minerva Bundle/Game/Game (Disc 2).chd".to_owned()),
+            ]
+        );
         let captured = (0..10)
             .map(|_| requests.recv().unwrap())
             .collect::<Vec<_>>();
@@ -963,8 +1080,8 @@ mod tests {
         assert!(captured[4].contains("name=\"contentLayout\"\r\n\r\nOriginal"));
         assert!(captured[4].contains("name=\"root_folder\"\r\n\r\ntrue"));
         assert!(captured[6].starts_with("GET /api/v2/torrents/files?hash=abc123 HTTP/1.1"));
-        assert!(captured[7].contains("hash=abc123&id=0%7C3&priority=0"));
-        assert!(captured[8].contains("hash=abc123&id=3&priority=7"));
+        assert!(captured[7].contains("hash=abc123&id=0%7C3%7C4&priority=0"));
+        assert!(captured[8].contains("hash=abc123&id=3%7C4&priority=7"));
         assert!(captured[9].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
         worker.join().unwrap();
     }
@@ -1055,16 +1172,98 @@ mod tests {
             client_save_path: "/downloads/lunchbox".into(),
             local_download_path: PathBuf::from("/downloads/lunchbox/Game Boy/First.zip"),
             local_target_path: PathBuf::from("/roms/Game Boy/First.zip"),
+            download_plan: String::new(),
         });
         first.state = "downloading".into();
         let selection =
-            active_selection(&[first], false, Some((7, "Game Boy/Second.zip".into()))).unwrap();
+            active_selection(&[first], false, &[(7, "Game Boy/Second.zip".into())]).unwrap();
         assert_eq!(
             selection,
             DownloadSelection::Exact(vec![
                 (3, "Game Boy/First.zip".into()),
                 (7, "Game Boy/Second.zip".into())
             ])
+        );
+    }
+
+    #[test]
+    fn active_selection_keeps_every_member_of_a_persisted_plan() {
+        let plan = DownloadPlan {
+            version: 1,
+            kind: "optical_multidisc".into(),
+            display_name: "Game".into(),
+            playlist_filename: "Game.m3u".into(),
+            representative_index: 3,
+            members: vec![
+                DownloadPlanMember {
+                    index: 3,
+                    torrent_path: "Game (Disc 1).chd".into(),
+                    target_relative_path: "Game (Disc 1).chd".into(),
+                    byte_size: 30,
+                    disc_index: Some(1),
+                    playlist_entry: true,
+                },
+                DownloadPlanMember {
+                    index: 4,
+                    torrent_path: "Game (Disc 2).chd".into(),
+                    target_relative_path: "Game (Disc 2).chd".into(),
+                    byte_size: 40,
+                    disc_index: Some(2),
+                    playlist_entry: true,
+                },
+            ],
+        };
+        let mut job = DownloadJob::queued(NewDownloadJob {
+            game_id: "game-1".into(),
+            launchbox_db_id: 1,
+            title: "Game".into(),
+            platform: "Platform".into(),
+            torrent_url: "https://example.invalid/bundle.torrent".into(),
+            torrent_file_index: Some(3),
+            torrent_file_path: "Game (Disc 1).chd".into(),
+            info_hash: "abc123".into(),
+            client_save_path: "/downloads/lunchbox".into(),
+            local_download_path: PathBuf::from("/downloads/lunchbox/Game (Disc 1).chd"),
+            local_target_path: PathBuf::from("/roms/Platform/Game/Game.m3u"),
+            download_plan: serde_json::to_string(&plan).unwrap(),
+        });
+        job.state = "downloading".into();
+
+        assert_eq!(
+            active_selection(&[job], false, &[]).unwrap(),
+            DownloadSelection::Exact(vec![
+                (3, "Game (Disc 1).chd".into()),
+                (4, "Game (Disc 2).chd".into()),
+            ])
+        );
+    }
+
+    #[test]
+    fn selected_snapshot_weights_progress_by_required_file_size() {
+        let files = vec![
+            TorrentFileInfo {
+                index: 3,
+                name: "Game (Disc 1).chd".into(),
+                size: 100,
+                progress: 1.0,
+            },
+            TorrentFileInfo {
+                index: 4,
+                name: "Game (Disc 2).chd".into(),
+                size: 300,
+                progress: 0.0,
+            },
+        ];
+        assert_eq!(
+            selected_snapshot(
+                &files,
+                &[
+                    (3, "Game (Disc 1).chd".into()),
+                    (4, "Game (Disc 2).chd".into()),
+                ],
+            )
+            .unwrap(),
+            (0.25, 100, 400)
         );
     }
 
@@ -1082,9 +1281,10 @@ mod tests {
             client_save_path: "/downloads/lunchbox".into(),
             local_download_path: PathBuf::from("/downloads/lunchbox/Game Boy/First.zip"),
             local_target_path: PathBuf::from("/roms/Game Boy/First.zip"),
+            download_plan: String::new(),
         });
         assert_eq!(
-            active_selection(&[whole], false, Some((7, "Game Boy/Second.zip".into()))).unwrap(),
+            active_selection(&[whole], false, &[(7, "Game Boy/Second.zip".into())]).unwrap(),
             DownloadSelection::All
         );
     }

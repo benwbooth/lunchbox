@@ -1,10 +1,11 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use sha1::{Digest, Sha1};
 
+use crate::download_plan::{DownloadPlan, DownloadPlanMember};
 use crate::settings::{AppSettings, DownloadJob, SettingsStore};
 
 pub fn ingest_completed(
@@ -12,6 +13,9 @@ pub fn ingest_completed(
     store: &SettingsStore,
     job: &DownloadJob,
 ) -> Result<PathBuf> {
+    if let Some(plan) = job.parsed_download_plan()? {
+        return ingest_download_plan(settings, store, job, &plan);
+    }
     let source = &job.local_download_path;
     let metadata = source
         .metadata()
@@ -48,6 +52,183 @@ pub fn ingest_completed(
 
     store.record_installed(job, &installed_path)?;
     Ok(installed_path)
+}
+
+fn ingest_download_plan(
+    settings: &AppSettings,
+    store: &SettingsStore,
+    job: &DownloadJob,
+    plan: &DownloadPlan,
+) -> Result<PathBuf> {
+    plan.validate()?;
+    let source_root = plan_source_root(job, plan)?;
+    let target_root = job
+        .local_target_path
+        .parent()
+        .context("download-plan playlist target has no parent directory")?;
+
+    let planned_files = plan
+        .members
+        .iter()
+        .map(|member| {
+            let source = source_root.join(relative_path(&member.torrent_path));
+            let metadata = source.metadata().with_context(|| {
+                format!("planned download is not available at {}", source.display())
+            })?;
+            if !metadata.is_file() {
+                bail!(
+                    "planned download is not a regular file: {}",
+                    source.display()
+                );
+            }
+            let installed = if settings.file_link_mode == "leave_in_place" {
+                source.clone()
+            } else {
+                target_root.join(relative_path(&member.target_relative_path))
+            };
+            Ok((member, source, installed))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    if settings.file_link_mode != "leave_in_place" {
+        for (_, source, target) in &planned_files {
+            if target.exists() && !files_equal(source, target)? {
+                bail!(
+                    "refusing to replace a different existing ROM at {}",
+                    target.display()
+                );
+            }
+        }
+        for (_, source, target) in &planned_files {
+            let parent = target
+                .parent()
+                .context("planned ROM target has no parent directory")?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("creating ROM directory {}", parent.display()))?;
+            if !target.exists() {
+                install_file(&settings.file_link_mode, source, target)?;
+            }
+        }
+    }
+
+    let playlist_parent = if settings.file_link_mode == "leave_in_place" {
+        common_parent(
+            &planned_files
+                .iter()
+                .map(|(_, _, installed)| installed.clone())
+                .collect::<Vec<_>>(),
+        )
+        .context("planned downloads do not have a common playlist directory")?
+    } else {
+        target_root.to_path_buf()
+    };
+    fs::create_dir_all(&playlist_parent)
+        .with_context(|| format!("creating playlist directory {}", playlist_parent.display()))?;
+    let playlist_path = playlist_parent.join(&plan.playlist_filename);
+    let playlist_content = playlist_content(plan, &planned_files, &playlist_parent)?;
+    write_idempotent_playlist(&playlist_path, playlist_content.as_bytes())?;
+    store.record_installed(job, &playlist_path)?;
+    Ok(playlist_path)
+}
+
+fn plan_source_root(job: &DownloadJob, plan: &DownloadPlan) -> Result<PathBuf> {
+    let representative = plan
+        .members
+        .iter()
+        .find(|member| member.index == plan.representative_index)
+        .context("download plan has no representative member")?;
+    let relative = relative_path(&representative.torrent_path);
+    let mut root = job.local_download_path.clone();
+    for _ in relative.components() {
+        if !root.pop() {
+            bail!("download plan source path is outside the configured download root");
+        }
+    }
+    if root.join(&relative) != job.local_download_path {
+        bail!("download plan source root does not match the representative file");
+    }
+    Ok(root)
+}
+
+fn relative_path(value: &str) -> PathBuf {
+    PathBuf::from(value.replace('\\', "/"))
+}
+
+fn common_parent(paths: &[PathBuf]) -> Option<PathBuf> {
+    let first = paths.first()?.parent()?.to_path_buf();
+    let mut common = first.components().collect::<Vec<_>>();
+    for path in paths.iter().skip(1) {
+        let components = path.parent()?.components().collect::<Vec<_>>();
+        let shared = common
+            .iter()
+            .zip(components.iter())
+            .take_while(|(left, right)| left == right)
+            .count();
+        common.truncate(shared);
+    }
+    if common.is_empty() {
+        return None;
+    }
+    let mut path = PathBuf::new();
+    for component in common {
+        path.push(component.as_os_str());
+    }
+    Some(path)
+}
+
+fn playlist_content(
+    plan: &DownloadPlan,
+    planned_files: &[(&DownloadPlanMember, PathBuf, PathBuf)],
+    playlist_parent: &Path,
+) -> Result<String> {
+    let mut content = String::new();
+    for member in plan.playlist_members() {
+        let installed = planned_files
+            .iter()
+            .find(|(candidate, _, _)| candidate.index == member.index)
+            .map(|(_, _, installed)| installed)
+            .with_context(|| format!("playlist member {} is missing", member.index))?;
+        let relative = installed.strip_prefix(playlist_parent).unwrap_or(installed);
+        content.push_str(&relative.to_string_lossy().replace('\\', "/"));
+        content.push('\n');
+    }
+    Ok(content)
+}
+
+fn write_idempotent_playlist(path: &Path, content: &[u8]) -> Result<()> {
+    if path.exists() {
+        if fs::read(path)? == content {
+            return Ok(());
+        }
+        bail!(
+            "refusing to replace a different existing playlist at {}",
+            path.display()
+        );
+    }
+    let parent = path.parent().context("playlist path has no parent")?;
+    let temporary = parent.join(format!(
+        ".{}.{}.tmp",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("lunchbox-playlist"),
+        uuid::Uuid::new_v4()
+    ));
+    let write_result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .with_context(|| format!("creating playlist temporary file {}", temporary.display()))?;
+        file.write_all(content)?;
+        file.sync_all()?;
+        fs::rename(&temporary, path)
+            .with_context(|| format!("publishing playlist {}", path.display()))?;
+        Ok(())
+    })();
+    if write_result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    write_result
 }
 
 fn install_file(mode: &str, source: &Path, target: &Path) -> Result<()> {
@@ -107,6 +288,7 @@ fn file_sha1(path: &Path) -> Result<[u8; 20]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::download_plan::{TorrentPlanFile, build_optical_plan};
     use crate::settings::NewDownloadJob;
 
     fn job(root: &Path) -> DownloadJob {
@@ -122,6 +304,7 @@ mod tests {
             client_save_path: "/downloads/lunchbox".into(),
             local_download_path: root.join("downloads/Game.zip"),
             local_target_path: root.join("roms/Platform/Game.zip"),
+            download_plan: String::new(),
         })
     }
 
@@ -161,5 +344,97 @@ mod tests {
 
         assert!(ingest_completed(&settings, &store, &job).is_err());
         assert_eq!(fs::read(&job.local_target_path).unwrap(), b"existing");
+    }
+
+    fn optical_job(root: &Path) -> (DownloadJob, DownloadPlan) {
+        let files = vec![
+            TorrentPlanFile {
+                index: 0,
+                filename: "Bundle/Game (Disc 1).cue".into(),
+                byte_size: 3,
+            },
+            TorrentPlanFile {
+                index: 1,
+                filename: "Bundle/Game (Disc 1) (Track 01).bin".into(),
+                byte_size: 3,
+            },
+            TorrentPlanFile {
+                index: 2,
+                filename: "Bundle/Game (Disc 2).cue".into(),
+                byte_size: 3,
+            },
+            TorrentPlanFile {
+                index: 3,
+                filename: "Bundle/Game (Disc 2) (Track 01).bin".into(),
+                byte_size: 3,
+            },
+        ];
+        let plan = build_optical_plan(&files, 0).unwrap();
+        let mut job = job(root);
+        job.torrent_file_index = Some(0);
+        job.torrent_file_path = "Bundle/Game (Disc 1).cue".into();
+        job.local_download_path = root.join("downloads/Bundle/Game (Disc 1).cue");
+        job.local_target_path = root.join("roms/Platform/Game/Game.m3u");
+        job.download_plan = serde_json::to_string(&plan).unwrap();
+        (job, plan)
+    }
+
+    #[test]
+    fn multidisc_ingestion_preserves_layout_and_publishes_playlist_last() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let (job, plan) = optical_job(directory.path());
+        for member in &plan.members {
+            let path = directory
+                .path()
+                .join("downloads")
+                .join(relative_path(&member.torrent_path));
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, format!("{:03}", member.index)).unwrap();
+        }
+        let settings = AppSettings {
+            file_link_mode: "copy".into(),
+            ..AppSettings::default()
+        };
+
+        let playlist = ingest_completed(&settings, &store, &job).unwrap();
+        assert_eq!(playlist, job.local_target_path);
+        assert_eq!(
+            fs::read_to_string(&playlist).unwrap(),
+            "Game (Disc 1).cue\nGame (Disc 2).cue\n"
+        );
+        for member in &plan.members {
+            assert!(
+                playlist
+                    .parent()
+                    .unwrap()
+                    .join(relative_path(&member.target_relative_path))
+                    .is_file()
+            );
+        }
+        assert_eq!(ingest_completed(&settings, &store, &job).unwrap(), playlist);
+    }
+
+    #[test]
+    fn multidisc_preflight_does_not_publish_a_partial_layout() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let (job, plan) = optical_job(directory.path());
+        let representative = plan
+            .members
+            .iter()
+            .find(|member| member.index == plan.representative_index)
+            .unwrap();
+        fs::create_dir_all(job.local_download_path.parent().unwrap()).unwrap();
+        fs::write(&job.local_download_path, b"cue").unwrap();
+        assert_eq!(representative.torrent_path, "Bundle/Game (Disc 1).cue");
+        let settings = AppSettings {
+            file_link_mode: "copy".into(),
+            ..AppSettings::default()
+        };
+
+        assert!(ingest_completed(&settings, &store, &job).is_err());
+        assert!(!job.local_target_path.exists());
+        assert!(!job.local_target_path.parent().unwrap().exists());
     }
 }

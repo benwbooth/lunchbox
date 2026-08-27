@@ -9,6 +9,7 @@ use directories::ProjectDirs;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::catalog;
+use crate::download_plan::DownloadPlan;
 
 const KEYRING_SERVICE: &str = "com.lunchbox.Lunchbox";
 const KEYRING_ACCOUNT: &str = "qbittorrent-password";
@@ -168,6 +169,7 @@ pub struct DownloadJob {
     pub post_import_action: String,
     pub created_at: i64,
     pub updated_at: i64,
+    pub download_plan: String,
 }
 
 pub(crate) struct NewDownloadJob {
@@ -182,6 +184,7 @@ pub(crate) struct NewDownloadJob {
     pub client_save_path: String,
     pub local_download_path: PathBuf,
     pub local_target_path: PathBuf,
+    pub download_plan: String,
 }
 
 impl DownloadJob {
@@ -209,7 +212,18 @@ impl DownloadJob {
             post_import_action: "none".to_owned(),
             created_at: now,
             updated_at: now,
+            download_plan: new_job.download_plan,
         }
+    }
+
+    pub fn parsed_download_plan(&self) -> Result<Option<DownloadPlan>> {
+        if self.download_plan.trim().is_empty() {
+            return Ok(None);
+        }
+        let plan: DownloadPlan = serde_json::from_str(&self.download_plan)
+            .context("decoding persisted download plan")?;
+        plan.validate()?;
+        Ok(Some(plan))
     }
 }
 
@@ -561,10 +575,10 @@ impl SettingsStore {
                  torrent_file_path, info_hash, client_save_path,
                  local_download_path, local_target_path, state, progress,
                  download_speed, downloaded_bytes, total_bytes, message,
-                 post_import_action, created_at, updated_at
+                 post_import_action, created_at, updated_at, download_plan
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
              ) ON CONFLICT(id) DO UPDATE SET
                  state=excluded.state, progress=excluded.progress,
                  download_speed=excluded.download_speed,
@@ -594,6 +608,7 @@ impl SettingsStore {
                 job.post_import_action,
                 job.created_at,
                 job.updated_at,
+                job.download_plan,
             ],
         )?;
         Ok(())
@@ -606,7 +621,8 @@ impl SettingsStore {
                     torrent_file_index, torrent_file_path, info_hash,
                     client_save_path, local_download_path, local_target_path,
                     state, progress, download_speed, downloaded_bytes,
-                    total_bytes, message, post_import_action, created_at, updated_at
+                    total_bytes, message, post_import_action, created_at, updated_at,
+                    download_plan
              FROM download_jobs ORDER BY created_at DESC, id",
         )?;
         let rows = statement.query_map([], |row| {
@@ -633,6 +649,7 @@ impl SettingsStore {
                 post_import_action: row.get(18)?,
                 created_at: row.get(19)?,
                 updated_at: row.get(20)?,
+                download_plan: row.get(21)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -806,7 +823,8 @@ fn migrate(connection: &Connection) -> Result<()> {
                  post_import_action IN ('none', 'pause_pending', 'pause_applied')
              ),
              created_at INTEGER NOT NULL,
-             updated_at INTEGER NOT NULL
+             updated_at INTEGER NOT NULL,
+             download_plan TEXT NOT NULL DEFAULT ''
          );
          CREATE INDEX IF NOT EXISTS download_jobs_info_hash
              ON download_jobs(info_hash);
@@ -910,6 +928,12 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "download_jobs", "post_import_action")? {
         connection.execute(
             "ALTER TABLE download_jobs ADD COLUMN post_import_action TEXT NOT NULL DEFAULT 'none' CHECK (post_import_action IN ('none', 'pause_pending', 'pause_applied'))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "download_jobs", "download_plan")? {
+        connection.execute(
+            "ALTER TABLE download_jobs ADD COLUMN download_plan TEXT NOT NULL DEFAULT ''",
             [],
         )?;
     }
@@ -1056,6 +1080,7 @@ mod tests {
             client_save_path: "/downloads/lunchbox".into(),
             local_download_path: PathBuf::from("/native/downloads/lunchbox"),
             local_target_path: PathBuf::from("/native/roms/Platform/Game.zip"),
+            download_plan: String::new(),
         });
         store.upsert_job(&job).unwrap();
         job.state = "downloading".into();
@@ -1083,6 +1108,7 @@ mod tests {
                 client_save_path: "/downloads/lunchbox".into(),
                 local_download_path: PathBuf::from("/native/downloads/lunchbox"),
                 local_target_path: PathBuf::from(format!("/native/roms/Platform/{game_id}.zip")),
+                download_plan: String::new(),
             });
             job.state = state.into();
             job
@@ -1333,6 +1359,7 @@ mod tests {
         assert_eq!(settings.version_preference, "latest");
         let connection = Connection::open(&path).unwrap();
         assert!(column_exists(&connection, "download_jobs", "post_import_action").unwrap());
+        assert!(column_exists(&connection, "download_jobs", "download_plan").unwrap());
         assert!(column_exists(&connection, "app_settings", "preferred_region").unwrap());
         assert!(column_exists(&connection, "app_settings", "version_preference").unwrap());
     }

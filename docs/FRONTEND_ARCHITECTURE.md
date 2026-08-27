@@ -73,6 +73,15 @@ The initial implementation enforces this shape:
   match always wins. Persisted primary-region and latest/original-revision
   choices only order equally strong candidates. The native picker shows the
   parsed region and revision and visually identifies the resulting best match.
+- Generic optical multi-disc matches become one versioned download plan. Disc,
+  disk, CD, side, part, volume and card markers support numeric, alphabetic and
+  common Roman forms; the planner chooses one runnable primary per disc and
+  includes CUE, CCD, MDS and GDI companion formats. The confirmation dialog
+  exposes every exact torrent member and total size before qBittorrent changes.
+  One persisted queue row selects and monitors the complete set with
+  size-weighted progress. Import preflights every source and conflicting target,
+  preserves the common relative layout, and publishes the M3U and installed-game
+  record last. Retries are idempotent and never overwrite different content.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -150,6 +159,10 @@ plus original-release preferences through the real bridge. The
 `--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
 Minerva bundle, and scrolls the details pane to the ranked native candidate
 cards for deterministic visual review against the preserved discovery catalog.
+`--multidisc-ui-probe` opens the preserved Sony PlayStation Final Fantasy VII
+record, inspects its live Minerva sources, and opens the exact multi-disc review
+dialog when a plan is found. This route verifies real provider filenames,
+aggregate size, playlist naming and dialog layout without starting a download.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to

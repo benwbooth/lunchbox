@@ -46,7 +46,10 @@ contents, where title matches are presented as review candidates rather than
 silently accepted identities. Persisted region and release-version preferences
 rank otherwise equal candidates; the picker still exposes the exact region,
 revision, filename, size, and match quality before download. A reviewed file
-can be sent to qBittorrent from that pane, and the native Downloads drawer
+can be sent to qBittorrent from that pane. Multi-disc optical matches collapse
+into one reviewable set that lists every required disc and CUE/CCD/MDS/GDI
+companion before download, preserves the source layout, and creates an M3U only
+after the full set imports safely. The native Downloads drawer
 persists progress and exposes pause, resume, and non-destructive cancel controls.
 The drawer reports aggregate and per-job transfer rates. Finished records can
 be removed individually or cleared in bulk after confirmation without deleting

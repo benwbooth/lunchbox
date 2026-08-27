@@ -64,6 +64,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn file_detail_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn file_has_download_plan(self: &GameDetailsModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn file_plan_summary_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn file_plan_members_at(self: &GameDetailsModel, index: i32) -> QString;
     }
 
     impl cxx_qt::Threading for GameDetailsModel {}
@@ -391,7 +400,11 @@ impl qobject::GameDetailsModel {
         let platform = self.as_ref().platform().to_string();
         self.as_mut().set_download_busy(true);
         self.as_mut()
-            .set_message(qstring("Adding the reviewed file to qBittorrent…"));
+            .set_message(qstring(if file.download_plan.is_some() {
+                "Adding the reviewed multi-disc set to qBittorrent…"
+            } else {
+                "Adding the reviewed file to qBittorrent…"
+            }));
 
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
@@ -463,7 +476,17 @@ impl qobject::GameDetailsModel {
 
     pub fn file_name_at(&self, index: i32) -> QString {
         self.file(index)
-            .map(|file| qstring(&file.filename))
+            .map(|file| {
+                if let Some(plan) = &file.download_plan {
+                    qstring(format!(
+                        "{} — {}-disc set",
+                        plan.display_name,
+                        plan.disc_count()
+                    ))
+                } else {
+                    qstring(&file.filename)
+                }
+            })
             .unwrap_or_default()
     }
 
@@ -473,6 +496,10 @@ impl qobject::GameDetailsModel {
                 let mut details = Vec::new();
                 if index == 0 {
                     details.push("BEST MATCH".to_owned());
+                }
+                if let Some(plan) = &file.download_plan {
+                    details.push("MULTI-DISC".to_owned());
+                    details.push(format!("{} required files", plan.members.len()));
                 }
                 if !file.region.is_empty() {
                     details.push(file.region.clone());
@@ -484,6 +511,54 @@ impl qobject::GameDetailsModel {
                 details.push(game_details::format_bytes(file.byte_size));
                 details.push(format!("torrent file #{}", file.index));
                 qstring(details.join(" · "))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn file_has_download_plan(&self, index: i32) -> bool {
+        self.file(index)
+            .is_some_and(|file| file.download_plan.is_some())
+    }
+
+    pub fn file_plan_summary_at(&self, index: i32) -> QString {
+        self.file(index)
+            .and_then(|file| file.download_plan.as_ref())
+            .map(|plan| {
+                let companion_count = plan.members.len().saturating_sub(plan.disc_count());
+                qstring(format!(
+                    "{} discs · {} companion file{} · {} total · creates {}",
+                    plan.disc_count(),
+                    companion_count,
+                    if companion_count == 1 { "" } else { "s" },
+                    game_details::format_bytes(plan.total_bytes()),
+                    plan.playlist_filename
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn file_plan_members_at(&self, index: i32) -> QString {
+        self.file(index)
+            .and_then(|file| file.download_plan.as_ref())
+            .map(|plan| {
+                qstring(
+                    plan.members
+                        .iter()
+                        .map(|member| {
+                            let role = if member.playlist_entry {
+                                format!("Disc {}", member.disc_index.unwrap_or_default())
+                            } else {
+                                format!("Disc {} companion", member.disc_index.unwrap_or_default())
+                            };
+                            format!(
+                                "{role}  ·  {}  ·  {}",
+                                member.torrent_path,
+                                game_details::format_bytes(member.byte_size)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )
             })
             .unwrap_or_default()
     }
@@ -528,6 +603,7 @@ fn queue_download(
             torrent_bytes,
             selected_file_index: file_index,
             selected_file_path: file.filename,
+            download_plan: file.download_plan,
         },
     )?;
     store.upsert_job(&job)?;
