@@ -16,7 +16,9 @@ The previous Electron application is preserved in the `legacy/electron` branch.
 
 See [the metadata-backbone decision](docs/METADATA_BACKBONE.md), [the database
 architecture](docs/DATABASE_ARCHITECTURE.md), [the pinned Libretro source
-policy](docs/LIBRETRO_SOURCE.md), and [the legacy audit](docs/LEGACY_DATABASE_AUDIT.md).
+policy](docs/LIBRETRO_SOURCE.md), [Minerva and local collection
+import](docs/MINERVA_AND_LOCAL_IMPORT.md), and [the legacy
+audit](docs/LEGACY_DATABASE_AUDIT.md).
 
 ## Reproducible workflow
 
@@ -68,6 +70,25 @@ cargo run -p lunchbox-db -- inspect-existing \
   --emulators db/emulators.db \
   --minerva db/minerva.db \
   --output reports/existing-databases.json
+```
+
+Import Minerva bundle offers into a writable user database:
+
+```console
+cargo run -p lunchbox-db -- import-minerva \
+  --database /path/to/user/lunchbox.db \
+  --catalog /path/to/minerva.db
+```
+
+Hash and import a local collection. `--platform` may be omitted when strong Libretro evidence
+resolves each file to exactly one platform:
+
+```console
+cargo run -p lunchbox-db -- scan-local \
+  --database /path/to/user/lunchbox.db \
+  --root /path/to/roms/game-boy \
+  --platform "Nintendo Game Boy" \
+  --extensions gb,gbc
 ```
 
 All commands are implemented directly in Rust and are safe to rerun.

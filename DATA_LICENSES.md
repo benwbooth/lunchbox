@@ -37,6 +37,9 @@ under terms compatible with CC BY-SA 4.0.
 - **Minerva** — acquisition records remain subject to provider-specific terms and are fetched at
   runtime.
 
+Local collection paths, hashes, and user-created provisional records are private user data. They
+are stored only in a writable user database and are never included in the public artifact.
+
 Runtime-only data may be cached in a user's local database subject to provider terms. It is excluded
 from the public `lunchbox.db.7z` artifact.
 

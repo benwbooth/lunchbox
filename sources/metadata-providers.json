@@ -23,6 +23,16 @@
       "decision": "Ship as maintained Lunchbox reference data."
     },
     {
+      "slug": "lunchbox-local",
+      "name": "Lunchbox Local Collection",
+      "homepage": "https://github.com/benwbooth/lunchbox",
+      "terms_url": "https://github.com/benwbooth/lunchbox/blob/main/LICENSE",
+      "data_license": "User-owned local data",
+      "redistribution_policy": "internal",
+      "role": "local_collection",
+      "decision": "Store paths and scan results only in the user's database; never include them in the public artifact."
+    },
+    {
       "slug": "libretro-database",
       "name": "Libretro Database",
       "homepage": "https://github.com/libretro/libretro-database",

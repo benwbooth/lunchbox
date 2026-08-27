@@ -13,6 +13,7 @@ use crate::libretro::{self, LibretroImportStats};
 use crate::source;
 
 const SCHEMA: &str = include_str!("../../../schema/001_initial.sql");
+const MIGRATION_3: &str = include_str!("../../../schema/003_local_collection.sql");
 const PROVIDER_REGISTRY_JSON: &str = include_str!("../../../sources/metadata-providers.json");
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +60,7 @@ pub fn open_existing(path: &Path) -> Result<Connection> {
     )
     .with_context(|| format!("opening database {}", path.display()))?;
     configure(&connection)?;
+    migrate_connection(&connection)?;
     Ok(connection)
 }
 
@@ -92,6 +94,29 @@ pub fn initialize_path(path: &Path) -> Result<()> {
 pub fn initialize_connection(connection: &Connection, timestamp: &str) -> Result<()> {
     connection.execute_batch(SCHEMA)?;
     connection.execute("UPDATE schema_migrations SET applied_at = ?1", [timestamp])?;
+    Ok(())
+}
+
+fn migrate_connection(connection: &Connection) -> Result<()> {
+    let current_version: i64 = connection
+        .query_row(
+            "SELECT coalesce(max(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )
+        .context("reading Lunchbox schema version")?;
+    match current_version {
+        2 => connection
+            .execute_batch(MIGRATION_3)
+            .context("applying schema migration 3")?,
+        3 => {}
+        0..=1 => bail!(
+            "database schema version {current_version} is too old for an in-place migration; rebuild it from declared inputs"
+        ),
+        _ => bail!(
+            "database schema version {current_version} is newer than this lunchbox-db build supports"
+        ),
+    }
     Ok(())
 }
 
@@ -205,7 +230,7 @@ pub fn build(
             "metadata_provider_registry_reviewed_at",
             load_provider_registry()?.reviewed_at,
         ),
-        ("schema_version", "2".to_owned()),
+        ("schema_version", "3".to_owned()),
     ]);
     for (key, value) in metadata {
         connection.execute(
@@ -312,6 +337,40 @@ mod tests {
             "runtime_only"
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn schema_two_migrates_to_local_collection_schema_once() -> Result<()> {
+        let connection = Connection::open_in_memory()?;
+        configure(&connection)?;
+        initialize_connection(&connection, "1970-01-01T00:00:00Z")?;
+        connection.execute_batch(
+            "DROP TABLE local_files;
+             DROP TABLE collection_roots;
+             DELETE FROM schema_migrations WHERE version=3;",
+        )?;
+
+        migrate_connection(&connection)?;
+        migrate_connection(&connection)?;
+
+        assert_eq!(
+            connection.query_row(
+                "SELECT count(*) FROM schema_migrations WHERE version=3",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            1
+        );
+        assert_eq!(
+            connection.query_row(
+                "SELECT count(*) FROM sqlite_schema
+                 WHERE type='table' AND name IN ('collection_roots','local_files')",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            2
+        );
         Ok(())
     }
 }

@@ -48,6 +48,8 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
         "source_links",
         "entity_assertions",
         "acquisition_offers",
+        "collection_roots",
+        "local_files",
         "emulators",
         "emulator_platforms",
         "data_quality_issues",
@@ -174,6 +176,36 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
         [],
         |record| record.get(0),
     )?;
+    let invalid_local_file_sources: i64 = connection.query_row(
+        "SELECT count(*) FROM local_files f
+         LEFT JOIN source_records r ON r.id=f.source_record_id
+         LEFT JOIN providers p ON p.id=r.provider_id
+         WHERE p.slug IS NULL OR p.slug<>'lunchbox-local' OR r.record_type<>'artifact'
+            OR NOT EXISTS (
+              SELECT 1 FROM source_links l
+              WHERE l.source_record_id=f.source_record_id
+                AND l.entity_type='artifact' AND l.entity_id=f.artifact_id
+                AND l.status='accepted' AND l.method='exact_hash'
+            )",
+        [],
+        |record| record.get(0),
+    )?;
+    let offers_without_native_source: i64 = connection.query_row(
+        "SELECT count(*) FROM acquisition_offers o
+         WHERE NOT EXISTS (
+           SELECT 1 FROM source_links l
+           JOIN source_records r ON r.id=l.source_record_id
+           WHERE l.entity_type='offer' AND l.entity_id=o.id
+             AND l.status='accepted' AND r.provider_id=o.provider_id
+         )",
+        [],
+        |record| record.get(0),
+    )?;
+    let missing_local_files: i64 = connection.query_row(
+        "SELECT count(*) FROM local_files WHERE availability='missing'",
+        [],
+        |record| record.get(0),
+    )?;
 
     let checks = vec![
         error_check("sqlite_integrity", integrity == "ok", integrity),
@@ -233,6 +265,16 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
             invalid_materialized_payloads.to_string(),
         ),
         error_check(
+            "local_file_source_provenance",
+            invalid_local_file_sources == 0,
+            invalid_local_file_sources.to_string(),
+        ),
+        error_check(
+            "acquisition_offer_source_provenance",
+            offers_without_native_source == 0,
+            offers_without_native_source.to_string(),
+        ),
+        error_check(
             "open_error_quality_issues",
             open_errors == 0,
             open_errors.to_string(),
@@ -259,6 +301,7 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
             "libretro_strong_identity_crc_disagreements",
             libretro_crc_disagreements.to_string(),
         ),
+        info_check("missing_local_files", missing_local_files.to_string()),
     ];
     let valid = checks
         .iter()

@@ -5,6 +5,8 @@ mod emulators;
 mod ids;
 mod inspect;
 mod libretro;
+mod local_collection;
+mod minerva;
 mod source;
 
 use std::path::PathBuf;
@@ -66,6 +68,28 @@ enum Command {
         rdb_dir: PathBuf,
         #[arg(long, default_value = "1970-01-01T00:00:00Z")]
         import_timestamp: String,
+    },
+    /// Import Minerva torrent bundles as local acquisition offers.
+    ImportMinerva {
+        #[arg(long)]
+        database: PathBuf,
+        #[arg(long)]
+        catalog: PathBuf,
+        #[arg(long, default_value = "1970-01-01T00:00:00Z")]
+        import_timestamp: String,
+    },
+    /// Recursively hash and inventory a local game collection.
+    ScanLocal {
+        #[arg(long)]
+        database: PathBuf,
+        #[arg(long)]
+        root: PathBuf,
+        #[arg(long)]
+        platform: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        extensions: Vec<String>,
+        #[arg(long, default_value = "1970-01-01T00:00:00Z")]
+        scan_timestamp: String,
     },
     /// Run integrity, identity, relationship, and data-quality checks.
     Audit {
@@ -144,6 +168,35 @@ fn main() -> Result<()> {
         } => {
             let mut connection = database::open_existing(&database)?;
             let stats = libretro::import(&mut connection, &manifest, &rdb_dir, &import_timestamp)?;
+            println!("{}", serde_json::to_string_pretty(&stats)?);
+        }
+        Command::ImportMinerva {
+            database,
+            catalog,
+            import_timestamp,
+        } => {
+            let mut connection = database::open_existing(&database)?;
+            database::seed_providers(&connection)?;
+            let stats = minerva::import(&mut connection, &catalog, &import_timestamp)?;
+            println!("{}", serde_json::to_string_pretty(&stats)?);
+        }
+        Command::ScanLocal {
+            database,
+            root,
+            platform,
+            extensions,
+            scan_timestamp,
+        } => {
+            let mut connection = database::open_existing(&database)?;
+            database::seed_providers(&connection)?;
+            let stats = local_collection::scan(
+                &mut connection,
+                &database,
+                &root,
+                platform.as_deref(),
+                &extensions,
+                &scan_timestamp,
+            )?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Command::Audit { database, strict } => {

@@ -11,6 +11,10 @@ Lunchbox separates four concepts that the legacy database placed in one row:
 
 This prevents regional ROMs, revisions, ports, remasters, similarly named games, and downloadable packages from being mistaken for one another.
 
+Machine-local collection state is separate again: `collection_roots` stores lossless native root
+path bytes and `local_files` links relative paths to content-addressed artifacts. Moving or removing
+a file changes local availability; it does not delete canonical history.
+
 ## Stable IDs
 
 Lunchbox entity IDs do not expose provider ownership. Source records use the unique key `(provider, record type, external ID)` and link to Lunchbox entities through an explicit `source_links` decision.
@@ -51,6 +55,8 @@ becoming Lunchbox's identity model.
   external-ID crosswalks; MobyGames may fill demonstrated historical gaps under an appropriate
   license.
 - Minerva contributes acquisition offers, not canonical identity.
+- Local scans create provisional user-library entities and content-addressed artifacts. A path is
+  source provenance, not a portable game ID.
 - Storefronts contribute authoritative identifiers for their own releases.
 - User-created entries and overrides remain first-class and are never overwritten.
 
