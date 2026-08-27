@@ -30,6 +30,9 @@ ApplicationWindow {
     property string editingCollectionId: ""
     property string deletingCollectionId: ""
     property string deletingCollectionName: ""
+    property string pendingHistoryJobId: ""
+    property string pendingHistoryJobTitle: ""
+    property bool clearAllDownloadHistory: false
     property bool gridMode: true
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
@@ -51,6 +54,7 @@ ApplicationWindow {
     property bool closeAfterFavoriteSave: false
     property int collectionProbeStage: 0
     property bool collectionProbeArmed: false
+    property bool downloadHistoryTriggered: false
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -72,6 +76,8 @@ ApplicationWindow {
     readonly property bool favoriteUiProbe: Qt.application.arguments.indexOf("--favorite-ui-probe") >= 0
     readonly property bool collectionProbe: Qt.application.arguments.indexOf("--collection-probe") >= 0
     readonly property bool collectionUiProbe: Qt.application.arguments.indexOf("--collection-ui-probe") >= 0
+    readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
+    readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -141,6 +147,20 @@ ApplicationWindow {
                 return index
         }
         return -1
+    }
+
+    function confirmRemoveDownload(index) {
+        clearAllDownloadHistory = false
+        pendingHistoryJobId = downloadQueue.job_id_at(index)
+        pendingHistoryJobTitle = downloadQueue.job_title_at(index)
+        downloadHistoryDialog.open()
+    }
+
+    function confirmClearDownloadHistory() {
+        clearAllDownloadHistory = true
+        pendingHistoryJobId = ""
+        pendingHistoryJobTitle = ""
+        downloadHistoryDialog.open()
     }
 
     function startCollectionProbeSearch() {
@@ -265,6 +285,8 @@ ApplicationWindow {
                     root.scheduleFilter()
                     if (root.filterUiProbe)
                         filterPopup.open()
+                    else if (root.downloadUiProbe || root.downloadHistoryProbe)
+                        downloadsDrawer.open()
                 }
             }
         }
@@ -379,6 +401,18 @@ ApplicationWindow {
         function onCollection_revisionChanged() {
             if (downloadQueue.collection_revision > 0)
                 library.reload()
+        }
+        function onRevisionChanged() {
+            if (!root.downloadHistoryProbe || downloadQueue.busy)
+                return
+            if (!root.downloadHistoryTriggered
+                    && downloadQueue.finished_count > 0) {
+                root.downloadHistoryTriggered = true
+                downloadQueue.clear_finished()
+            } else if (root.downloadHistoryTriggered
+                    && downloadQueue.finished_count === 0) {
+                Qt.quit()
+            }
         }
     }
 
@@ -2530,6 +2564,41 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: downloadHistoryDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(470, root.width - 48)
+        title: root.clearAllDownloadHistory
+               ? "Clear finished download history?"
+               : "Remove download record?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: {
+            if (root.clearAllDownloadHistory)
+                downloadQueue.clear_finished()
+            else
+                downloadQueue.remove_job(root.pendingHistoryJobId)
+            root.pendingHistoryJobId = ""
+            root.pendingHistoryJobTitle = ""
+            root.clearAllDownloadHistory = false
+        }
+        onRejected: {
+            root.pendingHistoryJobId = ""
+            root.pendingHistoryJobTitle = ""
+            root.clearAllDownloadHistory = false
+        }
+        contentItem: Text {
+            text: root.clearAllDownloadHistory
+                  ? "Remove all completed, imported, cancelled, and failed records from Lunchbox history? Active downloads, pending imports, torrents, and downloaded files will be preserved."
+                  : "Remove ‘" + root.pendingHistoryJobTitle
+                    + "’ from Lunchbox history? Its torrent and downloaded files will be preserved."
+            color: root.ink
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
+        }
+    }
+
     FolderDialog {
         id: directoryDialog
         title: root.directoryTarget === "rom" ? "Choose ROM library" : "Choose torrent library"
@@ -3248,6 +3317,15 @@ ApplicationWindow {
                         onClicked: downloadQueue.refresh()
                     }
                     RoundButton {
+                        text: "⌫"
+                        flat: true
+                        visible: downloadQueue.finished_count > 0
+                        enabled: !downloadQueue.busy
+                        onClicked: root.confirmClearDownloadHistory()
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Clear finished history"
+                    }
+                    RoundButton {
                         text: "×"
                         flat: true
                         font.pixelSize: 20
@@ -3262,6 +3340,36 @@ ApplicationWindow {
                 color: root.muted
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 10
+                visible: downloadQueue.job_count > 0
+                spacing: 8
+                Text {
+                    text: downloadQueue.active_count + " active"
+                    color: downloadQueue.active_count > 0 ? root.accentCool : root.muted
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    text: "·"
+                    color: root.muted
+                }
+                Text {
+                    text: downloadQueue.aggregate_speed
+                    color: root.ink
+                    font.pixelSize: 11
+                    font.features: { "tnum": 1 }
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: downloadQueue.finished_count + " finished"
+                    color: root.muted
+                    font.pixelSize: 10
+                }
             }
             ScrollView {
                 Layout.fillWidth: true
@@ -3343,6 +3451,14 @@ ApplicationWindow {
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_cancel(downloadRow.index) }
                                         enabled: !downloadQueue.busy
                                         onClicked: downloadQueue.cancel_job(downloadRow.index)
+                                    }
+                                    Button {
+                                        text: "Remove"
+                                        visible: { downloadRow.queueRevision; return downloadQueue.job_can_remove(downloadRow.index) }
+                                        enabled: !downloadQueue.busy
+                                        onClicked: root.confirmRemoveDownload(downloadRow.index)
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Remove this history record; downloaded files are preserved"
                                     }
                                 }
                             }

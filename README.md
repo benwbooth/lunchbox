@@ -46,6 +46,9 @@ contents, where title matches are presented as review candidates rather than
 silently accepted identities. A reviewed file can be sent to qBittorrent from
 that pane, and the native Downloads drawer persists progress and exposes
 pause, resume, and non-destructive cancel controls.
+The drawer reports aggregate and per-job transfer rates. Finished records can
+be removed individually or cleared in bulk after confirmation without deleting
+active work, torrents, or downloaded files.
 
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder

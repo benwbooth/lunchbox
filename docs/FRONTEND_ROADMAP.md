@@ -67,9 +67,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Complete game-level offer selection beyond the implemented exact-file and
   whole-torrent paths: disk-space previews, related-file plans,
   region/version preferences, and duplicate avoidance.
-- Extend the implemented persistent qBittorrent queue with aggregate speed,
-  seeding policy, record cleanup, retry/recovery controls, and richer error
-  history.
+- Extend the implemented persistent qBittorrent queue, aggregate speed, and safe
+  record/history cleanup with seeding policy, retry/recovery controls, and
+  richer error history.
 - BIOS availability audit and explicit acquisition workflows, with provenance
   and checksums retained for every imported artifact.
 

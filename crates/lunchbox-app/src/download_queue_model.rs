@@ -12,9 +12,11 @@ pub mod qobject {
         #[qproperty(bool, busy)]
         #[qproperty(i32, job_count)]
         #[qproperty(i32, active_count)]
+        #[qproperty(i32, finished_count)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, collection_revision)]
         #[qproperty(QString, message)]
+        #[qproperty(QString, aggregate_speed)]
         type DownloadQueueModel = super::DownloadQueueModelRust;
 
         #[qinvokable]
@@ -31,6 +33,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn cancel_job(self: Pin<&mut DownloadQueueModel>, index: i32);
+
+        #[qinvokable]
+        fn remove_job(self: Pin<&mut DownloadQueueModel>, job_id: QString);
+
+        #[qinvokable]
+        fn clear_finished(self: Pin<&mut DownloadQueueModel>);
+
+        #[qinvokable]
+        fn job_id_at(self: &DownloadQueueModel, index: i32) -> QString;
 
         #[qinvokable]
         fn job_title_at(self: &DownloadQueueModel, index: i32) -> QString;
@@ -55,6 +66,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn job_can_cancel(self: &DownloadQueueModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn job_can_remove(self: &DownloadQueueModel, index: i32) -> bool;
     }
 
     impl cxx_qt::Threading for DownloadQueueModel {}
@@ -62,7 +76,7 @@ pub mod qobject {
 
 use std::pin::Pin;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
@@ -75,9 +89,11 @@ pub struct DownloadQueueModelRust {
     busy: bool,
     job_count: i32,
     active_count: i32,
+    finished_count: i32,
     revision: i32,
     collection_revision: i32,
     message: QString,
+    aggregate_speed: QString,
     jobs: Vec<DownloadJob>,
 }
 
@@ -88,9 +104,11 @@ impl Default for DownloadQueueModelRust {
             busy: false,
             job_count: 0,
             active_count: 0,
+            finished_count: 0,
             revision: 0,
             collection_revision: 0,
             message: QString::from("No downloads yet."),
+            aggregate_speed: QString::from("0 B/s"),
             jobs: Vec::new(),
         }
     }
@@ -106,6 +124,7 @@ enum QueueAction {
 struct QueueUpdate {
     jobs: Vec<DownloadJob>,
     imported_count: usize,
+    removed_count: usize,
 }
 
 fn qstring(value: impl AsRef<str>) -> QString {
@@ -165,6 +184,62 @@ impl qobject::DownloadQueueModel {
         self.control_job(index, QueueAction::Cancel);
     }
 
+    pub fn remove_job(mut self: Pin<&mut Self>, job_id: QString) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let job_id = job_id.to_string();
+        let active = self
+            .as_ref()
+            .rust()
+            .jobs
+            .iter()
+            .find(|job| job.id == job_id)
+            .map(|job| is_active(&job.state));
+        let Some(active) = active else {
+            self.as_mut()
+                .set_message(qstring("The download record is no longer available."));
+            return;
+        };
+        if active {
+            self.as_mut().set_message(qstring(
+                "Active downloads and pending imports cannot be removed from history.",
+            ));
+            return;
+        }
+        self.as_mut().start_history_cleanup(Some(job_id));
+    }
+
+    pub fn clear_finished(mut self: Pin<&mut Self>) {
+        if *self.as_ref().busy() || *self.as_ref().finished_count() == 0 {
+            return;
+        }
+        self.as_mut().start_history_cleanup(None);
+    }
+
+    fn start_history_cleanup(mut self: Pin<&mut Self>, job_id: Option<String>) {
+        self.as_mut().set_busy(true);
+        self.as_mut().set_message(qstring(if job_id.is_some() {
+            "Removing the finished download record…"
+        } else {
+            "Clearing finished download history…"
+        }));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-download-history".into())
+            .spawn(move || {
+                let updated = cleanup_history(job_id).map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_refresh(updated);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_busy(false);
+            self.as_mut()
+                .set_message(qstring(format!("Could not start history cleanup: {error}")));
+        }
+    }
+
     fn control_job(mut self: Pin<&mut Self>, index: i32, action: QueueAction) {
         if *self.as_ref().busy() {
             return;
@@ -200,25 +275,52 @@ impl qobject::DownloadQueueModel {
     fn replace_jobs(mut self: Pin<&mut Self>, update: QueueUpdate) {
         let jobs = update.jobs;
         let active = jobs.iter().filter(|job| is_active(&job.state)).count();
+        let finished = jobs.len().saturating_sub(active);
+        let aggregate_speed = jobs
+            .iter()
+            .filter(|job| job.state == "downloading")
+            .fold(0_u64, |total, job| total.saturating_add(job.download_speed));
         let count = jobs.len();
         self.as_mut().rust_mut().jobs = jobs;
         self.as_mut()
             .set_job_count(i32::try_from(count).unwrap_or(i32::MAX));
         self.as_mut()
             .set_active_count(i32::try_from(active).unwrap_or(i32::MAX));
+        self.as_mut()
+            .set_finished_count(i32::try_from(finished).unwrap_or(i32::MAX));
+        self.as_mut()
+            .set_aggregate_speed(qstring(format_download_rate(aggregate_speed)));
         let revision = self.as_ref().revision().wrapping_add(1);
         self.as_mut().set_revision(revision);
         if update.imported_count > 0 {
             let collection_revision = self.as_ref().collection_revision().wrapping_add(1);
             self.as_mut().set_collection_revision(collection_revision);
         }
-        self.as_mut().set_message(qstring(if count == 0 {
-            "No downloads yet.".to_owned()
-        } else if active == 0 {
-            format!("{count} download records; none active")
-        } else {
-            format!("{active} active of {count} downloads")
-        }));
+        self.as_mut()
+            .set_message(qstring(if update.removed_count > 0 {
+                format!(
+                    "Removed {} finished download record{}; {count} remaining",
+                    update.removed_count,
+                    if update.removed_count == 1 { "" } else { "s" }
+                )
+            } else if count == 0 {
+                "No downloads yet.".to_owned()
+            } else if active == 0 {
+                format!("{count} download records; none active")
+            } else if aggregate_speed > 0 {
+                format!(
+                    "{active} active of {count} downloads · {}",
+                    format_download_rate(aggregate_speed)
+                )
+            } else {
+                format!("{active} active of {count} downloads")
+            }));
+    }
+
+    pub fn job_id_at(&self, index: i32) -> QString {
+        self.job(index)
+            .map(|job| qstring(&job.id))
+            .unwrap_or_default()
     }
 
     pub fn job_title_at(&self, index: i32) -> QString {
@@ -252,7 +354,12 @@ impl qobject::DownloadQueueModel {
                 } else {
                     "size pending".to_owned()
                 };
-                qstring(format!("{progress:.0}% · {bytes} · {}", job.message))
+                let rate = if job.state == "downloading" && job.download_speed > 0 {
+                    format!(" · {}", format_download_rate(job.download_speed))
+                } else {
+                    String::new()
+                };
+                qstring(format!("{progress:.0}% · {bytes}{rate} · {}", job.message))
             })
             .unwrap_or_default()
     }
@@ -276,6 +383,10 @@ impl qobject::DownloadQueueModel {
         self.job(index).is_some_and(|job| is_active(&job.state))
     }
 
+    pub fn job_can_remove(&self, index: i32) -> bool {
+        self.job(index).is_some_and(|job| !is_active(&job.state))
+    }
+
     fn job(&self, index: i32) -> Option<&DownloadJob> {
         usize::try_from(index)
             .ok()
@@ -291,6 +402,7 @@ fn refresh_jobs() -> Result<QueueUpdate> {
         return Ok(QueueUpdate {
             jobs,
             imported_count: 0,
+            removed_count: 0,
         });
     }
     let mut imported_count = 0;
@@ -331,6 +443,7 @@ fn refresh_jobs() -> Result<QueueUpdate> {
     Ok(QueueUpdate {
         jobs,
         imported_count,
+        removed_count: 0,
     })
 }
 
@@ -389,9 +502,62 @@ fn control_job(mut job: DownloadJob, action: QueueAction) -> Result<QueueUpdate>
     Ok(QueueUpdate {
         jobs: store.jobs()?,
         imported_count: 0,
+        removed_count: 0,
     })
+}
+
+fn cleanup_history(job_id: Option<String>) -> Result<QueueUpdate> {
+    let store = SettingsStore::open_default()?;
+    let removed_count = if let Some(job_id) = job_id {
+        if store.delete_job_record(&job_id)? {
+            1
+        } else {
+            bail!("the record is active, pending import, or no longer exists");
+        }
+    } else {
+        store.clear_finished_job_records()?
+    };
+    Ok(QueueUpdate {
+        jobs: store.jobs()?,
+        imported_count: 0,
+        removed_count,
+    })
+}
+
+fn format_download_rate(bytes_per_second: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    let rate = bytes_per_second as f64;
+    if rate >= GIB {
+        format!("{:.1} GiB/s", rate / GIB)
+    } else if rate >= MIB {
+        format!("{:.1} MiB/s", rate / MIB)
+    } else if rate >= KIB {
+        format!("{:.1} KiB/s", rate / KIB)
+    } else {
+        format!("{bytes_per_second} B/s")
+    }
 }
 
 fn is_active(state: &str) -> bool {
     matches!(state, "queued" | "downloading" | "paused" | "complete")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_download_rate, is_active};
+
+    #[test]
+    fn download_rates_use_binary_units_and_active_states_protect_pending_work() {
+        assert_eq!(format_download_rate(0), "0 B/s");
+        assert_eq!(format_download_rate(1536), "1.5 KiB/s");
+        assert_eq!(format_download_rate(5 * 1024 * 1024), "5.0 MiB/s");
+        for state in ["queued", "downloading", "paused", "complete"] {
+            assert!(is_active(state));
+        }
+        for state in ["imported", "cancelled", "failed"] {
+            assert!(!is_active(state));
+        }
+    }
 }

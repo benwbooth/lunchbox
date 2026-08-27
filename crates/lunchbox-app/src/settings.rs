@@ -606,6 +606,25 @@ impl SettingsStore {
             .collect())
     }
 
+    pub fn delete_job_record(&self, id: &str) -> Result<bool> {
+        let connection = self.connection()?;
+        let changed = connection.execute(
+            "DELETE FROM download_jobs
+             WHERE id=?1 AND state NOT IN ('queued', 'downloading', 'paused', 'complete')",
+            params![id],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn clear_finished_job_records(&self) -> Result<usize> {
+        let connection = self.connection()?;
+        Ok(connection.execute(
+            "DELETE FROM download_jobs
+             WHERE state NOT IN ('queued', 'downloading', 'paused', 'complete')",
+            [],
+        )?)
+    }
+
     pub fn record_installed(&self, job: &DownloadJob, path: &Path) -> Result<()> {
         let connection = self.connection()?;
         connection.execute(
@@ -964,6 +983,57 @@ mod tests {
         store.upsert_job(&job).unwrap();
 
         assert_eq!(store.jobs().unwrap(), vec![job]);
+    }
+
+    #[test]
+    fn download_history_cleanup_never_removes_active_or_pending_import_jobs() {
+        let (_directory, store) = store();
+        let make_job = |game_id: &str, state: &str| {
+            let mut job = DownloadJob::queued(NewDownloadJob {
+                game_id: game_id.into(),
+                launchbox_db_id: 42,
+                title: game_id.into(),
+                platform: "Platform".into(),
+                torrent_url: "https://example.invalid/game.torrent".into(),
+                torrent_file_index: Some(7),
+                torrent_file_path: format!("Platform/{game_id}.zip"),
+                info_hash: format!("hash-{game_id}"),
+                client_save_path: "/downloads/lunchbox".into(),
+                local_download_path: PathBuf::from("/native/downloads/lunchbox"),
+                local_target_path: PathBuf::from(format!("/native/roms/Platform/{game_id}.zip")),
+            });
+            job.state = state.into();
+            job
+        };
+        let jobs = [
+            make_job("queued", "queued"),
+            make_job("downloading", "downloading"),
+            make_job("paused", "paused"),
+            make_job("complete", "complete"),
+            make_job("imported", "imported"),
+            make_job("cancelled", "cancelled"),
+        ];
+        for job in &jobs {
+            store.upsert_job(job).unwrap();
+        }
+
+        assert!(!store.delete_job_record(&jobs[0].id).unwrap());
+        assert!(store.delete_job_record(&jobs[5].id).unwrap());
+        assert_eq!(store.clear_finished_job_records().unwrap(), 1);
+        assert_eq!(
+            store
+                .jobs()
+                .unwrap()
+                .into_iter()
+                .map(|job| job.state)
+                .collect::<HashSet<_>>(),
+            HashSet::from([
+                "queued".to_owned(),
+                "downloading".to_owned(),
+                "paused".to_owned(),
+                "complete".to_owned(),
+            ])
+        );
     }
 
     #[test]

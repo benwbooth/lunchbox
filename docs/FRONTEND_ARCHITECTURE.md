@@ -125,6 +125,12 @@ folder selection. Adding `--import-commit-probe` selects the readable results
 and commits them to the chosen `--state-database`, enabling a fully unattended,
 idempotent scan-to-collection integration test.
 
+`--download-ui-probe` leaves the persistent native Downloads drawer open.
+`--download-history-probe --state-database FIXTURE_PATH` loads real terminal
+queue records, clears them through the asynchronous Qt action, and exits only
+after the refreshed model reports zero finished records. The store refuses to
+delete active, paused, queued, or completion-pending-import records.
+
 On the current Linux development host, the real preserved 303,560-game catalog
 loads on its worker in roughly 0.5–0.8 seconds in release mode, while a combined
 text plus Minerva filter completes in about 16 ms. The existing 8 GB media tree
