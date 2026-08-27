@@ -30,7 +30,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Native qBittorrent settings and connection testing, operating-system
   credential storage, exact reviewed-file priority, optional whole-torrent
   mode, a restart-safe queue with pause/resume/cancel, and verified completed
-  file ingestion through configurable link/copy policies.
+  file ingestion through configurable link/copy policies. The native seeding
+  policy can follow qBittorrent or durably pause a Lunchbox-owned torrent after
+  all selected bundle members import, with automatic retry and no data removal.
 - Native local-ROM folder scan with a platform selector, extension-aware
   discovery, optional SHA-1/MD5 identity verification, cancellable streaming
   progress, searchable/sortable review, bulk/per-file selection, idempotent
@@ -67,9 +69,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Complete game-level offer selection beyond the implemented exact-file and
   whole-torrent paths: disk-space previews, related-file plans,
   region/version preferences, and duplicate avoidance.
-- Extend the implemented persistent qBittorrent queue, aggregate speed, and safe
-  record/history cleanup with seeding policy, retry/recovery controls, and
-  richer error history.
+- Extend the implemented persistent qBittorrent queue, aggregate speed, safe
+  record/history cleanup, and durable post-import pause policy with explicit
+  retry/recovery controls and richer error history.
 - BIOS availability audit and explicit acquisition workflows, with provenance
   and checksums retained for every imported artifact.
 

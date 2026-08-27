@@ -60,6 +60,13 @@ The initial implementation enforces this shape:
   host paths use Rust `PathBuf` and native folder dialogs, while remote or
   container paths remain literal strings. The app never rewrites a Windows
   path as a POSIX path or assumes the client runs on the GUI host.
+- The persisted seeding policy either leaves qBittorrent's existing rules alone
+  or records a durable `pause_pending` action after successful ingestion. A
+  shared torrent is stopped only after none of its selected jobs remains in a
+  transfer or import state. Failures remain pending across refresh and restart;
+  history cleanup cannot remove them. Lunchbox calls qBittorrent's stop/pause
+  endpoint and never changes the client's global share-limit action or deletes
+  torrent data as part of this policy.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -126,10 +133,17 @@ and commits them to the chosen `--state-database`, enabling a fully unattended,
 idempotent scan-to-collection integration test.
 
 `--download-ui-probe` leaves the persistent native Downloads drawer open.
+`--settings-ui-probe` leaves the native settings dialog open, including the
+post-import seeding policy, for deterministic visual inspection.
+`--settings-seeding-probe --state-database EMPTY_PATH` selects the pause policy,
+saves it through the asynchronous CXX-Qt settings bridge, and exits only after
+the save completes. Inspecting or reusing the state path verifies persistence
+and restart recovery.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to
-delete active, paused, queued, or completion-pending-import records.
+delete active, paused, queued, completion-pending-import, or
+post-import-action-pending records.
 
 On the current Linux development host, the real preserved 303,560-game catalog
 loads on its worker in roughly 0.5–0.8 seconds in release mode, while a combined
@@ -152,10 +166,11 @@ The Electron implementation remains on `legacy/electron` as the specification
 for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
-qBittorrent setup, exact-file selection, queue control, and completed-file
-ingestion, local-folder scan/review/import, legacy content filters, and durable
-favorites are now native. Existing game media is now indexed and rendered
-natively. On-demand LibRetro retrieval and durable negative caching are native.
+qBittorrent setup, exact-file selection, queue control, completed-file
+ingestion, durable safe seeding policy, local-folder scan/review/import, legacy
+content filters, and durable favorites are now native. Existing game media is
+now indexed and rendered natively. On-demand LibRetro retrieval and durable
+negative caching are native.
 Playlists and smart collections, alternate media providers, media rotation and
 redownload, emulator installation and launch, the remaining settings,
 archive-member and manual identity workflows, and the controller-first

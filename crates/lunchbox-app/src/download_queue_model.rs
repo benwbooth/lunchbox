@@ -74,6 +74,7 @@ pub mod qobject {
     impl cxx_qt::Threading for DownloadQueueModel {}
 }
 
+use std::collections::HashSet;
 use std::pin::Pin;
 
 use anyhow::{Result, bail};
@@ -195,7 +196,7 @@ impl qobject::DownloadQueueModel {
             .jobs
             .iter()
             .find(|job| job.id == job_id)
-            .map(|job| is_active(&job.state));
+            .map(needs_refresh);
         let Some(active) = active else {
             self.as_mut()
                 .set_message(qstring("The download record is no longer available."));
@@ -203,7 +204,7 @@ impl qobject::DownloadQueueModel {
         };
         if active {
             self.as_mut().set_message(qstring(
-                "Active downloads and pending imports cannot be removed from history.",
+                "Active downloads, pending imports, and pending post-import actions cannot be removed from history.",
             ));
             return;
         }
@@ -274,7 +275,7 @@ impl qobject::DownloadQueueModel {
 
     fn replace_jobs(mut self: Pin<&mut Self>, update: QueueUpdate) {
         let jobs = update.jobs;
-        let active = jobs.iter().filter(|job| is_active(&job.state)).count();
+        let active = jobs.iter().filter(|job| needs_refresh(job)).count();
         let finished = jobs.len().saturating_sub(active);
         let aggregate_speed = jobs
             .iter()
@@ -384,7 +385,7 @@ impl qobject::DownloadQueueModel {
     }
 
     pub fn job_can_remove(&self, index: i32) -> bool {
-        self.job(index).is_some_and(|job| !is_active(&job.state))
+        self.job(index).is_some_and(|job| !needs_refresh(job))
     }
 
     fn job(&self, index: i32) -> Option<&DownloadJob> {
@@ -398,7 +399,7 @@ fn refresh_jobs() -> Result<QueueUpdate> {
     let store = SettingsStore::open_default()?;
     let settings = store.load()?;
     let mut jobs = store.jobs()?;
-    if !jobs.iter().any(|job| is_active(&job.state)) {
+    if !jobs.iter().any(needs_refresh) {
         return Ok(QueueUpdate {
             jobs,
             imported_count: 0,
@@ -423,6 +424,12 @@ fn refresh_jobs() -> Result<QueueUpdate> {
                         Ok(path) => {
                             job.state = "imported".to_owned();
                             job.message = format!("Ready in your library at {}", path.display());
+                            job.post_import_action =
+                                if settings.seeding_policy == "pause_after_import" {
+                                    "pause_pending".to_owned()
+                                } else {
+                                    "none".to_owned()
+                                };
                             imported_count += 1;
                         }
                         Err(error) => {
@@ -440,11 +447,58 @@ fn refresh_jobs() -> Result<QueueUpdate> {
         }
         store.upsert_job(job)?;
     }
+    apply_pending_post_import_actions(&client, &store, &mut jobs)?;
     Ok(QueueUpdate {
         jobs,
         imported_count,
         removed_count: 0,
     })
+}
+
+fn apply_pending_post_import_actions(
+    client: &QbittorrentClient,
+    store: &SettingsStore,
+    jobs: &mut [DownloadJob],
+) -> Result<()> {
+    for info_hash in ready_pause_hashes(jobs) {
+        let pause_result = client.pause_owned(&info_hash);
+        for job in jobs.iter_mut().filter(|job| {
+            job.info_hash.eq_ignore_ascii_case(&info_hash)
+                && job.post_import_action == "pause_pending"
+        }) {
+            let ready_message = job
+                .message
+                .split(" · ")
+                .next()
+                .unwrap_or("Ready in your library");
+            match &pause_result {
+                Ok(()) => {
+                    job.post_import_action = "pause_applied".to_owned();
+                    job.message = format!("{ready_message} · Torrent paused after import");
+                }
+                Err(error) => {
+                    job.message = format!(
+                        "{ready_message} · Could not pause the torrent; will retry automatically: {error}"
+                    );
+                }
+            }
+            job.updated_at = settings::unix_timestamp();
+            store.upsert_job(job)?;
+        }
+    }
+    Ok(())
+}
+
+fn ready_pause_hashes(jobs: &[DownloadJob]) -> HashSet<String> {
+    jobs.iter()
+        .filter(|job| job.post_import_action == "pause_pending")
+        .map(|job| job.info_hash.to_ascii_lowercase())
+        .filter(|info_hash| {
+            !jobs
+                .iter()
+                .any(|job| job.info_hash.eq_ignore_ascii_case(info_hash) && is_active(&job.state))
+        })
+        .collect()
 }
 
 fn control_job(mut job: DownloadJob, action: QueueAction) -> Result<QueueUpdate> {
@@ -544,9 +598,36 @@ fn is_active(state: &str) -> bool {
     matches!(state, "queued" | "downloading" | "paused" | "complete")
 }
 
+fn needs_refresh(job: &DownloadJob) -> bool {
+    is_active(&job.state) || job.post_import_action == "pause_pending"
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{format_download_rate, is_active};
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+
+    use super::{format_download_rate, is_active, needs_refresh, ready_pause_hashes};
+    use crate::settings::{DownloadJob, NewDownloadJob};
+
+    fn job(game_id: &str, info_hash: &str, state: &str, action: &str) -> DownloadJob {
+        let mut job = DownloadJob::queued(NewDownloadJob {
+            game_id: game_id.into(),
+            launchbox_db_id: 1,
+            title: game_id.into(),
+            platform: "Platform".into(),
+            torrent_url: "https://example.invalid/bundle.torrent".into(),
+            torrent_file_index: Some(0),
+            torrent_file_path: format!("{game_id}.zip"),
+            info_hash: info_hash.into(),
+            client_save_path: "/downloads".into(),
+            local_download_path: PathBuf::from(format!("/downloads/{game_id}.zip")),
+            local_target_path: PathBuf::from(format!("/roms/{game_id}.zip")),
+        });
+        job.state = state.into();
+        job.post_import_action = action.into();
+        job
+    }
 
     #[test]
     fn download_rates_use_binary_units_and_active_states_protect_pending_work() {
@@ -559,5 +640,20 @@ mod tests {
         for state in ["imported", "cancelled", "failed"] {
             assert!(!is_active(state));
         }
+    }
+
+    #[test]
+    fn durable_pause_waits_for_every_active_bundle_member() {
+        let mut imported = job("imported", "ABC123", "imported", "pause_pending");
+        let downloading = job("downloading", "abc123", "downloading", "none");
+        assert!(needs_refresh(&imported));
+        assert!(ready_pause_hashes(&[imported.clone(), downloading]).is_empty());
+
+        imported.post_import_action = "pause_pending".into();
+        let sibling = job("sibling", "abc123", "imported", "pause_pending");
+        assert_eq!(
+            ready_pause_hashes(&[imported, sibling]),
+            HashSet::from(["abc123".to_owned()])
+        );
     }
 }

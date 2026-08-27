@@ -55,6 +55,7 @@ ApplicationWindow {
     property int collectionProbeStage: 0
     property bool collectionProbeArmed: false
     property bool downloadHistoryTriggered: false
+    property bool settingsSeedingTriggered: false
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -78,6 +79,8 @@ ApplicationWindow {
     readonly property bool collectionUiProbe: Qt.application.arguments.indexOf("--collection-ui-probe") >= 0
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
+    readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
+    readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -94,6 +97,13 @@ ApplicationWindow {
 
     function scheduleFilter() {
         filterDelay.restart()
+    }
+
+    function finishSettingsSeedingProbeWhenSaved() {
+        if (root.settingsSeedingProbe && root.settingsSeedingTriggered
+                && !appSettings.busy
+                && appSettings.message.indexOf("Settings saved.") === 0)
+            Qt.quit()
     }
 
     function selectLibrary(availabilityKey) {
@@ -250,6 +260,24 @@ ApplicationWindow {
 
     SettingsModel {
         id: appSettings
+    }
+
+    Connections {
+        target: appSettings
+        function onInitializedChanged() {
+            if (root.settingsSeedingProbe && appSettings.initialized
+                    && !root.settingsSeedingTriggered) {
+                root.settingsSeedingTriggered = true
+                appSettings.seeding_policy = "pause_after_import"
+                appSettings.save()
+            }
+        }
+        function onBusyChanged() {
+            root.finishSettingsSeedingProbeWhenSaved()
+        }
+        function onMessageChanged() {
+            root.finishSettingsSeedingProbeWhenSaved()
+        }
     }
 
     DownloadQueueModel {
@@ -449,6 +477,8 @@ ApplicationWindow {
                 Qt.quit()
             else if (root.importUiProbe)
                 root.openImportDialog()
+            else if (root.settingsUiProbe)
+                settingsDialog.open()
         }
     }
 
@@ -3024,7 +3054,7 @@ ApplicationWindow {
         modal: true
         anchors.centerIn: parent
         width: Math.min(760, root.width - 60)
-        height: Math.min(680, root.height - 60)
+        height: Math.min(760, root.height - 60)
         padding: 0
         closePolicy: Popup.CloseOnEscape
 
@@ -3219,6 +3249,34 @@ ApplicationWindow {
                         checked: appSettings.download_entire_torrent
                         onToggled: appSettings.download_entire_torrent = checked
                     }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 9
+                    Text {
+                        text: "After a successful import"
+                        color: root.ink
+                        font.pixelSize: 12
+                    }
+                    ComboBox {
+                        id: seedingPolicy
+                        Layout.fillWidth: true
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "Follow qBittorrent seeding rules", value: "follow_client" },
+                            { label: "Pause the Lunchbox torrent", value: "pause_after_import" }
+                        ]
+                        currentIndex: appSettings.seeding_policy === "pause_after_import" ? 1 : 0
+                        onActivated: appSettings.seeding_policy = currentValue
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Pause is non-destructive. Lunchbox waits for every selected file in a bundled torrent to import, then pauses the torrent without deleting its record or downloaded files."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
                 }
 
                 Rectangle {

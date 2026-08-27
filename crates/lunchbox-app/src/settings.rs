@@ -26,6 +26,7 @@ pub struct AppSettings {
     pub qbittorrent_container_torrent_library_directory: String,
     pub download_entire_torrent: bool,
     pub file_link_mode: String,
+    pub seeding_policy: String,
 }
 
 impl Default for AppSettings {
@@ -41,6 +42,7 @@ impl Default for AppSettings {
             qbittorrent_container_torrent_library_directory: String::new(),
             download_entire_torrent: false,
             file_link_mode: "symlink".to_owned(),
+            seeding_policy: "follow_client".to_owned(),
         }
     }
 }
@@ -104,6 +106,12 @@ impl AppSettings {
         ) {
             bail!("unsupported file link mode {}", self.file_link_mode);
         }
+        if !matches!(
+            self.seeding_policy.as_str(),
+            "follow_client" | "pause_after_import"
+        ) {
+            bail!("unsupported seeding policy {}", self.seeding_policy);
+        }
         Ok(())
     }
 
@@ -141,6 +149,7 @@ pub struct DownloadJob {
     pub downloaded_bytes: u64,
     pub total_bytes: u64,
     pub message: String,
+    pub post_import_action: String,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -181,6 +190,7 @@ impl DownloadJob {
             downloaded_bytes: 0,
             total_bytes: 0,
             message: "Queued in qBittorrent".to_owned(),
+            post_import_action: "none".to_owned(),
             created_at: now,
             updated_at: now,
         }
@@ -234,7 +244,7 @@ impl SettingsStore {
                         qbittorrent_username, rom_directory,
                         qbittorrent_container_rom_directory, torrent_library_directory,
                         qbittorrent_container_torrent_library_directory,
-                        download_entire_torrent, file_link_mode
+                        download_entire_torrent, file_link_mode, seeding_policy
                  FROM app_settings WHERE id=1",
                 [],
                 |row| {
@@ -250,6 +260,7 @@ impl SettingsStore {
                         qbittorrent_container_torrent_library_directory: row.get(7)?,
                         download_entire_torrent: row.get(8)?,
                         file_link_mode: row.get(9)?,
+                        seeding_policy: row.get(10)?,
                     })
                 },
             )
@@ -269,8 +280,8 @@ impl SettingsStore {
                  qbittorrent_username, rom_directory,
                  qbittorrent_container_rom_directory, torrent_library_directory,
                  qbittorrent_container_torrent_library_directory,
-                 download_entire_torrent, file_link_mode
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 download_entire_torrent, file_link_mode, seeding_policy
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -281,7 +292,8 @@ impl SettingsStore {
                  torrent_library_directory=excluded.torrent_library_directory,
                  qbittorrent_container_torrent_library_directory=excluded.qbittorrent_container_torrent_library_directory,
                  download_entire_torrent=excluded.download_entire_torrent,
-                 file_link_mode=excluded.file_link_mode",
+                 file_link_mode=excluded.file_link_mode,
+                 seeding_policy=excluded.seeding_policy",
             params![
                 settings.qbittorrent_host,
                 i64::from(settings.qbittorrent_port),
@@ -293,6 +305,7 @@ impl SettingsStore {
                 settings.qbittorrent_container_torrent_library_directory,
                 settings.download_entire_torrent,
                 settings.file_link_mode,
+                settings.seeding_policy,
             ],
         )?;
         transaction.commit()?;
@@ -524,15 +537,16 @@ impl SettingsStore {
                  torrent_file_path, info_hash, client_save_path,
                  local_download_path, local_target_path, state, progress,
                  download_speed, downloaded_bytes, total_bytes, message,
-                 created_at, updated_at
+                 post_import_action, created_at, updated_at
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
              ) ON CONFLICT(id) DO UPDATE SET
                  state=excluded.state, progress=excluded.progress,
                  download_speed=excluded.download_speed,
                  downloaded_bytes=excluded.downloaded_bytes,
                  total_bytes=excluded.total_bytes, message=excluded.message,
+                 post_import_action=excluded.post_import_action,
                  updated_at=excluded.updated_at",
             params![
                 job.id,
@@ -553,6 +567,7 @@ impl SettingsStore {
                 u64_to_i64(job.downloaded_bytes),
                 u64_to_i64(job.total_bytes),
                 job.message,
+                job.post_import_action,
                 job.created_at,
                 job.updated_at,
             ],
@@ -567,7 +582,7 @@ impl SettingsStore {
                     torrent_file_index, torrent_file_path, info_hash,
                     client_save_path, local_download_path, local_target_path,
                     state, progress, download_speed, downloaded_bytes,
-                    total_bytes, message, created_at, updated_at
+                    total_bytes, message, post_import_action, created_at, updated_at
              FROM download_jobs ORDER BY created_at DESC, id",
         )?;
         let rows = statement.query_map([], |row| {
@@ -591,8 +606,9 @@ impl SettingsStore {
                 downloaded_bytes: i64_to_u64(row.get(15)?),
                 total_bytes: i64_to_u64(row.get(16)?),
                 message: row.get(17)?,
-                created_at: row.get(18)?,
-                updated_at: row.get(19)?,
+                post_import_action: row.get(18)?,
+                created_at: row.get(19)?,
+                updated_at: row.get(20)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -610,7 +626,9 @@ impl SettingsStore {
         let connection = self.connection()?;
         let changed = connection.execute(
             "DELETE FROM download_jobs
-             WHERE id=?1 AND state NOT IN ('queued', 'downloading', 'paused', 'complete')",
+             WHERE id=?1
+               AND state NOT IN ('queued', 'downloading', 'paused', 'complete')
+               AND post_import_action != 'pause_pending'",
             params![id],
         )?;
         Ok(changed > 0)
@@ -620,7 +638,8 @@ impl SettingsStore {
         let connection = self.connection()?;
         Ok(connection.execute(
             "DELETE FROM download_jobs
-             WHERE state NOT IN ('queued', 'downloading', 'paused', 'complete')",
+             WHERE state NOT IN ('queued', 'downloading', 'paused', 'complete')
+               AND post_import_action != 'pause_pending'",
             [],
         )?)
     }
@@ -717,6 +736,9 @@ fn migrate(connection: &Connection) -> Result<()> {
              download_entire_torrent INTEGER NOT NULL CHECK (download_entire_torrent IN (0, 1)),
              file_link_mode TEXT NOT NULL CHECK (
                  file_link_mode IN ('symlink', 'hardlink', 'reflink', 'copy', 'leave_in_place')
+             ),
+             seeding_policy TEXT NOT NULL DEFAULT 'follow_client' CHECK (
+                 seeding_policy IN ('follow_client', 'pause_after_import')
              )
          );
          CREATE TABLE IF NOT EXISTS library_preferences (
@@ -750,6 +772,9 @@ fn migrate(connection: &Connection) -> Result<()> {
              downloaded_bytes INTEGER NOT NULL,
              total_bytes INTEGER NOT NULL,
              message TEXT NOT NULL,
+             post_import_action TEXT NOT NULL DEFAULT 'none' CHECK (
+                 post_import_action IN ('none', 'pause_pending', 'pause_applied')
+             ),
              created_at INTEGER NOT NULL,
              updated_at INTEGER NOT NULL
          );
@@ -852,6 +877,12 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !column_exists(connection, "download_jobs", "post_import_action")? {
+        connection.execute(
+            "ALTER TABLE download_jobs ADD COLUMN post_import_action TEXT NOT NULL DEFAULT 'none' CHECK (post_import_action IN ('none', 'pause_pending', 'pause_applied'))",
+            [],
+        )?;
+    }
     if !column_exists(connection, "library_preferences", "artwork_type")? {
         connection.execute(
             "ALTER TABLE library_preferences ADD COLUMN artwork_type TEXT NOT NULL DEFAULT 'box-front'",
@@ -861,6 +892,12 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "library_preferences", "grid_zoom")? {
         connection.execute(
             "ALTER TABLE library_preferences ADD COLUMN grid_zoom INTEGER NOT NULL DEFAULT 100",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "app_settings", "seeding_policy")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN seeding_policy TEXT NOT NULL DEFAULT 'follow_client' CHECK (seeding_policy IN ('follow_client', 'pause_after_import'))",
             [],
         )?;
     }
@@ -943,6 +980,7 @@ mod tests {
             qbittorrent_container_torrent_library_directory: "/downloads".into(),
             download_entire_torrent: true,
             file_link_mode: "hardlink".into(),
+            seeding_policy: "pause_after_import".into(),
         };
         store.save(&expected).unwrap();
         assert_eq!(store.load().unwrap(), expected);
@@ -1005,6 +1043,8 @@ mod tests {
             job.state = state.into();
             job
         };
+        let mut pause_pending = make_job("pause-pending", "imported");
+        pause_pending.post_import_action = "pause_pending".into();
         let jobs = [
             make_job("queued", "queued"),
             make_job("downloading", "downloading"),
@@ -1012,6 +1052,7 @@ mod tests {
             make_job("complete", "complete"),
             make_job("imported", "imported"),
             make_job("cancelled", "cancelled"),
+            pause_pending,
         ];
         for job in &jobs {
             store.upsert_job(job).unwrap();
@@ -1019,6 +1060,7 @@ mod tests {
 
         assert!(!store.delete_job_record(&jobs[0].id).unwrap());
         assert!(store.delete_job_record(&jobs[5].id).unwrap());
+        assert!(!store.delete_job_record(&jobs[6].id).unwrap());
         assert_eq!(store.clear_finished_job_records().unwrap(), 1);
         assert_eq!(
             store
@@ -1032,6 +1074,7 @@ mod tests {
                 "downloading".to_owned(),
                 "paused".to_owned(),
                 "complete".to_owned(),
+                "imported".to_owned(),
             ])
         );
     }
@@ -1164,6 +1207,70 @@ mod tests {
             ..AppSettings::default()
         };
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_seeding_policies() {
+        let settings = AppSettings {
+            seeding_policy: "delete_everything".into(),
+            ..AppSettings::default()
+        };
+        assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn older_state_database_migrates_to_safe_seeding_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE app_settings (
+                     id INTEGER PRIMARY KEY,
+                     qbittorrent_host TEXT NOT NULL,
+                     qbittorrent_port INTEGER NOT NULL,
+                     qbittorrent_use_https INTEGER NOT NULL,
+                     qbittorrent_username TEXT NOT NULL,
+                     rom_directory TEXT NOT NULL,
+                     qbittorrent_container_rom_directory TEXT NOT NULL,
+                     torrent_library_directory TEXT NOT NULL,
+                     qbittorrent_container_torrent_library_directory TEXT NOT NULL,
+                     download_entire_torrent INTEGER NOT NULL,
+                     file_link_mode TEXT NOT NULL
+                 );
+                 INSERT INTO app_settings VALUES (
+                     1, '127.0.0.1', 8080, 0, '', '', '', '', '', 0, 'symlink'
+                 );
+                 CREATE TABLE download_jobs (
+                     id TEXT PRIMARY KEY,
+                     game_id TEXT NOT NULL,
+                     launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+                     title TEXT NOT NULL,
+                     platform TEXT NOT NULL,
+                     torrent_url TEXT NOT NULL,
+                     torrent_file_index INTEGER,
+                     torrent_file_path TEXT NOT NULL,
+                     info_hash TEXT NOT NULL,
+                     client_save_path TEXT NOT NULL,
+                     local_download_path TEXT NOT NULL,
+                     local_target_path TEXT NOT NULL,
+                     state TEXT NOT NULL,
+                     progress REAL NOT NULL,
+                     download_speed INTEGER NOT NULL,
+                     downloaded_bytes INTEGER NOT NULL,
+                     total_bytes INTEGER NOT NULL,
+                     message TEXT NOT NULL,
+                     created_at INTEGER NOT NULL,
+                     updated_at INTEGER NOT NULL
+                 );",
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = SettingsStore::at(&path).unwrap();
+        assert_eq!(store.load().unwrap().seeding_policy, "follow_client");
+        let connection = Connection::open(&path).unwrap();
+        assert!(column_exists(&connection, "download_jobs", "post_import_action").unwrap());
     }
 
     #[test]

@@ -48,7 +48,11 @@ that pane, and the native Downloads drawer persists progress and exposes
 pause, resume, and non-destructive cancel controls.
 The drawer reports aggregate and per-job transfer rates. Finished records can
 be removed individually or cleared in bulk after confirmation without deleting
-active work, torrents, or downloaded files.
+active work, torrents, or downloaded files. Settings also provide a persisted
+post-import seeding choice: follow qBittorrent's existing rules, or pause the
+Lunchbox-owned torrent after every selected file in that bundle has imported.
+The pause request is non-destructive, survives restart when deferred, and
+retries automatically when qBittorrent is temporarily unavailable.
 
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder

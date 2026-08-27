@@ -27,6 +27,7 @@ pub mod qobject {
         #[qproperty(QString, qbittorrent_container_torrent_library_directory)]
         #[qproperty(bool, download_entire_torrent)]
         #[qproperty(QString, file_link_mode)]
+        #[qproperty(QString, seeding_policy)]
         type SettingsModel = super::SettingsModelRust;
 
         #[qinvokable]
@@ -75,6 +76,7 @@ pub struct SettingsModelRust {
     qbittorrent_container_torrent_library_directory: QString,
     download_entire_torrent: bool,
     file_link_mode: QString,
+    seeding_policy: QString,
 }
 
 impl Default for SettingsModelRust {
@@ -97,6 +99,7 @@ impl Default for SettingsModelRust {
             qbittorrent_container_torrent_library_directory: QString::default(),
             download_entire_torrent: false,
             file_link_mode: QString::from("symlink"),
+            seeding_policy: QString::from("follow_client"),
         }
     }
 }
@@ -336,6 +339,8 @@ impl qobject::SettingsModel {
             .set_download_entire_torrent(settings.download_entire_torrent);
         self.as_mut()
             .set_file_link_mode(qstring(settings.file_link_mode));
+        self.as_mut()
+            .set_seeding_policy(qstring(settings.seeding_policy));
     }
 
     fn settings_snapshot(&self) -> Result<AppSettings, String> {
@@ -356,6 +361,7 @@ impl qobject::SettingsModel {
                 .to_string(),
             download_entire_torrent: *self.download_entire_torrent(),
             file_link_mode: self.file_link_mode().to_string(),
+            seeding_policy: self.seeding_policy().to_string(),
         };
         settings.validate().map_err(|error| error.to_string())?;
         Ok(settings)
