@@ -32,7 +32,18 @@ ApplicationWindow {
     property url selectedFanartUrl: ""
     property string selectedArtworkSource: ""
     property string selectedHeroArtworkType: ""
+    readonly property bool selectedFavorite: {
+        library.favorite_revision
+        return selectedGameId.length > 0 && library.is_favorite(selectedGameId)
+    }
+    readonly property bool selectedFavoritePending: {
+        library.favorite_pending_count
+        return selectedGameId.length > 0 && library.favorite_pending(selectedGameId)
+    }
     property string directoryTarget: ""
+    property bool favoriteProbeArmed: false
+    property bool favoriteProbeTriggered: false
+    property bool closeAfterFavoriteSave: false
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -50,12 +61,21 @@ ApplicationWindow {
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
     readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
+    readonly property bool favoriteProbe: Qt.application.arguments.indexOf("--favorite-probe") >= 0
+    readonly property bool favoriteUiProbe: Qt.application.arguments.indexOf("--favorite-ui-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
     palette.text: ink
     palette.buttonText: ink
     palette.highlight: accent
+
+    onClosing: close => {
+        if (library.favorite_pending_count > 0) {
+            close.accepted = false
+            closeAfterFavoriteSave = true
+        }
+    }
 
     function scheduleFilter() {
         filterDelay.restart()
@@ -74,6 +94,8 @@ ApplicationWindow {
             return "My Collection"
         if (availability === "downloadable")
             return "Minerva Downloads"
+        if (availability === "favorites")
+            return "Favorites"
         return "All Games"
     }
 
@@ -162,6 +184,10 @@ ApplicationWindow {
                     Qt.quit()
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
+                else if (root.favoriteProbe || root.favoriteUiProbe) {
+                    searchField.text = "A Nightmare on Elm Street"
+                    library.apply_filter(searchField.text, "", "")
+                }
                 else {
                     root.scheduleFilter()
                     if (root.filterUiProbe)
@@ -172,6 +198,10 @@ ApplicationWindow {
         function onFilteringChanged() {
             if (library.filter_probe && library.ready && !library.filtering)
                 Qt.quit()
+            else if ((root.favoriteProbe || root.favoriteUiProbe)
+                     && library.ready && !library.filtering
+                     && searchField.text.length > 0)
+                root.favoriteProbeArmed = true
         }
         function onMedia_revisionChanged() {
             if (library.media_probe)
@@ -193,6 +223,20 @@ ApplicationWindow {
         }
         function onMedia_downloaded_countChanged() {
             if (root.mediaFetchUiProbe && library.media_downloaded_count > 0)
+                Qt.quit()
+        }
+        function onFavorite_revisionChanged() {
+            if (library.ready)
+                root.scheduleFilter()
+        }
+        function onFavorite_pending_countChanged() {
+            if (root.closeAfterFavoriteSave
+                    && library.favorite_pending_count === 0) {
+                root.closeAfterFavoriteSave = false
+                root.close()
+            } else if (root.favoriteProbe && root.favoriteProbeTriggered
+                    && library.favorite_pending_count === 0
+                    && library.favorite_count > 0)
                 Qt.quit()
         }
     }
@@ -333,6 +377,12 @@ ApplicationWindow {
                 description: "Not installed and covered by an exact platform offer"
                 checked: root.availability === "downloadable"
                 onToggled: root.selectLibrary(checked ? "" : "downloadable")
+            }
+            FilterToggle {
+                label: "Favorites"
+                description: "Games saved to your personal Favorites list"
+                checked: root.availability === "favorites"
+                onToggled: root.selectLibrary(checked ? "" : "favorites")
             }
             Rectangle {
                 width: parent.width
@@ -719,6 +769,17 @@ ApplicationWindow {
             required property bool gameDownloadable
             required property int gameDatabaseId
             property int mediaRevision: library.media_revision
+            property int favoriteRevision: library.favorite_revision
+            property int favoritePendingRevision: library.favorite_pending_count
+            property bool favorite: {
+                favoriteRevision
+                return library.is_favorite(gameId)
+            }
+            property bool favoriteBusy: {
+                favoritePendingRevision
+                return library.favorite_pending(gameId)
+            }
+            property bool favoriteProbeReady: root.favoriteProbeArmed
             property string requestedArtworkType: library.artwork_type
             property url artworkUrl: {
                 mediaRevision
@@ -732,12 +793,25 @@ ApplicationWindow {
                 library.request_artwork(gameDatabaseId, gameTitle,
                                         gamePlatform, requestedArtworkType)
             }
-            Component.onCompleted: requestVisibleArtwork()
+            function runFavoriteProbe() {
+                if (!favoriteProbeReady || index !== 0 || root.favoriteProbeTriggered)
+                    return
+                root.favoriteProbeTriggered = true
+                root.openGame(gameId, gameDatabaseId, gameTitle, gamePlatform,
+                              gameLocal, gameDownloadable)
+                if (!favorite)
+                    library.set_favorite(gameId, true)
+            }
+            Component.onCompleted: {
+                requestVisibleArtwork()
+                runFavoriteProbe()
+            }
             onGameDatabaseIdChanged: requestVisibleArtwork()
             onGameTitleChanged: requestVisibleArtwork()
             onGamePlatformChanged: requestVisibleArtwork()
             onMediaRevisionChanged: requestVisibleArtwork()
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
+            onFavoriteProbeReadyChanged: runFavoriteProbe()
             width: grid.cellWidth
             height: grid.cellHeight
             activeFocusOnTab: true
@@ -756,6 +830,9 @@ ApplicationWindow {
                     root.openGame(tile.gameId, tile.gameDatabaseId,
                                   tile.gameTitle, tile.gamePlatform,
                                   tile.gameLocal, tile.gameDownloadable)
+                    event.accepted = true
+                } else if (event.key === Qt.Key_F && !tile.favoriteBusy) {
+                    library.set_favorite(tile.gameId, !tile.favorite)
                     event.accepted = true
                 }
             }
@@ -834,6 +911,34 @@ ApplicationWindow {
                             font.letterSpacing: 0.8
                         }
                     }
+                    RoundButton {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.margins: 8
+                        width: 32
+                        height: 32
+                        visible: tile.favorite || tile.favoriteBusy
+                                 || cardHover.hovered || tile.activeFocus
+                        enabled: !tile.favoriteBusy
+                        text: tile.favoriteBusy ? "…" : tile.favorite ? "★" : "☆"
+                        flat: true
+                        font.pixelSize: 17
+                        onClicked: library.set_favorite(tile.gameId, !tile.favorite)
+                        background: Rectangle {
+                            radius: 9
+                            color: "#d9101620"
+                            border.color: tile.favorite ? root.accent : "#5b687d"
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: tile.favorite ? root.accent : root.ink
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: tile.favorite ? "Remove from Favorites" : "Add to Favorites"
+                    }
                 }
                 ToolTip.visible: cardHover.hovered && tile.artworkSource.length > 0
                 ToolTip.text: root.artworkLabel(library.artwork_type)
@@ -889,6 +994,16 @@ ApplicationWindow {
             required property bool gameDownloadable
             required property int gameDatabaseId
             property int mediaRevision: library.media_revision
+            property int favoriteRevision: library.favorite_revision
+            property int favoritePendingRevision: library.favorite_pending_count
+            property bool favorite: {
+                favoriteRevision
+                return library.is_favorite(gameId)
+            }
+            property bool favoriteBusy: {
+                favoritePendingRevision
+                return library.favorite_pending(gameId)
+            }
             property string requestedArtworkType: library.artwork_type
             property url artworkUrl: {
                 mediaRevision
@@ -927,6 +1042,9 @@ ApplicationWindow {
                                   row.gameTitle, row.gamePlatform,
                                   row.gameLocal, row.gameDownloadable)
                     event.accepted = true
+                } else if (event.key === Qt.Key_F && !row.favoriteBusy) {
+                    library.set_favorite(row.gameId, !row.favorite)
+                    event.accepted = true
                 }
             }
             Rectangle {
@@ -964,7 +1082,7 @@ ApplicationWindow {
             Column {
                 anchors.left: parent.left
                 anchors.leftMargin: 62
-                anchors.right: stateLabel.left
+                anchors.right: listFavorite.left
                 anchors.rightMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 3
@@ -983,6 +1101,21 @@ ApplicationWindow {
                     font.pixelSize: 11
                     elide: Text.ElideRight
                 }
+            }
+            RoundButton {
+                id: listFavorite
+                anchors.right: stateLabel.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 32
+                height: 32
+                enabled: !row.favoriteBusy
+                text: row.favoriteBusy ? "…" : row.favorite ? "★" : "☆"
+                flat: true
+                font.pixelSize: 16
+                onClicked: library.set_favorite(row.gameId, !row.favorite)
+                ToolTip.visible: hovered
+                ToolTip.text: row.favorite ? "Remove from Favorites" : "Add to Favorites"
             }
             Text {
                 id: stateLabel
@@ -1153,6 +1286,13 @@ ApplicationWindow {
                 count: library.local_game_count.toString()
                 active: root.selectedPlatform === "" && root.availability === "local"
                 onClicked: root.selectLibrary("local")
+            }
+            NavButton {
+                label: "Favorites"
+                glyph: "★"
+                count: library.favorite_count.toString()
+                active: root.selectedPlatform === "" && root.availability === "favorites"
+                onClicked: root.selectLibrary("favorites")
             }
             NavButton {
                 label: "Minerva"
@@ -1409,6 +1549,24 @@ ApplicationWindow {
                 font.letterSpacing: 1.4
             }
             RoundButton {
+                id: detailFavoriteButton
+                anchors.right: closeDetailsButton.left
+                anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                width: 34
+                height: 34
+                text: root.selectedFavoritePending ? "…" : root.selectedFavorite ? "★" : "☆"
+                flat: true
+                enabled: root.selectedGameId.length > 0 && !root.selectedFavoritePending
+                font.pixelSize: 17
+                onClicked: library.set_favorite(root.selectedGameId,
+                                                !root.selectedFavorite)
+                ToolTip.visible: hovered
+                ToolTip.text: root.selectedFavorite
+                              ? "Remove from Favorites" : "Add to Favorites"
+            }
+            RoundButton {
+                id: closeDetailsButton
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
@@ -2607,7 +2765,8 @@ ApplicationWindow {
                        library.ready ? root.accentCool : "#ef6a6a"
             }
             Text {
-                text: library.status_message
+                text: library.favorite_pending_count > 0
+                      ? library.favorite_message : library.status_message
                 color: root.muted
                 font.pixelSize: 11
             }

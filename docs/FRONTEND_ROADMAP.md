@@ -48,8 +48,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   and a missing-file management view.
 - Archive-member inspection, multidisc grouping, patches, alternate versions,
   and manual matching review.
-- Editable game and release metadata, favorites, tags, playlists, custom
+- Editable game and release metadata, tags, playlists, custom
   fields, completion state, play count, play time, and last-played history.
+- Extend the implemented stable-UUID favorites with named and smart collections,
+  ordering, bulk membership changes, and portable export.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
 - Fast bulk editing, audits, backup/restore, and portable collection export.

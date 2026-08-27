@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -328,6 +329,45 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub fn favorite_game_ids(&self) -> Result<HashSet<String>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare("SELECT game_uid FROM favorite_games")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        Ok(rows.collect::<rusqlite::Result<HashSet<_>>>()?)
+    }
+
+    pub fn set_favorite(
+        &self,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        title: &str,
+        platform: &str,
+        favorite: bool,
+    ) -> Result<()> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to change favorites");
+        }
+        let connection = self.connection()?;
+        if favorite {
+            connection.execute(
+                "INSERT INTO favorite_games (
+                     game_uid, launchbox_db_id, title, platform, added_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(game_uid) DO UPDATE SET
+                     launchbox_db_id=excluded.launchbox_db_id,
+                     title=excluded.title,
+                     platform=excluded.platform",
+                params![game_uid, launchbox_db_id, title, platform, unix_timestamp()],
+            )?;
+        } else {
+            connection.execute(
+                "DELETE FROM favorite_games WHERE game_uid=?1",
+                params![game_uid],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn upsert_job(&self, job: &DownloadJob) -> Result<()> {
         let connection = self.connection()?;
         connection.execute(
@@ -608,7 +648,18 @@ fn migrate(connection: &Connection) -> Result<()> {
          CREATE INDEX IF NOT EXISTS local_rom_files_game_uid
              ON local_rom_files(game_uid) WHERE game_uid IS NOT NULL;
          CREATE INDEX IF NOT EXISTS local_rom_files_visible
-             ON local_rom_files(included, availability);",
+             ON local_rom_files(included, availability);
+         CREATE TABLE IF NOT EXISTS favorite_games (
+             game_uid TEXT PRIMARY KEY,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             added_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS favorite_games_launchbox_id
+             ON favorite_games(launchbox_db_id) WHERE launchbox_db_id > 0;
+         CREATE INDEX IF NOT EXISTS favorite_games_added_at
+             ON favorite_games(added_at DESC);",
     )?;
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
@@ -746,6 +797,39 @@ mod tests {
         };
         store.save_library_preferences(&expected).unwrap();
         assert_eq!(store.load_library_preferences().unwrap(), expected);
+    }
+
+    #[test]
+    fn favorites_use_stable_game_identity_and_round_trip() {
+        let (_directory, store) = store();
+        assert!(store.favorite_game_ids().unwrap().is_empty());
+
+        store
+            .set_favorite("stable-game-uid", 42, "Game", "Platform", true)
+            .unwrap();
+        assert_eq!(
+            store.favorite_game_ids().unwrap(),
+            HashSet::from(["stable-game-uid".to_owned()])
+        );
+
+        store
+            .set_favorite("stable-game-uid", 99, "Updated", "Platform", true)
+            .unwrap();
+        let connection = Connection::open(store.path()).unwrap();
+        let metadata = connection
+            .query_row(
+                "SELECT launchbox_db_id, title FROM favorite_games WHERE game_uid=?1",
+                ["stable-game-uid"],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .unwrap();
+        assert_eq!(metadata, (99, "Updated".to_owned()));
+
+        store
+            .set_favorite("stable-game-uid", 99, "Updated", "Platform", false)
+            .unwrap();
+        assert!(store.favorite_game_ids().unwrap().is_empty());
+        assert!(store.set_favorite("", 0, "", "", true).is_err());
     }
 
     #[test]

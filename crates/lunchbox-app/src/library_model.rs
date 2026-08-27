@@ -37,11 +37,13 @@ pub mod qobject {
         #[qproperty(bool, media_loading)]
         #[qproperty(bool, media_retrieval_enabled)]
         #[qproperty(QString, media_fetch_message)]
+        #[qproperty(QString, favorite_message)]
         #[qproperty(bool, startup_probe)]
         #[qproperty(bool, catalog_probe)]
         #[qproperty(bool, filter_probe)]
         #[qproperty(bool, media_probe)]
         #[qproperty(bool, media_fetch_probe)]
+        #[qproperty(bool, favorite_probe)]
         #[qproperty(i32, startup_ms)]
         #[qproperty(i32, catalog_ms)]
         #[qproperty(i32, game_count)]
@@ -58,6 +60,9 @@ pub mod qobject {
         #[qproperty(i32, media_downloaded_count)]
         #[qproperty(i32, media_missing_count)]
         #[qproperty(i32, media_error_count)]
+        #[qproperty(i32, favorite_count)]
+        #[qproperty(i32, favorite_pending_count)]
+        #[qproperty(i32, favorite_revision)]
         #[qproperty(i32, media_revision)]
         #[qproperty(i32, platform_revision)]
         type LibraryModel = super::LibraryModelRust;
@@ -117,6 +122,15 @@ pub mod qobject {
         );
 
         #[qinvokable]
+        fn is_favorite(self: &LibraryModel, game_uid: QString) -> bool;
+
+        #[qinvokable]
+        fn favorite_pending(self: &LibraryModel, game_uid: QString) -> bool;
+
+        #[qinvokable]
+        fn set_favorite(self: Pin<&mut LibraryModel>, game_uid: QString, favorite: bool);
+
+        #[qinvokable]
         fn platform_name_at(self: &LibraryModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -167,6 +181,14 @@ use crate::media::{
 use crate::settings::{LibraryPreferences, SettingsStore};
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
+type CatalogLoadResult = Result<
+    (
+        Catalog,
+        Result<LibraryPreferences, String>,
+        Result<HashSet<String>, String>,
+    ),
+    String,
+>;
 
 const DISPLAY_ROLE: i32 = 0;
 const USER_ROLE: i32 = 0x0100;
@@ -204,11 +226,13 @@ pub struct LibraryModelRust {
     media_loading: bool,
     media_retrieval_enabled: bool,
     media_fetch_message: QString,
+    favorite_message: QString,
     startup_probe: bool,
     catalog_probe: bool,
     filter_probe: bool,
     media_probe: bool,
     media_fetch_probe: bool,
+    favorite_probe: bool,
     startup_ms: i32,
     catalog_ms: i32,
     game_count: i32,
@@ -225,6 +249,9 @@ pub struct LibraryModelRust {
     media_downloaded_count: i32,
     media_missing_count: i32,
     media_error_count: i32,
+    favorite_count: i32,
+    favorite_pending_count: i32,
+    favorite_revision: i32,
     media_revision: i32,
     platform_revision: i32,
     catalog: Arc<Catalog>,
@@ -241,6 +268,9 @@ pub struct LibraryModelRust {
     media_fetch_started: Option<std::time::Instant>,
     media_fetch_queue: Option<MediaFetchQueue>,
     media_requests: HashSet<(i64, ArtworkKind)>,
+    favorite_game_ids: Arc<HashSet<String>>,
+    favorite_requests: HashSet<String>,
+    favorite_started: Option<std::time::Instant>,
 }
 
 impl Default for LibraryModelRust {
@@ -264,11 +294,13 @@ impl Default for LibraryModelRust {
             media_fetch_message: QString::from(
                 "Artwork is cached on demand as games enter the visible library.",
             ),
+            favorite_message: QString::from("Favorites are stored in your local profile."),
             startup_probe: std::env::args().any(|argument| argument == "--startup-probe"),
             catalog_probe: std::env::args().any(|argument| argument == "--catalog-probe"),
             filter_probe: std::env::args().any(|argument| argument == "--filter-probe"),
             media_probe: std::env::args().any(|argument| argument == "--media-probe"),
             media_fetch_probe: std::env::args().any(|argument| argument == "--media-fetch-probe"),
+            favorite_probe: std::env::args().any(|argument| argument == "--favorite-probe"),
             startup_ms: 0,
             catalog_ms: 0,
             game_count: 0,
@@ -285,6 +317,9 @@ impl Default for LibraryModelRust {
             media_downloaded_count: 0,
             media_missing_count: 0,
             media_error_count: 0,
+            favorite_count: 0,
+            favorite_pending_count: 0,
+            favorite_revision: 0,
             media_revision: 0,
             platform_revision: 0,
             catalog: Arc::new(Catalog::default()),
@@ -301,6 +336,9 @@ impl Default for LibraryModelRust {
             media_fetch_started: None,
             media_fetch_queue: None,
             media_requests: HashSet::new(),
+            favorite_game_ids: Arc::new(HashSet::new()),
+            favorite_requests: HashSet::new(),
+            favorite_started: None,
         }
     }
 }
@@ -322,8 +360,13 @@ impl qobject::LibraryModel {
     }
 
     pub fn reload(mut self: Pin<&mut Self>) {
-        if *self.as_ref().loading() {
+        if *self.as_ref().loading() || !self.as_ref().rust().favorite_requests.is_empty() {
             self.as_mut().rust_mut().reload_pending = true;
+            if !*self.as_ref().loading() {
+                self.as_mut().set_status_message(qstring(
+                    "Finishing the favorite change before refreshing the catalog…",
+                ));
+            }
             return;
         }
         self.as_mut().start_load();
@@ -358,10 +401,19 @@ impl qobject::LibraryModel {
             .spawn(move || {
                 let loaded = catalog::load(&path)
                     .map(|catalog| {
-                        let preferences = SettingsStore::open_default()
-                            .and_then(|store| store.load_library_preferences())
-                            .map_err(|error| error.to_string());
-                        (catalog, preferences)
+                        let (preferences, favorites) = match SettingsStore::open_default() {
+                            Ok(store) => (
+                                store
+                                    .load_library_preferences()
+                                    .map_err(|error| error.to_string()),
+                                store.favorite_game_ids().map_err(|error| error.to_string()),
+                            ),
+                            Err(error) => {
+                                let error = error.to_string();
+                                (Err(error.clone()), Err(error))
+                            }
+                        };
+                        (catalog, preferences, favorites)
                     })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -375,17 +427,13 @@ impl qobject::LibraryModel {
         }
     }
 
-    fn finish_load(
-        mut self: Pin<&mut Self>,
-        generation: u64,
-        loaded: Result<(Catalog, Result<LibraryPreferences, String>), String>,
-    ) {
+    fn finish_load(mut self: Pin<&mut Self>, generation: u64, loaded: CatalogLoadResult) {
         if generation != self.as_ref().rust().load_generation {
             return;
         }
         self.as_mut().set_loading(false);
         match loaded {
-            Ok((catalog, preferences)) => {
+            Ok((catalog, preferences, favorites)) => {
                 let preference_warning = match preferences {
                     Ok(preferences) => {
                         let artwork_kind =
@@ -401,6 +449,15 @@ impl qobject::LibraryModel {
                     }
                     Err(error) => Some(error),
                 };
+                let (favorite_game_ids, favorite_warning) = match favorites {
+                    Ok(favorites) => (favorites, None),
+                    Err(error) => (HashSet::new(), Some(error)),
+                };
+                let favorite_count = catalog
+                    .games
+                    .iter()
+                    .filter(|game| favorite_game_ids.contains(&game.id))
+                    .count();
                 let indices = (0..catalog.games.len()).collect::<Vec<_>>();
                 self.as_mut().begin_reset_model();
                 {
@@ -408,6 +465,7 @@ impl qobject::LibraryModel {
                     let mut rust = this.as_mut().rust_mut();
                     rust.catalog = Arc::new(catalog);
                     rust.filtered_indices = indices;
+                    rust.favorite_game_ids = Arc::new(favorite_game_ids);
                 }
                 self.as_mut().end_reset_model();
 
@@ -452,6 +510,19 @@ impl qobject::LibraryModel {
                     .set_downloadable_game_count(saturating_i32(downloadable_game_count));
                 self.as_mut()
                     .set_emulator_count(saturating_i32(emulator_count));
+                self.as_mut()
+                    .set_favorite_count(saturating_i32(favorite_count));
+                let favorite_revision = self.as_ref().favorite_revision().wrapping_add(1);
+                self.as_mut().set_favorite_revision(favorite_revision);
+                if let Some(warning) = &favorite_warning {
+                    self.as_mut().set_favorite_message(qstring(format!(
+                        "Favorites could not be loaded: {warning}"
+                    )));
+                } else {
+                    self.as_mut().set_favorite_message(qstring(format!(
+                        "{favorite_count} favorite games in this catalog."
+                    )));
+                }
                 self.as_mut().set_catalog_ms(catalog_ms);
                 println!(
                     "LUNCHBOX_CATALOG_READY_MS={catalog_ms} games={game_count} platforms={platform_count} local_files={local_file_count} downloadable_games={downloadable_game_count} offers={offer_count} emulators={emulator_count} source={source_label:?}"
@@ -464,6 +535,9 @@ impl qobject::LibraryModel {
                 );
                 if let Some(warning) = preference_warning {
                     status.push_str(&format!(" — filter preferences unavailable: {warning}"));
+                }
+                if let Some(warning) = favorite_warning {
+                    status.push_str(&format!(" — favorites unavailable: {warning}"));
                 }
                 self.as_mut().set_status_message(qstring(status));
                 self.as_mut().start_media_load();
@@ -495,6 +569,7 @@ impl qobject::LibraryModel {
             availability: availability.to_string(),
             hide_non_retail: *self.as_ref().hide_non_retail(),
             hide_adult: *self.as_ref().hide_adult(),
+            favorite_game_ids: Arc::clone(&self.as_ref().rust().favorite_game_ids),
         };
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);
@@ -663,6 +738,159 @@ impl qobject::LibraryModel {
                     "Artwork queue unavailable: {error}"
                 )));
             }
+        }
+    }
+
+    pub fn is_favorite(&self, game_uid: QString) -> bool {
+        self.rust()
+            .favorite_game_ids
+            .contains(&game_uid.to_string())
+    }
+
+    pub fn favorite_pending(&self, game_uid: QString) -> bool {
+        self.rust()
+            .favorite_requests
+            .contains(&game_uid.to_string())
+    }
+
+    pub fn set_favorite(mut self: Pin<&mut Self>, game_uid: QString, favorite: bool) {
+        if !*self.as_ref().ready() || *self.as_ref().loading() {
+            return;
+        }
+        let game_uid = game_uid.to_string();
+        let Some(game) = self
+            .as_ref()
+            .rust()
+            .catalog
+            .games
+            .iter()
+            .find(|game| game.id == game_uid)
+            .cloned()
+        else {
+            self.as_mut().set_favorite_message(qstring(
+                "Favorite was not changed because the game identity is not in this catalog.",
+            ));
+            return;
+        };
+        if self.as_ref().rust().favorite_requests.contains(&game.id)
+            || self.as_ref().rust().favorite_game_ids.contains(&game.id) == favorite
+        {
+            return;
+        }
+
+        self.as_mut().rust_mut().favorite_started = Some(std::time::Instant::now());
+        self.as_mut()
+            .rust_mut()
+            .favorite_requests
+            .insert(game.id.clone());
+        self.as_mut().apply_favorite_state(&game.id, favorite);
+        let pending = self.as_ref().rust().favorite_requests.len();
+        self.as_mut()
+            .set_favorite_pending_count(saturating_i32(pending));
+        self.as_mut().set_favorite_message(qstring(format!(
+            "Saving {} as {}…",
+            game.title,
+            if favorite {
+                "a favorite"
+            } else {
+                "not a favorite"
+            }
+        )));
+
+        let game_uid = game.id.clone();
+        let rollback_uid = game_uid.clone();
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-favorite-save".into())
+            .spawn(move || {
+                let result = SettingsStore::open_default()
+                    .and_then(|store| {
+                        store.set_favorite(
+                            &game.id,
+                            game.launchbox_db_id,
+                            &game.title,
+                            &game.platform,
+                            favorite,
+                        )
+                    })
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_favorite_save(game_uid, favorite, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().finish_favorite_save(
+                rollback_uid,
+                favorite,
+                Err(format!("could not start favorite save: {error}")),
+            );
+        }
+    }
+
+    fn apply_favorite_state(mut self: Pin<&mut Self>, game_uid: &str, favorite: bool) {
+        let changed = if favorite {
+            Arc::make_mut(&mut self.as_mut().rust_mut().favorite_game_ids)
+                .insert(game_uid.to_owned())
+        } else {
+            Arc::make_mut(&mut self.as_mut().rust_mut().favorite_game_ids).remove(game_uid)
+        };
+        if !changed {
+            return;
+        }
+        let count = if favorite {
+            self.as_ref().favorite_count().saturating_add(1)
+        } else {
+            self.as_ref().favorite_count().saturating_sub(1)
+        };
+        self.as_mut().set_favorite_count(count);
+        let revision = self.as_ref().favorite_revision().wrapping_add(1);
+        self.as_mut().set_favorite_revision(revision);
+    }
+
+    fn finish_favorite_save(
+        mut self: Pin<&mut Self>,
+        game_uid: String,
+        favorite: bool,
+        result: Result<(), String>,
+    ) {
+        self.as_mut().rust_mut().favorite_requests.remove(&game_uid);
+        let pending = self.as_ref().rust().favorite_requests.len();
+        self.as_mut()
+            .set_favorite_pending_count(saturating_i32(pending));
+        match result {
+            Ok(()) => {
+                self.as_mut().set_favorite_message(qstring(if favorite {
+                    "Added to Favorites."
+                } else {
+                    "Removed from Favorites."
+                }));
+                if *self.as_ref().favorite_probe() {
+                    let elapsed = self
+                        .as_ref()
+                        .rust()
+                        .favorite_started
+                        .map(|started| started.elapsed().as_millis())
+                        .unwrap_or_default();
+                    println!(
+                        "LUNCHBOX_FAVORITE_READY_MS={elapsed} game_uid={game_uid:?} favorite={favorite}"
+                    );
+                }
+            }
+            Err(error) => {
+                self.as_mut().apply_favorite_state(&game_uid, !favorite);
+                self.as_mut().set_favorite_message(qstring(format!(
+                    "Favorite change was rolled back: {error}"
+                )));
+                self.as_mut().set_status_message(qstring(format!(
+                    "Could not save the favorite change: {error}"
+                )));
+            }
+        }
+        if pending == 0 && self.as_ref().rust().reload_pending && !*self.as_ref().loading() {
+            self.as_mut().rust_mut().reload_pending = false;
+            self.as_mut().start_load();
         }
     }
 

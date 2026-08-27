@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
@@ -43,6 +44,7 @@ pub struct Filter {
     pub availability: String,
     pub hide_non_retail: bool,
     pub hide_adult: bool,
+    pub favorite_game_ids: Arc<HashSet<String>>,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -720,6 +722,7 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                 && match filter.availability.as_str() {
                     "local" => game.local,
                     "downloadable" => game.downloadable && !game.local,
+                    "favorites" => filter.favorite_game_ids.contains(&game.id),
                     _ => true,
                 }
         })
@@ -802,6 +805,17 @@ mod tests {
                 }
             ),
             vec![1]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "favorites".into(),
+                    favorite_game_ids: Arc::new(HashSet::from(["metroid".to_owned()])),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
         );
     }
 

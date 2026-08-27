@@ -51,7 +51,11 @@ The initial implementation enforces this shape:
 - The writable state database is selected with `--state-database` or
   `LUNCHBOX_STATE_DATABASE`, otherwise an OS-native application-data directory
   is used. Its WAL setup and schema migration are serialized before concurrent
-  settings, queue, and catalog workers access it.
+  settings, queue, and catalog workers access it. Favorites use the stable game
+  UUID as their primary key; the LaunchBox numeric ID remains metadata only.
+  Favorite writes run on named workers, update the native views optimistically,
+  and roll the UI back if SQLite rejects the change. Window shutdown is deferred
+  until an accepted favorite write has left the in-process worker.
 - qBittorrent paths and host paths are separate types at the service boundary:
   host paths use Rust `PathBuf` and native folder dialogs, while remote or
   container paths remain literal strings. The app never rewrites a Windows
@@ -103,6 +107,10 @@ leaves the native grid open for a virtual-display visual check.
 `--media-fetch-probe --media-directory EMPTY_PATH` performs the same path from
 an uncached visible delegate through the real LibRetro service, waits for Qt to
 index the downloaded asset, prints `LUNCHBOX_MEDIA_FETCH_READY_MS`, and exits.
+`--favorite-probe --state-database EMPTY_PATH` selects a real catalog game,
+persists it through the native Qt action, prints `LUNCHBOX_FAVORITE_READY_MS`,
+and exits only after the worker reports success. `--favorite-ui-probe` leaves
+the same grid, star affordance, and details pane open for visual inspection.
 
 `--import-ui-probe --import-directory PATH` opens the local-import surface and
 starts a real checksum scan. It exists for deterministic virtual-display visual
@@ -118,7 +126,9 @@ indexes 6,979 preferred assets for 6,677 games in 106 ms without delaying
 catalog readiness. A real empty-cache NES cover retrieval completed in 7.944
 seconds and atomically stored a validated 608,533-byte PNG. The latest three
 headless Xvfb shell-ready probes measured 273--276 ms; the 250-ms release target
-remains a performance gate rather than being reported as met by this run.
+remains a performance gate rather than being reported as met by this run. A
+real UI-driven favorite write completed in 28--30 ms, and a second release launch
+loaded the persisted UUID, count, card star, and details action.
 
 The Nix application package extracts the verified database artifact at build
 time and points the executable at the unpacked database. Users do not pay a
@@ -131,9 +141,10 @@ for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, and completed-file
-ingestion, local-folder scan/review/import, and legacy content filters are now
-native. Existing game media is now indexed and rendered natively. On-demand
-LibRetro retrieval and durable negative caching are native. Alternate media
-providers, media rotation and redownload, emulator installation and launch, the
-remaining settings, archive-member and manual identity workflows, and the
-controller-first full-screen interface follow on the same shared models.
+ingestion, local-folder scan/review/import, legacy content filters, and durable
+favorites are now native. Existing game media is now indexed and rendered
+natively. On-demand LibRetro retrieval and durable negative caching are native.
+Playlists and smart collections, alternate media providers, media rotation and
+redownload, emulator installation and launch, the remaining settings,
+archive-member and manual identity workflows, and the controller-first
+full-screen interface follow on the same shared models.
