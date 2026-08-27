@@ -1,18 +1,38 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OpenFlags, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::audit;
 use crate::emulators::{self, EmulatorImportStats};
-use crate::ids::{sha256_file, stable_id};
+use crate::ids::{sha256_bytes, sha256_file, stable_id};
 use crate::libretro::{self, LibretroImportStats};
 use crate::source;
 
 const SCHEMA: &str = include_str!("../../../schema/001_initial.sql");
+const PROVIDER_REGISTRY_JSON: &str = include_str!("../../../sources/metadata-providers.json");
+
+#[derive(Debug, Deserialize)]
+struct ProviderRegistry {
+    schema_version: u32,
+    reviewed_at: String,
+    providers: Vec<ProviderDefinition>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderDefinition {
+    slug: String,
+    name: String,
+    homepage: String,
+    terms_url: String,
+    data_license: String,
+    redistribution_policy: String,
+    role: String,
+    decision: String,
+}
 
 #[derive(Debug, Serialize)]
 pub struct BuildResult {
@@ -76,65 +96,62 @@ pub fn initialize_connection(connection: &Connection, timestamp: &str) -> Result
 }
 
 pub fn seed_providers(connection: &Connection) -> Result<()> {
-    let providers = [
-        (
-            "lunchbox",
-            "Lunchbox",
-            "https://github.com/benwbooth/lunchbox",
-            "MIT",
-            "internal",
-        ),
-        (
-            "lunchbox-emulator-catalog",
-            "Lunchbox Emulator Catalog",
-            "https://github.com/benwbooth/lunchbox",
-            "MIT",
-            "allowed",
-        ),
-        (
-            "libretro-database",
-            "Libretro Database",
-            "https://github.com/libretro/libretro-database",
-            "CC BY-SA 4.0",
-            "allowed",
-        ),
-        (
-            "openvgdb",
-            "OpenVGDB",
-            "https://github.com/OpenVGDB/OpenVGDB",
-            "Unverified",
-            "review_required",
-        ),
-        (
-            "launchbox-games-db",
-            "LaunchBox Games Database",
-            "https://gamesdb.launchbox-app.com/",
-            "No redistribution permission recorded",
-            "review_required",
-        ),
-        (
-            "igdb",
-            "IGDB",
-            "https://www.igdb.com/",
-            "API terms",
-            "runtime_only",
-        ),
-        (
-            "minerva",
-            "Minerva",
-            "https://github.com/minerva-project/",
-            "Provider-specific",
-            "runtime_only",
-        ),
-    ];
+    let registry = load_provider_registry()?;
 
-    for (slug, name, homepage, license, policy) in providers {
+    for provider in registry.providers {
         connection.execute(
             "INSERT INTO providers (id, slug, name, homepage, data_license, redistribution_policy)\n             VALUES (?1, ?2, ?3, ?4, ?5, ?6)\n             ON CONFLICT(slug) DO UPDATE SET\n               name = excluded.name, homepage = excluded.homepage,\n               data_license = excluded.data_license,\n               redistribution_policy = excluded.redistribution_policy",
-            params![stable_id("provider", slug), slug, name, homepage, license, policy],
+            params![
+                stable_id("provider", &provider.slug),
+                provider.slug,
+                provider.name,
+                provider.homepage,
+                provider.data_license,
+                provider.redistribution_policy
+            ],
         )?;
     }
     Ok(())
+}
+
+fn load_provider_registry() -> Result<ProviderRegistry> {
+    let registry: ProviderRegistry = serde_json::from_str(PROVIDER_REGISTRY_JSON)
+        .context("parsing sources/metadata-providers.json")?;
+    if registry.schema_version != 1 {
+        bail!(
+            "unsupported metadata provider registry schema version: {}",
+            registry.schema_version
+        );
+    }
+    if registry.reviewed_at.trim().is_empty() {
+        bail!("metadata provider registry reviewed_at must not be empty");
+    }
+
+    let allowed_policies = ["allowed", "runtime_only", "review_required", "internal"];
+    let mut slugs = BTreeSet::new();
+    for provider in &registry.providers {
+        if provider.slug.trim().is_empty()
+            || provider.name.trim().is_empty()
+            || provider.homepage.trim().is_empty()
+            || provider.terms_url.trim().is_empty()
+            || provider.data_license.trim().is_empty()
+            || provider.role.trim().is_empty()
+            || provider.decision.trim().is_empty()
+        {
+            bail!("metadata provider definitions must not contain empty fields");
+        }
+        if !allowed_policies.contains(&provider.redistribution_policy.as_str()) {
+            bail!(
+                "invalid redistribution policy for {}: {}",
+                provider.slug,
+                provider.redistribution_policy
+            );
+        }
+        if !slugs.insert(provider.slug.as_str()) {
+            bail!("duplicate metadata provider slug: {}", provider.slug);
+        }
+    }
+    Ok(registry)
 }
 
 pub fn build(
@@ -180,6 +197,14 @@ pub fn build(
         ("emulator_source_sha256", emulator_source_hash),
         ("libretro_revision", libretro_manifest.revision),
         ("libretro_source_manifest_sha256", libretro_manifest_hash),
+        (
+            "metadata_provider_registry_sha256",
+            sha256_bytes(PROVIDER_REGISTRY_JSON.as_bytes()),
+        ),
+        (
+            "metadata_provider_registry_reviewed_at",
+            load_provider_registry()?.reviewed_at,
+        ),
         ("schema_version", "2".to_owned()),
     ]);
     for (key, value) in metadata {
@@ -251,4 +276,42 @@ fn remove_exact_file_if_present(path: &Path) -> Result<()> {
         fs::remove_file(path)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_registry_is_valid_and_seeds_idempotently() -> Result<()> {
+        let registry = load_provider_registry()?;
+        let connection = Connection::open_in_memory()?;
+        configure(&connection)?;
+        initialize_connection(&connection, "1970-01-01T00:00:00Z")?;
+
+        seed_providers(&connection)?;
+        seed_providers(&connection)?;
+
+        let count: i64 =
+            connection.query_row("SELECT count(*) FROM providers", [], |row| row.get(0))?;
+        assert_eq!(count as usize, registry.providers.len());
+        assert_eq!(
+            connection.query_row(
+                "SELECT redistribution_policy FROM providers WHERE slug='wikidata'",
+                [],
+                |row| row.get::<_, String>(0),
+            )?,
+            "allowed"
+        );
+        assert_eq!(
+            connection.query_row(
+                "SELECT redistribution_policy FROM providers WHERE slug='igdb'",
+                [],
+                |row| row.get::<_, String>(0),
+            )?,
+            "runtime_only"
+        );
+
+        Ok(())
+    }
 }

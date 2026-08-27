@@ -45,12 +45,22 @@ becoming Lunchbox's identity model.
 
 - Libretro, No-Intro, Redump, MAME, and similar DAT sources provide artifact evidence; they do not
   define the complete Lunchbox game catalog.
-- IGDB and other licensed metadata services enrich games and releases.
+- Lunchbox is the source of truth for canonical identity, redirects, user overrides, and selected
+  display values.
+- IGDB is the preferred broad metadata-enrichment connector. Wikidata supplies open facts and
+  external-ID crosswalks; MobyGames may fill demonstrated historical gaps under an appropriate
+  license.
 - Minerva contributes acquisition offers, not canonical identity.
 - Storefronts contribute authoritative identifiers for their own releases.
 - User-created entries and overrides remain first-class and are never overwritten.
 
-The `providers.redistribution_policy` field records whether provider data can be shipped, must be fetched at runtime, or requires legal review. A public database artifact must contain only redistributable data.
+The machine-readable `sources/metadata-providers.json` registry records each provider's role,
+reviewed terms URL, decision, and redistribution policy. The Rust builder validates that registry
+and seeds the `providers` table from it. A public database artifact must contain only redistributable
+data.
+
+See [the metadata-backbone decision](METADATA_BACKBONE.md) for the provider comparison, identity
+rules, and integration order.
 
 ## Validation gates
 

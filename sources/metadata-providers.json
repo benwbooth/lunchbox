@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-08-26",
+  "providers": [
+    {
+      "slug": "lunchbox",
+      "name": "Lunchbox",
+      "homepage": "https://github.com/benwbooth/lunchbox",
+      "terms_url": "https://github.com/benwbooth/lunchbox/blob/main/LICENSE",
+      "data_license": "MIT",
+      "redistribution_policy": "internal",
+      "role": "canonical_identity",
+      "decision": "Lunchbox owns canonical IDs, user edits, merges, redirects, and field selections."
+    },
+    {
+      "slug": "lunchbox-emulator-catalog",
+      "name": "Lunchbox Emulator Catalog",
+      "homepage": "https://github.com/benwbooth/lunchbox",
+      "terms_url": "https://github.com/benwbooth/lunchbox/blob/main/LICENSE",
+      "data_license": "MIT",
+      "redistribution_policy": "allowed",
+      "role": "emulator_catalog",
+      "decision": "Ship as maintained Lunchbox reference data."
+    },
+    {
+      "slug": "libretro-database",
+      "name": "Libretro Database",
+      "homepage": "https://github.com/libretro/libretro-database",
+      "terms_url": "https://github.com/libretro/libretro-database/blob/master/LICENSE",
+      "data_license": "CC BY-SA 4.0",
+      "redistribution_policy": "allowed",
+      "role": "artifact_evidence",
+      "decision": "Ship the pinned evidence pack; never use its records as the canonical game catalog."
+    },
+    {
+      "slug": "wikidata",
+      "name": "Wikidata",
+      "homepage": "https://www.wikidata.org/",
+      "terms_url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+      "data_license": "CC0 1.0 for structured data",
+      "redistribution_policy": "allowed",
+      "role": "open_bootstrap_and_crosswalk",
+      "decision": "Use for redistribution-safe facts and external-ID crosswalks, not as a complete metadata catalog."
+    },
+    {
+      "slug": "igdb",
+      "name": "IGDB",
+      "homepage": "https://www.igdb.com/",
+      "terms_url": "https://api-docs.igdb.com/",
+      "data_license": "IGDB API and Twitch Developer Services terms",
+      "redistribution_policy": "runtime_only",
+      "role": "preferred_metadata_enrichment",
+      "decision": "Preferred broad metadata lookup after authentication; do not publish an IGDB bulk snapshot."
+    },
+    {
+      "slug": "mobygames",
+      "name": "MobyGames",
+      "homepage": "https://www.mobygames.com/",
+      "terms_url": "https://www.mobygames.com/api/subscribe/",
+      "data_license": "MobyGames API subscription terms",
+      "redistribution_policy": "runtime_only",
+      "role": "optional_historical_enrichment",
+      "decision": "Use as an optional licensed gap source; commercial use requires an appropriate plan and attribution."
+    },
+    {
+      "slug": "rawg",
+      "name": "RAWG",
+      "homepage": "https://rawg.io/",
+      "terms_url": "https://rawg.io/apidocs",
+      "data_license": "RAWG API terms",
+      "redistribution_policy": "runtime_only",
+      "role": "optional_modern_discovery",
+      "decision": "Use only as an optional attributed runtime connector; RAWG prohibits data redistribution."
+    },
+    {
+      "slug": "retroachievements",
+      "name": "RetroAchievements",
+      "homepage": "https://retroachievements.org/",
+      "terms_url": "https://api-docs.retroachievements.org/",
+      "data_license": "RetroAchievements API terms; bulk-data redistribution not recorded",
+      "redistribution_policy": "runtime_only",
+      "role": "artifact_evidence_and_achievements",
+      "decision": "Use its API for supported hashes and achievements; it is not a universal game catalog."
+    },
+    {
+      "slug": "thegamesdb",
+      "name": "TheGamesDB",
+      "homepage": "https://thegamesdb.net/",
+      "terms_url": "https://api.thegamesdb.net/",
+      "data_license": "Data redistribution license not verified",
+      "redistribution_policy": "review_required",
+      "role": "candidate_secondary_metadata",
+      "decision": "Do not integrate until current data and media reuse terms are confirmed in writing."
+    },
+    {
+      "slug": "launchbox-games-db",
+      "name": "LaunchBox Games Database",
+      "homepage": "https://gamesdb.launchbox-app.com/",
+      "terms_url": "https://feedback.launchbox-app.com/en/help/articles/8890692-getting-started-with-the-launchbox-games-database",
+      "data_license": "No redistribution permission recorded",
+      "redistribution_policy": "review_required",
+      "role": "reference_only",
+      "decision": "Do not ingest or clone its exported database without an explicit reuse grant."
+    },
+    {
+      "slug": "openvgdb",
+      "name": "OpenVGDB",
+      "homepage": "https://github.com/OpenVGDB/OpenVGDB",
+      "terms_url": "https://github.com/OpenVGDB/OpenVGDB",
+      "data_license": "Unverified",
+      "redistribution_policy": "review_required",
+      "role": "legacy_artifact_evidence",
+      "decision": "Retain the local copy for audit only until provenance and redistribution terms are verified."
+    },
+    {
+      "slug": "minerva",
+      "name": "Minerva",
+      "homepage": "https://github.com/minerva-project/",
+      "terms_url": "https://github.com/minerva-project/",
+      "data_license": "Provider-specific",
+      "redistribution_policy": "runtime_only",
+      "role": "acquisition_offers",
+      "decision": "Treat torrent and package records as acquisition offers, never canonical game identity."
+    }
+  ]
+}

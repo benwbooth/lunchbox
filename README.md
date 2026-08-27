@@ -14,8 +14,9 @@ The previous Electron application is preserved in the `legacy/electron` branch.
 - Raw provider assertions retain their provenance and do not overwrite user choices.
 - Ambiguous legacy records remain quarantined until they can be resolved safely.
 
-See [the database architecture](docs/DATABASE_ARCHITECTURE.md), [the pinned Libretro
-source policy](docs/LIBRETRO_SOURCE.md), and [the legacy audit](docs/LEGACY_DATABASE_AUDIT.md).
+See [the metadata-backbone decision](docs/METADATA_BACKBONE.md), [the database
+architecture](docs/DATABASE_ARCHITECTURE.md), [the pinned Libretro source
+policy](docs/LIBRETRO_SOURCE.md), and [the legacy audit](docs/LEGACY_DATABASE_AUDIT.md).
 
 ## Reproducible workflow
 
