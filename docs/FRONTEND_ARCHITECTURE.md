@@ -19,12 +19,19 @@ The initial implementation enforces this shape:
 - SQLite opens read-only on a named worker thread after the window is created.
 - Search, platform, and availability filtering run on worker threads. A
   generation number discards stale results when the user types quickly.
-- The initial query reads compact text and state fields only. Artwork, video,
-  manuals, emulator inspection, Minerva search, and hashing will be separately
-  scheduled services rather than additions to startup.
+- The initial query reads compact text and state fields only. The preserved
+  discovery catalog can be layered read-only over the canonical database;
+  Minerva platform coverage and legacy user-file state are joined in memory by
+  exact provider IDs, stable game UUIDs, or exact normalized platform names.
+  Artwork, video, manuals, emulator inspection, torrent metadata, and hashing
+  remain separately scheduled services rather than additions to startup.
 - Paths cross the Rust boundary as native paths. `--database PATH` and the
   `LUNCHBOX_DATABASE` environment variable are supported on Linux, macOS, and
   Windows without assuming `/bin/sh`, drive letters, or a path separator.
+- `--games-database`, `--minerva-database`, and `--user-database` select the
+  discovery, acquisition, and installed-state layers. Their environment
+  equivalents use the `LUNCHBOX_` prefix. None of these paths is interpreted as
+  a provider path or converted to a platform-specific string identity.
 
 ## Performance budgets
 
@@ -54,6 +61,13 @@ cargo run -p lunchbox-app -- --database build/lunchbox.db
 
 Use `--catalog-probe` to print database loading time and row counts before
 exiting. Unlike the shell probe, this waits for the asynchronous catalog worker.
+Use `--filter-probe` to load the catalog, apply a representative Minerva search,
+print `LUNCHBOX_FILTER_READY_MS`, and exit.
+
+On the current Linux development host, the real preserved 303,560-game catalog
+loads on its worker in roughly 0.5–0.8 seconds, while a combined text plus
+Minerva filter completes in 13 ms. Warm shell-ready probes remain below the
+250-ms release budget.
 
 The Nix application package extracts the verified database artifact at build
 time and points the executable at the unpacked database. Users do not pay a

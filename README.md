@@ -22,6 +22,28 @@ filtering run on worker threads, while virtualized Qt views consume a native
 `QAbstractListModel`. Use `--startup-probe` to measure shell construction without
 waiting for database loading.
 
+To exercise the preserved acquisition-first catalog, layer the local legacy
+game catalog, Minerva bundle index, and optional user state over the canonical
+database:
+
+```console
+cargo run --release -p lunchbox-app -- \
+  --database build/lunchbox.db \
+  --games-database lunchbox-games.db \
+  --minerva-database minerva.db \
+  --user-database ~/.local/share/lunchbox/user.db
+```
+
+The `Minerva` view contains only games whose platform has an exact Minerva
+bundle mapping and which are not already present in the user database. Selecting
+a platform keeps that availability filter active. The equivalent environment
+variables are `LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and
+`LUNCHBOX_USER_DATABASE`.
+
+The preserved game catalog is a local runtime input and is not added to the
+published artifact because redistribution permission for its LaunchBox-derived
+records has not been established.
+
 ## Database principles
 
 - A game, a platform release, an exact ROM/disc artifact, and a downloadable offer are different entities.

@@ -29,6 +29,7 @@ pub mod qobject {
         #[qproperty(bool, ready)]
         #[qproperty(bool, startup_probe)]
         #[qproperty(bool, catalog_probe)]
+        #[qproperty(bool, filter_probe)]
         #[qproperty(i32, startup_ms)]
         #[qproperty(i32, catalog_ms)]
         #[qproperty(i32, game_count)]
@@ -131,6 +132,7 @@ pub struct LibraryModelRust {
     ready: bool,
     startup_probe: bool,
     catalog_probe: bool,
+    filter_probe: bool,
     startup_ms: i32,
     catalog_ms: i32,
     game_count: i32,
@@ -147,6 +149,7 @@ pub struct LibraryModelRust {
     load_generation: u64,
     filter_generation: u64,
     load_started: Option<std::time::Instant>,
+    filter_started: Option<std::time::Instant>,
 }
 
 impl Default for LibraryModelRust {
@@ -161,6 +164,7 @@ impl Default for LibraryModelRust {
             ready: false,
             startup_probe: std::env::args().any(|argument| argument == "--startup-probe"),
             catalog_probe: std::env::args().any(|argument| argument == "--catalog-probe"),
+            filter_probe: std::env::args().any(|argument| argument == "--filter-probe"),
             startup_ms: 0,
             catalog_ms: 0,
             game_count: 0,
@@ -177,6 +181,7 @@ impl Default for LibraryModelRust {
             load_generation: 0,
             filter_generation: 0,
             load_started: None,
+            filter_started: None,
         }
     }
 }
@@ -278,9 +283,10 @@ impl qobject::LibraryModel {
                     .catalog
                     .games
                     .iter()
-                    .filter(|game| game.downloadable)
+                    .filter(|game| game.downloadable && !game.local)
                     .count();
                 let emulator_count = self.as_ref().rust().catalog.emulator_count;
+                let source_label = self.as_ref().rust().catalog.source_label.clone();
                 let catalog_ms = self
                     .as_ref()
                     .rust()
@@ -302,13 +308,13 @@ impl qobject::LibraryModel {
                     .set_emulator_count(saturating_i32(emulator_count));
                 self.as_mut().set_catalog_ms(catalog_ms);
                 println!(
-                    "LUNCHBOX_CATALOG_READY_MS={catalog_ms} games={game_count} platforms={platform_count} local_files={local_file_count} offers={offer_count} emulators={emulator_count}"
+                    "LUNCHBOX_CATALOG_READY_MS={catalog_ms} games={game_count} platforms={platform_count} local_files={local_file_count} downloadable_games={downloadable_game_count} offers={offer_count} emulators={emulator_count} source={source_label:?}"
                 );
                 self.as_mut().set_ready(true);
                 let revision = self.as_ref().platform_revision().wrapping_add(1);
                 self.as_mut().set_platform_revision(revision);
                 self.as_mut().set_status_message(qstring(format!(
-                    "Ready — {game_count} games across {platform_count} platforms"
+                    "Ready — {game_count} games across {platform_count} platforms — {source_label}"
                 )));
             }
             Err(error) => {
@@ -337,6 +343,7 @@ impl qobject::LibraryModel {
         self.as_mut().set_availability_filter(availability);
         self.as_mut().rust_mut().filter_generation =
             self.as_ref().rust().filter_generation.wrapping_add(1);
+        self.as_mut().rust_mut().filter_started = Some(std::time::Instant::now());
         let generation = self.as_ref().rust().filter_generation;
         let catalog = Arc::clone(&self.as_ref().rust().catalog);
         self.as_mut().set_filtering(true);
@@ -367,6 +374,13 @@ impl qobject::LibraryModel {
         self.as_mut().end_reset_model();
         self.as_mut().set_filtered_count(saturating_i32(count));
         self.as_mut().set_filtering(false);
+        let filter_ms = self
+            .as_ref()
+            .rust()
+            .filter_started
+            .map(|started| started.elapsed().as_millis())
+            .unwrap_or_default();
+        println!("LUNCHBOX_FILTER_READY_MS={filter_ms} results={count}");
     }
 
     pub fn platform_name_at(&self, index: i32) -> QString {

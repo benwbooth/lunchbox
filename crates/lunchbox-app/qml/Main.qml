@@ -48,7 +48,7 @@ ApplicationWindow {
         if (availability === "local")
             return "My Collection"
         if (availability === "downloadable")
-            return "Available to Download"
+            return "Minerva Downloads"
         return "All Games"
     }
 
@@ -69,9 +69,15 @@ ApplicationWindow {
             if (library.ready) {
                 if (library.catalog_probe)
                     Qt.quit()
+                else if (library.filter_probe)
+                    library.apply_filter("mario", "", "downloadable")
                 else
                     root.scheduleFilter()
             }
+        }
+        function onFilteringChanged() {
+            if (library.filter_probe && library.ready && !library.filtering)
+                Qt.quit()
         }
     }
 
@@ -484,7 +490,7 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 9
             HeaderButton {
-                text: "Available  " + library.downloadable_game_count
+                text: "Minerva  " + library.downloadable_game_count
                 active: root.availability === "downloadable"
                 onClicked: root.selectLibrary(active ? "" : "downloadable")
             }
@@ -538,10 +544,10 @@ ApplicationWindow {
                 onClicked: root.selectLibrary("local")
             }
             NavButton {
-                label: "Available"
+                label: "Minerva"
                 glyph: "↓"
                 count: library.downloadable_game_count.toString()
-                active: root.selectedPlatform === "" && root.availability === "downloadable"
+                active: root.availability === "downloadable"
                 onClicked: root.selectLibrary("downloadable")
             }
         }
@@ -584,7 +590,6 @@ ApplicationWindow {
                 active: root.selectedPlatform === label
                 onClicked: {
                     root.selectedPlatform = label
-                    root.availability = ""
                     root.scheduleFilter()
                 }
             }
@@ -703,7 +708,7 @@ ApplicationWindow {
                         text: library.loading ? "The window stays responsive while SQLite is read on a worker thread." :
                               !library.ready ? library.status_message :
                               library.game_count === 0 ?
-                                  "The canonical database currently contains platform, emulator, and ROM-identification evidence. Local scans and metadata imports will populate this view without replacing that evidence." :
+                                  "Add a discovery database or import local games. Minerva availability is layered over the catalog without treating provider filenames as canonical identities." :
                                   "Try a different platform, availability option, or search."
                         color: root.muted
                         font.pixelSize: 13

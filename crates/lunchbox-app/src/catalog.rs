@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -29,6 +30,7 @@ pub struct Catalog {
     pub local_file_count: usize,
     pub offer_count: usize,
     pub emulator_count: usize,
+    pub source_label: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -39,21 +41,8 @@ pub struct Filter {
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
-    let mut arguments = env::args_os().skip(1);
-    while let Some(argument) = arguments.next() {
-        if argument == "--database" {
-            return arguments.next().map(PathBuf::from);
-        }
-        if let Some(argument) = argument.to_str()
-            && let Some(path) = argument.strip_prefix("--database=")
-        {
-            return Some(PathBuf::from(path));
-        }
-    }
-
-    env::var_os("LUNCHBOX_DATABASE")
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
+    requested_path("--database", "LUNCHBOX_DATABASE")
+        .filter(|path| !path.as_os_str().is_empty())
         .or_else(|| {
             [
                 PathBuf::from("build/lunchbox.db"),
@@ -77,12 +66,90 @@ pub fn requested_database_path() -> Option<PathBuf> {
         })
 }
 
+fn requested_discovery_database_path() -> Option<PathBuf> {
+    requested_path("--games-database", "LUNCHBOX_GAMES_DATABASE").or_else(|| {
+        existing_path([
+            PathBuf::from("lunchbox-games.db"),
+            PathBuf::from("db/games.db"),
+            legacy_data_path("games.db"),
+            project_data_path("games.db"),
+        ])
+    })
+}
+
+fn requested_minerva_database_path() -> Option<PathBuf> {
+    requested_path("--minerva-database", "LUNCHBOX_MINERVA_DATABASE").or_else(|| {
+        existing_path([
+            PathBuf::from("minerva.db"),
+            PathBuf::from("db/minerva.db"),
+            legacy_data_path("minerva.db"),
+            project_data_path("minerva.db"),
+        ])
+    })
+}
+
+fn requested_user_database_path() -> Option<PathBuf> {
+    requested_path("--user-database", "LUNCHBOX_USER_DATABASE")
+        .or_else(|| existing_path([legacy_data_path("user.db"), project_data_path("user.db")]))
+}
+
+fn requested_path(argument_name: &str, environment_name: &str) -> Option<PathBuf> {
+    let equals_prefix = format!("{argument_name}=");
+    let mut arguments = env::args_os().skip(1);
+    while let Some(argument) = arguments.next() {
+        if argument == argument_name {
+            return arguments.next().map(PathBuf::from);
+        }
+        if let Some(argument) = argument.to_str()
+            && let Some(path) = argument.strip_prefix(&equals_prefix)
+        {
+            return Some(PathBuf::from(path));
+        }
+    }
+
+    env::var_os(environment_name)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+fn existing_path<const N: usize>(paths: [PathBuf; N]) -> Option<PathBuf> {
+    paths.into_iter().find(|path| path.is_file())
+}
+
+fn legacy_data_path(file_name: &str) -> PathBuf {
+    directories::BaseDirs::new()
+        .map(|dirs| dirs.data_dir().join("lunchbox").join(file_name))
+        .unwrap_or_else(|| PathBuf::from(file_name))
+}
+
+fn project_data_path(file_name: &str) -> PathBuf {
+    ProjectDirs::from("com", "Lunchbox", "Lunchbox")
+        .map(|dirs| dirs.data_dir().join(file_name))
+        .unwrap_or_else(|| PathBuf::from(file_name))
+}
+
 pub fn load(path: &Path) -> Result<Catalog> {
+    let connection = open_read_only(path, "Lunchbox database")?;
+    validate_canonical_schema(&connection)?;
+
+    if let Some(discovery_path) = requested_discovery_database_path() {
+        return load_discovery_catalog(
+            &connection,
+            &discovery_path,
+            requested_minerva_database_path().as_deref(),
+            requested_user_database_path().as_deref(),
+        );
+    }
+
+    load_canonical_catalog(&connection)
+}
+
+fn open_read_only(path: &Path, description: &str) -> Result<Connection> {
     let connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
-    .with_context(|| format!("opening Lunchbox database {}", path.display()))?;
+    .with_context(|| format!("opening {description} {}", path.display()))?;
     connection.busy_timeout(std::time::Duration::from_secs(2))?;
     connection.execute_batch(
         "PRAGMA foreign_keys = ON;\n\
@@ -92,7 +159,10 @@ pub fn load(path: &Path) -> Result<Catalog> {
          PRAGMA cache_size = -16384;\n\
          PRAGMA mmap_size = 268435456;",
     )?;
+    Ok(connection)
+}
 
+fn validate_canonical_schema(connection: &Connection) -> Result<()> {
     let schema_version: i64 = connection
         .query_row(
             "SELECT coalesce(max(version), 0) FROM schema_migrations",
@@ -103,7 +173,10 @@ pub fn load(path: &Path) -> Result<Catalog> {
     if schema_version != 3 {
         bail!("unsupported Lunchbox schema version {schema_version}; expected version 3");
     }
+    Ok(())
+}
 
+fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
     let mut statement = connection.prepare(
         "WITH local_games AS (\n\
              SELECT DISTINCT releases.game_id\n\
@@ -171,14 +244,241 @@ pub fn load(path: &Path) -> Result<Catalog> {
     Ok(Catalog {
         games,
         platforms,
-        local_file_count: count(&connection, "local_files", "availability = 'present'")?,
+        local_file_count: count(connection, "local_files", "availability = 'present'")?,
         offer_count: count(
-            &connection,
+            connection,
             "acquisition_offers",
             "availability <> 'unavailable'",
         )?,
-        emulator_count: count(&connection, "emulators", "1")?,
+        emulator_count: count(connection, "emulators", "1")?,
+        source_label: "Lunchbox canonical catalog".to_owned(),
     })
+}
+
+#[derive(Default)]
+struct InstalledGames {
+    database_ids: HashSet<i64>,
+    game_uids: HashSet<String>,
+    file_count: usize,
+}
+
+#[derive(Default)]
+struct MinervaCoverage {
+    platform_ids: HashSet<i64>,
+    platform_names: HashSet<String>,
+    offer_count: usize,
+}
+
+fn load_discovery_catalog(
+    canonical: &Connection,
+    discovery_path: &Path,
+    minerva_path: Option<&Path>,
+    user_path: Option<&Path>,
+) -> Result<Catalog> {
+    let discovery = open_read_only(discovery_path, "Lunchbox discovery database")?;
+    validate_discovery_schema(&discovery)?;
+    let installed = load_installed_games(user_path)?;
+    let minerva = load_minerva_coverage(minerva_path)?;
+
+    let game_capacity = count(&discovery, "games", "1")?;
+    let mut games = Vec::with_capacity(game_capacity);
+    let mut statement = discovery.prepare(
+        "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
+                coalesce(g.launchbox_db_id, 0), g.platform_id
+         FROM games g
+         JOIN platforms p ON p.id = g.platform_id
+         ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, i64>(5)?,
+        ))
+    })?;
+    for row in rows {
+        let (id, title, platform, status, database_id, platform_id) = row?;
+        let local = (database_id > 0 && installed.database_ids.contains(&database_id))
+            || installed.game_uids.contains(&id);
+        let minerva_covered = minerva.platform_ids.contains(&platform_id)
+            || minerva
+                .platform_names
+                .contains(&normalize_platform_key(&platform));
+        games.push(Game {
+            id,
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            title,
+            platform,
+            status,
+            local,
+            downloadable: minerva_covered && !local,
+        });
+    }
+
+    let mut platform_statement = discovery.prepare(
+        "SELECT p.name, count(g.id)
+         FROM platforms p
+         LEFT JOIN games g ON g.platform_id = p.id
+         GROUP BY p.id, p.name
+         HAVING count(g.id) > 0
+         ORDER BY p.name COLLATE NOCASE",
+    )?;
+    let platform_rows = platform_statement.query_map([], |row| {
+        Ok(Platform {
+            name: row.get(0)?,
+            game_count: row.get(1)?,
+        })
+    })?;
+    let platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(Catalog {
+        games,
+        platforms,
+        local_file_count: installed.file_count,
+        offer_count: minerva.offer_count,
+        emulator_count: count(canonical, "emulators", "1")?,
+        source_label: format!("Discovery catalog: {}", discovery_path.display()),
+    })
+}
+
+fn validate_discovery_schema(connection: &Connection) -> Result<()> {
+    for (table, column) in [
+        ("games", "launchbox_db_id"),
+        ("games", "platform_id"),
+        ("platforms", "name"),
+    ] {
+        if !column_exists(connection, table, column)? {
+            bail!("discovery database is missing required column {table}.{column}");
+        }
+    }
+    Ok(())
+}
+
+fn load_installed_games(path: Option<&Path>) -> Result<InstalledGames> {
+    let Some(path) = path else {
+        return Ok(InstalledGames::default());
+    };
+    let connection = open_read_only(path, "Lunchbox user database")?;
+    if !table_exists(&connection, "game_files")? {
+        return Ok(InstalledGames::default());
+    }
+
+    let mut installed = InstalledGames::default();
+    let has_game_uid = column_exists(&connection, "game_files", "game_uid")?;
+    let query = if has_game_uid {
+        "SELECT launchbox_db_id, game_uid FROM game_files"
+    } else {
+        "SELECT launchbox_db_id, NULL FROM game_files"
+    };
+    let mut statement = connection.prepare(query)?;
+    let rows = statement.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
+    })?;
+    for row in rows {
+        let (database_id, game_uid) = row?;
+        installed.file_count = installed.file_count.saturating_add(1);
+        if database_id > 0 {
+            installed.database_ids.insert(database_id);
+        }
+        if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
+            installed.game_uids.insert(game_uid);
+        }
+    }
+    Ok(installed)
+}
+
+fn load_minerva_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
+    let Some(path) = path else {
+        return Ok(MinervaCoverage::default());
+    };
+    let connection = open_read_only(path, "Minerva catalog")?;
+    for table in ["minerva_torrents", "minerva_torrent_platforms"] {
+        if !table_exists(&connection, table)? {
+            bail!("Minerva catalog is missing required table {table}");
+        }
+    }
+
+    let mut coverage = MinervaCoverage {
+        offer_count: count(&connection, "minerva_torrents", "1")?,
+        ..MinervaCoverage::default()
+    };
+    let mut statement = connection.prepare(
+        "SELECT lunchbox_platform_id, lunchbox_platform_name, minerva_platform
+         FROM minerva_torrent_platforms",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, Option<i64>>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    for row in rows {
+        let (platform_id, mapped_name, provider_name) = row?;
+        if let Some(platform_id) = platform_id {
+            coverage.platform_ids.insert(platform_id);
+        }
+        if let Some(name) = mapped_name.filter(|name| !name.trim().is_empty()) {
+            coverage
+                .platform_names
+                .insert(normalize_platform_key(&name));
+        }
+        coverage
+            .platform_names
+            .insert(normalize_platform_key(&provider_name));
+    }
+
+    // Preserve the two explicit fallbacks used by the legacy frontend. These
+    // are provider mappings, not inferred game identity links.
+    if coverage.platform_names.contains("atari") {
+        coverage.platform_names.insert("atari-800".to_owned());
+    }
+    if ["roms-merged", "roms-split", "roms-non-merged"]
+        .iter()
+        .any(|name| coverage.platform_names.contains(*name))
+    {
+        coverage.platform_names.insert("arcade".to_owned());
+    }
+
+    Ok(coverage)
+}
+
+fn normalize_platform_key(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut separator = false;
+    for character in value.chars().flat_map(char::to_lowercase) {
+        if character.is_alphanumeric() {
+            if separator && !normalized.is_empty() {
+                normalized.push('-');
+            }
+            normalized.push(character);
+            separator = false;
+        } else {
+            separator = true;
+        }
+    }
+    normalized
+}
+
+fn table_exists(connection: &Connection, table: &str) -> Result<bool> {
+    let count: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?1",
+        [table],
+        |row| row.get(0),
+    )?;
+    Ok(count == 1)
+}
+
+fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<bool> {
+    let query = format!(
+        "SELECT count(*) FROM pragma_table_info('{}') WHERE name=?1",
+        table.replace('\'', "''")
+    );
+    let count: i64 = connection.query_row(&query, [column], |row| row.get(0))?;
+    Ok(count == 1)
 }
 
 fn count(connection: &Connection, table: &str, predicate: &str) -> Result<usize> {
@@ -198,7 +498,7 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                 && (filter.platform.is_empty() || game.platform == filter.platform)
                 && match filter.availability.as_str() {
                     "local" => game.local,
-                    "downloadable" => game.downloadable,
+                    "downloadable" => game.downloadable && !game.local,
                     _ => true,
                 }
         })
@@ -308,7 +608,9 @@ mod tests {
             .unwrap();
         drop(connection);
 
-        let catalog = load(&path).unwrap();
+        let connection = open_read_only(&path, "test catalog").unwrap();
+        validate_canonical_schema(&connection).unwrap();
+        let catalog = load_canonical_catalog(&connection).unwrap();
         assert_eq!(catalog.games.len(), 1);
         assert_eq!(catalog.games[0].title, "Metroid");
         assert_eq!(catalog.games[0].platform, "Nintendo Entertainment System");
@@ -318,5 +620,97 @@ mod tests {
         assert_eq!(catalog.local_file_count, 1);
         assert_eq!(catalog.offer_count, 1);
         assert_eq!(catalog.emulator_count, 1);
+    }
+
+    #[test]
+    fn discovery_catalog_distinguishes_installed_and_minerva_downloadable_games() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+        let minerva_path = directory.path().join("minerva.db");
+        let user_path = directory.path().join("user.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Nintendo Game Boy');
+                 INSERT INTO platforms VALUES (2, 'Uncovered System');
+                 INSERT INTO games VALUES
+                   ('installed-id', 'Installed Game', NULL, 'Released', 11, 1),
+                   ('download-id', 'Download Game', NULL, 'Released', 12, 1),
+                   ('uncovered-id', 'Uncovered Game', NULL, 'Released', 13, 2),
+                   ('installed-uid', 'ID-less Installed Game', NULL, 'Released', NULL, 1);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let minerva = Connection::open(&minerva_path).unwrap();
+        minerva
+            .execute_batch(
+                "CREATE TABLE minerva_torrents (id INTEGER PRIMARY KEY);
+                 CREATE TABLE minerva_torrent_platforms (
+                   lunchbox_platform_id INTEGER, lunchbox_platform_name TEXT,
+                   minerva_platform TEXT NOT NULL
+                 );
+                 INSERT INTO minerva_torrents VALUES (1);
+                 INSERT INTO minerva_torrent_platforms
+                   VALUES (1, 'Nintendo Game Boy', 'Nintendo - Game Boy');",
+            )
+            .unwrap();
+        drop(minerva);
+
+        let user = Connection::open(&user_path).unwrap();
+        user.execute_batch(
+            "CREATE TABLE game_files (launchbox_db_id INTEGER NOT NULL, game_uid TEXT);
+             INSERT INTO game_files VALUES (11, NULL);
+             INSERT INTO game_files VALUES (0, 'installed-uid');",
+        )
+        .unwrap();
+        drop(user);
+
+        let catalog = load_discovery_catalog(
+            &canonical,
+            &discovery_path,
+            Some(&minerva_path),
+            Some(&user_path),
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 4);
+        assert_eq!(catalog.local_file_count, 2);
+        assert_eq!(catalog.offer_count, 1);
+        assert_eq!(catalog.emulator_count, 1);
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "local".into(),
+                    ..Filter::default()
+                }
+            )
+            .len(),
+            2
+        );
+        let downloadable = filter_indices(
+            &catalog,
+            &Filter {
+                availability: "downloadable".into(),
+                ..Filter::default()
+            },
+        );
+        assert_eq!(downloadable.len(), 1);
+        assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
     }
 }

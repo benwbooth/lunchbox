@@ -8,6 +8,9 @@ vertical slices rather than a reduced "first release".
 The Electron source remains intact on `legacy/electron`. It is a behavioral
 reference for Lunchbox-owned features, not a runtime dependency.
 
+The source-backed inventory in [the legacy feature parity
+ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
+
 ## Completed foundation
 
 - Native Qt 6 Quick window compiled into the executable.
@@ -15,6 +18,9 @@ reference for Lunchbox-owned features, not a runtime dependency.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.
+- Read-only layering of the preserved discovery catalog, Minerva bundle
+  coverage, and legacy installed-game state. The Minerva filter contains only
+  covered games that are not installed and composes with platform selection.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
 - Measurable shell-ready and catalog-ready probes.
