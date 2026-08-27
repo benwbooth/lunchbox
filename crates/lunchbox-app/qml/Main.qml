@@ -27,13 +27,27 @@ ApplicationWindow {
     property string availability: ""
     property bool gridMode: true
     property string selectedGameId: ""
+    property int selectedDatabaseId: 0
+    property url selectedArtworkUrl: ""
+    property url selectedFanartUrl: ""
+    property string selectedArtworkSource: ""
     property string directoryTarget: ""
+    readonly property var artworkChoices: [
+        { key: "box-front", label: "Box front" },
+        { key: "box-back", label: "Box back" },
+        { key: "box-3d", label: "3D box" },
+        { key: "screenshot", label: "Gameplay" },
+        { key: "title-screen", label: "Title screen" },
+        { key: "fanart", label: "Fan art" },
+        { key: "clear-logo", label: "Clear logo" }
+    ]
     readonly property int activeFilterCount: (availability.length > 0 ? 1 : 0)
                                                + (library.hide_non_retail ? 1 : 0)
                                                + (library.hide_adult ? 1 : 0)
     readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
+    readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -68,9 +82,41 @@ ApplicationWindow {
         return colors[value.charCodeAt(0) % colors.length]
     }
 
-    function openGame(gameId, title, platform, local, downloadable) {
+    function openGame(gameId, databaseId, title, platform, local, downloadable) {
         selectedGameId = gameId
+        selectedDatabaseId = databaseId
+        refreshSelectedArtwork()
         gameDetails.select_game(gameId, title, platform, local, downloadable)
+    }
+
+    function refreshSelectedArtwork() {
+        selectedArtworkUrl = library.artwork_url(selectedDatabaseId,
+                                                 library.artwork_type)
+        selectedFanartUrl = library.exact_artwork_url(selectedDatabaseId, "fanart")
+        selectedArtworkSource = selectedFanartUrl.toString().length > 0
+                                ? library.artwork_source(selectedDatabaseId, "fanart")
+                                : library.artwork_source(selectedDatabaseId,
+                                                         library.artwork_type)
+    }
+
+    function artworkLabel(key) {
+        for (let index = 0; index < artworkChoices.length; ++index) {
+            if (artworkChoices[index].key === key)
+                return artworkChoices[index].label
+        }
+        return "Artwork"
+    }
+
+    function artworkIndex(key) {
+        for (let index = 0; index < artworkChoices.length; ++index) {
+            if (artworkChoices[index].key === key)
+                return index
+        }
+        return 0
+    }
+
+    function wideArtwork(key) {
+        return key === "screenshot" || key === "title-screen" || key === "fanart"
     }
 
     function openImportDialog() {
@@ -116,6 +162,20 @@ ApplicationWindow {
         function onFilteringChanged() {
             if (library.filter_probe && library.ready && !library.filtering)
                 Qt.quit()
+        }
+        function onMedia_revisionChanged() {
+            if (library.media_probe)
+                Qt.quit()
+            else if (root.artworkUiProbe && library.media_revision === 1) {
+                searchField.text = "A Nightmare on Elm Street"
+                library.apply_filter(searchField.text, "", "")
+                viewPopup.open()
+            } else if (root.selectedGameId.length > 0)
+                root.refreshSelectedArtwork()
+        }
+        function onArtwork_typeChanged() {
+            if (root.selectedGameId.length > 0)
+                root.refreshSelectedArtwork()
         }
     }
 
@@ -287,6 +347,147 @@ ApplicationWindow {
                 color: "#6f7c90"
                 font.pixelSize: 9
                 wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    Popup {
+        id: viewPopup
+        parent: Overlay.overlay
+        x: Math.max(sidebar.width + 18,
+                    root.width - detailsPane.width - width - 28)
+        y: header.height + 76
+        width: 334
+        padding: 16
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+        implicitHeight: viewColumn.implicitHeight + topPadding + bottomPadding
+        onOpened: {
+            artworkCombo.currentIndex = root.artworkIndex(library.artwork_type)
+            zoomSlider.value = library.grid_zoom
+        }
+
+        background: Rectangle {
+            radius: 12
+            color: "#111925"
+            border.color: root.line
+            border.width: 1
+        }
+
+        contentItem: Column {
+            id: viewColumn
+            spacing: 11
+            Text {
+                text: "LIBRARY APPEARANCE"
+                color: root.ink
+                font.pixelSize: 11
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+            Text {
+                text: "ARTWORK"
+                color: "#687488"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+            ComboBox {
+                id: artworkCombo
+                width: parent.width
+                height: 40
+                model: root.artworkChoices
+                textRole: "label"
+                currentIndex: root.artworkIndex(library.artwork_type)
+                onActivated: library.set_presentation_preferences(
+                                 root.artworkChoices[index].key,
+                                 Math.round(zoomSlider.value))
+            }
+            Row {
+                width: parent.width
+                spacing: 8
+                Text {
+                    text: "CARD SIZE"
+                    color: "#687488"
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1
+                }
+                Text {
+                    width: parent.width - 76
+                    text: Math.round(zoomSlider.value) + "%"
+                    horizontalAlignment: Text.AlignRight
+                    color: root.ink
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                }
+            }
+            Row {
+                width: parent.width
+                spacing: 9
+                Button {
+                    width: 35
+                    height: 35
+                    text: "−"
+                    enabled: zoomSlider.value > zoomSlider.from
+                    onClicked: {
+                        const next = Math.max(zoomSlider.from, zoomSlider.value - 10)
+                        zoomSlider.value = next
+                        library.set_presentation_preferences(library.artwork_type,
+                                                             Math.round(next))
+                    }
+                }
+                Slider {
+                    id: zoomSlider
+                    width: parent.width - 88
+                    anchors.verticalCenter: parent.verticalCenter
+                    from: 50
+                    to: 200
+                    stepSize: 5
+                    value: library.grid_zoom
+                    snapMode: Slider.SnapAlways
+                    onPressedChanged: {
+                        if (!pressed && Math.round(value) !== library.grid_zoom)
+                            library.set_presentation_preferences(
+                                        library.artwork_type, Math.round(value))
+                    }
+                }
+                Button {
+                    width: 35
+                    height: 35
+                    text: "+"
+                    enabled: zoomSlider.value < zoomSlider.to
+                    onClicked: {
+                        const next = Math.min(zoomSlider.to, zoomSlider.value + 10)
+                        zoomSlider.value = next
+                        library.set_presentation_preferences(library.artwork_type,
+                                                             Math.round(next))
+                    }
+                }
+            }
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: root.line
+            }
+            Text {
+                width: parent.width
+                text: library.media_loading
+                      ? "Indexing artwork without blocking the library…"
+                      : library.media_asset_count > 0
+                        ? library.media_asset_count + " preferred assets for "
+                          + library.media_game_count + " games"
+                        : "No local media cache found. Cards use a fast generated fallback."
+                color: root.muted
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                visible: library.media_directory.length > 0
+                text: library.media_directory
+                color: "#657186"
+                font.pixelSize: 9
+                elide: Text.ElideMiddle
             }
         }
     }
@@ -465,7 +666,8 @@ ApplicationWindow {
         keyNavigationEnabled: true
         activeFocusOnTab: true
         boundsBehavior: Flickable.StopAtBounds
-        property real preferredWidth: root.width >= 1500 ? 230 : 205
+        property real preferredWidth: (root.width >= 1500 ? 230 : 205)
+                                      * library.grid_zoom / 100
         cellWidth: Math.floor(width / Math.max(1, Math.floor(width / preferredWidth)))
         cellHeight: Math.round(cellWidth * 1.36)
         model: library
@@ -479,6 +681,16 @@ ApplicationWindow {
             required property string gamePlatform
             required property bool gameLocal
             required property bool gameDownloadable
+            required property int gameDatabaseId
+            property int mediaRevision: library.media_revision
+            property url artworkUrl: {
+                mediaRevision
+                return library.artwork_url(gameDatabaseId, library.artwork_type)
+            }
+            property string artworkSource: {
+                mediaRevision
+                return library.artwork_source(gameDatabaseId, library.artwork_type)
+            }
             width: grid.cellWidth
             height: grid.cellHeight
             activeFocusOnTab: true
@@ -486,14 +698,16 @@ ApplicationWindow {
             TapHandler {
                 onTapped: {
                     tile.forceActiveFocus()
-                    root.openGame(tile.gameId, tile.gameTitle, tile.gamePlatform,
+                    root.openGame(tile.gameId, tile.gameDatabaseId,
+                                  tile.gameTitle, tile.gamePlatform,
                                   tile.gameLocal, tile.gameDownloadable)
                 }
             }
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
-                    root.openGame(tile.gameId, tile.gameTitle, tile.gamePlatform,
+                    root.openGame(tile.gameId, tile.gameDatabaseId,
+                                  tile.gameTitle, tile.gamePlatform,
                                   tile.gameLocal, tile.gameDownloadable)
                     event.accepted = true
                 }
@@ -526,6 +740,23 @@ ApplicationWindow {
                         GradientStop { position: 1; color: Qt.darker(artwork.color, 1.55) }
                     }
 
+                    Image {
+                        id: coverImage
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        source: tile.artworkUrl
+                        asynchronous: true
+                        cache: true
+                        mipmap: true
+                        autoTransform: true
+                        fillMode: root.wideArtwork(library.artwork_type)
+                                  ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                        sourceSize.width: Math.max(1, Math.round(width * 2))
+                        sourceSize.height: Math.max(1, Math.round(height * 2))
+                        opacity: status === Image.Ready ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 130 } }
+                    }
+
                     Text {
                         anchors.centerIn: parent
                         width: parent.width - 28
@@ -534,6 +765,7 @@ ApplicationWindow {
                         color: "#ddffffff"
                         font.pixelSize: Math.min(72, parent.height * 0.38)
                         font.weight: Font.Black
+                        visible: coverImage.status !== Image.Ready
                     }
                     Rectangle {
                         visible: tile.gameLocal || tile.gameDownloadable
@@ -556,6 +788,9 @@ ApplicationWindow {
                         }
                     }
                 }
+                ToolTip.visible: cardHover.hovered && tile.artworkSource.length > 0
+                ToolTip.text: root.artworkLabel(library.artwork_type)
+                              + " · " + tile.artworkSource
 
                 Text {
                     anchors.left: parent.left
@@ -605,6 +840,12 @@ ApplicationWindow {
             required property string gameStatus
             required property bool gameLocal
             required property bool gameDownloadable
+            required property int gameDatabaseId
+            property int mediaRevision: library.media_revision
+            property url artworkUrl: {
+                mediaRevision
+                return library.artwork_url(gameDatabaseId, library.artwork_type)
+            }
             width: list.width - 8
             height: 62
             radius: 9
@@ -616,19 +857,22 @@ ApplicationWindow {
             TapHandler {
                 onTapped: {
                     row.forceActiveFocus()
-                    root.openGame(row.gameId, row.gameTitle, row.gamePlatform,
+                    root.openGame(row.gameId, row.gameDatabaseId,
+                                  row.gameTitle, row.gamePlatform,
                                   row.gameLocal, row.gameDownloadable)
                 }
             }
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
-                    root.openGame(row.gameId, row.gameTitle, row.gamePlatform,
+                    root.openGame(row.gameId, row.gameDatabaseId,
+                                  row.gameTitle, row.gamePlatform,
                                   row.gameLocal, row.gameDownloadable)
                     event.accepted = true
                 }
             }
             Rectangle {
+                id: listArtwork
                 width: 38
                 height: 38
                 radius: 8
@@ -636,12 +880,27 @@ ApplicationWindow {
                 anchors.leftMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 color: root.accentFor(row.gameTitle)
+                clip: true
+                Image {
+                    id: listImage
+                    anchors.fill: parent
+                    source: row.artworkUrl
+                    asynchronous: true
+                    cache: true
+                    mipmap: true
+                    autoTransform: true
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize.width: 76
+                    sourceSize.height: 76
+                    opacity: status === Image.Ready ? 1 : 0
+                }
                 Text {
                     anchors.centerIn: parent
                     text: row.gameTitle.length > 0 ? row.gameTitle.charAt(0).toUpperCase() : "?"
                     color: "white"
                     font.weight: Font.Black
                     font.pixelSize: 18
+                    visible: listImage.status !== Image.Ready
                 }
             }
             Column {
@@ -940,14 +1199,22 @@ ApplicationWindow {
                 }
                 StatusPill {
                     visible: content.width > 700
-                    label: "emulators"
-                    value: library.emulator_count.toString()
+                    label: library.media_loading ? "artwork" : "with art"
+                    value: library.media_loading ? "…" : library.media_game_count.toString()
                 }
                 HeaderButton {
                     text: root.activeFilterCount > 0
                           ? "Filters  " + root.activeFilterCount : "Filters"
                     active: root.activeFilterCount > 0 || filterPopup.opened
                     onClicked: filterPopup.opened ? filterPopup.close() : filterPopup.open()
+                }
+                HeaderButton {
+                    text: "View"
+                    active: viewPopup.opened
+                    onClicked: viewPopup.opened ? viewPopup.close() : viewPopup.open()
+                    ToolTip.visible: hovered
+                    ToolTip.text: root.artworkLabel(library.artwork_type)
+                                  + " · " + library.grid_zoom + "%"
                 }
                 Row {
                     spacing: 4
@@ -1094,6 +1361,10 @@ ApplicationWindow {
                 font.pixelSize: 20
                 onClicked: {
                     root.selectedGameId = ""
+                    root.selectedDatabaseId = 0
+                    root.selectedArtworkUrl = ""
+                    root.selectedFanartUrl = ""
+                    root.selectedArtworkSource = ""
                     gameDetails.close_panel()
                 }
                 ToolTip.visible: hovered
@@ -1125,12 +1396,29 @@ ApplicationWindow {
                         GradientStop { position: 0; color: Qt.lighter(detailArtwork.color, 1.15) }
                         GradientStop { position: 1; color: Qt.darker(detailArtwork.color, 1.8) }
                     }
+                    Image {
+                        id: detailImage
+                        anchors.fill: parent
+                        source: root.selectedFanartUrl.toString().length > 0
+                                ? root.selectedFanartUrl : root.selectedArtworkUrl
+                        asynchronous: true
+                        cache: true
+                        mipmap: true
+                        autoTransform: true
+                        fillMode: root.selectedFanartUrl.toString().length > 0
+                                  ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                        sourceSize.width: Math.max(1, Math.round(width * 2))
+                        sourceSize.height: Math.max(1, Math.round(height * 2))
+                        opacity: status === Image.Ready ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
+                    }
                     Text {
                         anchors.centerIn: parent
                         text: gameDetails.title.length > 0 ? gameDetails.title.charAt(0).toUpperCase() : "?"
                         color: "#35ffffff"
                         font.pixelSize: 118
                         font.weight: Font.Black
+                        visible: detailImage.status !== Image.Ready
                     }
                     Rectangle {
                         anchors.left: parent.left
@@ -1140,6 +1428,27 @@ ApplicationWindow {
                         gradient: Gradient {
                             GradientStop { position: 0; color: "transparent" }
                             GradientStop { position: 1; color: "#d9101620" }
+                        }
+                    }
+                    Rectangle {
+                        visible: detailImage.status === Image.Ready
+                                 && root.selectedArtworkSource.length > 0
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        width: detailSource.implicitWidth + 16
+                        height: 24
+                        radius: 7
+                        color: "#c9101620"
+                        border.color: "#5b687d"
+                        Text {
+                            id: detailSource
+                            anchors.centerIn: parent
+                            text: root.selectedArtworkSource.toUpperCase()
+                            color: "#d7deea"
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
                         }
                     }
                     BusyIndicator {

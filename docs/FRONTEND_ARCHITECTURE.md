@@ -19,14 +19,17 @@ The initial implementation enforces this shape:
 - SQLite opens read-only on a named worker thread after the window is created.
 - Search, platform, and availability filtering run on worker threads. A
   generation number discards stale results when the user types quickly.
-- The initial query reads compact text and state fields only. The preserved
+- The initial query reads compact text, stable provider IDs, and state fields only. The preserved
   discovery catalog can be layered read-only over the canonical database;
   Legacy user-file state is joined in memory by exact provider game IDs or
   stable game UUIDs. Minerva platform coverage uses exact normalized mapped or
   provider names because its numeric platform IDs are not in the discovery
   database's internal ID namespace.
-  Artwork, video, manuals, emulator inspection, torrent metadata, and hashing
-  remain separately scheduled services rather than additions to startup.
+  Artwork is indexed by stable LaunchBox database ID on a separate named worker
+  after the catalog becomes usable. Visible delegates resolve only against that
+  compact in-memory index, and Qt decodes local images asynchronously at display
+  size. Video, manuals, emulator inspection, torrent metadata, and hashing remain
+  separately scheduled services rather than additions to startup.
 - Paths cross the Rust boundary as native paths. `--database PATH` and the
   `LUNCHBOX_DATABASE` environment variable are supported on Linux, macOS, and
   Windows without assuming `/bin/sh`, drive letters, or a path separator.
@@ -34,6 +37,10 @@ The initial implementation enforces this shape:
   discovery, acquisition, and installed-state layers. Their environment
   equivalents use the `LUNCHBOX_` prefix. None of these paths is interpreted as
   a provider path or converted to a platform-specific string identity.
+- `--media-directory` or `LUNCHBOX_MEDIA_DIRECTORY` selects an existing user
+  media cache. Otherwise the cache is a `media` sibling of the OS-native state
+  database. Local files become `QUrl::fromLocalFile` URLs at the Qt boundary;
+  Rust never constructs a POSIX-only or Windows-only URL.
 - The writable state database is selected with `--state-database` or
   `LUNCHBOX_STATE_DATABASE`, otherwise an OS-native application-data directory
   is used. Its WAL setup and schema migration are serialized before concurrent
@@ -82,6 +89,11 @@ print `LUNCHBOX_FILTER_READY_MS`, and exit.
 Use `--filter-ui-probe` to leave the native filter surface open for an
 unattended visual check against a real catalog.
 
+Use `--media-probe` to wait for the asynchronous media index, print
+`LUNCHBOX_MEDIA_READY_MS` with game and preferred-asset counts, and exit.
+`--artwork-ui-probe` filters to a deterministic set of real cached covers and
+leaves the native grid open for a virtual-display visual check.
+
 `--import-ui-probe --import-directory PATH` opens the local-import surface and
 starts a real checksum scan. It exists for deterministic virtual-display visual
 checks; it uses the same model, worker, database, and QML as an interactive
@@ -90,9 +102,11 @@ and commits them to the chosen `--state-database`, enabling a fully unattended,
 idempotent scan-to-collection integration test.
 
 On the current Linux development host, the real preserved 303,560-game catalog
-loads on its worker in roughly 0.5–0.8 seconds, while a combined text plus
-Minerva filter completes in 16 ms. Warm shell-ready probes remain below the
-250-ms release budget.
+loads on its worker in roughly 0.5–0.8 seconds in release mode, while a combined
+text plus Minerva filter completes in about 16 ms. The existing 8 GB media tree
+indexes 6,979 preferred assets for 6,677 games in 106 ms without delaying
+catalog readiness. Warm shell-ready probes remain below the 250-ms release
+budget.
 
 The Nix application package extracts the verified database artifact at build
 time and points the executable at the unpacked database. Users do not pay a
@@ -106,7 +120,8 @@ service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, and completed-file
 ingestion, local-folder scan/review/import, and legacy content filters are now
-native. Game media,
-emulator installation and launch, the remaining settings, archive-member and
-manual identity workflows, and the controller-first full-screen interface
+native. Existing game media is now indexed and rendered natively. On-demand
+media retrieval, media rotation and redownload, emulator installation and
+launch, the remaining settings, archive-member and manual identity workflows,
+and the controller-first full-screen interface
 follow on the same shared models.

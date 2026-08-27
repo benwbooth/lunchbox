@@ -12,6 +12,8 @@ pub mod qobject {
         type QModelIndex = cxx_qt_lib::QModelIndex;
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qurl.h");
+        type QUrl = cxx_qt_lib::QUrl;
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
     }
@@ -29,9 +31,14 @@ pub mod qobject {
         #[qproperty(bool, ready)]
         #[qproperty(bool, hide_non_retail)]
         #[qproperty(bool, hide_adult)]
+        #[qproperty(QString, artwork_type)]
+        #[qproperty(i32, grid_zoom)]
+        #[qproperty(QString, media_directory)]
+        #[qproperty(bool, media_loading)]
         #[qproperty(bool, startup_probe)]
         #[qproperty(bool, catalog_probe)]
         #[qproperty(bool, filter_probe)]
+        #[qproperty(bool, media_probe)]
         #[qproperty(i32, startup_ms)]
         #[qproperty(i32, catalog_ms)]
         #[qproperty(i32, game_count)]
@@ -42,6 +49,9 @@ pub mod qobject {
         #[qproperty(i32, offer_count)]
         #[qproperty(i32, downloadable_game_count)]
         #[qproperty(i32, emulator_count)]
+        #[qproperty(i32, media_game_count)]
+        #[qproperty(i32, media_asset_count)]
+        #[qproperty(i32, media_revision)]
         #[qproperty(i32, platform_revision)]
         type LibraryModel = super::LibraryModelRust;
 
@@ -65,6 +75,30 @@ pub mod qobject {
             hide_non_retail: bool,
             hide_adult: bool,
         );
+
+        #[qinvokable]
+        fn set_presentation_preferences(
+            self: Pin<&mut LibraryModel>,
+            artwork_type: QString,
+            grid_zoom: i32,
+        );
+
+        #[qinvokable]
+        fn artwork_url(self: &LibraryModel, launchbox_db_id: i32, artwork_type: QString) -> QUrl;
+
+        #[qinvokable]
+        fn exact_artwork_url(
+            self: &LibraryModel,
+            launchbox_db_id: i32,
+            artwork_type: QString,
+        ) -> QUrl;
+
+        #[qinvokable]
+        fn artwork_source(
+            self: &LibraryModel,
+            launchbox_db_id: i32,
+            artwork_type: QString,
+        ) -> QString;
 
         #[qinvokable]
         fn platform_name_at(self: &LibraryModel, index: i32) -> QString;
@@ -107,9 +141,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::{QByteArray, QHash, QModelIndex, QString, QVariant};
+use cxx_qt_lib::{QByteArray, QHash, QModelIndex, QString, QUrl, QVariant};
 
 use crate::catalog::{self, Catalog, Filter};
+use crate::media::{ArtworkKind, MediaAsset, MediaIndex};
 use crate::settings::{LibraryPreferences, SettingsStore};
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -122,14 +157,16 @@ const GAME_PLATFORM_ROLE: i32 = USER_ROLE + 3;
 const GAME_STATUS_ROLE: i32 = USER_ROLE + 4;
 const GAME_LOCAL_ROLE: i32 = USER_ROLE + 5;
 const GAME_DOWNLOADABLE_ROLE: i32 = USER_ROLE + 6;
+const GAME_DATABASE_ID_ROLE: i32 = USER_ROLE + 7;
 
-const ROLES: [(i32, &str); 6] = [
+const ROLES: [(i32, &str); 7] = [
     (GAME_ID_ROLE, "gameId"),
     (GAME_TITLE_ROLE, "gameTitle"),
     (GAME_PLATFORM_ROLE, "gamePlatform"),
     (GAME_STATUS_ROLE, "gameStatus"),
     (GAME_LOCAL_ROLE, "gameLocal"),
     (GAME_DOWNLOADABLE_ROLE, "gameDownloadable"),
+    (GAME_DATABASE_ID_ROLE, "gameDatabaseId"),
 ];
 
 pub struct LibraryModelRust {
@@ -142,9 +179,14 @@ pub struct LibraryModelRust {
     ready: bool,
     hide_non_retail: bool,
     hide_adult: bool,
+    artwork_type: QString,
+    grid_zoom: i32,
+    media_directory: QString,
+    media_loading: bool,
     startup_probe: bool,
     catalog_probe: bool,
     filter_probe: bool,
+    media_probe: bool,
     startup_ms: i32,
     catalog_ms: i32,
     game_count: i32,
@@ -155,18 +197,26 @@ pub struct LibraryModelRust {
     offer_count: i32,
     downloadable_game_count: i32,
     emulator_count: i32,
+    media_game_count: i32,
+    media_asset_count: i32,
+    media_revision: i32,
     platform_revision: i32,
     catalog: Arc<Catalog>,
+    media: Arc<MediaIndex>,
+    artwork_kind: ArtworkKind,
     filtered_indices: Vec<usize>,
     load_generation: u64,
     filter_generation: u64,
     reload_pending: bool,
     load_started: Option<std::time::Instant>,
     filter_started: Option<std::time::Instant>,
+    media_generation: u64,
+    media_started: Option<std::time::Instant>,
 }
 
 impl Default for LibraryModelRust {
     fn default() -> Self {
+        let preferences = LibraryPreferences::default();
         Self {
             database_path: QString::default(),
             status_message: QString::from("Starting instantly; catalog loading is deferred."),
@@ -175,11 +225,16 @@ impl Default for LibraryModelRust {
             loading: false,
             filtering: false,
             ready: false,
-            hide_non_retail: LibraryPreferences::default().hide_non_retail,
-            hide_adult: LibraryPreferences::default().hide_adult,
+            hide_non_retail: preferences.hide_non_retail,
+            hide_adult: preferences.hide_adult,
+            artwork_type: qstring(&preferences.artwork_type),
+            grid_zoom: preferences.grid_zoom,
+            media_directory: QString::default(),
+            media_loading: false,
             startup_probe: std::env::args().any(|argument| argument == "--startup-probe"),
             catalog_probe: std::env::args().any(|argument| argument == "--catalog-probe"),
             filter_probe: std::env::args().any(|argument| argument == "--filter-probe"),
+            media_probe: std::env::args().any(|argument| argument == "--media-probe"),
             startup_ms: 0,
             catalog_ms: 0,
             game_count: 0,
@@ -190,14 +245,21 @@ impl Default for LibraryModelRust {
             offer_count: 0,
             downloadable_game_count: 0,
             emulator_count: 0,
+            media_game_count: 0,
+            media_asset_count: 0,
+            media_revision: 0,
             platform_revision: 0,
             catalog: Arc::new(Catalog::default()),
+            media: Arc::new(MediaIndex::default()),
+            artwork_kind: ArtworkKind::default(),
             filtered_indices: Vec::new(),
             load_generation: 0,
             filter_generation: 0,
             reload_pending: false,
             load_started: None,
             filter_started: None,
+            media_generation: 0,
+            media_started: None,
         }
     }
 }
@@ -285,9 +347,15 @@ impl qobject::LibraryModel {
             Ok((catalog, preferences)) => {
                 let preference_warning = match preferences {
                     Ok(preferences) => {
+                        let artwork_kind =
+                            ArtworkKind::parse(&preferences.artwork_type).unwrap_or_default();
                         self.as_mut()
                             .set_hide_non_retail(preferences.hide_non_retail);
                         self.as_mut().set_hide_adult(preferences.hide_adult);
+                        self.as_mut()
+                            .set_artwork_type(qstring(&preferences.artwork_type));
+                        self.as_mut().set_grid_zoom(preferences.grid_zoom);
+                        self.as_mut().rust_mut().artwork_kind = artwork_kind;
                         None
                     }
                     Err(error) => Some(error),
@@ -357,6 +425,7 @@ impl qobject::LibraryModel {
                     status.push_str(&format!(" — filter preferences unavailable: {warning}"));
                 }
                 self.as_mut().set_status_message(qstring(status));
+                self.as_mut().start_media_load();
                 if self.as_ref().rust().reload_pending {
                     self.as_mut().rust_mut().reload_pending = false;
                     self.as_mut().start_load();
@@ -422,12 +491,146 @@ impl qobject::LibraryModel {
         let preferences = LibraryPreferences {
             hide_non_retail,
             hide_adult,
+            artwork_type: self.as_ref().artwork_type().to_string(),
+            grid_zoom: *self.as_ref().grid_zoom(),
         };
         if let Err(error) = SettingsStore::open_default()
-            .and_then(|store| store.save_library_preferences(preferences))
+            .and_then(|store| store.save_library_preferences(&preferences))
         {
             self.as_mut().set_status_message(qstring(format!(
                 "Filters applied, but the preference could not be saved: {error}"
+            )));
+        }
+    }
+
+    pub fn set_presentation_preferences(
+        mut self: Pin<&mut Self>,
+        artwork_type: QString,
+        grid_zoom: i32,
+    ) {
+        let artwork_type = artwork_type.to_string();
+        let Some(artwork_kind) = ArtworkKind::parse(&artwork_type) else {
+            self.as_mut().set_status_message(qstring(format!(
+                "Could not apply view preferences: unsupported artwork type {artwork_type}"
+            )));
+            return;
+        };
+        if !(50..=200).contains(&grid_zoom) {
+            self.as_mut().set_status_message(qstring(
+                "Could not apply view preferences: grid zoom must be between 50 and 200 percent",
+            ));
+            return;
+        }
+
+        self.as_mut().rust_mut().artwork_kind = artwork_kind;
+        self.as_mut().set_artwork_type(qstring(&artwork_type));
+        self.as_mut().set_grid_zoom(grid_zoom);
+        let preferences = LibraryPreferences {
+            hide_non_retail: *self.as_ref().hide_non_retail(),
+            hide_adult: *self.as_ref().hide_adult(),
+            artwork_type,
+            grid_zoom,
+        };
+        if let Err(error) = SettingsStore::open_default()
+            .and_then(|store| store.save_library_preferences(&preferences))
+        {
+            self.as_mut().set_status_message(qstring(format!(
+                "View updated, but the preference could not be saved: {error}"
+            )));
+        }
+    }
+
+    pub fn artwork_url(&self, launchbox_db_id: i32, artwork_type: QString) -> QUrl {
+        self.media_asset(launchbox_db_id, &artwork_type.to_string(), false)
+            .map(media_asset_url)
+            .unwrap_or_default()
+    }
+
+    pub fn exact_artwork_url(&self, launchbox_db_id: i32, artwork_type: QString) -> QUrl {
+        self.media_asset(launchbox_db_id, &artwork_type.to_string(), true)
+            .map(media_asset_url)
+            .unwrap_or_default()
+    }
+
+    pub fn artwork_source(&self, launchbox_db_id: i32, artwork_type: QString) -> QString {
+        self.media_asset(launchbox_db_id, &artwork_type.to_string(), false)
+            .map(|asset| qstring(&asset.source))
+            .unwrap_or_default()
+    }
+
+    fn media_asset(
+        &self,
+        launchbox_db_id: i32,
+        artwork_type: &str,
+        exact: bool,
+    ) -> Option<&MediaAsset> {
+        let kind = ArtworkKind::parse(artwork_type).unwrap_or(self.rust().artwork_kind);
+        let database_id = i64::from(launchbox_db_id);
+        if exact {
+            self.rust().media.exact(database_id, kind)
+        } else {
+            self.rust().media.selected(database_id, kind)
+        }
+    }
+
+    fn start_media_load(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().media_generation =
+            self.as_ref().rust().media_generation.wrapping_add(1);
+        self.as_mut().rust_mut().media_started = Some(std::time::Instant::now());
+        let generation = self.as_ref().rust().media_generation;
+        let directory = crate::media::requested_media_directory();
+        self.as_mut()
+            .set_media_directory(qstring(directory.to_string_lossy()));
+        self.as_mut().set_media_loading(true);
+
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-media-index".into())
+            .spawn(move || {
+                let index = MediaIndex::scan(directory);
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_media_load(generation, index);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_media_loading(false);
+            self.as_mut().set_status_message(qstring(format!(
+                "Catalog ready, but the media index could not start: {error}"
+            )));
+        }
+    }
+
+    fn finish_media_load(mut self: Pin<&mut Self>, generation: u64, index: MediaIndex) {
+        if generation != self.as_ref().rust().media_generation {
+            return;
+        }
+        let game_count = index.games.len();
+        let asset_count = index.asset_count;
+        let skipped_entries = index.skipped_entries;
+        let warning = index.warning.clone();
+        let root = index.root.clone();
+        let elapsed_ms = self
+            .as_ref()
+            .rust()
+            .media_started
+            .map(|started| started.elapsed().as_millis())
+            .unwrap_or_default();
+        self.as_mut().rust_mut().media = Arc::new(index);
+        self.as_mut()
+            .set_media_directory(qstring(root.to_string_lossy()));
+        self.as_mut()
+            .set_media_game_count(saturating_i32(game_count));
+        self.as_mut()
+            .set_media_asset_count(saturating_i32(asset_count));
+        self.as_mut().set_media_loading(false);
+        let revision = self.as_ref().media_revision().wrapping_add(1);
+        self.as_mut().set_media_revision(revision);
+        println!(
+            "LUNCHBOX_MEDIA_READY_MS={elapsed_ms} games={game_count} assets={asset_count} skipped={skipped_entries}"
+        );
+        if let Some(warning) = warning {
+            self.as_mut().set_status_message(qstring(format!(
+                "Catalog ready — artwork cache unavailable: {warning}"
             )));
         }
     }
@@ -504,6 +707,9 @@ impl qobject::LibraryModel {
             GAME_STATUS_ROLE => QVariant::from(&qstring(&game.status)),
             GAME_LOCAL_ROLE => QVariant::from(&game.local),
             GAME_DOWNLOADABLE_ROLE => QVariant::from(&game.downloadable),
+            GAME_DATABASE_ID_ROLE => {
+                QVariant::from(&i32::try_from(game.launchbox_db_id).unwrap_or_default())
+            }
             _ => QVariant::default(),
         }
     }
@@ -515,4 +721,8 @@ impl qobject::LibraryModel {
         }
         roles
     }
+}
+
+fn media_asset_url(asset: &MediaAsset) -> QUrl {
+    QUrl::from_local_file(&qstring(asset.path.to_string_lossy()))
 }

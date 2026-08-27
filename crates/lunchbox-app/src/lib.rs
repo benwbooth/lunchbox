@@ -6,6 +6,7 @@ mod ingest;
 pub mod library_model;
 mod local_import;
 pub mod local_import_model;
+mod media;
 mod qbittorrent;
 mod settings;
 pub mod settings_model;

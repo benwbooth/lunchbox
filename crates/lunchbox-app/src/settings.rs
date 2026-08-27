@@ -44,10 +44,12 @@ impl Default for AppSettings {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LibraryPreferences {
     pub hide_non_retail: bool,
     pub hide_adult: bool,
+    pub artwork_type: String,
+    pub grid_zoom: i32,
 }
 
 impl Default for LibraryPreferences {
@@ -55,7 +57,21 @@ impl Default for LibraryPreferences {
         Self {
             hide_non_retail: true,
             hide_adult: false,
+            artwork_type: "box-front".to_owned(),
+            grid_zoom: 100,
         }
+    }
+}
+
+impl LibraryPreferences {
+    pub fn validate(&self) -> Result<()> {
+        if crate::media::ArtworkKind::parse(&self.artwork_type).is_none() {
+            bail!("unsupported artwork type {}", self.artwork_type);
+        }
+        if !(50..=200).contains(&self.grid_zoom) {
+            bail!("grid zoom must be between 50 and 200 percent");
+        }
+        Ok(())
     }
 }
 
@@ -270,31 +286,44 @@ impl SettingsStore {
 
     pub fn load_library_preferences(&self) -> Result<LibraryPreferences> {
         let connection = self.connection()?;
-        Ok(connection
+        let preferences = connection
             .query_row(
-                "SELECT hide_non_retail, hide_adult
+                "SELECT hide_non_retail, hide_adult, artwork_type, grid_zoom
                  FROM library_preferences WHERE id=1",
                 [],
                 |row| {
                     Ok(LibraryPreferences {
                         hide_non_retail: row.get(0)?,
                         hide_adult: row.get(1)?,
+                        artwork_type: row.get(2)?,
+                        grid_zoom: row.get(3)?,
                     })
                 },
             )
             .optional()?
-            .unwrap_or_default())
+            .unwrap_or_default();
+        preferences.validate()?;
+        Ok(preferences)
     }
 
-    pub fn save_library_preferences(&self, preferences: LibraryPreferences) -> Result<()> {
+    pub fn save_library_preferences(&self, preferences: &LibraryPreferences) -> Result<()> {
+        preferences.validate()?;
         let connection = self.connection()?;
         connection.execute(
-            "INSERT INTO library_preferences (id, hide_non_retail, hide_adult)
-             VALUES (1, ?1, ?2)
+            "INSERT INTO library_preferences (
+                 id, hide_non_retail, hide_adult, artwork_type, grid_zoom
+             ) VALUES (1, ?1, ?2, ?3, ?4)
              ON CONFLICT(id) DO UPDATE SET
                  hide_non_retail=excluded.hide_non_retail,
-                 hide_adult=excluded.hide_adult",
-            params![preferences.hide_non_retail, preferences.hide_adult],
+                 hide_adult=excluded.hide_adult,
+                 artwork_type=excluded.artwork_type,
+                 grid_zoom=excluded.grid_zoom",
+            params![
+                preferences.hide_non_retail,
+                preferences.hide_adult,
+                preferences.artwork_type,
+                preferences.grid_zoom,
+            ],
         )?;
         Ok(())
     }
@@ -486,7 +515,14 @@ fn migrate(connection: &Connection) -> Result<()> {
          CREATE TABLE IF NOT EXISTS library_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
              hide_non_retail INTEGER NOT NULL CHECK (hide_non_retail IN (0, 1)),
-             hide_adult INTEGER NOT NULL CHECK (hide_adult IN (0, 1))
+             hide_adult INTEGER NOT NULL CHECK (hide_adult IN (0, 1)),
+             artwork_type TEXT NOT NULL DEFAULT 'box-front' CHECK (
+                 artwork_type IN (
+                     'box-front', 'box-back', 'box-3d', 'screenshot',
+                     'title-screen', 'fanart', 'clear-logo'
+                 )
+             ),
+             grid_zoom INTEGER NOT NULL DEFAULT 100 CHECK (grid_zoom BETWEEN 50 AND 200)
          );
          CREATE TABLE IF NOT EXISTS download_jobs (
              id TEXT PRIMARY KEY,
@@ -577,6 +613,18 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
             "ALTER TABLE download_jobs ADD COLUMN launchbox_db_id INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "library_preferences", "artwork_type")? {
+        connection.execute(
+            "ALTER TABLE library_preferences ADD COLUMN artwork_type TEXT NOT NULL DEFAULT 'box-front'",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "library_preferences", "grid_zoom")? {
+        connection.execute(
+            "ALTER TABLE library_preferences ADD COLUMN grid_zoom INTEGER NOT NULL DEFAULT 100",
             [],
         )?;
     }
@@ -693,8 +741,10 @@ mod tests {
         let expected = LibraryPreferences {
             hide_non_retail: false,
             hide_adult: true,
+            artwork_type: "screenshot".into(),
+            grid_zoom: 135,
         };
-        store.save_library_preferences(expected).unwrap();
+        store.save_library_preferences(&expected).unwrap();
         assert_eq!(store.load_library_preferences().unwrap(), expected);
     }
 

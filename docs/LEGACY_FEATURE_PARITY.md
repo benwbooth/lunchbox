@@ -10,7 +10,7 @@ native vertical slice is completed so that features are not silently lost.
 | Legacy behavior | Source | Native state |
 | --- | --- | --- |
 | Full discoverable catalog separated from writable user state | `backend/src/state.rs`, `backend/src/api.rs` | Implemented as read-only catalog layers |
-| Platform sidebar, counts, search, grid/list views, zoom and artwork choice | `src/components/sidebar.rs`, `toolbar.rs`, `game_grid.rs` | Core sidebar/search/grid/list implemented; artwork and zoom remain in the ledger |
+| Platform sidebar, counts, search, grid/list views, zoom and artwork choice | `src/components/sidebar.rs`, `toolbar.rs`, `game_grid.rs` | Implemented with virtualized native views, persisted 50–200% card zoom, and persisted box front/back/3D, gameplay, title-screen, fan-art, or clear-logo choice |
 | Installed, non-retail and adult filters | `src/components/toolbar.rs`, `backend/src/api.rs` | Implemented as composable native filters, including an explicit Minerva-covered/not-installed choice and persisted non-retail/adult preferences |
 | Regional/version variants and alternate titles | `backend/src/api.rs`, `backend/src/db/schema.rs` | Behavior recorded |
 | Favorites, playlists, normal collections and smart collections | `backend/migrations`, `src/components/sidebar.rs` | Behavior recorded |
@@ -36,8 +36,8 @@ native vertical slice is completed so that features are not silently lost.
 | Legacy behavior | Source | Native state |
 | --- | --- | --- |
 | Metadata, variants, notes, related actions and launch controls | `src/components/game_details.rs` | Native responsive details pane implements core metadata and Minerva source inspection; variants, editing, related actions and launch controls remain in the ledger |
-| Box front, screenshots, title screens, fan art and clear logos | `backend/src/images`, `src/components/lazy_image.rs` | Behavior recorded |
-| Source priority, fallback, rotation, redownload and missing-media state | `backend/src/images/source_selector.rs`, `download_service.rs` | Behavior recorded |
+| Box front, screenshots, title screens, fan art and clear logos | `backend/src/images`, `src/components/lazy_image.rs` | Existing standardized cache assets are indexed off-thread by stable LaunchBox ID and rendered asynchronously in grid, list, and details views; on-demand retrieval remains in the ledger |
+| Source priority, fallback, rotation, redownload and missing-media state | `backend/src/images/source_selector.rs`, `download_service.rs` | Deterministic local/LaunchBox/LibRetro/SteamGridDB/IGDB/Minerva/EmuMovies/ScreenScraper/WebSearch priority and media-type fallback are native; alternate rotation, redownload, provider retrieval, and durable missing state remain in the ledger |
 | Manuals, videos, video progress and local-file opening | `backend/src/api.rs`, `video_player.rs` | Behavior recorded |
 | 3D box viewer | `src/components/box_3d_viewer.rs` | Behavior recorded |
 

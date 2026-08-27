@@ -9,6 +9,7 @@ use rusqlite::{Connection, OpenFlags};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Game {
     pub id: String,
+    pub launchbox_db_id: i64,
     pub title: String,
     pub platform: String,
     pub status: String,
@@ -217,6 +218,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
         let platform: String = row.get(2)?;
         Ok(Game {
             id: row.get(0)?,
+            launchbox_db_id: 0,
             search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
             title,
             platform,
@@ -323,6 +325,7 @@ fn load_discovery_catalog(
         let adult = is_adult_game(&title, esrb.as_deref(), genre.as_deref());
         games.push(Game {
             id,
+            launchbox_db_id: database_id,
             search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
             title,
             platform,
@@ -503,6 +506,7 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
         } else {
             installed.local_only_games.push(Game {
                 id: format!("local-file:{id}"),
+                launchbox_db_id: 0,
                 search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
                 title,
                 platform,
@@ -732,6 +736,7 @@ mod tests {
             games: vec![
                 Game {
                     id: "metroid".into(),
+                    launchbox_db_id: 1,
                     title: "Metroid".into(),
                     platform: "Nintendo Entertainment System".into(),
                     status: "canonical".into(),
@@ -743,6 +748,7 @@ mod tests {
                 },
                 Game {
                     id: "outrun".into(),
+                    launchbox_db_id: 2,
                     title: "OutRun".into(),
                     platform: "Arcade".into(),
                     status: "canonical".into(),
