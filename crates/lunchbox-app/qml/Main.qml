@@ -31,6 +31,7 @@ ApplicationWindow {
     property url selectedArtworkUrl: ""
     property url selectedFanartUrl: ""
     property string selectedArtworkSource: ""
+    property string selectedHeroArtworkType: ""
     property string directoryTarget: ""
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
@@ -48,6 +49,7 @@ ApplicationWindow {
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
+    readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -85,6 +87,8 @@ ApplicationWindow {
     function openGame(gameId, databaseId, title, platform, local, downloadable) {
         selectedGameId = gameId
         selectedDatabaseId = databaseId
+        library.request_artwork(databaseId, title, platform, library.artwork_type)
+        library.request_artwork(databaseId, title, platform, "fanart")
         refreshSelectedArtwork()
         gameDetails.select_game(gameId, title, platform, local, downloadable)
     }
@@ -92,9 +96,15 @@ ApplicationWindow {
     function refreshSelectedArtwork() {
         selectedArtworkUrl = library.artwork_url(selectedDatabaseId,
                                                  library.artwork_type)
+        selectedHeroArtworkType = "fanart"
         selectedFanartUrl = library.exact_artwork_url(selectedDatabaseId, "fanart")
+        if (selectedFanartUrl.toString().length === 0) {
+            selectedHeroArtworkType = "screenshot"
+            selectedFanartUrl = library.exact_artwork_url(selectedDatabaseId, "screenshot")
+        }
         selectedArtworkSource = selectedFanartUrl.toString().length > 0
-                                ? library.artwork_source(selectedDatabaseId, "fanart")
+                                ? library.artwork_source(selectedDatabaseId,
+                                                         selectedHeroArtworkType)
                                 : library.artwork_source(selectedDatabaseId,
                                                          library.artwork_type)
     }
@@ -166,6 +176,10 @@ ApplicationWindow {
         function onMedia_revisionChanged() {
             if (library.media_probe)
                 Qt.quit()
+            else if (root.mediaFetchUiProbe && library.media_revision === 1) {
+                searchField.text = "A Nightmare on Elm Street"
+                library.apply_filter(searchField.text, "", "")
+            }
             else if (root.artworkUiProbe && library.media_revision === 1) {
                 searchField.text = "A Nightmare on Elm Street"
                 library.apply_filter(searchField.text, "", "")
@@ -176,6 +190,10 @@ ApplicationWindow {
         function onArtwork_typeChanged() {
             if (root.selectedGameId.length > 0)
                 root.refreshSelectedArtwork()
+        }
+        function onMedia_downloaded_countChanged() {
+            if (root.mediaFetchUiProbe && library.media_downloaded_count > 0)
+                Qt.quit()
         }
     }
 
@@ -483,6 +501,24 @@ ApplicationWindow {
             }
             Text {
                 width: parent.width
+                text: library.media_fetch_message
+                color: library.media_error_count > 0 ? root.accent : root.accentCool
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                visible: library.media_pending_count > 0
+                         || library.media_downloaded_count > 0
+                         || library.media_missing_count > 0
+                text: library.media_pending_count + " queued · "
+                      + library.media_downloaded_count + " downloaded · "
+                      + library.media_missing_count + " unavailable"
+                color: "#657186"
+                font.pixelSize: 9
+            }
+            Text {
+                width: parent.width
                 visible: library.media_directory.length > 0
                 text: library.media_directory
                 color: "#657186"
@@ -683,6 +719,7 @@ ApplicationWindow {
             required property bool gameDownloadable
             required property int gameDatabaseId
             property int mediaRevision: library.media_revision
+            property string requestedArtworkType: library.artwork_type
             property url artworkUrl: {
                 mediaRevision
                 return library.artwork_url(gameDatabaseId, library.artwork_type)
@@ -691,6 +728,16 @@ ApplicationWindow {
                 mediaRevision
                 return library.artwork_source(gameDatabaseId, library.artwork_type)
             }
+            function requestVisibleArtwork() {
+                library.request_artwork(gameDatabaseId, gameTitle,
+                                        gamePlatform, requestedArtworkType)
+            }
+            Component.onCompleted: requestVisibleArtwork()
+            onGameDatabaseIdChanged: requestVisibleArtwork()
+            onGameTitleChanged: requestVisibleArtwork()
+            onGamePlatformChanged: requestVisibleArtwork()
+            onMediaRevisionChanged: requestVisibleArtwork()
+            onRequestedArtworkTypeChanged: requestVisibleArtwork()
             width: grid.cellWidth
             height: grid.cellHeight
             activeFocusOnTab: true
@@ -842,10 +889,21 @@ ApplicationWindow {
             required property bool gameDownloadable
             required property int gameDatabaseId
             property int mediaRevision: library.media_revision
+            property string requestedArtworkType: library.artwork_type
             property url artworkUrl: {
                 mediaRevision
                 return library.artwork_url(gameDatabaseId, library.artwork_type)
             }
+            function requestVisibleArtwork() {
+                library.request_artwork(gameDatabaseId, gameTitle,
+                                        gamePlatform, requestedArtworkType)
+            }
+            Component.onCompleted: requestVisibleArtwork()
+            onGameDatabaseIdChanged: requestVisibleArtwork()
+            onGameTitleChanged: requestVisibleArtwork()
+            onGamePlatformChanged: requestVisibleArtwork()
+            onMediaRevisionChanged: requestVisibleArtwork()
+            onRequestedArtworkTypeChanged: requestVisibleArtwork()
             width: list.width - 8
             height: 62
             radius: 9

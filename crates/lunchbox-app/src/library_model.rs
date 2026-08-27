@@ -35,10 +35,13 @@ pub mod qobject {
         #[qproperty(i32, grid_zoom)]
         #[qproperty(QString, media_directory)]
         #[qproperty(bool, media_loading)]
+        #[qproperty(bool, media_retrieval_enabled)]
+        #[qproperty(QString, media_fetch_message)]
         #[qproperty(bool, startup_probe)]
         #[qproperty(bool, catalog_probe)]
         #[qproperty(bool, filter_probe)]
         #[qproperty(bool, media_probe)]
+        #[qproperty(bool, media_fetch_probe)]
         #[qproperty(i32, startup_ms)]
         #[qproperty(i32, catalog_ms)]
         #[qproperty(i32, game_count)]
@@ -51,6 +54,10 @@ pub mod qobject {
         #[qproperty(i32, emulator_count)]
         #[qproperty(i32, media_game_count)]
         #[qproperty(i32, media_asset_count)]
+        #[qproperty(i32, media_pending_count)]
+        #[qproperty(i32, media_downloaded_count)]
+        #[qproperty(i32, media_missing_count)]
+        #[qproperty(i32, media_error_count)]
         #[qproperty(i32, media_revision)]
         #[qproperty(i32, platform_revision)]
         type LibraryModel = super::LibraryModelRust;
@@ -101,6 +108,15 @@ pub mod qobject {
         ) -> QString;
 
         #[qinvokable]
+        fn request_artwork(
+            self: Pin<&mut LibraryModel>,
+            launchbox_db_id: i32,
+            title: QString,
+            platform: QString,
+            artwork_type: QString,
+        );
+
+        #[qinvokable]
         fn platform_name_at(self: &LibraryModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -137,6 +153,7 @@ pub mod qobject {
     impl cxx_qt::Threading for LibraryModel {}
 }
 
+use std::collections::HashSet;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -144,7 +161,9 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QByteArray, QHash, QModelIndex, QString, QUrl, QVariant};
 
 use crate::catalog::{self, Catalog, Filter};
-use crate::media::{ArtworkKind, MediaAsset, MediaIndex};
+use crate::media::{
+    ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
+};
 use crate::settings::{LibraryPreferences, SettingsStore};
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -183,10 +202,13 @@ pub struct LibraryModelRust {
     grid_zoom: i32,
     media_directory: QString,
     media_loading: bool,
+    media_retrieval_enabled: bool,
+    media_fetch_message: QString,
     startup_probe: bool,
     catalog_probe: bool,
     filter_probe: bool,
     media_probe: bool,
+    media_fetch_probe: bool,
     startup_ms: i32,
     catalog_ms: i32,
     game_count: i32,
@@ -199,6 +221,10 @@ pub struct LibraryModelRust {
     emulator_count: i32,
     media_game_count: i32,
     media_asset_count: i32,
+    media_pending_count: i32,
+    media_downloaded_count: i32,
+    media_missing_count: i32,
+    media_error_count: i32,
     media_revision: i32,
     platform_revision: i32,
     catalog: Arc<Catalog>,
@@ -212,6 +238,9 @@ pub struct LibraryModelRust {
     filter_started: Option<std::time::Instant>,
     media_generation: u64,
     media_started: Option<std::time::Instant>,
+    media_fetch_started: Option<std::time::Instant>,
+    media_fetch_queue: Option<MediaFetchQueue>,
+    media_requests: HashSet<(i64, ArtworkKind)>,
 }
 
 impl Default for LibraryModelRust {
@@ -231,10 +260,15 @@ impl Default for LibraryModelRust {
             grid_zoom: preferences.grid_zoom,
             media_directory: QString::default(),
             media_loading: false,
+            media_retrieval_enabled: crate::media::media_retrieval_enabled(),
+            media_fetch_message: QString::from(
+                "Artwork is cached on demand as games enter the visible library.",
+            ),
             startup_probe: std::env::args().any(|argument| argument == "--startup-probe"),
             catalog_probe: std::env::args().any(|argument| argument == "--catalog-probe"),
             filter_probe: std::env::args().any(|argument| argument == "--filter-probe"),
             media_probe: std::env::args().any(|argument| argument == "--media-probe"),
+            media_fetch_probe: std::env::args().any(|argument| argument == "--media-fetch-probe"),
             startup_ms: 0,
             catalog_ms: 0,
             game_count: 0,
@@ -247,6 +281,10 @@ impl Default for LibraryModelRust {
             emulator_count: 0,
             media_game_count: 0,
             media_asset_count: 0,
+            media_pending_count: 0,
+            media_downloaded_count: 0,
+            media_missing_count: 0,
+            media_error_count: 0,
             media_revision: 0,
             platform_revision: 0,
             catalog: Arc::new(Catalog::default()),
@@ -260,6 +298,9 @@ impl Default for LibraryModelRust {
             filter_started: None,
             media_generation: 0,
             media_started: None,
+            media_fetch_started: None,
+            media_fetch_queue: None,
+            media_requests: HashSet::new(),
         }
     }
 }
@@ -558,6 +599,73 @@ impl qobject::LibraryModel {
             .unwrap_or_default()
     }
 
+    pub fn request_artwork(
+        mut self: Pin<&mut Self>,
+        launchbox_db_id: i32,
+        title: QString,
+        platform: QString,
+        artwork_type: QString,
+    ) {
+        if !*self.as_ref().media_retrieval_enabled()
+            || *self.as_ref().media_loading()
+            || launchbox_db_id <= 0
+        {
+            return;
+        }
+        let artwork_type = artwork_type.to_string();
+        let Some(kind) = ArtworkKind::parse(&artwork_type) else {
+            return;
+        };
+        let title = title.to_string();
+        let platform = platform.to_string();
+        if title.trim().is_empty() || platform.trim().is_empty() {
+            return;
+        }
+        let database_id = i64::from(launchbox_db_id);
+        if self
+            .as_ref()
+            .rust()
+            .media
+            .selected(database_id, kind)
+            .is_some()
+        {
+            return;
+        }
+        let key = (database_id, kind);
+        if self.as_ref().rust().media_requests.contains(&key) {
+            return;
+        }
+        let request = MediaFetchRequest {
+            database_id,
+            title,
+            platform,
+            requested_kind: kind,
+        };
+        let queued = self
+            .as_ref()
+            .rust()
+            .media_fetch_queue
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("artwork retrieval is not initialized"))
+            .and_then(|queue| queue.try_request(request));
+        match queued {
+            Ok(()) => {
+                if self.as_ref().rust().media_fetch_started.is_none() {
+                    self.as_mut().rust_mut().media_fetch_started = Some(std::time::Instant::now());
+                }
+                self.as_mut().rust_mut().media_requests.insert(key);
+                let pending = self.as_ref().rust().media_requests.len();
+                self.as_mut()
+                    .set_media_pending_count(saturating_i32(pending));
+            }
+            Err(error) => {
+                self.as_mut().set_media_fetch_message(qstring(format!(
+                    "Artwork queue unavailable: {error}"
+                )));
+            }
+        }
+    }
+
     fn media_asset(
         &self,
         launchbox_db_id: i32,
@@ -623,6 +731,7 @@ impl qobject::LibraryModel {
         self.as_mut()
             .set_media_asset_count(saturating_i32(asset_count));
         self.as_mut().set_media_loading(false);
+        self.as_mut().start_media_fetch_queue(root);
         let revision = self.as_ref().media_revision().wrapping_add(1);
         self.as_mut().set_media_revision(revision);
         println!(
@@ -632,6 +741,112 @@ impl qobject::LibraryModel {
             self.as_mut().set_status_message(qstring(format!(
                 "Catalog ready — artwork cache unavailable: {warning}"
             )));
+        }
+    }
+
+    fn start_media_fetch_queue(mut self: Pin<&mut Self>, root: std::path::PathBuf) {
+        if !*self.as_ref().media_retrieval_enabled()
+            || self.as_ref().rust().media_fetch_queue.is_some()
+        {
+            if !*self.as_ref().media_retrieval_enabled() {
+                self.as_mut()
+                    .set_media_fetch_message(qstring("Offline mode — cached artwork only."));
+            }
+            return;
+        }
+        let qt_thread = self.as_ref().qt_thread();
+        match MediaFetchQueue::start(root, move |outcome| {
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().finish_media_fetch(outcome);
+            });
+        }) {
+            Ok(queue) => {
+                self.as_mut().rust_mut().media_fetch_queue = Some(queue);
+                self.as_mut().set_media_fetch_message(qstring(
+                    "On-demand LibRetro artwork is ready; visible games load first.",
+                ));
+            }
+            Err(error) => {
+                self.as_mut().set_media_retrieval_enabled(false);
+                self.as_mut().set_media_fetch_message(qstring(format!(
+                    "Artwork retrieval could not start: {error}"
+                )));
+            }
+        }
+    }
+
+    fn finish_media_fetch(mut self: Pin<&mut Self>, outcome: MediaFetchOutcome) {
+        let (database_id, requested_kind) = match &outcome {
+            MediaFetchOutcome::Found {
+                database_id,
+                requested_kind,
+                ..
+            }
+            | MediaFetchOutcome::Missing {
+                database_id,
+                requested_kind,
+            }
+            | MediaFetchOutcome::Failed {
+                database_id,
+                requested_kind,
+                ..
+            } => (*database_id, *requested_kind),
+        };
+        self.as_mut()
+            .rust_mut()
+            .media_requests
+            .remove(&(database_id, requested_kind));
+        let pending = self.as_ref().rust().media_requests.len();
+        self.as_mut()
+            .set_media_pending_count(saturating_i32(pending));
+
+        match outcome {
+            MediaFetchOutcome::Found {
+                fetched_kind, path, ..
+            } => {
+                let inserted = Arc::make_mut(&mut self.as_mut().rust_mut().media).insert_asset(
+                    database_id,
+                    fetched_kind,
+                    path,
+                    "libretro",
+                );
+                if inserted {
+                    let games = self.as_ref().rust().media.games.len();
+                    let assets = self.as_ref().rust().media.asset_count;
+                    self.as_mut().set_media_game_count(saturating_i32(games));
+                    self.as_mut().set_media_asset_count(saturating_i32(assets));
+                    let downloaded = self.as_ref().media_downloaded_count().saturating_add(1);
+                    self.as_mut().set_media_downloaded_count(downloaded);
+                    let revision = self.as_ref().media_revision().wrapping_add(1);
+                    self.as_mut().set_media_revision(revision);
+                    self.as_mut().set_media_fetch_message(qstring(format!(
+                        "Cached {} artwork from LibRetro.",
+                        fetched_kind.key().replace('-', " ")
+                    )));
+                    if *self.as_ref().media_fetch_probe() {
+                        let elapsed = self
+                            .as_ref()
+                            .rust()
+                            .media_fetch_started
+                            .map(|started| started.elapsed().as_millis())
+                            .unwrap_or_default();
+                        println!(
+                            "LUNCHBOX_MEDIA_FETCH_READY_MS={elapsed} database_id={database_id} kind={} assets={assets}",
+                            fetched_kind.key()
+                        );
+                    }
+                }
+            }
+            MediaFetchOutcome::Missing { .. } => {
+                let missing = self.as_ref().media_missing_count().saturating_add(1);
+                self.as_mut().set_media_missing_count(missing);
+            }
+            MediaFetchOutcome::Failed { error, .. } => {
+                let errors = self.as_ref().media_error_count().saturating_add(1);
+                self.as_mut().set_media_error_count(errors);
+                self.as_mut()
+                    .set_media_fetch_message(qstring(format!("Artwork retrieval paused: {error}")));
+            }
         }
     }
 
