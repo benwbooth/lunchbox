@@ -45,6 +45,7 @@ pub struct Filter {
     pub hide_non_retail: bool,
     pub hide_adult: bool,
     pub favorite_game_ids: Arc<HashSet<String>>,
+    pub collection_game_ids: Arc<HashSet<String>>,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -723,6 +724,9 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                     "local" => game.local,
                     "downloadable" => game.downloadable && !game.local,
                     "favorites" => filter.favorite_game_ids.contains(&game.id),
+                    availability if availability.starts_with("collection:") => {
+                        filter.collection_game_ids.contains(&game.id)
+                    }
                     _ => true,
                 }
         })
@@ -816,6 +820,19 @@ mod tests {
                 }
             ),
             vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "arcade".into(),
+                    platform: "Arcade".into(),
+                    availability: "collection:co-op".into(),
+                    collection_game_ids: Arc::new(HashSet::from(["outrun".to_owned()])),
+                    ..Filter::default()
+                }
+            ),
+            vec![1]
         );
     }
 

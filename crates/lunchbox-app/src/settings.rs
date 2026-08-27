@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -51,6 +51,20 @@ pub struct LibraryPreferences {
     pub hide_adult: bool,
     pub artwork_type: String,
     pub grid_zoom: i32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserCollection {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub game_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UserCollections {
+    pub collections: Vec<UserCollection>,
+    pub members: HashMap<String, HashSet<String>>,
 }
 
 impl Default for LibraryPreferences {
@@ -368,6 +382,140 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub fn user_collections(&self) -> Result<UserCollections> {
+        let connection = self.connection()?;
+        let mut collection_statement = connection.prepare(
+            "SELECT id, name, description
+             FROM user_collections
+             ORDER BY name COLLATE NOCASE, id",
+        )?;
+        let collection_rows = collection_statement.query_map([], |row| {
+            Ok(UserCollection {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                game_count: 0,
+            })
+        })?;
+        let mut collections = collection_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut member_statement = connection.prepare(
+            "SELECT collection_id, game_uid
+             FROM user_collection_games
+             ORDER BY collection_id, sort_order, game_uid",
+        )?;
+        let member_rows = member_statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut members = HashMap::<String, HashSet<String>>::new();
+        for row in member_rows {
+            let (collection_id, game_uid) = row?;
+            members.entry(collection_id).or_default().insert(game_uid);
+        }
+        for collection in &mut collections {
+            collection.game_count = members
+                .get(&collection.id)
+                .map(HashSet::len)
+                .unwrap_or_default();
+        }
+        Ok(UserCollections {
+            collections,
+            members,
+        })
+    }
+
+    pub fn create_collection(&self, name: &str, description: &str) -> Result<UserCollection> {
+        let name = validate_collection_name(name)?;
+        let description = validate_collection_description(description)?;
+        let collection = UserCollection {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            description,
+            game_count: 0,
+        };
+        let connection = self.connection()?;
+        connection
+            .execute(
+                "INSERT INTO user_collections (
+                     id, name, description, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?4)",
+                params![
+                    collection.id,
+                    collection.name,
+                    collection.description,
+                    unix_timestamp()
+                ],
+            )
+            .with_context(|| format!("creating collection {}", collection.name))?;
+        Ok(collection)
+    }
+
+    pub fn update_collection(&self, id: &str, name: &str, description: &str) -> Result<()> {
+        let name = validate_collection_name(name)?;
+        let description = validate_collection_description(description)?;
+        let connection = self.connection()?;
+        let changed = connection
+            .execute(
+                "UPDATE user_collections
+                 SET name=?2, description=?3, updated_at=?4
+                 WHERE id=?1",
+                params![id, name, description, unix_timestamp()],
+            )
+            .with_context(|| format!("updating collection {id}"))?;
+        if changed == 0 {
+            bail!("collection no longer exists");
+        }
+        Ok(())
+    }
+
+    pub fn delete_collection(&self, id: &str) -> Result<()> {
+        let connection = self.connection()?;
+        let changed = connection
+            .execute("DELETE FROM user_collections WHERE id=?1", params![id])
+            .with_context(|| format!("deleting collection {id}"))?;
+        if changed == 0 {
+            bail!("collection no longer exists");
+        }
+        Ok(())
+    }
+
+    pub fn set_collection_membership(
+        &self,
+        collection_id: &str,
+        game_uid: &str,
+        member: bool,
+    ) -> Result<()> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to change collection membership");
+        }
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        if member {
+            let next_order = transaction.query_row(
+                "SELECT coalesce(max(sort_order), 0) + 1
+                 FROM user_collection_games WHERE collection_id=?1",
+                params![collection_id],
+                |row| row.get::<_, i64>(0),
+            )?;
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO user_collection_games (
+                         collection_id, game_uid, sort_order, added_at
+                     ) VALUES (?1, ?2, ?3, ?4)",
+                    params![collection_id, game_uid, next_order, unix_timestamp()],
+                )
+                .with_context(|| format!("adding a game to collection {collection_id}"))?;
+        } else {
+            transaction.execute(
+                "DELETE FROM user_collection_games
+                 WHERE collection_id=?1 AND game_uid=?2",
+                params![collection_id, game_uid],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn upsert_job(&self, job: &DownloadJob) -> Result<()> {
         let connection = self.connection()?;
         connection.execute(
@@ -659,7 +807,25 @@ fn migrate(connection: &Connection) -> Result<()> {
          CREATE INDEX IF NOT EXISTS favorite_games_launchbox_id
              ON favorite_games(launchbox_db_id) WHERE launchbox_db_id > 0;
          CREATE INDEX IF NOT EXISTS favorite_games_added_at
-             ON favorite_games(added_at DESC);",
+             ON favorite_games(added_at DESC);
+         CREATE TABLE IF NOT EXISTS user_collections (
+             id TEXT PRIMARY KEY,
+             name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+             description TEXT NOT NULL,
+             created_at INTEGER NOT NULL,
+             updated_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS user_collection_games (
+             collection_id TEXT NOT NULL REFERENCES user_collections(id) ON DELETE CASCADE,
+             game_uid TEXT NOT NULL,
+             sort_order INTEGER NOT NULL,
+             added_at INTEGER NOT NULL,
+             PRIMARY KEY (collection_id, game_uid)
+         );
+         CREATE INDEX IF NOT EXISTS user_collection_games_order
+             ON user_collection_games(collection_id, sort_order, game_uid);
+         CREATE INDEX IF NOT EXISTS user_collection_games_game
+             ON user_collection_games(game_uid);",
     )?;
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
@@ -691,6 +857,25 @@ fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<b
         }
     }
     Ok(false)
+}
+
+fn validate_collection_name(name: &str) -> Result<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        bail!("collection name is required");
+    }
+    if name.chars().count() > 100 {
+        bail!("collection name must be at most 100 characters");
+    }
+    Ok(name.to_owned())
+}
+
+fn validate_collection_description(description: &str) -> Result<String> {
+    let description = description.trim();
+    if description.chars().count() > 1000 {
+        bail!("collection description must be at most 1000 characters");
+    }
+    Ok(description.to_owned())
 }
 
 pub(crate) fn unix_timestamp() -> i64 {
@@ -830,6 +1015,76 @@ mod tests {
             .unwrap();
         assert!(store.favorite_game_ids().unwrap().is_empty());
         assert!(store.set_favorite("", 0, "", "", true).is_err());
+    }
+
+    #[test]
+    fn named_collections_preserve_membership_and_cascade_on_delete() {
+        let (_directory, store) = store();
+        let collection = store
+            .create_collection("  Couch Co-op  ", " Games for the living room ")
+            .unwrap();
+        assert_eq!(collection.name, "Couch Co-op");
+        assert_eq!(collection.description, "Games for the living room");
+
+        store
+            .set_collection_membership(&collection.id, "game-one", true)
+            .unwrap();
+        store
+            .set_collection_membership(&collection.id, "game-two", true)
+            .unwrap();
+        store
+            .set_collection_membership(&collection.id, "game-one", true)
+            .unwrap();
+        let loaded = store.user_collections().unwrap();
+        assert_eq!(loaded.collections[0].game_count, 2);
+        assert_eq!(
+            loaded.members[&collection.id],
+            HashSet::from(["game-one".to_owned(), "game-two".to_owned()])
+        );
+
+        store
+            .update_collection(&collection.id, "Arcade Night", "Favorites")
+            .unwrap();
+        assert_eq!(
+            store.user_collections().unwrap().collections[0].name,
+            "Arcade Night"
+        );
+        assert!(
+            store
+                .create_collection("arcade night", "duplicate")
+                .is_err()
+        );
+
+        store
+            .set_collection_membership(&collection.id, "game-one", false)
+            .unwrap();
+        assert_eq!(
+            store.user_collections().unwrap().collections[0].game_count,
+            1
+        );
+        store.delete_collection(&collection.id).unwrap();
+        assert_eq!(
+            store.user_collections().unwrap(),
+            UserCollections::default()
+        );
+    }
+
+    #[test]
+    fn collection_validation_rejects_empty_and_unbounded_fields() {
+        let (_directory, store) = store();
+        assert!(store.create_collection(" ", "").is_err());
+        assert!(store.create_collection(&"x".repeat(101), "").is_err());
+        let collection = store.create_collection("Valid", "").unwrap();
+        assert!(
+            store
+                .update_collection(&collection.id, "Valid", &"x".repeat(1001))
+                .is_err()
+        );
+        assert!(
+            store
+                .set_collection_membership(&collection.id, "", true)
+                .is_err()
+        );
     }
 
     #[test]

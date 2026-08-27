@@ -76,6 +76,13 @@ The equivalent catalog environment variables are
 `LUNCHBOX_STATE_DATABASE` can select an alternate writable settings, queue, and
 native collection database for testing or portable deployments.
 
+Favorites and named collections live in that writable state database and refer
+to games by Lunchbox's stable UUIDs. The Collections sidebar supports creating,
+renaming, describing, and safely deleting shelves; a game's details pane manages
+membership. Selecting a collection remains composable with search and platform
+navigation, and collection writes run off the GUI thread with visible failure
+rollback.
+
 The preserved game catalog is a local runtime input and is not added to the
 published artifact because redistribution permission for its LaunchBox-derived
 records has not been established.

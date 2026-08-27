@@ -112,6 +112,12 @@ persists it through the native Qt action, prints `LUNCHBOX_FAVORITE_READY_MS`,
 and exits only after the worker reports success. `--favorite-ui-probe` leaves
 the same grid, star affordance, and details pane open for visual inspection.
 
+`--collection-probe --state-database EMPTY_PATH` creates a named collection,
+adds a real catalog game by stable UUID, applies the native collection filter,
+and exits only after persistence succeeds. Reusing the state path verifies that
+the collection and membership survive restart. `--collection-ui-probe` follows
+the same route and leaves the collection-management surface open for inspection.
+
 `--import-ui-probe --import-directory PATH` opens the local-import surface and
 starts a real checksum scan. It exists for deterministic virtual-display visual
 checks; it uses the same model, worker, database, and QML as an interactive

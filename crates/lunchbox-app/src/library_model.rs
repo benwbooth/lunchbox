@@ -38,12 +38,15 @@ pub mod qobject {
         #[qproperty(bool, media_retrieval_enabled)]
         #[qproperty(QString, media_fetch_message)]
         #[qproperty(QString, favorite_message)]
+        #[qproperty(QString, collection_message)]
         #[qproperty(bool, startup_probe)]
         #[qproperty(bool, catalog_probe)]
         #[qproperty(bool, filter_probe)]
         #[qproperty(bool, media_probe)]
         #[qproperty(bool, media_fetch_probe)]
         #[qproperty(bool, favorite_probe)]
+        #[qproperty(bool, collection_probe)]
+        #[qproperty(bool, collection_busy)]
         #[qproperty(i32, startup_ms)]
         #[qproperty(i32, catalog_ms)]
         #[qproperty(i32, game_count)]
@@ -63,6 +66,8 @@ pub mod qobject {
         #[qproperty(i32, favorite_count)]
         #[qproperty(i32, favorite_pending_count)]
         #[qproperty(i32, favorite_revision)]
+        #[qproperty(i32, collection_count)]
+        #[qproperty(i32, collection_revision)]
         #[qproperty(i32, media_revision)]
         #[qproperty(i32, platform_revision)]
         type LibraryModel = super::LibraryModelRust;
@@ -131,6 +136,50 @@ pub mod qobject {
         fn set_favorite(self: Pin<&mut LibraryModel>, game_uid: QString, favorite: bool);
 
         #[qinvokable]
+        fn collection_id_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn collection_name_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn collection_description_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn collection_game_count_at(self: &LibraryModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn collection_exists(self: &LibraryModel, collection_id: QString) -> bool;
+
+        #[qinvokable]
+        fn collection_contains(
+            self: &LibraryModel,
+            collection_id: QString,
+            game_uid: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn create_collection(self: Pin<&mut LibraryModel>, name: QString, description: QString);
+
+        #[qinvokable]
+        fn update_collection(
+            self: Pin<&mut LibraryModel>,
+            collection_id: QString,
+            name: QString,
+            description: QString,
+        );
+
+        #[qinvokable]
+        fn delete_collection(self: Pin<&mut LibraryModel>, collection_id: QString);
+
+        #[qinvokable]
+        fn set_collection_membership(
+            self: Pin<&mut LibraryModel>,
+            collection_id: QString,
+            game_uid: QString,
+            member: bool,
+        );
+
+        #[qinvokable]
         fn platform_name_at(self: &LibraryModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -167,7 +216,7 @@ pub mod qobject {
     impl cxx_qt::Threading for LibraryModel {}
 }
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -178,7 +227,7 @@ use crate::catalog::{self, Catalog, Filter};
 use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
-use crate::settings::{LibraryPreferences, SettingsStore};
+use crate::settings::{LibraryPreferences, SettingsStore, UserCollection, UserCollections};
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
 type CatalogLoadResult = Result<
@@ -186,9 +235,30 @@ type CatalogLoadResult = Result<
         Catalog,
         Result<LibraryPreferences, String>,
         Result<HashSet<String>, String>,
+        Result<UserCollections, String>,
     ),
     String,
 >;
+
+enum CollectionMutation {
+    Created(UserCollection),
+    Updated {
+        collection_id: String,
+        name: String,
+        description: String,
+    },
+    Deleted {
+        collection_id: String,
+    },
+    Membership(CollectionMembership),
+}
+
+#[derive(Clone)]
+struct CollectionMembership {
+    collection_id: String,
+    game_uid: String,
+    member: bool,
+}
 
 const DISPLAY_ROLE: i32 = 0;
 const USER_ROLE: i32 = 0x0100;
@@ -227,12 +297,15 @@ pub struct LibraryModelRust {
     media_retrieval_enabled: bool,
     media_fetch_message: QString,
     favorite_message: QString,
+    collection_message: QString,
     startup_probe: bool,
     catalog_probe: bool,
     filter_probe: bool,
     media_probe: bool,
     media_fetch_probe: bool,
     favorite_probe: bool,
+    collection_probe: bool,
+    collection_busy: bool,
     startup_ms: i32,
     catalog_ms: i32,
     game_count: i32,
@@ -252,6 +325,8 @@ pub struct LibraryModelRust {
     favorite_count: i32,
     favorite_pending_count: i32,
     favorite_revision: i32,
+    collection_count: i32,
+    collection_revision: i32,
     media_revision: i32,
     platform_revision: i32,
     catalog: Arc<Catalog>,
@@ -271,6 +346,9 @@ pub struct LibraryModelRust {
     favorite_game_ids: Arc<HashSet<String>>,
     favorite_requests: HashSet<String>,
     favorite_started: Option<std::time::Instant>,
+    collections: Arc<Vec<UserCollection>>,
+    collection_members: Arc<HashMap<String, Arc<HashSet<String>>>>,
+    collection_started: Option<std::time::Instant>,
 }
 
 impl Default for LibraryModelRust {
@@ -295,12 +373,17 @@ impl Default for LibraryModelRust {
                 "Artwork is cached on demand as games enter the visible library.",
             ),
             favorite_message: QString::from("Favorites are stored in your local profile."),
+            collection_message: QString::from(
+                "Create playlists and collections without changing game identity.",
+            ),
             startup_probe: std::env::args().any(|argument| argument == "--startup-probe"),
             catalog_probe: std::env::args().any(|argument| argument == "--catalog-probe"),
             filter_probe: std::env::args().any(|argument| argument == "--filter-probe"),
             media_probe: std::env::args().any(|argument| argument == "--media-probe"),
             media_fetch_probe: std::env::args().any(|argument| argument == "--media-fetch-probe"),
             favorite_probe: std::env::args().any(|argument| argument == "--favorite-probe"),
+            collection_probe: std::env::args().any(|argument| argument == "--collection-probe"),
+            collection_busy: false,
             startup_ms: 0,
             catalog_ms: 0,
             game_count: 0,
@@ -320,6 +403,8 @@ impl Default for LibraryModelRust {
             favorite_count: 0,
             favorite_pending_count: 0,
             favorite_revision: 0,
+            collection_count: 0,
+            collection_revision: 0,
             media_revision: 0,
             platform_revision: 0,
             catalog: Arc::new(Catalog::default()),
@@ -339,6 +424,9 @@ impl Default for LibraryModelRust {
             favorite_game_ids: Arc::new(HashSet::new()),
             favorite_requests: HashSet::new(),
             favorite_started: None,
+            collections: Arc::new(Vec::new()),
+            collection_members: Arc::new(HashMap::new()),
+            collection_started: None,
         }
     }
 }
@@ -351,6 +439,21 @@ fn saturating_i32(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
 }
 
+fn collection_at(model: &qobject::LibraryModel, index: i32) -> Option<&UserCollection> {
+    usize::try_from(index)
+        .ok()
+        .and_then(|index| model.rust().collections.get(index))
+}
+
+fn sort_collections(collections: &mut [UserCollection]) {
+    collections.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
 impl qobject::LibraryModel {
     pub fn initialize(mut self: Pin<&mut Self>) {
         if *self.as_ref().loading() || *self.as_ref().ready() {
@@ -360,11 +463,14 @@ impl qobject::LibraryModel {
     }
 
     pub fn reload(mut self: Pin<&mut Self>) {
-        if *self.as_ref().loading() || !self.as_ref().rust().favorite_requests.is_empty() {
+        if *self.as_ref().loading()
+            || !self.as_ref().rust().favorite_requests.is_empty()
+            || *self.as_ref().collection_busy()
+        {
             self.as_mut().rust_mut().reload_pending = true;
             if !*self.as_ref().loading() {
                 self.as_mut().set_status_message(qstring(
-                    "Finishing the favorite change before refreshing the catalog…",
+                    "Finishing profile changes before refreshing the catalog…",
                 ));
             }
             return;
@@ -401,19 +507,21 @@ impl qobject::LibraryModel {
             .spawn(move || {
                 let loaded = catalog::load(&path)
                     .map(|catalog| {
-                        let (preferences, favorites) = match SettingsStore::open_default() {
-                            Ok(store) => (
-                                store
-                                    .load_library_preferences()
-                                    .map_err(|error| error.to_string()),
-                                store.favorite_game_ids().map_err(|error| error.to_string()),
-                            ),
-                            Err(error) => {
-                                let error = error.to_string();
-                                (Err(error.clone()), Err(error))
-                            }
-                        };
-                        (catalog, preferences, favorites)
+                        let (preferences, favorites, collections) =
+                            match SettingsStore::open_default() {
+                                Ok(store) => (
+                                    store
+                                        .load_library_preferences()
+                                        .map_err(|error| error.to_string()),
+                                    store.favorite_game_ids().map_err(|error| error.to_string()),
+                                    store.user_collections().map_err(|error| error.to_string()),
+                                ),
+                                Err(error) => {
+                                    let error = error.to_string();
+                                    (Err(error.clone()), Err(error.clone()), Err(error))
+                                }
+                            };
+                        (catalog, preferences, favorites, collections)
                     })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -433,7 +541,7 @@ impl qobject::LibraryModel {
         }
         self.as_mut().set_loading(false);
         match loaded {
-            Ok((catalog, preferences, favorites)) => {
+            Ok((catalog, preferences, favorites, collections)) => {
                 let preference_warning = match preferences {
                     Ok(preferences) => {
                         let artwork_kind =
@@ -458,6 +566,18 @@ impl qobject::LibraryModel {
                     .iter()
                     .filter(|game| favorite_game_ids.contains(&game.id))
                     .count();
+                let (collections, collection_members, collection_warning) = match collections {
+                    Ok(collections) => {
+                        let members = collections
+                            .members
+                            .into_iter()
+                            .map(|(id, games)| (id, Arc::new(games)))
+                            .collect::<HashMap<_, _>>();
+                        (collections.collections, members, None)
+                    }
+                    Err(error) => (Vec::new(), HashMap::new(), Some(error)),
+                };
+                let collection_count = collections.len();
                 let indices = (0..catalog.games.len()).collect::<Vec<_>>();
                 self.as_mut().begin_reset_model();
                 {
@@ -466,6 +586,8 @@ impl qobject::LibraryModel {
                     rust.catalog = Arc::new(catalog);
                     rust.filtered_indices = indices;
                     rust.favorite_game_ids = Arc::new(favorite_game_ids);
+                    rust.collections = Arc::new(collections);
+                    rust.collection_members = Arc::new(collection_members);
                 }
                 self.as_mut().end_reset_model();
 
@@ -523,6 +645,31 @@ impl qobject::LibraryModel {
                         "{favorite_count} favorite games in this catalog."
                     )));
                 }
+                self.as_mut()
+                    .set_collection_count(saturating_i32(collection_count));
+                let collection_revision = self.as_ref().collection_revision().wrapping_add(1);
+                self.as_mut().set_collection_revision(collection_revision);
+                if let Some(warning) = &collection_warning {
+                    self.as_mut().set_collection_message(qstring(format!(
+                        "Collections could not be loaded: {warning}"
+                    )));
+                } else {
+                    self.as_mut().set_collection_message(qstring(format!(
+                        "{collection_count} named collections in this profile."
+                    )));
+                }
+                if *self.as_ref().collection_probe() {
+                    let membership_count = self
+                        .as_ref()
+                        .rust()
+                        .collection_members
+                        .values()
+                        .map(|members| members.len())
+                        .sum::<usize>();
+                    println!(
+                        "LUNCHBOX_COLLECTIONS_LOADED collections={collection_count} memberships={membership_count}"
+                    );
+                }
                 self.as_mut().set_catalog_ms(catalog_ms);
                 println!(
                     "LUNCHBOX_CATALOG_READY_MS={catalog_ms} games={game_count} platforms={platform_count} local_files={local_file_count} downloadable_games={downloadable_game_count} offers={offer_count} emulators={emulator_count} source={source_label:?}"
@@ -538,6 +685,9 @@ impl qobject::LibraryModel {
                 }
                 if let Some(warning) = favorite_warning {
                     status.push_str(&format!(" — favorites unavailable: {warning}"));
+                }
+                if let Some(warning) = collection_warning {
+                    status.push_str(&format!(" — collections unavailable: {warning}"));
                 }
                 self.as_mut().set_status_message(qstring(status));
                 self.as_mut().start_media_load();
@@ -563,13 +713,25 @@ impl qobject::LibraryModel {
         if !*self.as_ref().ready() || *self.as_ref().loading() {
             return;
         }
+        let availability_text = availability.to_string();
+        let collection_game_ids = availability_text
+            .strip_prefix("collection:")
+            .and_then(|collection_id| {
+                self.as_ref()
+                    .rust()
+                    .collection_members
+                    .get(collection_id)
+                    .cloned()
+            })
+            .unwrap_or_else(|| Arc::new(HashSet::new()));
         let filter = Filter {
             search: search.to_string(),
             platform: platform.to_string(),
-            availability: availability.to_string(),
+            availability: availability_text,
             hide_non_retail: *self.as_ref().hide_non_retail(),
             hide_adult: *self.as_ref().hide_adult(),
             favorite_game_ids: Arc::clone(&self.as_ref().rust().favorite_game_ids),
+            collection_game_ids,
         };
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);
@@ -888,10 +1050,387 @@ impl qobject::LibraryModel {
                 )));
             }
         }
-        if pending == 0 && self.as_ref().rust().reload_pending && !*self.as_ref().loading() {
+        if pending == 0
+            && self.as_ref().rust().reload_pending
+            && !*self.as_ref().loading()
+            && !*self.as_ref().collection_busy()
+        {
             self.as_mut().rust_mut().reload_pending = false;
             self.as_mut().start_load();
         }
+    }
+
+    pub fn collection_id_at(&self, index: i32) -> QString {
+        collection_at(self, index)
+            .map(|collection| qstring(&collection.id))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_name_at(&self, index: i32) -> QString {
+        collection_at(self, index)
+            .map(|collection| qstring(&collection.name))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_description_at(&self, index: i32) -> QString {
+        collection_at(self, index)
+            .map(|collection| qstring(&collection.description))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_game_count_at(&self, index: i32) -> i32 {
+        collection_at(self, index)
+            .map(|collection| saturating_i32(collection.game_count))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_exists(&self, collection_id: QString) -> bool {
+        let collection_id = collection_id.to_string();
+        self.rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == collection_id)
+    }
+
+    pub fn collection_contains(&self, collection_id: QString, game_uid: QString) -> bool {
+        self.rust()
+            .collection_members
+            .get(&collection_id.to_string())
+            .is_some_and(|members| members.contains(&game_uid.to_string()))
+    }
+
+    pub fn create_collection(mut self: Pin<&mut Self>, name: QString, description: QString) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let name = name.to_string();
+        let description = description.to_string();
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-create", None, move || {
+                SettingsStore::open_default()
+                    .and_then(|store| store.create_collection(&name, &description))
+                    .map(CollectionMutation::Created)
+                    .map_err(|error| error.to_string())
+            });
+    }
+
+    pub fn update_collection(
+        mut self: Pin<&mut Self>,
+        collection_id: QString,
+        name: QString,
+        description: QString,
+    ) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let collection_id = collection_id.to_string();
+        if !self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == collection_id)
+        {
+            self.as_mut()
+                .set_collection_message(qstring("Collection no longer exists."));
+            return;
+        }
+        let name = name.to_string();
+        let description = description.to_string();
+        let task_collection_id = collection_id.clone();
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-update", None, move || {
+                SettingsStore::open_default()
+                    .and_then(|store| {
+                        store.update_collection(&task_collection_id, &name, &description)
+                    })
+                    .map(|()| CollectionMutation::Updated {
+                        collection_id: task_collection_id,
+                        name: name.trim().to_owned(),
+                        description: description.trim().to_owned(),
+                    })
+                    .map_err(|error| error.to_string())
+            });
+    }
+
+    pub fn delete_collection(mut self: Pin<&mut Self>, collection_id: QString) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let collection_id = collection_id.to_string();
+        if !self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == collection_id)
+        {
+            self.as_mut()
+                .set_collection_message(qstring("Collection no longer exists."));
+            return;
+        }
+        let task_collection_id = collection_id.clone();
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-delete", None, move || {
+                SettingsStore::open_default()
+                    .and_then(|store| store.delete_collection(&task_collection_id))
+                    .map(|()| CollectionMutation::Deleted {
+                        collection_id: task_collection_id,
+                    })
+                    .map_err(|error| error.to_string())
+            });
+    }
+
+    pub fn set_collection_membership(
+        mut self: Pin<&mut Self>,
+        collection_id: QString,
+        game_uid: QString,
+        member: bool,
+    ) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let membership = CollectionMembership {
+            collection_id: collection_id.to_string(),
+            game_uid: game_uid.to_string(),
+            member,
+        };
+        let collection_exists = self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == membership.collection_id);
+        let game_exists = self
+            .as_ref()
+            .rust()
+            .catalog
+            .games
+            .iter()
+            .any(|game| game.id == membership.game_uid);
+        if !collection_exists || !game_exists {
+            self.as_mut().set_collection_message(qstring(
+                "Membership was not changed because its collection or game identity is unavailable.",
+            ));
+            return;
+        }
+        let currently_member = self
+            .as_ref()
+            .rust()
+            .collection_members
+            .get(&membership.collection_id)
+            .is_some_and(|members| members.contains(&membership.game_uid));
+        if currently_member == member {
+            return;
+        }
+
+        self.as_mut().set_collection_busy(true);
+        self.as_mut().apply_collection_membership(&membership);
+        let task_membership = membership.clone();
+        self.as_mut().start_collection_task(
+            "lunchbox-collection-membership",
+            Some(membership),
+            move || {
+                SettingsStore::open_default()
+                    .and_then(|store| {
+                        store.set_collection_membership(
+                            &task_membership.collection_id,
+                            &task_membership.game_uid,
+                            task_membership.member,
+                        )
+                    })
+                    .map(|()| CollectionMutation::Membership(task_membership))
+                    .map_err(|error| error.to_string())
+            },
+        );
+    }
+
+    fn can_change_collections(&self) -> bool {
+        *self.ready() && !*self.loading() && !*self.collection_busy()
+    }
+
+    fn start_collection_task<F>(
+        mut self: Pin<&mut Self>,
+        thread_name: &'static str,
+        rollback: Option<CollectionMembership>,
+        task: F,
+    ) where
+        F: FnOnce() -> Result<CollectionMutation, String> + Send + 'static,
+    {
+        self.as_mut().set_collection_busy(true);
+        self.as_mut().rust_mut().collection_started = Some(std::time::Instant::now());
+        self.as_mut()
+            .set_collection_message(qstring("Saving collection changes…"));
+        let rollback_for_error = rollback.clone();
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name(thread_name.into())
+            .spawn(move || {
+                let result = task();
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_collection_task(result, rollback);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().finish_collection_task(
+                Err(format!("could not start collection worker: {error}")),
+                rollback_for_error,
+            );
+        }
+    }
+
+    fn apply_collection_membership(
+        mut self: Pin<&mut Self>,
+        membership: &CollectionMembership,
+    ) -> bool {
+        let changed = {
+            let mut this = self.as_mut();
+            let mut rust = this.as_mut().rust_mut();
+            let members = Arc::make_mut(&mut rust.collection_members)
+                .entry(membership.collection_id.clone())
+                .or_insert_with(|| Arc::new(HashSet::new()));
+            if membership.member {
+                Arc::make_mut(members).insert(membership.game_uid.clone())
+            } else {
+                Arc::make_mut(members).remove(&membership.game_uid)
+            }
+        };
+        if !changed {
+            return false;
+        }
+        if let Some(collection) = Arc::make_mut(&mut self.as_mut().rust_mut().collections)
+            .iter_mut()
+            .find(|collection| collection.id == membership.collection_id)
+        {
+            collection.game_count = if membership.member {
+                collection.game_count.saturating_add(1)
+            } else {
+                collection.game_count.saturating_sub(1)
+            };
+        }
+        let revision = self.as_ref().collection_revision().wrapping_add(1);
+        self.as_mut().set_collection_revision(revision);
+        true
+    }
+
+    fn finish_collection_task(
+        mut self: Pin<&mut Self>,
+        result: Result<CollectionMutation, String>,
+        rollback: Option<CollectionMembership>,
+    ) {
+        self.as_mut().set_collection_busy(false);
+        match result {
+            Ok(CollectionMutation::Created(collection)) => {
+                let name = collection.name.clone();
+                let collection_id = collection.id.clone();
+                let collection_count = {
+                    let mut this = self.as_mut();
+                    let mut rust = this.as_mut().rust_mut();
+                    {
+                        let collections: &mut Vec<UserCollection> =
+                            Arc::make_mut(&mut rust.collections);
+                        collections.push(collection);
+                        sort_collections(collections);
+                    }
+                    Arc::make_mut(&mut rust.collection_members)
+                        .entry(collection_id)
+                        .or_insert_with(|| Arc::new(HashSet::new()));
+                    rust.collections.len()
+                };
+                self.as_mut()
+                    .set_collection_count(saturating_i32(collection_count));
+                self.as_mut()
+                    .set_collection_message(qstring(format!("Created {name}.")));
+                self.as_mut().bump_collection_revision();
+            }
+            Ok(CollectionMutation::Updated {
+                collection_id,
+                name,
+                description,
+            }) => {
+                if let Some(collection) = Arc::make_mut(&mut self.as_mut().rust_mut().collections)
+                    .iter_mut()
+                    .find(|collection| collection.id == collection_id)
+                {
+                    collection.name = name.clone();
+                    collection.description = description;
+                }
+                {
+                    let mut this = self.as_mut();
+                    let mut rust = this.as_mut().rust_mut();
+                    let collections: &mut Vec<UserCollection> =
+                        Arc::make_mut(&mut rust.collections);
+                    sort_collections(collections);
+                }
+                self.as_mut()
+                    .set_collection_message(qstring(format!("Updated {name}.")));
+                self.as_mut().bump_collection_revision();
+            }
+            Ok(CollectionMutation::Deleted { collection_id }) => {
+                let collection_count = {
+                    let mut this = self.as_mut();
+                    let mut rust = this.as_mut().rust_mut();
+                    Arc::make_mut(&mut rust.collections)
+                        .retain(|collection| collection.id != collection_id);
+                    Arc::make_mut(&mut rust.collection_members).remove(&collection_id);
+                    rust.collections.len()
+                };
+                self.as_mut()
+                    .set_collection_count(saturating_i32(collection_count));
+                self.as_mut()
+                    .set_collection_message(qstring("Collection deleted."));
+                self.as_mut().bump_collection_revision();
+            }
+            Ok(CollectionMutation::Membership(membership)) => {
+                self.as_mut()
+                    .set_collection_message(qstring(if membership.member {
+                        "Added game to collection."
+                    } else {
+                        "Removed game from collection."
+                    }));
+            }
+            Err(error) => {
+                let rolled_back = rollback.is_some();
+                if let Some(mut rollback) = rollback {
+                    rollback.member = !rollback.member;
+                    self.as_mut().apply_collection_membership(&rollback);
+                }
+                self.as_mut()
+                    .set_collection_message(qstring(if rolled_back {
+                        format!("Collection change was rolled back: {error}")
+                    } else {
+                        format!("Collection change failed: {error}")
+                    }));
+                self.as_mut().set_status_message(qstring(format!(
+                    "Could not save the collection change: {error}"
+                )));
+            }
+        }
+        if *self.as_ref().collection_probe() {
+            let elapsed = self
+                .as_ref()
+                .rust()
+                .collection_started
+                .map(|started| started.elapsed().as_millis())
+                .unwrap_or_default();
+            println!(
+                "LUNCHBOX_COLLECTION_READY_MS={elapsed} collections={} message={:?}",
+                self.as_ref().collection_count(),
+                self.as_ref().collection_message().to_string()
+            );
+        }
+        if self.as_ref().rust().reload_pending
+            && !*self.as_ref().loading()
+            && self.as_ref().rust().favorite_requests.is_empty()
+        {
+            self.as_mut().rust_mut().reload_pending = false;
+            self.as_mut().start_load();
+        }
+    }
+
+    fn bump_collection_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().collection_revision().wrapping_add(1);
+        self.as_mut().set_collection_revision(revision);
     }
 
     fn media_asset(

@@ -36,6 +36,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   progress, searchable/sortable review, bulk/per-file selection, idempotent
   persistence, lossless native paths, and immediate My Collection/Minerva
   availability updates. Unmatched and ambiguous files remain local-only.
+- Stable-UUID favorites and named collections with native create/edit/delete,
+  sidebar counts and navigation, per-game membership controls, asynchronous
+  persistence with rollback, restart recovery, and composition with search and
+  platform filters.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
 - Measurable shell-ready and catalog-ready probes.
@@ -50,8 +54,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   and manual matching review.
 - Editable game and release metadata, tags, playlists, custom
   fields, completion state, play count, play time, and last-played history.
-- Extend the implemented stable-UUID favorites with named and smart collections,
-  ordering, bulk membership changes, and portable export.
+- Extend the implemented stable-UUID favorites and named collections with smart
+  rules, manual ordering, bulk membership changes, and portable export.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
 - Fast bulk editing, audits, backup/restore, and portable collection export.
