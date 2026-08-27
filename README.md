@@ -43,9 +43,11 @@ the content-filter preferences survive restart in the writable state database.
 Select a game to open its
 native details pane; Minerva sources can be inspected against the real torrent
 contents, where title matches are presented as review candidates rather than
-silently accepted identities. A reviewed file can be sent to qBittorrent from
-that pane, and the native Downloads drawer persists progress and exposes
-pause, resume, and non-destructive cancel controls.
+silently accepted identities. Persisted region and release-version preferences
+rank otherwise equal candidates; the picker still exposes the exact region,
+revision, filename, size, and match quality before download. A reviewed file
+can be sent to qBittorrent from that pane, and the native Downloads drawer
+persists progress and exposes pause, resume, and non-destructive cancel controls.
 The drawer reports aggregate and per-job transfer rates. Finished records can
 be removed individually or cleared in bulk after confirmation without deleting
 active work, torrents, or downloaded files. Settings also provide a persisted

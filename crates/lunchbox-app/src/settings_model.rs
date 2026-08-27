@@ -28,6 +28,8 @@ pub mod qobject {
         #[qproperty(bool, download_entire_torrent)]
         #[qproperty(QString, file_link_mode)]
         #[qproperty(QString, seeding_policy)]
+        #[qproperty(QString, preferred_region)]
+        #[qproperty(QString, version_preference)]
         type SettingsModel = super::SettingsModelRust;
 
         #[qinvokable]
@@ -77,6 +79,8 @@ pub struct SettingsModelRust {
     download_entire_torrent: bool,
     file_link_mode: QString,
     seeding_policy: QString,
+    preferred_region: QString,
+    version_preference: QString,
 }
 
 impl Default for SettingsModelRust {
@@ -100,6 +104,8 @@ impl Default for SettingsModelRust {
             download_entire_torrent: false,
             file_link_mode: QString::from("symlink"),
             seeding_policy: QString::from("follow_client"),
+            preferred_region: QString::from("USA"),
+            version_preference: QString::from("latest"),
         }
     }
 }
@@ -341,6 +347,10 @@ impl qobject::SettingsModel {
             .set_file_link_mode(qstring(settings.file_link_mode));
         self.as_mut()
             .set_seeding_policy(qstring(settings.seeding_policy));
+        self.as_mut()
+            .set_preferred_region(qstring(settings.preferred_region));
+        self.as_mut()
+            .set_version_preference(qstring(settings.version_preference));
     }
 
     fn settings_snapshot(&self) -> Result<AppSettings, String> {
@@ -362,6 +372,8 @@ impl qobject::SettingsModel {
             download_entire_torrent: *self.download_entire_torrent(),
             file_link_mode: self.file_link_mode().to_string(),
             seeding_policy: self.seeding_policy().to_string(),
+            preferred_region: self.preferred_region().to_string(),
+            version_preference: self.version_preference().to_string(),
         };
         settings.validate().map_err(|error| error.to_string())?;
         Ok(settings)

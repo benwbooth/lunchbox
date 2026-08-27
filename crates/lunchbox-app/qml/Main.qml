@@ -56,6 +56,7 @@ ApplicationWindow {
     property bool collectionProbeArmed: false
     property bool downloadHistoryTriggered: false
     property bool settingsSeedingTriggered: false
+    property bool settingsReleaseTriggered: false
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -81,6 +82,8 @@ ApplicationWindow {
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
+    readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
+    readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -99,8 +102,9 @@ ApplicationWindow {
         filterDelay.restart()
     }
 
-    function finishSettingsSeedingProbeWhenSaved() {
-        if (root.settingsSeedingProbe && root.settingsSeedingTriggered
+    function finishSettingsProbeWhenSaved() {
+        if ((root.settingsSeedingProbe && root.settingsSeedingTriggered
+                || root.settingsReleaseProbe && root.settingsReleaseTriggered)
                 && !appSettings.busy
                 && appSettings.message.indexOf("Settings saved.") === 0)
             Qt.quit()
@@ -271,12 +275,19 @@ ApplicationWindow {
                 appSettings.seeding_policy = "pause_after_import"
                 appSettings.save()
             }
+            if (root.settingsReleaseProbe && appSettings.initialized
+                    && !root.settingsReleaseTriggered) {
+                root.settingsReleaseTriggered = true
+                appSettings.preferred_region = "Japan"
+                appSettings.version_preference = "original"
+                appSettings.save()
+            }
         }
         function onBusyChanged() {
-            root.finishSettingsSeedingProbeWhenSaved()
+            root.finishSettingsProbeWhenSaved()
         }
         function onMessageChanged() {
-            root.finishSettingsSeedingProbeWhenSaved()
+            root.finishSettingsProbeWhenSaved()
         }
     }
 
@@ -422,6 +433,15 @@ ApplicationWindow {
             if (!gameDetails.download_busy)
                 downloadQueue.refresh()
         }
+        function onBundle_countChanged() {
+            if (root.releaseCandidateUiProbe && gameDetails.bundle_count > 0
+                    && gameDetails.selected_bundle < 0)
+                gameDetails.load_bundle_files(0)
+        }
+        function onFile_countChanged() {
+            if (root.releaseCandidateUiProbe && gameDetails.file_count > 0)
+                detailsProbeScrollTimer.restart()
+        }
     }
 
     Connections {
@@ -479,6 +499,9 @@ ApplicationWindow {
                 root.openImportDialog()
             else if (root.settingsUiProbe)
                 settingsDialog.open()
+            else if (root.releaseCandidateUiProbe)
+                root.openGame("52f67472-bddb-4e5b-951b-43364f996573", 1726,
+                              "Super Mario Land", "Nintendo Game Boy", false, true)
         }
     }
 
@@ -508,6 +531,15 @@ ApplicationWindow {
         repeat: false
         onTriggered: library.apply_filter(searchField.text, root.selectedPlatform,
                                            root.availability)
+    }
+
+    Timer {
+        id: detailsProbeScrollTimer
+        interval: 100
+        repeat: false
+        onTriggered: detailScroll.contentItem.contentY = Math.max(
+                         0, fileCandidateHeading.mapToItem(
+                             detailScroll.contentItem, 0, 0).y - 12)
     }
 
     Popup {
@@ -2178,7 +2210,7 @@ ApplicationWindow {
                     Text {
                         visible: !gameDetails.loading && gameDetails.bundle_count > 0
                         width: parent.width
-                        text: "Choose a verified platform bundle, then inspect title candidates before adding anything to the download queue."
+                        text: "Choose a verified platform bundle, then inspect candidates ranked by title, your preferred region, and release version before adding anything to the download queue."
                         color: root.muted
                         font.pixelSize: 11
                         lineHeight: 1.25
@@ -2225,6 +2257,7 @@ ApplicationWindow {
                     }
 
                     Text {
+                        id: fileCandidateHeading
                         visible: gameDetails.file_count > 0
                         width: parent.width
                         topPadding: 6
@@ -2243,8 +2276,8 @@ ApplicationWindow {
                             width: detailsPane.width - 40
                             height: Math.max(68, fileName.implicitHeight + fileInfo.implicitHeight + 24)
                             radius: 8
-                            color: "#151d29"
-                            border.color: root.line
+                            color: fileRow.index === 0 ? "#17272a" : "#151d29"
+                            border.color: fileRow.index === 0 ? root.accentCool : root.line
                             Column {
                                 anchors.left: parent.left
                                 anchors.right: getButton.left
@@ -3277,6 +3310,65 @@ ApplicationWindow {
                     color: root.muted
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                Text {
+                    text: "DISCOVERY & DOWNLOADS"
+                    color: root.accent
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.2
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "These preferences rank otherwise equal Minerva candidates. Lunchbox still shows the exact region, revision, filename, and size for review before download."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 9
+                    Text { text: "Preferred region"; color: root.ink; font.pixelSize: 12 }
+                    ComboBox {
+                        id: preferredRegion
+                        Layout.fillWidth: true
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "North America (USA)", value: "USA" },
+                            { label: "Japan", value: "Japan" },
+                            { label: "Europe", value: "Europe" },
+                            { label: "World / multi-region", value: "World" },
+                            { label: "Asia", value: "Asia" },
+                            { label: "No region preference", value: "any" }
+                        ]
+                        currentIndex: {
+                            for (let i = 0; i < model.length; ++i) {
+                                if (model[i].value === appSettings.preferred_region)
+                                    return i
+                            }
+                            return 0
+                        }
+                        onActivated: appSettings.preferred_region = currentValue
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 9
+                    Text { text: "Release version"; color: root.ink; font.pixelSize: 12 }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "Latest revision", value: "latest" },
+                            { label: "Original / unrevisioned", value: "original" }
+                        ]
+                        currentIndex: appSettings.version_preference === "original" ? 1 : 0
+                        onActivated: appSettings.version_preference = currentValue
+                    }
                 }
 
                 Rectangle {

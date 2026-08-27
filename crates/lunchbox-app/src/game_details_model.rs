@@ -74,7 +74,9 @@ use std::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
-use crate::game_details::{self, GameDetails, MinervaBundle, TorrentFileCandidate};
+use crate::game_details::{
+    self, GameDetails, MinervaBundle, ReleasePreferences, TorrentFileCandidate,
+};
 
 pub struct GameDetailsModelRust {
     panel_open: bool,
@@ -313,8 +315,18 @@ impl qobject::GameDetailsModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-torrent-metadata".into())
             .spawn(move || {
-                let loaded = game_details::load_torrent_files(&bundle, &title)
-                    .map_err(|error| error.to_string());
+                let loaded = (|| {
+                    let settings = crate::settings::SettingsStore::open_default()?.load()?;
+                    game_details::load_torrent_files(
+                        &bundle,
+                        &title,
+                        &ReleasePreferences {
+                            preferred_region: settings.preferred_region,
+                            version_preference: settings.version_preference,
+                        },
+                    )
+                })()
+                .map_err(|error: anyhow::Error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_torrent_files(generation, loaded);
                 });
@@ -346,7 +358,7 @@ impl qobject::GameDetailsModel {
                     "No title candidates were found in this bundle. Try another source."
                         .to_owned()
                 } else {
-                    format!("{count} candidate files found; review the exact filename before downloading")
+                    format!("{count} candidate files ranked by title, region, and release version; review the exact filename before downloading")
                 }));
             }
             Err(error) => self.as_mut().set_message(qstring(format!(
@@ -458,12 +470,20 @@ impl qobject::GameDetailsModel {
     pub fn file_detail_at(&self, index: i32) -> QString {
         self.file(index)
             .map(|file| {
-                qstring(format!(
-                    "{:.0}% title match · {} · torrent file #{}",
-                    file.match_score * 100.0,
-                    game_details::format_bytes(file.byte_size),
-                    file.index
-                ))
+                let mut details = Vec::new();
+                if index == 0 {
+                    details.push("BEST MATCH".to_owned());
+                }
+                if !file.region.is_empty() {
+                    details.push(file.region.clone());
+                }
+                if !file.version.is_empty() {
+                    details.push(file.version.clone());
+                }
+                details.push(format!("{:.0}% title match", file.match_score * 100.0));
+                details.push(game_details::format_bytes(file.byte_size));
+                details.push(format!("torrent file #{}", file.index));
+                qstring(details.join(" · "))
             })
             .unwrap_or_default()
     }

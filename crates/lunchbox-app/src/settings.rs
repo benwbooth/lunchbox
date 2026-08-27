@@ -27,6 +27,8 @@ pub struct AppSettings {
     pub download_entire_torrent: bool,
     pub file_link_mode: String,
     pub seeding_policy: String,
+    pub preferred_region: String,
+    pub version_preference: String,
 }
 
 impl Default for AppSettings {
@@ -43,6 +45,8 @@ impl Default for AppSettings {
             download_entire_torrent: false,
             file_link_mode: "symlink".to_owned(),
             seeding_policy: "follow_client".to_owned(),
+            preferred_region: "USA".to_owned(),
+            version_preference: "latest".to_owned(),
         }
     }
 }
@@ -111,6 +115,18 @@ impl AppSettings {
             "follow_client" | "pause_after_import"
         ) {
             bail!("unsupported seeding policy {}", self.seeding_policy);
+        }
+        if !matches!(
+            self.preferred_region.as_str(),
+            "USA" | "Japan" | "Europe" | "World" | "Asia" | "any"
+        ) {
+            bail!("unsupported preferred region {}", self.preferred_region);
+        }
+        if !matches!(self.version_preference.as_str(), "latest" | "original") {
+            bail!(
+                "unsupported release version preference {}",
+                self.version_preference
+            );
         }
         Ok(())
     }
@@ -244,7 +260,8 @@ impl SettingsStore {
                         qbittorrent_username, rom_directory,
                         qbittorrent_container_rom_directory, torrent_library_directory,
                         qbittorrent_container_torrent_library_directory,
-                        download_entire_torrent, file_link_mode, seeding_policy
+                        download_entire_torrent, file_link_mode, seeding_policy,
+                        preferred_region, version_preference
                  FROM app_settings WHERE id=1",
                 [],
                 |row| {
@@ -261,6 +278,8 @@ impl SettingsStore {
                         download_entire_torrent: row.get(8)?,
                         file_link_mode: row.get(9)?,
                         seeding_policy: row.get(10)?,
+                        preferred_region: row.get(11)?,
+                        version_preference: row.get(12)?,
                     })
                 },
             )
@@ -280,8 +299,9 @@ impl SettingsStore {
                  qbittorrent_username, rom_directory,
                  qbittorrent_container_rom_directory, torrent_library_directory,
                  qbittorrent_container_torrent_library_directory,
-                 download_entire_torrent, file_link_mode, seeding_policy
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                 download_entire_torrent, file_link_mode, seeding_policy,
+                 preferred_region, version_preference
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -293,7 +313,9 @@ impl SettingsStore {
                  qbittorrent_container_torrent_library_directory=excluded.qbittorrent_container_torrent_library_directory,
                  download_entire_torrent=excluded.download_entire_torrent,
                  file_link_mode=excluded.file_link_mode,
-                 seeding_policy=excluded.seeding_policy",
+                 seeding_policy=excluded.seeding_policy,
+                 preferred_region=excluded.preferred_region,
+                 version_preference=excluded.version_preference",
             params![
                 settings.qbittorrent_host,
                 i64::from(settings.qbittorrent_port),
@@ -306,6 +328,8 @@ impl SettingsStore {
                 settings.download_entire_torrent,
                 settings.file_link_mode,
                 settings.seeding_policy,
+                settings.preferred_region,
+                settings.version_preference,
             ],
         )?;
         transaction.commit()?;
@@ -739,6 +763,12 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              seeding_policy TEXT NOT NULL DEFAULT 'follow_client' CHECK (
                  seeding_policy IN ('follow_client', 'pause_after_import')
+             ),
+             preferred_region TEXT NOT NULL DEFAULT 'USA' CHECK (
+                 preferred_region IN ('USA', 'Japan', 'Europe', 'World', 'Asia', 'any')
+             ),
+             version_preference TEXT NOT NULL DEFAULT 'latest' CHECK (
+                 version_preference IN ('latest', 'original')
              )
          );
          CREATE TABLE IF NOT EXISTS library_preferences (
@@ -901,6 +931,18 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !column_exists(connection, "app_settings", "preferred_region")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN preferred_region TEXT NOT NULL DEFAULT 'USA' CHECK (preferred_region IN ('USA', 'Japan', 'Europe', 'World', 'Asia', 'any'))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "app_settings", "version_preference")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN version_preference TEXT NOT NULL DEFAULT 'latest' CHECK (version_preference IN ('latest', 'original'))",
+            [],
+        )?;
+    }
     Ok(())
 }
 
@@ -981,6 +1023,8 @@ mod tests {
             download_entire_torrent: true,
             file_link_mode: "hardlink".into(),
             seeding_policy: "pause_after_import".into(),
+            preferred_region: "Japan".into(),
+            version_preference: "original".into(),
         };
         store.save(&expected).unwrap();
         assert_eq!(store.load().unwrap(), expected);
@@ -1219,6 +1263,21 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unknown_release_preferences() {
+        let settings = AppSettings {
+            preferred_region: "Moon".into(),
+            ..AppSettings::default()
+        };
+        assert!(settings.validate().is_err());
+
+        let settings = AppSettings {
+            version_preference: "random".into(),
+            ..AppSettings::default()
+        };
+        assert!(settings.validate().is_err());
+    }
+
+    #[test]
     fn older_state_database_migrates_to_safe_seeding_defaults() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("state.db");
@@ -1268,9 +1327,14 @@ mod tests {
         drop(connection);
 
         let store = SettingsStore::at(&path).unwrap();
-        assert_eq!(store.load().unwrap().seeding_policy, "follow_client");
+        let settings = store.load().unwrap();
+        assert_eq!(settings.seeding_policy, "follow_client");
+        assert_eq!(settings.preferred_region, "USA");
+        assert_eq!(settings.version_preference, "latest");
         let connection = Connection::open(&path).unwrap();
         assert!(column_exists(&connection, "download_jobs", "post_import_action").unwrap());
+        assert!(column_exists(&connection, "app_settings", "preferred_region").unwrap());
+        assert!(column_exists(&connection, "app_settings", "version_preference").unwrap());
     }
 
     #[test]

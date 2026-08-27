@@ -26,7 +26,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   covered games that are not installed and composes with platform selection.
 - Responsive game selection and details with real catalog metadata, exact-name
   Minerva bundle resolution, bounded off-thread torrent inspection, and
-  explicitly review-only title candidates.
+  explicitly review-only title candidates. Candidate ranking strips catalog
+  region/version tags before title comparison, normalizes common Roman-numeral
+  sequels, then applies persisted region and latest/original-revision
+  preferences only between equally strong title matches. The exact variant is
+  always visible before download.
 - Native qBittorrent settings and connection testing, operating-system
   credential storage, exact reviewed-file priority, optional whole-torrent
   mode, a restart-safe queue with pause/resume/cancel, and verified completed
@@ -67,8 +71,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
 - Complete game-level offer selection beyond the implemented exact-file and
-  whole-torrent paths: disk-space previews, related-file plans,
-  region/version preferences, and duplicate avoidance.
+  whole-torrent paths: disk-space previews, related-file plans, and duplicate
+  avoidance. Extend the implemented primary-region choice into the legacy
+  arbitrary fallback-order editor when variant-rich catalog browsing lands.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe
   record/history cleanup, and durable post-import pause policy with explicit
   retry/recovery controls and richer error history.

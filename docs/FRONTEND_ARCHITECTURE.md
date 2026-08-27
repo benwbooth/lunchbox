@@ -67,6 +67,12 @@ The initial implementation enforces this shape:
   history cleanup cannot remove them. Lunchbox calls qBittorrent's stop/pause
   endpoint and never changes the client's global share-limit action or deletes
   torrent data as part of this policy.
+- Minerva candidate matching treats provider filenames as review evidence, not
+  identity. Region and revision tags are removed before title scoring, common
+  multi-character Roman-numeral sequels are normalized, and a stronger title
+  match always wins. Persisted primary-region and latest/original-revision
+  choices only order equally strong candidates. The native picker shows the
+  parsed region and revision and visually identifies the resulting best match.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -139,6 +145,11 @@ post-import seeding policy, for deterministic visual inspection.
 saves it through the asynchronous CXX-Qt settings bridge, and exits only after
 the save completes. Inspecting or reusing the state path verifies persistence
 and restart recovery.
+`--settings-release-probe --state-database EMPTY_PATH` similarly saves Japan
+plus original-release preferences through the real bridge. The
+`--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
+Minerva bundle, and scrolls the details pane to the ranked native candidate
+cards for deterministic visual review against the preserved discovery catalog.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to

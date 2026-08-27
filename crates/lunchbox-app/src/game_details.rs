@@ -69,6 +69,14 @@ pub struct TorrentFileCandidate {
     pub filename: String,
     pub byte_size: u64,
     pub match_score: f64,
+    pub region: String,
+    pub version: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleasePreferences {
+    pub preferred_region: String,
+    pub version_preference: String,
 }
 
 pub fn load(
@@ -298,6 +306,7 @@ fn explicit_fallback_matches(platform_key: &str, provider_key: &str, collection:
 pub fn load_torrent_files(
     bundle: &MinervaBundle,
     game_title: &str,
+    preferences: &ReleasePreferences,
 ) -> Result<Vec<TorrentFileCandidate>> {
     let bytes = fetch_torrent(&bundle.torrent_url)?;
     let torrent = Torrent::read_from_bytes(bytes.as_slice())
@@ -318,6 +327,8 @@ pub fn load_torrent_files(
                     byte_size: u64::try_from(file.length)
                         .context("torrent file has a negative byte length")?,
                     match_score: 0.0,
+                    region: String::new(),
+                    version: String::new(),
                 })
             })
             .collect::<Result<Vec<_>>>()?
@@ -328,10 +339,12 @@ pub fn load_torrent_files(
             byte_size: u64::try_from(torrent.length)
                 .context("torrent payload has a negative byte length")?,
             match_score: 0.0,
+            region: String::new(),
+            version: String::new(),
         }]
     };
 
-    rank_file_candidates(files, game_title)
+    rank_file_candidates(files, game_title, preferences)
 }
 
 fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
@@ -408,8 +421,9 @@ pub(crate) fn torrent_bytes(bundle: &MinervaBundle) -> Result<Vec<u8>> {
 fn rank_file_candidates(
     files: Vec<TorrentFileCandidate>,
     game_title: &str,
+    preferences: &ReleasePreferences,
 ) -> Result<Vec<TorrentFileCandidate>> {
-    let query = normalized_words(game_title);
+    let query = normalized_words(title_without_tags(game_title));
     if query.is_empty() {
         bail!("game title has no searchable characters");
     }
@@ -419,6 +433,7 @@ fn rank_file_candidates(
         .into_iter()
         .filter_map(|mut file| {
             file.match_score = file_match_score(&file.filename, &query, &query_tokens);
+            (file.region, file.version) = release_labels(&file.filename);
             (file.match_score >= 0.35).then_some(file)
         })
         .collect::<Vec<_>>();
@@ -426,6 +441,7 @@ fn rank_file_candidates(
         right
             .match_score
             .total_cmp(&left.match_score)
+            .then_with(|| release_preference_order(left, right, preferences))
             .then_with(|| left.byte_size.cmp(&right.byte_size))
             .then_with(|| left.filename.cmp(&right.filename))
     });
@@ -438,8 +454,7 @@ fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
         .file_stem()
         .and_then(|name| name.to_str())
         .unwrap_or(filename);
-    let base_title = stem.split(['(', '[']).next().unwrap_or(stem).trim_end();
-    let candidate = normalized_words(base_title);
+    let candidate = normalized_words(title_without_tags(stem));
     if candidate == query {
         return 1.0;
     }
@@ -467,6 +482,201 @@ fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
     }
 }
 
+fn title_without_tags(value: &str) -> &str {
+    value
+        .find(['(', '['])
+        .map(|index| value[..index].trim_end())
+        .unwrap_or(value)
+}
+
+fn release_labels(filename: &str) -> (String, String) {
+    let mut region = String::new();
+    let mut version = String::new();
+    for tag in delimited_tags(filename) {
+        if region.is_empty()
+            && let Some(canonical) = canonical_region_tag(tag)
+        {
+            region = canonical;
+        }
+        if version.is_empty() && is_version_tag(tag) {
+            version = tag.trim().to_owned();
+        }
+    }
+    (region, version)
+}
+
+fn delimited_tags(value: &str) -> Vec<&str> {
+    let mut tags = Vec::new();
+    for (opening, closing) in [('(', ')'), ('[', ']')] {
+        let mut remainder = value;
+        while let Some(start) = remainder.find(opening) {
+            let after_opening = &remainder[start + opening.len_utf8()..];
+            let Some(end) = after_opening.find(closing) else {
+                break;
+            };
+            tags.push(&after_opening[..end]);
+            remainder = &after_opening[end + closing.len_utf8()..];
+        }
+    }
+    tags
+}
+
+fn canonical_region_tag(tag: &str) -> Option<String> {
+    let parts = tag
+        .split([',', '/', '&', '+'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(canonical_region)
+        .collect::<Option<Vec<_>>>()?;
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+fn canonical_region(region: &str) -> Option<&'static str> {
+    Some(match region.trim().to_ascii_lowercase().as_str() {
+        "usa" | "united states" | "north america" => "USA",
+        "japan" => "Japan",
+        "asia" => "Asia",
+        "world" => "World",
+        "europe" => "Europe",
+        "australia" => "Australia",
+        "canada" => "Canada",
+        "brazil" => "Brazil",
+        "korea" => "Korea",
+        "china" => "China",
+        "france" => "France",
+        "germany" => "Germany",
+        "italy" => "Italy",
+        "spain" => "Spain",
+        "united kingdom" | "uk" => "United Kingdom",
+        "taiwan" => "Taiwan",
+        "netherlands" => "Netherlands",
+        "belgium" => "Belgium",
+        "greece" => "Greece",
+        "portugal" => "Portugal",
+        "austria" => "Austria",
+        "sweden" => "Sweden",
+        "finland" => "Finland",
+        "russia" => "Russia",
+        "switzerland" => "Switzerland",
+        "hong kong" => "Hong Kong",
+        "scandinavia" => "Scandinavia",
+        "denmark" => "Denmark",
+        "poland" => "Poland",
+        "norway" => "Norway",
+        "new zealand" => "New Zealand",
+        "latin america" => "Latin America",
+        "unknown" => "Unknown",
+        _ => return None,
+    })
+}
+
+fn is_version_tag(tag: &str) -> bool {
+    let lower = tag.trim().to_ascii_lowercase();
+    ["rev ", "revision ", "ver ", "version "]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+        || lower
+            .strip_prefix('v')
+            .is_some_and(|suffix| suffix.starts_with(|character: char| character.is_ascii_digit()))
+}
+
+fn release_preference_order(
+    left: &TorrentFileCandidate,
+    right: &TorrentFileCandidate,
+    preferences: &ReleasePreferences,
+) -> std::cmp::Ordering {
+    region_priority(&left.region, &preferences.preferred_region)
+        .cmp(&region_priority(
+            &right.region,
+            &preferences.preferred_region,
+        ))
+        .then_with(|| {
+            let left = revision_rank(&left.version);
+            let right = revision_rank(&right.version);
+            if preferences.version_preference == "original" {
+                left.cmp(&right)
+            } else {
+                right.cmp(&left)
+            }
+        })
+}
+
+fn region_priority(region: &str, preferred_region: &str) -> usize {
+    const DEFAULT_ORDER: &[&str] = &[
+        "USA",
+        "Japan",
+        "Asia",
+        "World",
+        "Europe",
+        "Australia",
+        "Canada",
+        "Brazil",
+        "Korea",
+        "China",
+        "France",
+        "Germany",
+        "Italy",
+        "Spain",
+        "United Kingdom",
+        "Taiwan",
+        "Netherlands",
+        "Belgium",
+        "Greece",
+        "Portugal",
+        "Austria",
+        "Sweden",
+        "Finland",
+        "Russia",
+        "Switzerland",
+        "Hong Kong",
+        "Scandinavia",
+        "Denmark",
+        "Poland",
+        "Norway",
+        "New Zealand",
+        "Latin America",
+        "Unknown",
+    ];
+    if preferred_region == "any" {
+        return 0;
+    }
+    let regions = region.split(", ").collect::<Vec<_>>();
+    if regions
+        .iter()
+        .any(|region| region.eq_ignore_ascii_case(preferred_region))
+    {
+        return 0;
+    }
+    DEFAULT_ORDER
+        .iter()
+        .filter(|candidate| !candidate.eq_ignore_ascii_case(preferred_region))
+        .position(|candidate| {
+            regions
+                .iter()
+                .any(|region| region.eq_ignore_ascii_case(candidate))
+        })
+        .map(|position| position + 1)
+        .unwrap_or(usize::MAX)
+}
+
+fn revision_rank(version: &str) -> (bool, [u32; 4]) {
+    let mut parts = [0; 4];
+    let mut index = 0;
+    let mut number = String::new();
+    for character in version.chars().chain(std::iter::once(' ')) {
+        if character.is_ascii_digit() {
+            number.push(character);
+        } else if !number.is_empty() {
+            if index < parts.len() {
+                parts[index] = number.parse().unwrap_or(u32::MAX);
+                index += 1;
+            }
+            number.clear();
+        }
+    }
+    (!version.is_empty(), parts)
+}
+
 fn normalized_words(value: &str) -> String {
     let mut normalized = String::with_capacity(value.len());
     let mut separator = false;
@@ -482,6 +692,29 @@ fn normalized_words(value: &str) -> String {
         }
     }
     normalized
+        .split_whitespace()
+        .map(|token| match token {
+            "ii" => "2",
+            "iii" => "3",
+            "iv" => "4",
+            "vi" => "6",
+            "vii" => "7",
+            "viii" => "8",
+            "ix" => "9",
+            "xi" => "11",
+            "xii" => "12",
+            "xiii" => "13",
+            "xiv" => "14",
+            "xv" => "15",
+            "xvi" => "16",
+            "xvii" => "17",
+            "xviii" => "18",
+            "xix" => "19",
+            "xx" => "20",
+            _ => token,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn significant_tokens(value: &str) -> Vec<&str> {
@@ -512,23 +745,32 @@ pub fn format_bytes(bytes: u64) -> String {
 mod tests {
     use super::*;
 
+    fn preferences(region: &str, version: &str) -> ReleasePreferences {
+        ReleasePreferences {
+            preferred_region: region.into(),
+            version_preference: version.into(),
+        }
+    }
+
+    fn candidate(index: usize, filename: &str) -> TorrentFileCandidate {
+        TorrentFileCandidate {
+            index,
+            filename: filename.into(),
+            byte_size: 10,
+            match_score: 0.0,
+            region: String::new(),
+            version: String::new(),
+        }
+    }
+
     #[test]
     fn file_ranking_prefers_exact_title_without_accepting_identity() {
         let files = vec![
-            TorrentFileCandidate {
-                index: 0,
-                filename: "Nintendo/Game Boy/Super Mario Land (USA, Europe).zip".into(),
-                byte_size: 10,
-                match_score: 0.0,
-            },
-            TorrentFileCandidate {
-                index: 1,
-                filename: "Nintendo/Game Boy/Mario Tennis (USA).zip".into(),
-                byte_size: 20,
-                match_score: 0.0,
-            },
+            candidate(0, "Nintendo/Game Boy/Super Mario Land (USA, Europe).zip"),
+            candidate(1, "Nintendo/Game Boy/Mario Tennis (USA).zip"),
         ];
-        let ranked = rank_file_candidates(files, "Super Mario Land").unwrap();
+        let ranked =
+            rank_file_candidates(files, "Super Mario Land", &preferences("USA", "latest")).unwrap();
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].index, 0);
         assert_eq!(ranked[0].match_score, 1.0);
@@ -545,6 +787,59 @@ mod tests {
         assert_eq!(
             file_match_score("Super Mario Land 4 (Unknown).zip", &query, &tokens),
             0.72
+        );
+    }
+
+    #[test]
+    fn preferred_region_and_version_rank_equal_title_matches() {
+        let files = vec![
+            candidate(0, "Game (USA) (Rev 1).zip"),
+            candidate(1, "Game (Japan) (Rev 1).zip"),
+            candidate(2, "Game (Japan) (Rev 3).zip"),
+        ];
+        let ranked =
+            rank_file_candidates(files, "Game (USA)", &preferences("Japan", "latest")).unwrap();
+        assert_eq!(
+            ranked.iter().map(|file| file.index).collect::<Vec<_>>(),
+            [2, 1, 0]
+        );
+        assert_eq!(ranked[0].region, "Japan");
+        assert_eq!(ranked[0].version, "Rev 3");
+    }
+
+    #[test]
+    fn original_version_policy_prefers_untagged_release() {
+        let files = vec![
+            candidate(0, "Game (Europe) (Rev 2).zip"),
+            candidate(1, "Game (Europe).zip"),
+        ];
+        let ranked =
+            rank_file_candidates(files, "Game", &preferences("Europe", "original")).unwrap();
+        assert_eq!(
+            ranked.iter().map(|file| file.index).collect::<Vec<_>>(),
+            [1, 0]
+        );
+    }
+
+    #[test]
+    fn release_labels_do_not_mistake_language_lists_for_regions() {
+        assert_eq!(
+            release_labels("Game (USA, Europe) (En,Fr,De) (v1.2).zip"),
+            ("USA, Europe".to_owned(), "v1.2".to_owned())
+        );
+        assert_eq!(
+            release_labels("Game (En,Ja).zip"),
+            (String::new(), String::new())
+        );
+    }
+
+    #[test]
+    fn roman_numeral_sequels_match_arabic_titles() {
+        let query = normalized_words("Galaxy Force II");
+        let tokens = significant_tokens(&query);
+        assert_eq!(
+            file_match_score("Galaxy Force 2 (USA).zip", &query, &tokens),
+            1.0
         );
     }
 
@@ -695,7 +990,12 @@ mod tests {
             .unwrap();
         let details = load(&id, "Super Mario Land", &platform, false, true).unwrap();
         assert!(!details.bundles.is_empty());
-        let files = load_torrent_files(&details.bundles[0], &details.title).unwrap();
+        let files = load_torrent_files(
+            &details.bundles[0],
+            &details.title,
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
         assert!(
             files
                 .iter()
