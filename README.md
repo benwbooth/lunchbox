@@ -39,9 +39,29 @@ bundle mapping and which are not already present in the user database. Selecting
 a platform keeps that availability filter active. Select a game to open its
 native details pane; Minerva sources can be inspected against the real torrent
 contents, where title matches are presented as review candidates rather than
-silently accepted identities. The equivalent environment variables are
+silently accepted identities. A reviewed file can be sent to qBittorrent from
+that pane, and the native Downloads drawer persists progress and exposes
+pause, resume, and non-destructive cancel controls.
+
+Configure qBittorrent and both sides of its filesystem mapping in the native
+Settings dialog. Native paths are chosen with the operating system folder
+picker; qBittorrent/container paths are deliberately retained as verbatim
+client strings. Passwords use the operating system credential store and never
+the SQLite state database. Empty credentials remain valid for qBittorrent
+instances whose Web UI authentication bypass is intentionally enabled.
+
+On completion, Lunchbox verifies and materializes the reviewed file using the
+selected symbolic-link, hard-link, reflink, copy, or leave-in-place policy. It
+never overwrites different existing content, and only records the exact game as
+installed after the destination exists. That installed state immediately keeps
+the game out of the active Minerva/not-installed view; the catalog refreshes
+and reapplies the current search and platform filters after ingestion.
+
+The equivalent catalog environment variables are
 `LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and
-`LUNCHBOX_USER_DATABASE`.
+`LUNCHBOX_USER_DATABASE`. `--state-database` or
+`LUNCHBOX_STATE_DATABASE` can select an alternate writable settings, queue, and
+native collection database for testing or portable deployments.
 
 The preserved game catalog is a local runtime input and is not added to the
 published artifact because redistribution permission for its LaunchBox-derived

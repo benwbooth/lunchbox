@@ -11,6 +11,7 @@ pub mod qobject {
         #[qproperty(bool, panel_open)]
         #[qproperty(bool, loading)]
         #[qproperty(bool, torrent_loading)]
+        #[qproperty(bool, download_busy)]
         #[qproperty(QString, game_id)]
         #[qproperty(QString, title)]
         #[qproperty(QString, platform)]
@@ -50,6 +51,9 @@ pub mod qobject {
         fn load_bundle_files(self: Pin<&mut GameDetailsModel>, index: i32);
 
         #[qinvokable]
+        fn queue_file(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -76,6 +80,7 @@ pub struct GameDetailsModelRust {
     panel_open: bool,
     loading: bool,
     torrent_loading: bool,
+    download_busy: bool,
     game_id: QString,
     title: QString,
     platform: QString,
@@ -100,6 +105,7 @@ pub struct GameDetailsModelRust {
     files: Vec<TorrentFileCandidate>,
     details_generation: u64,
     torrent_generation: u64,
+    database_id: i64,
 }
 
 impl Default for GameDetailsModelRust {
@@ -108,6 +114,7 @@ impl Default for GameDetailsModelRust {
             panel_open: false,
             loading: false,
             torrent_loading: false,
+            download_busy: false,
             game_id: QString::default(),
             title: QString::default(),
             platform: QString::default(),
@@ -132,6 +139,7 @@ impl Default for GameDetailsModelRust {
             files: Vec::new(),
             details_generation: 0,
             torrent_generation: 0,
+            database_id: 0,
         }
     }
 }
@@ -218,6 +226,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_notes(QString::default());
+        self.as_mut().rust_mut().database_id = 0;
         self.as_mut().rust_mut().bundles.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
@@ -249,6 +258,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
                 self.as_mut().set_notes(qstring(&details.notes));
+                self.as_mut().rust_mut().database_id = details.database_id;
                 self.as_mut().set_local(details.local);
                 self.as_mut().set_downloadable(details.downloadable);
                 let bundle_count = details.bundles.len();
@@ -345,6 +355,69 @@ impl qobject::GameDetailsModel {
         }
     }
 
+    pub fn queue_file(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().download_busy() || *self.as_ref().torrent_loading() {
+            return;
+        }
+        let Some(file) = self.as_ref().file(index).cloned() else {
+            self.as_mut().set_message(qstring(
+                "The selected torrent file is no longer available. Inspect the source again.",
+            ));
+            return;
+        };
+        let selected_bundle = *self.as_ref().selected_bundle();
+        let Some(bundle) = self.as_ref().bundle(selected_bundle).cloned() else {
+            self.as_mut().set_message(qstring(
+                "The selected Minerva source is no longer available.",
+            ));
+            return;
+        };
+        let game_id = self.as_ref().game_id().to_string();
+        let completed_game_id = game_id.clone();
+        let launchbox_db_id = self.as_ref().rust().database_id;
+        let title = self.as_ref().title().to_string();
+        let platform = self.as_ref().platform().to_string();
+        self.as_mut().set_download_busy(true);
+        self.as_mut()
+            .set_message(qstring("Adding the reviewed file to qBittorrent…"));
+
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-minerva-enqueue".into())
+            .spawn(move || {
+                let queued =
+                    queue_download(game_id, launchbox_db_id, title, platform, bundle, file)
+                        .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_queue(completed_game_id, queued);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_download_busy(false);
+            self.as_mut()
+                .set_message(qstring(format!("Could not start download worker: {error}")));
+        }
+    }
+
+    fn finish_queue(
+        mut self: Pin<&mut Self>,
+        completed_game_id: String,
+        queued: Result<String, String>,
+    ) {
+        self.as_mut().set_download_busy(false);
+        if self.as_ref().game_id().to_string() != completed_game_id {
+            return;
+        }
+        match queued {
+            Ok(title) => self.as_mut().set_message(qstring(format!(
+                "{title} was added to Downloads. Progress is persisted across restarts."
+            ))),
+            Err(error) => self
+                .as_mut()
+                .set_message(qstring(format!("Could not queue download: {error}"))),
+        }
+    }
+
     fn bump_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().detail_revision().wrapping_add(1);
         self.as_mut().set_detail_revision(revision);
@@ -406,4 +479,37 @@ impl qobject::GameDetailsModel {
             .ok()
             .and_then(|index| self.rust().files.get(index))
     }
+}
+
+fn queue_download(
+    game_id: String,
+    launchbox_db_id: i64,
+    title: String,
+    platform: String,
+    bundle: MinervaBundle,
+    file: TorrentFileCandidate,
+) -> anyhow::Result<String> {
+    let store = crate::settings::SettingsStore::open_default()?;
+    let settings = store.load()?;
+    let password = crate::settings::load_password()?.unwrap_or_default();
+    let torrent_bytes = game_details::torrent_bytes(&bundle)?;
+    let file_index = u32::try_from(file.index)
+        .map_err(|_| anyhow::anyhow!("torrent file index is too large"))?;
+    let job = crate::qbittorrent::enqueue(
+        &settings,
+        &password,
+        &store,
+        crate::qbittorrent::EnqueueRequest {
+            game_id,
+            launchbox_db_id,
+            title: title.clone(),
+            platform,
+            torrent_url: bundle.torrent_url,
+            torrent_bytes,
+            selected_file_index: file_index,
+            selected_file_path: file.filename,
+        },
+    )?;
+    store.upsert_job(&job)?;
+    Ok(title)
 }

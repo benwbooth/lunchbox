@@ -24,6 +24,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Responsive game selection and details with real catalog metadata, exact-name
   Minerva bundle resolution, bounded off-thread torrent inspection, and
   explicitly review-only title candidates.
+- Native qBittorrent settings and connection testing, operating-system
+  credential storage, exact reviewed-file priority, optional whole-torrent
+  mode, a restart-safe queue with pause/resume/cancel, and verified completed
+  file ingestion through configurable link/copy policies.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
 - Measurable shell-ready and catalog-ready probes.
@@ -46,12 +50,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
-- Complete game-level offer selection beyond the implemented bundle-content
-  inspector: disk-space previews, file selection, region/version preferences,
-  and duplicate avoidance.
-- qBittorrent connection setup, secure credential storage, queue priorities,
-  pause/resume/cancel, progress, errors, seeding state, and completed-file
-  ingestion.
+- Complete game-level offer selection beyond the implemented exact-file and
+  whole-torrent paths: disk-space previews, related-file plans,
+  region/version preferences, and duplicate avoidance.
+- Extend the implemented persistent qBittorrent queue with aggregate speed,
+  seeding policy, record cleanup, retry/recovery controls, and richer error
+  history.
 - BIOS availability audit and explicit acquisition workflows, with provenance
   and checksums retained for every imported artifact.
 

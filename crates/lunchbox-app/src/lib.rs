@@ -1,7 +1,12 @@
 mod catalog;
+pub mod download_queue_model;
 mod game_details;
 pub mod game_details_model;
+mod ingest;
 pub mod library_model;
+mod qbittorrent;
+mod settings;
+pub mod settings_model;
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};

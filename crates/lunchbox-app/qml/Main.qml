@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Lunchbox
 
@@ -26,6 +27,7 @@ ApplicationWindow {
     property string availability: ""
     property bool gridMode: true
     property string selectedGameId: ""
+    property string directoryTarget: ""
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -73,6 +75,14 @@ ApplicationWindow {
         id: gameDetails
     }
 
+    SettingsModel {
+        id: appSettings
+    }
+
+    DownloadQueueModel {
+        id: downloadQueue
+    }
+
     Connections {
         target: library
         function onReadyChanged() {
@@ -88,6 +98,22 @@ ApplicationWindow {
         function onFilteringChanged() {
             if (library.filter_probe && library.ready && !library.filtering)
                 Qt.quit()
+        }
+    }
+
+    Connections {
+        target: gameDetails
+        function onDownloadBusyChanged() {
+            if (!gameDetails.download_busy)
+                downloadQueue.refresh()
+        }
+    }
+
+    Connections {
+        target: downloadQueue
+        function onCollectionRevisionChanged() {
+            if (downloadQueue.collection_revision > 0)
+                library.reload()
         }
     }
 
@@ -108,7 +134,18 @@ ApplicationWindow {
         interval: 0
         running: true
         repeat: false
-        onTriggered: library.initialize()
+        onTriggered: {
+            library.initialize()
+            appSettings.initialize()
+            downloadQueue.initialize()
+        }
+    }
+
+    Timer {
+        interval: 2000
+        running: downloadQueue.active_count > 0 || downloadsDrawer.opened
+        repeat: true
+        onTriggered: downloadQueue.refresh()
     }
 
     Timer {
@@ -537,13 +574,33 @@ ApplicationWindow {
             spacing: 9
             HeaderButton {
                 text: "Minerva  " + library.downloadable_game_count
+                visible: root.width >= 1280
                 active: root.availability === "downloadable"
                 onClicked: root.selectLibrary(active ? "" : "downloadable")
             }
             HeaderButton {
-                text: library.loading ? "Loading…" : "Refresh"
+                text: "↓  " + downloadQueue.active_count
+                active: downloadsDrawer.opened
+                onClicked: downloadsDrawer.open()
+            }
+            HeaderButton {
+                text: "⚙"
+                implicitWidth: 42
+                leftPadding: 0
+                rightPadding: 0
+                onClicked: settingsDialog.open()
+                ToolTip.visible: hovered
+                ToolTip.text: "Settings"
+            }
+            HeaderButton {
+                text: library.loading ? "…" : "↻"
+                implicitWidth: 42
+                leftPadding: 0
+                rightPadding: 0
                 enabled: !library.loading
                 onClicked: library.reload()
+                ToolTip.visible: hovered
+                ToolTip.text: "Refresh library"
             }
         }
     }
@@ -1074,15 +1131,15 @@ ApplicationWindow {
                             required property int index
                             property int revision: gameDetails.detail_revision
                             width: detailsPane.width - 40
-                            height: Math.max(58, fileName.implicitHeight + fileInfo.implicitHeight + 22)
+                            height: Math.max(68, fileName.implicitHeight + fileInfo.implicitHeight + 24)
                             radius: 8
                             color: "#151d29"
                             border.color: root.line
                             Column {
                                 anchors.left: parent.left
-                                anchors.right: parent.right
+                                anchors.right: getButton.left
                                 anchors.leftMargin: 11
-                                anchors.rightMargin: 11
+                                anchors.rightMargin: 9
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
                                 Text {
@@ -1102,10 +1159,433 @@ ApplicationWindow {
                                     elide: Text.ElideRight
                                 }
                             }
+                            HeaderButton {
+                                id: getButton
+                                anchors.right: parent.right
+                                anchors.rightMargin: 9
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: gameDetails.download_busy ? "…" : "GET"
+                                enabled: !gameDetails.download_busy && !gameDetails.torrent_loading
+                                implicitWidth: 62
+                                implicitHeight: 34
+                                leftPadding: 8
+                                rightPadding: 8
+                                onClicked: gameDetails.queue_file(fileRow.index)
+                            }
                         }
                     }
 
                     Item { width: 1; height: 10 }
+                }
+            }
+        }
+    }
+
+    FolderDialog {
+        id: directoryDialog
+        title: root.directoryTarget === "rom" ? "Choose ROM library" : "Choose torrent library"
+        onAccepted: appSettings.set_directory(root.directoryTarget, selectedFolder)
+    }
+
+    Dialog {
+        id: settingsDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(760, root.width - 60)
+        height: Math.min(680, root.height - 60)
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            width: parent.width
+            height: 62
+            color: root.panelRaised
+            radius: 14
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 22
+                anchors.verticalCenter: parent.verticalCenter
+                text: "SETTINGS"
+                color: root.ink
+                font.pixelSize: 17
+                font.weight: Font.Bold
+                font.letterSpacing: 0.8
+            }
+            RoundButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                text: "×"
+                flat: true
+                font.pixelSize: 20
+                onClicked: settingsDialog.close()
+            }
+        }
+
+        contentItem: ScrollView {
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ColumnLayout {
+                x: 24
+                width: settingsDialog.availableWidth - 48
+                spacing: 11
+
+                Text {
+                    text: "QBITTORRENT"
+                    color: root.accent
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.2
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Lunchbox uses the Web API and an isolated ‘lunchbox’ category. Credentials are stored in the operating system credential store, never in SQLite."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 9
+                    TextField {
+                        Layout.fillWidth: true
+                        placeholderText: "Host"
+                        text: appSettings.qbittorrent_host
+                        onTextEdited: appSettings.qbittorrent_host = text
+                    }
+                    SpinBox {
+                        Layout.preferredWidth: 125
+                        from: 1
+                        to: 65535
+                        editable: true
+                        value: appSettings.qbittorrent_port
+                        onValueModified: appSettings.qbittorrent_port = value
+                    }
+                    Switch {
+                        text: "HTTPS"
+                        checked: appSettings.qbittorrent_use_https
+                        onToggled: appSettings.qbittorrent_use_https = checked
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 9
+                    TextField {
+                        Layout.fillWidth: true
+                        placeholderText: "Username"
+                        text: appSettings.qbittorrent_username
+                        onTextEdited: appSettings.qbittorrent_username = text
+                    }
+                    TextField {
+                        Layout.fillWidth: true
+                        placeholderText: appSettings.password_saved ? "Saved password (leave blank to keep)" : "Password"
+                        echoMode: TextInput.Password
+                        text: appSettings.qbittorrent_password
+                        onTextEdited: appSettings.qbittorrent_password = text
+                    }
+                    Button {
+                        visible: appSettings.password_saved
+                        text: "Clear saved"
+                        enabled: !appSettings.busy
+                        onClicked: appSettings.clear_password()
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                Text {
+                    text: "LIBRARY PATHS"
+                    color: root.accent
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.2
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Native paths are interpreted by this operating system. Client paths are passed verbatim to qBittorrent, which supports containers and remote clients without Linux-specific path assumptions."
+                    color: root.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField {
+                        Layout.fillWidth: true
+                        placeholderText: "Native ROM library"
+                        text: appSettings.rom_directory
+                        readOnly: true
+                    }
+                    Button {
+                        text: "Choose…"
+                        onClicked: {
+                            root.directoryTarget = "rom"
+                            directoryDialog.open()
+                        }
+                    }
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    placeholderText: "qBittorrent/container ROM path (for emulator workflows)"
+                    text: appSettings.qbittorrent_container_rom_directory
+                    onTextEdited: appSettings.qbittorrent_container_rom_directory = text
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField {
+                        Layout.fillWidth: true
+                        placeholderText: "Native torrent library"
+                        text: appSettings.torrent_library_directory
+                        readOnly: true
+                    }
+                    Button {
+                        text: "Choose…"
+                        onClicked: {
+                            root.directoryTarget = "torrent"
+                            directoryDialog.open()
+                        }
+                    }
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    placeholderText: "qBittorrent/container torrent library path"
+                    text: appSettings.qbittorrent_container_torrent_library_directory
+                    onTextEdited: appSettings.qbittorrent_container_torrent_library_directory = text
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: "Install completed files using"; color: root.ink; font.pixelSize: 12 }
+                    ComboBox {
+                        id: linkMode
+                        Layout.fillWidth: true
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "Symbolic link", value: "symlink" },
+                            { label: "Hard link", value: "hardlink" },
+                            { label: "Copy-on-write reflink", value: "reflink" },
+                            { label: "Full copy", value: "copy" },
+                            { label: "Leave in download library", value: "leave_in_place" }
+                        ]
+                        currentIndex: {
+                            for (let i = 0; i < model.length; ++i) {
+                                if (model[i].value === appSettings.file_link_mode) {
+                                    return i
+                                }
+                            }
+                            return 0
+                        }
+                        onActivated: appSettings.file_link_mode = currentValue
+                    }
+                    CheckBox {
+                        text: "Entire torrent"
+                        checked: appSettings.download_entire_torrent
+                        onToggled: appSettings.download_entire_torrent = checked
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: settingsMessage.implicitHeight + 22
+                    radius: 9
+                    color: appSettings.connection_ok ? "#172c28" : "#151d29"
+                    border.color: appSettings.connection_ok ? root.accentCool : root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 11
+                        BusyIndicator {
+                            visible: appSettings.busy
+                            running: visible
+                            Layout.preferredWidth: 18
+                            Layout.preferredHeight: 18
+                        }
+                        Text {
+                            id: settingsMessage
+                            Layout.fillWidth: true
+                            text: appSettings.message
+                            color: appSettings.connection_ok ? root.accentCool : root.muted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        text: "Test connection"
+                        enabled: !appSettings.busy
+                        onClicked: appSettings.test_connection()
+                    }
+                    HeaderButton {
+                        text: "Save settings"
+                        enabled: !appSettings.busy
+                        active: true
+                        onClicked: appSettings.save()
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: appSettings.state_database_path
+                    color: "#566175"
+                    font.pixelSize: 9
+                    elide: Text.ElideMiddle
+                    horizontalAlignment: Text.AlignRight
+                }
+            }
+        }
+    }
+
+    Drawer {
+        id: downloadsDrawer
+        edge: Qt.RightEdge
+        width: Math.min(480, root.width * 0.42)
+        height: root.height
+        modal: false
+        interactive: true
+        padding: 0
+
+        background: Rectangle {
+            color: "#101620"
+            border.color: root.line
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 66
+                color: root.panel
+                border.color: root.line
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 20
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "DOWNLOADS"
+                    color: root.ink
+                    font.pixelSize: 16
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1
+                }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 5
+                    RoundButton {
+                        text: "↻"
+                        flat: true
+                        enabled: !downloadQueue.busy
+                        onClicked: downloadQueue.refresh()
+                    }
+                    RoundButton {
+                        text: "×"
+                        flat: true
+                        font.pixelSize: 20
+                        onClicked: downloadsDrawer.close()
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                Layout.margins: 16
+                text: downloadQueue.message
+                color: root.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                Column {
+                    width: downloadsDrawer.width
+                    spacing: 9
+                    leftPadding: 14
+                    rightPadding: 14
+                    Repeater {
+                        model: downloadQueue.job_count
+                        delegate: Rectangle {
+                            id: downloadRow
+                            required property int index
+                            property int queueRevision: downloadQueue.revision
+                            width: downloadsDrawer.width - 28
+                            height: 136
+                            radius: 11
+                            color: root.panelRaised
+                            border.color: root.line
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 5
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: { downloadRow.queueRevision; return downloadQueue.job_title_at(downloadRow.index) }
+                                        color: root.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: { downloadRow.queueRevision; return downloadQueue.job_state_at(downloadRow.index) }
+                                        color: text === "IMPORTED" ? root.accentCool : root.accent
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: { downloadRow.queueRevision; return downloadQueue.job_platform_at(downloadRow.index) }
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                                ProgressBar {
+                                    Layout.fillWidth: true
+                                    value: { downloadRow.queueRevision; return downloadQueue.job_progress_at(downloadRow.index) }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: { downloadRow.queueRevision; return downloadQueue.job_detail_at(downloadRow.index) }
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Item { Layout.fillWidth: true }
+                                    Button {
+                                        text: "Pause"
+                                        visible: { downloadRow.queueRevision; return downloadQueue.job_can_pause(downloadRow.index) }
+                                        enabled: !downloadQueue.busy
+                                        onClicked: downloadQueue.pause_job(downloadRow.index)
+                                    }
+                                    Button {
+                                        text: "Resume"
+                                        visible: { downloadRow.queueRevision; return downloadQueue.job_can_resume(downloadRow.index) }
+                                        enabled: !downloadQueue.busy
+                                        onClicked: downloadQueue.resume_job(downloadRow.index)
+                                    }
+                                    Button {
+                                        text: "Cancel"
+                                        visible: { downloadRow.queueRevision; return downloadQueue.job_can_cancel(downloadRow.index) }
+                                        enabled: !downloadQueue.busy
+                                        onClicked: downloadQueue.cancel_job(downloadRow.index)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Item { width: 1; height: 14 }
                 }
             }
         }

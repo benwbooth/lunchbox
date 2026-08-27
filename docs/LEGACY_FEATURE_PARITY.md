@@ -24,11 +24,11 @@ native vertical slice is completed so that features are not silently lost.
 | Detect Minerva catalog and resolve all bundles for a platform | `backend/src/handlers.rs` | Implemented with exact normalized mapped/provider names; Atari 800 and Arcade retain only their collection-bounded legacy rules. Cross-database numeric platform IDs are deliberately not joined. |
 | Exclude already installed games by LaunchBox ID or stable game UUID | `backend/src/api.rs`, migration `0016_game_uid.sql` | Implemented in the native catalog layer |
 | Fetch and cache torrent metadata, list files, rank title/region candidates | `backend/src/torrent/mod.rs`, `backend/src/handlers.rs` | Native details pane fetches bounded torrent metadata off-thread, caches the current bundle, lists real files, and ranks review candidates; persistent cache and region preferences remain in the ledger |
-| Game-only and full-torrent modes | `backend/src/handlers.rs` | Behavior recorded |
+| Game-only and full-torrent modes | `backend/src/handlers.rs` | Implemented for reviewed exact-file selection and explicit whole-torrent mode |
 | Related-file plans for multidisc, eXo, MAME laserdisc, Daphne and Hypseus | `backend/src/exo.rs`, `arcade.rs`, `handlers.rs` | Behavior recorded |
-| qBittorrent Web API setup, connection testing and container path mapping | `backend/src/torrent/clients/qbittorrent.rs`, `state.rs` | Behavior recorded |
-| Queue progress, aggregate speed, pause, resume, cancel, delete and recent jobs | `src/components/minerva_download_queue.rs`, `backend/src/handlers.rs` | Behavior recorded |
-| Completion ingestion and symlink, hardlink, reflink, copy or leave-in-place policy | `backend/src/handlers.rs`, `state.rs` | Behavior recorded |
+| qBittorrent Web API setup, connection testing and container path mapping | `backend/src/torrent/clients/qbittorrent.rs`, `state.rs` | Implemented with native settings, credential-store secrets, literal remote/container paths, bounded Web API requests, and an isolated `lunchbox` category |
+| Queue progress, aggregate speed, pause, resume, cancel, delete and recent jobs | `src/components/minerva_download_queue.rs`, `backend/src/handlers.rs` | Persistent native queue, per-job progress, pause/resume, and non-destructive cancel implemented; aggregate speed, record deletion, seeding policy, and history cleanup remain in the ledger |
+| Completion ingestion and symlink, hardlink, reflink, copy or leave-in-place policy | `backend/src/handlers.rs`, `state.rs` | Implemented with collision checks, idempotent recovery, exact installed identity, and cross-platform path handling |
 | BIOS/firmware inventory and acquisition | `backend/src/firmware.rs`, settings UI | Behavior recorded |
 
 ## Game details and media
@@ -59,7 +59,7 @@ native vertical slice is completed so that features are not silently lost.
 | --- | --- | --- |
 | OS-native data/media/program/save directories | `backend/src/state.rs` | Native path handling established |
 | Region priority and all provider/torrent settings | `src/components/settings.rs`, `backend/src/state.rs` | Behavior recorded |
-| Credentials in the system keyring | `backend/src/keyring_store.rs` | Behavior recorded |
+| Credentials in the system keyring | `backend/src/keyring_store.rs` | Implemented with the operating system credential store; no password column exists in SQLite |
 | Linux, macOS and Windows packaging | `.github/workflows/release.yml` | Nix Linux package works; native macOS/Windows runtime packaging remains in the ledger |
 | Keyboard/controller-first full-screen presentation | Product requirement beyond the Electron desktop UI | Tracked in `FRONTEND_ROADMAP.md` |
 | Loading minigame and GPU presentation | `src/components/minigame` | Behavior recorded |

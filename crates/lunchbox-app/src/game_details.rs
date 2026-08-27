@@ -290,12 +290,12 @@ fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
     let http = HTTP.get_or_init(|| {
         ureq::Agent::config_builder()
             .timeout_connect(Some(Duration::from_secs(4)))
-            .timeout_global(Some(Duration::from_secs(10)))
+            .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into()
     });
     let mut last_error = None;
-    for attempt in 0..3 {
+    for attempt in 0..2 {
         if attempt > 0 {
             std::thread::sleep(Duration::from_millis(250 * attempt));
         }
@@ -305,13 +305,25 @@ fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
             .call()
         {
             Ok(mut response) => {
+                if response
+                    .headers()
+                    .get(ureq::http::header::CONTENT_LENGTH)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .is_some_and(|length| length > MAX_TORRENT_BYTES)
+                {
+                    bail!("Minerva torrent metadata exceeds the 64 MiB safety limit");
+                }
                 let mut bytes = Vec::new();
-                response
+                if let Err(error) = response
                     .body_mut()
                     .as_reader()
                     .take(MAX_TORRENT_BYTES + 1)
                     .read_to_end(&mut bytes)
-                    .context("reading Minerva torrent metadata")?;
+                {
+                    last_error = Some(format!("reading Minerva torrent metadata: {error}"));
+                    continue;
+                }
                 if bytes.len() as u64 > MAX_TORRENT_BYTES {
                     bail!("Minerva torrent metadata exceeds the 64 MiB safety limit");
                 }
@@ -321,15 +333,17 @@ fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
                 }
                 return Ok(bytes);
             }
-            Err(error) => last_error = Some(error),
+            Err(error) => last_error = Some(error.to_string()),
         }
     }
     Err(anyhow::anyhow!(
         "could not fetch Minerva torrent metadata from {url}: {}",
-        last_error
-            .map(|error| error.to_string())
-            .unwrap_or_else(|| "unknown network error".to_owned())
+        last_error.unwrap_or_else(|| "unknown network error".to_owned())
     ))
+}
+
+pub(crate) fn torrent_bytes(bundle: &MinervaBundle) -> Result<Vec<u8>> {
+    Ok(fetch_torrent(&bundle.torrent_url)?.as_ref().clone())
 }
 
 fn rank_file_candidates(

@@ -41,8 +41,11 @@ labels. `import-minerva`:
 
 The separate local `hashes.db` currently contains 2,973,791 file rows and is approximately 1.375 GB.
 It is a provider cache, not a redistributable canonical database, so it is not copied into the public
-artifact. File-level Minerva search and selective-download materialization will query or index that
-cache on demand in a later step.
+artifact. The native frontend now inspects bounded torrent metadata on demand,
+presents filename matches for explicit review, and sends only the reviewed file
+to qBittorrent unless whole-torrent mode is selected. The much larger hash cache
+can later accelerate indexed search without becoming the canonical identity
+source.
 
 ## Local scan behavior
 

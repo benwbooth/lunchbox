@@ -93,7 +93,7 @@ fn requested_user_database_path() -> Option<PathBuf> {
         .or_else(|| existing_path([legacy_data_path("user.db"), project_data_path("user.db")]))
 }
 
-fn requested_path(argument_name: &str, environment_name: &str) -> Option<PathBuf> {
+pub(crate) fn requested_path(argument_name: &str, environment_name: &str) -> Option<PathBuf> {
     let equals_prefix = format!("{argument_name}=");
     let mut arguments = env::args_os().skip(1);
     while let Some(argument) = arguments.next() {
@@ -355,36 +355,67 @@ fn validate_discovery_schema(connection: &Connection) -> Result<()> {
 }
 
 fn load_installed_games(path: Option<&Path>) -> Result<InstalledGames> {
-    let Some(path) = path else {
-        return Ok(InstalledGames::default());
-    };
-    let connection = open_read_only(path, "Lunchbox user database")?;
-    if !table_exists(&connection, "game_files")? {
-        return Ok(InstalledGames::default());
-    }
-
     let mut installed = InstalledGames::default();
-    let has_game_uid = column_exists(&connection, "game_files", "game_uid")?;
-    let query = if has_game_uid {
-        "SELECT launchbox_db_id, game_uid FROM game_files"
-    } else {
-        "SELECT launchbox_db_id, NULL FROM game_files"
-    };
-    let mut statement = connection.prepare(query)?;
+    if let Some(path) = path {
+        let connection = open_read_only(path, "Lunchbox user database")?;
+        if table_exists(&connection, "game_files")? {
+            let has_game_uid = column_exists(&connection, "game_files", "game_uid")?;
+            let query = if has_game_uid {
+                "SELECT launchbox_db_id, game_uid FROM game_files"
+            } else {
+                "SELECT launchbox_db_id, NULL FROM game_files"
+            };
+            let mut statement = connection.prepare(query)?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
+            })?;
+            for row in rows {
+                add_installed_identity(&mut installed, row?);
+            }
+        }
+    }
+    load_native_installed_games(&mut installed)?;
+    Ok(installed)
+}
+
+fn load_native_installed_games(installed: &mut InstalledGames) -> Result<()> {
+    let path = crate::settings::state_database_path()?;
+    if !path.is_file() {
+        return Ok(());
+    }
+    let connection = open_read_only(&path, "Lunchbox state database")?;
+    if !table_exists(&connection, "installed_games")? {
+        return Ok(());
+    }
+    let mut statement =
+        connection.prepare("SELECT launchbox_db_id, game_uid, file_path FROM installed_games")?;
     let rows = statement.query_map([], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+        ))
     })?;
     for row in rows {
-        let (database_id, game_uid) = row?;
-        installed.file_count = installed.file_count.saturating_add(1);
-        if database_id > 0 {
-            installed.database_ids.insert(database_id);
-        }
-        if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
-            installed.game_uids.insert(game_uid);
+        let (database_id, game_uid, file_path) = row?;
+        if Path::new(&file_path).is_file() {
+            add_installed_identity(installed, (database_id, game_uid));
         }
     }
-    Ok(installed)
+    Ok(())
+}
+
+fn add_installed_identity(
+    installed: &mut InstalledGames,
+    (database_id, game_uid): (i64, Option<String>),
+) {
+    installed.file_count = installed.file_count.saturating_add(1);
+    if database_id > 0 {
+        installed.database_ids.insert(database_id);
+    }
+    if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
+        installed.game_uids.insert(game_uid);
+    }
 }
 
 fn load_minerva_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {

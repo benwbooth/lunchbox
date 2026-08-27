@@ -34,6 +34,14 @@ The initial implementation enforces this shape:
   discovery, acquisition, and installed-state layers. Their environment
   equivalents use the `LUNCHBOX_` prefix. None of these paths is interpreted as
   a provider path or converted to a platform-specific string identity.
+- The writable state database is selected with `--state-database` or
+  `LUNCHBOX_STATE_DATABASE`, otherwise an OS-native application-data directory
+  is used. Its WAL setup and schema migration are serialized before concurrent
+  settings, queue, and catalog workers access it.
+- qBittorrent paths and host paths are separate types at the service boundary:
+  host paths use Rust `PathBuf` and native folder dialogs, while remote or
+  container paths remain literal strings. The app never rewrites a Windows
+  path as a POSIX path or assumes the client runs on the GUI host.
 
 ## Performance budgets
 
@@ -80,8 +88,8 @@ decompression cost at application startup.
 The Electron implementation remains on `legacy/electron` as the specification
 for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
-runtime gate. Catalog details and Minerva bundle-content inspection are now
-native; the next acquisition slice is persistent qBittorrent setup, exact file
-selection, queue control, and completed-file ingestion. Local-folder import,
-game media, emulator installation and launch, settings, and the controller-first
-full-screen interface follow on the same shared models.
+runtime gate. Catalog details, Minerva bundle inspection, persistent
+qBittorrent setup, exact-file selection, queue control, and completed-file
+ingestion are now native. Local-folder import is the next vertical slice; game
+media, emulator installation and launch, the remaining settings, and the
+controller-first full-screen interface follow on the same shared models.
