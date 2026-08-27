@@ -36,7 +36,11 @@ cargo run --release -p lunchbox-app -- \
 
 The `Minerva` view contains only games whose platform has an exact Minerva
 bundle mapping and which are not already present in the user database. Selecting
-a platform keeps that availability filter active. Select a game to open its
+a platform keeps that availability filter active. The native Filters menu makes
+the same distinction explicit alongside Installed, Hide Non-Retail, and Hide
+Adult controls. Content classifications follow the bounded legacy rules, and
+the content-filter preferences survive restart in the writable state database.
+Select a game to open its
 native details pane; Minerva sources can be inspected against the real torrent
 contents, where title matches are presented as review candidates rather than
 silently accepted identities. A reviewed file can be sent to qBittorrent from

@@ -14,6 +14,8 @@ pub struct Game {
     pub status: String,
     pub local: bool,
     pub downloadable: bool,
+    pub non_retail: bool,
+    pub adult: bool,
     search_key: String,
 }
 
@@ -38,6 +40,8 @@ pub struct Filter {
     pub search: String,
     pub platform: String,
     pub availability: String,
+    pub hide_non_retail: bool,
+    pub hide_adult: bool,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -219,6 +223,8 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
             status: row.get(3)?,
             local: row.get(4)?,
             downloadable: row.get(5)?,
+            non_retail: false,
+            adult: false,
         })
     })?;
     let games = game_rows.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -283,13 +289,17 @@ fn load_discovery_catalog(
 
     let game_capacity = count(&discovery, "games", "1")?;
     let mut games = Vec::with_capacity(game_capacity);
-    let mut statement = discovery.prepare(
+    let release_type = optional_game_column(&discovery, "release_type")?;
+    let esrb = optional_game_column(&discovery, "esrb")?;
+    let genre = optional_game_column(&discovery, "genre")?;
+    let query = format!(
         "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
-                coalesce(g.launchbox_db_id, 0)
+                coalesce(g.launchbox_db_id, 0), {release_type}, {esrb}, {genre}
          FROM games g
          JOIN platforms p ON p.id = g.platform_id
-         ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id",
-    )?;
+         ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id"
+    );
+    let mut statement = discovery.prepare(&query)?;
     let rows = statement.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
@@ -297,15 +307,20 @@ fn load_discovery_catalog(
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
             row.get::<_, i64>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
         ))
     })?;
     for row in rows {
-        let (id, title, platform, status, database_id) = row?;
+        let (id, title, platform, status, database_id, release_type, esrb, genre) = row?;
         let local = (database_id > 0 && installed.database_ids.contains(&database_id))
             || installed.game_uids.contains(&id);
         let minerva_covered = minerva
             .platform_names
             .contains(&normalize_platform_key(&platform));
+        let non_retail = is_non_retail_game(&title, release_type.as_deref());
+        let adult = is_adult_game(&title, esrb.as_deref(), genre.as_deref());
         games.push(Game {
             id,
             search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
@@ -314,6 +329,8 @@ fn load_discovery_catalog(
             status,
             local,
             downloadable: minerva_covered && !local,
+            non_retail,
+            adult,
         });
     }
     games.extend(installed.local_only_games.iter().cloned());
@@ -374,6 +391,19 @@ fn validate_discovery_schema(connection: &Connection) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn optional_game_column(connection: &Connection, column: &str) -> Result<&'static str> {
+    if column_exists(connection, "games", column)? {
+        Ok(match column {
+            "release_type" => "g.release_type",
+            "esrb" => "g.esrb",
+            "genre" => "g.genre",
+            _ => unreachable!("optional game columns are fixed by the caller"),
+        })
+    } else {
+        Ok("NULL")
+    }
 }
 
 fn load_installed_games(path: Option<&Path>) -> Result<InstalledGames> {
@@ -479,6 +509,8 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
                 status: "local-only".to_owned(),
                 local: true,
                 downloadable: false,
+                non_retail: false,
+                adult: false,
             });
         }
     }
@@ -598,6 +630,78 @@ fn count(connection: &Connection, table: &str, predicate: &str) -> Result<usize>
     usize::try_from(value).context("database count exceeded addressable memory")
 }
 
+const NON_RETAIL_RELEASE_TYPES: [&str; 3] = ["homebrew", "rom hack", "unlicensed"];
+const NON_RETAIL_TITLE_TAGS: [&str; 6] = [
+    "homebrew",
+    "hack",
+    "pirate",
+    "bootleg",
+    "unl",
+    "aftermarket",
+];
+
+fn is_non_retail_game(title: &str, release_type: Option<&str>) -> bool {
+    if release_type.is_some_and(|value| {
+        NON_RETAIL_RELEASE_TYPES
+            .iter()
+            .any(|expected| value.trim().eq_ignore_ascii_case(expected))
+    }) {
+        return true;
+    }
+
+    let mut remainder = title;
+    while let Some(open) = remainder.find('(') {
+        remainder = &remainder[open + 1..];
+        let Some(close) = remainder.find(')') else {
+            break;
+        };
+        let tag = remainder[..close].trim();
+        if NON_RETAIL_TITLE_TAGS
+            .iter()
+            .any(|expected| tag.eq_ignore_ascii_case(expected))
+        {
+            return true;
+        }
+        remainder = &remainder[close + 1..];
+    }
+    false
+}
+
+fn contains_ascii_phrase(text: &str, phrase: &str) -> bool {
+    text.as_bytes()
+        .windows(phrase.len())
+        .any(|window| window.eq_ignore_ascii_case(phrase.as_bytes()))
+}
+
+fn contains_adult_token(text: &str) -> bool {
+    text.split(|character: char| !character.is_alphanumeric())
+        .any(|part| {
+            ["adult", "hentai", "erotic", "porn", "sex"]
+                .iter()
+                .any(|token| part.eq_ignore_ascii_case(token))
+        })
+}
+
+fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
+    if esrb.is_some_and(|value| {
+        let value = value.trim();
+        value
+            .as_bytes()
+            .get(..2)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"ao"))
+            || contains_ascii_phrase(value, "adults only")
+    }) {
+        return true;
+    }
+    if contains_ascii_phrase(title, "adults only")
+        || genre.is_some_and(|value| contains_ascii_phrase(value, "adults only"))
+    {
+        return true;
+    }
+
+    contains_adult_token(title) || genre.is_some_and(contains_adult_token)
+}
+
 pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
     let search = filter.search.trim().to_lowercase();
     catalog
@@ -607,6 +711,8 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         .filter(|(_, game)| {
             (search.is_empty() || game.search_key.contains(&search))
                 && (filter.platform.is_empty() || game.platform == filter.platform)
+                && (!filter.hide_non_retail || !game.non_retail)
+                && (!filter.hide_adult || !game.adult)
                 && match filter.availability.as_str() {
                     "local" => game.local,
                     "downloadable" => game.downloadable && !game.local,
@@ -631,6 +737,8 @@ mod tests {
                     status: "canonical".into(),
                     local: true,
                     downloadable: false,
+                    non_retail: false,
+                    adult: false,
                     search_key: "metroid\nnintendo entertainment system".into(),
                 },
                 Game {
@@ -640,6 +748,8 @@ mod tests {
                     status: "canonical".into(),
                     local: false,
                     downloadable: true,
+                    non_retail: false,
+                    adult: false,
                     search_key: "outrun\narcade".into(),
                 },
             ],
@@ -657,6 +767,7 @@ mod tests {
                     search: "nintendo".into(),
                     platform: "Nintendo Entertainment System".into(),
                     availability: "local".into(),
+                    ..Filter::default()
                 }
             ),
             vec![0]
@@ -685,6 +796,41 @@ mod tests {
                 }
             ),
             vec![1]
+        );
+    }
+
+    #[test]
+    fn legacy_content_classification_is_bounded_and_composable() {
+        assert!(is_non_retail_game("Game", Some("Homebrew")));
+        assert!(is_non_retail_game("Game (USA) (Unl)", None));
+        assert!(!is_non_retail_game("Hack and Slash", None));
+        assert!(is_adult_game("Game", Some("AO - Adults Only"), None));
+        assert!(is_adult_game("Late Night", None, Some("Adult; Puzzle")));
+        assert!(!is_adult_game("Sexxion", None, Some("Action")));
+
+        let mut catalog = fixture_catalog();
+        catalog.games[0].non_retail = true;
+        catalog.games[1].adult = true;
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    hide_non_retail: true,
+                    ..Filter::default()
+                }
+            ),
+            vec![1]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "downloadable".into(),
+                    hide_adult: true,
+                    ..Filter::default()
+                }
+            ),
+            Vec::<usize>::new()
         );
     }
 

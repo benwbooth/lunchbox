@@ -44,6 +44,21 @@ impl Default for AppSettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LibraryPreferences {
+    pub hide_non_retail: bool,
+    pub hide_adult: bool,
+}
+
+impl Default for LibraryPreferences {
+    fn default() -> Self {
+        Self {
+            hide_non_retail: true,
+            hide_adult: false,
+        }
+    }
+}
+
 impl AppSettings {
     pub fn validate(&self) -> Result<()> {
         if self.qbittorrent_host.trim().is_empty() {
@@ -253,6 +268,37 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub fn load_library_preferences(&self) -> Result<LibraryPreferences> {
+        let connection = self.connection()?;
+        Ok(connection
+            .query_row(
+                "SELECT hide_non_retail, hide_adult
+                 FROM library_preferences WHERE id=1",
+                [],
+                |row| {
+                    Ok(LibraryPreferences {
+                        hide_non_retail: row.get(0)?,
+                        hide_adult: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?
+            .unwrap_or_default())
+    }
+
+    pub fn save_library_preferences(&self, preferences: LibraryPreferences) -> Result<()> {
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO library_preferences (id, hide_non_retail, hide_adult)
+             VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET
+                 hide_non_retail=excluded.hide_non_retail,
+                 hide_adult=excluded.hide_adult",
+            params![preferences.hide_non_retail, preferences.hide_adult],
+        )?;
+        Ok(())
+    }
+
     pub fn upsert_job(&self, job: &DownloadJob) -> Result<()> {
         let connection = self.connection()?;
         connection.execute(
@@ -436,6 +482,11 @@ fn migrate(connection: &Connection) -> Result<()> {
              file_link_mode TEXT NOT NULL CHECK (
                  file_link_mode IN ('symlink', 'hardlink', 'reflink', 'copy', 'leave_in_place')
              )
+         );
+         CREATE TABLE IF NOT EXISTS library_preferences (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             hide_non_retail INTEGER NOT NULL CHECK (hide_non_retail IN (0, 1)),
+             hide_adult INTEGER NOT NULL CHECK (hide_adult IN (0, 1))
          );
          CREATE TABLE IF NOT EXISTS download_jobs (
              id TEXT PRIMARY KEY,
@@ -629,6 +680,22 @@ mod tests {
         store.upsert_job(&job).unwrap();
 
         assert_eq!(store.jobs().unwrap(), vec![job]);
+    }
+
+    #[test]
+    fn library_content_filters_default_safely_and_round_trip() {
+        let (_directory, store) = store();
+        assert_eq!(
+            store.load_library_preferences().unwrap(),
+            LibraryPreferences::default()
+        );
+
+        let expected = LibraryPreferences {
+            hide_non_retail: false,
+            hide_adult: true,
+        };
+        store.save_library_preferences(expected).unwrap();
+        assert_eq!(store.load_library_preferences().unwrap(), expected);
     }
 
     #[test]

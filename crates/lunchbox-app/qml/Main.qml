@@ -28,8 +28,12 @@ ApplicationWindow {
     property bool gridMode: true
     property string selectedGameId: ""
     property string directoryTarget: ""
+    readonly property int activeFilterCount: (availability.length > 0 ? 1 : 0)
+                                               + (library.hide_non_retail ? 1 : 0)
+                                               + (library.hide_adult ? 1 : 0)
     readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
+    readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -102,8 +106,11 @@ ApplicationWindow {
                     Qt.quit()
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
-                else
+                else {
                     root.scheduleFilter()
+                    if (root.filterUiProbe)
+                        filterPopup.open()
+                }
             }
         }
         function onFilteringChanged() {
@@ -190,6 +197,98 @@ ApplicationWindow {
         repeat: false
         onTriggered: library.apply_filter(searchField.text, root.selectedPlatform,
                                            root.availability)
+    }
+
+    Popup {
+        id: filterPopup
+        parent: Overlay.overlay
+        x: Math.max(sidebar.width + 18,
+                    root.width - detailsPane.width - width - 28)
+        y: header.height + 76
+        width: 326
+        padding: 10
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+        implicitHeight: filterColumn.implicitHeight + topPadding + bottomPadding
+
+        background: Rectangle {
+            radius: 12
+            color: "#111925"
+            border.color: root.line
+            border.width: 1
+        }
+        contentItem: Column {
+            id: filterColumn
+            spacing: 2
+            Item {
+                width: parent.width
+                height: 40
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "LIBRARY FILTERS"
+                    color: root.ink
+                    font.pixelSize: 11
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1
+                }
+                Button {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Clear"
+                    flat: true
+                    enabled: root.activeFilterCount > 0
+                    onClicked: {
+                        library.set_content_filters(false, false)
+                        root.selectLibrary("")
+                    }
+                }
+            }
+            FilterToggle {
+                label: "Installed"
+                description: "Games already present in My Collection"
+                checked: root.availability === "local"
+                onToggled: root.selectLibrary(checked ? "" : "local")
+            }
+            FilterToggle {
+                label: "Downloadable from Minerva"
+                description: "Not installed and covered by an exact platform offer"
+                checked: root.availability === "downloadable"
+                onToggled: root.selectLibrary(checked ? "" : "downloadable")
+            }
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: root.line
+            }
+            FilterToggle {
+                label: "Hide non-retail"
+                description: "Homebrew, hacks, unlicensed and pirate releases"
+                checked: library.hide_non_retail
+                onToggled: {
+                    library.set_content_filters(!checked, library.hide_adult)
+                    root.scheduleFilter()
+                }
+            }
+            FilterToggle {
+                label: "Hide adult"
+                description: "Adult-only ratings, genres and explicit title tags"
+                checked: library.hide_adult
+                onToggled: {
+                    library.set_content_filters(library.hide_non_retail, !checked)
+                    root.scheduleFilter()
+                }
+            }
+            Text {
+                width: parent.width
+                topPadding: 7
+                bottomPadding: 3
+                text: "Filters combine with search and platform selection. Minerva always excludes installed games."
+                color: "#6f7c90"
+                font.pixelSize: 9
+                wrapMode: Text.WordWrap
+            }
+        }
     }
 
     component HeaderButton: Button {
@@ -298,6 +397,62 @@ ApplicationWindow {
                 text: pill.label
                 color: root.muted
                 font.pixelSize: 12
+            }
+        }
+    }
+
+    component FilterToggle: Rectangle {
+        id: filterToggle
+        required property string label
+        required property string description
+        property bool checked: false
+        signal toggled()
+        width: filterPopup.availableWidth
+        height: 58
+        radius: 8
+        color: filterHover.hovered ? "#1b2432" : "transparent"
+
+        HoverHandler { id: filterHover }
+        TapHandler { onTapped: filterToggle.toggled() }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.leftMargin: 11
+            anchors.verticalCenter: parent.verticalCenter
+            width: 18
+            height: 18
+            radius: 5
+            color: filterToggle.checked ? root.accentCool : "#101721"
+            border.color: filterToggle.checked ? root.accentCool : "#455166"
+            Text {
+                anchors.centerIn: parent
+                text: filterToggle.checked ? "✓" : ""
+                color: "#0c1716"
+                font.pixelSize: 13
+                font.weight: Font.Black
+            }
+        }
+        Column {
+            anchors.left: parent.left
+            anchors.leftMargin: 42
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            Text {
+                width: parent.width
+                text: filterToggle.label
+                color: root.ink
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Text {
+                width: parent.width
+                text: filterToggle.description
+                color: root.muted
+                font.pixelSize: 9
+                elide: Text.ElideRight
             }
         }
     }
@@ -787,6 +942,12 @@ ApplicationWindow {
                     visible: content.width > 700
                     label: "emulators"
                     value: library.emulator_count.toString()
+                }
+                HeaderButton {
+                    text: root.activeFilterCount > 0
+                          ? "Filters  " + root.activeFilterCount : "Filters"
+                    active: root.activeFilterCount > 0 || filterPopup.opened
+                    onClicked: filterPopup.opened ? filterPopup.close() : filterPopup.open()
                 }
                 Row {
                     spacing: 4

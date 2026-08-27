@@ -79,6 +79,8 @@ Use `--catalog-probe` to print database loading time and row counts before
 exiting. Unlike the shell probe, this waits for the asynchronous catalog worker.
 Use `--filter-probe` to load the catalog, apply a representative Minerva search,
 print `LUNCHBOX_FILTER_READY_MS`, and exit.
+Use `--filter-ui-probe` to leave the native filter surface open for an
+unattended visual check against a real catalog.
 
 `--import-ui-probe --import-directory PATH` opens the local-import surface and
 starts a real checksum scan. It exists for deterministic virtual-display visual
@@ -89,7 +91,7 @@ idempotent scan-to-collection integration test.
 
 On the current Linux development host, the real preserved 303,560-game catalog
 loads on its worker in roughly 0.5–0.8 seconds, while a combined text plus
-Minerva filter completes in 13 ms. Warm shell-ready probes remain below the
+Minerva filter completes in 16 ms. Warm shell-ready probes remain below the
 250-ms release budget.
 
 The Nix application package extracts the verified database artifact at build
@@ -103,7 +105,8 @@ for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, and completed-file
-ingestion and local-folder scan/review/import are now native. Game media,
+ingestion, local-folder scan/review/import, and legacy content filters are now
+native. Game media,
 emulator installation and launch, the remaining settings, archive-member and
 manual identity workflows, and the controller-first full-screen interface
 follow on the same shared models.

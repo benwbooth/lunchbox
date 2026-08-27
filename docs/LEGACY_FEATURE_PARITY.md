@@ -11,7 +11,7 @@ native vertical slice is completed so that features are not silently lost.
 | --- | --- | --- |
 | Full discoverable catalog separated from writable user state | `backend/src/state.rs`, `backend/src/api.rs` | Implemented as read-only catalog layers |
 | Platform sidebar, counts, search, grid/list views, zoom and artwork choice | `src/components/sidebar.rs`, `toolbar.rs`, `game_grid.rs` | Core sidebar/search/grid/list implemented; artwork and zoom remain in the ledger |
-| Installed, non-retail and adult filters | `src/components/toolbar.rs`, `backend/src/api.rs` | Installed and Minerva-not-installed implemented; content filters remain in the ledger |
+| Installed, non-retail and adult filters | `src/components/toolbar.rs`, `backend/src/api.rs` | Implemented as composable native filters, including an explicit Minerva-covered/not-installed choice and persisted non-retail/adult preferences |
 | Regional/version variants and alternate titles | `backend/src/api.rs`, `backend/src/db/schema.rs` | Behavior recorded |
 | Favorites, playlists, normal collections and smart collections | `backend/migrations`, `src/components/sidebar.rs` | Behavior recorded |
 | Play count, play time, last played, completion state and sessions | `backend/migrations`, `backend/src/handlers.rs` | Behavior recorded |

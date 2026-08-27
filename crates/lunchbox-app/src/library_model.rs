@@ -27,6 +27,8 @@ pub mod qobject {
         #[qproperty(bool, loading)]
         #[qproperty(bool, filtering)]
         #[qproperty(bool, ready)]
+        #[qproperty(bool, hide_non_retail)]
+        #[qproperty(bool, hide_adult)]
         #[qproperty(bool, startup_probe)]
         #[qproperty(bool, catalog_probe)]
         #[qproperty(bool, filter_probe)]
@@ -55,6 +57,13 @@ pub mod qobject {
             search: QString,
             platform: QString,
             availability: QString,
+        );
+
+        #[qinvokable]
+        fn set_content_filters(
+            self: Pin<&mut LibraryModel>,
+            hide_non_retail: bool,
+            hide_adult: bool,
         );
 
         #[qinvokable]
@@ -101,6 +110,7 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QByteArray, QHash, QModelIndex, QString, QVariant};
 
 use crate::catalog::{self, Catalog, Filter};
+use crate::settings::{LibraryPreferences, SettingsStore};
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
 
@@ -130,6 +140,8 @@ pub struct LibraryModelRust {
     loading: bool,
     filtering: bool,
     ready: bool,
+    hide_non_retail: bool,
+    hide_adult: bool,
     startup_probe: bool,
     catalog_probe: bool,
     filter_probe: bool,
@@ -163,6 +175,8 @@ impl Default for LibraryModelRust {
             loading: false,
             filtering: false,
             ready: false,
+            hide_non_retail: LibraryPreferences::default().hide_non_retail,
+            hide_adult: LibraryPreferences::default().hide_adult,
             startup_probe: std::env::args().any(|argument| argument == "--startup-probe"),
             catalog_probe: std::env::args().any(|argument| argument == "--catalog-probe"),
             filter_probe: std::env::args().any(|argument| argument == "--filter-probe"),
@@ -239,7 +253,14 @@ impl qobject::LibraryModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-catalog-load".into())
             .spawn(move || {
-                let loaded = catalog::load(&path).map_err(|error| error.to_string());
+                let loaded = catalog::load(&path)
+                    .map(|catalog| {
+                        let preferences = SettingsStore::open_default()
+                            .and_then(|store| store.load_library_preferences())
+                            .map_err(|error| error.to_string());
+                        (catalog, preferences)
+                    })
+                    .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_load(generation, loaded);
                 });
@@ -251,13 +272,26 @@ impl qobject::LibraryModel {
         }
     }
 
-    fn finish_load(mut self: Pin<&mut Self>, generation: u64, loaded: Result<Catalog, String>) {
+    fn finish_load(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        loaded: Result<(Catalog, Result<LibraryPreferences, String>), String>,
+    ) {
         if generation != self.as_ref().rust().load_generation {
             return;
         }
         self.as_mut().set_loading(false);
         match loaded {
-            Ok(catalog) => {
+            Ok((catalog, preferences)) => {
+                let preference_warning = match preferences {
+                    Ok(preferences) => {
+                        self.as_mut()
+                            .set_hide_non_retail(preferences.hide_non_retail);
+                        self.as_mut().set_hide_adult(preferences.hide_adult);
+                        None
+                    }
+                    Err(error) => Some(error),
+                };
                 let indices = (0..catalog.games.len()).collect::<Vec<_>>();
                 self.as_mut().begin_reset_model();
                 {
@@ -316,9 +350,13 @@ impl qobject::LibraryModel {
                 self.as_mut().set_ready(true);
                 let revision = self.as_ref().platform_revision().wrapping_add(1);
                 self.as_mut().set_platform_revision(revision);
-                self.as_mut().set_status_message(qstring(format!(
+                let mut status = format!(
                     "Ready — {game_count} games across {platform_count} platforms — {source_label}"
-                )));
+                );
+                if let Some(warning) = preference_warning {
+                    status.push_str(&format!(" — filter preferences unavailable: {warning}"));
+                }
+                self.as_mut().set_status_message(qstring(status));
                 if self.as_ref().rust().reload_pending {
                     self.as_mut().rust_mut().reload_pending = false;
                     self.as_mut().start_load();
@@ -345,6 +383,8 @@ impl qobject::LibraryModel {
             search: search.to_string(),
             platform: platform.to_string(),
             availability: availability.to_string(),
+            hide_non_retail: *self.as_ref().hide_non_retail(),
+            hide_adult: *self.as_ref().hide_adult(),
         };
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);
@@ -368,6 +408,27 @@ impl qobject::LibraryModel {
             self.as_mut().set_filtering(false);
             self.as_mut()
                 .set_status_message(qstring(format!("Could not start catalog filter: {error}")));
+        }
+    }
+
+    pub fn set_content_filters(mut self: Pin<&mut Self>, hide_non_retail: bool, hide_adult: bool) {
+        if hide_non_retail == *self.as_ref().hide_non_retail()
+            && hide_adult == *self.as_ref().hide_adult()
+        {
+            return;
+        }
+        self.as_mut().set_hide_non_retail(hide_non_retail);
+        self.as_mut().set_hide_adult(hide_adult);
+        let preferences = LibraryPreferences {
+            hide_non_retail,
+            hide_adult,
+        };
+        if let Err(error) = SettingsStore::open_default()
+            .and_then(|store| store.save_library_preferences(preferences))
+        {
+            self.as_mut().set_status_message(qstring(format!(
+                "Filters applied, but the preference could not be saved: {error}"
+            )));
         }
     }
 

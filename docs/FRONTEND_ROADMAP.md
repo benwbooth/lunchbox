@@ -18,6 +18,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.
+- Native filter menu for installed and Minerva-covered/not-installed games plus
+  the legacy non-retail and adult classifications, with persistent content
+  preferences and composability with search/platform selection.
 - Read-only layering of the preserved discovery catalog, Minerva bundle
   coverage, and legacy installed-game state. The Minerva filter contains only
   covered games that are not installed and composes with platform selection.
