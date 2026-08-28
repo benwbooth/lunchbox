@@ -82,7 +82,15 @@ struct PlatformEmulatorDefinition {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EmulatorExecutable {
     Native(PathBuf),
-    Flatpak { command: PathBuf, app_id: String },
+    Flatpak {
+        command: PathBuf,
+        app_id: String,
+    },
+    Wine {
+        command: PathBuf,
+        executable: PathBuf,
+        prefix: PathBuf,
+    },
 }
 
 impl EmulatorExecutable {
@@ -90,6 +98,7 @@ impl EmulatorExecutable {
         match self {
             Self::Native(path) => path.display().to_string(),
             Self::Flatpak { app_id, .. } => format!("Flatpak · {app_id}"),
+            Self::Wine { executable, .. } => format!("Wine · {}", executable.display()),
         }
     }
 }
@@ -265,6 +274,7 @@ pub struct LaunchPlan {
     pub program: PathBuf,
     pub arguments: Vec<OsString>,
     pub current_directory: PathBuf,
+    pub environment: Vec<(OsString, OsString)>,
     pub cleanup_paths: Vec<PathBuf>,
 }
 
@@ -290,9 +300,16 @@ pub fn inspect_launch_availability(
         load_emulator_definitions(catalog_database, host, kind.required_emulator_names())?;
     let flatpak_apps = installed_flatpak_apps(host);
     let path_entries = executable_search_directories();
-    let emulator = definitions
-        .iter()
-        .find_map(|definition| discover_definition(definition, host, &path_entries, &flatpak_apps));
+    let managed_executables = managed_emulator_executables(host, &path_entries);
+    let emulator = definitions.iter().find_map(|definition| {
+        discover_definition(
+            definition,
+            host,
+            &path_entries,
+            &flatpak_apps,
+            &managed_executables,
+        )
+    });
     let required = kind.required_emulator_names().join(" or ");
     let detail = if let Some(choice) = &emulator {
         format!(
@@ -339,12 +356,17 @@ pub fn inspect_rom_launch_availability(
     let definitions = load_platform_emulator_definitions(catalog_database, host, platform)?;
     let flatpak_apps = installed_flatpak_apps(host);
     let path_entries = executable_search_directories();
+    let managed_executables = managed_emulator_executables(host, &path_entries);
     let mut options = Vec::new();
 
     for definition in &definitions {
-        if let Some(choice) =
-            discover_definition(&definition.emulator, host, &path_entries, &flatpak_apps)
-            && standalone_rom_profile_supported(&choice, platform, rom_path)
+        if let Some(choice) = discover_definition(
+            &definition.emulator,
+            host,
+            &path_entries,
+            &flatpak_apps,
+            &managed_executables,
+        ) && standalone_rom_profile_supported(&choice, platform, rom_path)
         {
             options.push(RomEmulatorOption {
                 emulator_id: choice.id,
@@ -505,6 +527,7 @@ pub fn build_rom_launch_plan(
         program,
         arguments,
         current_directory,
+        environment: launch_environment(&option.executable),
         cleanup_paths: Vec::new(),
     })
 }
@@ -514,6 +537,7 @@ pub fn spawn_launch_plan(plan: &LaunchPlan) -> Result<Child> {
     command
         .args(&plan.arguments)
         .current_dir(&plan.current_directory)
+        .envs(plan.environment.iter().cloned())
         .stdin(Stdio::null());
     command.spawn().with_context(|| {
         format!(
@@ -677,9 +701,9 @@ fn load_emulator_definitions(
     for definition in by_name.values_mut() {
         let mut packages = connection.prepare(
             "SELECT manager, package_id FROM emulator_packages
-             WHERE emulator_id=?1 ORDER BY manager, package_id",
+             WHERE emulator_id=?1 AND host_system_slug=?2 ORDER BY manager, package_id",
         )?;
-        let rows = packages.query_map([&definition.id], |row| {
+        let rows = packages.query_map([definition.id.as_str(), host.catalog_slug()], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
         for row in rows {
@@ -762,20 +786,21 @@ fn load_platform_emulator_definitions(
     for definition in definitions.values_mut() {
         definition.cores.sort();
         definition.cores.dedup();
-        load_emulator_packages(&connection, &mut definition.emulator)?;
+        load_emulator_packages(&connection, host, &mut definition.emulator)?;
     }
     Ok(definitions.into_values().collect())
 }
 
 fn load_emulator_packages(
     connection: &rusqlite::Connection,
+    host: HostPlatform,
     definition: &mut EmulatorDefinition,
 ) -> Result<()> {
     let mut packages = connection.prepare(
         "SELECT manager, package_id FROM emulator_packages
-         WHERE emulator_id=?1 ORDER BY manager, package_id",
+         WHERE emulator_id=?1 AND host_system_slug=?2 ORDER BY manager, package_id",
     )?;
-    let rows = packages.query_map([&definition.id], |row| {
+    let rows = packages.query_map([definition.id.as_str(), host.catalog_slug()], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
     for row in rows {
@@ -794,6 +819,7 @@ fn discover_definition(
     host: HostPlatform,
     path_entries: &[PathBuf],
     flatpak_apps: &BTreeSet<String>,
+    managed_executables: &BTreeMap<String, EmulatorExecutable>,
 ) -> Option<EmulatorChoice> {
     let mut native_directories = platform_install_directories(definition, host);
     native_directories.extend_from_slice(path_entries);
@@ -801,6 +827,7 @@ fn discover_definition(
         .into_iter()
         .find_map(|name| find_executable_in_paths(&name, &native_directories))
         .map(EmulatorExecutable::Native)
+        .or_else(|| managed_executables.get(&definition.id).cloned())
         .or_else(|| discover_macos_application(definition, host))
         .or_else(|| {
             let flatpak_command = find_executable_in_paths("flatpak", path_entries)?;
@@ -848,7 +875,7 @@ fn discover_retroarch_core(
             )
             .and_then(|executable| match executable {
                 EmulatorExecutable::Native(path) => Some(path),
-                EmulatorExecutable::Flatpak { .. } => None,
+                EmulatorExecutable::Flatpak { .. } | EmulatorExecutable::Wine { .. } => None,
             })
         });
     if let Some(native) = native {
@@ -978,6 +1005,69 @@ fn executable_search_directories() -> Vec<PathBuf> {
         directories.extend(env::split_paths(&path));
     }
     directories
+}
+
+fn managed_emulator_executables(
+    host: HostPlatform,
+    path_entries: &[PathBuf],
+) -> BTreeMap<String, EmulatorExecutable> {
+    let Some(project) = directories::ProjectDirs::from("com", "Lunchbox", "Lunchbox") else {
+        return BTreeMap::new();
+    };
+    let Ok(store) = crate::settings::SettingsStore::open_default() else {
+        return BTreeMap::new();
+    };
+    let Ok(receipts) = store.managed_emulator_installs() else {
+        return BTreeMap::new();
+    };
+    let wine = (host == HostPlatform::Linux)
+        .then(|| {
+            ["wine64", "wine"]
+                .into_iter()
+                .find_map(|name| find_executable_in_paths(name, path_entries))
+        })
+        .flatten();
+    let mut executables = BTreeMap::new();
+    for receipt in receipts {
+        if receipt.host_system_slug != host.catalog_slug()
+            || !matches!(receipt.manager.as_str(), "appimage" | "github" | "direct")
+            || receipt.emulator_id.is_empty()
+            || !receipt
+                .emulator_id
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        {
+            continue;
+        }
+        let path = PathBuf::from(&receipt.install_path);
+        let owned_root = project
+            .data_local_dir()
+            .join("programs")
+            .join(&receipt.manager)
+            .join(&receipt.emulator_id);
+        if !path.is_file() || !path.starts_with(&owned_root) {
+            continue;
+        }
+        let executable = if receipt.manager == "direct" {
+            let Some(command) = wine.clone() else {
+                continue;
+            };
+            EmulatorExecutable::Wine {
+                command,
+                executable: path,
+                prefix: project
+                    .data_local_dir()
+                    .join("wine-prefixes")
+                    .join(&receipt.emulator_id),
+            }
+        } else if executable_file(&path) {
+            EmulatorExecutable::Native(path)
+        } else {
+            continue;
+        };
+        executables.insert(receipt.emulator_id, executable);
+    }
+    executables
 }
 
 fn find_executable_in_paths(name: &str, paths: &[PathBuf]) -> Option<PathBuf> {
@@ -1204,6 +1294,7 @@ fn build_plan_for_choice(
         program,
         arguments: prefix_arguments,
         current_directory: prepared.install_root.clone(),
+        environment: launch_environment(&emulator.executable),
         cleanup_paths,
     })
 }
@@ -1228,6 +1319,20 @@ fn command_prefix(
                 ],
             ))
         }
+        EmulatorExecutable::Wine {
+            command,
+            executable,
+            ..
+        } => Ok((command.clone(), vec![executable.as_os_str().to_owned()])),
+    }
+}
+
+fn launch_environment(executable: &EmulatorExecutable) -> Vec<(OsString, OsString)> {
+    match executable {
+        EmulatorExecutable::Wine { prefix, .. } => {
+            vec![(OsString::from("WINEPREFIX"), prefix.as_os_str().to_owned())]
+        }
+        EmulatorExecutable::Native(_) | EmulatorExecutable::Flatpak { .. } => Vec::new(),
     }
 }
 
@@ -1239,7 +1344,17 @@ fn path_argument_for_executable(path: &Path, executable: &EmulatorExecutable) ->
     match executable {
         EmulatorExecutable::Flatpak { .. } => map_path_for_flatpak(path).into_os_string(),
         EmulatorExecutable::Native(_) => path.as_os_str().to_owned(),
+        EmulatorExecutable::Wine { .. } => map_path_for_wine(path),
     }
+}
+
+fn map_path_for_wine(path: &Path) -> OsString {
+    if !path.is_absolute() {
+        return path.as_os_str().to_owned();
+    }
+    let mut windows = String::from("Z:");
+    windows.push_str(&path.to_string_lossy().replace('/', "\\"));
+    OsString::from(windows)
 }
 
 fn emulator_catalog_platform_key(platform: &str) -> String {
@@ -1337,6 +1452,7 @@ fn mame_runtime_roms_directory(executable: &EmulatorExecutable) -> Option<PathBu
                 Some(base_dirs.home_dir().join(".mame/roms"))
             }
         }
+        EmulatorExecutable::Wine { .. } => None,
     }
 }
 
@@ -2122,12 +2238,16 @@ del *.rom
             .execute_batch(
                 "CREATE TABLE emulators(id TEXT PRIMARY KEY, name TEXT);
                  CREATE TABLE emulator_host_systems(emulator_id TEXT, host_system_slug TEXT);
-                 CREATE TABLE emulator_packages(emulator_id TEXT, manager TEXT, package_id TEXT);
+                 CREATE TABLE emulator_packages(
+                   emulator_id TEXT, host_system_slug TEXT, manager TEXT, package_id TEXT
+                 );
                  INSERT INTO emulators VALUES('dosbox-x-id','DOSBox-X');
                  INSERT INTO emulators VALUES('wrong-host','DOSBox Staging');
                  INSERT INTO emulator_host_systems VALUES('dosbox-x-id','linux');
                  INSERT INTO emulator_host_systems VALUES('wrong-host','windows');
-                 INSERT INTO emulator_packages VALUES('dosbox-x-id','flatpak','com.dosbox_x.DOSBox-X');",
+                 INSERT INTO emulator_packages VALUES(
+                   'dosbox-x-id','linux','flatpak','com.dosbox_x.DOSBox-X'
+                 );",
             )
             .unwrap();
         let definitions = load_emulator_definitions(
@@ -2153,7 +2273,9 @@ del *.rom
             .execute_batch(
                 "CREATE TABLE emulators(id TEXT PRIMARY KEY, name TEXT);
                  CREATE TABLE emulator_host_systems(emulator_id TEXT, host_system_slug TEXT);
-                 CREATE TABLE emulator_packages(emulator_id TEXT, manager TEXT, package_id TEXT);
+                 CREATE TABLE emulator_packages(
+                   emulator_id TEXT, host_system_slug TEXT, manager TEXT, package_id TEXT
+                 );
                  CREATE TABLE platforms(id TEXT PRIMARY KEY, normalized_name TEXT);
                  CREATE TABLE platform_aliases(platform_id TEXT, normalized_alias TEXT);
                  CREATE TABLE emulator_platforms(
@@ -2161,7 +2283,9 @@ del *.rom
                  );
                  INSERT INTO emulators VALUES('mesen-id','Mesen');
                  INSERT INTO emulator_host_systems VALUES('mesen-id','linux');
-                 INSERT INTO emulator_packages VALUES('mesen-id','flatpak','dev.mesen.Mesen');
+                 INSERT INTO emulator_packages VALUES(
+                   'mesen-id','linux','flatpak','dev.mesen.Mesen'
+                 );
                  INSERT INTO platforms VALUES('nes-id','nintendo entertainment system');
                  INSERT INTO platform_aliases VALUES('nes-id','nes');
                  INSERT INTO emulator_platforms VALUES('mesen-id','nes-id','mesen',1);",
@@ -2401,5 +2525,30 @@ del *.rom
         assert_eq!(plan.arguments[2], "com.dosbox_x.DOSBox-X");
         assert_eq!(plan.arguments[3], "-conf");
         assert_eq!(plan.arguments[4], prepared.launch_config_path.as_os_str());
+    }
+
+    #[test]
+    fn wine_launch_maps_only_absolute_paths_and_sets_an_isolated_prefix() {
+        let executable = EmulatorExecutable::Wine {
+            command: PathBuf::from("/usr/bin/wine"),
+            executable: PathBuf::from("/data/Altirra64.exe"),
+            prefix: PathBuf::from("/data/wine-prefixes/altirra"),
+        };
+
+        assert_eq!(
+            path_argument_for_executable(Path::new("/roms/Atari 800/game.atr"), &executable),
+            OsString::from(r"Z:\roms\Atari 800\game.atr")
+        );
+        assert_eq!(
+            path_argument_for_executable(Path::new("relative/game.atr"), &executable),
+            OsString::from("relative/game.atr")
+        );
+        assert_eq!(
+            launch_environment(&executable),
+            vec![(
+                OsString::from("WINEPREFIX"),
+                OsString::from("/data/wine-prefixes/altirra")
+            )]
+        );
     }
 }

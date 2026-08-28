@@ -69,6 +69,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   platform filters.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
+- Native Emulator Manager with host-scoped exact package identities, off-thread
+  detection and lifecycle work, Linux Flatpak/isolated Nix/AppImage/GitHub/Wine
+  transports, Windows winget, macOS Homebrew, ownership-safe uninstall, and
+  exact host-specific Libretro core management. The Linux discovery/UI probe is
+  exercised; package mutations and Windows/macOS behavior retain release-host
+  gates.
 - Measurable shell-ready and catalog-ready probes.
 
 ## Collection management
@@ -130,8 +136,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   Linux Flatpak MAME launch is runtime-verified with the ROM-free Pong driver.
   Known archive-oriented FinalBurn Neo, Flycast, and Supermodel executables
   retain the legacy bounded direct-file contract.
-- Managed downloads, updates, version pinning, core management, BIOS checks,
-  and command preview.
+- Add available-version-only update presentation, explicit version pinning,
+  BIOS checks, lifecycle cancellation/recovery, and command preview to the
+  native manager.
 - Dedicated Daphne runtime, TeknoParrot, and non-eXo PC launch profiles.
 - Controller detection and mapping, pre-launch validation, process supervision,
   pause/resume, clean shutdown, and play-stat recording.

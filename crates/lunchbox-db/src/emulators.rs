@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::ids::{normalize_key, sha256_bytes, stable_id};
 
 const PROVIDER_SLUG: &str = "lunchbox-emulator-catalog";
+pub const INSTALL_SOURCES_JSON: &str =
+    include_str!("../../../sources/emulator-install-sources.json");
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 struct EmulatorRow {
@@ -30,6 +32,27 @@ struct EmulatorRow {
     save_extensions: String,
     #[serde(default)]
     notes: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallSourceCatalog {
+    schema_version: u32,
+    reviewed_at: String,
+    sources: Vec<InstallSource>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallSource {
+    emulator: String,
+    host: String,
+    manager: String,
+    package_id: String,
+    #[serde(default = "empty_json_object")]
+    metadata: serde_json::Value,
+}
+
+fn empty_json_object() -> serde_json::Value {
+    serde_json::json!({})
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -93,6 +116,8 @@ pub fn import(
             )
         })?;
     }
+
+    import_install_sources(&transaction)?;
 
     if source_rows == 0 {
         bail!("emulator source is empty: {}", source.display());
@@ -236,27 +261,33 @@ fn import_row(
         )?;
     }
 
-    insert_package(connection, &canonical_emulator.0, "winget", &row.winget_id)?;
     insert_package(
         connection,
         &canonical_emulator.0,
+        "windows",
+        "winget",
+        &row.winget_id,
+        &serde_json::json!({}),
+    )?;
+    insert_package(
+        connection,
+        &canonical_emulator.0,
+        "macos",
         "homebrew",
         &row.homebrew_formula,
+        &serde_json::json!({}),
     )?;
-    if let Some(package) = optional(&row.flatpak_id) {
-        if let Some(snap) = package.strip_prefix("snap:") {
-            insert_package(connection, &canonical_emulator.0, "snap", snap.trim())?;
-            record_warning(
-                connection,
-                "misclassified_package_manager",
-                Some("emulator"),
-                Some(&canonical_emulator.0),
-                serde_json::json!({"source_column": "flatpak_id", "value": package}),
-                timestamp,
-            )?;
-        } else {
-            insert_package(connection, &canonical_emulator.0, "flatpak", package)?;
-        }
+    if let Some(package) = optional(&row.flatpak_id)
+        && !package.starts_with("snap:")
+    {
+        insert_package(
+            connection,
+            &canonical_emulator.0,
+            "linux",
+            "flatpak",
+            package,
+            &serde_json::json!({}),
+        )?;
     }
 
     connection.execute(
@@ -392,13 +423,93 @@ fn insert_source_link(
 fn insert_package(
     connection: &Connection,
     emulator_id: &str,
+    host: &str,
     manager: &str,
     package: &str,
+    metadata: &serde_json::Value,
 ) -> Result<()> {
     if let Some(package) = optional(package) {
         connection.execute(
-            "INSERT OR IGNORE INTO emulator_packages (emulator_id, manager, package_id)\n             VALUES (?1, ?2, ?3)",
-            params![emulator_id, manager, package],
+            "INSERT INTO emulator_packages
+                 (emulator_id, host_system_slug, manager, package_id, metadata_json)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(emulator_id, host_system_slug, manager, package_id) DO UPDATE SET
+               metadata_json=excluded.metadata_json",
+            params![emulator_id, host, manager, package, metadata.to_string()],
+        )?;
+    }
+    Ok(())
+}
+
+fn import_install_sources(connection: &Connection) -> Result<()> {
+    let catalog: InstallSourceCatalog = serde_json::from_str(INSTALL_SOURCES_JSON)
+        .context("parsing sources/emulator-install-sources.json")?;
+    if catalog.schema_version != 1 {
+        bail!(
+            "unsupported emulator install source schema version {}",
+            catalog.schema_version
+        );
+    }
+    if catalog.reviewed_at.trim().is_empty() {
+        bail!("emulator install source review date is required");
+    }
+
+    for source in catalog.sources {
+        let emulator_key = normalize_key(&source.emulator);
+        let emulator_id = connection
+            .query_row(
+                "SELECT id FROM emulators WHERE normalized_name=?1",
+                [&emulator_key],
+                |row| row.get::<_, String>(0),
+            )
+            .with_context(|| {
+                format!(
+                    "curated install source references unknown emulator {:?}",
+                    source.emulator
+                )
+            })?;
+        let host = normalize_host(&source.host);
+        if !matches!(host.slug.as_str(), "linux" | "windows" | "macos") {
+            bail!(
+                "curated install source for {} uses unsupported host {}",
+                source.emulator,
+                source.host
+            );
+        }
+        if !matches!(
+            source.manager.as_str(),
+            "flatpak" | "appimage" | "nix" | "github" | "direct" | "winget" | "homebrew"
+        ) {
+            bail!(
+                "curated install source for {} uses unsupported manager {}",
+                source.emulator,
+                source.manager
+            );
+        }
+        if source.package_id.trim().is_empty() || !source.metadata.is_object() {
+            bail!(
+                "curated install source for {} has an invalid package id or metadata object",
+                source.emulator
+            );
+        }
+
+        connection.execute(
+            "INSERT INTO host_systems (slug, display_name, family) VALUES (?1, ?2, ?3)
+             ON CONFLICT(slug) DO NOTHING",
+            params![host.slug, host.display_name, host.family],
+        )?;
+        connection.execute(
+            "INSERT OR IGNORE INTO emulator_host_systems (emulator_id, host_system_slug)
+             VALUES (?1, ?2)",
+            params![emulator_id, host.slug],
+        )?;
+        insert_package(
+            connection,
+            &emulator_id,
+            &host.slug,
+            &source.manager,
+            &source.package_id,
+            &source.metadata,
         )?;
     }
     Ok(())

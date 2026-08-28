@@ -147,6 +147,20 @@ The initial implementation enforces this shape:
   arcade machines fail closed instead of receiving a generic archive path;
   only the legacy-known archive-oriented FinalBurn Neo, Flycast, and Supermodel
   executables retain the direct-file contract.
+- Emulator lifecycle data is part of the canonical database, with package
+  records keyed by stable emulator ID, host, manager, and exact package ID.
+  A maintained reviewed-source overlay supplements the legacy catalog for
+  isolated Nixpkgs installs, GitHub/AppImage releases, and bounded official
+  downloads. The manager groups transport alternatives deterministically and
+  performs detection and mutation on named workers. It invokes Flatpak, Nix,
+  winget, and Homebrew with direct argument vectors; Snap and command shells
+  are not supported. Downloaded programs live below the operating system's
+  application-data directory, have version manifests, and can be removed only
+  when a matching ownership receipt exists. Altirra runs through Wine with a
+  per-emulator prefix and absolute content paths mapped explicitly to Wine's
+  `Z:` drive. RetroArch cores use exact catalog slugs and host-specific
+  Libretro buildbot filenames, extract only the expected archive member, and
+  replace files atomically. The same receipts are consumed by launch discovery.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -296,7 +310,7 @@ now indexed and rendered natively. On-demand LibRetro retrieval and durable
 negative caching, generic local-ROM launch, multi-file selection, and exact
 per-game/platform emulator defaults are native.
 Playlists and smart collections, alternate media providers, media rotation and
-redownload, managed emulator installation/update and specialized arcade launch,
-the remaining settings,
+redownload, available-version-only emulator update reporting, specialized
+machine launch profiles, the remaining settings,
 archive-member and manual identity workflows, and the controller-first
 full-screen interface follow on the same shared models.

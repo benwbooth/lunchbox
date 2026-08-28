@@ -52,6 +52,7 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
         "local_files",
         "emulators",
         "emulator_platforms",
+        "emulator_packages",
         "data_quality_issues",
     ] {
         counts.insert(table.to_owned(), table_count(connection, table)?);
@@ -206,6 +207,29 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
         [],
         |record| record.get(0),
     )?;
+    let invalid_emulator_packages: i64 = connection.query_row(
+        "SELECT count(*)
+         FROM emulator_packages p
+         LEFT JOIN emulator_host_systems h
+           ON h.emulator_id=p.emulator_id AND h.host_system_slug=p.host_system_slug
+         WHERE h.emulator_id IS NULL
+            OR trim(p.package_id)=''
+            OR instr(p.package_id, char(10))>0 OR instr(p.package_id, char(13))>0
+            OR instr(p.package_id, char(9))>0
+            OR (p.manager='winget' AND p.host_system_slug<>'windows')
+            OR (p.manager='homebrew' AND p.host_system_slug<>'macos')
+            OR (p.manager IN ('flatpak','appimage','nix','github','direct')
+                AND p.host_system_slug<>'linux')
+            OR (p.manager='flatpak' AND (instr(p.package_id,'.')=0 OR p.package_id LIKE '-%'))
+            OR (p.manager='appimage' AND (
+                instr(p.package_id,'/')=0
+                OR coalesce(json_type(p.metadata_json,'$.asset_terms'),'')<>'array'
+                OR coalesce(json_type(p.metadata_json,'$.update_strategy'),'')<>'text'
+            ))
+            OR (p.manager='direct' AND p.package_id NOT LIKE 'https://%')",
+        [],
+        |record| record.get(0),
+    )?;
 
     let checks = vec![
         error_check("sqlite_integrity", integrity == "ok", integrity),
@@ -273,6 +297,11 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
             "acquisition_offer_source_provenance",
             offers_without_native_source == 0,
             offers_without_native_source.to_string(),
+        ),
+        error_check(
+            "host_scoped_emulator_install_sources",
+            invalid_emulator_packages == 0,
+            invalid_emulator_packages.to_string(),
         ),
         error_check(
             "open_error_quality_issues",

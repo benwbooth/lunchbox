@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-08-27",
+  "sources": [
+    { "emulator": "Ares", "host": "linux", "manager": "nix", "package_id": "ares" },
+    { "emulator": "ares", "host": "linux", "manager": "nix", "package_id": "ares" },
+    { "emulator": "Atari++", "host": "linux", "manager": "nix", "package_id": "ataripp" },
+    { "emulator": "Atari800", "host": "linux", "manager": "nix", "package_id": "atari800" },
+    { "emulator": "DeSmuME", "host": "linux", "manager": "nix", "package_id": "desmume" },
+    { "emulator": "Dolphin", "host": "linux", "manager": "nix", "package_id": "dolphin-emu" },
+    { "emulator": "DOSBox Staging", "host": "linux", "manager": "nix", "package_id": "dosbox-staging" },
+    { "emulator": "DOSBox-X", "host": "linux", "manager": "nix", "package_id": "dosbox-x" },
+    { "emulator": "DuckStation", "host": "linux", "manager": "nix", "package_id": "duckstation" },
+    { "emulator": "Flycast", "host": "linux", "manager": "nix", "package_id": "flycast" },
+    { "emulator": "FS-UAE", "host": "linux", "manager": "nix", "package_id": "fsuae" },
+    { "emulator": "Hatari", "host": "linux", "manager": "nix", "package_id": "hatari" },
+    { "emulator": "MAME", "host": "linux", "manager": "nix", "package_id": "mame" },
+    { "emulator": "Mednafen", "host": "linux", "manager": "nix", "package_id": "mednafen" },
+    { "emulator": "Mesen", "host": "linux", "manager": "nix", "package_id": "mesen" },
+    { "emulator": "mGBA", "host": "linux", "manager": "nix", "package_id": "mgba" },
+    { "emulator": "melonDS", "host": "linux", "manager": "nix", "package_id": "melonds" },
+    { "emulator": "openMSX", "host": "linux", "manager": "nix", "package_id": "openmsx" },
+    { "emulator": "PCSX2", "host": "linux", "manager": "nix", "package_id": "pcsx2" },
+    { "emulator": "PPSSPP", "host": "linux", "manager": "nix", "package_id": "ppsspp" },
+    { "emulator": "ScummVM", "host": "linux", "manager": "nix", "package_id": "scummvm" },
+    { "emulator": "Snes9x", "host": "linux", "manager": "nix", "package_id": "snes9x" },
+    { "emulator": "Stella", "host": "linux", "manager": "nix", "package_id": "stella" },
+    { "emulator": "VICE", "host": "linux", "manager": "nix", "package_id": "vice" },
+    { "emulator": "VICE (xpet)", "host": "linux", "manager": "nix", "package_id": "vice" },
+    { "emulator": "VICE (xvic)", "host": "linux", "manager": "nix", "package_id": "vice" },
+    { "emulator": "xemu", "host": "linux", "manager": "nix", "package_id": "xemu" },
+
+    {
+      "emulator": "Mesen",
+      "host": "linux",
+      "manager": "github",
+      "package_id": "SourMesen/Mesen2",
+      "metadata": {
+        "archive_format": "zip",
+        "asset_terms": ["mesen", "linux", "x64"],
+        "executable_candidates": ["Mesen"],
+        "update_strategy": "replace_from_github_release"
+      }
+    },
+    {
+      "emulator": "Hypseus Singe",
+      "host": "linux",
+      "manager": "appimage",
+      "package_id": "DirtBagXon/hypseus-singe",
+      "metadata": {
+        "archive_format": "tar.gz",
+        "asset_terms": ["hypseus-singe", "appimage"],
+        "archive_payload": "appimage",
+        "update_strategy": "appimage_then_github_release"
+      }
+    },
+    {
+      "emulator": "Altirra",
+      "host": "linux",
+      "manager": "direct",
+      "package_id": "https://www.virtualdub.org/altirra.html",
+      "metadata": {
+        "download_link_pattern": "downloads/Altirra-*.zip",
+        "executable_candidates": ["Altirra64.exe", "Altirra.exe"],
+        "runtime": "wine",
+        "update_strategy": "replace_from_official_page"
+      }
+    }
+  ]
+}

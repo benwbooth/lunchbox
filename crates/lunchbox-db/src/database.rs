@@ -14,6 +14,7 @@ use crate::source;
 
 const SCHEMA: &str = include_str!("../../../schema/001_initial.sql");
 const MIGRATION_3: &str = include_str!("../../../schema/003_local_collection.sql");
+const MIGRATION_4: &str = include_str!("../../../schema/004_emulator_install_sources.sql");
 const PROVIDER_REGISTRY_JSON: &str = include_str!("../../../sources/metadata-providers.json");
 
 #[derive(Debug, Deserialize)]
@@ -106,10 +107,18 @@ fn migrate_connection(connection: &Connection) -> Result<()> {
         )
         .context("reading Lunchbox schema version")?;
     match current_version {
-        2 => connection
-            .execute_batch(MIGRATION_3)
-            .context("applying schema migration 3")?,
-        3 => {}
+        2 => {
+            connection
+                .execute_batch(MIGRATION_3)
+                .context("applying schema migration 3")?;
+            connection
+                .execute_batch(MIGRATION_4)
+                .context("applying schema migration 4")?;
+        }
+        3 => connection
+            .execute_batch(MIGRATION_4)
+            .context("applying schema migration 4")?,
+        4 => {}
         0..=1 => bail!(
             "database schema version {current_version} is too old for an in-place migration; rebuild it from declared inputs"
         ),
@@ -230,7 +239,11 @@ pub fn build(
             "metadata_provider_registry_reviewed_at",
             load_provider_registry()?.reviewed_at,
         ),
-        ("schema_version", "3".to_owned()),
+        (
+            "emulator_install_sources_sha256",
+            sha256_bytes(emulators::INSTALL_SOURCES_JSON.as_bytes()),
+        ),
+        ("schema_version", "4".to_owned()),
     ]);
     for (key, value) in metadata {
         connection.execute(
@@ -341,14 +354,23 @@ mod tests {
     }
 
     #[test]
-    fn schema_two_migrates_to_local_collection_schema_once() -> Result<()> {
+    fn schema_two_migrates_through_host_scoped_install_sources_once() -> Result<()> {
         let connection = Connection::open_in_memory()?;
         configure(&connection)?;
         initialize_connection(&connection, "1970-01-01T00:00:00Z")?;
         connection.execute_batch(
             "DROP TABLE local_files;
              DROP TABLE collection_roots;
-             DELETE FROM schema_migrations WHERE version=3;",
+             DROP TABLE emulator_packages;
+             CREATE TABLE emulator_packages (
+                 emulator_id TEXT NOT NULL REFERENCES emulators(id) ON DELETE CASCADE,
+                 manager TEXT NOT NULL CHECK (
+                     manager IN ('winget', 'homebrew', 'flatpak', 'snap', 'nix', 'other')
+                 ),
+                 package_id TEXT NOT NULL,
+                 PRIMARY KEY (emulator_id, manager, package_id)
+             ) STRICT, WITHOUT ROWID;
+             DELETE FROM schema_migrations WHERE version IN (3, 4);",
         )?;
 
         migrate_connection(&connection)?;
@@ -364,8 +386,25 @@ mod tests {
         );
         assert_eq!(
             connection.query_row(
+                "SELECT count(*) FROM schema_migrations WHERE version=4",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            1
+        );
+        assert_eq!(
+            connection.query_row(
                 "SELECT count(*) FROM sqlite_schema
                  WHERE type='table' AND name IN ('collection_roots','local_files')",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            2
+        );
+        assert_eq!(
+            connection.query_row(
+                "SELECT count(*) FROM pragma_table_info('emulator_packages')
+                 WHERE name IN ('host_system_slug','metadata_json')",
                 [],
                 |row| row.get::<_, i64>(0),
             )?,

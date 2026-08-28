@@ -58,6 +58,8 @@ ApplicationWindow {
     property bool downloadHistoryTriggered: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
+    property int pendingEmulatorUninstallIndex: -1
+    property string pendingEmulatorUninstallName: ""
     property int downloadPlanProbeBundleIndex: 0
     property bool launchProbeTriggered: false
     property bool launchProbeObservedRunning: false
@@ -98,6 +100,8 @@ ApplicationWindow {
     readonly property bool romLaunchUiProbe: Qt.application.arguments.indexOf("--rom-launch-ui-probe") >= 0
     readonly property bool arcadeLaunchProbe: Qt.application.arguments.indexOf("--arcade-launch-probe") >= 0
     readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
+    readonly property bool emulatorManagerProbe: Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
+    readonly property bool emulatorManagerUiProbe: Qt.application.arguments.indexOf("--emulator-manager-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
@@ -124,6 +128,11 @@ ApplicationWindow {
                 && !appSettings.busy
                 && appSettings.message.indexOf("Settings saved.") === 0)
             Qt.quit()
+    }
+
+    function openEmulatorManager() {
+        emulatorManagerDialog.open()
+        emulatorManager.initialize()
     }
 
     function selectLibrary(availabilityKey) {
@@ -280,6 +289,18 @@ ApplicationWindow {
 
     SettingsModel {
         id: appSettings
+    }
+
+    EmulatorManagerModel {
+        id: emulatorManager
+    }
+
+    Connections {
+        target: emulatorManager
+        function onInitializedChanged() {
+            if (root.emulatorManagerProbe && emulatorManager.initialized)
+                Qt.quit()
+        }
     }
 
     Connections {
@@ -589,6 +610,8 @@ ApplicationWindow {
                 root.openImportDialog()
             else if (root.settingsUiProbe)
                 settingsDialog.open()
+            else if (root.emulatorManagerProbe)
+                emulatorManager.initialize()
             else if (root.releaseCandidateUiProbe)
                 root.openGame("52f67472-bddb-4e5b-951b-43364f996573", 1726,
                               "Super Mario Land", "Nintendo Game Boy", false, true)
@@ -612,6 +635,13 @@ ApplicationWindow {
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)
         }
+    }
+
+    Timer {
+        interval: 400
+        running: root.emulatorManagerUiProbe
+        repeat: false
+        onTriggered: root.openEmulatorManager()
     }
 
     Timer {
@@ -4129,6 +4159,47 @@ ApplicationWindow {
                     }
                 }
 
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                Text {
+                    text: "EMULATORS & CORES"
+                    color: root.accent
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.2
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Text {
+                            text: emulatorManager.initialized
+                                  ? emulatorManager.installed_count + " installed · "
+                                    + emulatorManager.available_count + " available"
+                                  : "Install and update emulators for this computer"
+                            color: root.ink
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Uses Flatpak, an isolated Nix profile, AppImage, GitHub releases, or direct downloads on Linux; winget on Windows; and Homebrew on macOS. Lunchbox only removes installations it created."
+                            color: root.muted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    HeaderButton {
+                        text: "Manage emulators"
+                        active: true
+                        onClicked: {
+                            settingsDialog.close()
+                            root.openEmulatorManager()
+                        }
+                    }
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: settingsMessage.implicitHeight + 22
@@ -4178,6 +4249,373 @@ ApplicationWindow {
                     horizontalAlignment: Text.AlignRight
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: emulatorManagerDialog
+        parent: Overlay.overlay
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(1040, root.width - 64)
+        height: Math.min(800, root.height - 64)
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            width: parent.width
+            height: 72
+            color: root.panelRaised
+            radius: 14
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 14
+                spacing: 14
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Text {
+                        text: "EMULATOR MANAGER"
+                        color: root.ink
+                        font.pixelSize: 17
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: "Native runtimes for this computer · no global Nix profile changes"
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                }
+                HeaderButton {
+                    text: emulatorManager.busy ? "Refreshing…" : "↻  Refresh"
+                    enabled: !emulatorManager.busy
+                    onClicked: emulatorManager.refresh()
+                }
+                RoundButton {
+                    text: "×"
+                    flat: true
+                    font.pixelSize: 20
+                    onClicked: emulatorManagerDialog.close()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 66
+                color: "#101620"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    spacing: 11
+                    TextField {
+                        id: emulatorSearch
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 38
+                        placeholderText: "Search emulators or package IDs"
+                        selectByMouse: true
+                        onTextEdited: emulatorManager.apply_filter(text,
+                                                                    emulatorStatusFilter.currentValue)
+                    }
+                    ComboBox {
+                        id: emulatorStatusFilter
+                        Layout.preferredWidth: 176
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "All runtimes", value: "all" },
+                            { label: "Installed", value: "installed" },
+                            { label: "Available", value: "available" },
+                            { label: "Managed by Lunchbox", value: "managed" }
+                        ]
+                        onActivated: emulatorManager.apply_filter(emulatorSearch.text,
+                                                                  currentValue)
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: installedSummary.implicitWidth + 22
+                        Layout.preferredHeight: 30
+                        radius: 15
+                        color: "#172c28"
+                        border.color: "#28584f"
+                        Text {
+                            id: installedSummary
+                            anchors.centerIn: parent
+                            text: emulatorManager.installed_count + " installed"
+                            color: root.accentCool
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                        }
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: availableSummary.implicitWidth + 22
+                        Layout.preferredHeight: 30
+                        radius: 15
+                        color: "#30291f"
+                        border.color: "#5b4930"
+                        Text {
+                            id: availableSummary
+                            anchors.centerIn: parent
+                            text: emulatorManager.available_count + " available"
+                            color: root.accent
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                        }
+                    }
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                ListView {
+                    id: emulatorList
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    anchors.topMargin: 10
+                    anchors.bottomMargin: 10
+                    clip: true
+                    spacing: 7
+                    reuseItems: true
+                    model: emulatorManager.row_count
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                    delegate: Rectangle {
+                        id: emulatorRow
+                        required property int index
+                        readonly property int modelRevision: emulatorManager.revision
+                        readonly property string emulatorName: emulatorManager.name_at(index)
+                        readonly property string emulatorStatus: emulatorManager.status_at(index)
+                        width: ListView.view.width
+                        height: 78
+                        radius: 10
+                        color: emulatorHover.hovered ? "#1b2330" : "#151c27"
+                        border.color: emulatorStatus === "MANAGED"
+                                      ? "#28584f" : root.line
+
+                        HoverHandler { id: emulatorHover }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 17
+                            anchors.rightMargin: 14
+                            spacing: 14
+                            Rectangle {
+                                Layout.preferredWidth: 42
+                                Layout.preferredHeight: 42
+                                radius: 11
+                                color: emulatorRow.emulatorStatus === "MANAGED"
+                                       || emulatorRow.emulatorStatus === "INSTALLED"
+                                       ? "#1b3430" : "#292a30"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: emulatorRow.emulatorName.length > 0
+                                          ? emulatorRow.emulatorName.charAt(0).toUpperCase() : "?"
+                                    color: emulatorRow.emulatorStatus === "MANAGED"
+                                           || emulatorRow.emulatorStatus === "INSTALLED"
+                                           ? root.accentCool : root.accent
+                                    font.pixelSize: 18
+                                    font.weight: Font.Black
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 9
+                                    Text {
+                                        text: emulatorRow.emulatorName
+                                        color: root.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Rectangle {
+                                        Layout.preferredWidth: sourceText.implicitWidth + 14
+                                        Layout.preferredHeight: 20
+                                        radius: 6
+                                        color: "#202938"
+                                        border.color: root.line
+                                        Text {
+                                            id: sourceText
+                                            anchors.centerIn: parent
+                                            text: emulatorManager.source_at(emulatorRow.index)
+                                            color: "#b7c2d2"
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                        }
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: emulatorManager.detail_at(emulatorRow.index)
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            Text {
+                                Layout.preferredWidth: 142
+                                text: emulatorRow.emulatorStatus
+                                color: emulatorRow.emulatorStatus === "MANAGED"
+                                       ? root.accentCool
+                                       : emulatorRow.emulatorStatus === "INSTALLED"
+                                         ? "#b7c2d2" : root.accent
+                                horizontalAlignment: Text.AlignRight
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.6
+                            }
+                            BusyIndicator {
+                                visible: emulatorManager.busy
+                                         && emulatorManager.busy_index === emulatorRow.index
+                                running: visible
+                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 26
+                            }
+                            HeaderButton {
+                                visible: !emulatorManager.busy
+                                         && emulatorManager.can_install_at(emulatorRow.index)
+                                text: "Install"
+                                active: true
+                                onClicked: emulatorManager.install_at(emulatorRow.index)
+                            }
+                            HeaderButton {
+                                visible: !emulatorManager.busy
+                                         && emulatorManager.can_update_at(emulatorRow.index)
+                                text: "Update"
+                                active: true
+                                onClicked: emulatorManager.update_at(emulatorRow.index)
+                            }
+                            Button {
+                                visible: !emulatorManager.busy
+                                         && emulatorManager.can_uninstall_at(emulatorRow.index)
+                                text: "Remove"
+                                onClicked: {
+                                    root.pendingEmulatorUninstallIndex = emulatorRow.index
+                                    root.pendingEmulatorUninstallName = emulatorRow.emulatorName
+                                    emulatorUninstallDialog.open()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 10
+                    visible: emulatorManager.busy && !emulatorManager.initialized
+                    BusyIndicator {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        running: parent.visible
+                    }
+                    Text {
+                        text: "Detecting installed emulators…"
+                        color: root.muted
+                        font.pixelSize: 12
+                    }
+                }
+
+                Column {
+                    anchors.centerIn: parent
+                    width: Math.min(430, parent.width - 80)
+                    spacing: 7
+                    visible: emulatorManager.initialized && !emulatorManager.busy
+                             && emulatorManager.row_count === 0
+                    Text {
+                        width: parent.width
+                        text: "No matching emulators"
+                        color: root.ink
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Try another search or status filter."
+                        color: root.muted
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 54
+                color: "#101620"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    spacing: 10
+                    BusyIndicator {
+                        visible: emulatorManager.busy
+                        running: visible
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: emulatorManager.message
+                        color: emulatorManager.message.indexOf("failed") >= 0
+                               || emulatorManager.message.indexOf("Could not") >= 0
+                               ? "#ff8c82" : root.muted
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: "External installs are never removed"
+                        color: "#657186"
+                        font.pixelSize: 9
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: emulatorUninstallDialog
+        parent: Overlay.overlay
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: 430
+        title: "Remove " + root.pendingEmulatorUninstallName + "?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        onAccepted: {
+            if (root.pendingEmulatorUninstallIndex >= 0)
+                emulatorManager.uninstall_at(root.pendingEmulatorUninstallIndex)
+            root.pendingEmulatorUninstallIndex = -1
+            root.pendingEmulatorUninstallName = ""
+        }
+        onRejected: {
+            root.pendingEmulatorUninstallIndex = -1
+            root.pendingEmulatorUninstallName = ""
+        }
+        contentItem: Text {
+            text: "Lunchbox will remove only the installation it created. Your games, saves, firmware, and externally managed emulator installations are not touched."
+            color: root.ink
+            wrapMode: Text.WordWrap
+            font.pixelSize: 12
         }
     }
 

@@ -113,6 +113,21 @@ Pong driver. A dedicated Daphne runtime profile and TeknoParrot remain explicit
 follow-on work; Daphne-source media already normalizes to the validated
 Hypseus-compatible layout.
 
+The native Emulator Manager restores the legacy host-aware lifecycle instead
+of delegating it to Electron. It discovers installations off the GUI thread,
+chooses one deterministic source per emulator, and installs, updates, or
+removes only exact package identities. Linux supports user Flatpaks, a
+Lunchbox-only Nix profile, self-updating AppImages with reviewed GitHub-release
+fallbacks, GitHub archives, and reviewed official downloads such as Altirra
+under an isolated Wine prefix. Windows uses winget and macOS uses Homebrew;
+Snap is deliberately unsupported. Lunchbox records ownership receipts and
+never removes an externally managed runtime. Exact RetroArch core slugs from
+the canonical emulator/platform catalog are installed from the host-specific
+Libretro buildbot ZIP into the appropriate native or Flatpak core directory,
+with atomic replacement and ownership-safe removal. Managed native,
+AppImage/GitHub, Nix-profile, Flatpak, and Wine installations feed the same
+launch discovery used by local ROMs and prepared PC games.
+
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder
 picker; qBittorrent/container paths are deliberately retained as verbatim

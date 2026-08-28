@@ -9,7 +9,8 @@ CREATE TABLE schema_migrations (
 INSERT INTO schema_migrations (version, name, applied_at) VALUES
     (1, 'canonical identity and emulator catalog', '1970-01-01T00:00:00Z'),
     (2, 'pinned Libretro evidence pack', '1970-01-01T00:00:00Z'),
-    (3, 'local collection inventory', '1970-01-01T00:00:00Z');
+    (3, 'local collection inventory', '1970-01-01T00:00:00Z'),
+    (4, 'host scoped emulator install sources', '1970-01-01T00:00:00Z');
 
 CREATE TABLE build_metadata (
     key TEXT PRIMARY KEY,
@@ -342,9 +343,13 @@ CREATE TABLE emulator_host_systems (
 
 CREATE TABLE emulator_packages (
     emulator_id TEXT NOT NULL REFERENCES emulators(id) ON DELETE CASCADE,
-    manager TEXT NOT NULL CHECK (manager IN ('winget', 'homebrew', 'flatpak', 'snap', 'nix', 'other')),
+    host_system_slug TEXT NOT NULL REFERENCES host_systems(slug),
+    manager TEXT NOT NULL CHECK (
+        manager IN ('winget', 'homebrew', 'flatpak', 'appimage', 'nix', 'github', 'direct')
+    ),
     package_id TEXT NOT NULL,
-    PRIMARY KEY (emulator_id, manager, package_id)
+    metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+    PRIMARY KEY (emulator_id, host_system_slug, manager, package_id)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE emulator_platforms (

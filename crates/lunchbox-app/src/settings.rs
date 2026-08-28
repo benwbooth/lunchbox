@@ -82,6 +82,17 @@ pub struct EmulatorPreference {
     pub scope: String,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ManagedEmulatorInstall {
+    pub emulator_id: String,
+    pub host_system_slug: String,
+    pub manager: String,
+    pub package_id: String,
+    pub install_path: String,
+    pub installed_at: i64,
+    pub updated_at: i64,
+}
+
 impl Default for LibraryPreferences {
     fn default() -> Self {
         Self {
@@ -486,6 +497,75 @@ impl SettingsStore {
                 },
             )
             .optional()?)
+    }
+
+    pub fn managed_emulator_installs(&self) -> Result<Vec<ManagedEmulatorInstall>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT emulator_id, host_system_slug, manager, package_id, install_path,
+                    installed_at, updated_at
+             FROM managed_emulator_installs
+             ORDER BY manager, package_id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(ManagedEmulatorInstall {
+                emulator_id: row.get(0)?,
+                host_system_slug: row.get(1)?,
+                manager: row.get(2)?,
+                package_id: row.get(3)?,
+                install_path: row.get(4)?,
+                installed_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn record_managed_emulator_install(
+        &self,
+        emulator_id: &str,
+        host_system_slug: &str,
+        manager: &str,
+        package_id: &str,
+        install_path: &str,
+    ) -> Result<()> {
+        validate_managed_emulator_install(emulator_id, host_system_slug, manager, package_id)?;
+        let now = unix_timestamp();
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO managed_emulator_installs (
+                 emulator_id, host_system_slug, manager, package_id, install_path,
+                 installed_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(host_system_slug, manager, package_id) DO UPDATE SET
+                 emulator_id=excluded.emulator_id,
+                 install_path=excluded.install_path,
+                 updated_at=excluded.updated_at",
+            params![
+                emulator_id,
+                host_system_slug,
+                manager,
+                package_id,
+                install_path,
+                now
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_managed_emulator_install(
+        &self,
+        host_system_slug: &str,
+        manager: &str,
+        package_id: &str,
+    ) -> Result<()> {
+        let connection = self.connection()?;
+        connection.execute(
+            "DELETE FROM managed_emulator_installs
+             WHERE host_system_slug=?1 AND manager=?2 AND package_id=?3",
+            params![host_system_slug, manager, package_id],
+        )?;
+        Ok(())
     }
 
     pub fn set_game_emulator_preference(
@@ -1077,6 +1157,20 @@ fn migrate(connection: &Connection) -> Result<()> {
              core_name TEXT NOT NULL DEFAULT '',
              updated_at INTEGER NOT NULL
          );
+         CREATE TABLE IF NOT EXISTS managed_emulator_installs (
+             emulator_id TEXT NOT NULL,
+             host_system_slug TEXT NOT NULL CHECK (
+                 host_system_slug IN ('linux', 'windows', 'macos')
+             ),
+             manager TEXT NOT NULL CHECK (
+                 manager IN ('flatpak', 'appimage', 'nix', 'github', 'direct', 'winget', 'homebrew', 'libretro')
+             ),
+             package_id TEXT NOT NULL,
+             install_path TEXT NOT NULL,
+             installed_at INTEGER NOT NULL,
+             updated_at INTEGER NOT NULL,
+             PRIMARY KEY (host_system_slug, manager, package_id)
+         );
          CREATE TABLE IF NOT EXISTS prepared_game_installs (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -1199,6 +1293,27 @@ fn validate_emulator_preference(
     }
     if runtime_kind == "standalone" && !core_name.trim().is_empty() {
         bail!("a standalone emulator preference cannot include a RetroArch core");
+    }
+    Ok(())
+}
+
+fn validate_managed_emulator_install(
+    emulator_id: &str,
+    host_system_slug: &str,
+    manager: &str,
+    package_id: &str,
+) -> Result<()> {
+    if emulator_id.trim().is_empty() || package_id.trim().is_empty() {
+        bail!("managed emulator installs require exact emulator and package identities");
+    }
+    if !matches!(host_system_slug, "linux" | "windows" | "macos") {
+        bail!("unsupported emulator host {host_system_slug}");
+    }
+    if !matches!(
+        manager,
+        "flatpak" | "appimage" | "nix" | "github" | "direct" | "winget" | "homebrew" | "libretro"
+    ) {
+        bail!("unsupported emulator install manager {manager}");
     }
     Ok(())
 }
@@ -1462,6 +1577,44 @@ mod tests {
         assert!(
             store
                 .set_game_emulator_preference("game-one", "mesen-id", "retroarch", "")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn managed_emulator_receipts_are_exact_idempotent_and_removable() {
+        let (_directory, store) = store();
+        store
+            .record_managed_emulator_install(
+                "mesen-id",
+                "linux",
+                "appimage",
+                "SourMesen/Mesen2",
+                "/managed/mesen",
+            )
+            .unwrap();
+        store
+            .record_managed_emulator_install(
+                "mesen-id",
+                "linux",
+                "appimage",
+                "SourMesen/Mesen2",
+                "/managed/mesen/current",
+            )
+            .unwrap();
+
+        let installs = store.managed_emulator_installs().unwrap();
+        assert_eq!(installs.len(), 1);
+        assert_eq!(installs[0].package_id, "SourMesen/Mesen2");
+        assert_eq!(installs[0].install_path, "/managed/mesen/current");
+
+        store
+            .remove_managed_emulator_install("linux", "appimage", "SourMesen/Mesen2")
+            .unwrap();
+        assert!(store.managed_emulator_installs().unwrap().is_empty());
+        assert!(
+            store
+                .record_managed_emulator_install("", "linux", "snap", "bad", "")
                 .is_err()
         );
     }
