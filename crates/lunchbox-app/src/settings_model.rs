@@ -32,6 +32,11 @@ pub mod qobject {
         #[qproperty(i32, region_revision)]
         #[qproperty(QString, version_preference)]
         #[qproperty(i32, media_provider_revision)]
+        #[qproperty(bool, shader_busy)]
+        #[qproperty(i32, shader_progress)]
+        #[qproperty(QString, shader_message)]
+        #[qproperty(bool, shader_requires_confirmation)]
+        #[qproperty(i32, shader_revision)]
         #[qproperty(bool, controller_enabled)]
         #[qproperty(QString, controller_output_target)]
         #[qproperty(bool, controller_busy)]
@@ -87,6 +92,27 @@ pub mod qobject {
 
         #[qinvokable]
         fn reset_media_provider_priority(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn refresh_retroarch_shaders(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn install_retroarch_shaders(self: Pin<&mut SettingsModel>, replace_unmanaged: bool);
+
+        #[qinvokable]
+        fn cancel_retroarch_shaders(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn shader_target_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn shader_target_path_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn shader_target_detail_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn open_shader_target(self: Pin<&mut SettingsModel>, index: i32);
 
         #[qinvokable]
         fn refresh_controllers(self: Pin<&mut SettingsModel>);
@@ -214,12 +240,15 @@ pub mod qobject {
 
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::controllers::{self, ControllerDevice, ControllerInventory};
 use crate::qbittorrent;
+use crate::retroarch_shaders::{self, ShaderInstallSummary, ShaderInventory, ShaderProgress};
 use crate::settings::{
     self, AppSettings, ControllerButtonMapping, ControllerCustomProfile, ControllerMappingSettings,
     SettingsStore,
@@ -250,6 +279,14 @@ pub struct SettingsModelRust {
     version_preference: QString,
     media_provider_priority: Vec<String>,
     media_provider_revision: i32,
+    shader_busy: bool,
+    shader_progress: i32,
+    shader_message: QString,
+    shader_requires_confirmation: bool,
+    shader_revision: i32,
+    shader_inventory: ShaderInventory,
+    shader_generation: u64,
+    shader_cancel: Option<Arc<AtomicBool>>,
     controller_enabled: bool,
     controller_output_target: QString,
     controller_busy: bool,
@@ -295,6 +332,16 @@ impl Default for SettingsModelRust {
             version_preference: QString::from("latest"),
             media_provider_priority: crate::media::default_provider_priority(),
             media_provider_revision: 0,
+            shader_busy: false,
+            shader_progress: 0,
+            shader_message: QString::from(
+                "Open Settings to inspect this computer's RetroArch shader folders.",
+            ),
+            shader_requires_confirmation: false,
+            shader_revision: 0,
+            shader_inventory: ShaderInventory::default(),
+            shader_generation: 0,
+            shader_cancel: None,
             controller_enabled: false,
             controller_output_target: QString::from("xb360"),
             controller_busy: false,
@@ -317,6 +364,37 @@ impl Default for SettingsModelRust {
 
 fn qstring(value: impl AsRef<str>) -> QString {
     QString::from(value.as_ref())
+}
+
+fn shader_ui_probe_enabled() -> bool {
+    std::env::args_os().any(|argument| argument == "--retroarch-shader-ui-probe")
+}
+
+fn shader_probe_target() -> Option<PathBuf> {
+    shader_ui_probe_enabled()
+        .then(|| crate::catalog::requested_path("--shader-target", "LUNCHBOX_SHADER_TARGET"))
+        .flatten()
+}
+
+fn shader_probe_archive_directory() -> Option<PathBuf> {
+    shader_ui_probe_enabled()
+        .then(|| {
+            crate::catalog::requested_path(
+                "--shader-archive-directory",
+                "LUNCHBOX_SHADER_ARCHIVE_DIRECTORY",
+            )
+        })
+        .flatten()
+}
+
+fn format_shader_bytes(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.1} KiB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 impl qobject::SettingsModel {
@@ -608,6 +686,240 @@ impl qobject::SettingsModel {
         self.as_mut().set_message(qstring(
             "Default media source priority restored. Save settings to reindex cached media.",
         ));
+    }
+
+    pub fn refresh_retroarch_shaders(mut self: Pin<&mut Self>) {
+        if *self.as_ref().shader_busy() {
+            return;
+        }
+        self.as_mut().rust_mut().shader_generation =
+            self.as_ref().rust().shader_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().shader_generation;
+        let target_override = shader_probe_target();
+        self.as_mut().set_shader_busy(true);
+        self.as_mut().set_shader_progress(0);
+        self.as_mut()
+            .set_shader_message(qstring("Inspecting RetroArch shader folders…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-shader-inventory".into())
+            .spawn(move || {
+                let result = retroarch_shaders::inventory(target_override)
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_shader_refresh(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_shader_busy(false);
+            self.as_mut().set_shader_message(qstring(format!(
+                "Could not start the RetroArch shader scan: {error}"
+            )));
+        }
+    }
+
+    fn finish_shader_refresh(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<ShaderInventory, String>,
+    ) {
+        if generation != self.as_ref().rust().shader_generation {
+            return;
+        }
+        self.as_mut().set_shader_busy(false);
+        match result {
+            Ok(inventory) => {
+                self.as_mut().apply_shader_inventory(inventory);
+                let target_count = self.as_ref().rust().shader_inventory.targets.len();
+                let managed_count = self
+                    .as_ref()
+                    .rust()
+                    .shader_inventory
+                    .installed_target_count();
+                let message = if target_count == 0 {
+                    "No RetroArch shader directory could be resolved on this computer.".to_owned()
+                } else if managed_count == target_count {
+                    format!(
+                        "Slang and GLSL packs are managed in {managed_count} RetroArch target{}.",
+                        if managed_count == 1 { "" } else { "s" }
+                    )
+                } else if *self.as_ref().shader_requires_confirmation() {
+                    "Existing shader folders were found. Review and confirm before Lunchbox replaces only the official Slang and GLSL pack folders.".to_owned()
+                } else {
+                    "The official Slang and GLSL packs are ready to install.".to_owned()
+                };
+                self.as_mut().set_shader_message(qstring(message));
+            }
+            Err(error) => self.as_mut().set_shader_message(qstring(format!(
+                "Could not inspect RetroArch shaders: {error}"
+            ))),
+        }
+        self.as_mut().bump_shader_revision();
+    }
+
+    pub fn install_retroarch_shaders(mut self: Pin<&mut Self>, replace_unmanaged: bool) {
+        if *self.as_ref().shader_busy() {
+            return;
+        }
+        self.as_mut().rust_mut().shader_generation =
+            self.as_ref().rust().shader_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().shader_generation;
+        let target_override = shader_probe_target();
+        let archive_directory = shader_probe_archive_directory();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().shader_cancel = Some(Arc::clone(&cancel));
+        self.as_mut().set_shader_busy(true);
+        self.as_mut().set_shader_progress(0);
+        self.as_mut()
+            .set_shader_message(qstring("Preparing verified RetroArch shader archives…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let progress: Arc<dyn Fn(ShaderProgress) + Send + Sync> = Arc::new(move |progress| {
+            let _ = progress_thread.queue(move |mut model| {
+                model.as_mut().update_shader_progress(generation, progress);
+            });
+        });
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-shader-install".into())
+            .spawn(move || {
+                let result = retroarch_shaders::install(
+                    target_override.clone(),
+                    archive_directory,
+                    replace_unmanaged,
+                    &cancel,
+                    progress,
+                )
+                .and_then(|summary| {
+                    let inventory = retroarch_shaders::inventory(target_override)?;
+                    Ok((summary, inventory))
+                })
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_shader_install(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().rust_mut().shader_cancel = None;
+            self.as_mut().set_shader_busy(false);
+            self.as_mut().set_shader_message(qstring(format!(
+                "Could not start the RetroArch shader installer: {error}"
+            )));
+        }
+    }
+
+    pub fn cancel_retroarch_shaders(mut self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().shader_cancel.as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+            self.as_mut().set_shader_message(qstring(
+                "Cancelling safely; installed packs remain unchanged until publication…",
+            ));
+        }
+    }
+
+    fn update_shader_progress(mut self: Pin<&mut Self>, generation: u64, progress: ShaderProgress) {
+        if generation != self.as_ref().rust().shader_generation || !*self.as_ref().shader_busy() {
+            return;
+        }
+        self.as_mut()
+            .set_shader_progress(progress.percent.clamp(0, 100));
+        self.as_mut().set_shader_message(qstring(progress.message));
+    }
+
+    fn finish_shader_install(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<(ShaderInstallSummary, ShaderInventory), String>,
+    ) {
+        if generation != self.as_ref().rust().shader_generation {
+            return;
+        }
+        self.as_mut().rust_mut().shader_cancel = None;
+        self.as_mut().set_shader_busy(false);
+        match result {
+            Ok((summary, inventory)) => {
+                self.as_mut().apply_shader_inventory(inventory);
+                self.as_mut().set_shader_progress(100);
+                self.as_mut().set_shader_message(qstring(format!(
+                    "Installed {} verified shader files ({}) in {} RetroArch target{}{}.",
+                    summary.file_count,
+                    format_shader_bytes(summary.unpacked_bytes),
+                    summary.target_count,
+                    if summary.target_count == 1 { "" } else { "s" },
+                    if summary.reused_archives == 0 {
+                        String::new()
+                    } else {
+                        format!(" · {} verified archives reused", summary.reused_archives)
+                    }
+                )));
+            }
+            Err(error) => {
+                self.as_mut().set_shader_progress(0);
+                self.as_mut().set_shader_message(qstring(format!(
+                    "RetroArch shader installation failed: {error}"
+                )));
+            }
+        }
+        self.as_mut().bump_shader_revision();
+    }
+
+    fn apply_shader_inventory(mut self: Pin<&mut Self>, inventory: ShaderInventory) {
+        self.as_mut()
+            .set_shader_requires_confirmation(inventory.requires_confirmation());
+        self.as_mut().rust_mut().shader_inventory = inventory;
+    }
+
+    fn bump_shader_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().shader_revision().wrapping_add(1);
+        self.as_mut().set_shader_revision(revision);
+    }
+
+    pub fn shader_target_count(&self) -> i32 {
+        i32::try_from(self.rust().shader_inventory.targets.len()).unwrap_or(i32::MAX)
+    }
+
+    pub fn shader_target_path_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().shader_inventory.targets.get(index))
+            .map(|target| qstring(target.path.to_string_lossy()))
+            .unwrap_or_default()
+    }
+
+    pub fn shader_target_detail_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().shader_inventory.targets.get(index))
+            .map(|target| qstring(target.detail()))
+            .unwrap_or_default()
+    }
+
+    pub fn open_shader_target(mut self: Pin<&mut Self>, index: i32) {
+        let Ok(index) = usize::try_from(index) else {
+            self.as_mut()
+                .set_shader_message(qstring("Choose a valid RetroArch shader target."));
+            return;
+        };
+        let path = {
+            let this = self.as_ref();
+            this.rust()
+                .shader_inventory
+                .targets
+                .get(index)
+                .map(|target| target.path.clone())
+        };
+        let Some(path) = path else {
+            self.as_mut()
+                .set_shader_message(qstring("Choose a valid RetroArch shader target."));
+            return;
+        };
+        match retroarch_shaders::open_target(&path) {
+            Ok(()) => self
+                .as_mut()
+                .set_shader_message(qstring(format!("Opened {}.", path.display()))),
+            Err(error) => self.as_mut().set_shader_message(qstring(format!(
+                "Could not open the RetroArch shader folder: {error}"
+            ))),
+        }
     }
 
     pub fn refresh_controllers(mut self: Pin<&mut Self>) {

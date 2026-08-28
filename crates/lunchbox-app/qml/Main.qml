@@ -10,15 +10,15 @@ import Lunchbox
 ApplicationWindow {
     id: root
     visible: true
-    width: bigBoxUiProbe || controllerProfileUiProbe || launchProfileUiProbe
+    width: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
-           || variantUiProbe || metadataUiProbe
+           || variantUiProbe || metadataUiProbe || retroarchShaderUiProbe
            ? 1920 : 1440
-    height: bigBoxUiProbe || controllerProfileUiProbe || launchProfileUiProbe
+    height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
-            || variantUiProbe || metadataUiProbe
+            || variantUiProbe || metadataUiProbe || retroarchShaderUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -48,9 +48,9 @@ ApplicationWindow {
     property bool clearAllDownloadHistory: false
     property int pendingDownloadPlanIndex: -1
     property bool gridMode: true
-    property bool bigBoxActive: false
-    property int bigBoxPreviousVisibility: Window.Windowed
-    property bool bigBoxProbeCaptured: false
+    property bool couchModeActive: false
+    property int couchModePreviousVisibility: Window.Windowed
+    property bool couchModeProbeCaptured: false
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
@@ -82,6 +82,7 @@ ApplicationWindow {
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
     property bool settingsMediaPriorityTriggered: false
+    property int retroarchShaderProbeStage: 0
     property bool box3dProbeOpened: false
     property bool mediaRotationProbeOpened: false
     property int pendingEmulatorUninstallIndex: -1
@@ -122,7 +123,7 @@ ApplicationWindow {
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
-    readonly property bool bigBoxUiProbe: Qt.application.arguments.indexOf("--bigbox-ui-probe") >= 0
+    readonly property bool couchModeUiProbe: Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
     readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
     readonly property bool favoriteProbe: Qt.application.arguments.indexOf("--favorite-probe") >= 0
@@ -141,6 +142,7 @@ ApplicationWindow {
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool settingsMediaPriorityUiProbe: Qt.application.arguments.indexOf("--settings-media-priority-ui-probe") >= 0
+    readonly property bool retroarchShaderUiProbe: Qt.application.arguments.indexOf("--retroarch-shader-ui-probe") >= 0
     readonly property bool steamGridDbUiProbe: Qt.application.arguments.indexOf("--steamgriddb-ui-probe") >= 0
     readonly property bool igdbUiProbe: Qt.application.arguments.indexOf("--igdb-ui-probe") >= 0
     property string artworkProvider: igdbUiProbe ? "igdb" : "steamgriddb"
@@ -194,9 +196,9 @@ ApplicationWindow {
     palette.highlightedText: "#10141c"
 
     onClosing: close => {
-        if (root.bigBoxActive) {
+        if (root.couchModeActive) {
             close.accepted = false
-            root.exitBigBox()
+            root.exitCouchMode()
         } else if (library.favorite_pending_count > 0 || library.collection_busy) {
             close.accepted = false
             closeAfterFavoriteSave = true
@@ -243,24 +245,24 @@ ApplicationWindow {
         launchProfileManager.initialize()
     }
 
-    function enterBigBox() {
-        if (bigBoxActive)
+    function enterCouchMode() {
+        if (couchModeActive)
             return
-        bigBoxPreviousVisibility = root.visibility
-        bigBoxActive = true
-        if (!bigBoxUiProbe)
+        couchModePreviousVisibility = root.visibility
+        couchModeActive = true
+        if (!couchModeUiProbe)
             root.showFullScreen()
-        bigBoxView.forceActiveFocus()
+        couchModeView.forceActiveFocus()
     }
 
-    function exitBigBox() {
-        if (!bigBoxActive)
+    function exitCouchMode() {
+        if (!couchModeActive)
             return
-        bigBoxActive = false
-        if (!bigBoxUiProbe) {
-            if (bigBoxPreviousVisibility === Window.FullScreen)
+        couchModeActive = false
+        if (!couchModeUiProbe) {
+            if (couchModePreviousVisibility === Window.FullScreen)
                 root.showFullScreen()
-            else if (bigBoxPreviousVisibility === Window.Maximized)
+            else if (couchModePreviousVisibility === Window.Maximized)
                 root.showMaximized()
             else
                 root.showNormal()
@@ -653,7 +655,7 @@ ApplicationWindow {
     MediaPlayer {
         id: gameVideoPlayer
         property bool resumeApplied: false
-        source: !root.bigBoxActive && gameDetails.video_available
+        source: !root.couchModeActive && gameDetails.video_available
                 ? gameDetails.video_url : ""
         audioOutput: gameVideoAudio
         videoOutput: mediaFullscreen.opened ? fullscreenVideoOutput : detailVideoOutput
@@ -800,6 +802,9 @@ ApplicationWindow {
                             appSettings.media_provider_count() - 1, 0)
                 appSettings.save()
             }
+            if (root.retroarchShaderUiProbe && appSettings.initialized
+                    && root.retroarchShaderProbeStage === 0)
+                appSettings.refresh_retroarch_shaders()
         }
         function onBusyChanged() {
             root.finishSettingsProbeWhenSaved()
@@ -815,6 +820,34 @@ ApplicationWindow {
                             settingsScroll.contentItem, 0, 0).y - 18)
                     settingsMediaPriorityScreenshotTimer.restart()
                 }
+            }
+        }
+        function onShader_revisionChanged() {
+            if (!root.retroarchShaderUiProbe || appSettings.shader_busy)
+                return
+            if (root.retroarchShaderProbeStage === 0) {
+                if (appSettings.shader_target_count() !== 1
+                        || appSettings.shader_requires_confirmation) {
+                    console.error("LUNCHBOX_SHADER_UI_FAILED invalid fresh target")
+                    Qt.exit(2)
+                    return
+                }
+                root.retroarchShaderProbeStage = 1
+                appSettings.install_retroarch_shaders(false)
+            } else if (root.retroarchShaderProbeStage === 1) {
+                const detail = appSettings.shader_target_detail_at(0)
+                if (appSettings.shader_progress !== 100
+                        || detail !== "Slang: Managed · GLSL: Managed") {
+                    console.error("LUNCHBOX_SHADER_UI_FAILED install detail="
+                                  + detail + " message=" + appSettings.shader_message)
+                    Qt.exit(2)
+                    return
+                }
+                root.retroarchShaderProbeStage = 2
+                settingsScroll.contentItem.contentY = Math.max(
+                    0, retroarchShaderSection.mapToItem(
+                        settingsScroll.contentItem, 0, 0).y - 18)
+                retroarchShaderScreenshotTimer.restart()
             }
         }
     }
@@ -981,7 +1014,7 @@ ApplicationWindow {
                     library.apply_filter(searchField.text,
                                          "Nintendo Entertainment System", "")
                 }
-                else if (root.bigBoxUiProbe) {
+                else if (root.couchModeUiProbe) {
                     root.selectedGameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
                     library.apply_filter("Super Mario Bros.",
                                          "Nintendo Entertainment System", "")
@@ -1052,9 +1085,9 @@ ApplicationWindow {
                               "Super Mario Bros.",
                               "Nintendo Entertainment System", false, true)
             }
-            else if (root.bigBoxUiProbe && library.ready && !library.filtering
-                     && !root.bigBoxActive)
-                root.enterBigBox()
+            else if (root.couchModeUiProbe && library.ready && !library.filtering
+                     && !root.couchModeActive)
+                root.enterCouchMode()
             else if ((root.favoriteProbe || root.favoriteUiProbe)
                      && library.ready && !library.filtering
                      && searchField.text.length > 0)
@@ -1204,11 +1237,11 @@ ApplicationWindow {
     Connections {
         target: gameDetails
         function onLoadingChanged() {
-            if (root.bigBoxUiProbe && root.bigBoxActive
-                    && !root.bigBoxProbeCaptured
+            if (root.couchModeUiProbe && root.couchModeActive
+                    && !root.couchModeProbeCaptured
                     && !gameDetails.loading
                     && gameDetails.title.length > 0)
-                bigBoxScreenshotTimer.restart()
+                couchModeScreenshotTimer.restart()
             if (root.metadataUiProbe && root.metadataProbeStage === 0
                     && !gameDetails.loading && gameDetails.game_id.length > 0) {
                 console.warn("LUNCHBOX_METADATA_UI_STAGE details-ready title="
@@ -1218,11 +1251,11 @@ ApplicationWindow {
             }
         }
         function onTitleChanged() {
-            if (root.bigBoxUiProbe && root.bigBoxActive
-                    && !root.bigBoxProbeCaptured
+            if (root.couchModeUiProbe && root.couchModeActive
+                    && !root.couchModeProbeCaptured
                     && !gameDetails.loading
                     && gameDetails.title.length > 0)
-                bigBoxScreenshotTimer.restart()
+                couchModeScreenshotTimer.restart()
         }
         function onMetadata_revisionChanged() {
             library.refresh_metadata()
@@ -1294,40 +1327,40 @@ ApplicationWindow {
     }
 
     Timer {
-        id: bigBoxScreenshotTimer
+        id: couchModeScreenshotTimer
         interval: 650
         repeat: false
         onTriggered: {
-            if (!root.bigBoxActive || library.filtered_count <= 0
-                    || bigBoxView.selectedGameId.length === 0
+            if (!root.couchModeActive || library.filtered_count <= 0
+                    || couchModeView.selectedGameId.length === 0
                     || gameDetails.title.length === 0) {
-                console.error("LUNCHBOX_BIGBOX_UI_FAILED empty live selection")
+                console.error("LUNCHBOX_COUCH_MODE_UI_FAILED empty live selection")
                 Qt.exit(2)
                 return
             }
-            if (bigBoxView.selectedGameId
+            if (couchModeView.selectedGameId
                     !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
-                    || gameDetails.game_id !== bigBoxView.selectedGameId
-                    || library.row_for_game(bigBoxView.selectedGameId) < 0) {
-                console.error("LUNCHBOX_BIGBOX_UI_FAILED focus restoration")
+                    || gameDetails.game_id !== couchModeView.selectedGameId
+                    || library.row_for_game(couchModeView.selectedGameId) < 0) {
+                console.error("LUNCHBOX_COUCH_MODE_UI_FAILED focus restoration")
                 Qt.exit(2)
                 return
             }
-            root.bigBoxProbeCaptured = true
+            root.couchModeProbeCaptured = true
             if (root.screenshotOutput.length === 0) {
-                console.warn("LUNCHBOX_BIGBOX_UI_READY title=" + gameDetails.title
+                console.warn("LUNCHBOX_COUCH_MODE_UI_READY title=" + gameDetails.title
                              + " games=" + library.filtered_count)
                 Qt.exit(0)
                 return
             }
-            bigBoxView.grabToImage(function(result) {
+            couchModeView.grabToImage(function(result) {
                 if (!result.saveToFile(root.screenshotOutput)) {
-                    console.error("LUNCHBOX_BIGBOX_UI_FAILED screenshot="
+                    console.error("LUNCHBOX_COUCH_MODE_UI_FAILED screenshot="
                                   + root.screenshotOutput)
                     Qt.exit(2)
                     return
                 }
-                console.warn("LUNCHBOX_BIGBOX_UI_READY title=" + gameDetails.title
+                console.warn("LUNCHBOX_COUCH_MODE_UI_READY title=" + gameDetails.title
                              + " games=" + library.filtered_count
                              + " screenshot=" + root.screenshotOutput)
                 Qt.exit(0)
@@ -1337,10 +1370,10 @@ ApplicationWindow {
 
     Timer {
         interval: 15000
-        running: root.bigBoxUiProbe && !root.bigBoxProbeCaptured
+        running: root.couchModeUiProbe && !root.couchModeProbeCaptured
         repeat: false
         onTriggered: {
-            console.error("LUNCHBOX_BIGBOX_UI_FAILED timeout status="
+            console.error("LUNCHBOX_COUCH_MODE_UI_FAILED timeout status="
                           + library.status_message)
             Qt.exit(2)
         }
@@ -1864,7 +1897,8 @@ ApplicationWindow {
                 root.openImportDialog()
             else if (root.settingsUiProbe || root.settingsRegionUiProbe
                      || root.settingsMediaPriorityUiProbe
-                     || root.controllerUiProbe || root.controllerProfileUiProbe) {
+                     || root.controllerUiProbe || root.controllerProfileUiProbe
+                     || root.retroarchShaderUiProbe) {
                 settingsDialog.open()
                 if (root.controllerUiProbe)
                     console.log("LUNCHBOX_CONTROLLER_UI_OPENED")
@@ -1976,6 +2010,48 @@ ApplicationWindow {
                             + root.screenshotOutput)
                 Qt.quit()
             })
+        }
+    }
+
+    Timer {
+        id: retroarchShaderScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            if (!root.retroarchShaderUiProbe)
+                return
+            const target = appSettings.shader_target_path_at(0)
+            const detail = appSettings.shader_target_detail_at(0)
+            if (root.screenshotOutput.length === 0) {
+                console.warn("LUNCHBOX_SHADER_UI_READY target=" + target
+                             + " detail=" + detail)
+                Qt.quit()
+                return
+            }
+            retroarchShaderCard.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SHADER_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.warn("LUNCHBOX_SHADER_UI_READY target=" + target
+                             + " detail=" + detail + " screenshot="
+                             + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 60000
+        running: root.retroarchShaderUiProbe
+                 && root.retroarchShaderProbeStage < 2
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_SHADER_UI_FAILED timeout message="
+                          + appSettings.shader_message)
+            Qt.exit(2)
         }
     }
 
@@ -3166,16 +3242,16 @@ ApplicationWindow {
         }
     }
 
-    BigBoxView {
-        id: bigBoxView
+    CouchModeView {
+        id: couchModeView
         anchors.fill: parent
         z: 1000
-        active: root.bigBoxActive
+        active: root.couchModeActive
         library: library
         details: gameDetails
         preferredGameId: root.selectedGameId
         currentFilterKey: root.availability
-        onExitRequested: root.exitBigBox()
+        onExitRequested: root.exitCouchMode()
         onFilterRequested: key => root.selectLibrary(key)
         onGameSelected: function(gameId, databaseId, title, platform,
                                  local, downloadable) {
@@ -3184,7 +3260,7 @@ ApplicationWindow {
         }
         onDetailsRequested: function(gameId, databaseId, title, platform,
                                      local, downloadable) {
-            root.exitBigBox()
+            root.exitCouchMode()
             root.openGame(gameId, databaseId, title, platform,
                           local, downloadable)
         }
@@ -3278,7 +3354,7 @@ ApplicationWindow {
                 implicitWidth: 42
                 leftPadding: 0
                 rightPadding: 0
-                onClicked: root.enterBigBox()
+                onClicked: root.enterCouchMode()
                 ToolTip.visible: hovered
                 ToolTip.text: "Couch mode"
             }
@@ -8601,15 +8677,18 @@ ApplicationWindow {
         modal: true
         anchors.centerIn: parent
         width: Math.min(root.controllerProfileUiProbe
-                        || root.settingsMediaPriorityUiProbe ? 1120 : 760,
+                        || root.settingsMediaPriorityUiProbe
+                        || root.retroarchShaderUiProbe ? 1120 : 760,
                         root.width - 60)
         height: Math.min(root.controllerProfileUiProbe
-                         || root.settingsMediaPriorityUiProbe ? 1080 : 760,
+                         || root.settingsMediaPriorityUiProbe
+                         || root.retroarchShaderUiProbe ? 1080 : 760,
                          root.height - 60)
         padding: 0
         closePolicy: Popup.CloseOnEscape
         onOpened: {
             appSettings.refresh_controllers()
+            appSettings.refresh_retroarch_shaders()
             steamGridDb.initialize()
             igdb.initialize()
         }
@@ -10159,6 +10238,209 @@ ApplicationWindow {
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    id: retroarchShaderSection
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Text {
+                        text: "RETROARCH SHADERS"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+
+                    Rectangle {
+                        id: retroarchShaderCard
+                        Layout.fillWidth: true
+                        implicitHeight: retroarchShaderColumn.implicitHeight + 32
+                        radius: 12
+                        color: "#101823"
+                        border.color: appSettings.shader_progress === 100
+                                      ? "#315f59" : root.line
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: retroarchShaderColumn
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 12
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Rectangle {
+                                    Layout.preferredWidth: 42
+                                    Layout.preferredHeight: 42
+                                    radius: 11
+                                    color: "#1b3040"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "◈"
+                                        color: root.accentCool
+                                        font.pixelSize: 21
+                                        font.weight: Font.Bold
+                                    }
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "Full Slang + GLSL collection"
+                                        color: root.ink
+                                        font.pixelSize: 14
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "Modern Vulkan, GLCore, and Direct3D presets plus OpenGL / GLES compatibility presets from the official Libretro buildbot."
+                                        color: root.muted
+                                        font.pixelSize: 10
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                                BusyIndicator {
+                                    visible: appSettings.shader_busy
+                                    running: visible
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: shaderStatusText.implicitHeight + 22
+                                radius: 8
+                                color: appSettings.shader_requires_confirmation
+                                       ? "#2b241b" : "#141f2a"
+                                border.color: appSettings.shader_requires_confirmation
+                                              ? "#705638" : "#26384a"
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 11
+                                    spacing: 9
+                                    Text {
+                                        text: appSettings.shader_requires_confirmation ? "!" : "i"
+                                        color: appSettings.shader_requires_confirmation
+                                               ? root.accent : root.accentCool
+                                        font.pixelSize: 14
+                                        font.weight: Font.Bold
+                                    }
+                                    Text {
+                                        id: shaderStatusText
+                                        Layout.fillWidth: true
+                                        text: appSettings.shader_message
+                                        color: "#c3cad6"
+                                        font.pixelSize: 10
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+
+                            ProgressBar {
+                                Layout.fillWidth: true
+                                visible: appSettings.shader_busy
+                                         || appSettings.shader_progress > 0
+                                from: 0
+                                to: 100
+                                value: appSettings.shader_progress
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+                                Repeater {
+                                    model: {
+                                        appSettings.shader_revision
+                                        return appSettings.shader_target_count()
+                                    }
+                                    delegate: Rectangle {
+                                        id: shaderTargetRow
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        implicitHeight: 54
+                                        radius: 8
+                                        color: "#151e2a"
+                                        border.color: "#253145"
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 12
+                                            anchors.rightMargin: 8
+                                            spacing: 10
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 2
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: {
+                                                        appSettings.shader_revision
+                                                        return appSettings.shader_target_path_at(
+                                                                    shaderTargetRow.index)
+                                                    }
+                                                    color: root.ink
+                                                    font.pixelSize: 10
+                                                    font.family: "monospace"
+                                                    elide: Text.ElideMiddle
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: {
+                                                        appSettings.shader_revision
+                                                        return appSettings.shader_target_detail_at(
+                                                                    shaderTargetRow.index)
+                                                    }
+                                                    color: root.muted
+                                                    font.pixelSize: 9
+                                                }
+                                            }
+                                            Button {
+                                                text: "Open folder"
+                                                flat: true
+                                                enabled: !appSettings.shader_busy
+                                                onClicked: appSettings.open_shader_target(
+                                                               shaderTargetRow.index)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Only the official shaders_slang and shaders_glsl folders are replaced transactionally. Custom sibling folders are left untouched."
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    wrapMode: Text.WordWrap
+                                }
+                                Button {
+                                    visible: appSettings.shader_busy
+                                    text: "Cancel"
+                                    onClicked: appSettings.cancel_retroarch_shaders()
+                                }
+                                HeaderButton {
+                                    visible: !appSettings.shader_busy
+                                    text: appSettings.shader_progress === 100
+                                          ? "Refresh packs" : "Install shader packs"
+                                    active: true
+                                    enabled: appSettings.shader_target_count() > 0
+                                    onClicked: {
+                                        if (appSettings.shader_requires_confirmation)
+                                            shaderReplaceDialog.open()
+                                        else
+                                            appSettings.install_retroarch_shaders(false)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
                 Text {
                     text: "EMULATORS & CORES"
                     color: root.accent
@@ -10259,6 +10541,36 @@ ApplicationWindow {
                     elide: Text.ElideMiddle
                     horizontalAlignment: Text.AlignRight
                 }
+            }
+        }
+    }
+
+    Dialog {
+        id: shaderReplaceDialog
+        parent: Overlay.overlay
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(520, root.width - 48)
+        title: "Replace existing official shader folders?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: appSettings.install_retroarch_shaders(true)
+        contentItem: ColumnLayout {
+            spacing: 10
+            Text {
+                Layout.fillWidth: true
+                text: "Lunchbox found shaders_slang or shaders_glsl folders without a Lunchbox receipt. Continuing replaces those two folders with current official Libretro packs."
+                color: root.ink
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Other custom shader folders remain untouched. Cancel and move personal presets out of the official folders if you want to preserve them."
+                color: root.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
             }
         }
     }

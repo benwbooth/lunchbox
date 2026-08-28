@@ -26,6 +26,7 @@ mod media_acquisition;
 mod provider_image;
 mod qbittorrent;
 mod region_priority;
+mod retroarch_shaders;
 mod settings;
 pub mod settings_model;
 mod steamgriddb;

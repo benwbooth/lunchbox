@@ -98,11 +98,14 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   exercised; package mutations and Windows/macOS behavior retain release-host
   gates.
 - Measurable shell-ready and catalog-ready probes.
-- A native couch-mode browse/play slice backed by the same Rust catalog,
+- A native **Couch Mode** browse/play slice backed by the same Rust catalog,
   details, media, favorite, filter, download, and launch services as desktop
   mode. It restores the exact selected stable UUID, virtualizes the horizontal
   cover shelf, works without a mouse by keyboard, enters real fullscreen, and
   returns to the complete desktop management surface without duplicating state.
+- Native management of Libretro's complete official Slang and GLSL shader packs
+  with cross-platform target discovery, verified cache reuse, safe extraction,
+  explicit unmanaged-pack replacement, and transactional multi-target rollback.
 
 ## Collection management
 
@@ -123,6 +126,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
+- Add provider-neutral, review-first acquisition intake: watched-folder and
+  manual `.torrent` import, magnet import, then authorized catalog adapters.
+  External offers retain source provenance and never establish or merge a
+  canonical game identity. A direct NSW Torrent Library adapter is not planned
+  unless its operators provide documented rights, terms, and an authorized API;
+  Lunchbox will not bundle a Telegram account session, scrape bots, or automate
+  blocking/proxy evasion. See `EXTERNAL_TORRENT_PROVIDERS.md`.
 - Complete game-level offer selection beyond the implemented exact-file,
   whole-torrent, generic optical-set, eXo archive-set, and arcade-laserdisc
   paths: free-space enforcement and broader duplicate avoidance. Reuse the
@@ -187,9 +197,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   the visual custom-profile designer, pre-spawn activation, RAII restoration,
   process supervision, and play-stat recording are native.
 
-## Full-screen interface
+## Couch Mode
 
-- Extend the implemented native Qt Quick couch-mode browse/play presentation,
+- Extend the implemented native Qt Quick Couch Mode browse/play presentation,
   which already shares the Rust models and services rather than creating a
   second database or duplicated backend.
 - Theme packages, platform/game wheels, details and game menus, attract mode,

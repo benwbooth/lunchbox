@@ -28,6 +28,14 @@ selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent
 views, and routes Play, favorite changes, download options, and desktop details
 through the existing native services. Escape returns to desktop mode.
 
+Settings can install or refresh the complete official RetroArch Slang and GLSL
+shader collections. The Rust service discovers native RetroArch locations on
+Linux, macOS, and Windows, verifies a bounded cache, validates every archive
+entry, stages both packs, and publishes them transactionally. It replaces only
+the official `shaders_slang` and `shaders_glsl` directories after explicit
+confirmation when they were not previously managed by Lunchbox; custom sibling
+folders are never touched.
+
 To exercise the preserved acquisition-first catalog, layer the local legacy
 game catalog, Minerva bundle index, and optional user state over the canonical
 database:
@@ -82,6 +90,12 @@ post-import seeding choice: follow qBittorrent's existing rules, or pause the
 Lunchbox-owned torrent after every selected file in that bundle has imported.
 The pause request is non-destructive, survives restart when deferred, and
 retries automatically when qBittorrent is temporarily unavailable.
+
+The longer-term source architecture deliberately separates catalog identity
+from acquisition offers. Minerva remains the reviewed built-in provider, while
+lawful user-supplied `.torrent` and magnet intake and future authorized provider
+adapters can feed the same candidate/review/download pipeline without becoming
+canonical metadata. See [external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
 
 The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age

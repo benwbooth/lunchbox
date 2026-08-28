@@ -235,6 +235,16 @@ The initial implementation enforces this shape:
   filter indices and selection state. Confirmed cleanup accepts stable UUIDs
   only and its SQL predicate can remove only included rows already marked
   `missing`; filesystem paths are not part of the mutation API.
+- RetroArch shader management is a Rust service surfaced through the existing
+  Settings CXX-Qt model. It discovers host-native shader roots, resolves the
+  official Libretro Slang and GLSL archives into a SHA-256-verified cache, and
+  validates safe paths, duplicate entries, symbolic links, file counts, and
+  bounded compressed/unpacked sizes while honoring cancellation. Each pack is
+  staged in its target filesystem and receives an ownership receipt before a
+  multi-target transaction replaces only `shaders_slang` or `shaders_glsl`.
+  Earlier targets roll back if any later activation fails; custom siblings are
+  out of scope. Folder opening passes a path directly to the host opener and
+  never constructs a shell command.
 
 ## Performance budgets
 
@@ -292,7 +302,7 @@ Game metadata edits are nullable local overlays keyed only by stable game UUID
 in the writable state database. The immutable catalog title and platform remain
 the inputs to provider lookup, acquisition, artwork, launch history, and ROM
 identity; only presentation, search, sorting, smart title rules, details, and
-couch-mode labels consume the effective overlay. Empty editable fields can be
+Couch Mode labels consume the effective overlay. Empty editable fields can be
 cleared explicitly, while saving values identical to the catalog removes those
 columns and restoring the catalog deletes the row. `--metadata-ui-probe
 --state-database EMPTY_PATH --screenshot-output ABSOLUTE_PATH` first proves the
@@ -482,7 +492,15 @@ installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path
 list and MAME's ROM-free `pong` driver, then exited successfully;
 `--arcade-launch-ui-probe` leaves that state open for review.
 
-`--bigbox-ui-probe --screenshot-output PATH` opens the native couch-mode shell
+`--retroarch-shader-ui-probe --shader-target EMPTY_PATH --screenshot-output
+PATH` opens Settings against an isolated target, runs the real Rust installation
+worker, and exits only after both packs report `Managed`. Supplying
+`--shader-archive-directory PATH` makes the same probe deterministic with local
+fixtures; omitting it exercises the official Libretro sources and verified
+cache. The real-source Linux probe installed 6,564 files (101.1 MiB), and a
+second isolated target reused archives with unchanged SHA-256 digests.
+
+`--couch-mode-ui-probe --screenshot-output PATH` opens the native Couch Mode shell
 at a 1920x1200-class test size, filters the real catalog to the preserved Super
 Mario Bros. family, restores the exact stable UUID for LaunchBox database ID
 140, loads its real details and cached media, captures the full presentation,
