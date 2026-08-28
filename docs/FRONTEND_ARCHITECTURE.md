@@ -316,6 +316,11 @@ and can cancel one selection while leaving other manuals in the shared torrent
 active. Completion requires a non-empty readable ZIP inside the configured
 native torrent root; publication uses a unique same-directory temporary file,
 flush, sync, and atomic rename under the configured media root.
+`--box-3d-ui-probe` waits for the media index, opens the real Super Mario Bros.
+catalog record, obtains its exact LibRetro front cover through the normal bounded
+Rust queue, and switches the details hero to the native Qt Quick 3D box. The
+probe prints `LUNCHBOX_BOX3D_READY` only after the exact local cover URL reaches
+the viewer; the resulting frame is suitable for visual inspection under Xvfb.
 `--arcade-launch-probe` exercises the same chooser and supervisor with a
 persisted MAME standalone default. On the current Linux host it launched the
 installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path

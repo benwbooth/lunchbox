@@ -123,9 +123,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   acquisition, and soundtrack browsing.
 - Configurable media-source priority, image replacement, missing-media audit,
   and background download queue.
-- Extend the responsive game details and native video/fullscreen/manual surface
-  with related games, alternate versions, a 3D box display, and soundtrack
-  playback.
+- Extend the responsive game details and native video/fullscreen/manual/3D-box
+  surface with related games, alternate versions, and soundtrack playback.
 
 ## Emulators and launching
 

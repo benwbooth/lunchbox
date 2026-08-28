@@ -40,6 +40,9 @@ ApplicationWindow {
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
     property url selectedFanartUrl: ""
+    property url selectedBoxFrontUrl: ""
+    property url selectedBoxBackUrl: ""
+    property bool selectedBox3d: false
     property string selectedArtworkSource: ""
     property string selectedHeroArtworkType: ""
     readonly property bool selectedFavorite: {
@@ -59,6 +62,7 @@ ApplicationWindow {
     property bool downloadHistoryTriggered: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
+    property bool box3dProbeOpened: false
     property int pendingEmulatorUninstallIndex: -1
     property string pendingEmulatorUninstallName: ""
     property int downloadPlanProbeBundleIndex: 0
@@ -120,6 +124,7 @@ ApplicationWindow {
     readonly property bool mediaBundleProbe: Qt.application.arguments.indexOf("--media-bundle-probe") >= 0
     readonly property bool mediaBundleUiProbe: Qt.application.arguments.indexOf("--media-bundle-ui-probe") >= 0
     readonly property bool manualDownloadUiProbe: Qt.application.arguments.indexOf("--manual-download-ui-probe") >= 0
+    readonly property bool box3dUiProbe: Qt.application.arguments.indexOf("--box-3d-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
@@ -260,8 +265,10 @@ ApplicationWindow {
     function openGame(gameId, databaseId, title, platform, local, downloadable) {
         selectedGameId = gameId
         selectedDatabaseId = databaseId
+        selectedBox3d = false
         library.request_artwork(databaseId, title, platform, library.artwork_type)
         library.request_artwork(databaseId, title, platform, "fanart")
+        library.request_artwork(databaseId, title, platform, "box-front")
         refreshSelectedArtwork()
         gameDetails.select_game(gameId, title, platform, local, downloadable)
     }
@@ -280,6 +287,23 @@ ApplicationWindow {
                                                          selectedHeroArtworkType)
                                 : library.artwork_source(selectedDatabaseId,
                                                          library.artwork_type)
+        selectedBoxFrontUrl = library.exact_artwork_url(selectedDatabaseId,
+                                                        "box-front")
+        selectedBoxBackUrl = library.exact_artwork_url(selectedDatabaseId,
+                                                       "box-back")
+        if (selectedBoxFrontUrl.toString().length === 0)
+            selectedBox3d = false
+    }
+
+    function activateBox3dProbeWhenReady() {
+        if (!box3dUiProbe || selectedBoxFrontUrl.toString().length === 0)
+            return
+        selectedBox3d = true
+        detailBox3d.resetView()
+        detailBox3d.autoRotate = false
+        console.log("LUNCHBOX_BOX3D_READY front=" + selectedBoxFrontUrl
+                    + " back="
+                    + (selectedBoxBackUrl.toString().length > 0))
     }
 
     function artworkLabel(key) {
@@ -524,8 +548,16 @@ ApplicationWindow {
                 searchField.text = "A Nightmare on Elm Street"
                 library.apply_filter(searchField.text, "", "")
                 viewPopup.open()
-            } else if (root.selectedGameId.length > 0)
+            } else if (root.box3dUiProbe && !root.box3dProbeOpened) {
+                root.box3dProbeOpened = true
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
+                root.activateBox3dProbeWhenReady()
+            } else if (root.selectedGameId.length > 0) {
                 root.refreshSelectedArtwork()
+                root.activateBox3dProbeWhenReady()
+            }
         }
         function onArtwork_typeChanged() {
             if (root.selectedGameId.length > 0)
@@ -2494,7 +2526,17 @@ ApplicationWindow {
                         sourceSize.width: Math.max(1, Math.round(width * 2))
                         sourceSize.height: Math.max(1, Math.round(height * 2))
                         opacity: status === Image.Ready ? 1 : 0
+                        visible: !root.selectedBox3d
                         Behavior on opacity { NumberAnimation { duration: 150 } }
+                    }
+                    Box3DViewer {
+                        id: detailBox3d
+                        anchors.fill: parent
+                        frontSource: root.selectedBoxFrontUrl
+                        backSource: root.selectedBoxBackUrl.toString().length > 0
+                                    ? root.selectedBoxBackUrl
+                                    : root.selectedBoxFrontUrl
+                        visible: root.selectedBox3d
                     }
                     Text {
                         anchors.centerIn: parent
@@ -2502,9 +2544,11 @@ ApplicationWindow {
                         color: "#35ffffff"
                         font.pixelSize: 118
                         font.weight: Font.Black
-                        visible: detailImage.status !== Image.Ready
+                        visible: !root.selectedBox3d
+                                 && detailImage.status !== Image.Ready
                     }
                     Rectangle {
+                        visible: !root.selectedBox3d
                         anchors.left: parent.left
                         anchors.bottom: parent.bottom
                         width: parent.width
@@ -2515,7 +2559,8 @@ ApplicationWindow {
                         }
                     }
                     Rectangle {
-                        visible: detailImage.status === Image.Ready
+                        visible: !root.selectedBox3d
+                                 && detailImage.status === Image.Ready
                                  && root.selectedArtworkSource.length > 0
                         anchors.left: parent.left
                         anchors.top: parent.top
@@ -2538,7 +2583,22 @@ ApplicationWindow {
                     BusyIndicator {
                         anchors.centerIn: parent
                         running: gameDetails.loading
-                        visible: running
+                        visible: running && !root.selectedBox3d
+                    }
+                    Button {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 11
+                        visible: root.selectedBoxFrontUrl.toString().length > 0
+                        text: root.selectedBox3d ? "ARTWORK" : "3D BOX"
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        onClicked: root.selectedBox3d = !root.selectedBox3d
+                        background: Rectangle {
+                            radius: 8
+                            color: root.selectedBox3d ? root.accent : "#d5101620"
+                            border.color: root.selectedBox3d ? root.accent : "#627087"
+                        }
                     }
                 }
 

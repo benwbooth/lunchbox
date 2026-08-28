@@ -199,6 +199,12 @@ GUI thread by stable game UUID and resume after restart. Manuals open with Qt's
 operating-system URL handler, without shell commands or platform-specific path
 strings.
 
+The details hero can switch from flat artwork to an interactive native 3D box
+whenever an exact cached front cover exists. Qt Quick 3D renders separate front,
+back, spine, and edge faces using the real cached files; a missing back cover
+uses the front without inventing another asset. The box rotates automatically,
+supports pointer drag and wheel zoom, and exposes pause and reset controls.
+
 The Minerva manual action searches the dedicated manual-scan torrent for a
 high-confidence exact title, asks qBittorrent for only that reviewed ZIP member,
 persists byte progress across restarts, and supports cancellation without

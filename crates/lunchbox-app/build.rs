@@ -5,11 +5,13 @@ fn main() {
         QmlModule::new("Lunchbox")
             .depend("QtQuick.Dialogs")
             .depend("QtQuick.Layouts")
+            .depend("QtQuick3D")
             .depend("QtMultimedia")
-            .qml_files(["qml/Main.qml"]),
+            .qml_files(["qml/Box3DViewer.qml", "qml/Main.qml"]),
     )
     .qt_module("Quick")
     .qt_module("QuickControls2")
+    .qt_module("Quick3D")
     .qt_module("Multimedia")
     .file("src/download_queue_model.rs")
     .file("src/emulator_manager_model.rs")
