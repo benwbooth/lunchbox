@@ -5,17 +5,38 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::settings::{
-    AppSettings, CONTROLLER_GAMEPAD_BUTTONS, ControllerCustomProfile, ControllerMappingSettings,
-    ControllerPlayerMapping,
+    AppSettings, CONTROLLER_GAMEPAD_BUTTONS, ControllerButtonMapping, ControllerCustomProfile,
+    ControllerMappingSettings, ControllerPlayerMapping,
 };
 
 pub const PROFILE_INHERIT: &str = "__inherit";
 pub const PROFILE_NONE: &str = "__none";
+pub const PROFILE_CREATE: &str = "__create_profile";
 pub const TARGET_INHERIT: &str = "__inherit_target";
 pub const ACTION_REMAP: &str = "remap";
 pub const ACTION_PASSTHROUGH: &str = "passthrough";
 pub const ACTION_HIDE: &str = "hide";
 pub const TWO_BUTTON_CLOCKWISE_PROFILE_ID: &str = "two-button-clockwise";
+
+pub const CONTROLLER_PROFILE_BUTTONS: &[(&str, &str)] = &[
+    ("South", "South / A / Cross"),
+    ("East", "East / B / Circle"),
+    ("West", "West / X / Square"),
+    ("North", "North / Y / Triangle"),
+    ("Start", "Start / Menu / Options"),
+    ("Select", "Select / View / Share"),
+    ("Guide", "Guide / PS / Xbox"),
+    ("DPadUp", "D-pad up"),
+    ("DPadDown", "D-pad down"),
+    ("DPadLeft", "D-pad left"),
+    ("DPadRight", "D-pad right"),
+    ("LeftBumper", "L1 / LB"),
+    ("RightBumper", "R1 / RB"),
+    ("LeftTrigger", "L2 / LT"),
+    ("RightTrigger", "R2 / RT"),
+    ("LeftStick", "Left stick press"),
+    ("RightStick", "Right stick press"),
+];
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const DEVICE_LIST_TIMEOUT: Duration = Duration::from_secs(20);
@@ -119,6 +140,150 @@ pub fn built_in_profiles() -> Vec<ControllerProfile> {
         description: "Maps NES-style run/jump to the physical X/A face-button positions."
             .to_owned(),
     }]
+}
+
+pub fn controller_button_label(layout: &str, button: &str) -> String {
+    let label = match layout {
+        "playstation" => match button {
+            "South" => "Cross",
+            "East" => "Circle",
+            "West" => "Square",
+            "North" => "Triangle",
+            "Start" => "Options",
+            "Select" => "Share",
+            "Guide" => "PS",
+            "LeftBumper" => "L1",
+            "RightBumper" => "R1",
+            "LeftTrigger" => "L2",
+            "RightTrigger" => "R2",
+            "LeftStick" => "L3",
+            "RightStick" => "R3",
+            "DPadUp" => "Up",
+            "DPadDown" => "Down",
+            "DPadLeft" => "Left",
+            "DPadRight" => "Right",
+            _ => button,
+        },
+        "generic" => match button {
+            "LeftBumper" => "LB",
+            "RightBumper" => "RB",
+            "LeftTrigger" => "LT",
+            "RightTrigger" => "RT",
+            "LeftStick" => "L3",
+            "RightStick" => "R3",
+            "DPadUp" => "Up",
+            "DPadDown" => "Down",
+            "DPadLeft" => "Left",
+            "DPadRight" => "Right",
+            _ => button,
+        },
+        _ => match button {
+            "South" => "A",
+            "East" => "B",
+            "West" => "X",
+            "North" => "Y",
+            "Start" => "Menu",
+            "Select" => "View",
+            "Guide" => "Xbox",
+            "LeftBumper" => "LB",
+            "RightBumper" => "RB",
+            "LeftTrigger" => "LT",
+            "RightTrigger" => "RT",
+            "LeftStick" => "LS",
+            "RightStick" => "RS",
+            "DPadUp" => "Up",
+            "DPadDown" => "Down",
+            "DPadLeft" => "Left",
+            "DPadRight" => "Right",
+            _ => button,
+        },
+    };
+    label.to_owned()
+}
+
+pub fn custom_profile_source_for_target(profile: &ControllerCustomProfile, target: &str) -> String {
+    profile
+        .mappings
+        .iter()
+        .find(|mapping| mapping.target_button == target)
+        .map(|mapping| mapping.source_button.clone())
+        .unwrap_or_else(|| target.to_owned())
+}
+
+pub fn set_custom_profile_mapping(
+    profile: &mut ControllerCustomProfile,
+    target: &str,
+    source: &str,
+) -> bool {
+    if !CONTROLLER_PROFILE_BUTTONS
+        .iter()
+        .any(|(button, _)| *button == target)
+        || !CONTROLLER_PROFILE_BUTTONS
+            .iter()
+            .any(|(button, _)| *button == source)
+    {
+        return false;
+    }
+    let before = profile.mappings.clone();
+    profile
+        .mappings
+        .retain(|mapping| mapping.target_button != target);
+    if target != source {
+        profile.mappings.push(ControllerButtonMapping {
+            source_button: source.to_owned(),
+            target_button: target.to_owned(),
+        });
+    }
+    profile.mappings.sort_by(|left, right| {
+        profile_button_order(&left.target_button).cmp(&profile_button_order(&right.target_button))
+    });
+    profile.mappings != before
+}
+
+pub fn apply_two_button_profile_preset(profile: &mut ControllerCustomProfile) {
+    profile.mappings = vec![
+        ControllerButtonMapping {
+            source_button: "West".to_owned(),
+            target_button: "East".to_owned(),
+        },
+        ControllerButtonMapping {
+            source_button: "East".to_owned(),
+            target_button: "West".to_owned(),
+        },
+    ];
+}
+
+pub fn remove_custom_profile(mapping: &mut ControllerMappingSettings, profile_id: &str) -> bool {
+    let before = mapping.custom_profiles.len();
+    mapping
+        .custom_profiles
+        .retain(|profile| profile.id != profile_id);
+    if mapping.custom_profiles.len() == before {
+        return false;
+    }
+    if mapping.default_profile_id.as_deref() == Some(profile_id) {
+        mapping.default_profile_id = None;
+    }
+    for player in &mut mapping.player_mappings {
+        if player.profile_id.as_deref() == Some(profile_id) {
+            player.profile_id = None;
+        }
+    }
+    mapping
+        .platform_profile_ids
+        .retain(|_, saved| saved != profile_id);
+    mapping
+        .game_profile_ids
+        .retain(|_, saved| saved != profile_id);
+    trim_default_player_mappings(mapping);
+    true
+}
+
+fn profile_button_order(button: &str) -> usize {
+    CONTROLLER_PROFILE_BUTTONS
+        .iter()
+        .position(|(candidate, _)| *candidate == button)
+        .unwrap_or(usize::MAX)
 }
 
 pub fn controller_inventory() -> ControllerInventory {
@@ -1622,6 +1787,71 @@ mod tests {
         assert!(yaml.contains("button: East"));
         assert!(yaml.contains("button: West"));
         assert!(!yaml.contains("South to South"));
+    }
+
+    #[test]
+    fn custom_profile_editor_keeps_one_exact_source_per_target() {
+        let mut profile = ControllerCustomProfile {
+            id: "custom:arcade".to_owned(),
+            name: "Arcade".to_owned(),
+            layout: "xbox".to_owned(),
+            mappings: Vec::new(),
+        };
+        assert!(set_custom_profile_mapping(&mut profile, "South", "East"));
+        assert_eq!(custom_profile_source_for_target(&profile, "South"), "East");
+        assert!(set_custom_profile_mapping(&mut profile, "South", "West"));
+        assert_eq!(profile.mappings.len(), 1);
+        assert_eq!(custom_profile_source_for_target(&profile, "South"), "West");
+        assert!(set_custom_profile_mapping(&mut profile, "South", "South"));
+        assert!(profile.mappings.is_empty());
+        assert!(!set_custom_profile_mapping(
+            &mut profile,
+            "unsupported",
+            "South"
+        ));
+    }
+
+    #[test]
+    fn deleting_a_custom_profile_clears_every_exact_reference() {
+        let profile_id = "custom:arcade";
+        let mut mapping = ControllerMappingSettings {
+            default_profile_id: Some(profile_id.to_owned()),
+            player_mappings: vec![ControllerPlayerMapping {
+                controller_id: Some("one".to_owned()),
+                profile_id: Some(profile_id.to_owned()),
+                output_target: Some("xb360".to_owned()),
+            }],
+            platform_profile_ids: HashMap::from([("Arcade".to_owned(), profile_id.to_owned())]),
+            game_profile_ids: HashMap::from([("42".to_owned(), profile_id.to_owned())]),
+            custom_profiles: vec![ControllerCustomProfile {
+                id: profile_id.to_owned(),
+                name: "Arcade".to_owned(),
+                layout: "xbox".to_owned(),
+                mappings: Vec::new(),
+            }],
+            ..ControllerMappingSettings::default()
+        };
+
+        assert!(remove_custom_profile(&mut mapping, profile_id));
+        assert!(mapping.custom_profiles.is_empty());
+        assert!(mapping.default_profile_id.is_none());
+        assert!(mapping.platform_profile_ids.is_empty());
+        assert!(mapping.game_profile_ids.is_empty());
+        assert!(
+            mapping
+                .player_mappings
+                .iter()
+                .all(|player| player.profile_id.is_none())
+        );
+        assert!(!remove_custom_profile(&mut mapping, profile_id));
+    }
+
+    #[test]
+    fn visual_button_labels_follow_the_selected_layout() {
+        assert_eq!(controller_button_label("xbox", "South"), "A");
+        assert_eq!(controller_button_label("playstation", "South"), "Cross");
+        assert_eq!(controller_button_label("generic", "South"), "South");
+        assert_eq!(controller_button_label("xbox", "DPadLeft"), "Left");
     }
 
     #[test]

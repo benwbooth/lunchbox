@@ -36,6 +36,13 @@ pub mod qobject {
         #[qproperty(bool, controller_busy)]
         #[qproperty(i32, controller_revision)]
         #[qproperty(QString, controller_status)]
+        #[qproperty(bool, controller_profile_editor_open)]
+        #[qproperty(QString, controller_profile_editor_id)]
+        #[qproperty(QString, controller_profile_editor_name)]
+        #[qproperty(QString, controller_profile_editor_layout)]
+        #[qproperty(QString, controller_profile_editor_target)]
+        #[qproperty(QString, controller_profile_editor_status)]
+        #[qproperty(i32, controller_profile_revision)]
         type SettingsModel = super::SettingsModelRust;
 
         #[qinvokable]
@@ -121,6 +128,69 @@ pub mod qobject {
 
         #[qinvokable]
         fn controller_target_name_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn custom_controller_profile_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn custom_controller_profile_id_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn custom_controller_profile_name_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn custom_controller_profile_detail_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn create_controller_profile(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn edit_controller_profile(self: Pin<&mut SettingsModel>, index: i32);
+
+        #[qinvokable]
+        fn delete_controller_profile(self: Pin<&mut SettingsModel>, index: i32);
+
+        #[qinvokable]
+        fn cancel_controller_profile_edit(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn save_controller_profile(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn select_controller_profile_target(self: Pin<&mut SettingsModel>, target: QString);
+
+        #[qinvokable]
+        fn controller_profile_button_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn controller_profile_button_id_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_profile_button_name_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_profile_button_label(self: &SettingsModel, button: QString) -> QString;
+
+        #[qinvokable]
+        fn controller_profile_selected_source(self: &SettingsModel) -> QString;
+
+        #[qinvokable]
+        fn choose_controller_profile_source(self: Pin<&mut SettingsModel>, source: QString);
+
+        #[qinvokable]
+        fn controller_profile_mapping_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn controller_profile_mapping_source_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_profile_mapping_target_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn apply_two_button_controller_preset(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn clear_controller_profile_mappings(self: Pin<&mut SettingsModel>);
     }
 
     impl cxx_qt::Threading for SettingsModel {}
@@ -134,7 +204,10 @@ use cxx_qt_lib::{QString, QUrl};
 
 use crate::controllers::{self, ControllerDevice, ControllerInventory};
 use crate::qbittorrent;
-use crate::settings::{self, AppSettings, ControllerMappingSettings, SettingsStore};
+use crate::settings::{
+    self, AppSettings, ControllerButtonMapping, ControllerCustomProfile, ControllerMappingSettings,
+    SettingsStore,
+};
 
 pub struct SettingsModelRust {
     initialized: bool,
@@ -166,6 +239,15 @@ pub struct SettingsModelRust {
     controller_status: QString,
     controller_mapping: ControllerMappingSettings,
     controller_inventory: Option<ControllerInventory>,
+    controller_profile_editor_open: bool,
+    controller_profile_editor_id: QString,
+    controller_profile_editor_name: QString,
+    controller_profile_editor_layout: QString,
+    controller_profile_editor_target: QString,
+    controller_profile_editor_status: QString,
+    controller_profile_revision: i32,
+    controller_profile_editor_mappings: Vec<ControllerButtonMapping>,
+    controller_profile_pending_controller_id: Option<String>,
 }
 
 impl Default for SettingsModelRust {
@@ -200,6 +282,15 @@ impl Default for SettingsModelRust {
             controller_status: QString::from("Open controller settings to scan this computer."),
             controller_mapping: ControllerMappingSettings::default(),
             controller_inventory: None,
+            controller_profile_editor_open: false,
+            controller_profile_editor_id: QString::default(),
+            controller_profile_editor_name: QString::from("Custom profile"),
+            controller_profile_editor_layout: QString::from("xbox"),
+            controller_profile_editor_target: QString::from("South"),
+            controller_profile_editor_status: QString::default(),
+            controller_profile_revision: 0,
+            controller_profile_editor_mappings: Vec::new(),
+            controller_profile_pending_controller_id: None,
         }
     }
 }
@@ -629,6 +720,11 @@ impl qobject::SettingsModel {
         else {
             return;
         };
+        if profile.to_string().trim() == controllers::PROFILE_CREATE {
+            self.as_mut()
+                .open_new_controller_profile(Some(controller_id));
+            return;
+        }
         if controllers::set_controller_profile(
             &mut self.as_mut().rust_mut().controller_mapping,
             &controller_id,
@@ -662,7 +758,7 @@ impl qobject::SettingsModel {
     }
 
     pub fn controller_profile_count(&self) -> i32 {
-        let count = 2
+        let count = 3
             + controllers::built_in_profiles().len()
             + self.rust().controller_mapping.custom_profiles.len();
         i32::try_from(count).unwrap_or(i32::MAX)
@@ -723,6 +819,293 @@ impl qobject::SettingsModel {
             .unwrap_or_default()
     }
 
+    pub fn custom_controller_profile_count(&self) -> i32 {
+        i32::try_from(self.rust().controller_mapping.custom_profiles.len()).unwrap_or(i32::MAX)
+    }
+
+    pub fn custom_controller_profile_id_at(&self, index: i32) -> QString {
+        self.custom_controller_profile_at(index)
+            .map(|profile| qstring(&profile.id))
+            .unwrap_or_default()
+    }
+
+    pub fn custom_controller_profile_name_at(&self, index: i32) -> QString {
+        self.custom_controller_profile_at(index)
+            .map(|profile| qstring(&profile.name))
+            .unwrap_or_default()
+    }
+
+    pub fn custom_controller_profile_detail_at(&self, index: i32) -> QString {
+        self.custom_controller_profile_at(index)
+            .map(|profile| {
+                let layout = match profile.layout.as_str() {
+                    "playstation" => "PlayStation",
+                    "generic" => "Generic",
+                    _ => "Xbox",
+                };
+                let mapping_label = match profile.mappings.len() {
+                    0 => "identity mapping".to_owned(),
+                    1 => "1 remapped button".to_owned(),
+                    count => format!("{count} remapped buttons"),
+                };
+                qstring(format!("{layout} diagram · {mapping_label}"))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn create_controller_profile(mut self: Pin<&mut Self>) {
+        self.as_mut().open_new_controller_profile(None);
+    }
+
+    pub fn edit_controller_profile(mut self: Pin<&mut Self>, index: i32) {
+        let Some(profile) = self.as_ref().custom_controller_profile_at(index).cloned() else {
+            return;
+        };
+        self.as_mut()
+            .set_controller_profile_editor_id(qstring(&profile.id));
+        self.as_mut()
+            .set_controller_profile_editor_name(qstring(&profile.name));
+        self.as_mut()
+            .set_controller_profile_editor_layout(qstring(&profile.layout));
+        self.as_mut()
+            .set_controller_profile_editor_target(qstring("South"));
+        self.as_mut()
+            .set_controller_profile_editor_status(qstring("Edit the diagram, then save."));
+        self.as_mut().rust_mut().controller_profile_editor_mappings = profile.mappings;
+        self.as_mut()
+            .rust_mut()
+            .controller_profile_pending_controller_id = None;
+        self.as_mut().set_controller_profile_editor_open(true);
+        self.as_mut().bump_controller_profile_revision();
+    }
+
+    pub fn delete_controller_profile(mut self: Pin<&mut Self>, index: i32) {
+        let Some(profile) = self.as_ref().custom_controller_profile_at(index).cloned() else {
+            return;
+        };
+        if !controllers::remove_custom_profile(
+            &mut self.as_mut().rust_mut().controller_mapping,
+            &profile.id,
+        ) {
+            return;
+        }
+        if self.as_ref().controller_profile_editor_id().to_string() == profile.id {
+            self.as_mut().close_controller_profile_editor();
+        }
+        self.as_mut()
+            .set_controller_profile_editor_status(qstring(format!(
+                "Deleted profile {:?} and cleared its launch assignments.",
+                profile.name
+            )));
+        self.as_mut().controller_settings_changed();
+        self.as_mut().bump_controller_profile_revision();
+    }
+
+    pub fn cancel_controller_profile_edit(mut self: Pin<&mut Self>) {
+        self.as_mut().close_controller_profile_editor();
+        self.as_mut().bump_controller_revision();
+    }
+
+    pub fn save_controller_profile(mut self: Pin<&mut Self>) {
+        let name = self
+            .as_ref()
+            .controller_profile_editor_name()
+            .to_string()
+            .trim()
+            .to_owned();
+        if name.is_empty() || name.chars().count() > 100 {
+            self.as_mut().set_controller_profile_editor_status(qstring(
+                "Profile name must contain 1 to 100 characters.",
+            ));
+            return;
+        }
+        let layout = self.as_ref().controller_profile_editor_layout().to_string();
+        if !matches!(layout.as_str(), "xbox" | "playstation" | "generic") {
+            self.as_mut().set_controller_profile_editor_status(qstring(
+                "Choose the Xbox, PlayStation, or generic diagram.",
+            ));
+            return;
+        }
+        let saved_id = self.as_ref().controller_profile_editor_id().to_string();
+        let id = if saved_id.trim().is_empty() {
+            format!("custom:{}", uuid::Uuid::new_v4())
+        } else {
+            saved_id
+        };
+        let profile = ControllerCustomProfile {
+            id: id.clone(),
+            name: name.clone(),
+            layout,
+            mappings: self
+                .as_ref()
+                .rust()
+                .controller_profile_editor_mappings
+                .clone(),
+        };
+        let pending_controller_id = self
+            .as_ref()
+            .rust()
+            .controller_profile_pending_controller_id
+            .clone();
+        let mut candidate = self.as_ref().rust().controller_mapping.clone();
+        if let Some(index) = candidate
+            .custom_profiles
+            .iter()
+            .position(|saved| saved.id == id)
+        {
+            candidate.custom_profiles[index] = profile;
+        } else {
+            candidate.custom_profiles.push(profile);
+        }
+        if let Some(controller_id) = pending_controller_id.as_deref()
+            && !controllers::set_controller_profile(&mut candidate, controller_id, &id)
+        {
+            self.as_mut().set_controller_profile_editor_status(qstring(
+                "The new profile could not be assigned to the selected controller.",
+            ));
+            return;
+        }
+        if let Err(error) = candidate.validate() {
+            self.as_mut()
+                .set_controller_profile_editor_status(qstring(error.to_string()));
+            return;
+        }
+        self.as_mut().rust_mut().controller_mapping = candidate;
+        if pending_controller_id.is_some() {
+            self.as_mut().set_controller_enabled(true);
+        }
+        self.as_mut().close_controller_profile_editor();
+        self.as_mut()
+            .set_controller_profile_editor_status(qstring(format!(
+                "Saved custom controller profile {name:?}."
+            )));
+        self.as_mut().controller_settings_changed();
+        self.as_mut().bump_controller_profile_revision();
+    }
+
+    pub fn select_controller_profile_target(mut self: Pin<&mut Self>, target: QString) {
+        let target = target.to_string();
+        if !controllers::CONTROLLER_PROFILE_BUTTONS
+            .iter()
+            .any(|(button, _)| *button == target)
+        {
+            return;
+        }
+        self.as_mut()
+            .set_controller_profile_editor_target(qstring(target));
+        self.as_mut()
+            .set_controller_profile_editor_status(QString::default());
+        self.as_mut().bump_controller_profile_revision();
+    }
+
+    pub fn controller_profile_button_count(&self) -> i32 {
+        i32::try_from(controllers::CONTROLLER_PROFILE_BUTTONS.len()).unwrap_or(i32::MAX)
+    }
+
+    pub fn controller_profile_button_id_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| controllers::CONTROLLER_PROFILE_BUTTONS.get(index))
+            .map(|(id, _)| qstring(id))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_profile_button_name_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| controllers::CONTROLLER_PROFILE_BUTTONS.get(index))
+            .map(|(_, name)| qstring(name))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_profile_button_label(&self, button: QString) -> QString {
+        qstring(controllers::controller_button_label(
+            &self.controller_profile_editor_layout().to_string(),
+            button.to_string().trim(),
+        ))
+    }
+
+    pub fn controller_profile_selected_source(&self) -> QString {
+        let target = self.controller_profile_editor_target().to_string();
+        let profile = ControllerCustomProfile {
+            mappings: self.rust().controller_profile_editor_mappings.clone(),
+            ..ControllerCustomProfile::default()
+        };
+        qstring(controllers::custom_profile_source_for_target(
+            &profile, &target,
+        ))
+    }
+
+    pub fn choose_controller_profile_source(mut self: Pin<&mut Self>, source: QString) {
+        let target = self.as_ref().controller_profile_editor_target().to_string();
+        let source = source.to_string();
+        let mut profile = ControllerCustomProfile {
+            mappings: self
+                .as_ref()
+                .rust()
+                .controller_profile_editor_mappings
+                .clone(),
+            ..ControllerCustomProfile::default()
+        };
+        if controllers::set_custom_profile_mapping(&mut profile, &target, &source) {
+            self.as_mut().rust_mut().controller_profile_editor_mappings = profile.mappings;
+            self.as_mut()
+                .set_controller_profile_editor_status(QString::default());
+            self.as_mut().bump_controller_profile_revision();
+        }
+    }
+
+    pub fn controller_profile_mapping_count(&self) -> i32 {
+        i32::try_from(self.rust().controller_profile_editor_mappings.len()).unwrap_or(i32::MAX)
+    }
+
+    pub fn controller_profile_mapping_source_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().controller_profile_editor_mappings.get(index))
+            .map(|mapping| qstring(&mapping.source_button))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_profile_mapping_target_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().controller_profile_editor_mappings.get(index))
+            .map(|mapping| qstring(&mapping.target_button))
+            .unwrap_or_default()
+    }
+
+    pub fn apply_two_button_controller_preset(mut self: Pin<&mut Self>) {
+        let mut profile = ControllerCustomProfile::default();
+        controllers::apply_two_button_profile_preset(&mut profile);
+        self.as_mut().rust_mut().controller_profile_editor_mappings = profile.mappings;
+        self.as_mut().set_controller_profile_editor_status(qstring(
+            "Applied the 2-button X/A preset. Identity mappings remain implicit.",
+        ));
+        self.as_mut().bump_controller_profile_revision();
+        if std::env::args().any(|argument| argument == "--controller-profile-ui-probe") {
+            println!(
+                "LUNCHBOX_CONTROLLER_PROFILE_UI_READY buttons={} mappings={}",
+                controllers::CONTROLLER_PROFILE_BUTTONS.len(),
+                self.as_ref()
+                    .rust()
+                    .controller_profile_editor_mappings
+                    .len()
+            );
+        }
+    }
+
+    pub fn clear_controller_profile_mappings(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .rust_mut()
+            .controller_profile_editor_mappings
+            .clear();
+        self.as_mut().set_controller_profile_editor_status(qstring(
+            "Cleared every remap; the profile now passes buttons through by identity.",
+        ));
+        self.as_mut().bump_controller_profile_revision();
+    }
+
     pub fn set_directory(mut self: Pin<&mut Self>, field: QString, url: QUrl) {
         let Some(path) = url.to_local_file() else {
             self.as_mut()
@@ -779,7 +1162,9 @@ impl qobject::SettingsModel {
         self.as_mut()
             .set_controller_output_target(qstring(&controller_mapping.output_target));
         self.as_mut().rust_mut().controller_mapping = controller_mapping;
+        self.as_mut().close_controller_profile_editor();
         self.as_mut().bump_controller_revision();
+        self.as_mut().bump_controller_profile_revision();
     }
 
     fn settings_snapshot(&self) -> Result<AppSettings, String> {
@@ -848,6 +1233,49 @@ impl qobject::SettingsModel {
             .cloned()
     }
 
+    fn custom_controller_profile_at(&self, index: i32) -> Option<&ControllerCustomProfile> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().controller_mapping.custom_profiles.get(index))
+    }
+
+    fn open_new_controller_profile(mut self: Pin<&mut Self>, controller_id: Option<String>) {
+        self.as_mut()
+            .set_controller_profile_editor_id(QString::default());
+        self.as_mut()
+            .set_controller_profile_editor_name(qstring("Custom profile"));
+        self.as_mut()
+            .set_controller_profile_editor_layout(qstring("xbox"));
+        self.as_mut()
+            .set_controller_profile_editor_target(qstring("South"));
+        self.as_mut().set_controller_profile_editor_status(qstring(
+            "Choose a virtual target on the diagram, then assign its physical source.",
+        ));
+        self.as_mut()
+            .rust_mut()
+            .controller_profile_editor_mappings
+            .clear();
+        self.as_mut()
+            .rust_mut()
+            .controller_profile_pending_controller_id = controller_id;
+        self.as_mut().set_controller_profile_editor_open(true);
+        self.as_mut().bump_controller_revision();
+        self.as_mut().bump_controller_profile_revision();
+        if std::env::args().any(|argument| argument == "--controller-profile-ui-probe") {
+            println!(
+                "LUNCHBOX_CONTROLLER_PROFILE_UI_OPENED buttons={} mappings=0",
+                controllers::CONTROLLER_PROFILE_BUTTONS.len()
+            );
+        }
+    }
+
+    fn close_controller_profile_editor(mut self: Pin<&mut Self>) {
+        self.as_mut().set_controller_profile_editor_open(false);
+        self.as_mut()
+            .rust_mut()
+            .controller_profile_pending_controller_id = None;
+    }
+
     fn controller_settings_changed(mut self: Pin<&mut Self>) {
         self.as_mut().bump_controller_revision();
         self.as_mut().set_message(qstring(
@@ -858,6 +1286,11 @@ impl qobject::SettingsModel {
     fn bump_controller_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().controller_revision().wrapping_add(1);
         self.as_mut().set_controller_revision(revision);
+    }
+
+    fn bump_controller_profile_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().controller_profile_revision().wrapping_add(1);
+        self.as_mut().set_controller_profile_revision(revision);
     }
 }
 
@@ -906,8 +1339,16 @@ fn controller_profile_option(
             if let Some(profile) = built_in.get(index) {
                 return Some((profile.id.clone(), profile.name.clone()));
             }
-            let profile = mapping.custom_profiles.get(index - built_in.len())?;
-            Some((profile.id.clone(), profile.name.clone()))
+            let custom_index = index.checked_sub(built_in.len())?;
+            if let Some(profile) = mapping.custom_profiles.get(custom_index) {
+                return Some((profile.id.clone(), profile.name.clone()));
+            }
+            (custom_index == mapping.custom_profiles.len()).then(|| {
+                (
+                    controllers::PROFILE_CREATE.to_owned(),
+                    "Create new profile…".to_owned(),
+                )
+            })
         }
     }
 }

@@ -2724,8 +2724,17 @@ mod tests {
                 output_target: "ds5".into(),
                 player_mappings: vec![ControllerPlayerMapping {
                     controller_id: Some("linux:054c:0ce6:living-room".into()),
-                    profile_id: Some("two-button-clockwise".into()),
+                    profile_id: Some("custom:living-room".into()),
                     output_target: Some("xb360".into()),
+                }],
+                custom_profiles: vec![ControllerCustomProfile {
+                    id: "custom:living-room".into(),
+                    name: "Living room arcade".into(),
+                    layout: "playstation".into(),
+                    mappings: vec![ControllerButtonMapping {
+                        source_button: "East".into(),
+                        target_button: "West".into(),
+                    }],
                 }],
                 ..ControllerMappingSettings::default()
             },

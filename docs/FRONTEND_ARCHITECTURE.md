@@ -279,8 +279,14 @@ immediately before emulator spawn and an RAII launch session restores captured
 InputPlumber intercept, profile, target, and device-order state after normal
 exit, launch failure, or process-supervision error. Applying those mutations
 still requires a release gate with attached InputPlumber-managed hardware.
-The
-`--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
+The adjacent Rust-backed profile designer exposes the legacy Xbox,
+PlayStation, and generic controller diagrams without adding a web view. It
+stores only explicit target-to-source differences, validates the complete
+profile before it can enter settings state, and removes exact player,
+platform, game, and default references when a profile is deleted. The
+`--controller-profile-ui-probe` opens the editor against a fresh state database,
+applies the two-button preset, and reports its real button and mapping counts.
+The `--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
 Minerva bundle, and scrolls the details pane to the ranked native candidate
 cards for deterministic visual review against the preserved discovery catalog.
 `--multidisc-ui-probe` opens the preserved Sony PlayStation Final Fantasy VII

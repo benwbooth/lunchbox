@@ -10,8 +10,8 @@ import Lunchbox
 ApplicationWindow {
     id: root
     visible: true
-    width: 1440
-    height: 900
+    width: controllerProfileUiProbe ? 1920 : 1440
+    height: controllerProfileUiProbe ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
@@ -68,6 +68,8 @@ ApplicationWindow {
     property bool mediaRotationProbeOpened: false
     property int pendingEmulatorUninstallIndex: -1
     property string pendingEmulatorUninstallName: ""
+    property int pendingControllerProfileDeleteIndex: -1
+    property string pendingControllerProfileDeleteName: ""
     property int downloadPlanProbeBundleIndex: 0
     property bool launchProbeTriggered: false
     property bool launchProbeObservedRunning: false
@@ -109,6 +111,7 @@ ApplicationWindow {
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
+    readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
@@ -867,7 +870,7 @@ ApplicationWindow {
             else if (root.importUiProbe)
                 root.openImportDialog()
             else if (root.settingsUiProbe || root.settingsRegionUiProbe
-                     || root.controllerUiProbe) {
+                     || root.controllerUiProbe || root.controllerProfileUiProbe) {
                 settingsDialog.open()
                 if (root.controllerUiProbe)
                     console.log("LUNCHBOX_CONTROLLER_UI_OPENED")
@@ -933,6 +936,19 @@ ApplicationWindow {
         onTriggered: settingsScroll.contentItem.contentY = Math.max(
                          0, controllerSection.mapToItem(
                              settingsScroll.contentItem, 0, 0).y - 18)
+    }
+
+    Timer {
+        interval: 900
+        running: root.controllerProfileUiProbe && appSettings.initialized
+        repeat: false
+        onTriggered: {
+            appSettings.create_controller_profile()
+            appSettings.apply_two_button_controller_preset()
+            settingsScroll.contentItem.contentY = Math.max(
+                0, controllerProfileEditor.mapToItem(
+                    settingsScroll.contentItem, 0, 0).y - 18)
+        }
     }
 
     Timer {
@@ -5139,8 +5155,10 @@ ApplicationWindow {
         id: settingsDialog
         modal: true
         anchors.centerIn: parent
-        width: Math.min(760, root.width - 60)
-        height: Math.min(760, root.height - 60)
+        width: Math.min(root.controllerProfileUiProbe ? 1120 : 760,
+                        root.width - 60)
+        height: Math.min(root.controllerProfileUiProbe ? 1080 : 760,
+                         root.height - 60)
         padding: 0
         closePolicy: Popup.CloseOnEscape
         onOpened: appSettings.refresh_controllers()
@@ -5850,6 +5868,521 @@ ApplicationWindow {
                             }
                         }
                     }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        color: root.line
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "CUSTOM PROFILES"
+                                color: root.accent
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1.1
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Build reusable physical-to-virtual button maps. Identity mappings stay implicit, so profiles contain only deliberate changes."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                        Button {
+                            text: "New profile"
+                            enabled: !appSettings.controller_profile_editor_open
+                            onClicked: appSettings.create_controller_profile()
+                            Accessible.name: "Create a custom controller profile"
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !appSettings.controller_profile_editor_open
+                                 && appSettings.controller_profile_editor_status.length > 0
+                        text: appSettings.controller_profile_editor_status
+                        color: root.accentCool
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: {
+                            appSettings.controller_profile_revision
+                            const count = appSettings.custom_controller_profile_count()
+                            return !visible ? 0 : count === 0
+                                                 ? 74
+                                                 : Math.min(270, count * 64 + 12)
+                        }
+                        visible: !appSettings.controller_profile_editor_open
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            width: parent.width - 36
+                            visible: {
+                                appSettings.controller_profile_revision
+                                return appSettings.custom_controller_profile_count() === 0
+                            }
+                            spacing: 3
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: "NO CUSTOM PROFILES"
+                                color: root.ink
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Create one here, then assign it to any connected controller from the Profile menu."
+                                color: root.muted
+                                font.pixelSize: 9
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        ListView {
+                            id: customControllerProfileList
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            visible: {
+                                appSettings.controller_profile_revision
+                                return appSettings.custom_controller_profile_count() > 0
+                            }
+                            clip: true
+                            spacing: 5
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: {
+                                appSettings.controller_profile_revision
+                                return appSettings.custom_controller_profile_count()
+                            }
+                            ScrollBar.vertical: ScrollBar { }
+
+                            delegate: Rectangle {
+                                id: customProfileRow
+                                required property int index
+                                width: customControllerProfileList.width - 8
+                                height: 58
+                                radius: 7
+                                color: "#161e29"
+                                border.color: "#202b3b"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 9
+                                    spacing: 8
+                                    Rectangle {
+                                        Layout.preferredWidth: 30
+                                        Layout.preferredHeight: 30
+                                        radius: 8
+                                        color: "#202d3b"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "⌁"
+                                            color: root.accentCool
+                                            font.pixelSize: 16
+                                            font.weight: Font.Bold
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: appSettings.custom_controller_profile_name_at(
+                                                      customProfileRow.index)
+                                            color: root.ink
+                                            font.pixelSize: 11
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: appSettings.custom_controller_profile_detail_at(
+                                                      customProfileRow.index)
+                                            color: root.muted
+                                            font.pixelSize: 9
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    Button {
+                                        text: "Edit"
+                                        onClicked: appSettings.edit_controller_profile(
+                                                       customProfileRow.index)
+                                        Accessible.name: "Edit custom controller profile"
+                                    }
+                                    Button {
+                                        text: "Delete"
+                                        onClicked: {
+                                            root.pendingControllerProfileDeleteIndex =
+                                                customProfileRow.index
+                                            root.pendingControllerProfileDeleteName =
+                                                appSettings.custom_controller_profile_name_at(
+                                                    customProfileRow.index)
+                                            controllerProfileDeleteDialog.open()
+                                        }
+                                        Accessible.name: "Delete custom controller profile"
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: controllerProfileEditor
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: visible ? 650 : 0
+                        visible: appSettings.controller_profile_editor_open
+                        radius: 10
+                        color: "#101925"
+                        border.color: root.accentCool
+                        border.width: 1
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: 11
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text {
+                                        text: appSettings.controller_profile_editor_id.length > 0
+                                              ? "EDIT CONTROLLER PROFILE"
+                                              : "CREATE CONTROLLER PROFILE"
+                                        color: root.ink
+                                        font.pixelSize: 14
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                    }
+                                    Text {
+                                        text: "Select a virtual button, then choose which physical button should produce it."
+                                        color: root.muted
+                                        font.pixelSize: 9
+                                    }
+                                }
+                                Button {
+                                    text: "Cancel"
+                                    onClicked: appSettings.cancel_controller_profile_edit()
+                                    Accessible.name: "Cancel controller profile editing"
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    Text {
+                                        text: "Profile name"
+                                        color: root.muted
+                                        font.pixelSize: 9
+                                    }
+                                    TextField {
+                                        id: controllerProfileName
+                                        Layout.fillWidth: true
+                                        text: appSettings.controller_profile_editor_name
+                                        maximumLength: 100
+                                        selectByMouse: true
+                                        onTextEdited: appSettings.controller_profile_editor_name = text
+                                        Accessible.name: "Custom controller profile name"
+                                    }
+                                }
+                                ColumnLayout {
+                                    Layout.preferredWidth: 210
+                                    spacing: 4
+                                    Text {
+                                        text: "Button labels"
+                                        color: root.muted
+                                        font.pixelSize: 9
+                                    }
+                                    ComboBox {
+                                        Layout.fillWidth: true
+                                        textRole: "label"
+                                        valueRole: "value"
+                                        model: [
+                                            { label: "Xbox", value: "xbox" },
+                                            { label: "PlayStation 4 / 5", value: "playstation" },
+                                            { label: "Generic", value: "generic" }
+                                        ]
+                                        currentIndex: appSettings.controller_profile_editor_layout
+                                                      === "playstation" ? 1
+                                                      : appSettings.controller_profile_editor_layout
+                                                        === "generic" ? 2 : 0
+                                        onActivated: appSettings.controller_profile_editor_layout =
+                                                         currentValue
+                                        Accessible.name: "Controller diagram label style"
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 330
+                                spacing: 11
+
+                                Rectangle {
+                                    id: controllerDiagram
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 9
+                                    color: "#0b121b"
+                                    border.color: root.line
+                                    readonly property var buttons: [
+                                        { id: "LeftTrigger", x: 88, y: 30 },
+                                        { id: "LeftBumper", x: 88, y: 62 },
+                                        { id: "RightTrigger", x: 292, y: 30 },
+                                        { id: "RightBumper", x: 292, y: 62 },
+                                        { id: "DPadUp", x: 88, y: 128 },
+                                        { id: "DPadLeft", x: 62, y: 154 },
+                                        { id: "DPadRight", x: 114, y: 154 },
+                                        { id: "DPadDown", x: 88, y: 180 },
+                                        { id: "LeftStick", x: 142, y: 188 },
+                                        { id: "Select", x: 168, y: 126 },
+                                        { id: "Guide", x: 190, y: 154 },
+                                        { id: "Start", x: 212, y: 126 },
+                                        { id: "RightStick", x: 238, y: 188 },
+                                        { id: "West", x: 266, y: 154 },
+                                        { id: "North", x: 292, y: 128 },
+                                        { id: "East", x: 318, y: 154 },
+                                        { id: "South", x: 292, y: 180 }
+                                    ]
+
+                                    Canvas {
+                                        id: controllerShellCanvas
+                                        anchors.fill: parent
+                                        anchors.margins: 8
+                                        onWidthChanged: requestPaint()
+                                        onHeightChanged: requestPaint()
+                                        onPaint: {
+                                            const ctx = getContext("2d")
+                                            ctx.reset()
+                                            ctx.scale(width / 380, height / 240)
+                                            ctx.beginPath()
+                                            ctx.moveTo(73, 78)
+                                            ctx.bezierCurveTo(91, 58, 127, 62, 151, 84)
+                                            ctx.lineTo(229, 84)
+                                            ctx.bezierCurveTo(253, 62, 289, 58, 307, 78)
+                                            ctx.bezierCurveTo(332, 105, 343, 177, 324, 201)
+                                            ctx.bezierCurveTo(309, 220, 283, 214, 258, 178)
+                                            ctx.lineTo(122, 178)
+                                            ctx.bezierCurveTo(97, 214, 71, 220, 56, 201)
+                                            ctx.bezierCurveTo(37, 177, 48, 105, 73, 78)
+                                            ctx.closePath()
+                                            ctx.fillStyle = "#172331"
+                                            ctx.fill()
+                                            ctx.lineWidth = 2
+                                            ctx.strokeStyle = "#34445a"
+                                            ctx.stroke()
+                                        }
+                                    }
+
+                                    Repeater {
+                                        model: controllerDiagram.buttons
+                                        delegate: RoundButton {
+                                            required property var modelData
+                                            width: 39
+                                            height: 39
+                                            x: 8 + (modelData.x / 380)
+                                                     * (controllerDiagram.width - 16) - width / 2
+                                            y: 8 + (modelData.y / 240)
+                                                     * (controllerDiagram.height - 16) - height / 2
+                                            z: 2
+                                            text: {
+                                                appSettings.controller_profile_revision
+                                                appSettings.controller_profile_editor_layout
+                                                return appSettings.controller_profile_button_label(
+                                                    modelData.id)
+                                            }
+                                            font.pixelSize: text.length > 5 ? 7 : 9
+                                            font.weight: Font.DemiBold
+                                            onClicked: appSettings.select_controller_profile_target(
+                                                           modelData.id)
+                                            Accessible.name: "Map virtual button " + modelData.id
+                                            background: Rectangle {
+                                                radius: width / 2
+                                                color: appSettings.controller_profile_editor_target
+                                                       === modelData.id
+                                                       ? root.accent : "#263447"
+                                                border.color: appSettings.controller_profile_editor_target
+                                                              === modelData.id
+                                                              ? "#ffd092" : "#4a5b72"
+                                                border.width: 1
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: appSettings.controller_profile_editor_target
+                                                       === modelData.id
+                                                       ? "#101318" : root.ink
+                                                font: parent.font
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: 245
+                                    Layout.fillHeight: true
+                                    radius: 9
+                                    color: "#141e2b"
+                                    border.color: root.line
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        spacing: 8
+                                        Text {
+                                            text: "VIRTUAL TARGET"
+                                            color: root.muted
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.9
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: appSettings.controller_profile_button_label(
+                                                      appSettings.controller_profile_editor_target)
+                                            color: root.accent
+                                            font.pixelSize: 17
+                                            font.weight: Font.Bold
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            text: "Physical source"
+                                            color: root.muted
+                                            font.pixelSize: 9
+                                        }
+                                        ComboBox {
+                                            id: physicalControllerSource
+                                            Layout.fillWidth: true
+                                            model: appSettings.controller_profile_button_count()
+                                            delegate: ItemDelegate {
+                                                required property int index
+                                                width: physicalControllerSource.width
+                                                text: appSettings.controller_profile_button_name_at(index)
+                                            }
+                                            currentIndex: {
+                                                appSettings.controller_profile_revision
+                                                const source = appSettings.controller_profile_selected_source()
+                                                for (let i = 0;
+                                                     i < appSettings.controller_profile_button_count();
+                                                     ++i) {
+                                                    if (appSettings.controller_profile_button_id_at(i)
+                                                        === source)
+                                                        return i
+                                                }
+                                                return 0
+                                            }
+                                            displayText: currentIndex >= 0
+                                                         ? appSettings.controller_profile_button_name_at(
+                                                               currentIndex) : "Choose source"
+                                            onActivated: appSettings.choose_controller_profile_source(
+                                                             appSettings.controller_profile_button_id_at(
+                                                                 currentIndex))
+                                            Accessible.name: "Physical source button"
+                                        }
+                                        Button {
+                                            Layout.fillWidth: true
+                                            text: "Apply 2-button X/A preset"
+                                            onClicked: appSettings.apply_two_button_controller_preset()
+                                        }
+                                        Button {
+                                            Layout.fillWidth: true
+                                            text: "Clear all remaps"
+                                            onClicked: appSettings.clear_controller_profile_mappings()
+                                        }
+                                        Text {
+                                            text: "ACTIVE REMAPS"
+                                            color: root.muted
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.9
+                                        }
+                                        ListView {
+                                            id: controllerProfileMappingList
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            clip: true
+                                            spacing: 3
+                                            model: {
+                                                appSettings.controller_profile_revision
+                                                return appSettings.controller_profile_mapping_count()
+                                            }
+                                            delegate: Rectangle {
+                                                required property int index
+                                                width: controllerProfileMappingList.width
+                                                height: 25
+                                                radius: 5
+                                                color: "#1d2a39"
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: appSettings.controller_profile_mapping_source_at(
+                                                              index) + "  →  "
+                                                          + appSettings.controller_profile_mapping_target_at(
+                                                              index)
+                                                    color: root.ink
+                                                    font.pixelSize: 9
+                                                }
+                                            }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                visible: controllerProfileMappingList.count === 0
+                                                text: "Identity mapping"
+                                                color: root.muted
+                                                font.pixelSize: 9
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: appSettings.controller_profile_editor_status
+                                color: appSettings.controller_profile_editor_status.indexOf(
+                                           "must") >= 0
+                                       || appSettings.controller_profile_editor_status.indexOf(
+                                           "could not") >= 0
+                                       ? "#ff8b8b" : root.muted
+                                font.pixelSize: 9
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Item { Layout.fillWidth: true }
+                                Button {
+                                    text: "Cancel"
+                                    onClicked: appSettings.cancel_controller_profile_edit()
+                                }
+                                HeaderButton {
+                                    text: "Save profile"
+                                    active: true
+                                    enabled: controllerProfileName.text.trim().length > 0
+                                    onClicked: appSettings.save_controller_profile()
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
@@ -5942,6 +6475,35 @@ ApplicationWindow {
                     horizontalAlignment: Text.AlignRight
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: controllerProfileDeleteDialog
+        parent: Overlay.overlay
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(470, root.width - 48)
+        title: "Delete custom controller profile?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: {
+            appSettings.delete_controller_profile(
+                root.pendingControllerProfileDeleteIndex)
+            root.pendingControllerProfileDeleteIndex = -1
+            root.pendingControllerProfileDeleteName = ""
+        }
+        onRejected: {
+            root.pendingControllerProfileDeleteIndex = -1
+            root.pendingControllerProfileDeleteName = ""
+        }
+        contentItem: Text {
+            text: "Delete ‘" + root.pendingControllerProfileDeleteName
+                  + "’? Lunchbox will also clear exact game, platform, default, and player assignments that reference it."
+            color: root.ink
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
         }
     }
 
