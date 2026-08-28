@@ -37,6 +37,19 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--initialize-state") {
+        return match settings::SettingsStore::open_default() {
+            Ok(store) => {
+                println!("LUNCHBOX_STATE_READY path={:?}", store.path());
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_STATE_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     initialize_qt();
 
     let mut application = QGuiApplication::new();

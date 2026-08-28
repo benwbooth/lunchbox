@@ -37,6 +37,7 @@ pub struct GameDetails {
     pub downloadable: bool,
     pub database_id: i64,
     pub local_file_path: PathBuf,
+    pub local_file_paths: Vec<PathBuf>,
     pub prepared_install: Option<PreparedInstall>,
     pub bundles: Vec<MinervaBundle>,
 }
@@ -166,19 +167,57 @@ fn load_prepared_state(details: &mut GameDetails) -> Result<()> {
         return Ok(());
     }
     let store = crate::settings::SettingsStore::open_default()?;
-    if details.local_file_path.as_os_str().is_empty() {
-        details.local_file_path = store
-            .connection()?
-            .query_row(
-                "SELECT file_path FROM installed_games WHERE game_uid=?1",
-                [&details.id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .map(PathBuf::from)
-            .unwrap_or_default();
-    }
+    load_native_game_files(details, &store)?;
     details.prepared_install = crate::exo_install::cached_install(&store, &details.id)?;
+    Ok(())
+}
+
+fn load_native_game_files(
+    details: &mut GameDetails,
+    store: &crate::settings::SettingsStore,
+) -> Result<()> {
+    let connection = store.connection()?;
+    let mut paths = std::mem::take(&mut details.local_file_paths);
+    if !details.local_file_path.as_os_str().is_empty() {
+        paths.push(details.local_file_path.clone());
+    }
+
+    let mut installed = connection.prepare(
+        "SELECT file_path FROM installed_games
+         WHERE game_uid=?1 OR (?2 > 0 AND launchbox_db_id=?2)
+         ORDER BY installed_at DESC, file_path",
+    )?;
+    let rows = installed.query_map(rusqlite::params![details.id, details.database_id], |row| {
+        row.get::<_, String>(0).map(PathBuf::from)
+    })?;
+    paths.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+    drop(installed);
+
+    let mut imported = connection.prepare(
+        "SELECT path_display, path_bytes, path_encoding
+         FROM local_rom_files
+         WHERE included=1 AND availability='present'
+           AND (game_uid=?1 OR (?2 > 0 AND launchbox_db_id=?2))
+         ORDER BY relative_path_display COLLATE NOCASE, id",
+    )?;
+    let rows = imported.query_map(rusqlite::params![details.id, details.database_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Vec<u8>>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    for row in rows {
+        let (display, bytes, encoding) = row?;
+        paths.push(crate::local_import::decode_path(bytes, &encoding, display));
+    }
+
+    let mut seen = HashSet::new();
+    paths.retain(|path| path.is_file() && seen.insert(path.clone()));
+    if let Some(primary) = paths.first() {
+        details.local_file_path = primary.clone();
+    }
+    details.local_file_paths = paths;
     Ok(())
 }
 
@@ -232,7 +271,8 @@ fn load_local_only_details(details: &mut GameDetails, id: &str, state_path: &Pat
     );
     details.local = true;
     details.downloadable = false;
-    details.local_file_path = path;
+    details.local_file_path = path.clone();
+    details.local_file_paths = vec![path];
     Ok(())
 }
 
@@ -1035,6 +1075,7 @@ mod tests {
         assert!(details.notes.contains("SHA-1 ABC · MD5 DEF"));
         assert!(details.description.contains("no proven catalog identity"));
         assert_eq!(details.local_file_path, rom);
+        assert_eq!(details.local_file_paths, vec![rom]);
     }
 
     #[test]

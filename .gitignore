@@ -7,6 +7,7 @@
 /.local/
 /build/
 /source-cache/
+/.runtime-probes/
 
 # Preserved local files from the legacy branch. These are migration inputs,
 # not source files for the new public database.

@@ -26,12 +26,18 @@ Conclusion: useful as a legacy artifact-identification source for its covered sy
 
 ## `db/emulators.db`
 
-- 244 emulator rows, 493 platform mappings, and 199 distinct platform names.
+- The repaired canonical import currently produces 242 emulator rows, 492
+  platform mappings, and 199 distinct platform names.
 - No orphan platform mappings.
 - Two case-insensitive duplicate emulator-name groups: `Ares`/`ares` and `CaPriCe Forever`/`Caprice Forever`.
 - Host operating systems are stored as semicolon-delimited strings with inconsistent ordering and one `Nintendo DS` value.
 
-Conclusion: valuable authored data. The new builder imports its tracked CSV source, deduplicates emulator names case-insensitively, and normalizes host systems and packages into junction tables.
+Conclusion: valuable authored data. The new builder imports its tracked CSV
+source, deduplicates emulator names case-insensitively, and normalizes host
+systems and packages into junction tables. Strict row validation now rejects
+shifted package/core columns, malformed Flatpak IDs, and generated library
+filenames where a canonical Libretro core slug is required; the maintained CSV
+has zero such invalid package or core values.
 
 ## `db/games.db` and `db/images.db`
 

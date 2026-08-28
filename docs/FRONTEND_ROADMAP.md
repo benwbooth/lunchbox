@@ -114,9 +114,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - eXoDOS/eXoWin3x DOSBox and ScummVM exception plans plus eXoWin9x DOSBox-X,
   86Box, and PCBox-compatible profiles are native. Writable VM child disks and
   process lifecycle reporting are included.
+- Generic local-ROM RetroArch and standalone discovery/launch are native, with
+  multi-file selection and exact per-game/platform stable-ID/core defaults.
+  Linux Flatpak RetroArch plus real core/content loading is runtime-verified.
 - Managed downloads, updates, version pinning, core management, BIOS checks,
-  platform defaults, per-game overrides, and command preview.
-- Generic RetroArch, standalone ROM, arcade, and non-eXo PC launch profiles.
+  and command preview.
+- Dedicated MAME, Daphne, Hypseus, pinball, and non-eXo PC launch profiles.
 - Controller detection and mapping, pre-launch validation, process supervision,
   pause/resume, clean shutdown, and play-stat recording.
 

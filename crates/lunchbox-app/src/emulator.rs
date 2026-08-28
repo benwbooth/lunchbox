@@ -73,6 +73,13 @@ struct EmulatorDefinition {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct PlatformEmulatorDefinition {
+    emulator: EmulatorDefinition,
+    cores: Vec<String>,
+    recommended: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EmulatorExecutable {
     Native(PathBuf),
     Flatpak { command: PathBuf, app_id: String },
@@ -92,6 +99,80 @@ pub struct EmulatorChoice {
     pub id: String,
     pub name: String,
     pub executable: EmulatorExecutable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmulatorRuntimeKind {
+    Standalone,
+    RetroArch,
+}
+
+impl EmulatorRuntimeKind {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Standalone => "standalone",
+            Self::RetroArch => "retroarch",
+        }
+    }
+
+    fn sort_key(self) -> u8 {
+        match self {
+            Self::RetroArch => 0,
+            Self::Standalone => 1,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RomEmulatorOption {
+    pub emulator_id: String,
+    pub emulator_name: String,
+    pub runtime_kind: EmulatorRuntimeKind,
+    pub core_name: String,
+    pub executable: EmulatorExecutable,
+    core_path: Option<PathBuf>,
+    recommended: bool,
+}
+
+impl RomEmulatorOption {
+    pub fn label(&self) -> String {
+        match self.runtime_kind {
+            EmulatorRuntimeKind::Standalone => self.emulator_name.clone(),
+            EmulatorRuntimeKind::RetroArch => {
+                format!("RetroArch · {} ({})", self.emulator_name, self.core_name)
+            }
+        }
+    }
+
+    pub fn summary(&self) -> String {
+        match self.runtime_kind {
+            EmulatorRuntimeKind::Standalone => self.executable.summary(),
+            EmulatorRuntimeKind::RetroArch => format!(
+                "{} · core {}",
+                self.executable.summary(),
+                self.core_path
+                    .as_deref()
+                    .map(Path::display)
+                    .map(|display| display.to_string())
+                    .unwrap_or_else(|| self.core_name.clone())
+            ),
+        }
+    }
+
+    fn matches_preference(&self, preference: &crate::settings::EmulatorPreference) -> bool {
+        self.emulator_id == preference.emulator_id
+            && self.runtime_kind.key() == preference.runtime_kind
+            && self.core_name == preference.core_name
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RomLaunchAvailability {
+    pub options: Vec<RomEmulatorOption>,
+    pub selected_index: Option<usize>,
+    pub preference_scope: String,
+    pub requirement: String,
+    pub detail: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -246,6 +327,164 @@ pub fn build_launch_plan(
         )
     })?;
     build_plan_for_choice(prepared, kind, emulator)
+}
+
+pub fn inspect_rom_launch_availability(
+    platform: &str,
+    catalog_database: &Path,
+    preference: Option<&crate::settings::EmulatorPreference>,
+) -> Result<RomLaunchAvailability> {
+    let host = HostPlatform::current()?;
+    let definitions = load_platform_emulator_definitions(catalog_database, host, platform)?;
+    let flatpak_apps = installed_flatpak_apps(host);
+    let path_entries = executable_search_directories();
+    let mut options = Vec::new();
+
+    for definition in &definitions {
+        if let Some(choice) =
+            discover_definition(&definition.emulator, host, &path_entries, &flatpak_apps)
+        {
+            options.push(RomEmulatorOption {
+                emulator_id: choice.id,
+                emulator_name: choice.name,
+                runtime_kind: EmulatorRuntimeKind::Standalone,
+                core_name: String::new(),
+                executable: choice.executable,
+                core_path: None,
+                recommended: definition.recommended,
+            });
+        }
+        for core in &definition.cores {
+            if let Some((executable, core_path)) =
+                discover_retroarch_core(core, host, &path_entries, &flatpak_apps)
+            {
+                options.push(RomEmulatorOption {
+                    emulator_id: definition.emulator.id.clone(),
+                    emulator_name: definition.emulator.name.clone(),
+                    runtime_kind: EmulatorRuntimeKind::RetroArch,
+                    core_name: core.clone(),
+                    executable,
+                    core_path: Some(core_path),
+                    recommended: definition.recommended,
+                });
+            }
+        }
+    }
+
+    options.sort_by(|left, right| {
+        right
+            .recommended
+            .cmp(&left.recommended)
+            .then_with(|| {
+                left.runtime_kind
+                    .sort_key()
+                    .cmp(&right.runtime_kind.sort_key())
+            })
+            .then_with(|| {
+                left.emulator_name
+                    .to_ascii_lowercase()
+                    .cmp(&right.emulator_name.to_ascii_lowercase())
+            })
+            .then_with(|| left.core_name.cmp(&right.core_name))
+    });
+    options.dedup_by(|left, right| {
+        left.emulator_id == right.emulator_id
+            && left.runtime_kind == right.runtime_kind
+            && left.core_name == right.core_name
+            && left.executable == right.executable
+    });
+
+    let selected_index = preference
+        .and_then(|preference| {
+            options
+                .iter()
+                .position(|option| option.matches_preference(preference))
+        })
+        .or((!options.is_empty()).then_some(0));
+    let preference_scope = preference
+        .filter(|preference| {
+            options
+                .iter()
+                .any(|option| option.matches_preference(preference))
+        })
+        .map(|preference| preference.scope.clone())
+        .unwrap_or_default();
+    let requirement = definitions
+        .iter()
+        .map(|definition| definition.emulator.name.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(6)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let detail = match selected_index.and_then(|index| options.get(index)) {
+        Some(option) if preference_scope.is_empty() => format!(
+            "Detected {} compatible emulator option{}; {} is selected automatically.",
+            options.len(),
+            if options.len() == 1 { "" } else { "s" },
+            option.label()
+        ),
+        Some(option) => format!("Using the {preference_scope} default: {}.", option.label()),
+        None if definitions.is_empty() => {
+            format!("No emulator catalog entries match {platform} on this host.")
+        }
+        None => format!(
+            "No compatible emulator is installed for {platform}. Install one of: {requirement}."
+        ),
+    };
+
+    Ok(RomLaunchAvailability {
+        options,
+        selected_index,
+        preference_scope,
+        requirement,
+        detail,
+    })
+}
+
+pub fn build_rom_launch_plan(
+    rom_path: &Path,
+    platform: &str,
+    option: &RomEmulatorOption,
+) -> Result<LaunchPlan> {
+    if !rom_path.is_file() {
+        bail!("local game file is missing: {}", rom_path.display());
+    }
+    let current_directory = rom_path
+        .parent()
+        .map(Path::to_path_buf)
+        .context("local game file has no containing directory")?;
+    let (program, mut arguments) = command_prefix(&option.executable, &current_directory)?;
+
+    match option.runtime_kind {
+        EmulatorRuntimeKind::Standalone => {
+            if requires_specialized_arcade_profile(platform) {
+                bail!(
+                    "{} requires its dedicated MAME, Daphne, or Hypseus launch profile",
+                    platform
+                );
+            }
+            arguments.push(path_argument_for_executable(rom_path, &option.executable));
+        }
+        EmulatorRuntimeKind::RetroArch => {
+            let core_path = option
+                .core_path
+                .as_deref()
+                .context("the selected RetroArch option has no exact core path")?;
+            arguments.push(OsString::from("--verbose"));
+            arguments.push(OsString::from("-L"));
+            arguments.push(path_argument_for_executable(core_path, &option.executable));
+            arguments.push(path_argument_for_executable(rom_path, &option.executable));
+        }
+    }
+
+    Ok(LaunchPlan {
+        emulator_name: option.label(),
+        program,
+        arguments,
+        current_directory,
+        cleanup_paths: Vec::new(),
+    })
 }
 
 pub fn spawn_launch_plan(plan: &LaunchPlan) -> Result<Child> {
@@ -437,6 +676,97 @@ fn load_emulator_definitions(
         .collect())
 }
 
+fn load_platform_emulator_definitions(
+    database: &Path,
+    host: HostPlatform,
+    platform: &str,
+) -> Result<Vec<PlatformEmulatorDefinition>> {
+    let platform_key = crate::catalog::normalize_platform_key(platform);
+    if platform_key.is_empty() {
+        bail!("a platform is required for emulator discovery");
+    }
+    let connection = crate::catalog::open_read_only(database, "Lunchbox emulator catalog")?;
+    let mut statement = connection.prepare(
+        "SELECT e.id, e.name, ep.core_name, ep.recommended
+         FROM emulator_platforms ep
+         JOIN emulators e ON e.id=ep.emulator_id
+         JOIN platforms p ON p.id=ep.platform_id
+         JOIN emulator_host_systems h ON h.emulator_id=e.id
+         WHERE h.host_system_slug=?1
+           AND (
+               p.normalized_name=?2 OR EXISTS (
+                   SELECT 1 FROM platform_aliases a
+                   WHERE a.platform_id=p.id AND a.normalized_alias=?2
+               )
+           )
+         ORDER BY ep.recommended DESC, e.name COLLATE NOCASE, ep.core_name",
+    )?;
+    let rows = statement.query_map(
+        rusqlite::params![host.catalog_slug(), platform_key],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, bool>(3)?,
+            ))
+        },
+    )?;
+    let mut definitions = BTreeMap::<String, PlatformEmulatorDefinition>::new();
+    for row in rows {
+        let (id, name, core_names, recommended) = row?;
+        let definition =
+            definitions
+                .entry(id.clone())
+                .or_insert_with(|| PlatformEmulatorDefinition {
+                    emulator: EmulatorDefinition {
+                        id,
+                        name,
+                        packages: BTreeMap::new(),
+                    },
+                    cores: Vec::new(),
+                    recommended: false,
+                });
+        definition.recommended |= recommended;
+        definition.cores.extend(
+            core_names
+                .split(';')
+                .map(str::trim)
+                .filter(|core| !core.is_empty())
+                .map(ToOwned::to_owned),
+        );
+    }
+
+    for definition in definitions.values_mut() {
+        definition.cores.sort();
+        definition.cores.dedup();
+        load_emulator_packages(&connection, &mut definition.emulator)?;
+    }
+    Ok(definitions.into_values().collect())
+}
+
+fn load_emulator_packages(
+    connection: &rusqlite::Connection,
+    definition: &mut EmulatorDefinition,
+) -> Result<()> {
+    let mut packages = connection.prepare(
+        "SELECT manager, package_id FROM emulator_packages
+         WHERE emulator_id=?1 ORDER BY manager, package_id",
+    )?;
+    let rows = packages.query_map([&definition.id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (manager, package_id) = row?;
+        definition
+            .packages
+            .entry(manager)
+            .or_default()
+            .push(package_id);
+    }
+    Ok(())
+}
+
 fn discover_definition(
     definition: &EmulatorDefinition,
     host: HostPlatform,
@@ -456,6 +786,10 @@ fn discover_definition(
                 .packages
                 .get("flatpak")?
                 .iter()
+                .filter(|app_id| {
+                    definition.name.eq_ignore_ascii_case("RetroArch")
+                        || !app_id.eq_ignore_ascii_case("org.libretro.RetroArch")
+                })
                 .find_map(|app_id| {
                     flatpak_apps
                         .contains(app_id)
@@ -470,6 +804,123 @@ fn discover_definition(
         name: definition.name.clone(),
         executable,
     })
+}
+
+fn discover_retroarch_core(
+    core_name: &str,
+    host: HostPlatform,
+    path_entries: &[PathBuf],
+    flatpak_apps: &BTreeSet<String>,
+) -> Option<(EmulatorExecutable, PathBuf)> {
+    let native = ["retroarch", "RetroArch"]
+        .into_iter()
+        .find_map(|name| find_executable_in_paths(name, path_entries))
+        .or_else(|| {
+            discover_macos_application(
+                &EmulatorDefinition {
+                    id: "retroarch".to_owned(),
+                    name: "RetroArch".to_owned(),
+                    packages: BTreeMap::new(),
+                },
+                host,
+            )
+            .and_then(|executable| match executable {
+                EmulatorExecutable::Native(path) => Some(path),
+                EmulatorExecutable::Flatpak { .. } => None,
+            })
+        });
+    if let Some(native) = native {
+        let mut core_directories = native_retroarch_core_directories(host);
+        if let Some(parent) = native.parent() {
+            core_directories.insert(0, parent.join("cores"));
+        }
+        if let Some(core_path) = find_retroarch_core(core_name, host, &core_directories) {
+            return Some((EmulatorExecutable::Native(native), core_path));
+        }
+    }
+
+    if host == HostPlatform::Linux
+        && flatpak_apps.contains("org.libretro.RetroArch")
+        && let Some(command) = find_executable_in_paths("flatpak", path_entries)
+        && let Some(core_path) =
+            find_retroarch_core(core_name, host, &flatpak_retroarch_core_directories())
+    {
+        return Some((
+            EmulatorExecutable::Flatpak {
+                command,
+                app_id: "org.libretro.RetroArch".to_owned(),
+            },
+            core_path,
+        ));
+    }
+    None
+}
+
+fn find_retroarch_core(
+    core_name: &str,
+    host: HostPlatform,
+    directories: &[PathBuf],
+) -> Option<PathBuf> {
+    let suffix = match host {
+        HostPlatform::Linux => "so",
+        HostPlatform::Windows => "dll",
+        HostPlatform::MacOs => "dylib",
+    };
+    let filename = format!("{core_name}_libretro.{suffix}");
+    directories
+        .iter()
+        .map(|directory| directory.join(&filename))
+        .find(|path| path.is_file())
+}
+
+fn native_retroarch_core_directories(host: HostPlatform) -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    let base_dirs = directories::BaseDirs::new();
+    match host {
+        HostPlatform::Linux => {
+            if let Some(base_dirs) = &base_dirs {
+                directories.push(base_dirs.home_dir().join(".config/retroarch/cores"));
+            }
+            directories.extend([
+                PathBuf::from("/run/current-system/sw/lib/libretro"),
+                PathBuf::from("/usr/lib/libretro"),
+                PathBuf::from("/usr/lib64/libretro"),
+            ]);
+        }
+        HostPlatform::Windows => {
+            if let Some(local) = env::var_os("LOCALAPPDATA") {
+                directories.push(PathBuf::from(local).join("RetroArch/cores"));
+            }
+            if let Some(program_files) = env::var_os("ProgramFiles") {
+                directories.push(PathBuf::from(program_files).join("RetroArch/cores"));
+            }
+        }
+        HostPlatform::MacOs => {
+            directories.push(PathBuf::from(
+                "/Applications/RetroArch.app/Contents/Resources/cores",
+            ));
+            if let Some(base_dirs) = &base_dirs {
+                directories.push(
+                    base_dirs
+                        .home_dir()
+                        .join("Library/Application Support/RetroArch/cores"),
+                );
+            }
+        }
+    }
+    directories
+}
+
+fn flatpak_retroarch_core_directories() -> Vec<PathBuf> {
+    directories::BaseDirs::new()
+        .map(|base_dirs| {
+            vec![
+                base_dirs
+                    .home_dir()
+                    .join(".var/app/org.libretro.RetroArch/config/retroarch/cores"),
+            ]
+        })
+        .unwrap_or_default()
 }
 
 fn platform_install_directories(
@@ -558,9 +1009,20 @@ fn windows_executable_extensions() -> Vec<String> {
 
 fn executable_names(name: &str, host: HostPlatform) -> Vec<String> {
     let names: &[&str] = match name.to_ascii_lowercase().as_str() {
+        "atari++" => &["ataripp"],
+        "desmume" => &["desmume", "DeSmuME", "desmume-gtk"],
+        "dolphin" => &["dolphin-emu", "dolphin-emu-qt", "dolphin"],
         "dosbox staging" => &["dosbox", "dosbox-staging"],
         "dosbox-x" => &["dosbox-x", "DOSBox-X"],
+        "duckstation" => &["duckstation-qt", "duckstation-nogui", "duckstation"],
+        "fs-uae" => &["fs-uae", "fs-uae-launcher"],
+        "hypseus singe" => &["hypseus", "singe"],
+        "mesen" => &["Mesen", "mesen", "mesen-x"],
+        "ppsspp" => &["PPSSPP", "PPSSPPQt", "ppsspp"],
         "scummvm" => &["scummvm", "ScummVM"],
+        "vice" => &["x64sc", "x64", "x128", "xplus4", "vice"],
+        "vice (xpet)" => &["xpet"],
+        "vice (xvic)" => &["xvic"],
         "86box" => &["86Box", "86box"],
         "pcbox" => &["PCBox", "pcbox"],
         _ => &[],
@@ -748,10 +1210,21 @@ fn command_prefix(
 }
 
 fn path_argument(path: &Path, emulator: &EmulatorChoice) -> OsString {
-    match emulator.executable {
+    path_argument_for_executable(path, &emulator.executable)
+}
+
+fn path_argument_for_executable(path: &Path, executable: &EmulatorExecutable) -> OsString {
+    match executable {
         EmulatorExecutable::Flatpak { .. } => map_path_for_flatpak(path).into_os_string(),
         EmulatorExecutable::Native(_) => path.as_os_str().to_owned(),
     }
+}
+
+fn requires_specialized_arcade_profile(platform: &str) -> bool {
+    matches!(
+        platform.trim().to_ascii_lowercase().as_str(),
+        "arcade" | "arcade pinball" | "arcade laserdisc"
+    )
 }
 
 fn flatpak_mount_point(path: &Path) -> Result<PathBuf> {
@@ -1431,6 +1904,127 @@ del *.rom
             definitions[0].packages["flatpak"],
             ["com.dosbox_x.DOSBox-X"]
         );
+    }
+
+    #[test]
+    fn canonical_platform_alias_drives_exact_core_and_recommendation() {
+        let temp = TempDir::new().unwrap();
+        let database = temp.path().join("catalog.db");
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE emulators(id TEXT PRIMARY KEY, name TEXT);
+                 CREATE TABLE emulator_host_systems(emulator_id TEXT, host_system_slug TEXT);
+                 CREATE TABLE emulator_packages(emulator_id TEXT, manager TEXT, package_id TEXT);
+                 CREATE TABLE platforms(id TEXT PRIMARY KEY, normalized_name TEXT);
+                 CREATE TABLE platform_aliases(platform_id TEXT, normalized_alias TEXT);
+                 CREATE TABLE emulator_platforms(
+                   emulator_id TEXT, platform_id TEXT, core_name TEXT, recommended INTEGER
+                 );
+                 INSERT INTO emulators VALUES('mesen-id','Mesen');
+                 INSERT INTO emulator_host_systems VALUES('mesen-id','linux');
+                 INSERT INTO emulator_packages VALUES('mesen-id','flatpak','dev.mesen.Mesen');
+                 INSERT INTO platforms VALUES('nes-id','nintendo entertainment system');
+                 INSERT INTO platform_aliases VALUES('nes-id','nes');
+                 INSERT INTO emulator_platforms VALUES('mesen-id','nes-id','mesen',1);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let definitions =
+            load_platform_emulator_definitions(&database, HostPlatform::Linux, "NES").unwrap();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].emulator.id, "mesen-id");
+        assert_eq!(definitions[0].cores, ["mesen"]);
+        assert!(definitions[0].recommended);
+        assert_eq!(
+            definitions[0].emulator.packages["flatpak"],
+            ["dev.mesen.Mesen"]
+        );
+    }
+
+    #[test]
+    fn native_retroarch_plan_passes_exact_core_and_rom_without_a_shell() {
+        let temp = TempDir::new().unwrap();
+        let rom = temp.path().join("Game (USA).nes");
+        let core = temp.path().join("mesen_libretro.so");
+        fs::write(&rom, b"rom").unwrap();
+        fs::write(&core, b"core").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "mesen-id".to_owned(),
+            emulator_name: "Mesen".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::RetroArch,
+            core_name: "mesen".to_owned(),
+            executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/retroarch")),
+            core_path: Some(core.clone()),
+            recommended: true,
+        };
+
+        let plan = build_rom_launch_plan(&rom, "Nintendo Entertainment System", &option).unwrap();
+        assert_eq!(plan.program, Path::new("/usr/bin/retroarch"));
+        assert_eq!(
+            plan.arguments,
+            [
+                OsString::from("--verbose"),
+                OsString::from("-L"),
+                core.into_os_string(),
+                rom.into_os_string(),
+            ]
+        );
+        assert!(!plan.arguments.iter().any(|argument| argument == "-c"));
+    }
+
+    #[test]
+    fn flatpak_retroarch_plan_grants_only_the_rom_directory() {
+        let temp = TempDir::new().unwrap();
+        let rom = temp.path().join("Game.nes");
+        let core = temp.path().join("mesen_libretro.so");
+        fs::write(&rom, b"rom").unwrap();
+        fs::write(&core, b"core").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "mesen-id".to_owned(),
+            emulator_name: "Mesen".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::RetroArch,
+            core_name: "mesen".to_owned(),
+            executable: EmulatorExecutable::Flatpak {
+                command: PathBuf::from("/usr/bin/flatpak"),
+                app_id: "org.libretro.RetroArch".to_owned(),
+            },
+            core_path: Some(core.clone()),
+            recommended: true,
+        };
+
+        let plan = build_rom_launch_plan(&rom, "Nintendo Entertainment System", &option).unwrap();
+        assert_eq!(plan.program, Path::new("/usr/bin/flatpak"));
+        assert_eq!(plan.arguments[0], "run");
+        assert_eq!(
+            plan.arguments[1],
+            OsString::from(format!("--filesystem={}", temp.path().display()))
+        );
+        assert_eq!(plan.arguments[2], "org.libretro.RetroArch");
+        assert_eq!(plan.arguments[3], "--verbose");
+        assert_eq!(plan.arguments[4], "-L");
+        assert_eq!(plan.arguments[5], core.as_os_str());
+        assert_eq!(plan.arguments[6], rom.as_os_str());
+    }
+
+    #[test]
+    fn generic_rom_plan_rejects_arcade_without_a_machine_profile() {
+        let temp = TempDir::new().unwrap();
+        let rom = temp.path().join("game.zip");
+        fs::write(&rom, b"rom").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "mame-id".to_owned(),
+            emulator_name: "MAME".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/mame")),
+            core_path: None,
+            recommended: true,
+        };
+
+        let error = build_rom_launch_plan(&rom, "Arcade", &option).unwrap_err();
+        assert!(error.to_string().contains("dedicated MAME"));
     }
 
     #[test]

@@ -74,6 +74,14 @@ pub struct UserCollections {
     pub members: HashMap<String, HashSet<String>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmulatorPreference {
+    pub emulator_id: String,
+    pub runtime_kind: String,
+    pub core_name: String,
+    pub scope: String,
+}
+
 impl Default for LibraryPreferences {
     fn default() -> Self {
         Self {
@@ -430,6 +438,138 @@ impl SettingsStore {
                 params![game_uid],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn emulator_preference(
+        &self,
+        game_uid: &str,
+        platform: &str,
+    ) -> Result<Option<EmulatorPreference>> {
+        let connection = self.connection()?;
+        if !game_uid.trim().is_empty()
+            && let Some(preference) = connection
+                .query_row(
+                    "SELECT emulator_id, runtime_kind, core_name
+                     FROM game_emulator_preferences WHERE game_uid=?1",
+                    [game_uid],
+                    |row| {
+                        Ok(EmulatorPreference {
+                            emulator_id: row.get(0)?,
+                            runtime_kind: row.get(1)?,
+                            core_name: row.get(2)?,
+                            scope: "game".to_owned(),
+                        })
+                    },
+                )
+                .optional()?
+        {
+            return Ok(Some(preference));
+        }
+
+        let platform_key = catalog::normalize_platform_key(platform);
+        if platform_key.is_empty() {
+            return Ok(None);
+        }
+        Ok(connection
+            .query_row(
+                "SELECT emulator_id, runtime_kind, core_name
+                 FROM platform_emulator_preferences WHERE platform_key=?1",
+                [platform_key],
+                |row| {
+                    Ok(EmulatorPreference {
+                        emulator_id: row.get(0)?,
+                        runtime_kind: row.get(1)?,
+                        core_name: row.get(2)?,
+                        scope: "platform".to_owned(),
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn set_game_emulator_preference(
+        &self,
+        game_uid: &str,
+        emulator_id: &str,
+        runtime_kind: &str,
+        core_name: &str,
+    ) -> Result<()> {
+        validate_emulator_preference(game_uid, emulator_id, runtime_kind, core_name)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO game_emulator_preferences (
+                 game_uid, emulator_id, runtime_kind, core_name, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(game_uid) DO UPDATE SET
+                 emulator_id=excluded.emulator_id,
+                 runtime_kind=excluded.runtime_kind,
+                 core_name=excluded.core_name,
+                 updated_at=excluded.updated_at",
+            params![
+                game_uid,
+                emulator_id,
+                runtime_kind,
+                core_name,
+                unix_timestamp()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_game_emulator_preference(&self, game_uid: &str) -> Result<()> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to clear an emulator preference");
+        }
+        self.connection()?.execute(
+            "DELETE FROM game_emulator_preferences WHERE game_uid=?1",
+            [game_uid],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_platform_emulator_preference(
+        &self,
+        platform: &str,
+        emulator_id: &str,
+        runtime_kind: &str,
+        core_name: &str,
+    ) -> Result<()> {
+        let platform_key = catalog::normalize_platform_key(platform);
+        validate_emulator_preference(&platform_key, emulator_id, runtime_kind, core_name)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO platform_emulator_preferences (
+                 platform_key, platform_display, emulator_id,
+                 runtime_kind, core_name, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(platform_key) DO UPDATE SET
+                 platform_display=excluded.platform_display,
+                 emulator_id=excluded.emulator_id,
+                 runtime_kind=excluded.runtime_kind,
+                 core_name=excluded.core_name,
+                 updated_at=excluded.updated_at",
+            params![
+                platform_key,
+                platform.trim(),
+                emulator_id,
+                runtime_kind,
+                core_name,
+                unix_timestamp()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_platform_emulator_preference(&self, platform: &str) -> Result<()> {
+        let platform_key = catalog::normalize_platform_key(platform);
+        if platform_key.is_empty() {
+            bail!("a platform is required to clear an emulator preference");
+        }
+        self.connection()?.execute(
+            "DELETE FROM platform_emulator_preferences WHERE platform_key=?1",
+            [platform_key],
+        )?;
         Ok(())
     }
 
@@ -918,6 +1058,25 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON user_collection_games(collection_id, sort_order, game_uid);
          CREATE INDEX IF NOT EXISTS user_collection_games_game
              ON user_collection_games(game_uid);
+         CREATE TABLE IF NOT EXISTS game_emulator_preferences (
+             game_uid TEXT PRIMARY KEY,
+             emulator_id TEXT NOT NULL,
+             runtime_kind TEXT NOT NULL CHECK (
+                 runtime_kind IN ('standalone', 'retroarch')
+             ),
+             core_name TEXT NOT NULL DEFAULT '',
+             updated_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS platform_emulator_preferences (
+             platform_key TEXT PRIMARY KEY,
+             platform_display TEXT NOT NULL,
+             emulator_id TEXT NOT NULL,
+             runtime_kind TEXT NOT NULL CHECK (
+                 runtime_kind IN ('standalone', 'retroarch')
+             ),
+             core_name TEXT NOT NULL DEFAULT '',
+             updated_at INTEGER NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS prepared_game_installs (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -1018,6 +1177,30 @@ fn validate_collection_description(description: &str) -> Result<String> {
         bail!("collection description must be at most 1000 characters");
     }
     Ok(description.to_owned())
+}
+
+fn validate_emulator_preference(
+    identity: &str,
+    emulator_id: &str,
+    runtime_kind: &str,
+    core_name: &str,
+) -> Result<()> {
+    if identity.trim().is_empty() {
+        bail!("a stable game or platform identity is required for an emulator preference");
+    }
+    if emulator_id.trim().is_empty() {
+        bail!("an emulator identity is required for an emulator preference");
+    }
+    if !matches!(runtime_kind, "standalone" | "retroarch") {
+        bail!("unsupported emulator runtime kind {runtime_kind}");
+    }
+    if runtime_kind == "retroarch" && core_name.trim().is_empty() {
+        bail!("a RetroArch preference requires an exact core name");
+    }
+    if runtime_kind == "standalone" && !core_name.trim().is_empty() {
+        bail!("a standalone emulator preference cannot include a RetroArch core");
+    }
+    Ok(())
 }
 
 pub(crate) fn unix_timestamp() -> i64 {
@@ -1218,6 +1401,69 @@ mod tests {
             .unwrap();
         assert!(store.favorite_game_ids().unwrap().is_empty());
         assert!(store.set_favorite("", 0, "", "", true).is_err());
+    }
+
+    #[test]
+    fn emulator_preferences_resolve_game_before_platform_and_preserve_runtime() {
+        let (_directory, store) = store();
+        store
+            .set_platform_emulator_preference(
+                "Nintendo Entertainment System",
+                "nestopia-id",
+                "standalone",
+                "",
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .emulator_preference("game-one", "nintendo entertainment system")
+                .unwrap(),
+            Some(EmulatorPreference {
+                emulator_id: "nestopia-id".into(),
+                runtime_kind: "standalone".into(),
+                core_name: String::new(),
+                scope: "platform".into(),
+            })
+        );
+
+        store
+            .set_game_emulator_preference("game-one", "mesen-id", "retroarch", "mesen")
+            .unwrap();
+        assert_eq!(
+            store
+                .emulator_preference("game-one", "Nintendo Entertainment System")
+                .unwrap(),
+            Some(EmulatorPreference {
+                emulator_id: "mesen-id".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "mesen".into(),
+                scope: "game".into(),
+            })
+        );
+
+        store.clear_game_emulator_preference("game-one").unwrap();
+        assert_eq!(
+            store
+                .emulator_preference("game-one", "Nintendo Entertainment System")
+                .unwrap()
+                .unwrap()
+                .scope,
+            "platform"
+        );
+        store
+            .clear_platform_emulator_preference("Nintendo Entertainment System")
+            .unwrap();
+        assert_eq!(
+            store
+                .emulator_preference("game-one", "Nintendo Entertainment System")
+                .unwrap(),
+            None
+        );
+        assert!(
+            store
+                .set_game_emulator_preference("game-one", "mesen-id", "retroarch", "")
+                .is_err()
+        );
     }
 
     #[test]

@@ -117,6 +117,16 @@ The initial implementation enforces this shape:
   removed after process exit. Qt reports detection, starting, running, and exit
   state. The unattended `--exo-launch-probe` exercises the real discovered
   emulator and waits for its process to exit.
+- Generic local-ROM discovery joins the canonical platform or exact alias to
+  host-compatible emulator records and exact core slugs. It discovers native
+  standalone programs and native or Flatpak RetroArch/core pairs off-thread,
+  sorts recommended options deterministically, and persists a stable emulator
+  ID plus runtime/core—not a mutable display name. A game override wins over a
+  normalized platform default. Multiple imported files remain distinct native
+  `PathBuf` values. Launch plans pass the selected ROM and exact core as
+  `OsString` arguments, grant Flatpak only the containing directory, and never
+  invoke a command shell. Dedicated arcade/laserdisc/pinball profiles fail
+  closed until their required machine arguments and assets are modeled.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -214,6 +224,14 @@ detected emulator, prints the exact program/argument-vector evidence, waits for
 exit, and then closes. On the current Linux host this route discovered and ran
 `com.dosbox_x.DOSBox-X` through Flatpak against a fresh prepared cache; DOSBox-X
 loaded the exact generated config and exited successfully.
+`--initialize-state --state-database FIXTURE_PATH` idempotently creates or
+migrates the Rust-owned local state without starting Qt. `--rom-launch-probe`
+opens an exact imported-file identity, discovers the installed runtime/core,
+launches it through the normal CXX-Qt action, bounds the emulator session, and
+exits only after process cleanup. On the current Linux host it ran Flatpak
+RetroArch with `fceumm_libretro.so`, loaded the owned Faxanadu NES file, created
+a real Wayland/OpenGL session, and exited successfully. `--rom-launch-ui-probe`
+leaves the same `Play Locally` controls open for visual inspection.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to
@@ -246,9 +264,10 @@ ingestion, optical and eXo related-file plans, eXo prepared installs and launch,
 durable safe seeding policy, local-folder scan/review/import, legacy
 content filters, and durable favorites are now native. Existing game media is
 now indexed and rendered natively. On-demand LibRetro retrieval and durable
-negative caching are native.
+negative caching, generic local-ROM launch, multi-file selection, and exact
+per-game/platform emulator defaults are native.
 Playlists and smart collections, alternate media providers, media rotation and
-redownload, managed emulator installation/update and generic ROM/arcade launch,
+redownload, managed emulator installation/update and specialized arcade launch,
 the remaining settings,
 archive-member and manual identity workflows, and the controller-first
 full-screen interface follow on the same shared models.

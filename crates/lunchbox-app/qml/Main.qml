@@ -93,6 +93,8 @@ ApplicationWindow {
     readonly property bool exoPrepareProbe: Qt.application.arguments.indexOf("--exo-prepare-probe") >= 0
     readonly property bool exoPrepareUiProbe: Qt.application.arguments.indexOf("--exo-prepare-ui-probe") >= 0
     readonly property bool exoLaunchProbe: Qt.application.arguments.indexOf("--exo-launch-probe") >= 0
+    readonly property bool romLaunchProbe: Qt.application.arguments.indexOf("--rom-launch-probe") >= 0
+    readonly property bool romLaunchUiProbe: Qt.application.arguments.indexOf("--rom-launch-ui-probe") >= 0
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe
 
     palette.window: "#0c1119"
@@ -486,14 +488,15 @@ ApplicationWindow {
                 Qt.quit()
         }
         function onCan_launchChanged() {
-            if (root.exoLaunchProbe && gameDetails.can_launch
+            if ((root.exoLaunchProbe || root.romLaunchProbe) && gameDetails.can_launch
                     && !root.launchProbeTriggered) {
                 root.launchProbeTriggered = true
                 gameDetails.launch_game()
             }
         }
         function onGame_runningChanged() {
-            if (!root.exoLaunchProbe || !root.launchProbeTriggered)
+            if ((!root.exoLaunchProbe && !root.romLaunchProbe)
+                    || !root.launchProbeTriggered)
                 return
             if (gameDetails.game_running)
                 root.launchProbeObservedRunning = true
@@ -501,7 +504,8 @@ ApplicationWindow {
                 Qt.quit()
         }
         function onLaunch_statusChanged() {
-            if (root.exoLaunchProbe && root.launchProbeTriggered
+            if ((root.exoLaunchProbe || root.romLaunchProbe)
+                    && root.launchProbeTriggered
                     && gameDetails.launch_status.indexOf("Could not launch") === 0)
                 Qt.exit(2)
         }
@@ -575,6 +579,9 @@ ApplicationWindow {
                      || root.exoLaunchProbe)
                 root.openGame("exo-prepare-probe", 0,
                               "Prince of Persia", "MS-DOS", true, false)
+            else if (root.romLaunchProbe || root.romLaunchUiProbe)
+                root.openGame("local-file:rom-launch-probe", 0,
+                              "Faxanadu", "Nintendo Entertainment System", true, false)
         }
     }
 
@@ -2266,6 +2273,288 @@ ApplicationWindow {
                         font.pixelSize: 10
                         lineHeight: 1.3
                         wrapMode: Text.WrapAnywhere
+                    }
+
+                    Rectangle {
+                        visible: !gameDetails.loading
+                                 && gameDetails.local_file_count > 0
+                                 && !gameDetails.preparable
+                                 && !gameDetails.prepared
+                        width: parent.width
+                        height: localPlayColumn.implicitHeight + 28
+                        radius: 11
+                        color: "#142429"
+                        border.color: "#31504b"
+
+                        Column {
+                            id: localPlayColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            spacing: 9
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Column {
+                                    width: parent.width - localRefresh.width - 8
+                                    spacing: 3
+                                    Text {
+                                        text: "PLAY LOCALLY"
+                                        color: root.accentCool
+                                        font.pixelSize: 10
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 1.1
+                                    }
+                                    Text {
+                                        text: gameDetails.emulator_preference_scope === "game"
+                                              ? "GAME DEFAULT"
+                                              : gameDetails.emulator_preference_scope === "platform"
+                                                ? "PLATFORM DEFAULT"
+                                                : "AUTOMATIC SELECTION"
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                    }
+                                }
+                                Button {
+                                    id: localRefresh
+                                    width: 76
+                                    height: 30
+                                    text: "REFRESH"
+                                    enabled: !gameDetails.launch_discovery_busy
+                                             && !gameDetails.launch_busy
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    onClicked: gameDetails.refresh_emulators()
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: parent.down ? "#28364a" : "#202b3a"
+                                        border.color: root.line
+                                    }
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: root.muted
+                                        font: parent.font
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+
+                            Column {
+                                width: parent.width
+                                visible: gameDetails.local_file_count > 1
+                                spacing: 4
+                                Text {
+                                    text: "GAME FILE"
+                                    color: "#7f8b9e"
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                }
+                                ComboBox {
+                                    id: localFilePicker
+                                    width: parent.width
+                                    height: 36
+                                    model: gameDetails.local_file_count
+                                    currentIndex: gameDetails.selected_local_file
+                                    displayText: currentIndex >= 0
+                                                 ? gameDetails.local_file_label_at(currentIndex)
+                                                 : "Select a local file"
+                                    onActivated: function(index) {
+                                        gameDetails.select_local_file(index)
+                                    }
+                                    delegate: ItemDelegate {
+                                        required property int index
+                                        width: localFilePicker.width
+                                        text: gameDetails.local_file_label_at(index)
+                                        font.pixelSize: 10
+                                        highlighted: localFilePicker.highlightedIndex === index
+                                    }
+                                    contentItem: Text {
+                                        leftPadding: 10
+                                        rightPadding: 28
+                                        text: localFilePicker.displayText
+                                        color: root.ink
+                                        font.pixelSize: 10
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideMiddle
+                                    }
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: "#111923"
+                                        border.color: root.line
+                                    }
+                                }
+                            }
+
+                            Column {
+                                width: parent.width
+                                spacing: 4
+                                Text {
+                                    text: "EMULATOR"
+                                    color: "#7f8b9e"
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                }
+                                ComboBox {
+                                    id: localEmulatorPicker
+                                    width: parent.width
+                                    height: 38
+                                    visible: gameDetails.emulator_option_count > 0
+                                    enabled: !gameDetails.launch_discovery_busy
+                                             && !gameDetails.launch_busy
+                                    model: gameDetails.emulator_option_count
+                                    currentIndex: gameDetails.selected_emulator_option
+                                    displayText: currentIndex >= 0
+                                                 ? gameDetails.emulator_option_label_at(currentIndex)
+                                                 : "Select an emulator"
+                                    onActivated: function(index) {
+                                        gameDetails.select_emulator_option(index)
+                                    }
+                                    delegate: ItemDelegate {
+                                        required property int index
+                                        width: localEmulatorPicker.width
+                                        text: gameDetails.emulator_option_label_at(index)
+                                        font.pixelSize: 10
+                                        highlighted: localEmulatorPicker.highlightedIndex === index
+                                    }
+                                    contentItem: Text {
+                                        leftPadding: 10
+                                        rightPadding: 28
+                                        text: localEmulatorPicker.displayText
+                                        color: root.ink
+                                        font.pixelSize: 10
+                                        font.weight: Font.Medium
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                    }
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: "#111923"
+                                        border.color: root.accentCool
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    visible: gameDetails.emulator_option_count === 0
+                                    text: gameDetails.launch_discovery_busy
+                                          ? "Detecting installed emulators…"
+                                          : gameDetails.emulator_name
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    wrapMode: Text.WordWrap
+                                }
+                                Text {
+                                    width: parent.width
+                                    visible: gameDetails.emulator_summary.length > 0
+                                    text: gameDetails.emulator_summary
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    elide: Text.ElideMiddle
+                                }
+                            }
+
+                            Row {
+                                width: parent.width
+                                visible: gameDetails.emulator_option_count > 0
+                                spacing: 6
+                                Button {
+                                    width: (parent.width - 12) / 3
+                                    height: 30
+                                    text: "THIS GAME"
+                                    enabled: !gameDetails.launch_busy
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: gameDetails.save_game_emulator_preference()
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: gameDetails.emulator_preference_scope === "game"
+                                               ? "#1d493f" : "#202b3a"
+                                        border.color: gameDetails.emulator_preference_scope === "game"
+                                                      ? root.accentCool : root.line
+                                    }
+                                    contentItem: Text { text: parent.text; color: root.ink; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                }
+                                Button {
+                                    width: (parent.width - 12) / 3
+                                    height: 30
+                                    text: "PLATFORM"
+                                    enabled: !gameDetails.launch_busy
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: gameDetails.save_platform_emulator_preference()
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: gameDetails.emulator_preference_scope === "platform"
+                                               ? "#1d493f" : "#202b3a"
+                                        border.color: gameDetails.emulator_preference_scope === "platform"
+                                                      ? root.accentCool : root.line
+                                    }
+                                    contentItem: Text { text: parent.text; color: root.ink; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                }
+                                Button {
+                                    width: (parent.width - 12) / 3
+                                    height: 30
+                                    text: "RESET"
+                                    enabled: gameDetails.emulator_preference_scope.length > 0
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: {
+                                        if (gameDetails.emulator_preference_scope === "game")
+                                            gameDetails.clear_game_emulator_preference()
+                                        else if (gameDetails.emulator_preference_scope === "platform")
+                                            gameDetails.clear_platform_emulator_preference()
+                                    }
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: parent.enabled ? "#202b3a" : "#18212c"
+                                        border.color: root.line
+                                    }
+                                    contentItem: Text { text: parent.text; color: parent.enabled ? root.muted : "#526071"; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: gameDetails.launch_status.length > 0
+                                text: gameDetails.launch_status
+                                color: gameDetails.can_launch ? "#a8d9cf" : root.muted
+                                font.pixelSize: 10
+                                lineHeight: 1.25
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Button {
+                                width: parent.width
+                                height: 44
+                                text: gameDetails.launch_busy ? "STARTING…"
+                                      : gameDetails.game_running ? "GAME IS RUNNING"
+                                      : "PLAY"
+                                enabled: gameDetails.can_launch
+                                         && !gameDetails.launch_busy
+                                         && !gameDetails.game_running
+                                font.pixelSize: 11
+                                font.weight: Font.Bold
+                                onClicked: gameDetails.launch_game()
+                                background: Rectangle {
+                                    radius: 8
+                                    color: parent.enabled
+                                           ? (parent.down ? "#d24e36" : root.accent)
+                                           : "#26313e"
+                                    border.color: parent.enabled ? "#ff8a70" : root.line
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: parent.enabled ? "#ffffff" : root.muted
+                                    font: parent.font
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
                     }
 
                     Rectangle {

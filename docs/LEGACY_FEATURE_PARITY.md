@@ -45,11 +45,11 @@ native vertical slice is completed so that features are not silently lost.
 
 | Legacy behavior | Source | Native state |
 | --- | --- | --- |
-| Host-aware emulator catalog and detection | `backend/src/emulator.rs`, `db/emulators.db` | Native for prepared PC installs: canonical host/package records drive native PATH, Windows install-directory, macOS app-bundle, and Linux Flatpak discovery off the GUI thread. Linux Flatpak is runtime-verified; Windows/macOS release-host verification remains. |
-| Install, update, uninstall and launch | `backend/src/emulator.rs`, `src/components/emulator_updates.rs` | Prepared eXo launch and process lifecycle are native; managed install/update/uninstall remains in the ledger. |
-| Platform and per-game emulator preferences | migrations `0008` and handler APIs | Behavior recorded |
+| Host-aware emulator catalog and detection | `backend/src/emulator.rs`, `db/emulators.db` | Native for prepared PC installs and generic local ROMs: canonical platform aliases, core slugs, host/package records, native PATH, Windows install directories, macOS app bundles, and Linux Flatpaks are resolved off the GUI thread. Linux Flatpak/RetroArch launch is runtime-verified; Windows/macOS release-host verification remains. |
+| Install, update, uninstall and launch | `backend/src/emulator.rs`, `src/components/emulator_updates.rs` | Prepared eXo and generic local-ROM launch plus process lifecycle are native; managed install/update/uninstall and specialized arcade launch remain in the ledger. |
+| Platform and per-game emulator preferences | migrations `0008` and handler APIs | Native exact stable-emulator-ID/runtime/core preferences, with game precedence over normalized platform defaults and reset controls. |
 | Runtime launch profiles and template overrides | migrations `0013` and `0014` | Behavior recorded |
-| RetroArch cores, standalone emulators, DOS/eXo and arcade layouts | `backend/src/emulator.rs`, `exo.rs`, `arcade.rs` | eXoDOS/eXoWin3x DOSBox and ScummVM exception routes plus eXoWin9x DOSBox-X, 86Box, and PCBox-compatible layouts are native, shell-free, traversal-safe, and preserve writable VM children. Generic ROM, RetroArch, MAME, Daphne and Hypseus launch layouts remain. |
+| RetroArch cores, standalone emulators, DOS/eXo and arcade layouts | `backend/src/emulator.rs`, `exo.rs`, `arcade.rs` | Generic local-ROM RetroArch and standalone launch plus eXoDOS/eXoWin3x DOSBox and ScummVM routes and eXoWin9x DOSBox-X, 86Box, and PCBox-compatible layouts are native, shell-free, traversal-safe, and preserve exact native paths. MAME, Daphne, Hypseus, pinball, and other specialized machine profiles remain. |
 | Controller discovery, per-player mapping and InputPlumber profiles | `src/components/controller_mapping.rs`, `backend/src/controllers.rs` | Behavior recorded |
 | Firmware validation before launch | `backend/src/firmware.rs` | Behavior recorded |
 

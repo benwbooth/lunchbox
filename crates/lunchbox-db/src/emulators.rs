@@ -8,7 +8,7 @@ use crate::ids::{normalize_key, sha256_bytes, stable_id};
 
 const PROVIDER_SLUG: &str = "lunchbox-emulator-catalog";
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 struct EmulatorRow {
     platform: String,
     emulator_name: String,
@@ -68,6 +68,15 @@ pub fn import(
         let row = result
             .with_context(|| format!("parsing {} row {}", source.display(), source_rows + 2))?;
         source_rows += 1;
+        validate_row(&row).with_context(|| {
+            format!(
+                "validating {} row {} ({:?} / {:?})",
+                source.display(),
+                source_rows + 1,
+                row.platform,
+                row.emulator_name
+            )
+        })?;
         let import_result = if row.emulator_name.trim().is_empty() {
             unavailable_emulator_rows += 1;
             import_unavailable_emulator_row(&transaction, &provider_id, &row, import_timestamp)
@@ -106,6 +115,45 @@ pub fn import(
             |row| row.get(0),
         )?,
     })
+}
+
+fn validate_row(row: &EmulatorRow) -> Result<()> {
+    if row.emulator_name.trim().is_empty() {
+        return Ok(());
+    }
+
+    if let Some(flatpak_id) = optional(&row.flatpak_id)
+        && !flatpak_id.starts_with("snap:")
+        && (!flatpak_id.contains('.')
+            || !flatpak_id
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character)))
+    {
+        bail!(
+            "Flatpak package ID {:?} is not a reverse-DNS application ID; this often means a CSV column shifted",
+            row.flatpak_id
+        );
+    }
+
+    for core in row
+        .retroarch_core
+        .split(';')
+        .map(str::trim)
+        .filter(|core| !core.is_empty())
+    {
+        if core.ends_with("_libretro")
+            || !core.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '+')
+            })
+        {
+            bail!(
+                "RetroArch core {:?} is not a runtime core slug; this often means a CSV column shifted",
+                row.retroarch_core
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn import_row(
@@ -472,5 +520,29 @@ mod tests {
             values,
             BTreeSet::from(["linux".to_owned(), "windows".to_owned()])
         );
+    }
+
+    #[test]
+    fn emulator_rows_reject_shifted_package_and_core_columns() {
+        let valid = EmulatorRow {
+            platform: "Nintendo 64".into(),
+            emulator_name: "Mupen64Plus-Next".into(),
+            flatpak_id: "org.libretro.RetroArch".into(),
+            retroarch_core: "mupen64plus_next".into(),
+            ..EmulatorRow::default()
+        };
+        validate_row(&valid).unwrap();
+
+        let shifted_package = EmulatorRow {
+            flatpak_id: "mupen64plus_next".into(),
+            ..valid.clone()
+        };
+        assert!(validate_row(&shifted_package).is_err());
+
+        let shifted_core = EmulatorRow {
+            retroarch_core: "~/.config/retroarch/saves".into(),
+            ..valid
+        };
+        assert!(validate_row(&shifted_core).is_err());
     }
 }

@@ -41,9 +41,14 @@ pub mod qobject {
         #[qproperty(QString, emulator_name)]
         #[qproperty(QString, emulator_summary)]
         #[qproperty(QString, launch_status)]
+        #[qproperty(QString, emulator_preference_scope)]
         #[qproperty(i32, bundle_count)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_bundle)]
+        #[qproperty(i32, local_file_count)]
+        #[qproperty(i32, selected_local_file)]
+        #[qproperty(i32, emulator_option_count)]
+        #[qproperty(i32, selected_emulator_option)]
         #[qproperty(i32, detail_revision)]
         type GameDetailsModel = super::GameDetailsModelRust;
 
@@ -79,6 +84,24 @@ pub mod qobject {
         fn launch_game(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn select_local_file(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
+        fn select_emulator_option(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
+        fn save_game_emulator_preference(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn save_platform_emulator_preference(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn clear_game_emulator_preference(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn clear_platform_emulator_preference(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -101,6 +124,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn file_plan_members_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn local_file_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn emulator_option_label_at(self: &GameDetailsModel, index: i32) -> QString;
     }
 
     impl cxx_qt::Threading for GameDetailsModel {}
@@ -154,9 +183,14 @@ pub struct GameDetailsModelRust {
     emulator_name: QString,
     emulator_summary: QString,
     launch_status: QString,
+    emulator_preference_scope: QString,
     bundle_count: i32,
     file_count: i32,
     selected_bundle: i32,
+    local_file_count: i32,
+    selected_local_file: i32,
+    emulator_option_count: i32,
+    selected_emulator_option: i32,
     detail_revision: i32,
     bundles: Vec<MinervaBundle>,
     files: Vec<TorrentFileCandidate>,
@@ -167,6 +201,8 @@ pub struct GameDetailsModelRust {
     preparation_cancel: Option<Arc<AtomicBool>>,
     database_id: i64,
     local_file_path: PathBuf,
+    local_file_paths: Vec<PathBuf>,
+    rom_emulator_options: Vec<crate::emulator::RomEmulatorOption>,
     prepared_install: Option<crate::exo_install::PreparedInstall>,
 }
 
@@ -206,9 +242,14 @@ impl Default for GameDetailsModelRust {
             emulator_name: QString::default(),
             emulator_summary: QString::default(),
             launch_status: QString::default(),
+            emulator_preference_scope: QString::default(),
             bundle_count: 0,
             file_count: 0,
             selected_bundle: -1,
+            local_file_count: 0,
+            selected_local_file: -1,
+            emulator_option_count: 0,
+            selected_emulator_option: -1,
             detail_revision: 0,
             bundles: Vec::new(),
             files: Vec::new(),
@@ -219,6 +260,8 @@ impl Default for GameDetailsModelRust {
             preparation_cancel: None,
             database_id: 0,
             local_file_path: PathBuf::new(),
+            local_file_paths: Vec::new(),
+            rom_emulator_options: Vec::new(),
             prepared_install: None,
         }
     }
@@ -234,6 +277,23 @@ fn count_i32(value: usize) -> i32 {
 
 fn has_cli_flag(flag: &str) -> bool {
     std::env::args_os().any(|argument| argument == flag)
+}
+
+enum EmulatorDiscoveryResult {
+    Prepared(crate::emulator::LaunchAvailability),
+    Rom(crate::emulator::RomLaunchAvailability),
+}
+
+enum LaunchInput {
+    Prepared {
+        install: crate::exo_install::PreparedInstall,
+        catalog_database: PathBuf,
+    },
+    Rom {
+        path: PathBuf,
+        platform: String,
+        option: crate::emulator::RomEmulatorOption,
+    },
 }
 
 impl qobject::GameDetailsModel {
@@ -325,16 +385,24 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_emulator_name(QString::default());
         self.as_mut().set_emulator_summary(QString::default());
         self.as_mut().set_launch_status(QString::default());
+        self.as_mut()
+            .set_emulator_preference_scope(QString::default());
         self.as_mut().set_can_launch(false);
         self.as_mut().set_game_running(false);
         self.as_mut().rust_mut().database_id = 0;
         self.as_mut().rust_mut().local_file_path = PathBuf::new();
+        self.as_mut().rust_mut().local_file_paths.clear();
+        self.as_mut().rust_mut().rom_emulator_options.clear();
         self.as_mut().rust_mut().prepared_install = None;
         self.as_mut().rust_mut().bundles.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
         self.as_mut().set_file_count(0);
         self.as_mut().set_selected_bundle(-1);
+        self.as_mut().set_local_file_count(0);
+        self.as_mut().set_selected_local_file(-1);
+        self.as_mut().set_emulator_option_count(0);
+        self.as_mut().set_selected_emulator_option(-1);
         self.as_mut().bump_revision();
     }
 
@@ -366,6 +434,8 @@ impl qobject::GameDetailsModel {
                     .unwrap_or_default();
                 let prepared = details.prepared_install.is_some();
                 let prepared_install = details.prepared_install.clone();
+                let local_file_count = details.local_file_paths.len();
+                let local_file_paths = details.local_file_paths.clone();
                 self.as_mut().set_description(qstring(&details.description));
                 self.as_mut()
                     .set_release_date(qstring(&details.release_date));
@@ -382,6 +452,11 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_local(details.local);
                 self.as_mut().set_downloadable(details.downloadable);
                 self.as_mut().rust_mut().local_file_path = details.local_file_path;
+                self.as_mut().rust_mut().local_file_paths = local_file_paths;
+                self.as_mut()
+                    .set_local_file_count(count_i32(local_file_count));
+                self.as_mut()
+                    .set_selected_local_file(if local_file_count == 0 { -1 } else { 0 });
                 self.as_mut().rust_mut().prepared_install = prepared_install;
                 self.as_mut().set_preparable(preparable);
                 self.as_mut().set_prepared(prepared);
@@ -399,7 +474,7 @@ impl qobject::GameDetailsModel {
                     format!("{bundle_count} Minerva source bundles available")
                 };
                 self.as_mut().set_message(qstring(message));
-                if prepared {
+                if prepared || (local_file_count > 0 && !preparable) {
                     self.as_mut().refresh_emulators();
                 }
             }
@@ -652,15 +727,19 @@ impl qobject::GameDetailsModel {
         if *self.as_ref().launch_discovery_busy() || *self.as_ref().launch_busy() {
             return;
         }
-        let Some(prepared) = self.as_ref().rust().prepared_install.clone() else {
+        let prepared = self.as_ref().rust().prepared_install.clone();
+        let selected_local_file = usize::try_from(*self.as_ref().selected_local_file())
+            .ok()
+            .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned());
+        if prepared.is_none() && selected_local_file.is_none() {
             self.as_mut().set_can_launch(false);
             self.as_mut().set_emulator_name(QString::default());
             self.as_mut().set_emulator_summary(QString::default());
             self.as_mut().set_launch_status(qstring(
-                "Prepare this PC install before detecting emulators.",
+                "No present local game file is available for emulator detection.",
             ));
             return;
-        };
+        }
         let Some(catalog_database) = crate::catalog::requested_database_path() else {
             self.as_mut().set_can_launch(false);
             self.as_mut().set_launch_status(qstring(
@@ -673,10 +752,16 @@ impl qobject::GameDetailsModel {
             self.as_ref().rust().launch_generation.wrapping_add(1);
         let generation = self.as_ref().rust().launch_generation;
         let game_id = self.as_ref().game_id().to_string();
+        let platform = self.as_ref().platform().to_string();
         self.as_mut().set_launch_discovery_busy(true);
         self.as_mut().set_can_launch(false);
         self.as_mut().set_emulator_name(QString::default());
         self.as_mut().set_emulator_summary(QString::default());
+        self.as_mut().rust_mut().rom_emulator_options.clear();
+        self.as_mut().set_emulator_option_count(0);
+        self.as_mut().set_selected_emulator_option(-1);
+        self.as_mut()
+            .set_emulator_preference_scope(QString::default());
         self.as_mut()
             .set_launch_status(qstring("Detecting compatible emulators…"));
 
@@ -684,13 +769,31 @@ impl qobject::GameDetailsModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-emulator-discovery".into())
             .spawn(move || {
-                let availability =
-                    crate::emulator::inspect_launch_availability(&prepared, &catalog_database)
-                        .map_err(|error| error.to_string());
+                let availability = (|| -> anyhow::Result<EmulatorDiscoveryResult> {
+                    if let Some(prepared) = prepared {
+                        return crate::emulator::inspect_launch_availability(
+                            &prepared,
+                            &catalog_database,
+                        )
+                        .map(EmulatorDiscoveryResult::Prepared);
+                    }
+                    let preference = crate::settings::SettingsStore::open_default()?
+                        .emulator_preference(&game_id, &platform)?;
+                    crate::emulator::inspect_rom_launch_availability(
+                        &platform,
+                        &catalog_database,
+                        preference.as_ref(),
+                    )
+                    .map(EmulatorDiscoveryResult::Rom)
+                })()
+                .map_err(|error| error.to_string());
+                let completed_game_id = game_id.clone();
                 let _ = qt_thread.queue(move |mut model| {
-                    model
-                        .as_mut()
-                        .finish_emulator_discovery(generation, game_id, availability);
+                    model.as_mut().finish_emulator_discovery(
+                        generation,
+                        completed_game_id,
+                        availability,
+                    );
                 });
             });
         if let Err(error) = spawn_result {
@@ -705,7 +808,7 @@ impl qobject::GameDetailsModel {
         mut self: Pin<&mut Self>,
         generation: u64,
         completed_game_id: String,
-        availability: Result<crate::emulator::LaunchAvailability, String>,
+        availability: Result<EmulatorDiscoveryResult, String>,
     ) {
         if generation != self.as_ref().rust().launch_generation
             || self.as_ref().game_id().to_string() != completed_game_id
@@ -714,7 +817,7 @@ impl qobject::GameDetailsModel {
         }
         self.as_mut().set_launch_discovery_busy(false);
         match availability {
-            Ok(availability) => {
+            Ok(EmulatorDiscoveryResult::Prepared(availability)) => {
                 self.as_mut()
                     .set_launch_status(qstring(&availability.detail));
                 if let Some(emulator) = availability.emulator {
@@ -731,6 +834,40 @@ impl qobject::GameDetailsModel {
                     self.as_mut().set_emulator_summary(QString::default());
                 }
             }
+            Ok(EmulatorDiscoveryResult::Rom(availability)) => {
+                let selected_index = availability.selected_index;
+                let selected =
+                    selected_index.and_then(|index| availability.options.get(index).cloned());
+                let option_count = availability.options.len();
+                self.as_mut().rust_mut().rom_emulator_options = availability.options;
+                self.as_mut()
+                    .set_emulator_option_count(count_i32(option_count));
+                self.as_mut().set_selected_emulator_option(
+                    selected_index
+                        .and_then(|index| i32::try_from(index).ok())
+                        .unwrap_or(-1),
+                );
+                self.as_mut()
+                    .set_emulator_preference_scope(qstring(&availability.preference_scope));
+                self.as_mut()
+                    .set_launch_status(qstring(&availability.detail));
+                if let Some(option) = selected {
+                    self.as_mut().set_can_launch(true);
+                    self.as_mut().set_emulator_name(qstring(option.label()));
+                    self.as_mut()
+                        .set_emulator_summary(qstring(option.summary()));
+                } else {
+                    self.as_mut().set_can_launch(false);
+                    self.as_mut().set_emulator_name(qstring(
+                        if availability.requirement.is_empty() {
+                            "No compatible emulator".to_owned()
+                        } else {
+                            format!("Install {}", availability.requirement)
+                        },
+                    ));
+                    self.as_mut().set_emulator_summary(QString::default());
+                }
+            }
             Err(error) => {
                 self.as_mut().set_can_launch(false);
                 self.as_mut()
@@ -739,26 +876,179 @@ impl qobject::GameDetailsModel {
         }
     }
 
+    pub fn select_local_file(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
+            return;
+        }
+        let Some(index) = usize::try_from(index).ok() else {
+            return;
+        };
+        let Some(path) = self.as_ref().rust().local_file_paths.get(index).cloned() else {
+            return;
+        };
+        self.as_mut()
+            .set_selected_local_file(i32::try_from(index).unwrap_or(i32::MAX));
+        self.as_mut().rust_mut().local_file_path = path;
+        self.as_mut().invalidate_launch_state();
+        self.as_mut().refresh_emulators();
+    }
+
+    pub fn select_emulator_option(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
+            return;
+        }
+        let Some(index) = usize::try_from(index).ok() else {
+            return;
+        };
+        let Some(option) = self
+            .as_ref()
+            .rust()
+            .rom_emulator_options
+            .get(index)
+            .cloned()
+        else {
+            return;
+        };
+        self.as_mut()
+            .set_selected_emulator_option(i32::try_from(index).unwrap_or(i32::MAX));
+        self.as_mut().set_can_launch(true);
+        self.as_mut().set_emulator_name(qstring(option.label()));
+        self.as_mut()
+            .set_emulator_summary(qstring(option.summary()));
+        self.as_mut()
+            .set_emulator_preference_scope(QString::default());
+        self.as_mut().set_launch_status(qstring(
+            "Emulator selected for this launch. Save it as a game or platform default if desired.",
+        ));
+    }
+
+    pub fn save_game_emulator_preference(mut self: Pin<&mut Self>) {
+        let Some(option) = self.selected_rom_emulator_option() else {
+            return;
+        };
+        let game_id = self.as_ref().game_id().to_string();
+        let result = crate::settings::SettingsStore::open_default().and_then(|store| {
+            store.set_game_emulator_preference(
+                &game_id,
+                &option.emulator_id,
+                option.runtime_kind.key(),
+                &option.core_name,
+            )
+        });
+        match result {
+            Ok(()) => {
+                self.as_mut().set_emulator_preference_scope(qstring("game"));
+                self.as_mut().set_launch_status(qstring(format!(
+                    "{} is now the default for this game.",
+                    option.label()
+                )));
+            }
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not save the game emulator default: {error}"
+            ))),
+        }
+    }
+
+    pub fn save_platform_emulator_preference(mut self: Pin<&mut Self>) {
+        let Some(option) = self.selected_rom_emulator_option() else {
+            return;
+        };
+        let platform = self.as_ref().platform().to_string();
+        let result = crate::settings::SettingsStore::open_default().and_then(|store| {
+            store.set_platform_emulator_preference(
+                &platform,
+                &option.emulator_id,
+                option.runtime_kind.key(),
+                &option.core_name,
+            )
+        });
+        match result {
+            Ok(()) => {
+                self.as_mut()
+                    .set_emulator_preference_scope(qstring("platform"));
+                self.as_mut().set_launch_status(qstring(format!(
+                    "{} is now the default for {platform}.",
+                    option.label()
+                )));
+            }
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not save the platform emulator default: {error}"
+            ))),
+        }
+    }
+
+    pub fn clear_game_emulator_preference(mut self: Pin<&mut Self>) {
+        let game_id = self.as_ref().game_id().to_string();
+        match crate::settings::SettingsStore::open_default()
+            .and_then(|store| store.clear_game_emulator_preference(&game_id))
+        {
+            Ok(()) => self.as_mut().refresh_emulators(),
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not clear the game emulator default: {error}"
+            ))),
+        }
+    }
+
+    pub fn clear_platform_emulator_preference(mut self: Pin<&mut Self>) {
+        let platform = self.as_ref().platform().to_string();
+        match crate::settings::SettingsStore::open_default()
+            .and_then(|store| store.clear_platform_emulator_preference(&platform))
+        {
+            Ok(()) => self.as_mut().refresh_emulators(),
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not clear the platform emulator default: {error}"
+            ))),
+        }
+    }
+
+    fn selected_rom_emulator_option(&self) -> Option<crate::emulator::RomEmulatorOption> {
+        usize::try_from(*self.selected_emulator_option())
+            .ok()
+            .and_then(|index| self.rust().rom_emulator_options.get(index).cloned())
+    }
+
     pub fn launch_game(mut self: Pin<&mut Self>) {
         if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
             return;
         }
-        let Some(prepared) = self.as_ref().rust().prepared_install.clone() else {
-            self.as_mut()
-                .set_launch_status(qstring("Prepare this PC install before launching it."));
-            return;
-        };
-        let Some(catalog_database) = crate::catalog::requested_database_path() else {
-            self.as_mut().set_launch_status(qstring(
-                "The canonical Lunchbox database is unavailable, so the emulator cannot be selected.",
-            ));
-            return;
+        let launch_input = if let Some(install) = self.as_ref().rust().prepared_install.clone() {
+            let Some(catalog_database) = crate::catalog::requested_database_path() else {
+                self.as_mut().set_launch_status(qstring(
+                    "The canonical Lunchbox database is unavailable, so the emulator cannot be selected.",
+                ));
+                return;
+            };
+            LaunchInput::Prepared {
+                install,
+                catalog_database,
+            }
+        } else {
+            let Some(path) = usize::try_from(*self.as_ref().selected_local_file())
+                .ok()
+                .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned())
+            else {
+                self.as_mut()
+                    .set_launch_status(qstring("Select a present local game file to launch."));
+                return;
+            };
+            let Some(option) = self.selected_rom_emulator_option() else {
+                self.as_mut().set_launch_status(qstring(
+                    "Select an installed compatible emulator before launching this game.",
+                ));
+                return;
+            };
+            LaunchInput::Rom {
+                path,
+                platform: self.as_ref().platform().to_string(),
+                option,
+            }
         };
 
         self.as_mut().rust_mut().launch_generation =
             self.as_ref().rust().launch_generation.wrapping_add(1);
         let generation = self.as_ref().rust().launch_generation;
         let game_id = self.as_ref().game_id().to_string();
+        let rom_probe = has_cli_flag("--rom-launch-probe");
         self.as_mut().set_launch_busy(true);
         self.as_mut().set_launch_status(qstring(
             "Building the exact launch plan and preparing writable runtime files…",
@@ -770,7 +1060,17 @@ impl qobject::GameDetailsModel {
             .name("lunchbox-emulator-launch".into())
             .spawn(move || {
                 let launch = (|| -> anyhow::Result<Result<(), String>> {
-                    let plan = crate::emulator::build_launch_plan(&prepared, &catalog_database)?;
+                    let plan = match &launch_input {
+                        LaunchInput::Prepared {
+                            install,
+                            catalog_database,
+                        } => crate::emulator::build_launch_plan(install, catalog_database)?,
+                        LaunchInput::Rom {
+                            path,
+                            platform,
+                            option,
+                        } => crate::emulator::build_rom_launch_plan(path, platform, option)?,
+                    };
                     let emulator_name = plan.emulator_name.clone();
                     let command_summary = plan.command_summary();
                     let cleanup_paths = plan.cleanup_paths.clone();
@@ -792,10 +1092,27 @@ impl qobject::GameDetailsModel {
                             command_summary,
                         );
                     });
+                    let probe_terminated = if rom_probe {
+                        std::thread::sleep(Duration::from_millis(1800));
+                        match child
+                            .try_wait()
+                            .context("checking the emulator probe process")?
+                        {
+                            Some(_) => false,
+                            None => {
+                                child
+                                    .kill()
+                                    .context("stopping the emulator probe process")?;
+                                true
+                            }
+                        }
+                    } else {
+                        false
+                    };
                     let status = child.wait();
                     crate::emulator::cleanup_after_launch(&cleanup_paths);
                     let status = status.context("waiting for the emulator process")?;
-                    Ok(if status.success() {
+                    Ok(if status.success() || probe_terminated {
                         Ok(())
                     } else {
                         Err(format!("emulator exited with {status}"))
@@ -847,7 +1164,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_message(qstring(format!(
             "Launched with {emulator_name}. {command_summary}"
         )));
-        if has_cli_flag("--exo-launch-probe") {
+        if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
             println!(
                 "LUNCHBOX_EMULATOR_STARTED name={emulator_name:?} pid={process_id} command={command_summary:?}"
             );
@@ -871,14 +1188,14 @@ impl qobject::GameDetailsModel {
             Ok(()) => {
                 self.as_mut()
                     .set_launch_status(qstring("The emulator session finished normally."));
-                if has_cli_flag("--exo-launch-probe") {
+                if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
                     println!("LUNCHBOX_EMULATOR_EXITED status=success");
                 }
             }
             Err(error) => {
                 self.as_mut()
                     .set_launch_status(qstring(format!("The emulator session ended: {error}")));
-                if has_cli_flag("--exo-launch-probe") {
+                if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
                     println!("LUNCHBOX_EMULATOR_EXITED status={error:?}");
                 }
             }
@@ -898,10 +1215,9 @@ impl qobject::GameDetailsModel {
         }
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(false);
-        self.as_mut().set_launch_status(qstring(format!(
-            "Could not launch this prepared install: {error}"
-        )));
-        if has_cli_flag("--exo-launch-probe") {
+        self.as_mut()
+            .set_launch_status(qstring(format!("Could not launch this game: {error}")));
+        if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
             eprintln!("LUNCHBOX_EMULATOR_FAILED error={error:?}");
         }
     }
@@ -1169,6 +1485,32 @@ impl qobject::GameDetailsModel {
                         .join("\n"),
                 )
             })
+            .unwrap_or_default()
+    }
+
+    pub fn local_file_label_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().local_file_paths.get(index))
+            .map(|path| {
+                let name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy())
+                    .unwrap_or_else(|| path.as_os_str().to_string_lossy());
+                if self.rust().local_file_paths.len() == 1 {
+                    qstring(name)
+                } else {
+                    qstring(format!("{} · {}", name, path.display()))
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn emulator_option_label_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().rom_emulator_options.get(index))
+            .map(|option| qstring(option.label()))
             .unwrap_or_default()
     }
 

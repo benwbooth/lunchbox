@@ -81,6 +81,18 @@ Linux Flatpak detection and process launch have been exercised end to end;
 native Windows and macOS launch branches are covered structurally but still
 require their platform release gates.
 
+Imported local ROMs expose a native `Play Locally` card. Emulator discovery
+runs off the GUI thread and combines exact canonical platform/alias mappings
+with installed standalone executables and RetroArch cores. The user can choose
+among every detected option, persist an exact stable-ID/core default for one
+game or an entire platform, reset either override, and choose among multiple
+local files without losing native path bytes. Launches use direct argument
+vectors; Flatpak access is limited to the ROM directory. The unattended Linux
+gate has loaded a real NES ROM through the installed RetroArch Flatpak and the
+exact `fceumm` core. Arcade, laserdisc, and pinball files deliberately require
+their dedicated launch-profile work instead of being passed to a generic
+emulator command.
+
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder
 picker; qBittorrent/container paths are deliberately retained as verbatim
