@@ -13,7 +13,8 @@ use crate::catalog;
 use crate::download_plan::DownloadPlan;
 
 const KEYRING_SERVICE: &str = "com.lunchbox.Lunchbox";
-const KEYRING_ACCOUNT: &str = "qbittorrent-password";
+const QBITTORRENT_KEYRING_ACCOUNT: &str = "qbittorrent-password";
+const STEAMGRIDDB_KEYRING_ACCOUNT: &str = "steamgriddb-api-key";
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -315,6 +316,15 @@ pub struct MediaPlaybackProgress {
     pub position_ms: i64,
     pub duration_ms: i64,
     pub updated_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MediaProviderGameLink {
+    pub provider: String,
+    pub launchbox_db_id: i64,
+    pub provider_game_id: String,
+    pub provider_game_name: String,
+    pub reviewed_at: i64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -686,6 +696,64 @@ impl SettingsStore {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn media_provider_game_link(
+        &self,
+        provider: &str,
+        launchbox_db_id: i64,
+    ) -> Result<Option<MediaProviderGameLink>> {
+        if provider.trim().is_empty() || launchbox_db_id <= 0 {
+            return Ok(None);
+        }
+        self.connection()?
+            .query_row(
+                "SELECT provider, launchbox_db_id, provider_game_id,
+                        provider_game_name, reviewed_at
+                 FROM media_provider_game_links
+                 WHERE provider=?1 AND launchbox_db_id=?2",
+                params![provider, launchbox_db_id],
+                |row| {
+                    Ok(MediaProviderGameLink {
+                        provider: row.get(0)?,
+                        launchbox_db_id: row.get(1)?,
+                        provider_game_id: row.get(2)?,
+                        provider_game_name: row.get(3)?,
+                        reviewed_at: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .context("loading a reviewed media-provider game link")
+    }
+
+    pub fn save_media_provider_game_link(&self, link: &MediaProviderGameLink) -> Result<()> {
+        if link.provider.trim().is_empty()
+            || link.launchbox_db_id <= 0
+            || link.provider_game_id.trim().is_empty()
+            || link.provider_game_name.trim().is_empty()
+            || link.reviewed_at < 0
+        {
+            bail!("reviewed media-provider game links require complete stable identifiers");
+        }
+        self.connection()?.execute(
+            "INSERT INTO media_provider_game_links (
+                 provider, launchbox_db_id, provider_game_id,
+                 provider_game_name, reviewed_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(provider, launchbox_db_id) DO UPDATE SET
+                 provider_game_id=excluded.provider_game_id,
+                 provider_game_name=excluded.provider_game_name,
+                 reviewed_at=excluded.reviewed_at",
+            params![
+                link.provider,
+                link.launchbox_db_id,
+                link.provider_game_id,
+                link.provider_game_name,
+                link.reviewed_at,
+            ],
+        )?;
+        Ok(())
     }
 
     pub fn load(&self) -> Result<AppSettings> {
@@ -2143,27 +2211,47 @@ pub fn state_database_path() -> Result<PathBuf> {
 }
 
 pub fn load_password() -> Result<Option<String>> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .context("opening the operating system credential store")?;
-    match entry.get_password() {
-        Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(error).context("reading qBittorrent password from credential store"),
-    }
+    load_secret(QBITTORRENT_KEYRING_ACCOUNT, "qBittorrent password")
 }
 
 pub fn save_password(password: &str) -> Result<()> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+    save_secret(
+        QBITTORRENT_KEYRING_ACCOUNT,
+        password,
+        "qBittorrent password",
+    )
+}
+
+pub fn load_steamgriddb_api_key() -> Result<Option<String>> {
+    load_secret(STEAMGRIDDB_KEYRING_ACCOUNT, "SteamGridDB API key")
+}
+
+pub fn save_steamgriddb_api_key(api_key: &str) -> Result<()> {
+    save_secret(STEAMGRIDDB_KEYRING_ACCOUNT, api_key, "SteamGridDB API key")
+}
+
+fn load_secret(account: &str, label: &str) -> Result<Option<String>> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, account)
         .context("opening the operating system credential store")?;
-    if password.is_empty() {
+    match entry.get_password() {
+        Ok(secret) => Ok(Some(secret)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("reading {label} from credential store")),
+    }
+}
+
+fn save_secret(account: &str, secret: &str, label: &str) -> Result<()> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, account)
+        .context("opening the operating system credential store")?;
+    if secret.is_empty() {
         match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(error) => Err(error).context("removing qBittorrent password"),
+            Err(error) => Err(error).with_context(|| format!("removing {label}")),
         }
     } else {
         entry
-            .set_password(password)
-            .context("saving qBittorrent password in credential store")
+            .set_password(secret)
+            .with_context(|| format!("saving {label} in credential store"))
     }
 }
 
@@ -2371,6 +2459,16 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS media_playback_progress_updated
              ON media_playback_progress(updated_at DESC, game_uid);
+         CREATE TABLE IF NOT EXISTS media_provider_game_links (
+             provider TEXT NOT NULL,
+             launchbox_db_id INTEGER NOT NULL CHECK (launchbox_db_id > 0),
+             provider_game_id TEXT NOT NULL CHECK (length(provider_game_id) > 0),
+             provider_game_name TEXT NOT NULL CHECK (length(provider_game_name) > 0),
+             reviewed_at INTEGER NOT NULL CHECK (reviewed_at >= 0),
+             PRIMARY KEY (provider, launchbox_db_id)
+         );
+         CREATE INDEX IF NOT EXISTS media_provider_game_links_provider_id
+             ON media_provider_game_links(provider, provider_game_id);
          CREATE TABLE IF NOT EXISTS media_transfers (
              game_uid TEXT NOT NULL,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -3733,6 +3831,53 @@ mod tests {
         assert!(
             store
                 .save_media_playback_progress("game-1", "sha256:replacement", -1, 80_000)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn reviewed_media_provider_links_use_exact_catalog_and_provider_ids() {
+        let (_directory, store) = store();
+        assert!(
+            store
+                .media_provider_game_link("steamgriddb", 42)
+                .unwrap()
+                .is_none()
+        );
+        let first = MediaProviderGameLink {
+            provider: "steamgriddb".into(),
+            launchbox_db_id: 42,
+            provider_game_id: "101".into(),
+            provider_game_name: "Exact Game".into(),
+            reviewed_at: 100,
+        };
+        store.save_media_provider_game_link(&first).unwrap();
+        assert_eq!(
+            store.media_provider_game_link("steamgriddb", 42).unwrap(),
+            Some(first)
+        );
+
+        let replacement = MediaProviderGameLink {
+            provider: "steamgriddb".into(),
+            launchbox_db_id: 42,
+            provider_game_id: "202".into(),
+            provider_game_name: "Reviewed Replacement".into(),
+            reviewed_at: 200,
+        };
+        store.save_media_provider_game_link(&replacement).unwrap();
+        assert_eq!(
+            store.media_provider_game_link("steamgriddb", 42).unwrap(),
+            Some(replacement)
+        );
+        assert!(
+            store
+                .save_media_provider_game_link(&MediaProviderGameLink {
+                    provider: "steamgriddb".into(),
+                    launchbox_db_id: 0,
+                    provider_game_id: String::new(),
+                    provider_game_name: String::new(),
+                    reviewed_at: 0,
+                })
                 .is_err()
         );
     }

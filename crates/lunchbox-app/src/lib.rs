@@ -22,6 +22,8 @@ mod qbittorrent;
 mod region_priority;
 mod settings;
 pub mod settings_model;
+mod steamgriddb;
+pub mod steamgriddb_model;
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};

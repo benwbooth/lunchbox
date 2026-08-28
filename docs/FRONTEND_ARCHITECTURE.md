@@ -481,6 +481,22 @@ launch argument profiles and replacement templates are native for ordinary ROM
 and prepared-PC plans, with contextual and searchable cross-emulator editors
 plus a shell-free placeholder compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
+SteamGridDB is the first reviewed alternate-provider slice. Settings stores its
+API key through the native credential store, never SQLite. A provider search
+returns candidates only; a human must choose the exact game before the stable
+SteamGridDB ID is recorded against the positive LaunchBox catalog ID. The same
+flow then presents individual safe, static backgrounds, covers, or logos for
+explicit selection. Rust bounds and validates the downloaded image bytes and
+atomically publishes them below `lb-<id>/steamgriddb/`, replacing only the same
+SteamGridDB media kind while preserving all other cached candidates.
+
+`--steamgriddb-ui-probe` exercises this complete QML workflow against an API
+fixture selected with `LUNCHBOX_STEAMGRIDDB_API_URL`: search, exact-game review,
+artwork enumeration, rendered preview, screenshot, validated publication, and
+the durable provider link. `LUNCHBOX_STEAMGRIDDB_API_KEY` is accepted only as a
+runtime override for unattended verification; interactive configuration remains
+in the credential store.
+
 Playlists and smart collections, the remaining alternate media providers,
 specialized machine launch profiles, the remaining settings, broader
 manual-provider coverage, multidisc/patch archive management, and the

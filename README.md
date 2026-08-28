@@ -251,6 +251,14 @@ miss cache, validates a fresh LibRetro PNG, and replaces only Lunchbox's owned
 LibRetro file through a synced temporary file. Other providers remain available,
 and a miss or transfer error restores the existing image.
 
+SteamGridDB artwork retrieval is native as well. The API key lives only in the
+operating-system credential store. Search results are always review candidates:
+the user chooses the exact SteamGridDB game before Lunchbox persists its stable
+provider ID, then chooses an individual static, safe background, cover, or logo.
+The selected PNG, JPEG, or WebP is bounded, format-validated, and atomically
+published to SteamGridDB's own cache directory without deleting another
+provider's media.
+
 The details hero can switch from flat artwork to an interactive native 3D box
 whenever an exact cached front cover exists. Qt Quick 3D renders separate front,
 back, spine, and edge faces using the real cached files; a missing back cover

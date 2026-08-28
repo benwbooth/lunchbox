@@ -11,9 +11,9 @@ ApplicationWindow {
     id: root
     visible: true
     width: controllerProfileUiProbe || launchProfileUiProbe
-           || launchProfileManagerUiProbe ? 1920 : 1440
+           || launchProfileManagerUiProbe || steamGridDbUiProbe ? 1920 : 1440
     height: controllerProfileUiProbe || launchProfileUiProbe
-            || launchProfileManagerUiProbe ? 1200 : 900
+            || launchProfileManagerUiProbe || steamGridDbUiProbe ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
@@ -119,6 +119,7 @@ ApplicationWindow {
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool settingsMediaPriorityUiProbe: Qt.application.arguments.indexOf("--settings-media-priority-ui-probe") >= 0
+    readonly property bool steamGridDbUiProbe: Qt.application.arguments.indexOf("--steamgriddb-ui-probe") >= 0
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
@@ -422,6 +423,14 @@ ApplicationWindow {
         importDialogLoader.item.open()
     }
 
+    function openSteamGridDbArtwork(artworkType) {
+        if (selectedDatabaseId <= 0)
+            return
+        steamGridDbDialog.open()
+        steamGridDb.begin_selection(selectedDatabaseId, gameDetails.title,
+                                    gameDetails.platform, artworkType)
+    }
+
     LibraryModel {
         id: library
     }
@@ -610,6 +619,70 @@ ApplicationWindow {
 
     LocalImportModel {
         id: localImport
+    }
+
+    SteamGridDbModel {
+        id: steamGridDb
+    }
+
+    Connections {
+        target: steamGridDb
+        function onPublished_revisionChanged() {
+            if (steamGridDb.published_revision <= 0)
+                return
+            library.refresh_media()
+            if (root.steamGridDbUiProbe) {
+                console.warn("LUNCHBOX_STEAMGRIDDB_UI_READY game="
+                             + steamGridDb.selected_game_name + " artwork="
+                             + steamGridDb.artwork_count + " screenshot="
+                             + root.screenshotOutput)
+                Qt.quit()
+            }
+        }
+        function onGame_countChanged() {
+            if (root.steamGridDbUiProbe && steamGridDb.game_count > 0)
+                steamGridDbAutoChooseTimer.restart()
+        }
+        function onArtwork_countChanged() {
+            if (root.steamGridDbUiProbe && steamGridDb.artwork_count > 0)
+                steamGridDbScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: steamGridDbAutoChooseTimer
+        interval: 40
+        repeat: false
+        onTriggered: steamGridDb.choose_game(0)
+    }
+
+    Timer {
+        id: steamGridDbScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            if (!root.steamGridDbUiProbe)
+                return
+            if (steamGridDb.selected_game_name.length === 0
+                    || steamGridDb.artwork_count === 0) {
+                console.error("LUNCHBOX_STEAMGRIDDB_UI_FAILED empty reviewed result")
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                steamGridDb.publish_artwork(0)
+                return
+            }
+            steamGridDbDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_STEAMGRIDDB_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                steamGridDb.publish_artwork(0)
+            })
+        }
     }
 
     Connections {
@@ -1125,6 +1198,15 @@ ApplicationWindow {
                 root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
                               "Super Mario Bros.", "Nintendo Entertainment System",
                               false, true)
+            else if (root.steamGridDbUiProbe) {
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
+                steamGridDbDialog.open()
+                steamGridDb.begin_selection(140, "Super Mario Bros.",
+                                            "Nintendo Entertainment System",
+                                            "fanart")
+            }
             else if (root.manualDownloadUiProbe)
                 root.openGame("ffb0ddd4-d5e1-4f78-90c8-068db5022cd5", 0,
                               "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)",
@@ -3055,6 +3137,17 @@ ApplicationWindow {
                             onClicked: root.refreshHeroArtworkFromProvider()
                             ToolTip.visible: hovered
                             ToolTip.text: "Fetch a fresh LibRetro copy without deleting other artwork"
+                        }
+                        RoundButton {
+                            width: 30
+                            height: 30
+                            visible: library.media_retrieval_enabled
+                            text: "+"
+                            font.pixelSize: 17
+                            Accessible.name: "Find reviewed artwork on SteamGridDB"
+                            onClicked: root.openSteamGridDbArtwork("fanart")
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Find and explicitly review SteamGridDB artwork"
                         }
                     }
                 }
@@ -6099,6 +6192,346 @@ ApplicationWindow {
     }
 
     Dialog {
+        id: steamGridDbDialog
+        parent: Overlay.overlay
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(1040, root.width - 64)
+        height: Math.min(790, root.height - 64)
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+        onOpened: {
+            steamGridDbSearch.text = gameDetails.title
+            steamGridDbSearch.forceActiveFocus()
+            steamGridDbSearch.selectAll()
+        }
+        onClosed: steamGridDb.cancel()
+
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            width: parent.width
+            height: 72
+            color: root.panelRaised
+            radius: 14
+            Column {
+                anchors.left: parent.left
+                anchors.leftMargin: 22
+                anchors.right: steamGridDbClose.left
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3
+                Text {
+                    width: parent.width
+                    text: "STEAMGRIDDB ARTWORK"
+                    color: root.ink
+                    font.pixelSize: 16
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                }
+                Text {
+                    width: parent.width
+                    text: gameDetails.title + "  ·  " + gameDetails.platform
+                    color: root.accentCool
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+            }
+            RoundButton {
+                id: steamGridDbClose
+                anchors.right: parent.right
+                anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                text: "×"
+                flat: true
+                font.pixelSize: 20
+                onClicked: steamGridDbDialog.close()
+            }
+        }
+
+        contentItem: ColumnLayout {
+            anchors.margins: 20
+            spacing: 10
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: steamGridDbNotice.implicitHeight + 22
+                radius: 8
+                color: "#122131"
+                border.color: "#264761"
+                Text {
+                    id: steamGridDbNotice
+                    anchors.fill: parent
+                    anchors.margins: 11
+                    text: "Search results never establish identity automatically. Choose the exact SteamGridDB game, then choose one artwork file. Lunchbox stores that reviewed provider link for future visits."
+                    color: "#9cc9e6"
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                TextField {
+                    id: steamGridDbSearch
+                    Layout.fillWidth: true
+                    placeholderText: "Search SteamGridDB games"
+                    enabled: !steamGridDb.busy
+                    onAccepted: steamGridDb.search_games(text)
+                }
+                Button {
+                    text: "Search games"
+                    enabled: !steamGridDb.busy && steamGridDbSearch.text.length >= 2
+                    onClicked: steamGridDb.search_games(steamGridDbSearch.text)
+                }
+                ComboBox {
+                    id: steamGridDbKind
+                    Layout.preferredWidth: 170
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        { label: "Background", value: "fanart" },
+                        { label: "Cover / grid", value: "box-front" },
+                        { label: "Clear logo", value: "clear-logo" }
+                    ]
+                    currentIndex: steamGridDb.artwork_type === "box-front" ? 1
+                                  : steamGridDb.artwork_type === "clear-logo" ? 2 : 0
+                    enabled: !steamGridDb.busy
+                    onActivated: steamGridDb.choose_artwork_kind(currentValue)
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.max(44, steamGridDbStatus.implicitHeight + 18)
+                radius: 8
+                color: "#111824"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 9
+                    spacing: 9
+                    BusyIndicator {
+                        visible: steamGridDb.busy
+                        running: visible
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                    }
+                    Text {
+                        id: steamGridDbStatus
+                        Layout.fillWidth: true
+                        text: steamGridDb.message
+                        color: root.muted
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+                    Button {
+                        visible: steamGridDb.selected_game_name.length > 0
+                        text: "Change game"
+                        enabled: !steamGridDb.busy
+                        onClicked: steamGridDb.search_games(steamGridDbSearch.text)
+                    }
+                }
+            }
+
+            StackLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: steamGridDb.selected_game_name.length > 0 ? 1 : 0
+
+                Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+                    }
+                    ListView {
+                        id: steamGridDbGames
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        clip: true
+                        reuseItems: true
+                        spacing: 5
+                        model: {
+                            steamGridDb.revision
+                            return steamGridDb.game_count
+                        }
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        delegate: Rectangle {
+                            id: steamGridDbGameRow
+                            required property int index
+                            property int providerRevision: steamGridDb.revision
+                            width: steamGridDbGames.width - 10
+                            height: 66
+                            radius: 8
+                            color: steamGridDbGameHover.hovered ? "#202a38"
+                                                                   : index % 2 ? "#151d28" : "#111824"
+                            border.color: root.line
+                            HoverHandler { id: steamGridDbGameHover }
+                            Column {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 14
+                                anchors.right: steamGridDbUseGame.left
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
+                                Text {
+                                    width: parent.width
+                                    text: {
+                                        steamGridDbGameRow.providerRevision
+                                        return steamGridDb.game_name_at(
+                                                    steamGridDbGameRow.index)
+                                    }
+                                    color: root.ink
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: {
+                                        steamGridDbGameRow.providerRevision
+                                        return steamGridDb.game_detail_at(
+                                                    steamGridDbGameRow.index)
+                                    }
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            HeaderButton {
+                                id: steamGridDbUseGame
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Use exact game"
+                                active: true
+                                enabled: !steamGridDb.busy
+                                onClicked: steamGridDb.choose_game(steamGridDbGameRow.index)
+                            }
+                            TapHandler {
+                                onDoubleTapped: steamGridDb.choose_game(
+                                                     steamGridDbGameRow.index)
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+                    }
+                    GridView {
+                        id: steamGridDbArtwork
+                        anchors.fill: parent
+                        anchors.margins: 9
+                        clip: true
+                        reuseItems: true
+                        cellWidth: Math.max(190, Math.floor(width / 4))
+                        cellHeight: 220
+                        model: {
+                            steamGridDb.revision
+                            return steamGridDb.artwork_count
+                        }
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        delegate: Item {
+                            id: steamGridDbArtworkCard
+                            required property int index
+                            property int providerRevision: steamGridDb.revision
+                            width: steamGridDbArtwork.cellWidth
+                            height: steamGridDbArtwork.cellHeight
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 5
+                                radius: 9
+                                color: steamGridDbArtworkHover.hovered ? "#202a38" : "#151d28"
+                                border.color: steamGridDbArtworkHover.hovered
+                                              ? root.accent : root.line
+                                clip: true
+                                HoverHandler { id: steamGridDbArtworkHover }
+                                Image {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 7
+                                    height: 140
+                                    source: {
+                                        steamGridDbArtworkCard.providerRevision
+                                        return steamGridDb.artwork_thumbnail_at(
+                                                    steamGridDbArtworkCard.index)
+                                    }
+                                    asynchronous: true
+                                    cache: true
+                                    mipmap: true
+                                    fillMode: steamGridDb.artwork_type === "fanart"
+                                              ? Image.PreserveAspectCrop
+                                              : Image.PreserveAspectFit
+                                }
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: steamGridDbUseArtwork.top
+                                    anchors.leftMargin: 9
+                                    anchors.rightMargin: 9
+                                    anchors.bottomMargin: 5
+                                    text: {
+                                        steamGridDbArtworkCard.providerRevision
+                                        return steamGridDb.artwork_detail_at(
+                                                    steamGridDbArtworkCard.index)
+                                    }
+                                    color: root.muted
+                                    font.pixelSize: 8
+                                    elide: Text.ElideRight
+                                }
+                                HeaderButton {
+                                    id: steamGridDbUseArtwork
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: 7
+                                    height: 32
+                                    text: steamGridDb.busy ? "Saving…" : "Use artwork"
+                                    active: true
+                                    enabled: !steamGridDb.busy
+                                    onClicked: steamGridDb.publish_artwork(
+                                                   steamGridDbArtworkCard.index)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: steamGridDb.selected_game_name.length > 0
+                          ? "Reviewed provider link: " + steamGridDb.selected_game_name
+                          : "No game is linked until you explicitly choose a result."
+                    color: root.muted
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+                Button {
+                    text: "Close"
+                    onClicked: steamGridDbDialog.close()
+                }
+            }
+        }
+    }
+
+    Dialog {
         id: settingsDialog
         modal: true
         anchors.centerIn: parent
@@ -6110,7 +6543,10 @@ ApplicationWindow {
                          root.height - 60)
         padding: 0
         closePolicy: Popup.CloseOnEscape
-        onOpened: appSettings.refresh_controllers()
+        onOpened: {
+            appSettings.refresh_controllers()
+            steamGridDb.initialize()
+        }
 
         background: Rectangle {
             color: root.panel
@@ -6604,6 +7040,87 @@ ApplicationWindow {
                         color: root.muted
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: "STEAMGRIDDB ARTWORK"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Browse modern covers, backgrounds, and logos from the legacy Lunchbox provider flow. The key is kept in the operating system credential store; search results require explicit review."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        TextField {
+                            id: steamGridDbApiKey
+                            Layout.fillWidth: true
+                            placeholderText: steamGridDb.api_key_saved
+                                             ? "Saved API key (leave blank to use)"
+                                             : "SteamGridDB API key"
+                            echoMode: TextInput.Password
+                            enabled: !steamGridDb.busy
+                        }
+                        Button {
+                            text: "Test"
+                            enabled: !steamGridDb.busy
+                                     && (steamGridDbApiKey.text.length > 0
+                                         || steamGridDb.api_key_saved)
+                            onClicked: steamGridDb.test_connection(
+                                           steamGridDbApiKey.text)
+                        }
+                        HeaderButton {
+                            text: steamGridDb.busy ? "Testing…" : "Save & test"
+                            active: true
+                            enabled: !steamGridDb.busy
+                                     && steamGridDbApiKey.text.length > 0
+                            onClicked: steamGridDb.save_and_test_api_key(
+                                           steamGridDbApiKey.text)
+                        }
+                        Button {
+                            visible: steamGridDb.api_key_saved
+                            text: "Clear saved"
+                            enabled: !steamGridDb.busy
+                            onClicked: {
+                                steamGridDbApiKey.text = ""
+                                steamGridDb.clear_api_key()
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        BusyIndicator {
+                            visible: steamGridDb.busy
+                            running: visible
+                            Layout.preferredWidth: 18
+                            Layout.preferredHeight: 18
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: steamGridDb.message
+                            color: root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                        Button {
+                            text: "Get API key ↗"
+                            flat: true
+                            onClicked: Qt.openUrlExternally(
+                                           "https://www.steamgriddb.com/profile/preferences")
+                        }
                     }
                 }
 

@@ -21,5 +21,6 @@ fn main() {
     .file("src/library_model.rs")
     .file("src/local_import_model.rs")
     .file("src/settings_model.rs")
+    .file("src/steamgriddb_model.rs")
     .build();
 }
