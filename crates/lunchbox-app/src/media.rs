@@ -1,12 +1,13 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
+use sha2::{Digest, Sha256};
 
 use crate::catalog;
 
@@ -280,6 +281,12 @@ pub struct MediaAsset {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SupplementalMedia {
+    pub video: Option<MediaAsset>,
+    pub manual: Option<MediaAsset>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GameMedia {
     assets: HashMap<ArtworkKind, MediaAsset>,
 }
@@ -415,6 +422,202 @@ pub fn requested_media_directory() -> PathBuf {
                 .map(|dirs| dirs.data_local_dir().join("media"))
         })
         .unwrap_or_else(|| PathBuf::from("media"))
+}
+
+pub fn supplemental_media(game_id: &str, database_id: i64) -> Result<SupplementalMedia> {
+    let root = requested_media_directory();
+    let mut directories = Vec::with_capacity(2);
+    if database_id > 0 {
+        directories.push(root.join(format!("lb-{database_id}")));
+    }
+    if !game_id.trim().is_empty() && safe_game_identity(game_id) {
+        directories.push(root.join(format!("game-{game_id}")));
+    }
+
+    let mut selected = SupplementalMedia::default();
+    for directory in directories {
+        let candidate = scan_supplemental_directory(&root, &directory)?;
+        select_supplemental_asset(&mut selected.video, candidate.video);
+        select_supplemental_asset(&mut selected.manual, candidate.manual);
+    }
+    Ok(selected)
+}
+
+pub fn media_identity(path: &Path) -> Result<String> {
+    let metadata = path
+        .metadata()
+        .with_context(|| format!("inspecting media file {}", path.display()))?;
+    if !metadata.is_file() {
+        bail!("media path is not a file: {}", path.display());
+    }
+
+    let mut file =
+        fs::File::open(path).with_context(|| format!("opening media file {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(metadata.len().to_le_bytes());
+    let mut sample = vec![0_u8; usize::try_from(metadata.len().min(64 * 1024)).unwrap_or(0)];
+    file.read_exact(&mut sample)
+        .with_context(|| format!("reading media identity sample from {}", path.display()))?;
+    hasher.update(&sample);
+
+    if metadata.len() > 64 * 1024 {
+        let tail_length = metadata.len().min(64 * 1024);
+        file.seek(SeekFrom::End(
+            -i64::try_from(tail_length).unwrap_or(i64::MAX),
+        ))
+        .with_context(|| format!("seeking media identity sample in {}", path.display()))?;
+        sample.resize(usize::try_from(tail_length).unwrap_or(0), 0);
+        file.read_exact(&mut sample)
+            .with_context(|| format!("reading media identity tail from {}", path.display()))?;
+        hasher.update(&sample);
+    }
+
+    Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+fn safe_game_identity(game_id: &str) -> bool {
+    game_id.len() <= 512
+        && game_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+}
+
+fn scan_supplemental_directory(root: &Path, directory: &Path) -> Result<SupplementalMedia> {
+    if !directory.is_dir() {
+        return Ok(SupplementalMedia::default());
+    }
+    let canonical_root = root
+        .canonicalize()
+        .with_context(|| format!("canonicalizing media directory {}", root.display()))?;
+    let canonical_directory = directory.canonicalize().with_context(|| {
+        format!(
+            "canonicalizing game media directory {}",
+            directory.display()
+        )
+    })?;
+    if !canonical_directory.starts_with(&canonical_root) {
+        bail!(
+            "game media directory escapes the configured media root: {}",
+            directory.display()
+        );
+    }
+
+    let mut result = SupplementalMedia::default();
+    for source in fs::read_dir(&canonical_directory)
+        .with_context(|| format!("reading game media directory {}", directory.display()))?
+    {
+        let source = source.with_context(|| {
+            format!(
+                "reading a media source under {}",
+                canonical_directory.display()
+            )
+        })?;
+        if !source
+            .file_type()
+            .with_context(|| format!("inspecting media source {}", source.path().display()))?
+            .is_dir()
+        {
+            continue;
+        }
+        let source_name = source.file_name().to_string_lossy().to_lowercase();
+        let source_rank = provider_rank(&source_name);
+        for file in fs::read_dir(source.path())
+            .with_context(|| format!("reading media source {}", source.path().display()))?
+        {
+            let file = file.with_context(|| {
+                format!("reading a media file under {}", source.path().display())
+            })?;
+            if !file
+                .file_type()
+                .with_context(|| format!("inspecting media file {}", file.path().display()))?
+                .is_file()
+            {
+                continue;
+            }
+            if file
+                .metadata()
+                .with_context(|| format!("inspecting media file {}", file.path().display()))?
+                .len()
+                == 0
+            {
+                continue;
+            }
+            let path = file
+                .path()
+                .canonicalize()
+                .with_context(|| format!("canonicalizing media file {}", file.path().display()))?;
+            if !path.starts_with(&canonical_root) {
+                bail!(
+                    "media file escapes the configured media root: {}",
+                    path.display()
+                );
+            }
+            let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            let stem = stem.to_ascii_lowercase();
+            let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            let extension = extension.to_ascii_lowercase();
+            let (target, format_rank) = if stem == "video" {
+                let Some(rank) = video_format_rank(&extension) else {
+                    continue;
+                };
+                (&mut result.video, rank)
+            } else if stem == "manual" {
+                let Some(rank) = manual_format_rank(&extension) else {
+                    continue;
+                };
+                (&mut result.manual, rank)
+            } else {
+                continue;
+            };
+            select_supplemental_asset(
+                target,
+                Some(MediaAsset {
+                    path,
+                    source: source_name.to_string(),
+                    source_rank,
+                    format_rank,
+                }),
+            );
+        }
+    }
+    Ok(result)
+}
+
+fn select_supplemental_asset(target: &mut Option<MediaAsset>, candidate: Option<MediaAsset>) {
+    let Some(candidate) = candidate else {
+        return;
+    };
+    if target.as_ref().is_none_or(|existing| {
+        (
+            candidate.source_rank,
+            candidate.format_rank,
+            &candidate.source,
+            &candidate.path,
+        ) < (
+            existing.source_rank,
+            existing.format_rank,
+            &existing.source,
+            &existing.path,
+        )
+    }) {
+        *target = Some(candidate);
+    }
+}
+
+fn video_format_rank(extension: &str) -> Option<usize> {
+    ["mp4", "webm", "mkv", "mov", "m4v", "avi"]
+        .iter()
+        .position(|candidate| *candidate == extension)
+}
+
+fn manual_format_rank(extension: &str) -> Option<usize> {
+    ["pdf", "cbz", "cbr", "epub", "html", "htm", "txt", "zip"]
+        .iter()
+        .position(|candidate| *candidate == extension)
 }
 
 fn parse_launchbox_directory(value: &std::ffi::OsStr) -> Option<i64> {
@@ -1026,6 +1229,34 @@ mod tests {
         assert_eq!(index.root, path);
         assert!(index.games.is_empty());
         assert!(index.warning.is_none());
+    }
+
+    #[test]
+    fn supplemental_media_prefers_provider_before_format() {
+        let directory = tempfile::tempdir().unwrap();
+        touch(&directory.path().join("lb-140/emumovies/video.mp4"));
+        touch(&directory.path().join("lb-140/emumovies/manual.pdf"));
+        touch(&directory.path().join("lb-140/minerva/manual.zip"));
+        touch(&directory.path().join("lb-140/local/video.webm"));
+
+        let media = scan_supplemental_directory(directory.path(), &directory.path().join("lb-140"))
+            .unwrap();
+        assert_eq!(media.video.unwrap().source, "local");
+        let manual = media.manual.unwrap();
+        assert_eq!(manual.source, "minerva");
+        assert!(manual.path.ends_with("minerva/manual.zip"));
+    }
+
+    #[test]
+    fn media_identity_changes_when_the_file_content_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("video.mp4");
+        fs::write(&path, vec![1_u8; 130_000]).unwrap();
+        let first = media_identity(&path).unwrap();
+        fs::write(&path, vec![2_u8; 130_000]).unwrap();
+        let second = media_identity(&path).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(first.len(), "sha256:".len() + 64);
     }
 
     #[test]

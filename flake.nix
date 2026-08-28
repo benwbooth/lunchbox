@@ -18,6 +18,7 @@
           qtbase
           qtdeclarative
           qtimageformats
+          qtmultimedia
           qtsvg
         ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ qtwayland ];
         qtEnv = pkgs.qt6.env "lunchbox-qt-env" qtModules;

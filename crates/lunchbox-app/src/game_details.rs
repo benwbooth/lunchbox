@@ -49,6 +49,9 @@ pub struct GameDetails {
     pub local_file_paths: Vec<PathBuf>,
     pub prepared_install: Option<PreparedInstall>,
     pub activity: Option<crate::settings::PlayActivity>,
+    pub supplemental_media: crate::media::SupplementalMedia,
+    pub video_media_key: String,
+    pub video_progress: Option<crate::settings::MediaPlaybackProgress>,
     pub bundles: Vec<MinervaBundle>,
 }
 
@@ -120,6 +123,7 @@ pub fn load(
         let state_path = crate::settings::state_database_path()?;
         load_local_only_details(&mut details, local_file_id, &state_path)?;
         load_prepared_state(&mut details)?;
+        load_supplemental_media(&mut details)?;
         return Ok(details);
     }
 
@@ -172,7 +176,20 @@ pub fn load(
     details.bundles = resolve_minerva_bundles(&details)?;
     details.downloadable = !details.local && !details.bundles.is_empty();
     load_prepared_state(&mut details)?;
+    load_supplemental_media(&mut details)?;
     Ok(details)
+}
+
+fn load_supplemental_media(details: &mut GameDetails) -> Result<()> {
+    details.supplemental_media =
+        crate::media::supplemental_media(&details.id, details.database_id)?;
+    let Some(video) = details.supplemental_media.video.as_ref() else {
+        return Ok(());
+    };
+    details.video_media_key = crate::media::media_identity(&video.path)?;
+    details.video_progress = crate::settings::SettingsStore::open_default()?
+        .media_playback_progress(&details.id, &details.video_media_key)?;
+    Ok(())
 }
 
 fn load_prepared_state(details: &mut GameDetails) -> Result<()> {

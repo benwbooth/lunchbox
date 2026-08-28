@@ -33,6 +33,17 @@ pub mod qobject {
         #[qproperty(QString, release_type)]
         #[qproperty(QString, notes)]
         #[qproperty(QString, message)]
+        #[qproperty(bool, media_visible)]
+        #[qproperty(bool, video_available)]
+        #[qproperty(bool, manual_available)]
+        #[qproperty(bool, video_progress_busy)]
+        #[qproperty(QUrl, video_url)]
+        #[qproperty(QUrl, manual_url)]
+        #[qproperty(QString, video_source)]
+        #[qproperty(QString, manual_source)]
+        #[qproperty(QString, media_message)]
+        #[qproperty(i32, video_resume_position)]
+        #[qproperty(i32, media_revision)]
         #[qproperty(bool, activity_busy)]
         #[qproperty(bool, activity_visible)]
         #[qproperty(i32, play_count)]
@@ -138,6 +149,16 @@ pub mod qobject {
         fn save_completion_state(self: Pin<&mut GameDetailsModel>, state: QString);
 
         #[qinvokable]
+        fn save_video_progress(
+            self: Pin<&mut GameDetailsModel>,
+            position_ms: i32,
+            duration_ms: i32,
+        );
+
+        #[qinvokable]
+        fn reset_video_progress(self: Pin<&mut GameDetailsModel>, duration_ms: i32);
+
+        #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -209,6 +230,17 @@ pub struct GameDetailsModelRust {
     release_type: QString,
     notes: QString,
     message: QString,
+    media_visible: bool,
+    video_available: bool,
+    manual_available: bool,
+    video_progress_busy: bool,
+    video_url: QUrl,
+    manual_url: QUrl,
+    video_source: QString,
+    manual_source: QString,
+    media_message: QString,
+    video_resume_position: i32,
+    media_revision: i32,
     activity_busy: bool,
     activity_visible: bool,
     play_count: i32,
@@ -262,6 +294,7 @@ pub struct GameDetailsModelRust {
     rom_firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
     pending_firmware_message: Option<String>,
     prepared_install: Option<crate::exo_install::PreparedInstall>,
+    video_media_key: String,
 }
 
 impl Default for GameDetailsModelRust {
@@ -290,6 +323,17 @@ impl Default for GameDetailsModelRust {
             release_type: QString::default(),
             notes: QString::default(),
             message: QString::from("Select a game to inspect it."),
+            media_visible: false,
+            video_available: false,
+            manual_available: false,
+            video_progress_busy: false,
+            video_url: QUrl::default(),
+            manual_url: QUrl::default(),
+            video_source: QString::default(),
+            manual_source: QString::default(),
+            media_message: QString::default(),
+            video_resume_position: 0,
+            media_revision: 0,
             activity_busy: false,
             activity_visible: false,
             play_count: 0,
@@ -343,12 +387,17 @@ impl Default for GameDetailsModelRust {
             rom_firmware_statuses: Vec::new(),
             pending_firmware_message: None,
             prepared_install: None,
+            video_media_key: String::new(),
         }
     }
 }
 
 fn qstring(value: impl AsRef<str>) -> QString {
     QString::from(value.as_ref())
+}
+
+fn local_file_url(path: &std::path::Path) -> QUrl {
+    QUrl::from_local_file(&qstring(path.to_string_lossy()))
 }
 
 fn count_i32(value: usize) -> i32 {
@@ -390,6 +439,36 @@ fn format_last_played(timestamp: i64) -> String {
         86_400..=172_799 => "Yesterday".to_owned(),
         _ => format!("{} days ago", elapsed / 86_400),
     }
+}
+
+fn format_release_date(value: &str) -> String {
+    let value = value.trim();
+    let bytes = value.as_bytes();
+    if bytes.len() < 10
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || !bytes[..4].iter().all(u8::is_ascii_digit)
+        || !bytes[5..7].iter().all(u8::is_ascii_digit)
+        || !bytes[8..10].iter().all(u8::is_ascii_digit)
+    {
+        return value.to_owned();
+    }
+    let Ok(month) = value[5..7].parse::<usize>() else {
+        return value.to_owned();
+    };
+    let Ok(day) = value[8..10].parse::<u8>() else {
+        return value.to_owned();
+    };
+    let Some(month) = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+    .get(month.saturating_sub(1)) else {
+        return value.to_owned();
+    };
+    if day == 0 || day > 31 {
+        return value.to_owned();
+    }
+    format!("{month} {day}, {}", &value[..4])
 }
 
 fn has_cli_flag(flag: &str) -> bool {
@@ -516,6 +595,19 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_notes(QString::default());
+        self.as_mut().set_media_visible(false);
+        self.as_mut().set_video_available(false);
+        self.as_mut().set_manual_available(false);
+        self.as_mut().set_video_progress_busy(false);
+        self.as_mut().set_video_url(QUrl::default());
+        self.as_mut().set_manual_url(QUrl::default());
+        self.as_mut().set_video_source(QString::default());
+        self.as_mut().set_manual_source(QString::default());
+        self.as_mut().set_media_message(QString::default());
+        self.as_mut().set_video_resume_position(0);
+        self.as_mut().rust_mut().video_media_key.clear();
+        let media_revision = self.as_ref().media_revision().wrapping_add(1);
+        self.as_mut().set_media_revision(media_revision);
         self.as_mut().set_activity_busy(false);
         self.as_mut().set_activity_visible(false);
         self.as_mut().set_play_count(0);
@@ -567,6 +659,9 @@ impl qobject::GameDetailsModel {
         match loaded {
             Ok(details) => {
                 let activity = details.activity.clone();
+                let supplemental_media = details.supplemental_media.clone();
+                let video_media_key = details.video_media_key.clone();
+                let video_progress = details.video_progress.clone();
                 let preparable = crate::exo_install::is_preparable_archive(
                     &details.platform,
                     &details.local_file_path,
@@ -588,7 +683,7 @@ impl qobject::GameDetailsModel {
                 let local_file_paths = details.local_file_paths.clone();
                 self.as_mut().set_description(qstring(&details.description));
                 self.as_mut()
-                    .set_release_date(qstring(&details.release_date));
+                    .set_release_date(qstring(format_release_date(&details.release_date)));
                 self.as_mut().set_developer(qstring(&details.developer));
                 self.as_mut().set_publisher(qstring(&details.publisher));
                 self.as_mut().set_genre(qstring(&details.genre));
@@ -598,6 +693,11 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
                 self.as_mut().set_notes(qstring(&details.notes));
+                self.as_mut().apply_supplemental_media(
+                    supplemental_media,
+                    video_media_key,
+                    video_progress,
+                );
                 self.as_mut().rust_mut().database_id = details.database_id;
                 self.as_mut().set_local(details.local);
                 self.as_mut().set_downloadable(details.downloadable);
@@ -658,6 +758,154 @@ impl qobject::GameDetailsModel {
             self.as_mut().set_play_time(qstring("Never played"));
             self.as_mut().set_last_played(qstring("Never"));
             self.as_mut().set_completion_state(qstring("not_started"));
+        }
+    }
+
+    fn apply_supplemental_media(
+        mut self: Pin<&mut Self>,
+        media: crate::media::SupplementalMedia,
+        video_media_key: String,
+        video_progress: Option<crate::settings::MediaPlaybackProgress>,
+    ) {
+        let video_available = media.video.is_some();
+        let manual_available = media.manual.is_some();
+        self.as_mut()
+            .set_media_visible(video_available || manual_available);
+        self.as_mut().set_video_available(video_available);
+        self.as_mut().set_manual_available(manual_available);
+        self.as_mut().set_video_url(
+            media
+                .video
+                .as_ref()
+                .map(|asset| local_file_url(&asset.path))
+                .unwrap_or_default(),
+        );
+        self.as_mut().set_manual_url(
+            media
+                .manual
+                .as_ref()
+                .map(|asset| local_file_url(&asset.path))
+                .unwrap_or_default(),
+        );
+        self.as_mut().set_video_source(qstring(
+            media
+                .video
+                .as_ref()
+                .map(|asset| asset.source.as_str())
+                .unwrap_or_default(),
+        ));
+        self.as_mut().set_manual_source(qstring(
+            media
+                .manual
+                .as_ref()
+                .map(|asset| asset.source.as_str())
+                .unwrap_or_default(),
+        ));
+        self.as_mut().rust_mut().video_media_key = video_media_key;
+        let resume_position = video_progress
+            .filter(|progress| {
+                progress.position_ms >= 5_000
+                    && (progress.duration_ms == 0
+                        || progress.duration_ms.saturating_sub(progress.position_ms) > 10_000)
+            })
+            .map(|progress| i32::try_from(progress.position_ms).unwrap_or(i32::MAX))
+            .unwrap_or_default();
+        self.as_mut().set_video_resume_position(resume_position);
+        let message = match (video_available, manual_available) {
+            (true, true) => "Gameplay video and manual are ready.",
+            (true, false) => "Gameplay video is ready.",
+            (false, true) => "Game manual is ready.",
+            (false, false) => "",
+        };
+        self.as_mut().set_media_message(qstring(message));
+        let media_revision = self.as_ref().media_revision().wrapping_add(1);
+        self.as_mut().set_media_revision(media_revision);
+    }
+
+    pub fn save_video_progress(mut self: Pin<&mut Self>, position_ms: i32, duration_ms: i32) {
+        self.as_mut()
+            .persist_video_progress(position_ms, duration_ms, false);
+    }
+
+    pub fn reset_video_progress(mut self: Pin<&mut Self>, duration_ms: i32) {
+        self.as_mut()
+            .persist_video_progress(0, duration_ms.max(0), true);
+    }
+
+    fn persist_video_progress(
+        mut self: Pin<&mut Self>,
+        position_ms: i32,
+        duration_ms: i32,
+        reset: bool,
+    ) {
+        if *self.as_ref().video_progress_busy() || !*self.as_ref().video_available() {
+            return;
+        }
+        let game_id = self.as_ref().game_id().to_string();
+        let media_key = self.as_ref().rust().video_media_key.clone();
+        if game_id.trim().is_empty() || media_key.is_empty() {
+            return;
+        }
+        let duration_ms = duration_ms.max(0);
+        let mut position_ms = position_ms.max(0);
+        if duration_ms > 0 {
+            position_ms = position_ms.min(duration_ms);
+            if duration_ms.saturating_sub(position_ms) <= 10_000 {
+                position_ms = 0;
+            }
+        }
+        let generation = self.as_ref().rust().details_generation;
+        self.as_mut().set_video_progress_busy(true);
+        if reset {
+            self.as_mut().set_video_resume_position(0);
+        }
+
+        let qt_thread = self.as_ref().qt_thread();
+        let worker_media_key = media_key.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-video-progress".into())
+            .spawn(move || {
+                let saved = crate::settings::SettingsStore::open_default()
+                    .and_then(|store| {
+                        store.save_media_playback_progress(
+                            &game_id,
+                            &worker_media_key,
+                            i64::from(position_ms),
+                            i64::from(duration_ms),
+                        )
+                    })
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_video_progress_save(generation, media_key, saved);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_video_progress_busy(false);
+            self.as_mut().set_media_message(qstring(format!(
+                "Could not start video progress worker: {error}"
+            )));
+        }
+    }
+
+    fn finish_video_progress_save(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        media_key: String,
+        saved: Result<crate::settings::MediaPlaybackProgress, String>,
+    ) {
+        if generation != self.as_ref().rust().details_generation
+            || media_key != self.as_ref().rust().video_media_key
+        {
+            return;
+        }
+        self.as_mut().set_video_progress_busy(false);
+        match saved {
+            Ok(_) => {}
+            Err(error) => self
+                .as_mut()
+                .set_media_message(qstring(format!("Could not save video position: {error}"))),
         }
     }
 
@@ -2341,7 +2589,7 @@ fn queue_download(
 
 #[cfg(test)]
 mod tests {
-    use super::{format_last_played, format_play_time};
+    use super::{format_last_played, format_play_time, format_release_date};
 
     #[test]
     fn activity_labels_stay_compact_in_the_details_card() {
@@ -2352,5 +2600,10 @@ mod tests {
         assert_eq!(format_play_time(3_600, 1), "1 hr");
         assert_eq!(format_play_time(3_900, 1), "1 hr 5 min");
         assert_eq!(format_last_played(0), "Never");
+        assert_eq!(
+            format_release_date("1985-09-13T00:00:00+00:00"),
+            "Sep 13, 1985"
+        );
+        assert_eq!(format_release_date("1994"), "1994");
     }
 }

@@ -294,6 +294,15 @@ one terminated session with measured elapsed time. `--rom-launch-ui-probe`
 leaves the same `Play Locally` controls open for visual inspection;
 `--activity-ui-probe` opens that persisted identity in the native Recently
 Played view with its statistics and completion picker visible.
+`--media-bundle-probe --media-directory PATH --state-database EMPTY_PATH`
+opens the preserved Super Mario Bros. identity, discovers its exact cached
+video and manual below the configured media root, waits for Qt Multimedia to
+decode and play the real video, seeks to 12 seconds, persists the checkpoint
+through the CXX-Qt model, and exits only after the SQLite worker returns.
+`--media-bundle-ui-probe` leaves the same polished media card open for visual
+inspection. The card uses Qt Multimedia for cross-platform playback and Qt's
+native URL handler for manuals; Rust never invokes a shell or constructs an
+OS-specific opener command.
 `--arcade-launch-probe` exercises the same chooser and supervisor with a
 persisted MAME standalone default. On the current Linux host it launched the
 installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path

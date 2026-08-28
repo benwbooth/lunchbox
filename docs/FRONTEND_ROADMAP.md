@@ -117,12 +117,14 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Canonical-game metadata enrichment with provenance and per-field conflict
   review.
-- Box art, backgrounds, screenshots, logos, manuals, music, and video with an
-  asynchronous memory/disk cache and visibility-driven decoding.
+- Extend the native cached manual/video bundle and durable exact-media resume
+  state with Minerva-first manual acquisition, EmuMovies fallback, visible
+  transfer progress/cancellation, and soundtrack browsing.
 - Configurable media-source priority, image replacement, missing-media audit,
   and background download queue.
-- Responsive game details, related games, alternate versions, 3D box display,
-  manuals, soundtrack playback, and video playback.
+- Extend the responsive game details and native video/fullscreen/manual surface
+  with related games, alternate versions, a 3D box display, and soundtrack
+  playback.
 
 ## Emulators and launching
 

@@ -5,10 +5,12 @@ fn main() {
         QmlModule::new("Lunchbox")
             .depend("QtQuick.Dialogs")
             .depend("QtQuick.Layouts")
+            .depend("QtMultimedia")
             .qml_files(["qml/Main.qml"]),
     )
     .qt_module("Quick")
     .qt_module("QuickControls2")
+    .qt_module("Multimedia")
     .file("src/download_queue_model.rs")
     .file("src/emulator_manager_model.rs")
     .file("src/game_details_model.rs")

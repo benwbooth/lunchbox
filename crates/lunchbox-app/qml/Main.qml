@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtMultimedia
 import Lunchbox
 
 ApplicationWindow {
@@ -64,6 +65,8 @@ ApplicationWindow {
     property bool launchProbeTriggered: false
     property bool launchProbeObservedRunning: false
     property bool launchProbeAwaitingActivity: false
+    property int mediaBundleProbeStage: 0
+    property string mediaPlaybackMessage: ""
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -113,6 +116,8 @@ ApplicationWindow {
     readonly property bool firmwareProbe: Qt.application.arguments.indexOf("--firmware-probe") >= 0
     readonly property bool firmwareUiProbe: Qt.application.arguments.indexOf("--firmware-ui-probe") >= 0
     readonly property bool activityUiProbe: Qt.application.arguments.indexOf("--activity-ui-probe") >= 0
+    readonly property bool mediaBundleProbe: Qt.application.arguments.indexOf("--media-bundle-probe") >= 0
+    readonly property bool mediaBundleUiProbe: Qt.application.arguments.indexOf("--media-bundle-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
@@ -295,6 +300,17 @@ ApplicationWindow {
         return key === "screenshot" || key === "title-screen" || key === "fanart"
     }
 
+    function formatMediaTime(milliseconds) {
+        const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
+        const hours = Math.floor(totalSeconds / 3600)
+        const minutes = Math.floor((totalSeconds % 3600) / 60)
+        const seconds = totalSeconds % 60
+        if (hours > 0)
+            return hours + ":" + String(minutes).padStart(2, "0")
+                    + ":" + String(seconds).padStart(2, "0")
+        return minutes + ":" + String(seconds).padStart(2, "0")
+    }
+
     function openImportDialog() {
         importDialogLoader.active = true
         importDialogLoader.item.open()
@@ -306,6 +322,80 @@ ApplicationWindow {
 
     GameDetailsModel {
         id: gameDetails
+    }
+
+    AudioOutput {
+        id: gameVideoAudio
+        muted: true
+        volume: 0.45
+    }
+
+    MediaPlayer {
+        id: gameVideoPlayer
+        property bool resumeApplied: false
+        source: gameDetails.video_available ? gameDetails.video_url : ""
+        audioOutput: gameVideoAudio
+        videoOutput: mediaFullscreen.opened ? fullscreenVideoOutput : detailVideoOutput
+        loops: MediaPlayer.Infinite
+        onSourceChanged: {
+            resumeApplied = false
+            root.mediaPlaybackMessage = ""
+            gameVideoAudio.muted = true
+            if (source.toString().length === 0)
+                stop()
+        }
+        onMediaStatusChanged: {
+            if (mediaStatus === MediaPlayer.LoadedMedia) {
+                if (!resumeApplied && seekable
+                        && gameDetails.video_resume_position > 0)
+                    position = Math.min(gameDetails.video_resume_position, duration)
+                resumeApplied = true
+                play()
+            }
+        }
+        onErrorOccurred: function(error, errorString) {
+            root.mediaPlaybackMessage = "Video playback failed: " + errorString
+        }
+        onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PausedState
+                    && !gameDetails.video_progress_busy)
+                gameDetails.save_video_progress(position, duration)
+            if (root.mediaBundleProbe
+                    && playbackState === MediaPlayer.PlayingState
+                    && root.mediaBundleProbeStage === 0) {
+                root.mediaBundleProbeStage = 1
+                mediaProbePersistTimer.restart()
+            }
+        }
+    }
+
+    Timer {
+        interval: 5000
+        repeat: true
+        running: gameVideoPlayer.playbackState === MediaPlayer.PlayingState
+                 && gameDetails.video_available
+        onTriggered: {
+            if (!gameDetails.video_progress_busy)
+                gameDetails.save_video_progress(gameVideoPlayer.position,
+                                                gameVideoPlayer.duration)
+        }
+    }
+
+    Timer {
+        id: mediaProbePersistTimer
+        interval: 800
+        repeat: false
+        onTriggered: {
+            if (!gameDetails.manual_available) {
+                console.error("LUNCHBOX_MEDIA_FAILED manual fixture missing")
+                Qt.exit(2)
+                return
+            }
+            gameVideoPlayer.position = Math.min(12000, gameVideoPlayer.duration)
+            root.mediaBundleProbeStage = 2
+            gameDetails.save_video_progress(gameVideoPlayer.position,
+                                            gameVideoPlayer.duration)
+        }
     }
 
     SettingsModel {
@@ -578,6 +668,12 @@ ApplicationWindow {
             }
         }
         function onGame_runningChanged() {
+            if (gameDetails.game_running && gameDetails.video_available) {
+                if (!gameDetails.video_progress_busy)
+                    gameDetails.save_video_progress(gameVideoPlayer.position,
+                                                    gameVideoPlayer.duration)
+                gameVideoPlayer.pause()
+            }
             if (!root.emulatorLaunchProbe
                     || !root.launchProbeTriggered)
                 return
@@ -595,6 +691,39 @@ ApplicationWindow {
         function onFirmware_rule_countChanged() {
             if (root.firmwareProbe && gameDetails.firmware_rule_count > 0)
                 Qt.quit()
+        }
+        function onMedia_revisionChanged() {
+            if (root.mediaBundleUiProbe && gameDetails.media_visible) {
+                mediaProbeScrollTimer.restart()
+            }
+        }
+        function onMedia_visibleChanged() {
+            if (root.mediaBundleUiProbe && gameDetails.media_visible) {
+                mediaProbeScrollTimer.restart()
+            }
+        }
+        function onVideo_progress_busyChanged() {
+            if (root.mediaBundleProbe && root.mediaBundleProbeStage === 2
+                    && !gameDetails.video_progress_busy) {
+                console.log("LUNCHBOX_MEDIA_READY video="
+                            + gameDetails.video_available + " manual="
+                            + gameDetails.manual_available + " resume_ms="
+                            + gameDetails.video_resume_position)
+                Qt.quit()
+            }
+        }
+        function onPanel_openChanged() {
+            if (!gameDetails.panel_open && gameDetails.video_available) {
+                if (!gameDetails.video_progress_busy)
+                    gameDetails.save_video_progress(gameVideoPlayer.position,
+                                                    gameVideoPlayer.duration)
+                gameVideoPlayer.pause()
+                mediaFullscreen.close()
+            }
+        }
+        function onVideo_availableChanged() {
+            if (!gameDetails.video_available)
+                gameVideoPlayer.stop()
         }
     }
 
@@ -680,6 +809,10 @@ ApplicationWindow {
             else if (root.activityUiProbe)
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)
+            else if (root.mediaBundleProbe || root.mediaBundleUiProbe)
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.", "Nintendo Entertainment System",
+                              false, true)
         }
     }
 
@@ -725,6 +858,109 @@ ApplicationWindow {
         onTriggered: detailScroll.contentItem.contentY = Math.max(
                          0, fileCandidateHeading.mapToItem(
                              detailScroll.contentItem, 0, 0).y - 12)
+    }
+
+    Timer {
+        id: mediaProbeScrollTimer
+        interval: 700
+        repeat: false
+        onTriggered: detailScroll.contentItem.contentY = Math.max(
+                         0, mediaCard.mapToItem(
+                             detailScroll.contentItem, 0, 0).y - 12)
+    }
+
+    Popup {
+        id: mediaFullscreen
+        parent: Overlay.overlay
+        x: 0
+        y: 0
+        width: root.width
+        height: root.height
+        padding: 0
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape
+        background: Rectangle { color: "#f205080c" }
+        onClosed: {
+            if (!gameDetails.video_progress_busy)
+                gameDetails.save_video_progress(gameVideoPlayer.position,
+                                                gameVideoPlayer.duration)
+        }
+
+        VideoOutput {
+            id: fullscreenVideoOutput
+            anchors.fill: parent
+            anchors.margins: 18
+            fillMode: VideoOutput.PreserveAspectFit
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            anchors.bottomMargin: fullscreenControls.height
+            onClicked: {
+                if (gameVideoPlayer.playbackState === MediaPlayer.PlayingState)
+                    gameVideoPlayer.pause()
+                else
+                    gameVideoPlayer.play()
+            }
+        }
+
+        RowLayout {
+            id: fullscreenControls
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 18
+            height: 54
+            spacing: 10
+
+            Button {
+                Layout.preferredWidth: 54
+                Layout.preferredHeight: 38
+                text: gameVideoPlayer.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
+                onClicked: {
+                    if (gameVideoPlayer.playbackState === MediaPlayer.PlayingState)
+                        gameVideoPlayer.pause()
+                    else
+                        gameVideoPlayer.play()
+                }
+            }
+            Slider {
+                id: fullscreenPosition
+                Layout.fillWidth: true
+                from: 0
+                to: Math.max(1, gameVideoPlayer.duration)
+                onMoved: {
+                    if (gameVideoPlayer.seekable)
+                        gameVideoPlayer.position = value
+                }
+                Binding on value {
+                    when: !fullscreenPosition.pressed
+                    value: gameVideoPlayer.position
+                }
+            }
+            Text {
+                Layout.preferredWidth: 112
+                text: root.formatMediaTime(gameVideoPlayer.position)
+                      + " / " + root.formatMediaTime(gameVideoPlayer.duration)
+                color: root.ink
+                font.pixelSize: 11
+                font.features: { "tnum": 1 }
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Button {
+                Layout.preferredWidth: 72
+                Layout.preferredHeight: 38
+                text: gameVideoAudio.muted ? "UNMUTE" : "MUTE"
+                onClicked: gameVideoAudio.muted = !gameVideoAudio.muted
+            }
+            Button {
+                Layout.preferredWidth: 72
+                Layout.preferredHeight: 38
+                text: "CLOSE"
+                onClicked: mediaFullscreen.close()
+            }
+        }
     }
 
     Popup {
@@ -2491,6 +2727,340 @@ ApplicationWindow {
                                                       ? root.accent : root.line
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: mediaCard
+                        visible: !gameDetails.loading && gameDetails.media_visible
+                        width: parent.width
+                        height: mediaColumn.implicitHeight + 24
+                        radius: 11
+                        color: "#111a26"
+                        border.color: "#354155"
+                        clip: true
+
+                        Column {
+                            id: mediaColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    width: parent.width - mediaSourceBadge.width - 8
+                                    text: "GAME MEDIA"
+                                    color: root.accent
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1.1
+                                }
+                                Rectangle {
+                                    id: mediaSourceBadge
+                                    visible: gameDetails.video_available
+                                    width: visible ? mediaSourceText.implicitWidth + 14 : 0
+                                    height: 20
+                                    radius: 6
+                                    color: "#202b3a"
+                                    border.color: root.line
+                                    Text {
+                                        id: mediaSourceText
+                                        anchors.centerIn: parent
+                                        text: gameDetails.video_source.toUpperCase()
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                id: detailVideoFrame
+                                visible: gameDetails.video_available
+                                width: parent.width
+                                height: visible ? Math.round(width * 0.57) : 0
+                                radius: 9
+                                color: "#070a0f"
+                                border.color: "#303b4d"
+                                clip: true
+
+                                VideoOutput {
+                                    id: detailVideoOutput
+                                    anchors.fill: parent
+                                    fillMode: VideoOutput.PreserveAspectFit
+                                }
+
+                                BusyIndicator {
+                                    anchors.centerIn: parent
+                                    width: 32
+                                    height: 32
+                                    running: gameVideoPlayer.mediaStatus === MediaPlayer.LoadingMedia
+                                             || gameVideoPlayer.mediaStatus === MediaPlayer.BufferingMedia
+                                    visible: running
+                                }
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 54
+                                    gradient: Gradient {
+                                        GradientStop { position: 0; color: "transparent" }
+                                        GradientStop { position: 1; color: "#e5070a0f" }
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    anchors.bottomMargin: videoControls.height
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (gameVideoPlayer.playbackState
+                                                === MediaPlayer.PlayingState)
+                                            gameVideoPlayer.pause()
+                                        else
+                                            gameVideoPlayer.play()
+                                    }
+                                }
+
+                                RowLayout {
+                                    id: videoControls
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    height: 42
+                                    spacing: 6
+
+                                    Button {
+                                        Layout.preferredWidth: 38
+                                        Layout.preferredHeight: 30
+                                        text: gameVideoPlayer.playbackState
+                                              === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
+                                        onClicked: {
+                                            if (gameVideoPlayer.playbackState
+                                                    === MediaPlayer.PlayingState)
+                                                gameVideoPlayer.pause()
+                                            else
+                                                gameVideoPlayer.play()
+                                        }
+                                        background: Rectangle {
+                                            radius: 7
+                                            color: parent.down ? "#3a4556" : "#283343"
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: root.ink
+                                            font.pixelSize: 12
+                                            font.weight: Font.Bold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+
+                                    Slider {
+                                        id: videoPosition
+                                        Layout.fillWidth: true
+                                        from: 0
+                                        to: Math.max(1, gameVideoPlayer.duration)
+                                        onMoved: {
+                                            if (gameVideoPlayer.seekable)
+                                                gameVideoPlayer.position = value
+                                        }
+                                        Binding on value {
+                                            when: !videoPosition.pressed
+                                            value: gameVideoPlayer.position
+                                        }
+                                        background: Rectangle {
+                                            x: videoPosition.leftPadding
+                                            y: videoPosition.topPadding
+                                               + videoPosition.availableHeight / 2 - height / 2
+                                            width: videoPosition.availableWidth
+                                            height: 4
+                                            radius: 2
+                                            color: "#465166"
+                                            Rectangle {
+                                                width: videoPosition.visualPosition * parent.width
+                                                height: parent.height
+                                                radius: 2
+                                                color: root.accent
+                                            }
+                                        }
+                                        handle: Rectangle {
+                                            x: videoPosition.leftPadding
+                                               + videoPosition.visualPosition
+                                                 * (videoPosition.availableWidth - width)
+                                            y: videoPosition.topPadding
+                                               + videoPosition.availableHeight / 2 - height / 2
+                                            width: 12
+                                            height: 12
+                                            radius: 6
+                                            color: root.ink
+                                        }
+                                    }
+
+                                    Text {
+                                        Layout.preferredWidth: 68
+                                        text: root.formatMediaTime(gameVideoPlayer.position)
+                                              + " / "
+                                              + root.formatMediaTime(gameVideoPlayer.duration)
+                                        color: "#d4dae4"
+                                        font.pixelSize: 8
+                                        font.features: { "tnum": 1 }
+                                        horizontalAlignment: Text.AlignHCenter
+                                    }
+
+                                    Button {
+                                        Layout.preferredWidth: 34
+                                        Layout.preferredHeight: 30
+                                        text: gameVideoAudio.muted ? "MUTE" : "SOUND"
+                                        onClicked: gameVideoAudio.muted = !gameVideoAudio.muted
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: gameVideoAudio.muted ? "Turn sound on" : "Mute video"
+                                        background: Rectangle {
+                                            radius: 7
+                                            color: parent.down ? "#3a4556" : "#283343"
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: gameVideoAudio.muted ? root.muted : root.accentCool
+                                            font.pixelSize: 6
+                                            font.weight: Font.Bold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+
+                                    Button {
+                                        Layout.preferredWidth: 34
+                                        Layout.preferredHeight: 30
+                                        text: "FULL"
+                                        onClicked: mediaFullscreen.open()
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "View fullscreen"
+                                        background: Rectangle {
+                                            radius: 7
+                                            color: parent.down ? "#3a4556" : "#283343"
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: root.ink
+                                            font.pixelSize: 6
+                                            font.weight: Font.Bold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                visible: gameDetails.video_available
+                                         && gameDetails.video_resume_position >= 5000
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "RESUMED AT "
+                                          + root.formatMediaTime(gameDetails.video_resume_position)
+                                    color: root.muted
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.6
+                                }
+                                Button {
+                                    text: "START OVER"
+                                    enabled: !gameDetails.video_progress_busy
+                                    onClicked: {
+                                        gameVideoPlayer.position = 0
+                                        gameDetails.reset_video_progress(gameVideoPlayer.duration)
+                                    }
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: parent.down ? "#303b4b" : "#202a38"
+                                        border.color: root.line
+                                    }
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: root.ink
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                visible: gameDetails.manual_available
+                                width: parent.width
+                                height: visible ? 48 : 0
+                                radius: 8
+                                color: "#182230"
+                                border.color: root.line
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 8
+                                    spacing: 8
+                                    Column {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            text: "GAME MANUAL"
+                                            color: root.ink
+                                            font.pixelSize: 10
+                                            font.weight: Font.Bold
+                                        }
+                                        Text {
+                                            text: gameDetails.manual_source.toUpperCase()
+                                                  + " · OPENS IN YOUR DEFAULT VIEWER"
+                                            color: root.muted
+                                            font.pixelSize: 7
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.4
+                                        }
+                                    }
+                                    Button {
+                                        Layout.preferredWidth: 74
+                                        Layout.preferredHeight: 32
+                                        text: "OPEN"
+                                        onClicked: {
+                                            if (!Qt.openUrlExternally(gameDetails.manual_url))
+                                                root.mediaPlaybackMessage =
+                                                        "The operating system could not open this manual."
+                                        }
+                                        background: Rectangle {
+                                            radius: 7
+                                            color: parent.down ? "#d89444" : root.accent
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: "#17110a"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                text: root.mediaPlaybackMessage.length > 0
+                                      ? root.mediaPlaybackMessage : gameDetails.media_message
+                                color: root.mediaPlaybackMessage.length > 0
+                                       ? "#f3a49c" : root.muted
+                                font.pixelSize: 9
+                                wrapMode: Text.WordWrap
                             }
                         }
                     }

@@ -185,6 +185,20 @@ exits. The details pane shows plays, time, recency, and editable completion stat
 Recently Played stays composable with search and platform navigation. Unfinished
 rows remain auditable after interruption instead of guessing play time.
 
+Cached gameplay videos and manuals now appear in a native `Game Media` card.
+Rust accepts only canonicalized, non-empty files inside the configured media
+root, chooses the preferred provider deterministically, and gives each video a
+bounded SHA-256 content identity from its length plus head/tail samples so a
+replacement does not normally inherit stale progress without hashing an entire
+large video. Qt Multimedia
+auto-plays the clip muted and looped with native seek, sound, restart, and
+fullscreen controls; playback pauses before a game takes over or when details
+close. Five-second checkpoints are written off the GUI thread by stable game
+UUID and resume after restart. Manuals open with Qt's operating-system URL
+handler, without shell commands or platform-specific path strings. The current
+slice consumes preserved cached media; Minerva/EmuMovies acquisition remains
+the next media-parity step.
+
 The preserved game catalog is a local runtime input and is not added to the
 published artifact because redistribution permission for its LaunchBox-derived
 records has not been established.

@@ -158,6 +158,15 @@ pub struct PlaySessionStart {
     pub started_at: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MediaPlaybackProgress {
+    pub game_uid: String,
+    pub media_key: String,
+    pub position_ms: i64,
+    pub duration_ms: i64,
+    pub updated_at: i64,
+}
+
 impl Default for LibraryPreferences {
     fn default() -> Self {
         Self {
@@ -548,6 +557,76 @@ impl SettingsStore {
         )?;
         let rows = statement.query_map([limit], play_activity_from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn media_playback_progress(
+        &self,
+        game_uid: &str,
+        media_key: &str,
+    ) -> Result<Option<MediaPlaybackProgress>> {
+        validate_media_playback_identity(game_uid, media_key)?;
+        let connection = self.connection()?;
+        Ok(connection
+            .query_row(
+                "SELECT game_uid, media_key, position_ms, duration_ms, updated_at
+                 FROM media_playback_progress
+                 WHERE game_uid=?1 AND media_key=?2",
+                params![game_uid, media_key],
+                |row| {
+                    Ok(MediaPlaybackProgress {
+                        game_uid: row.get(0)?,
+                        media_key: row.get(1)?,
+                        position_ms: row.get(2)?,
+                        duration_ms: row.get(3)?,
+                        updated_at: row.get(4)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn save_media_playback_progress(
+        &self,
+        game_uid: &str,
+        media_key: &str,
+        position_ms: i64,
+        duration_ms: i64,
+    ) -> Result<MediaPlaybackProgress> {
+        validate_media_playback_identity(game_uid, media_key)?;
+        if position_ms < 0 || duration_ms < 0 {
+            bail!("media playback position and duration cannot be negative");
+        }
+        let position_ms = if duration_ms > 0 {
+            position_ms.min(duration_ms)
+        } else {
+            position_ms
+        };
+        let updated_at = unix_timestamp();
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO media_playback_progress (
+                 game_uid, media_key, position_ms, duration_ms, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(game_uid, media_key) DO UPDATE SET
+                 position_ms=excluded.position_ms,
+                 duration_ms=excluded.duration_ms,
+                 updated_at=excluded.updated_at",
+            params![game_uid, media_key, position_ms, duration_ms, updated_at],
+        )?;
+        transaction.execute(
+            "DELETE FROM media_playback_progress
+             WHERE game_uid=?1 AND media_key<>?2",
+            params![game_uid, media_key],
+        )?;
+        transaction.commit()?;
+        Ok(MediaPlaybackProgress {
+            game_uid: game_uid.to_owned(),
+            media_key: media_key.to_owned(),
+            position_ms,
+            duration_ms,
+            updated_at,
+        })
     }
 
     pub fn begin_play_session(
@@ -1601,6 +1680,16 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON play_sessions(game_uid, started_at DESC);
          CREATE INDEX IF NOT EXISTS play_sessions_running
              ON play_sessions(outcome, started_at) WHERE outcome='running';
+         CREATE TABLE IF NOT EXISTS media_playback_progress (
+             game_uid TEXT NOT NULL,
+             media_key TEXT NOT NULL,
+             position_ms INTEGER NOT NULL CHECK (position_ms >= 0),
+             duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+             PRIMARY KEY (game_uid, media_key)
+         );
+         CREATE INDEX IF NOT EXISTS media_playback_progress_updated
+             ON media_playback_progress(updated_at DESC, game_uid);
          CREATE TABLE IF NOT EXISTS user_collections (
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -1819,6 +1908,16 @@ fn validate_completion_state(completion_state: &str) -> Result<()> {
         "not_started" | "in_progress" | "completed" | "on_hold" | "abandoned"
     ) {
         bail!("unsupported completion state {completion_state}");
+    }
+    Ok(())
+}
+
+fn validate_media_playback_identity(game_uid: &str, media_key: &str) -> Result<()> {
+    if game_uid.trim().is_empty() || media_key.trim().is_empty() {
+        bail!("media playback progress requires stable game and media identities");
+    }
+    if game_uid.chars().count() > 512 || media_key.chars().count() > 256 {
+        bail!("media playback identity fields exceed their safety limits");
     }
     Ok(())
 }
@@ -2433,6 +2532,42 @@ mod tests {
         assert!(
             store
                 .finish_play_session(&session.session_id, 0, "unknown")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn media_progress_is_scoped_to_the_exact_video_and_replaces_stale_media() {
+        let (_directory, store) = store();
+        assert!(
+            store
+                .media_playback_progress("game-1", "sha256:first")
+                .unwrap()
+                .is_none()
+        );
+        let saved = store
+            .save_media_playback_progress("game-1", "sha256:first", 31_500, 90_000)
+            .unwrap();
+        assert_eq!(saved.position_ms, 31_500);
+        assert_eq!(
+            store
+                .media_playback_progress("game-1", "sha256:first")
+                .unwrap(),
+            Some(saved)
+        );
+
+        store
+            .save_media_playback_progress("game-1", "sha256:replacement", 2_000, 80_000)
+            .unwrap();
+        assert!(
+            store
+                .media_playback_progress("game-1", "sha256:first")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .save_media_playback_progress("game-1", "sha256:replacement", -1, 80_000)
                 .is_err()
         );
     }
