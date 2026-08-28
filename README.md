@@ -215,12 +215,16 @@ The equivalent catalog environment variables are
 `LUNCHBOX_STATE_DATABASE` can select an alternate writable settings, queue, and
 native collection database for testing or portable deployments.
 
-Favorites and named collections live in that writable state database and refer
-to games by Lunchbox's stable UUIDs. The Collections sidebar supports creating,
-renaming, describing, and safely deleting shelves; a game's details pane manages
-membership. Selecting a collection remains composable with search and platform
-navigation, and collection writes run off the GUI thread with visible failure
-rollback.
+Favorites and collections live in that writable state database and refer to
+games by Lunchbox's stable UUIDs. Manual shelves preserve explicit order and
+support per-game or confirmed bulk visible-result membership changes. Smart
+shelves compose title, exact platform, availability, favorite, completion, and
+content rules and stay current as source state changes. The Collections sidebar
+and two-pane manager provide navigation, editing, reorder controls, and bounded
+portable JSON import/export. Import uses only exact Lunchbox UUIDs or unique
+positive LaunchBox database IDs, never display-title matching. Collection views
+remain composable with search and platform navigation, and writes run off the
+GUI thread with visible failure rollback.
 
 Play activity is stored by the same stable game UUID. Lunchbox starts a durable
 session only after an emulator process exists, records play count and last-played

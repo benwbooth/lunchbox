@@ -283,7 +283,12 @@ the same grid, star affordance, and details pane open for visual inspection.
 adds a real catalog game by stable UUID, applies the native collection filter,
 and exits only after persistence succeeds. Reusing the state path verifies that
 the collection and membership survive restart. `--collection-ui-probe` follows
-the same route and leaves the collection-management surface open for inspection.
+the same route and leaves the two-pane collection-management surface open for
+inspection; `--screenshot-output ABSOLUTE_PATH` captures it and exits.
+`--smart-collection-probe` creates an automatic Minerva-available shelf, derives
+its count from the real catalog, and exits only after the Qt bridge observes the
+expected result. `--smart-collection-ui-probe` opens the same durable rules in
+the native editor and can capture it with `--screenshot-output`.
 
 `--import-ui-probe --import-directory PATH` opens the local-import surface and
 starts a real checksum scan. It exists for deterministic virtual-display visual
@@ -507,7 +512,7 @@ fixture server in `crates/lunchbox-app/examples/igdb_fixture.rs`. The credential
 and endpoint environment variables exist only to make unattended verification
 independent of a live account; interactive credentials remain in the keyring.
 
-Playlists and smart collections, the remaining alternate media providers,
+Richer playlist presentation, the remaining alternate media providers,
 specialized machine launch profiles, the remaining settings, broader
 manual-provider coverage, multidisc/patch archive management, and the
 controller-first full-screen interface follow on the same shared models.

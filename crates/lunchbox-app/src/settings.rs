@@ -10,6 +10,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::catalog;
+use crate::collections::SmartCollectionRules;
 use crate::download_plan::DownloadPlan;
 
 const KEYRING_SERVICE: &str = "com.lunchbox.Lunchbox";
@@ -197,13 +198,15 @@ pub struct UserCollection {
     pub id: String,
     pub name: String,
     pub description: String,
+    pub kind: String,
+    pub rules: Option<SmartCollectionRules>,
     pub game_count: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct UserCollections {
     pub collections: Vec<UserCollection>,
-    pub members: HashMap<String, HashSet<String>>,
+    pub members: HashMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -986,19 +989,16 @@ impl SettingsStore {
             .optional()?)
     }
 
-    pub fn recent_play_activity(&self, limit: usize) -> Result<Vec<PlayActivity>> {
-        let limit = i64::try_from(limit.min(500)).unwrap_or(500);
+    pub fn all_play_activity(&self) -> Result<Vec<PlayActivity>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
             "SELECT game_uid, launchbox_db_id, title, platform, play_count,
                     total_play_time_seconds, last_played_at, first_played_at,
                     completion_state
              FROM game_activity
-             WHERE play_count > 0
-             ORDER BY last_played_at DESC, game_uid
-             LIMIT ?1",
+             ORDER BY game_uid",
         )?;
-        let rows = statement.query_map([limit], play_activity_from_row)?;
+        let rows = statement.query_map([], play_activity_from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
@@ -1910,19 +1910,40 @@ impl SettingsStore {
     pub fn user_collections(&self) -> Result<UserCollections> {
         let connection = self.connection()?;
         let mut collection_statement = connection.prepare(
-            "SELECT id, name, description
+            "SELECT id, name, description, kind, rules_json
              FROM user_collections
              ORDER BY name COLLATE NOCASE, id",
         )?;
         let collection_rows = collection_statement.query_map([], |row| {
-            Ok(UserCollection {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                game_count: 0,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
         })?;
-        let mut collections = collection_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut collections = Vec::new();
+        for row in collection_rows {
+            let (id, name, description, kind, rules_json) = row?;
+            let rules = match kind.as_str() {
+                "manual" if rules_json.is_empty() => None,
+                "smart" => Some(
+                    serde_json::from_str::<SmartCollectionRules>(&rules_json)
+                        .context("decoding smart collection rules")?
+                        .normalized()?,
+                ),
+                _ => bail!("collection {id} has an invalid kind or rule payload"),
+            };
+            collections.push(UserCollection {
+                id,
+                name,
+                description,
+                kind,
+                rules,
+                game_count: 0,
+            });
+        }
 
         let mut member_statement = connection.prepare(
             "SELECT collection_id, game_uid
@@ -1932,15 +1953,15 @@ impl SettingsStore {
         let member_rows = member_statement.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
-        let mut members = HashMap::<String, HashSet<String>>::new();
+        let mut members = HashMap::<String, Vec<String>>::new();
         for row in member_rows {
             let (collection_id, game_uid) = row?;
-            members.entry(collection_id).or_default().insert(game_uid);
+            members.entry(collection_id).or_default().push(game_uid);
         }
         for collection in &mut collections {
             collection.game_count = members
                 .get(&collection.id)
-                .map(HashSet::len)
+                .map(Vec::len)
                 .unwrap_or_default();
         }
         Ok(UserCollections {
@@ -1950,24 +1971,55 @@ impl SettingsStore {
     }
 
     pub fn create_collection(&self, name: &str, description: &str) -> Result<UserCollection> {
+        self.create_collection_record(name, description, "manual", None)
+    }
+
+    pub fn create_smart_collection(
+        &self,
+        name: &str,
+        description: &str,
+        rules: SmartCollectionRules,
+    ) -> Result<UserCollection> {
+        self.create_collection_record(name, description, "smart", Some(rules.normalized()?))
+    }
+
+    fn create_collection_record(
+        &self,
+        name: &str,
+        description: &str,
+        kind: &str,
+        rules: Option<SmartCollectionRules>,
+    ) -> Result<UserCollection> {
         let name = validate_collection_name(name)?;
         let description = validate_collection_description(description)?;
+        if !matches!((kind, &rules), ("manual", None) | ("smart", Some(_))) {
+            bail!("collections require a consistent kind and rule payload");
+        }
+        let rules_json = rules
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?
+            .unwrap_or_default();
         let collection = UserCollection {
             id: uuid::Uuid::new_v4().to_string(),
             name,
             description,
+            kind: kind.to_owned(),
+            rules,
             game_count: 0,
         };
         let connection = self.connection()?;
         connection
             .execute(
                 "INSERT INTO user_collections (
-                     id, name, description, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?4)",
+                     id, name, description, kind, rules_json, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
                 params![
                     collection.id,
                     collection.name,
                     collection.description,
+                    collection.kind,
+                    rules_json,
                     unix_timestamp()
                 ],
             )
@@ -1993,6 +2045,29 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub fn update_smart_collection(
+        &self,
+        id: &str,
+        name: &str,
+        description: &str,
+        rules: SmartCollectionRules,
+    ) -> Result<()> {
+        let name = validate_collection_name(name)?;
+        let description = validate_collection_description(description)?;
+        let rules_json = serde_json::to_string(&rules.normalized()?)?;
+        let connection = self.connection()?;
+        let changed = connection.execute(
+            "UPDATE user_collections
+             SET name=?2, description=?3, rules_json=?4, updated_at=?5
+             WHERE id=?1 AND kind='smart'",
+            params![id, name, description, rules_json, unix_timestamp()],
+        )?;
+        if changed == 0 {
+            bail!("smart collection no longer exists");
+        }
+        Ok(())
+    }
+
     pub fn delete_collection(&self, id: &str) -> Result<()> {
         let connection = self.connection()?;
         let changed = connection
@@ -2010,35 +2085,131 @@ impl SettingsStore {
         game_uid: &str,
         member: bool,
     ) -> Result<()> {
-        if game_uid.trim().is_empty() {
-            bail!("a stable game identity is required to change collection membership");
-        }
+        self.set_collection_memberships(collection_id, &[game_uid.to_owned()], member)?;
+        Ok(())
+    }
+
+    pub fn set_collection_memberships(
+        &self,
+        collection_id: &str,
+        game_uids: &[String],
+        member: bool,
+    ) -> Result<usize> {
+        let game_uids = validated_collection_game_uids(game_uids)?;
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
+        let kind: String = transaction
+            .query_row(
+                "SELECT kind FROM user_collections WHERE id=?1",
+                [collection_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .context("collection no longer exists")?;
+        if kind != "manual" {
+            bail!("smart collection membership is derived from its rules");
+        }
+        let mut changed = 0_usize;
         if member {
-            let next_order = transaction.query_row(
+            let mut next_order = transaction.query_row(
                 "SELECT coalesce(max(sort_order), 0) + 1
                  FROM user_collection_games WHERE collection_id=?1",
-                params![collection_id],
+                [collection_id],
                 |row| row.get::<_, i64>(0),
             )?;
-            transaction
-                .execute(
+            for game_uid in game_uids {
+                let inserted = transaction.execute(
                     "INSERT OR IGNORE INTO user_collection_games (
                          collection_id, game_uid, sort_order, added_at
                      ) VALUES (?1, ?2, ?3, ?4)",
                     params![collection_id, game_uid, next_order, unix_timestamp()],
-                )
-                .with_context(|| format!("adding a game to collection {collection_id}"))?;
+                )?;
+                if inserted > 0 {
+                    next_order = next_order.saturating_add(1);
+                    changed = changed.saturating_add(1);
+                }
+            }
         } else {
+            for game_uid in game_uids {
+                changed = changed.saturating_add(transaction.execute(
+                    "DELETE FROM user_collection_games
+                     WHERE collection_id=?1 AND game_uid=?2",
+                    params![collection_id, game_uid],
+                )?);
+            }
+        }
+        transaction.commit()?;
+        Ok(changed)
+    }
+
+    pub fn replace_collection_members(
+        &self,
+        collection_id: &str,
+        game_uids: &[String],
+    ) -> Result<()> {
+        let game_uids = validated_collection_game_uids(game_uids)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let kind: String = transaction
+            .query_row(
+                "SELECT kind FROM user_collections WHERE id=?1",
+                [collection_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .context("collection no longer exists")?;
+        if kind != "manual" {
+            bail!("smart collection membership cannot be replaced");
+        }
+        transaction.execute(
+            "DELETE FROM user_collection_games WHERE collection_id=?1",
+            [collection_id],
+        )?;
+        for (index, game_uid) in game_uids.iter().enumerate() {
             transaction.execute(
-                "DELETE FROM user_collection_games
-                 WHERE collection_id=?1 AND game_uid=?2",
-                params![collection_id, game_uid],
+                "INSERT INTO user_collection_games (
+                     collection_id, game_uid, sort_order, added_at
+                 ) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    collection_id,
+                    game_uid,
+                    i64::try_from(index).unwrap_or(i64::MAX),
+                    unix_timestamp()
+                ],
             )?;
         }
         transaction.commit()?;
         Ok(())
+    }
+
+    pub fn move_collection_game(
+        &self,
+        collection_id: &str,
+        game_uid: &str,
+        new_index: usize,
+    ) -> Result<Vec<String>> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to reorder a collection");
+        }
+        let collections = self.user_collections()?;
+        let mut members = collections
+            .members
+            .get(collection_id)
+            .cloned()
+            .context("collection has no members")?;
+        let old_index = members
+            .iter()
+            .position(|candidate| candidate == game_uid)
+            .context("game is not in the collection")?;
+        if new_index >= members.len() {
+            bail!("collection order target is outside the member list");
+        }
+        if old_index != new_index {
+            let game_uid = members.remove(old_index);
+            members.insert(new_index, game_uid);
+            self.replace_collection_members(collection_id, &members)?;
+        }
+        Ok(members)
     }
 
     pub fn upsert_job(&self, job: &DownloadJob) -> Result<()> {
@@ -2542,8 +2713,14 @@ fn migrate(connection: &Connection) -> Result<()> {
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
              description TEXT NOT NULL,
+             kind TEXT NOT NULL DEFAULT 'manual' CHECK (kind IN ('manual', 'smart')),
+             rules_json TEXT NOT NULL DEFAULT '',
              created_at INTEGER NOT NULL,
-             updated_at INTEGER NOT NULL
+             updated_at INTEGER NOT NULL,
+             CHECK (
+                 (kind='manual' AND rules_json='')
+                 OR (kind='smart' AND length(rules_json)>0)
+             )
          );
          CREATE TABLE IF NOT EXISTS user_collection_games (
              collection_id TEXT NOT NULL REFERENCES user_collections(id) ON DELETE CASCADE,
@@ -2797,6 +2974,18 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !column_exists(connection, "user_collections", "kind")? {
+        connection.execute(
+            "ALTER TABLE user_collections ADD COLUMN kind TEXT NOT NULL DEFAULT 'manual' CHECK (kind IN ('manual', 'smart'))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "user_collections", "rules_json")? {
+        connection.execute(
+            "ALTER TABLE user_collections ADD COLUMN rules_json TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
     Ok(())
 }
 
@@ -2910,6 +3099,24 @@ fn validate_collection_name(name: &str) -> Result<String> {
         bail!("collection name must be at most 100 characters");
     }
     Ok(name.to_owned())
+}
+
+fn validated_collection_game_uids(game_uids: &[String]) -> Result<Vec<String>> {
+    if game_uids.len() > 500_000 {
+        bail!("collection membership operation contains too many games");
+    }
+    let mut unique = HashSet::with_capacity(game_uids.len());
+    let mut validated = Vec::with_capacity(game_uids.len());
+    for game_uid in game_uids {
+        let game_uid = game_uid.trim();
+        if game_uid.is_empty() || game_uid.chars().count() > 512 {
+            bail!("collection membership requires bounded stable game identities");
+        }
+        if unique.insert(game_uid.to_owned()) {
+            validated.push(game_uid.to_owned());
+        }
+    }
+    Ok(validated)
 }
 
 fn validate_play_identity(game_uid: &str, title: &str, platform: &str) -> Result<()> {
@@ -3815,7 +4022,7 @@ mod tests {
         assert_eq!(activity.completion_state, "in_progress");
         assert!(activity.first_played_at > 0);
         assert!(activity.last_played_at >= activity.first_played_at);
-        assert_eq!(store.recent_play_activity(10).unwrap(), vec![activity]);
+        assert_eq!(store.all_play_activity().unwrap(), vec![activity]);
 
         assert!(
             store
@@ -4007,7 +4214,7 @@ mod tests {
         assert_eq!(loaded.collections[0].game_count, 2);
         assert_eq!(
             loaded.members[&collection.id],
-            HashSet::from(["game-one".to_owned(), "game-two".to_owned()])
+            vec!["game-one".to_owned(), "game-two".to_owned()]
         );
 
         store
@@ -4035,6 +4242,79 @@ mod tests {
             store.user_collections().unwrap(),
             UserCollections::default()
         );
+    }
+
+    #[test]
+    fn smart_collections_and_manual_order_are_durable_and_separate() {
+        let (_directory, store) = store();
+        let manual = store.create_collection("Arcade order", "").unwrap();
+        store
+            .set_collection_memberships(
+                &manual.id,
+                &["game-one".into(), "game-two".into(), "game-three".into()],
+                true,
+            )
+            .unwrap();
+        let reordered = store
+            .move_collection_game(&manual.id, "game-three", 0)
+            .unwrap();
+        assert_eq!(reordered, vec!["game-three", "game-one", "game-two"]);
+
+        let rules = SmartCollectionRules {
+            platform: "Arcade".into(),
+            favorite: "favorite".into(),
+            ..SmartCollectionRules::default()
+        };
+        let smart = store
+            .create_smart_collection("Favorite arcade", "Live shelf", rules.clone())
+            .unwrap();
+        assert_eq!(smart.kind, "smart");
+        assert_eq!(smart.rules, Some(rules.clone()));
+        assert!(
+            store
+                .set_collection_membership(&smart.id, "game-one", true)
+                .is_err()
+        );
+        let loaded = store.user_collections().unwrap();
+        assert_eq!(loaded.members[&manual.id], reordered);
+        assert_eq!(loaded.collections[1].rules, Some(rules));
+    }
+
+    #[test]
+    fn legacy_collection_rows_migrate_as_ordered_manual_collections() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("legacy-state.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE user_collections (
+                     id TEXT PRIMARY KEY,
+                     name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                     description TEXT NOT NULL,
+                     created_at INTEGER NOT NULL,
+                     updated_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE user_collection_games (
+                     collection_id TEXT NOT NULL REFERENCES user_collections(id) ON DELETE CASCADE,
+                     game_uid TEXT NOT NULL,
+                     sort_order INTEGER NOT NULL,
+                     added_at INTEGER NOT NULL,
+                     PRIMARY KEY (collection_id, game_uid)
+                 );
+                 INSERT INTO user_collections VALUES ('legacy', 'Legacy shelf', '', 1, 1);
+                 INSERT INTO user_collection_games VALUES ('legacy', 'second', 20, 1);
+                 INSERT INTO user_collection_games VALUES ('legacy', 'first', 10, 1);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let collections = SettingsStore::at(&path)
+            .unwrap()
+            .user_collections()
+            .unwrap();
+        assert_eq!(collections.collections[0].kind, "manual");
+        assert_eq!(collections.collections[0].rules, None);
+        assert_eq!(collections.members["legacy"], vec!["first", "second"]);
     }
 
     #[test]

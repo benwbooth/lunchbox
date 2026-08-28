@@ -11,9 +11,11 @@ ApplicationWindow {
     id: root
     visible: true
     width: controllerProfileUiProbe || launchProfileUiProbe
-           || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe ? 1920 : 1440
+           || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
+           || collectionUiProbe || smartCollectionUiProbe ? 1920 : 1440
     height: controllerProfileUiProbe || launchProfileUiProbe
-            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe ? 1200 : 900
+            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
+            || collectionUiProbe || smartCollectionUiProbe ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
@@ -31,8 +33,12 @@ ApplicationWindow {
     property string selectedCollectionId: ""
     property string selectedCollectionName: ""
     property string editingCollectionId: ""
+    property string editingCollectionKind: "manual"
     property string deletingCollectionId: ""
     property string deletingCollectionName: ""
+    property string bulkCollectionId: ""
+    property string bulkCollectionName: ""
+    property bool bulkCollectionMember: true
     property string pendingHistoryJobId: ""
     property string pendingHistoryJobTitle: ""
     property bool clearAllDownloadHistory: false
@@ -112,6 +118,8 @@ ApplicationWindow {
     readonly property bool favoriteUiProbe: Qt.application.arguments.indexOf("--favorite-ui-probe") >= 0
     readonly property bool collectionProbe: Qt.application.arguments.indexOf("--collection-probe") >= 0
     readonly property bool collectionUiProbe: Qt.application.arguments.indexOf("--collection-ui-probe") >= 0
+    readonly property bool smartCollectionProbe: Qt.application.arguments.indexOf("--smart-collection-probe") >= 0
+    readonly property bool smartCollectionUiProbe: Qt.application.arguments.indexOf("--smart-collection-ui-probe") >= 0
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
@@ -157,9 +165,14 @@ ApplicationWindow {
 
     palette.window: "#0c1119"
     palette.windowText: ink
+    palette.base: "#111925"
+    palette.alternateBase: "#161f2c"
     palette.text: ink
+    palette.button: "#1b2330"
     palette.buttonText: ink
+    palette.placeholderText: muted
     palette.highlight: accent
+    palette.highlightedText: "#10141c"
 
     onClosing: close => {
         if (library.favorite_pending_count > 0 || library.collection_busy) {
@@ -226,30 +239,90 @@ ApplicationWindow {
 
     function openNewCollectionDialog() {
         editingCollectionId = ""
+        editingCollectionKind = "manual"
         collectionNameField.text = ""
         collectionDescriptionField.text = ""
+        collectionType.currentIndex = 0
+        collectionTitleRule.text = ""
+        collectionPlatformRule.currentIndex = 0
+        collectionAvailabilityRule.currentIndex = 0
+        collectionFavoriteRule.currentIndex = 0
+        collectionCompletionRule.currentIndex = 0
+        collectionContentRule.currentIndex = 0
         collectionEditorDialog.open()
         collectionNameField.forceActiveFocus()
     }
 
     function openEditCollectionDialog(index) {
         editingCollectionId = library.collection_id_at(index)
+        editingCollectionKind = library.collection_kind_at(index)
         collectionNameField.text = library.collection_name_at(index)
         collectionDescriptionField.text = library.collection_description_at(index)
+        collectionType.currentIndex = editingCollectionKind === "smart" ? 1 : 0
+        collectionTitleRule.text = library.collection_rule_at(index, "title")
+        selectCollectionPlatformRule(library.collection_rule_at(index, "platform"))
+        selectCollectionRule(collectionAvailabilityRule,
+                             library.collection_rule_at(index, "availability"))
+        selectCollectionRule(collectionFavoriteRule,
+                             library.collection_rule_at(index, "favorite"))
+        selectCollectionRule(collectionCompletionRule,
+                             library.collection_rule_at(index, "completion"))
+        selectCollectionRule(collectionContentRule,
+                             library.collection_rule_at(index, "content"))
         collectionEditorDialog.open()
         collectionNameField.forceActiveFocus()
+    }
+
+    function selectCollectionRule(combo, value) {
+        const index = combo.indexOfValue(value)
+        combo.currentIndex = index >= 0 ? index : 0
+    }
+
+    function selectCollectionPlatformRule(platform) {
+        collectionPlatformRule.currentIndex = 0
+        for (let index = 0; index < library.platform_count; ++index) {
+            if (library.platform_name_at(index) === platform) {
+                collectionPlatformRule.currentIndex = index + 1
+                return
+            }
+        }
+    }
+
+    function collectionPlatformRuleValue() {
+        return collectionPlatformRule.currentIndex > 0
+               ? library.platform_name_at(collectionPlatformRule.currentIndex - 1) : ""
     }
 
     function saveEditedCollection() {
         if (collectionNameField.text.trim().length === 0 || library.collection_busy)
             return
-        if (editingCollectionId.length > 0)
-            library.update_collection(editingCollectionId,
-                                      collectionNameField.text,
-                                      collectionDescriptionField.text)
-        else
+        const smart = collectionType.currentValue === "smart"
+        if (smart && !library.set_smart_collection_rule_draft(
+                collectionTitleRule.text,
+                collectionPlatformRuleValue(),
+                collectionAvailabilityRule.currentValue,
+                collectionFavoriteRule.currentValue,
+                collectionCompletionRule.currentValue,
+                collectionContentRule.currentValue))
+            return
+        if (editingCollectionId.length > 0) {
+            if (smart)
+                library.update_smart_collection(
+                            editingCollectionId,
+                            collectionNameField.text,
+                            collectionDescriptionField.text)
+            else
+                library.update_collection(editingCollectionId,
+                                          collectionNameField.text,
+                                          collectionDescriptionField.text)
+        } else if (smart) {
+            library.create_smart_collection(
+                        collectionNameField.text,
+                        collectionDescriptionField.text)
+        } else {
             library.create_collection(collectionNameField.text,
                                       collectionDescriptionField.text)
+        }
         collectionEditorDialog.close()
     }
 
@@ -259,6 +332,42 @@ ApplicationWindow {
                 return index
         }
         return -1
+    }
+
+    function collectionIndexByName(collectionName) {
+        for (let index = 0; index < library.collection_count; ++index) {
+            if (library.collection_name_at(index) === collectionName)
+                return index
+        }
+        return -1
+    }
+
+    function finishSmartCollectionProbe() {
+        if (!library.ready || library.collection_busy)
+            return
+        const index = collectionIndexByName("Ready from Minerva")
+        if (index < 0)
+            return
+        const valid = library.collection_kind_at(index) === "smart"
+                      && library.collection_game_count_at(index)
+                         === library.downloadable_game_count
+        if (!valid) {
+            console.error("LUNCHBOX_SMART_COLLECTION_FAILED kind="
+                          + library.collection_kind_at(index) + " games="
+                          + library.collection_game_count_at(index)
+                          + " expected=" + library.downloadable_game_count)
+            Qt.exit(2)
+            return
+        }
+        console.log("LUNCHBOX_SMART_COLLECTION_READY games="
+                    + library.collection_game_count_at(index))
+        if (root.smartCollectionProbe) {
+            Qt.quit()
+        } else {
+            root.openEditCollectionDialog(index)
+            if (root.screenshotOutput.length > 0)
+                smartCollectionScreenshotTimer.restart()
+        }
     }
 
     function confirmRemoveDownload(index) {
@@ -781,6 +890,18 @@ ApplicationWindow {
                     Qt.quit()
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
+                else if (root.smartCollectionProbe || root.smartCollectionUiProbe) {
+                    const index = root.collectionIndexByName("Ready from Minerva")
+                    if (index >= 0) {
+                        root.finishSmartCollectionProbe()
+                    } else {
+                        library.set_smart_collection_rule_draft(
+                                    "", "", "downloadable", "any", "any", "any")
+                        library.create_smart_collection(
+                                    "Ready from Minerva",
+                                    "Games available to download and not installed locally")
+                    }
+                }
                 else if (root.collectionProbe || root.collectionUiProbe) {
                     if (library.collection_count === 0) {
                         root.collectionProbeStage = 1
@@ -828,8 +949,11 @@ ApplicationWindow {
                 root.collectionProbeStage = 5
                 if (root.collectionProbe)
                     Qt.quit()
-                else
+                else {
                     manageCollectionsDialog.open()
+                    if (root.screenshotOutput.length > 0)
+                        collectionScreenshotTimer.restart()
+                }
             }
         }
         function onMedia_revisionChanged() {
@@ -904,6 +1028,8 @@ ApplicationWindow {
                     && library.collection_count > 0
                     && !library.collection_busy)
                 root.startCollectionProbeSearch()
+            if (root.smartCollectionProbe || root.smartCollectionUiProbe)
+                root.finishSmartCollectionProbe()
         }
         function onCollection_busyChanged() {
             if (root.closeAfterFavoriteSave
@@ -925,6 +1051,58 @@ ApplicationWindow {
                 root.selectCollection(library.collection_id_at(0),
                                       library.collection_name_at(0))
             }
+            if (root.smartCollectionProbe || root.smartCollectionUiProbe)
+                root.finishSmartCollectionProbe()
+        }
+    }
+
+    Timer {
+        id: collectionScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            manageCollectionsDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_COLLECTION_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_COLLECTION_UI_READY collections="
+                            + library.collection_count + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        id: smartCollectionScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            collectionEditorDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SMART_COLLECTION_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_SMART_COLLECTION_UI_READY screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 15000
+        running: root.smartCollectionProbe || root.smartCollectionUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_SMART_COLLECTION_FAILED timeout message="
+                          + library.collection_message)
+            Qt.exit(2)
         }
     }
 
@@ -2679,8 +2857,11 @@ ApplicationWindow {
                     revision
                     return library.collection_name_at(index)
                 }
-                glyph: "▣"
-                count: library.collection_game_count_at(index).toString()
+                glyph: library.collection_kind_at(index) === "smart" ? "⚡" : "▣"
+                count: {
+                    revision
+                    return library.collection_game_count_at(index).toString()
+                }
                 active: root.selectedCollectionId === library.collection_id_at(index)
                 onClicked: root.selectCollection(library.collection_id_at(index), label)
             }
@@ -3034,6 +3215,8 @@ ApplicationWindow {
                         text: {
                             revision
                             return library.collection_name_at(index)
+                                   + (library.collection_kind_at(index) === "smart"
+                                      ? "  ·  Automatic" : "")
                         }
                         checked: {
                             revision
@@ -3042,6 +3225,7 @@ ApplicationWindow {
                                         root.selectedGameId)
                         }
                         enabled: !library.collection_busy
+                                 && library.collection_kind_at(index) === "manual"
                         onClicked: {
                             const collectionId = library.collection_id_at(index)
                             library.set_collection_membership(
@@ -5191,7 +5375,7 @@ ApplicationWindow {
                 anchors.rightMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 9
-                Button {
+                HeaderButton {
                     text: "Cancel"
                     enabled: !gameDetails.download_busy
                     onClicked: downloadPlanDialog.close()
@@ -5216,10 +5400,18 @@ ApplicationWindow {
 
     Dialog {
         id: collectionEditorDialog
+        readonly property bool smartMode: collectionType.currentValue === "smart"
+        readonly property bool smartRuleConfigured: !smartMode
+            || collectionTitleRule.text.trim().length > 0
+            || collectionPlatformRule.currentIndex > 0
+            || collectionAvailabilityRule.currentValue !== "any"
+            || collectionFavoriteRule.currentValue !== "any"
+            || collectionCompletionRule.currentValue !== "any"
+            || collectionContentRule.currentValue !== "any"
         modal: true
         anchors.centerIn: parent
-        width: Math.min(520, root.width - 48)
-        height: 390
+        width: Math.min(660, root.width - 48)
+        height: smartMode ? Math.min(720, root.height - 48) : 470
         padding: 22
         closePolicy: Popup.CloseOnEscape
 
@@ -5246,22 +5438,166 @@ ApplicationWindow {
             }
         }
         contentItem: ColumnLayout {
-            spacing: 10
-            Text {
-                text: "NAME"
-                color: root.accent
-                font.pixelSize: 10
-                font.weight: Font.Bold
-                font.letterSpacing: 1.2
-            }
-            TextField {
-                id: collectionNameField
+            spacing: 11
+            RowLayout {
                 Layout.fillWidth: true
-                maximumLength: 100
-                placeholderText: "For example: Couch co-op"
-                onAccepted: {
-                    if (text.trim().length > 0 && !library.collection_busy)
-                        root.saveEditedCollection()
+                spacing: 14
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 5
+                    Text {
+                        text: "NAME"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    TextField {
+                        id: collectionNameField
+                        Layout.fillWidth: true
+                        maximumLength: 100
+                        placeholderText: "For example: Ready to download"
+                        onAccepted: {
+                            if (text.trim().length > 0
+                                    && collectionEditorDialog.smartRuleConfigured
+                                    && !library.collection_busy)
+                                root.saveEditedCollection()
+                        }
+                    }
+                }
+                ColumnLayout {
+                    Layout.preferredWidth: 190
+                    spacing: 5
+                    Text {
+                        text: "TYPE"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    ComboBox {
+                        id: collectionType
+                        Layout.fillWidth: true
+                        enabled: root.editingCollectionId.length === 0
+                        model: [
+                            { label: "Manual collection", value: "manual" },
+                            { label: "Smart collection", value: "smart" }
+                        ]
+                        textRole: "label"
+                        valueRole: "value"
+                        ToolTip.visible: hovered && !enabled
+                        ToolTip.text: "Collection type is fixed after creation"
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: collectionEditorDialog.smartMode
+                      ? "Smart collections stay current automatically. Every configured rule must match."
+                      : "Manual collections preserve the order you choose and can be edited game by game."
+                color: root.muted
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+            Rectangle {
+                visible: collectionEditorDialog.smartMode
+                Layout.fillWidth: true
+                Layout.preferredHeight: smartRules.implicitHeight + 28
+                radius: 10
+                color: "#101722"
+                border.color: root.line
+                ColumnLayout {
+                    id: smartRules
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 9
+                    Text {
+                        text: "AUTOMATIC RULES"
+                        color: root.accentCool
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    TextField {
+                        id: collectionTitleRule
+                        Layout.fillWidth: true
+                        maximumLength: 200
+                        placeholderText: "Title contains (optional)"
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 10
+                        rowSpacing: 8
+                        Text { text: "Platform"; color: root.muted; font.pixelSize: 10 }
+                        ComboBox {
+                            id: collectionPlatformRule
+                            Layout.fillWidth: true
+                            model: library.platform_count + 1
+                            displayText: currentIndex === 0
+                                         ? "All platforms"
+                                         : library.platform_name_at(currentIndex - 1)
+                            delegate: ItemDelegate {
+                                required property int index
+                                width: collectionPlatformRule.width
+                                text: index === 0 ? "All platforms"
+                                      : library.platform_name_at(index - 1)
+                            }
+                        }
+                        Text { text: "Availability"; color: root.muted; font.pixelSize: 10 }
+                        ComboBox {
+                            id: collectionAvailabilityRule
+                            Layout.fillWidth: true
+                            model: [
+                                { label: "Any availability", value: "any" },
+                                { label: "Installed locally", value: "installed" },
+                                { label: "Ready from Minerva", value: "downloadable" },
+                                { label: "Catalog only", value: "catalog" }
+                            ]
+                            textRole: "label"
+                            valueRole: "value"
+                        }
+                        Text { text: "Favorites"; color: root.muted; font.pixelSize: 10 }
+                        ComboBox {
+                            id: collectionFavoriteRule
+                            Layout.fillWidth: true
+                            model: [
+                                { label: "Favorites or not", value: "any" },
+                                { label: "Favorites only", value: "favorite" },
+                                { label: "Exclude favorites", value: "not_favorite" }
+                            ]
+                            textRole: "label"
+                            valueRole: "value"
+                        }
+                        Text { text: "Completion"; color: root.muted; font.pixelSize: 10 }
+                        ComboBox {
+                            id: collectionCompletionRule
+                            Layout.fillWidth: true
+                            model: [
+                                { label: "Any completion state", value: "any" },
+                                { label: "Not started", value: "not_started" },
+                                { label: "In progress", value: "in_progress" },
+                                { label: "Completed", value: "completed" },
+                                { label: "On hold", value: "on_hold" },
+                                { label: "Abandoned", value: "abandoned" }
+                            ]
+                            textRole: "label"
+                            valueRole: "value"
+                        }
+                        Text { text: "Content"; color: root.muted; font.pixelSize: 10 }
+                        ComboBox {
+                            id: collectionContentRule
+                            Layout.fillWidth: true
+                            model: [
+                                { label: "Any content", value: "any" },
+                                { label: "Retail", value: "retail" },
+                                { label: "Non-retail", value: "non_retail" },
+                                { label: "Adult", value: "adult" }
+                            ]
+                            textRole: "label"
+                            valueRole: "value"
+                        }
+                    }
                 }
             }
             Text {
@@ -5271,21 +5607,21 @@ ApplicationWindow {
                 font.weight: Font.Bold
                 font.letterSpacing: 1.2
             }
-            ScrollView {
+            TextArea {
+                id: collectionDescriptionField
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                TextArea {
-                    id: collectionDescriptionField
-                    placeholderText: "Optional notes about this collection"
-                    wrapMode: TextEdit.Wrap
-                    selectByMouse: true
-                }
+                Layout.preferredHeight: 76
+                placeholderText: "Optional notes about this collection"
+                wrapMode: TextEdit.Wrap
+                selectByMouse: true
             }
             Text {
                 Layout.fillWidth: true
                 text: library.collection_busy ? library.collection_message
-                      : "Collections are stored in your local Lunchbox profile."
-                color: root.muted
+                      : collectionEditorDialog.smartRuleConfigured
+                        ? "Stored locally; export a portable copy from Manage Collections."
+                        : "Choose at least one automatic rule."
+                color: collectionEditorDialog.smartRuleConfigured ? root.muted : root.accent
                 font.pixelSize: 10
                 wrapMode: Text.WordWrap
             }
@@ -5305,11 +5641,12 @@ ApplicationWindow {
                     enabled: !library.collection_busy
                     onClicked: collectionEditorDialog.close()
                 }
-                Button {
+                HeaderButton {
                     id: saveCollectionButton
                     text: root.editingCollectionId.length > 0 ? "Save" : "Create"
-                    highlighted: true
+                    active: true
                     enabled: collectionNameField.text.trim().length > 0
+                             && collectionEditorDialog.smartRuleConfigured
                              && !library.collection_busy
                     onClicked: root.saveEditedCollection()
                 }
@@ -5321,8 +5658,8 @@ ApplicationWindow {
         id: manageCollectionsDialog
         modal: true
         anchors.centerIn: parent
-        width: Math.min(680, root.width - 48)
-        height: Math.min(610, root.height - 48)
+        width: Math.min(1120, root.width - 48)
+        height: Math.min(760, root.height - 48)
         padding: 18
         closePolicy: Popup.CloseOnEscape
         onOpened: {
@@ -5365,85 +5702,339 @@ ApplicationWindow {
             spacing: 12
             Text {
                 Layout.fillWidth: true
-                text: "Build focused shelves without changing your ROM library. Collection filters can be combined with search and platform navigation."
+                text: "Organize exact local identities into hand-curated shelves or automatic views. Collections never rename, merge, or delete games."
                 color: root.muted
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
             }
-            ListView {
-                id: managedCollectionList
+            RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                clip: true
-                spacing: 6
-                model: library.collection_count
-                currentIndex: library.collection_count > 0 ? 0 : -1
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                delegate: Rectangle {
-                    id: managedCollectionRow
-                    required property int index
-                    property int revision: library.collection_revision
-                    width: ListView.view.width
-                    height: 72
-                    radius: 9
-                    color: ListView.isCurrentItem ? "#272c34"
-                           : managedHover.hovered ? "#1b2330" : "#111720"
-                    border.color: ListView.isCurrentItem ? root.accent : root.line
-                    HoverHandler { id: managedHover }
-                    TapHandler {
-                        onTapped: managedCollectionList.currentIndex = managedCollectionRow.index
-                        onDoubleTapped: root.openEditCollectionDialog(managedCollectionRow.index)
-                    }
-                    Column {
-                        anchors.left: parent.left
-                        anchors.right: countText.left
-                        anchors.leftMargin: 15
-                        anchors.rightMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-                        Text {
-                            width: parent.width
-                            text: {
-                                managedCollectionRow.revision
-                                return library.collection_name_at(managedCollectionRow.index)
+                spacing: 12
+                Rectangle {
+                    Layout.preferredWidth: 330
+                    Layout.fillHeight: true
+                    radius: 11
+                    color: "#101720"
+                    border.color: root.line
+                    ListView {
+                        id: managedCollectionList
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        clip: true
+                        spacing: 5
+                        model: library.collection_count
+                        currentIndex: library.collection_count > 0 ? 0 : -1
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        delegate: Rectangle {
+                            id: managedCollectionRow
+                            required property int index
+                            property int revision: library.collection_revision
+                            width: ListView.view.width
+                            height: 82
+                            radius: 9
+                            color: ListView.isCurrentItem ? "#272c34"
+                                   : managedHover.hovered ? "#1b2330" : "#111720"
+                            border.color: ListView.isCurrentItem ? root.accent : "transparent"
+                            HoverHandler { id: managedHover }
+                            TapHandler {
+                                onTapped: managedCollectionList.currentIndex = managedCollectionRow.index
+                                onDoubleTapped: root.openEditCollectionDialog(managedCollectionRow.index)
                             }
-                            color: root.ink
-                            font.pixelSize: 14
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            width: parent.width
-                            text: {
-                                managedCollectionRow.revision
-                                const description = library.collection_description_at(
-                                                    managedCollectionRow.index)
-                                return description.length > 0 ? description : "No description"
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: countText.left
+                                anchors.leftMargin: 13
+                                anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 5
+                                Row {
+                                    spacing: 7
+                                    Text {
+                                        text: library.collection_kind_at(managedCollectionRow.index)
+                                              === "smart" ? "SMART" : "MANUAL"
+                                        color: library.collection_kind_at(managedCollectionRow.index)
+                                               === "smart" ? root.accentCool : root.accent
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 1.0
+                                    }
+                                    Text {
+                                        width: 205
+                                        text: {
+                                            managedCollectionRow.revision
+                                            return library.collection_name_at(managedCollectionRow.index)
+                                        }
+                                        color: root.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: {
+                                        managedCollectionRow.revision
+                                        const summary = library.collection_rule_summary_at(
+                                                            managedCollectionRow.index)
+                                        const description = library.collection_description_at(
+                                                            managedCollectionRow.index)
+                                        return summary.length > 0 ? summary
+                                             : description.length > 0 ? description
+                                             : "No description"
+                                    }
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
                             }
-                            color: root.muted
-                            font.pixelSize: 10
-                            elide: Text.ElideRight
+                            Text {
+                                id: countText
+                                anchors.right: parent.right
+                                anchors.rightMargin: 13
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: {
+                                    managedCollectionRow.revision
+                                    return library.collection_game_count_at(
+                                                managedCollectionRow.index)
+                                }
+                                color: root.accent
+                                font.pixelSize: 15
+                                font.weight: Font.Bold
+                            }
                         }
-                    }
-                    Text {
-                        id: countText
-                        anchors.right: parent.right
-                        anchors.rightMargin: 15
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: library.collection_game_count_at(managedCollectionRow.index)
-                        color: root.accent
-                        font.pixelSize: 15
-                        font.weight: Font.Bold
                     }
                 }
-            }
-            Text {
-                Layout.fillWidth: true
-                visible: library.collection_count === 0
-                text: "No collections yet. Create one, then add games from the details panel."
-                color: root.muted
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
+                Rectangle {
+                    id: collectionInspector
+                    property int revision: library.collection_revision
+                    readonly property int selectedIndex: managedCollectionList.currentIndex
+                    readonly property string selectedKind: selectedIndex >= 0
+                        ? (revision, library.collection_kind_at(selectedIndex)) : ""
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 11
+                    color: "#101720"
+                    border.color: root.line
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 10
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: collectionInspector.selectedIndex >= 0
+                                          ? (collectionInspector.revision,
+                                             library.collection_name_at(
+                                                 collectionInspector.selectedIndex))
+                                          : "No collection selected"
+                                    color: root.ink
+                                    font.pixelSize: 18
+                                    font.weight: Font.Bold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: collectionInspector.selectedIndex < 0
+                                          ? "Create a manual or smart collection to begin."
+                                          : collectionInspector.selectedKind === "smart"
+                                            ? (collectionInspector.revision,
+                                               library.collection_rule_summary_at(
+                                                   collectionInspector.selectedIndex))
+                                            : "Manual order · exact membership"
+                                    color: collectionInspector.selectedKind === "smart"
+                                           ? root.accentCool : root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            Rectangle {
+                                visible: collectionInspector.selectedIndex >= 0
+                                Layout.preferredWidth: memberCountText.implicitWidth + 22
+                                Layout.preferredHeight: 32
+                                radius: 16
+                                color: "#202938"
+                                Text {
+                                    id: memberCountText
+                                    anchors.centerIn: parent
+                                    text: {
+                                        if (collectionInspector.selectedIndex < 0)
+                                            return ""
+                                        const count = (collectionInspector.revision,
+                                                       library.collection_game_count_at(
+                                                           collectionInspector.selectedIndex))
+                                        return count + (count === 1 ? " game" : " games")
+                                    }
+                                    color: root.accent
+                                    font.pixelSize: 11
+                                    font.weight: Font.Bold
+                                }
+                            }
+                        }
+                        RowLayout {
+                            visible: collectionInspector.selectedIndex >= 0
+                            Layout.fillWidth: true
+                            spacing: 7
+                            HeaderButton {
+                                text: "Add visible (" + library.filtered_count + ")"
+                                active: true
+                                visible: collectionInspector.selectedKind === "manual"
+                                enabled: !library.collection_busy
+                                onClicked: {
+                                    root.bulkCollectionId = library.collection_id_at(
+                                                                collectionInspector.selectedIndex)
+                                    root.bulkCollectionName = library.collection_name_at(
+                                                                  collectionInspector.selectedIndex)
+                                    root.bulkCollectionMember = true
+                                    bulkCollectionDialog.open()
+                                }
+                            }
+                            HeaderButton {
+                                text: "Remove visible"
+                                visible: collectionInspector.selectedKind === "manual"
+                                enabled: !library.collection_busy
+                                onClicked: {
+                                    root.bulkCollectionId = library.collection_id_at(
+                                                                collectionInspector.selectedIndex)
+                                    root.bulkCollectionName = library.collection_name_at(
+                                                                  collectionInspector.selectedIndex)
+                                    root.bulkCollectionMember = false
+                                    bulkCollectionDialog.open()
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: collectionInspector.selectedKind === "smart"
+                                text: "Membership is derived automatically. Edit the rules to change this shelf."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            Item { Layout.fillWidth: collectionInspector.selectedKind === "manual" }
+                            HeaderButton {
+                                text: "Export"
+                                enabled: !library.collection_busy
+                                onClicked: {
+                                    collectionExportDialog.collectionId = library.collection_id_at(
+                                                                            collectionInspector.selectedIndex)
+                                    collectionExportDialog.collectionName = library.collection_name_at(
+                                                                              collectionInspector.selectedIndex)
+                                    collectionExportDialog.open()
+                                }
+                            }
+                        }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                        ListView {
+                            id: collectionMemberList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            spacing: 3
+                            model: {
+                                collectionInspector.revision
+                                return collectionInspector.selectedIndex >= 0
+                                       ? library.collection_game_count_at(
+                                             collectionInspector.selectedIndex) : 0
+                            }
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                            delegate: Rectangle {
+                                id: memberRow
+                                required property int index
+                                property int revision: library.collection_revision
+                                width: ListView.view.width
+                                height: 48
+                                radius: 7
+                                color: memberHover.hovered ? "#1a2432" : "transparent"
+                                HoverHandler { id: memberHover }
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: memberActions.left
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 2
+                                    Text {
+                                        width: parent.width
+                                        text: {
+                                            memberRow.revision
+                                            return library.collection_member_name_at(
+                                                        collectionInspector.selectedIndex,
+                                                        memberRow.index)
+                                        }
+                                        color: root.ink
+                                        font.pixelSize: 12
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: library.collection_member_platform_at(
+                                                  collectionInspector.selectedIndex,
+                                                  memberRow.index)
+                                        color: root.muted
+                                        font.pixelSize: 9
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Row {
+                                    id: memberActions
+                                    visible: collectionInspector.selectedKind === "manual"
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 6
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 2
+                                    ToolButton {
+                                        text: "↑"
+                                        enabled: memberRow.index > 0 && !library.collection_busy
+                                        onClicked: library.move_collection_game(
+                                                       library.collection_id_at(
+                                                           collectionInspector.selectedIndex),
+                                                       memberRow.index, memberRow.index - 1)
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Move earlier"
+                                    }
+                                    ToolButton {
+                                        text: "↓"
+                                        enabled: memberRow.index + 1 < collectionMemberList.count
+                                                 && !library.collection_busy
+                                        onClicked: library.move_collection_game(
+                                                       library.collection_id_at(
+                                                           collectionInspector.selectedIndex),
+                                                       memberRow.index, memberRow.index + 1)
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Move later"
+                                    }
+                                    ToolButton {
+                                        text: "×"
+                                        enabled: !library.collection_busy
+                                        onClicked: library.set_collection_membership(
+                                                       library.collection_id_at(
+                                                           collectionInspector.selectedIndex),
+                                                       library.collection_member_game_uid_at(
+                                                           collectionInspector.selectedIndex,
+                                                           memberRow.index), false)
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Remove from collection"
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: collectionMemberList.count === 0
+                                     && collectionInspector.selectedIndex >= 0
+                            text: collectionInspector.selectedKind === "smart"
+                                  ? "No games currently match every rule."
+                                  : "This collection is empty. Add visible results or use a game's details panel."
+                            color: root.muted
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
             }
             Text {
                 Layout.fillWidth: true
@@ -5463,19 +6054,25 @@ ApplicationWindow {
                 anchors.leftMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 9
-                Button {
+                HeaderButton {
                     text: "+ New"
+                    active: true
                     enabled: !library.collection_busy
                     onClicked: root.openNewCollectionDialog()
                 }
-                Button {
+                HeaderButton {
+                    text: "Import"
+                    enabled: !library.collection_busy
+                    onClicked: collectionImportDialog.open()
+                }
+                HeaderButton {
                     text: "Edit"
                     enabled: managedCollectionList.currentIndex >= 0
                              && !library.collection_busy
                     onClicked: root.openEditCollectionDialog(
                                    managedCollectionList.currentIndex)
                 }
-                Button {
+                HeaderButton {
                     text: "Delete"
                     enabled: managedCollectionList.currentIndex >= 0
                              && !library.collection_busy
@@ -5488,7 +6085,57 @@ ApplicationWindow {
                     }
                 }
             }
+            HeaderButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Close"
+                onClicked: manageCollectionsDialog.close()
+            }
         }
+    }
+
+    Dialog {
+        id: bulkCollectionDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(500, root.width - 48)
+        title: root.bulkCollectionMember ? "Add visible games?" : "Remove visible games?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: {
+            library.bulk_set_visible_collection_membership(root.bulkCollectionId,
+                                                           root.bulkCollectionMember)
+        }
+        contentItem: Text {
+            text: (root.bulkCollectionMember ? "Add " : "Remove ")
+                  + library.filtered_count + " games "
+                  + (root.bulkCollectionMember ? "to ‘" : "from ‘")
+                  + root.bulkCollectionName
+                  + "’? This uses the exact identities in the current search, platform, and availability view."
+            color: root.ink
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    FileDialog {
+        id: collectionExportDialog
+        property string collectionId: ""
+        property string collectionName: ""
+        title: "Export " + collectionName
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: ["Lunchbox collections (*.lunchbox-collection.json)", "JSON files (*.json)"]
+        onAccepted: library.export_collection(collectionId, selectedFile)
+    }
+
+    FileDialog {
+        id: collectionImportDialog
+        title: "Import a Lunchbox collection"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Lunchbox collections (*.lunchbox-collection.json *.json)"]
+        onAccepted: library.import_collection(selectedFile)
     }
 
     Dialog {

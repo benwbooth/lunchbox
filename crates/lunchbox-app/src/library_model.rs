@@ -188,6 +188,36 @@ pub mod qobject {
         fn collection_game_count_at(self: &LibraryModel, index: i32) -> i32;
 
         #[qinvokable]
+        fn collection_kind_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn collection_rule_summary_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn collection_rule_at(self: &LibraryModel, index: i32, field: QString) -> QString;
+
+        #[qinvokable]
+        fn collection_member_game_uid_at(
+            self: &LibraryModel,
+            collection_index: i32,
+            member_index: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn collection_member_name_at(
+            self: &LibraryModel,
+            collection_index: i32,
+            member_index: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn collection_member_platform_at(
+            self: &LibraryModel,
+            collection_index: i32,
+            member_index: i32,
+        ) -> QString;
+
+        #[qinvokable]
         fn collection_exists(self: &LibraryModel, collection_id: QString) -> bool;
 
         #[qinvokable]
@@ -201,7 +231,33 @@ pub mod qobject {
         fn create_collection(self: Pin<&mut LibraryModel>, name: QString, description: QString);
 
         #[qinvokable]
+        fn set_smart_collection_rule_draft(
+            self: Pin<&mut LibraryModel>,
+            title_contains: QString,
+            platform: QString,
+            availability: QString,
+            favorite: QString,
+            completion_state: QString,
+            content: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn create_smart_collection(
+            self: Pin<&mut LibraryModel>,
+            name: QString,
+            description: QString,
+        );
+
+        #[qinvokable]
         fn update_collection(
+            self: Pin<&mut LibraryModel>,
+            collection_id: QString,
+            name: QString,
+            description: QString,
+        );
+
+        #[qinvokable]
+        fn update_smart_collection(
             self: Pin<&mut LibraryModel>,
             collection_id: QString,
             name: QString,
@@ -218,6 +274,31 @@ pub mod qobject {
             game_uid: QString,
             member: bool,
         );
+
+        #[qinvokable]
+        fn move_collection_game(
+            self: Pin<&mut LibraryModel>,
+            collection_id: QString,
+            member_index: i32,
+            new_index: i32,
+        );
+
+        #[qinvokable]
+        fn bulk_set_visible_collection_membership(
+            self: Pin<&mut LibraryModel>,
+            collection_id: QString,
+            member: bool,
+        );
+
+        #[qinvokable]
+        fn export_collection(
+            self: Pin<&mut LibraryModel>,
+            collection_id: QString,
+            destination: QUrl,
+        );
+
+        #[qinvokable]
+        fn import_collection(self: Pin<&mut LibraryModel>, source: QUrl);
 
         #[qinvokable]
         fn platform_name_at(self: &LibraryModel, index: i32) -> QString;
@@ -264,6 +345,10 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QByteArray, QHash, QModelIndex, QString, QUrl, QVariant};
 
 use crate::catalog::{self, Catalog, Filter};
+use crate::collections::{
+    PortableCollection, PortableGameReference, SmartCollectionRules, load_portable_collection,
+    resolve_portable_game_references, save_portable_collection,
+};
 use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
@@ -289,11 +374,17 @@ enum CollectionMutation {
         collection_id: String,
         name: String,
         description: String,
+        rules: Option<SmartCollectionRules>,
     },
     Deleted {
         collection_id: String,
     },
     Membership(CollectionMembership),
+    Reloaded {
+        collections: UserCollections,
+        message: String,
+    },
+    Message(String),
 }
 
 #[derive(Clone)]
@@ -301,6 +392,7 @@ struct CollectionMembership {
     collection_id: String,
     game_uid: String,
     member: bool,
+    position: Option<usize>,
 }
 
 const DISPLAY_ROLE: i32 = 0;
@@ -395,6 +487,11 @@ pub struct LibraryModelRust {
     activity_generation: u64,
     collections: Arc<Vec<UserCollection>>,
     collection_members: Arc<HashMap<String, Arc<HashSet<String>>>>,
+    collection_order: Arc<HashMap<String, Arc<Vec<String>>>>,
+    completion_states: Arc<HashMap<String, String>>,
+    game_index_by_id: Arc<HashMap<String, usize>>,
+    current_search: String,
+    smart_collection_rule_draft: Option<SmartCollectionRules>,
     collection_started: Option<std::time::Instant>,
 }
 
@@ -477,6 +574,11 @@ impl Default for LibraryModelRust {
             activity_generation: 0,
             collections: Arc::new(Vec::new()),
             collection_members: Arc::new(HashMap::new()),
+            collection_order: Arc::new(HashMap::new()),
+            completion_states: Arc::new(HashMap::new()),
+            game_index_by_id: Arc::new(HashMap::new()),
+            current_search: String::new(),
+            smart_collection_rule_draft: None,
             collection_started: None,
         }
     }
@@ -494,6 +596,41 @@ fn collection_at(model: &qobject::LibraryModel, index: i32) -> Option<&UserColle
     usize::try_from(index)
         .ok()
         .and_then(|index| model.rust().collections.get(index))
+}
+
+fn collection_member_game(
+    model: &qobject::LibraryModel,
+    collection_index: i32,
+    member_index: i32,
+) -> Option<&catalog::Game> {
+    let collection = collection_at(model, collection_index)?;
+    let member_index = usize::try_from(member_index).ok()?;
+    let game_uid = model
+        .rust()
+        .collection_order
+        .get(&collection.id)?
+        .get(member_index)?;
+    let game_index = *model.rust().game_index_by_id.get(game_uid)?;
+    model.rust().catalog.games.get(game_index)
+}
+
+fn smart_rules_from_fields(
+    title_contains: QString,
+    platform: QString,
+    availability: QString,
+    favorite: QString,
+    completion_state: QString,
+    content: QString,
+) -> anyhow::Result<SmartCollectionRules> {
+    SmartCollectionRules {
+        title_contains: title_contains.to_string(),
+        platform: platform.to_string(),
+        availability: availability.to_string(),
+        favorite: favorite.to_string(),
+        completion_state: completion_state.to_string(),
+        content: content.to_string(),
+    }
+    .normalized()
 }
 
 fn sort_collections(collections: &mut [UserCollection]) {
@@ -545,7 +682,7 @@ impl qobject::LibraryModel {
             .name("lunchbox-activity-load".into())
             .spawn(move || {
                 let result = SettingsStore::open_default()
-                    .and_then(|store| store.recent_play_activity(500))
+                    .and_then(|store| store.all_play_activity())
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_activity_refresh(generation, result);
@@ -569,8 +706,13 @@ impl qobject::LibraryModel {
         match result {
             Ok(activity) => {
                 let recent_game_order = activity
+                    .iter()
+                    .filter(|activity| activity.play_count > 0)
+                    .map(|activity| (activity.game_uid.clone(), activity.last_played_at))
+                    .collect::<HashMap<_, _>>();
+                let completion_states = activity
                     .into_iter()
-                    .map(|activity| (activity.game_uid, activity.last_played_at))
+                    .map(|activity| (activity.game_uid, activity.completion_state))
                     .collect::<HashMap<_, _>>();
                 let recent_count = self
                     .as_ref()
@@ -581,9 +723,21 @@ impl qobject::LibraryModel {
                     .filter(|game| recent_game_order.contains_key(&game.id))
                     .count();
                 self.as_mut().rust_mut().recent_game_order = Arc::new(recent_game_order);
+                self.as_mut().rust_mut().completion_states = Arc::new(completion_states);
                 self.as_mut().set_recent_count(saturating_i32(recent_count));
+                let has_smart_collections = self
+                    .as_ref()
+                    .rust()
+                    .collections
+                    .iter()
+                    .any(|collection| collection.kind == "smart");
+                self.as_mut().rebuild_smart_collections();
+                if has_smart_collections {
+                    self.as_mut().bump_collection_revision();
+                }
                 let revision = self.as_ref().activity_revision().wrapping_add(1);
                 self.as_mut().set_activity_revision(revision);
+                self.as_mut().refresh_active_collection_filter();
             }
             Err(error) => self
                 .as_mut()
@@ -628,9 +782,7 @@ impl qobject::LibraryModel {
                                         .map_err(|error| error.to_string()),
                                     store.favorite_game_ids().map_err(|error| error.to_string()),
                                     store.user_collections().map_err(|error| error.to_string()),
-                                    store
-                                        .recent_play_activity(500)
-                                        .map_err(|error| error.to_string()),
+                                    store.all_play_activity().map_err(|error| error.to_string()),
                                 ),
                                 Err(error) => {
                                     let error = error.to_string();
@@ -687,7 +839,7 @@ impl qobject::LibraryModel {
                     .iter()
                     .filter(|game| favorite_game_ids.contains(&game.id))
                     .count();
-                let (collections, collection_members, collection_warning) = match collections {
+                let (collections, collection_order, collection_warning) = match collections {
                     Ok(collections) => {
                         let members = collections
                             .members
@@ -699,15 +851,20 @@ impl qobject::LibraryModel {
                     Err(error) => (Vec::new(), HashMap::new(), Some(error)),
                 };
                 let collection_count = collections.len();
-                let (recent_game_order, activity_warning) = match activity {
-                    Ok(activity) => (
-                        activity
+                let (recent_game_order, completion_states, activity_warning) = match activity {
+                    Ok(activity) => {
+                        let recent = activity
+                            .iter()
+                            .filter(|activity| activity.play_count > 0)
+                            .map(|activity| (activity.game_uid.clone(), activity.last_played_at))
+                            .collect::<HashMap<_, _>>();
+                        let completion = activity
                             .into_iter()
-                            .map(|activity| (activity.game_uid, activity.last_played_at))
-                            .collect::<HashMap<_, _>>(),
-                        None,
-                    ),
-                    Err(error) => (HashMap::new(), Some(error)),
+                            .map(|activity| (activity.game_uid, activity.completion_state))
+                            .collect::<HashMap<_, _>>();
+                        (recent, completion, None)
+                    }
+                    Err(error) => (HashMap::new(), HashMap::new(), Some(error)),
                 };
                 let recent_count = catalog
                     .games
@@ -719,13 +876,22 @@ impl qobject::LibraryModel {
                 {
                     let mut this = self.as_mut();
                     let mut rust = this.as_mut().rust_mut();
+                    let game_index_by_id = catalog
+                        .games
+                        .iter()
+                        .enumerate()
+                        .map(|(index, game)| (game.id.clone(), index))
+                        .collect::<HashMap<_, _>>();
                     rust.catalog = Arc::new(catalog);
                     rust.filtered_indices = indices;
                     rust.favorite_game_ids = Arc::new(favorite_game_ids);
                     rust.recent_game_order = Arc::new(recent_game_order);
+                    rust.completion_states = Arc::new(completion_states);
+                    rust.game_index_by_id = Arc::new(game_index_by_id);
                     rust.collections = Arc::new(collections);
-                    rust.collection_members = Arc::new(collection_members);
+                    rust.collection_order = Arc::new(collection_order);
                 }
+                self.as_mut().rebuild_smart_collections();
                 self.as_mut().end_reset_model();
 
                 let game_count = self.as_ref().rust().catalog.games.len();
@@ -855,16 +1021,24 @@ impl qobject::LibraryModel {
             return;
         }
         let availability_text = availability.to_string();
-        let collection_game_ids = availability_text
+        let collection_order = availability_text
             .strip_prefix("collection:")
             .and_then(|collection_id| {
                 self.as_ref()
                     .rust()
-                    .collection_members
+                    .collection_order
                     .get(collection_id)
                     .cloned()
             })
-            .unwrap_or_else(|| Arc::new(HashSet::new()));
+            .unwrap_or_else(|| Arc::new(Vec::new()));
+        let collection_game_ids = Arc::new(collection_order.iter().cloned().collect());
+        let collection_game_order = Arc::new(
+            collection_order
+                .iter()
+                .enumerate()
+                .map(|(index, game_uid)| (game_uid.clone(), index))
+                .collect(),
+        );
         let filter = Filter {
             search: search.to_string(),
             platform: platform.to_string(),
@@ -873,8 +1047,10 @@ impl qobject::LibraryModel {
             hide_adult: *self.as_ref().hide_adult(),
             favorite_game_ids: Arc::clone(&self.as_ref().rust().favorite_game_ids),
             collection_game_ids,
+            collection_game_order,
             recent_game_order: Arc::clone(&self.as_ref().rust().recent_game_order),
         };
+        self.as_mut().rust_mut().current_search = search.to_string();
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);
         self.as_mut().rust_mut().filter_generation =
@@ -1214,6 +1390,17 @@ impl qobject::LibraryModel {
         self.as_mut().set_favorite_count(count);
         let revision = self.as_ref().favorite_revision().wrapping_add(1);
         self.as_mut().set_favorite_revision(revision);
+        let updates_smart_collection = self.as_ref().rust().collections.iter().any(|collection| {
+            collection
+                .rules
+                .as_ref()
+                .is_some_and(|rules| rules.favorite != "any")
+        });
+        if updates_smart_collection {
+            self.as_mut().rebuild_smart_collections();
+            self.as_mut().bump_collection_revision();
+            self.as_mut().refresh_active_collection_filter();
+        }
     }
 
     fn finish_favorite_save(
@@ -1289,6 +1476,62 @@ impl qobject::LibraryModel {
             .unwrap_or_default()
     }
 
+    pub fn collection_kind_at(&self, index: i32) -> QString {
+        collection_at(self, index)
+            .map(|collection| qstring(&collection.kind))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_rule_summary_at(&self, index: i32) -> QString {
+        collection_at(self, index)
+            .and_then(|collection| collection.rules.as_ref())
+            .map(|rules| qstring(rules.summary()))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_rule_at(&self, index: i32, field: QString) -> QString {
+        let Some(rules) =
+            collection_at(self, index).and_then(|collection| collection.rules.as_ref())
+        else {
+            return QString::default();
+        };
+        qstring(match field.to_string().as_str() {
+            "title" => &rules.title_contains,
+            "platform" => &rules.platform,
+            "availability" => &rules.availability,
+            "favorite" => &rules.favorite,
+            "completion" => &rules.completion_state,
+            "content" => &rules.content,
+            _ => "",
+        })
+    }
+
+    pub fn collection_member_game_uid_at(
+        &self,
+        collection_index: i32,
+        member_index: i32,
+    ) -> QString {
+        collection_member_game(self, collection_index, member_index)
+            .map(|game| qstring(&game.id))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_member_name_at(&self, collection_index: i32, member_index: i32) -> QString {
+        collection_member_game(self, collection_index, member_index)
+            .map(|game| qstring(&game.title))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_member_platform_at(
+        &self,
+        collection_index: i32,
+        member_index: i32,
+    ) -> QString {
+        collection_member_game(self, collection_index, member_index)
+            .map(|game| qstring(&game.platform))
+            .unwrap_or_default()
+    }
+
     pub fn collection_exists(&self, collection_id: QString) -> bool {
         let collection_id = collection_id.to_string();
         self.rust()
@@ -1314,6 +1557,56 @@ impl qobject::LibraryModel {
             .start_collection_task("lunchbox-collection-create", None, move || {
                 SettingsStore::open_default()
                     .and_then(|store| store.create_collection(&name, &description))
+                    .map(CollectionMutation::Created)
+                    .map_err(|error| error.to_string())
+            });
+    }
+
+    pub fn set_smart_collection_rule_draft(
+        mut self: Pin<&mut Self>,
+        title_contains: QString,
+        platform: QString,
+        availability: QString,
+        favorite: QString,
+        completion_state: QString,
+        content: QString,
+    ) -> bool {
+        match smart_rules_from_fields(
+            title_contains,
+            platform,
+            availability,
+            favorite,
+            completion_state,
+            content,
+        ) {
+            Ok(rules) => {
+                self.as_mut().rust_mut().smart_collection_rule_draft = Some(rules);
+                true
+            }
+            Err(error) => {
+                self.as_mut().rust_mut().smart_collection_rule_draft = None;
+                self.as_mut()
+                    .set_collection_message(qstring(format!("Smart rules are invalid: {error}")));
+                false
+            }
+        }
+    }
+
+    pub fn create_smart_collection(mut self: Pin<&mut Self>, name: QString, description: QString) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let Some(rules) = self.as_ref().rust().smart_collection_rule_draft.clone() else {
+            self.as_mut()
+                .set_collection_message(qstring("Configure at least one smart rule first."));
+            return;
+        };
+        let name = name.to_string();
+        let description = description.to_string();
+        self.as_mut()
+            .start_collection_task("lunchbox-smart-collection-create", None, move || {
+                SettingsStore::open_default()
+                    .and_then(|store| store.create_smart_collection(&name, &description, rules))
                     .map(CollectionMutation::Created)
                     .map_err(|error| error.to_string())
             });
@@ -1353,6 +1646,58 @@ impl qobject::LibraryModel {
                         collection_id: task_collection_id,
                         name: name.trim().to_owned(),
                         description: description.trim().to_owned(),
+                        rules: None,
+                    })
+                    .map_err(|error| error.to_string())
+            });
+    }
+
+    pub fn update_smart_collection(
+        mut self: Pin<&mut Self>,
+        collection_id: QString,
+        name: QString,
+        description: QString,
+    ) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let collection_id = collection_id.to_string();
+        if !self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == collection_id && collection.kind == "smart")
+        {
+            self.as_mut()
+                .set_collection_message(qstring("Smart collection no longer exists."));
+            return;
+        }
+        let Some(rules) = self.as_ref().rust().smart_collection_rule_draft.clone() else {
+            self.as_mut()
+                .set_collection_message(qstring("Configure at least one smart rule first."));
+            return;
+        };
+        let name = name.to_string();
+        let description = description.to_string();
+        let task_collection_id = collection_id.clone();
+        let task_rules = rules.clone();
+        self.as_mut()
+            .start_collection_task("lunchbox-smart-collection-update", None, move || {
+                SettingsStore::open_default()
+                    .and_then(|store| {
+                        store.update_smart_collection(
+                            &task_collection_id,
+                            &name,
+                            &description,
+                            task_rules,
+                        )
+                    })
+                    .map(|()| CollectionMutation::Updated {
+                        collection_id: task_collection_id,
+                        name: name.trim().to_owned(),
+                        description: description.trim().to_owned(),
+                        rules: Some(rules),
                     })
                     .map_err(|error| error.to_string())
             });
@@ -1399,13 +1744,11 @@ impl qobject::LibraryModel {
             collection_id: collection_id.to_string(),
             game_uid: game_uid.to_string(),
             member,
+            position: None,
         };
-        let collection_exists = self
-            .as_ref()
-            .rust()
-            .collections
-            .iter()
-            .any(|collection| collection.id == membership.collection_id);
+        let collection_exists = self.as_ref().rust().collections.iter().any(|collection| {
+            collection.id == membership.collection_id && collection.kind == "manual"
+        });
         let game_exists = self
             .as_ref()
             .rust()
@@ -1415,7 +1758,7 @@ impl qobject::LibraryModel {
             .any(|game| game.id == membership.game_uid);
         if !collection_exists || !game_exists {
             self.as_mut().set_collection_message(qstring(
-                "Membership was not changed because its collection or game identity is unavailable.",
+                "Membership was not changed because the manual collection or game identity is unavailable.",
             ));
             return;
         }
@@ -1427,6 +1770,20 @@ impl qobject::LibraryModel {
             .is_some_and(|members| members.contains(&membership.game_uid));
         if currently_member == member {
             return;
+        }
+
+        let mut membership = membership;
+        if !member {
+            membership.position = self
+                .as_ref()
+                .rust()
+                .collection_order
+                .get(&membership.collection_id)
+                .and_then(|order| {
+                    order
+                        .iter()
+                        .position(|game_uid| game_uid == &membership.game_uid)
+                });
         }
 
         self.as_mut().set_collection_busy(true);
@@ -1448,6 +1805,358 @@ impl qobject::LibraryModel {
                     .map_err(|error| error.to_string())
             },
         );
+    }
+
+    pub fn move_collection_game(
+        mut self: Pin<&mut Self>,
+        collection_id: QString,
+        member_index: i32,
+        new_index: i32,
+    ) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let collection_id = collection_id.to_string();
+        let order = self
+            .as_ref()
+            .rust()
+            .collection_order
+            .get(&collection_id)
+            .cloned();
+        let Some(order) = order else {
+            return;
+        };
+        let Some(game_uid) = usize::try_from(member_index)
+            .ok()
+            .and_then(|index| order.get(index))
+            .cloned()
+        else {
+            return;
+        };
+        let Ok(new_index) = usize::try_from(new_index) else {
+            return;
+        };
+        if new_index >= order.len() {
+            return;
+        }
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-reorder", None, move || {
+                let store = SettingsStore::open_default().map_err(|error| error.to_string())?;
+                store
+                    .move_collection_game(&collection_id, &game_uid, new_index)
+                    .map_err(|error| error.to_string())?;
+                let collections = store
+                    .user_collections()
+                    .map_err(|error| error.to_string())?;
+                Ok(CollectionMutation::Reloaded {
+                    collections,
+                    message: "Collection order saved.".to_owned(),
+                })
+            });
+    }
+
+    pub fn bulk_set_visible_collection_membership(
+        mut self: Pin<&mut Self>,
+        collection_id: QString,
+        member: bool,
+    ) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let collection_id = collection_id.to_string();
+        if !self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == collection_id && collection.kind == "manual")
+        {
+            self.as_mut().set_collection_message(qstring(
+                "Bulk membership applies only to manual collections.",
+            ));
+            return;
+        }
+        let catalog = Arc::clone(&self.as_ref().rust().catalog);
+        let filtered_indices = self.as_ref().rust().filtered_indices.clone();
+        let game_uids = filtered_indices
+            .iter()
+            .filter_map(|index| catalog.games.get(*index))
+            .map(|game| game.id.clone())
+            .collect::<Vec<_>>();
+        if game_uids.is_empty() {
+            self.as_mut()
+                .set_collection_message(qstring("There are no visible games to change."));
+            return;
+        }
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-bulk", None, move || {
+                let store = SettingsStore::open_default().map_err(|error| error.to_string())?;
+                let changed = store
+                    .set_collection_memberships(&collection_id, &game_uids, member)
+                    .map_err(|error| error.to_string())?;
+                let collections = store
+                    .user_collections()
+                    .map_err(|error| error.to_string())?;
+                Ok(CollectionMutation::Reloaded {
+                    collections,
+                    message: format!(
+                        "{} {changed} visible games {} the collection.",
+                        if member { "Added" } else { "Removed" },
+                        if member { "to" } else { "from" }
+                    ),
+                })
+            });
+    }
+
+    pub fn export_collection(mut self: Pin<&mut Self>, collection_id: QString, destination: QUrl) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let Some(path) = destination
+            .to_local_file()
+            .map(|path| std::path::PathBuf::from(path.to_string()))
+        else {
+            self.as_mut()
+                .set_collection_message(qstring("Choose a local collection export file."));
+            return;
+        };
+        let collection_id = collection_id.to_string();
+        let Some(collection) = self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .find(|collection| collection.id == collection_id)
+            .cloned()
+        else {
+            self.as_mut()
+                .set_collection_message(qstring("Collection no longer exists."));
+            return;
+        };
+        let catalog = Arc::clone(&self.as_ref().rust().catalog);
+        let collection_order = Arc::clone(&self.as_ref().rust().collection_order);
+        let game_index_by_id = Arc::clone(&self.as_ref().rust().game_index_by_id);
+        let games = if collection.kind == "smart" {
+            Vec::new()
+        } else {
+            collection_order
+                .get(&collection_id)
+                .into_iter()
+                .flat_map(|order| order.iter())
+                .filter_map(|game_uid| {
+                    let index = *game_index_by_id.get(game_uid)?;
+                    catalog.games.get(index)
+                })
+                .map(|game| PortableGameReference {
+                    game_uid: game.id.clone(),
+                    launchbox_db_id: game.launchbox_db_id,
+                    title: game.title.clone(),
+                    platform: game.platform.clone(),
+                })
+                .collect::<Vec<_>>()
+        };
+        let portable = match PortableCollection::new(
+            collection.name.clone(),
+            collection.description,
+            collection.kind,
+            collection.rules,
+            games,
+        ) {
+            Ok(portable) => portable,
+            Err(error) => {
+                self.as_mut().set_collection_message(qstring(format!(
+                    "Could not prepare collection export: {error}"
+                )));
+                return;
+            }
+        };
+        let name = collection.name;
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-export", None, move || {
+                let path = save_portable_collection(&path, &portable)
+                    .map_err(|error| error.to_string())?;
+                Ok(CollectionMutation::Message(format!(
+                    "Exported {name} to {}.",
+                    path.display()
+                )))
+            });
+    }
+
+    pub fn import_collection(mut self: Pin<&mut Self>, source: QUrl) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let Some(path) = source
+            .to_local_file()
+            .map(|path| std::path::PathBuf::from(path.to_string()))
+        else {
+            self.as_mut()
+                .set_collection_message(qstring("Choose a local Lunchbox collection file."));
+            return;
+        };
+        let catalog = Arc::clone(&self.as_ref().rust().catalog);
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-import", None, move || {
+                let portable =
+                    load_portable_collection(&path).map_err(|error| error.to_string())?;
+                let store = SettingsStore::open_default().map_err(|error| error.to_string())?;
+                let (collection, message) = if portable.kind == "smart" {
+                    let collection = store
+                        .create_smart_collection(
+                            &portable.name,
+                            &portable.description,
+                            portable
+                                .rules
+                                .ok_or_else(|| "smart collection rules are missing".to_owned())?,
+                        )
+                        .map_err(|error| error.to_string())?;
+                    let name = collection.name.clone();
+                    (collection, format!("Imported smart collection {name}."))
+                } else {
+                    let (members, unavailable) =
+                        resolve_portable_game_references(&portable.games, &catalog.games);
+                    let collection = store
+                        .create_collection(&portable.name, &portable.description)
+                        .map_err(|error| error.to_string())?;
+                    if let Err(error) = store.replace_collection_members(&collection.id, &members) {
+                        let _ = store.delete_collection(&collection.id);
+                        return Err(error.to_string());
+                    }
+                    let name = collection.name.clone();
+                    (
+                        collection,
+                        format!(
+                            "Imported {name}: {} exact games; {unavailable} unavailable.",
+                            members.len()
+                        ),
+                    )
+                };
+                let collections = store
+                    .user_collections()
+                    .map_err(|error| error.to_string())?;
+                if !collections
+                    .collections
+                    .iter()
+                    .any(|candidate| candidate.id == collection.id)
+                {
+                    return Err("imported collection could not be reloaded".to_owned());
+                }
+                Ok(CollectionMutation::Reloaded {
+                    collections,
+                    message,
+                })
+            });
+    }
+
+    fn rebuild_smart_collections(mut self: Pin<&mut Self>) {
+        let catalog = Arc::clone(&self.as_ref().rust().catalog);
+        let favorites = Arc::clone(&self.as_ref().rust().favorite_game_ids);
+        let completion_states = Arc::clone(&self.as_ref().rust().completion_states);
+        let game_index_by_id = Arc::clone(&self.as_ref().rust().game_index_by_id);
+        let mut collections = self.as_ref().rust().collections.as_ref().clone();
+        let mut order = self.as_ref().rust().collection_order.as_ref().clone();
+
+        for collection in &mut collections {
+            let members = if collection.kind == "smart" {
+                collection
+                    .rules
+                    .as_ref()
+                    .map(|rules| {
+                        let title_needle = rules.title_contains.to_lowercase();
+                        catalog
+                            .games
+                            .iter()
+                            .filter(|game| {
+                                rules.matches_with_title_needle(
+                                    game,
+                                    &favorites,
+                                    &completion_states,
+                                    &title_needle,
+                                )
+                            })
+                            .map(|game| game.id.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            } else {
+                order
+                    .get(&collection.id)
+                    .map(|members| {
+                        members
+                            .iter()
+                            .filter(|game_uid| game_index_by_id.contains_key(*game_uid))
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            };
+            collection.game_count = members.len();
+            order.insert(collection.id.clone(), Arc::new(members));
+        }
+
+        let members = order
+            .iter()
+            .map(|(collection_id, order)| {
+                (
+                    collection_id.clone(),
+                    Arc::new(order.iter().cloned().collect::<HashSet<_>>()),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let mut this = self.as_mut();
+        let mut rust = this.as_mut().rust_mut();
+        rust.collections = Arc::new(collections);
+        rust.collection_order = Arc::new(order);
+        rust.collection_members = Arc::new(members);
+    }
+
+    fn replace_collection_state(
+        mut self: Pin<&mut Self>,
+        collections: UserCollections,
+        message: String,
+    ) {
+        let order = collections
+            .members
+            .into_iter()
+            .map(|(collection_id, game_uids)| (collection_id, Arc::new(game_uids)))
+            .collect::<HashMap<_, _>>();
+        {
+            let mut this = self.as_mut();
+            let mut rust = this.as_mut().rust_mut();
+            rust.collections = Arc::new(collections.collections);
+            rust.collection_order = Arc::new(order);
+        }
+        self.as_mut().rebuild_smart_collections();
+        let count = self.as_ref().rust().collections.len();
+        self.as_mut().set_collection_count(saturating_i32(count));
+        self.as_mut().set_collection_message(qstring(message));
+        self.as_mut().bump_collection_revision();
+        self.as_mut().refresh_active_collection_filter();
+    }
+
+    fn refresh_active_collection_filter(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().ready() || *self.as_ref().loading() {
+            return;
+        }
+        let availability = self.as_ref().availability_filter().to_string();
+        let Some(collection_id) = availability.strip_prefix("collection:") else {
+            return;
+        };
+        let availability = if self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == collection_id)
+        {
+            availability
+        } else {
+            String::new()
+        };
+        let search = self.as_ref().rust().current_search.clone();
+        let platform = self.as_ref().current_platform().to_string();
+        self.as_mut()
+            .apply_filter(qstring(search), qstring(platform), qstring(availability));
     }
 
     fn can_change_collections(&self) -> bool {
@@ -1494,11 +2203,24 @@ impl qobject::LibraryModel {
             let members = Arc::make_mut(&mut rust.collection_members)
                 .entry(membership.collection_id.clone())
                 .or_insert_with(|| Arc::new(HashSet::new()));
-            if membership.member {
+            let changed = if membership.member {
                 Arc::make_mut(members).insert(membership.game_uid.clone())
             } else {
                 Arc::make_mut(members).remove(&membership.game_uid)
+            };
+            if changed {
+                let order = Arc::make_mut(&mut rust.collection_order)
+                    .entry(membership.collection_id.clone())
+                    .or_insert_with(|| Arc::new(Vec::new()));
+                let order = Arc::make_mut(order);
+                if membership.member {
+                    let position = membership.position.unwrap_or(order.len()).min(order.len());
+                    order.insert(position, membership.game_uid.clone());
+                } else {
+                    order.retain(|game_uid| game_uid != &membership.game_uid);
+                }
             }
+            changed
         };
         if !changed {
             return false;
@@ -1515,6 +2237,7 @@ impl qobject::LibraryModel {
         }
         let revision = self.as_ref().collection_revision().wrapping_add(1);
         self.as_mut().set_collection_revision(revision);
+        self.as_mut().refresh_active_collection_filter();
         true
     }
 
@@ -1538,10 +2261,14 @@ impl qobject::LibraryModel {
                         sort_collections(collections);
                     }
                     Arc::make_mut(&mut rust.collection_members)
-                        .entry(collection_id)
+                        .entry(collection_id.clone())
                         .or_insert_with(|| Arc::new(HashSet::new()));
+                    Arc::make_mut(&mut rust.collection_order)
+                        .entry(collection_id)
+                        .or_insert_with(|| Arc::new(Vec::new()));
                     rust.collections.len()
                 };
+                self.as_mut().rebuild_smart_collections();
                 self.as_mut()
                     .set_collection_count(saturating_i32(collection_count));
                 self.as_mut()
@@ -1552,6 +2279,7 @@ impl qobject::LibraryModel {
                 collection_id,
                 name,
                 description,
+                rules,
             }) => {
                 if let Some(collection) = Arc::make_mut(&mut self.as_mut().rust_mut().collections)
                     .iter_mut()
@@ -1559,6 +2287,9 @@ impl qobject::LibraryModel {
                 {
                     collection.name = name.clone();
                     collection.description = description;
+                    if rules.is_some() {
+                        collection.rules = rules;
+                    }
                 }
                 {
                     let mut this = self.as_mut();
@@ -1567,9 +2298,11 @@ impl qobject::LibraryModel {
                         Arc::make_mut(&mut rust.collections);
                     sort_collections(collections);
                 }
+                self.as_mut().rebuild_smart_collections();
                 self.as_mut()
                     .set_collection_message(qstring(format!("Updated {name}.")));
                 self.as_mut().bump_collection_revision();
+                self.as_mut().refresh_active_collection_filter();
             }
             Ok(CollectionMutation::Deleted { collection_id }) => {
                 let collection_count = {
@@ -1578,6 +2311,7 @@ impl qobject::LibraryModel {
                     Arc::make_mut(&mut rust.collections)
                         .retain(|collection| collection.id != collection_id);
                     Arc::make_mut(&mut rust.collection_members).remove(&collection_id);
+                    Arc::make_mut(&mut rust.collection_order).remove(&collection_id);
                     rust.collections.len()
                 };
                 self.as_mut()
@@ -1585,6 +2319,7 @@ impl qobject::LibraryModel {
                 self.as_mut()
                     .set_collection_message(qstring("Collection deleted."));
                 self.as_mut().bump_collection_revision();
+                self.as_mut().refresh_active_collection_filter();
             }
             Ok(CollectionMutation::Membership(membership)) => {
                 self.as_mut()
@@ -1593,6 +2328,13 @@ impl qobject::LibraryModel {
                     } else {
                         "Removed game from collection."
                     }));
+            }
+            Ok(CollectionMutation::Reloaded {
+                collections,
+                message,
+            }) => self.as_mut().replace_collection_state(collections, message),
+            Ok(CollectionMutation::Message(message)) => {
+                self.as_mut().set_collection_message(qstring(message));
             }
             Err(error) => {
                 let rolled_back = rollback.is_some();

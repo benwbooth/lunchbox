@@ -75,10 +75,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   provenance. Unmatched and ambiguous files remain local-only unless the user
   explicitly links one through canonical/alternate-title search; reviewed links
   restore only against unchanged path, archive member, size, MD5, and SHA-1.
-- Stable-UUID favorites and named collections with native create/edit/delete,
-  sidebar counts and navigation, per-game membership controls, asynchronous
-  persistence with rollback, restart recovery, and composition with search and
-  platform filters.
+- Stable-UUID favorites plus manual and smart collections with native
+  create/edit/delete, sidebar counts and navigation, exact per-game membership,
+  preserved manual order, confirmed bulk visible-result changes, composable
+  automatic rules, portable exact-ID import/export, asynchronous persistence
+  with rollback, and restart recovery.
 - Stable-UUID play activity with durable per-launch sessions, exactly-once
   elapsed-time finalization, count/time/last-played statistics, editable
   completion state, and a live Recently Played view.
@@ -102,11 +103,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   multidisc grouping, patches, and alternate-version management.
 - Editable game and release metadata, tags, playlists, custom fields, and a
   richer session-history inspector beyond the implemented activity summary.
-- Extend the implemented stable-UUID favorites and named collections with smart
-  rules, manual ordering, bulk membership changes, and portable export.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
-- Fast bulk editing, audits, backup/restore, and portable collection export.
+- Fast metadata bulk editing, collection audits, and whole-profile backup/restore.
 
 ## Download-first experience
 

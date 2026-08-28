@@ -101,8 +101,7 @@ pub(crate) fn approved_url(url: &str) -> bool {
     let Ok(uri) = url.parse::<ureq::http::Uri>() else {
         return false;
     };
-    matches!((uri.scheme_str(), uri.host()), (Some("https"), Some(_)))
-        || loopback_http_url(url)
+    matches!((uri.scheme_str(), uri.host()), (Some("https"), Some(_))) || loopback_http_url(url)
 }
 
 pub(crate) fn loopback_http_url(url: &str) -> bool {

@@ -1,5 +1,6 @@
 mod arcade_download;
 mod catalog;
+mod collections;
 mod controllers;
 mod download_plan;
 pub mod download_queue_model;

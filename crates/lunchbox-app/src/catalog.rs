@@ -18,7 +18,7 @@ pub struct Game {
     pub downloadable: bool,
     pub non_retail: bool,
     pub adult: bool,
-    search_key: String,
+    pub(crate) search_key: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,6 +46,7 @@ pub struct Filter {
     pub hide_adult: bool,
     pub favorite_game_ids: Arc<HashSet<String>>,
     pub collection_game_ids: Arc<HashSet<String>>,
+    pub collection_game_order: Arc<std::collections::HashMap<String, usize>>,
     pub recent_game_order: Arc<std::collections::HashMap<String, i64>>,
 }
 
@@ -762,6 +763,17 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                 .then_with(|| left_game.title.cmp(&right_game.title))
                 .then_with(|| left_game.id.cmp(&right_game.id))
         });
+    } else if filter.availability.starts_with("collection:") {
+        indices.sort_by(|left, right| {
+            let left_game = &catalog.games[*left];
+            let right_game = &catalog.games[*right];
+            filter
+                .collection_game_order
+                .get(&left_game.id)
+                .cmp(&filter.collection_game_order.get(&right_game.id))
+                .then_with(|| left_game.title.cmp(&right_game.title))
+                .then_with(|| left_game.id.cmp(&right_game.id))
+        });
     }
     indices
 }
@@ -879,6 +891,26 @@ mod tests {
                 }
             ),
             vec![1]
+        );
+    }
+
+    #[test]
+    fn collection_filter_preserves_explicit_manual_order() {
+        let catalog = fixture_catalog();
+        let game_ids = HashSet::from(["metroid".to_owned(), "outrun".to_owned()]);
+        let order =
+            std::collections::HashMap::from([("outrun".to_owned(), 0), ("metroid".to_owned(), 1)]);
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "collection:arcade-first".into(),
+                    collection_game_ids: Arc::new(game_ids),
+                    collection_game_order: Arc::new(order),
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
         );
     }
 
