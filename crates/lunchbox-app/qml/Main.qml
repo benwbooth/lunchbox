@@ -108,6 +108,7 @@ ApplicationWindow {
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
+    readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
@@ -865,8 +866,12 @@ ApplicationWindow {
                 Qt.quit()
             else if (root.importUiProbe)
                 root.openImportDialog()
-            else if (root.settingsUiProbe || root.settingsRegionUiProbe)
+            else if (root.settingsUiProbe || root.settingsRegionUiProbe
+                     || root.controllerUiProbe) {
                 settingsDialog.open()
+                if (root.controllerUiProbe)
+                    console.log("LUNCHBOX_CONTROLLER_UI_OPENED")
+            }
             else if (root.emulatorManagerProbe)
                 emulatorManager.initialize()
             else if (root.releaseCandidateUiProbe)
@@ -918,6 +923,15 @@ ApplicationWindow {
         repeat: false
         onTriggered: settingsScroll.contentItem.contentY = Math.max(
                          0, regionPrioritySection.mapToItem(
+                             settingsScroll.contentItem, 0, 0).y - 18)
+    }
+
+    Timer {
+        interval: 800
+        running: root.controllerUiProbe && !appSettings.controller_busy
+        repeat: false
+        onTriggered: settingsScroll.contentItem.contentY = Math.max(
+                         0, controllerSection.mapToItem(
                              settingsScroll.contentItem, 0, 0).y - 18)
     }
 
@@ -5129,6 +5143,7 @@ ApplicationWindow {
         height: Math.min(760, root.height - 60)
         padding: 0
         closePolicy: Popup.CloseOnEscape
+        onOpened: appSettings.refresh_controllers()
 
         background: Rectangle {
             color: root.panel
@@ -5484,6 +5499,356 @@ ApplicationWindow {
                         ]
                         currentIndex: appSettings.version_preference === "original" ? 1 : 0
                         onActivated: appSettings.version_preference = currentValue
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    id: controllerSection
+                    Layout.fillWidth: true
+                    spacing: 9
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "CONTROLLERS"
+                                color: root.accent
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1.2
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Set a stable player order, then remap, pass through, or hide each physical controller while a game is running. Original host state is restored when the emulator exits."
+                                color: root.muted
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                        Switch {
+                            text: "Launch mapping"
+                            checked: appSettings.controller_enabled
+                            enabled: !appSettings.busy
+                                     && !appSettings.controller_busy
+                            onToggled: appSettings.set_controller_mapping_enabled(checked)
+                            Accessible.name: "Enable controller mapping at game launch"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: controllerStatusText.implicitHeight + 22
+                        radius: 8
+                        color: "#111a25"
+                        border.color: root.line
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            spacing: 9
+                            BusyIndicator {
+                                visible: appSettings.controller_busy
+                                running: visible
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
+                            }
+                            Text {
+                                id: controllerStatusText
+                                Layout.fillWidth: true
+                                text: appSettings.controller_status
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            Button {
+                                text: "Scan again"
+                                enabled: !appSettings.controller_busy
+                                onClicked: appSettings.refresh_controllers()
+                                Accessible.name: "Scan for connected controllers"
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: {
+                            appSettings.controller_revision
+                            return appSettings.controller_target_count() > 1
+                        }
+                        spacing: 9
+                        Text {
+                            text: "Default virtual controller"
+                            color: root.ink
+                            font.pixelSize: 12
+                        }
+                        ComboBox {
+                            id: defaultControllerTarget
+                            Layout.fillWidth: true
+                            enabled: appSettings.controller_enabled
+                                     && !appSettings.controller_busy
+                            model: {
+                                appSettings.controller_revision
+                                return Math.max(0, appSettings.controller_target_count() - 1)
+                            }
+                            delegate: ItemDelegate {
+                                required property int index
+                                width: defaultControllerTarget.width
+                                text: appSettings.controller_target_name_at(index + 1)
+                            }
+                            currentIndex: {
+                                appSettings.controller_revision
+                                for (let i = 1; i < appSettings.controller_target_count(); ++i) {
+                                    if (appSettings.controller_target_id_at(i)
+                                            === appSettings.controller_output_target)
+                                        return i - 1
+                                }
+                                return 0
+                            }
+                            displayText: model > 0
+                                         ? appSettings.controller_target_name_at(currentIndex + 1)
+                                         : "No virtual targets available"
+                            onActivated: appSettings.choose_default_controller_target(
+                                             appSettings.controller_target_id_at(currentIndex + 1))
+                            Accessible.name: "Default virtual controller target"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: {
+                            appSettings.controller_revision
+                            return appSettings.controller_count() === 0
+                                                ? 92
+                                                : Math.min(440,
+                                                           controllerList.contentHeight + 14)
+                        }
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+                        border.width: 1
+
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            width: parent.width - 44
+                            visible: {
+                                appSettings.controller_revision
+                                return !appSettings.controller_busy
+                                        && appSettings.controller_count() === 0
+                            }
+                            spacing: 5
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: "NO GAME CONTROLLERS CONNECTED"
+                                color: root.ink
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Connect a joystick or gamepad, then scan again. Keyboard, pointer, LED, and non-game virtual devices are intentionally ignored."
+                                color: root.muted
+                                font.pixelSize: 10
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        ListView {
+                            id: controllerList
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            visible: {
+                                appSettings.controller_revision
+                                return appSettings.controller_count() > 0
+                            }
+                            clip: true
+                            spacing: 6
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: {
+                                appSettings.controller_revision
+                                return appSettings.controller_count()
+                            }
+                            ScrollBar.vertical: ScrollBar { }
+
+                            delegate: Rectangle {
+                                id: controllerRow
+                                required property int index
+                                width: controllerList.width - 10
+                                height: 142
+                                radius: 8
+                                color: index === 0 ? "#1c2a35" : "#161e29"
+                                border.color: index === 0 ? root.accent : "transparent"
+                                border.width: 1
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    spacing: 6
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Rectangle {
+                                            Layout.preferredWidth: 34
+                                            Layout.preferredHeight: 26
+                                            radius: 6
+                                            color: root.accent
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "P" + (controllerRow.index + 1)
+                                                color: "#071116"
+                                                font.pixelSize: 11
+                                                font.weight: Font.Bold
+                                            }
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 1
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: appSettings.controller_name_at(controllerRow.index)
+                                                color: root.ink
+                                                font.pixelSize: 12
+                                                font.weight: Font.DemiBold
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: appSettings.controller_detail_at(controllerRow.index)
+                                                color: root.muted
+                                                font.pixelSize: 9
+                                                elide: Text.ElideMiddle
+                                            }
+                                        }
+                                        ToolButton {
+                                            text: "↑"
+                                            enabled: controllerRow.index > 0
+                                                     && !appSettings.controller_busy
+                                            onClicked: appSettings.move_controller(
+                                                           controllerRow.index, -1)
+                                            Accessible.name: "Move controller up in player order"
+                                        }
+                                        ToolButton {
+                                            text: "↓"
+                                            enabled: controllerRow.index + 1
+                                                     < appSettings.controller_count()
+                                                     && !appSettings.controller_busy
+                                            onClicked: appSettings.move_controller(
+                                                           controllerRow.index, 1)
+                                            Accessible.name: "Move controller down in player order"
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 7
+                                        ComboBox {
+                                            id: controllerAction
+                                            Layout.preferredWidth: 180
+                                            textRole: "label"
+                                            valueRole: "value"
+                                            model: [
+                                                { label: "Remap", value: "remap" },
+                                                { label: "Pass through", value: "passthrough" },
+                                                { label: "Hide from emulator", value: "hide" }
+                                            ]
+                                            currentIndex: {
+                                                appSettings.controller_revision
+                                                const value = appSettings.controller_action_at(
+                                                                  controllerRow.index)
+                                                for (let i = 0; i < model.length; ++i) {
+                                                    if (model[i].value === value)
+                                                        return i
+                                                }
+                                                return 0
+                                            }
+                                            enabled: appSettings.controller_enabled
+                                                     && !appSettings.controller_busy
+                                            onActivated: appSettings.choose_controller_action(
+                                                             controllerRow.index, currentValue)
+                                            Accessible.name: "Controller action for player "
+                                                             + (controllerRow.index + 1)
+                                        }
+                                        ComboBox {
+                                            id: controllerProfile
+                                            Layout.fillWidth: true
+                                            model: {
+                                                appSettings.controller_revision
+                                                return appSettings.controller_profile_count()
+                                            }
+                                            delegate: ItemDelegate {
+                                                required property int index
+                                                width: controllerProfile.width
+                                                text: appSettings.controller_profile_name_at(index)
+                                            }
+                                            currentIndex: {
+                                                appSettings.controller_revision
+                                                const value = appSettings.controller_profile_at(
+                                                                  controllerRow.index)
+                                                for (let i = 0;
+                                                     i < appSettings.controller_profile_count();
+                                                     ++i) {
+                                                    if (appSettings.controller_profile_id_at(i)
+                                                        === value)
+                                                        return i
+                                                }
+                                                return 0
+                                            }
+                                            displayText: appSettings.controller_profile_name_at(
+                                                             currentIndex)
+                                            enabled: appSettings.controller_enabled
+                                                     && controllerAction.currentValue === "remap"
+                                                     && !appSettings.controller_busy
+                                            onActivated: appSettings.choose_controller_profile(
+                                                             controllerRow.index,
+                                                             appSettings.controller_profile_id_at(
+                                                                 currentIndex))
+                                            Accessible.name: "Controller profile for player "
+                                                             + (controllerRow.index + 1)
+                                        }
+                                        ComboBox {
+                                            id: controllerTarget
+                                            Layout.fillWidth: true
+                                            model: {
+                                                appSettings.controller_revision
+                                                return appSettings.controller_target_count()
+                                            }
+                                            delegate: ItemDelegate {
+                                                required property int index
+                                                width: controllerTarget.width
+                                                text: appSettings.controller_target_name_at(index)
+                                            }
+                                            currentIndex: {
+                                                appSettings.controller_revision
+                                                const value = appSettings.controller_target_at(
+                                                                  controllerRow.index)
+                                                for (let i = 0;
+                                                     i < appSettings.controller_target_count();
+                                                     ++i) {
+                                                    if (appSettings.controller_target_id_at(i)
+                                                        === value)
+                                                        return i
+                                                }
+                                                return 0
+                                            }
+                                            displayText: appSettings.controller_target_name_at(
+                                                             currentIndex)
+                                            enabled: appSettings.controller_enabled
+                                                     && controllerAction.currentValue === "remap"
+                                                     && !appSettings.controller_busy
+                                            onActivated: appSettings.choose_controller_target(
+                                                             controllerRow.index,
+                                                             appSettings.controller_target_id_at(
+                                                                 currentIndex))
+                                            Accessible.name: "Virtual controller target for player "
+                                                             + (controllerRow.index + 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 

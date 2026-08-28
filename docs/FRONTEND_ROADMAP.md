@@ -148,8 +148,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   BIOS checks, lifecycle cancellation/recovery, and command preview to the
   native manager.
 - Dedicated Daphne runtime, TeknoParrot, and non-eXo PC launch profiles.
-- Controller detection and mapping, pre-launch validation, pause/resume, and
-  clean shutdown. Process supervision and play-stat recording are native.
+- Finish the native controller slice with a visual custom-profile designer,
+  attached-hardware InputPlumber mutation/restore certification, Windows and
+  macOS host adapters, pre-launch validation presentation, pause/resume
+  integration, and controller-first focus. Linux inventory, durable per-player
+  action/profile/target/order state, pre-spawn activation, RAII restoration,
+  process supervision, and play-stat recording are native.
 
 ## Full-screen interface
 

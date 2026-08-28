@@ -269,6 +269,17 @@ the save completes. Inspecting or reusing the state path verifies persistence
 and restart recovery.
 `--settings-release-probe --state-database EMPTY_PATH` similarly saves Japan
 plus original-release preferences through the real bridge. The
+`--controller-probe` route performs a non-Qt real-host inventory and prints the
+native controller, InputPlumber service, managed-device, target, and warning
+counts. `--controller-ui-probe --state-database EMPTY_PATH` opens the same
+asynchronous inventory in the Qt settings dialog, scrolls to its polished
+player-order/remap surface, and prints readiness only after the real provider
+result has crossed the CXX-Qt bridge. On Linux, saved mappings are activated
+immediately before emulator spawn and an RAII launch session restores captured
+InputPlumber intercept, profile, target, and device-order state after normal
+exit, launch failure, or process-supervision error. Applying those mutations
+still requires a release gate with attached InputPlumber-managed hardware.
+The
 `--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
 Minerva bundle, and scrolls the details pane to the ranked native candidate
 cards for deterministic visual review against the preserved discovery catalog.

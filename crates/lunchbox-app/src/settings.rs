@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Deserialize, Serialize};
 
 use crate::catalog;
 use crate::download_plan::DownloadPlan;
@@ -14,6 +15,43 @@ use crate::download_plan::DownloadPlan;
 const KEYRING_SERVICE: &str = "com.lunchbox.Lunchbox";
 const KEYRING_ACCOUNT: &str = "qbittorrent-password";
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
+pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
+    "South",
+    "East",
+    "North",
+    "West",
+    "Start",
+    "Select",
+    "Guide",
+    "QuickAccess",
+    "QuickAccess2",
+    "Keyboard",
+    "Screenshot",
+    "DPadUp",
+    "DPadDown",
+    "DPadLeft",
+    "DPadRight",
+    "LeftBumper",
+    "LeftTop",
+    "LeftTrigger",
+    "LeftPaddle1",
+    "LeftPaddle2",
+    "LeftPaddle3",
+    "LeftStick",
+    "LeftStickTouch",
+    "LeftTouchpadTouch",
+    "LeftTouchpadPress",
+    "RightBumper",
+    "RightTop",
+    "RightTrigger",
+    "RightPaddle1",
+    "RightPaddle2",
+    "RightPaddle3",
+    "RightStick",
+    "RightStickTouch",
+    "RightTouchpadTouch",
+    "RightTouchpadPress",
+];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppSettings {
@@ -31,6 +69,7 @@ pub struct AppSettings {
     pub preferred_region: String,
     pub region_priority: Vec<String>,
     pub version_preference: String,
+    pub controller_mapping: ControllerMappingSettings,
 }
 
 impl Default for AppSettings {
@@ -50,8 +89,95 @@ impl Default for AppSettings {
             preferred_region: "USA".to_owned(),
             region_priority: Vec::new(),
             version_preference: "latest".to_owned(),
+            controller_mapping: ControllerMappingSettings::default(),
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ControllerMappingSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_controller_provider")]
+    pub provider: String,
+    #[serde(default = "default_controller_target")]
+    pub output_target: String,
+    #[serde(default = "default_controller_manage_all")]
+    pub manage_all: bool,
+    #[serde(default)]
+    pub default_profile_id: Option<String>,
+    #[serde(default)]
+    pub profile_controller_ids: Vec<String>,
+    #[serde(default)]
+    pub player_mappings: Vec<ControllerPlayerMapping>,
+    #[serde(default)]
+    pub platform_profile_ids: HashMap<String, String>,
+    #[serde(default)]
+    pub game_profile_ids: HashMap<String, String>,
+    #[serde(default)]
+    pub hidden_controller_ids: Vec<String>,
+    #[serde(default)]
+    pub custom_profiles: Vec<ControllerCustomProfile>,
+}
+
+impl Default for ControllerMappingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_controller_provider(),
+            output_target: default_controller_target(),
+            manage_all: true,
+            default_profile_id: None,
+            profile_controller_ids: Vec::new(),
+            player_mappings: Vec::new(),
+            platform_profile_ids: HashMap::new(),
+            game_profile_ids: HashMap::new(),
+            hidden_controller_ids: Vec::new(),
+            custom_profiles: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ControllerPlayerMapping {
+    #[serde(default, alias = "controllerId")]
+    pub controller_id: Option<String>,
+    #[serde(default, alias = "profileId")]
+    pub profile_id: Option<String>,
+    #[serde(default, alias = "outputTarget")]
+    pub output_target: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ControllerCustomProfile {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub layout: String,
+    #[serde(default)]
+    pub mappings: Vec<ControllerButtonMapping>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ControllerButtonMapping {
+    #[serde(default, alias = "sourceButton")]
+    pub source_button: String,
+    #[serde(default, alias = "targetButton")]
+    pub target_button: String,
+}
+
+fn default_controller_provider() -> String {
+    "auto".to_owned()
+}
+
+fn default_controller_target() -> String {
+    "xb360".to_owned()
+}
+
+fn default_controller_manage_all() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -250,6 +376,7 @@ impl AppSettings {
                 self.version_preference
             );
         }
+        self.controller_mapping.validate()?;
         Ok(())
     }
 
@@ -265,6 +392,157 @@ impl AppSettings {
             self.qbittorrent_port
         )
     }
+}
+
+impl ControllerMappingSettings {
+    pub fn validate(&self) -> Result<()> {
+        if !matches!(self.provider.trim(), "auto" | "inputplumber") {
+            bail!("unsupported controller provider {}", self.provider);
+        }
+        validate_controller_target(&self.output_target)?;
+        if self.player_mappings.len() > 16 {
+            bail!("controller player order cannot contain more than 16 entries");
+        }
+        let mut controller_ids = HashSet::new();
+        for player in &self.player_mappings {
+            let Some(controller_id) = player
+                .controller_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            validate_controller_id(controller_id)?;
+            if !controller_ids.insert(controller_id) {
+                bail!("controller player order contains duplicate device {controller_id}");
+            }
+            if let Some(target) = player
+                .output_target
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                validate_controller_target(target)?;
+            }
+            if player
+                .profile_id
+                .as_deref()
+                .is_some_and(|profile| profile.chars().count() > 256)
+            {
+                bail!("controller profile identifier is too long");
+            }
+        }
+        if self.hidden_controller_ids.len() > 64 {
+            bail!("hidden controller list cannot contain more than 64 entries");
+        }
+        let mut hidden_ids = HashSet::new();
+        for controller_id in &self.hidden_controller_ids {
+            let controller_id = controller_id.trim();
+            validate_controller_id(controller_id)?;
+            if !hidden_ids.insert(controller_id) {
+                bail!("hidden controller list contains duplicate device {controller_id}");
+            }
+        }
+        if self.custom_profiles.len() > 64 {
+            bail!("controller profile list cannot contain more than 64 entries");
+        }
+        if self.platform_profile_ids.len() > 512 || self.game_profile_ids.len() > 4096 {
+            bail!("controller profile override list is too large");
+        }
+        let mut profile_ids = HashSet::new();
+        for profile in &self.custom_profiles {
+            let profile_id = profile.id.trim();
+            if !profile_id.starts_with("custom:") || profile_id.chars().count() > 128 {
+                bail!(
+                    "custom controller profile id must use the custom: prefix and contain at most 128 characters"
+                );
+            }
+            if !profile_ids.insert(profile_id) {
+                bail!("controller profile list contains duplicate id {profile_id}");
+            }
+            if profile.name.trim().is_empty() || profile.name.chars().count() > 100 {
+                bail!("controller profile name must contain 1 to 100 characters");
+            }
+            if !matches!(profile.layout.trim(), "xbox" | "playstation" | "generic") {
+                bail!("unsupported controller profile layout {}", profile.layout);
+            }
+            if profile.mappings.len() > 64 {
+                bail!("controller profile contains too many button mappings");
+            }
+            let mut target_buttons = HashSet::new();
+            for button_mapping in &profile.mappings {
+                if !CONTROLLER_GAMEPAD_BUTTONS.contains(&button_mapping.source_button.as_str()) {
+                    bail!(
+                        "unsupported controller source button {}",
+                        button_mapping.source_button
+                    );
+                }
+                if !CONTROLLER_GAMEPAD_BUTTONS.contains(&button_mapping.target_button.as_str()) {
+                    bail!(
+                        "unsupported controller target button {}",
+                        button_mapping.target_button
+                    );
+                }
+                if !target_buttons.insert(button_mapping.target_button.as_str()) {
+                    bail!(
+                        "controller profile contains duplicate target button {}",
+                        button_mapping.target_button
+                    );
+                }
+            }
+        }
+        validate_controller_profile_override_map("platform", &self.platform_profile_ids, 256)?;
+        validate_controller_profile_override_map("game", &self.game_profile_ids, 64)?;
+        Ok(())
+    }
+}
+
+fn validate_controller_profile_override_map(
+    scope: &str,
+    overrides: &HashMap<String, String>,
+    key_limit: usize,
+) -> Result<()> {
+    for (key, profile_id) in overrides {
+        if key.trim().is_empty()
+            || key.chars().count() > key_limit
+            || key.chars().any(char::is_control)
+        {
+            bail!("invalid {scope} controller profile override key");
+        }
+        if profile_id.chars().count() > 256 || profile_id.chars().any(char::is_control) {
+            bail!("invalid {scope} controller profile override value");
+        }
+    }
+    Ok(())
+}
+
+fn validate_controller_id(controller_id: &str) -> Result<()> {
+    if controller_id.is_empty() || controller_id.chars().count() > 256 {
+        bail!("controller device id must contain 1 to 256 characters");
+    }
+    if controller_id.starts_with('-') || controller_id.chars().any(char::is_control) {
+        bail!("controller device id contains unsupported characters");
+    }
+    Ok(())
+}
+
+fn validate_controller_target(targets: &str) -> Result<()> {
+    let targets = targets.split(',').map(str::trim).collect::<Vec<_>>();
+    if targets.is_empty() || targets.len() > 8 || targets.iter().any(|target| target.is_empty()) {
+        bail!("controller target list must contain between 1 and 8 targets");
+    }
+    for target in targets {
+        if target.chars().count() > 64
+            || target.starts_with('-')
+            || !target.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+            })
+        {
+            bail!("unsupported controller target {target}");
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -396,7 +674,8 @@ impl SettingsStore {
                         qbittorrent_container_rom_directory, torrent_library_directory,
                         qbittorrent_container_torrent_library_directory,
                         download_entire_torrent, file_link_mode, seeding_policy,
-                        preferred_region, version_preference, region_priority_json
+                        preferred_region, version_preference, region_priority_json,
+                        controller_mapping_json
                  FROM app_settings WHERE id=1",
                 [],
                 |row| {
@@ -424,6 +703,14 @@ impl SettingsStore {
                                 )
                             },
                         )?,
+                        controller_mapping: serde_json::from_str(&row.get::<_, String>(14)?)
+                            .map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    14,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(error),
+                                )
+                            })?,
                     })
                 },
             )
@@ -451,8 +738,9 @@ impl SettingsStore {
                  qbittorrent_container_rom_directory, torrent_library_directory,
                  qbittorrent_container_torrent_library_directory,
                  download_entire_torrent, file_link_mode, seeding_policy,
-                 preferred_region, version_preference, region_priority_json
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                 preferred_region, version_preference, region_priority_json,
+                 controller_mapping_json
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -467,7 +755,8 @@ impl SettingsStore {
                  seeding_policy=excluded.seeding_policy,
                  preferred_region=excluded.preferred_region,
                  version_preference=excluded.version_preference,
-                 region_priority_json=excluded.region_priority_json",
+                 region_priority_json=excluded.region_priority_json,
+                 controller_mapping_json=excluded.controller_mapping_json",
             params![
                 settings.qbittorrent_host,
                 i64::from(settings.qbittorrent_port),
@@ -484,6 +773,8 @@ impl SettingsStore {
                 settings.version_preference,
                 serde_json::to_string(&settings.region_priority)
                     .context("encoding release region priority")?,
+                serde_json::to_string(&settings.controller_mapping)
+                    .context("encoding controller mapping settings")?,
             ],
         )?;
         transaction.commit()?;
@@ -1683,7 +1974,8 @@ fn migrate(connection: &Connection) -> Result<()> {
              version_preference TEXT NOT NULL DEFAULT 'latest' CHECK (
                  version_preference IN ('latest', 'original')
              ),
-             region_priority_json TEXT NOT NULL DEFAULT '[]'
+             region_priority_json TEXT NOT NULL DEFAULT '[]',
+             controller_mapping_json TEXT NOT NULL DEFAULT '{}'
          );
          CREATE TABLE IF NOT EXISTS library_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
@@ -2063,6 +2355,12 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !column_exists(connection, "app_settings", "controller_mapping_json")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN controller_mapping_json TEXT NOT NULL DEFAULT '{}'",
+            [],
+        )?;
+    }
     Ok(())
 }
 
@@ -2421,6 +2719,16 @@ mod tests {
             preferred_region: "Japan".into(),
             region_priority: vec!["Japan".into(), "Europe".into(), "USA".into()],
             version_preference: "original".into(),
+            controller_mapping: ControllerMappingSettings {
+                enabled: true,
+                output_target: "ds5".into(),
+                player_mappings: vec![ControllerPlayerMapping {
+                    controller_id: Some("linux:054c:0ce6:living-room".into()),
+                    profile_id: Some("two-button-clockwise".into()),
+                    output_target: Some("xb360".into()),
+                }],
+                ..ControllerMappingSettings::default()
+            },
         };
         store.save(&expected).unwrap();
         assert_eq!(store.load().unwrap(), expected);
@@ -2435,6 +2743,29 @@ mod tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
         assert!(!columns.iter().any(|column| column.contains("password")));
+    }
+
+    #[test]
+    fn controller_settings_reject_ambiguous_custom_profiles() {
+        let mapping = ControllerMappingSettings {
+            custom_profiles: vec![ControllerCustomProfile {
+                id: "custom:ambiguous".to_owned(),
+                name: "Ambiguous".to_owned(),
+                layout: "xbox".to_owned(),
+                mappings: vec![
+                    ControllerButtonMapping {
+                        source_button: "South".to_owned(),
+                        target_button: "East".to_owned(),
+                    },
+                    ControllerButtonMapping {
+                        source_button: "North".to_owned(),
+                        target_button: "East".to_owned(),
+                    },
+                ],
+            }],
+            ..ControllerMappingSettings::default()
+        };
+        assert!(mapping.validate().is_err());
     }
 
     #[test]
@@ -3105,6 +3436,7 @@ mod tests {
         assert!(column_exists(&connection, "app_settings", "preferred_region").unwrap());
         assert!(column_exists(&connection, "app_settings", "version_preference").unwrap());
         assert!(column_exists(&connection, "app_settings", "region_priority_json").unwrap());
+        assert!(column_exists(&connection, "app_settings", "controller_mapping_json").unwrap());
         let prepared_table: Option<i64> = connection
             .query_row(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prepared_game_installs'",

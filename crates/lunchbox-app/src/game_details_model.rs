@@ -2239,6 +2239,20 @@ impl qobject::GameDetailsModel {
                     let emulator_name = plan.emulator_name.clone();
                     let command_summary = plan.command_summary();
                     let cleanup_paths = plan.cleanup_paths.clone();
+                    let controller_settings = crate::settings::SettingsStore::open_default()
+                        .and_then(|store| store.load())
+                        .context("loading controller mapping settings")?;
+                    let controller_activation = crate::controllers::activate_for_launch(
+                        &controller_settings,
+                        Some(&activity_platform),
+                        Some(activity_database_id),
+                    )
+                    .map_err(anyhow::Error::msg)
+                    .context("preparing controller mapping")?;
+                    let crate::controllers::ControllerActivation {
+                        session: controller_session,
+                        warning: controller_warning,
+                    } = controller_activation;
                     let mut child = match crate::emulator::spawn_launch_plan(&plan) {
                         Ok(child) => child,
                         Err(error) => {
@@ -2259,10 +2273,16 @@ impl qobject::GameDetailsModel {
                             )
                         });
                     let activity_recorded = play_session.is_ok();
-                    let tracking_warning = play_session
+                    let activity_warning = play_session
                         .as_ref()
                         .err()
                         .map(|error| format!("Play activity could not be recorded: {error}"));
+                    let tracking_warning = [controller_warning, activity_warning]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>();
+                    let tracking_warning =
+                        (!tracking_warning.is_empty()).then(|| tracking_warning.join(" · "));
                     let started_game_id = game_id.clone();
                     let started_warning = tracking_warning.clone();
                     let _ = started_thread.queue(move |mut model| {
@@ -2297,6 +2317,7 @@ impl qobject::GameDetailsModel {
                     };
                     let status = child.wait();
                     crate::emulator::cleanup_after_launch(&cleanup_paths);
+                    drop(controller_session);
                     let status = status.context("waiting for the emulator process")?;
                     let outcome = if probe_terminated {
                         "terminated"

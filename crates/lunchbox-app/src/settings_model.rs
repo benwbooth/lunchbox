@@ -31,6 +31,11 @@ pub mod qobject {
         #[qproperty(QString, preferred_region)]
         #[qproperty(i32, region_revision)]
         #[qproperty(QString, version_preference)]
+        #[qproperty(bool, controller_enabled)]
+        #[qproperty(QString, controller_output_target)]
+        #[qproperty(bool, controller_busy)]
+        #[qproperty(i32, controller_revision)]
+        #[qproperty(QString, controller_status)]
         type SettingsModel = super::SettingsModelRust;
 
         #[qinvokable]
@@ -59,6 +64,63 @@ pub mod qobject {
 
         #[qinvokable]
         fn reset_region_priority(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn refresh_controllers(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn set_controller_mapping_enabled(self: Pin<&mut SettingsModel>, enabled: bool);
+
+        #[qinvokable]
+        fn choose_default_controller_target(self: Pin<&mut SettingsModel>, target: QString);
+
+        #[qinvokable]
+        fn controller_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn controller_name_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_detail_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_action_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_profile_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_target_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn move_controller(self: Pin<&mut SettingsModel>, index: i32, direction: i32);
+
+        #[qinvokable]
+        fn choose_controller_action(self: Pin<&mut SettingsModel>, index: i32, action: QString);
+
+        #[qinvokable]
+        fn choose_controller_profile(self: Pin<&mut SettingsModel>, index: i32, profile: QString);
+
+        #[qinvokable]
+        fn choose_controller_target(self: Pin<&mut SettingsModel>, index: i32, target: QString);
+
+        #[qinvokable]
+        fn controller_profile_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn controller_profile_id_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_profile_name_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_target_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn controller_target_id_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_target_name_at(self: &SettingsModel, index: i32) -> QString;
     }
 
     impl cxx_qt::Threading for SettingsModel {}
@@ -70,8 +132,9 @@ use std::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
+use crate::controllers::{self, ControllerDevice, ControllerInventory};
 use crate::qbittorrent;
-use crate::settings::{self, AppSettings, SettingsStore};
+use crate::settings::{self, AppSettings, ControllerMappingSettings, SettingsStore};
 
 pub struct SettingsModelRust {
     initialized: bool,
@@ -96,6 +159,13 @@ pub struct SettingsModelRust {
     region_priority: Vec<String>,
     region_revision: i32,
     version_preference: QString,
+    controller_enabled: bool,
+    controller_output_target: QString,
+    controller_busy: bool,
+    controller_revision: i32,
+    controller_status: QString,
+    controller_mapping: ControllerMappingSettings,
+    controller_inventory: Option<ControllerInventory>,
 }
 
 impl Default for SettingsModelRust {
@@ -123,6 +193,13 @@ impl Default for SettingsModelRust {
             region_priority: crate::region_priority::default_region_priority(),
             region_revision: 0,
             version_preference: QString::from("latest"),
+            controller_enabled: false,
+            controller_output_target: QString::from("xb360"),
+            controller_busy: false,
+            controller_revision: 0,
+            controller_status: QString::from("Open controller settings to scan this computer."),
+            controller_mapping: ControllerMappingSettings::default(),
+            controller_inventory: None,
         }
     }
 }
@@ -365,6 +442,287 @@ impl qobject::SettingsModel {
         ));
     }
 
+    pub fn refresh_controllers(mut self: Pin<&mut Self>) {
+        if *self.as_ref().controller_busy() {
+            return;
+        }
+        self.as_mut().set_controller_busy(true);
+        self.as_mut().set_controller_status(qstring(
+            "Checking connected controllers and remapping support…",
+        ));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-controller-inventory".into())
+            .spawn(move || {
+                let inventory = controllers::controller_inventory();
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_controller_refresh(inventory);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_controller_busy(false);
+            self.as_mut().set_controller_status(qstring(format!(
+                "Could not start controller scan: {error}"
+            )));
+        }
+    }
+
+    fn finish_controller_refresh(mut self: Pin<&mut Self>, inventory: ControllerInventory) {
+        let status = controller_inventory_status(&inventory);
+        if std::env::args().any(|argument| argument == "--controller-ui-probe") {
+            println!(
+                "LUNCHBOX_CONTROLLER_UI_READY controllers={} managed={} targets={} status={status:?}",
+                inventory.controllers.len(),
+                inventory.managed_device_count,
+                inventory.supported_targets.len()
+            );
+        }
+        self.as_mut().rust_mut().controller_inventory = Some(inventory);
+        self.as_mut().set_controller_busy(false);
+        self.as_mut().set_controller_status(qstring(status));
+        self.as_mut().bump_controller_revision();
+    }
+
+    pub fn set_controller_mapping_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().set_controller_enabled(enabled);
+        self.as_mut().rust_mut().controller_mapping.enabled = enabled;
+        self.as_mut().controller_settings_changed();
+    }
+
+    pub fn choose_default_controller_target(mut self: Pin<&mut Self>, target: QString) {
+        let target = target.to_string();
+        let target = target.trim();
+        let supported = self
+            .as_ref()
+            .rust()
+            .controller_inventory
+            .as_ref()
+            .is_some_and(|inventory| {
+                inventory
+                    .supported_targets
+                    .iter()
+                    .any(|candidate| candidate.id == target)
+            });
+        if !supported {
+            return;
+        }
+        self.as_mut().set_controller_output_target(qstring(target));
+        self.as_mut().rust_mut().controller_mapping.output_target = target.to_owned();
+        self.as_mut().controller_settings_changed();
+    }
+
+    pub fn controller_count(&self) -> i32 {
+        self.rust()
+            .controller_inventory
+            .as_ref()
+            .map(|inventory| {
+                controllers::ordered_controllers(inventory, &self.rust().controller_mapping).len()
+            })
+            .and_then(|count| i32::try_from(count).ok())
+            .unwrap_or(0)
+    }
+
+    pub fn controller_name_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .map(|controller| qstring(controller.name))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_detail_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .map(|controller| {
+                let vid_pid = match (
+                    controller.vendor_id.as_deref(),
+                    controller.product_id.as_deref(),
+                ) {
+                    (Some(vendor), Some(product)) => format!("VID:PID {vendor}:{product}"),
+                    _ => "VID:PID unknown".to_owned(),
+                };
+                let serial = controller
+                    .unique_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("no serial");
+                qstring(format!("{vid_pid} · {serial} · {}", controller.stable_id))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn controller_action_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .map(|controller| {
+                qstring(controllers::controller_action(
+                    &self.rust().controller_mapping,
+                    &controller.stable_id,
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn controller_profile_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .map(|controller| {
+                qstring(controllers::controller_profile(
+                    &self.rust().controller_mapping,
+                    &controller.stable_id,
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn controller_target_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .map(|controller| {
+                qstring(controllers::controller_target(
+                    &self.rust().controller_mapping,
+                    &controller.stable_id,
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn move_controller(mut self: Pin<&mut Self>, index: i32, direction: i32) {
+        let Some(controller_id) = self
+            .as_ref()
+            .controller_at(index)
+            .map(|controller| controller.stable_id)
+        else {
+            return;
+        };
+        let Some(inventory) = self.as_ref().rust().controller_inventory.clone() else {
+            return;
+        };
+        if controllers::move_controller(
+            &inventory,
+            &mut self.as_mut().rust_mut().controller_mapping,
+            &controller_id,
+            direction as isize,
+        ) {
+            self.as_mut().controller_settings_changed();
+        }
+    }
+
+    pub fn choose_controller_action(mut self: Pin<&mut Self>, index: i32, action: QString) {
+        let Some(controller_id) = self
+            .as_ref()
+            .controller_at(index)
+            .map(|controller| controller.stable_id)
+        else {
+            return;
+        };
+        if controllers::set_controller_action(
+            &mut self.as_mut().rust_mut().controller_mapping,
+            &controller_id,
+            action.to_string().trim(),
+        ) {
+            self.as_mut().set_controller_enabled(true);
+            self.as_mut().controller_settings_changed();
+        }
+    }
+
+    pub fn choose_controller_profile(mut self: Pin<&mut Self>, index: i32, profile: QString) {
+        let Some(controller_id) = self
+            .as_ref()
+            .controller_at(index)
+            .map(|controller| controller.stable_id)
+        else {
+            return;
+        };
+        if controllers::set_controller_profile(
+            &mut self.as_mut().rust_mut().controller_mapping,
+            &controller_id,
+            profile.to_string().trim(),
+        ) {
+            self.as_mut().set_controller_enabled(true);
+            self.as_mut().controller_settings_changed();
+        }
+    }
+
+    pub fn choose_controller_target(mut self: Pin<&mut Self>, index: i32, target: QString) {
+        let Some(controller_id) = self
+            .as_ref()
+            .controller_at(index)
+            .map(|controller| controller.stable_id)
+        else {
+            return;
+        };
+        let Some(inventory) = self.as_ref().rust().controller_inventory.clone() else {
+            return;
+        };
+        if controllers::set_controller_target(
+            &inventory,
+            &mut self.as_mut().rust_mut().controller_mapping,
+            &controller_id,
+            target.to_string().trim(),
+        ) {
+            self.as_mut().set_controller_enabled(true);
+            self.as_mut().controller_settings_changed();
+        }
+    }
+
+    pub fn controller_profile_count(&self) -> i32 {
+        let count = 2
+            + controllers::built_in_profiles().len()
+            + self.rust().controller_mapping.custom_profiles.len();
+        i32::try_from(count).unwrap_or(i32::MAX)
+    }
+
+    pub fn controller_profile_id_at(&self, index: i32) -> QString {
+        controller_profile_option(&self.rust().controller_mapping, index)
+            .map(|(id, _)| qstring(id))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_profile_name_at(&self, index: i32) -> QString {
+        controller_profile_option(&self.rust().controller_mapping, index)
+            .map(|(_, name)| qstring(name))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_target_count(&self) -> i32 {
+        self.rust()
+            .controller_inventory
+            .as_ref()
+            .map(|inventory| inventory.supported_targets.len().saturating_add(1))
+            .and_then(|count| i32::try_from(count).ok())
+            .unwrap_or(1)
+    }
+
+    pub fn controller_target_id_at(&self, index: i32) -> QString {
+        if index == 0 {
+            return qstring(controllers::TARGET_INHERIT);
+        }
+        usize::try_from(index - 1)
+            .ok()
+            .and_then(|index| {
+                self.rust()
+                    .controller_inventory
+                    .as_ref()?
+                    .supported_targets
+                    .get(index)
+            })
+            .map(|target| qstring(&target.id))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_target_name_at(&self, index: i32) -> QString {
+        if index == 0 {
+            return qstring("Default target");
+        }
+        usize::try_from(index - 1)
+            .ok()
+            .and_then(|index| {
+                self.rust()
+                    .controller_inventory
+                    .as_ref()?
+                    .supported_targets
+                    .get(index)
+            })
+            .map(|target| qstring(&target.name))
+            .unwrap_or_default()
+    }
+
     pub fn set_directory(mut self: Pin<&mut Self>, field: QString, url: QUrl) {
         let Some(path) = url.to_local_file() else {
             self.as_mut()
@@ -383,6 +741,7 @@ impl qobject::SettingsModel {
     fn apply_settings(mut self: Pin<&mut Self>, settings: AppSettings) {
         let region_priority =
             crate::region_priority::effective_region_priority(&settings.region_priority);
+        let controller_mapping = settings.controller_mapping.clone();
         self.as_mut()
             .set_qbittorrent_host(qstring(settings.qbittorrent_host));
         self.as_mut()
@@ -415,6 +774,12 @@ impl qobject::SettingsModel {
         self.as_mut().bump_region_revision();
         self.as_mut()
             .set_version_preference(qstring(settings.version_preference));
+        self.as_mut()
+            .set_controller_enabled(controller_mapping.enabled);
+        self.as_mut()
+            .set_controller_output_target(qstring(&controller_mapping.output_target));
+        self.as_mut().rust_mut().controller_mapping = controller_mapping;
+        self.as_mut().bump_controller_revision();
     }
 
     fn settings_snapshot(&self) -> Result<AppSettings, String> {
@@ -439,6 +804,12 @@ impl qobject::SettingsModel {
             preferred_region: self.preferred_region().to_string(),
             region_priority: self.rust().region_priority.clone(),
             version_preference: self.version_preference().to_string(),
+            controller_mapping: {
+                let mut mapping = self.rust().controller_mapping.clone();
+                mapping.enabled = *self.controller_enabled();
+                mapping.output_target = self.controller_output_target().to_string();
+                mapping
+            },
         };
         settings.validate().map_err(|error| error.to_string())?;
         Ok(settings)
@@ -467,6 +838,77 @@ impl qobject::SettingsModel {
     fn bump_region_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().region_revision().wrapping_add(1);
         self.as_mut().set_region_revision(revision);
+    }
+
+    fn controller_at(&self, index: i32) -> Option<ControllerDevice> {
+        let index = usize::try_from(index).ok()?;
+        let inventory = self.rust().controller_inventory.as_ref()?;
+        controllers::ordered_controllers(inventory, &self.rust().controller_mapping)
+            .get(index)
+            .cloned()
+    }
+
+    fn controller_settings_changed(mut self: Pin<&mut Self>) {
+        self.as_mut().bump_controller_revision();
+        self.as_mut().set_message(qstring(
+            "Controller mapping changed. Save settings to apply it when games launch.",
+        ));
+    }
+
+    fn bump_controller_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().controller_revision().wrapping_add(1);
+        self.as_mut().set_controller_revision(revision);
+    }
+}
+
+fn controller_inventory_status(inventory: &ControllerInventory) -> String {
+    let provider = &inventory.provider;
+    let mut status = if provider.available && provider.service_accessible {
+        let raw_version = provider.version.as_deref().unwrap_or("unknown version");
+        let version = raw_version
+            .strip_prefix("inputplumber ")
+            .or_else(|| raw_version.strip_prefix("InputPlumber "))
+            .unwrap_or(raw_version);
+        format!(
+            "InputPlumber {version} · {} connected game controllers · {} managed devices · {} virtual targets",
+            inventory.controllers.len(),
+            inventory.managed_device_count,
+            inventory.supported_targets.len()
+        )
+    } else {
+        provider.message.clone().unwrap_or_else(|| {
+            "Native controller remapping is not available on this computer.".to_owned()
+        })
+    };
+    if !inventory.warnings.is_empty() {
+        status.push_str(" · ");
+        status.push_str(&inventory.warnings.join("; "));
+    }
+    status
+}
+
+fn controller_profile_option(
+    mapping: &ControllerMappingSettings,
+    index: i32,
+) -> Option<(String, String)> {
+    match index {
+        0 => Some((
+            controllers::PROFILE_INHERIT.to_owned(),
+            "Use game, system, or default profile".to_owned(),
+        )),
+        1 => Some((
+            controllers::PROFILE_NONE.to_owned(),
+            "Off (no button remap)".to_owned(),
+        )),
+        _ => {
+            let index = usize::try_from(index - 2).ok()?;
+            let built_in = controllers::built_in_profiles();
+            if let Some(profile) = built_in.get(index) {
+                return Some((profile.id.clone(), profile.name.clone()));
+            }
+            let profile = mapping.custom_profiles.get(index - built_in.len())?;
+            Some((profile.id.clone(), profile.name.clone()))
+        }
     }
 }
 

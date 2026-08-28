@@ -1,5 +1,6 @@
 mod arcade_download;
 mod catalog;
+mod controllers;
 mod download_plan;
 pub mod download_queue_model;
 mod emulator;
@@ -43,6 +44,34 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--controller-probe") {
+        let inventory = controllers::controller_inventory();
+        println!(
+            "LUNCHBOX_CONTROLLER_READY provider={} available={} service={} version={:?} controllers={} managed={} targets={} warnings={}",
+            inventory.provider.provider,
+            inventory.provider.available,
+            inventory.provider.service_accessible,
+            inventory.provider.version,
+            inventory.controllers.len(),
+            inventory.managed_device_count,
+            inventory.supported_targets.len(),
+            inventory.warnings.len()
+        );
+        for (index, controller) in inventory.controllers.iter().enumerate() {
+            println!(
+                "LUNCHBOX_CONTROLLER_DEVICE player={} id={:?} name={:?} virtual={}",
+                index + 1,
+                controller.stable_id,
+                controller.name,
+                controller.is_virtual
+            );
+        }
+        for warning in inventory.warnings {
+            eprintln!("LUNCHBOX_CONTROLLER_WARNING {warning}");
+        }
+        return 0;
+    }
+
     if std::env::args().any(|argument| argument == "--manual-candidate-probe") {
         let title = "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)";
         return match media_acquisition::manual_candidate_probe(title) {
