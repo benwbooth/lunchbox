@@ -9,6 +9,7 @@ use std::time::UNIX_EPOCH;
 use anyhow::{Context, Result, bail};
 use crc32fast::Hasher as Crc32;
 use md5::Md5;
+use rars::{ArchiveFamily, ArchiveReadOptions, ArchiveReader};
 use rusqlite::{Connection, params};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
@@ -377,11 +378,12 @@ pub fn scan_directory(
             .and_then(|value| value.to_str())
             .map(str::to_ascii_lowercase)
             .unwrap_or_default();
-        let archive_inspection = if matches!(extension.as_str(), "zip" | "7z") {
-            let inspection = if extension == "zip" {
-                inspect_zip(path, &index, checksums_enabled, cancelled)
-            } else {
-                inspect_seven_zip(path, &index, checksums_enabled, cancelled)
+        let archive_inspection = if matches!(extension.as_str(), "zip" | "7z" | "rar") {
+            let inspection = match extension.as_str() {
+                "zip" => inspect_zip(path, &index, checksums_enabled, cancelled),
+                "7z" => inspect_seven_zip(path, &index, checksums_enabled, cancelled),
+                "rar" => inspect_rar(path, &index, checksums_enabled, cancelled),
+                _ => unreachable!("archive extensions are exhaustively matched"),
             };
             match inspection {
                 Ok(Some(inspection)) => Some(inspection),
@@ -1098,6 +1100,183 @@ fn inspect_seven_zip(
     Ok(Some(ArchiveInspection::Members(inspected)))
 }
 
+#[derive(Clone)]
+struct SharedRarDigestWriter(Arc<std::sync::Mutex<RarDigestState>>);
+
+struct RarDigestState {
+    expected_size: u64,
+    written: u64,
+    crc32: Crc32,
+    md5: Md5,
+    sha1: Sha1,
+}
+
+impl RarDigestState {
+    fn new(expected_size: u64) -> Self {
+        Self {
+            expected_size,
+            written: 0,
+            crc32: Crc32::new(),
+            md5: Md5::new(),
+            sha1: Sha1::new(),
+        }
+    }
+
+    fn finish(&mut self) -> Result<Digests> {
+        if self.written != self.expected_size {
+            bail!(
+                "RAR member decoded {} bytes after its header declared {}",
+                self.written,
+                self.expected_size
+            );
+        }
+        Ok(Digests {
+            crc32: format!(
+                "{:08X}",
+                std::mem::replace(&mut self.crc32, Crc32::new()).finalize()
+            ),
+            md5: format!(
+                "{:X}",
+                std::mem::replace(&mut self.md5, Md5::new()).finalize()
+            ),
+            sha1: format!(
+                "{:X}",
+                std::mem::replace(&mut self.sha1, Sha1::new()).finalize()
+            ),
+        })
+    }
+}
+
+impl Write for SharedRarDigestWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| std::io::Error::other("RAR digest state was poisoned"))?;
+        let written = state
+            .written
+            .checked_add(u64::try_from(bytes.len()).map_err(std::io::Error::other)?)
+            .ok_or_else(|| std::io::Error::other("RAR member size overflow"))?;
+        if written > state.expected_size {
+            return Err(std::io::Error::other(
+                "RAR member exceeded its declared uncompressed size",
+            ));
+        }
+        state.crc32.update(bytes);
+        state.md5.update(bytes);
+        state.sha1.update(bytes);
+        state.written = written;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn rar_member_is_symlink(member: &rars::ArchiveMember) -> bool {
+    let unix_attributes = match member.meta.family {
+        ArchiveFamily::Rar15To40 => matches!(member.meta.host_os, Some(3) | Some(5)),
+        ArchiveFamily::Rar50Plus => member.meta.host_os == Some(1),
+        ArchiveFamily::Rar13 => false,
+        _ => false,
+    };
+    unix_attributes && member.meta.file_attr & 0o170000 == 0o120000
+}
+
+fn inspect_rar(
+    path: &Path,
+    index: &MatchIndex,
+    checksums_enabled: bool,
+    cancelled: &AtomicBool,
+) -> Result<Option<ArchiveInspection>> {
+    let read_options = ArchiveReadOptions::new().with_rar50_buffered_decode_limit(64 * 1024 * 1024);
+    let archive = ArchiveReader::read_path_with_options(path, read_options)
+        .with_context(|| format!("reading RAR directory {}", path.display()))?;
+    let mut inspected = Vec::new();
+    let mut names = HashSet::new();
+    let mut digest_writers_by_raw_name = HashMap::<Vec<u8>, SharedRarDigestWriter>::new();
+    let mut digest_writers_by_member_name = HashMap::<String, SharedRarDigestWriter>::new();
+    let mut unsupported_reason = None;
+
+    for member in archive.members() {
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        if member.meta.is_encrypted {
+            unsupported_reason = Some("RAR archive contains encrypted members".to_owned());
+        }
+        if member.meta.is_split_before || member.meta.is_split_after {
+            unsupported_reason = Some("RAR archive is part of a multi-volume set".to_owned());
+        }
+        if member.meta.is_directory || rar_member_is_symlink(&member) {
+            continue;
+        }
+        let Ok(raw_name) = std::str::from_utf8(member.meta.name_bytes()) else {
+            continue;
+        };
+        let Some((member_name, extension)) = recognized_archive_member(raw_name, index) else {
+            continue;
+        };
+        if !names.insert(member_name.clone()) {
+            bail!("RAR archive contains duplicate safe ROM member {member_name:?}");
+        }
+        let digest_writer = SharedRarDigestWriter(Arc::new(std::sync::Mutex::new(
+            RarDigestState::new(member.meta.unpacked_size),
+        )));
+        digest_writers_by_raw_name.insert(member.meta.name_bytes().to_vec(), digest_writer.clone());
+        digest_writers_by_member_name.insert(member_name.clone(), digest_writer);
+        inspected.push(ArchiveMemberInspection {
+            member_name,
+            extension,
+            size: member.meta.unpacked_size,
+            digests: None,
+            error: None,
+        });
+    }
+
+    if inspected.is_empty() {
+        return Ok(Some(ArchiveInspection::Empty));
+    }
+    if let Some(reason) = unsupported_reason {
+        for member in &mut inspected {
+            member.error = Some(format!(
+                "{reason}; password and volume prompting is not supported"
+            ));
+        }
+        return Ok(Some(ArchiveInspection::Members(inspected)));
+    }
+    if !checksums_enabled {
+        return Ok(Some(ArchiveInspection::Members(inspected)));
+    }
+
+    archive
+        .extract_to_with_options(read_options, |meta| {
+            if let Some(writer) = digest_writers_by_raw_name.get(meta.name_bytes()) {
+                Ok(Box::new(writer.clone()) as Box<dyn Write>)
+            } else {
+                Ok(Box::new(std::io::sink()) as Box<dyn Write>)
+            }
+        })
+        .with_context(|| format!("decoding RAR members in {}", path.display()))?;
+    if cancelled.load(Ordering::Relaxed) {
+        return Ok(None);
+    }
+    for member in &mut inspected {
+        let writer = digest_writers_by_member_name
+            .get(&member.member_name)
+            .with_context(|| format!("RAR member {} lost its digest state", member.member_name))?;
+        member.digests = Some(
+            writer
+                .0
+                .lock()
+                .map_err(|_| anyhow::anyhow!("RAR digest state was poisoned"))?
+                .finish()?,
+        );
+    }
+    Ok(Some(ArchiveInspection::Members(inspected)))
+}
+
 fn hash_file(path: &Path, cancelled: &AtomicBool) -> Result<Option<Digests>> {
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let mut reader = BufReader::with_capacity(1024 * 1024, file);
@@ -1148,6 +1327,7 @@ fn materialize_archive_member(state_path: &Path, result: &ScanResult) -> Result<
     {
         Some("zip") => materialize_zip_member(state_path, result),
         Some("7z") => materialize_seven_zip_member(state_path, result),
+        Some("rar") => materialize_rar_member(state_path, result),
         extension => bail!("archive member materialization does not support {extension:?}"),
     }
 }
@@ -1248,12 +1428,179 @@ fn materialize_seven_zip_member(state_path: &Path, result: &ScanResult) -> Resul
     materialized.context("reviewed 7z member was not decoded")
 }
 
-fn materialize_member_stream(
-    state_path: &Path,
-    result: &ScanResult,
-    reader: &mut (impl Read + ?Sized),
-) -> Result<PathBuf> {
-    let archive_label = archive_kind_label(&result.path);
+#[derive(Clone)]
+struct SharedRarMaterializeWriter(Arc<std::sync::Mutex<RarMaterializeState>>);
+
+struct RarMaterializeState {
+    output: Option<File>,
+    expected_size: u64,
+    written: u64,
+    crc32: Crc32,
+    md5: Md5,
+    sha1: Sha1,
+    sha256: Sha256,
+}
+
+impl Write for SharedRarMaterializeWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| std::io::Error::other("RAR materialization state was poisoned"))?;
+        let written = state
+            .written
+            .checked_add(u64::try_from(bytes.len()).map_err(std::io::Error::other)?)
+            .ok_or_else(|| std::io::Error::other("RAR member size overflow"))?;
+        if written > state.expected_size {
+            return Err(std::io::Error::other(
+                "RAR member exceeded its reviewed uncompressed size",
+            ));
+        }
+        state
+            .output
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("RAR materialization output was closed"))?
+            .write_all(bytes)?;
+        state.crc32.update(bytes);
+        state.md5.update(bytes);
+        state.sha1.update(bytes);
+        state.sha256.update(bytes);
+        state.written = written;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| std::io::Error::other("RAR materialization state was poisoned"))?;
+        state
+            .output
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("RAR materialization output was closed"))?
+            .flush()
+    }
+}
+
+fn materialize_rar_member(state_path: &Path, result: &ScanResult) -> Result<PathBuf> {
+    let read_options = ArchiveReadOptions::new().with_rar50_buffered_decode_limit(64 * 1024 * 1024);
+    let archive = ArchiveReader::read_path_with_options(&result.path, read_options)
+        .with_context(|| format!("reading source archive {}", result.path.display()))?;
+    let mut matching_names = Vec::new();
+    let mut unsupported_reason = None;
+    for member in archive.members() {
+        if member.meta.is_encrypted {
+            unsupported_reason = Some("RAR archive contains encrypted members");
+        }
+        if member.meta.is_split_before || member.meta.is_split_after {
+            unsupported_reason = Some("RAR archive is part of a multi-volume set");
+        }
+        if member.meta.is_directory || rar_member_is_symlink(&member) {
+            continue;
+        }
+        let Ok(raw_name) = std::str::from_utf8(member.meta.name_bytes()) else {
+            continue;
+        };
+        if normalize_archive_member_name(raw_name).as_deref()
+            == Some(result.archive_member.as_str())
+        {
+            matching_names.push((member.meta.name.clone(), member.meta.unpacked_size));
+        }
+    }
+    if let Some(reason) = unsupported_reason {
+        bail!("{reason}; password and volume prompting is not supported");
+    }
+    if matching_names.len() != 1 {
+        bail!(
+            "RAR member {:?} occurs {} times; one exact safe member is required",
+            result.archive_member,
+            matching_names.len()
+        );
+    }
+    let (raw_name, unpacked_size) = matching_names.pop().expect("one RAR member was verified");
+    if unpacked_size != result.file_size {
+        bail!(
+            "RAR member {} changed size after review ({} -> {} bytes)",
+            result.archive_member,
+            result.file_size,
+            unpacked_size
+        );
+    }
+
+    let (cache_root, temporary, output) = create_materialization_output(state_path)?;
+    let shared = SharedRarMaterializeWriter(Arc::new(std::sync::Mutex::new(RarMaterializeState {
+        output: Some(output),
+        expected_size: result.file_size,
+        written: 0,
+        crc32: Crc32::new(),
+        md5: Md5::new(),
+        sha1: Sha1::new(),
+        sha256: Sha256::new(),
+    })));
+    let outcome = (|| -> Result<PathBuf> {
+        archive
+            .extract_to_with_options(read_options, |meta| {
+                if meta.name_bytes() == raw_name {
+                    Ok(Box::new(shared.clone()) as Box<dyn Write>)
+                } else {
+                    Ok(Box::new(std::io::sink()) as Box<dyn Write>)
+                }
+            })
+            .with_context(|| {
+                format!(
+                    "decoding RAR member {} in {}",
+                    result.archive_member,
+                    result.path.display()
+                )
+            })?;
+        let mut state = shared
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("RAR materialization state was poisoned"))?;
+        let output = state
+            .output
+            .take()
+            .context("RAR materialization output disappeared")?;
+        output
+            .sync_all()
+            .with_context(|| format!("syncing temporary ROM {}", temporary.display()))?;
+        drop(output);
+        let written = state.written;
+        let crc32 = format!(
+            "{:08X}",
+            std::mem::replace(&mut state.crc32, Crc32::new()).finalize()
+        );
+        let md5 = format!(
+            "{:X}",
+            std::mem::replace(&mut state.md5, Md5::new()).finalize()
+        );
+        let sha1 = format!(
+            "{:X}",
+            std::mem::replace(&mut state.sha1, Sha1::new()).finalize()
+        );
+        let sha256 = format!(
+            "{:x}",
+            std::mem::replace(&mut state.sha256, Sha256::new()).finalize()
+        );
+        drop(state);
+        publish_materialized_member(
+            &cache_root,
+            &temporary,
+            result,
+            written,
+            &crc32,
+            &md5,
+            &sha1,
+            &sha256,
+        )
+    })();
+    if outcome.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    outcome
+}
+
+fn create_materialization_output(state_path: &Path) -> Result<(PathBuf, PathBuf, File)> {
     let state_parent = state_path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -1262,12 +1609,22 @@ fn materialize_member_stream(
     fs::create_dir_all(&cache_root)
         .with_context(|| format!("creating local ROM cache {}", cache_root.display()))?;
     let temporary = cache_root.join(format!(".{}.tmp", Uuid::new_v4()));
+    let output = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .with_context(|| format!("creating temporary ROM {}", temporary.display()))?;
+    Ok((cache_root, temporary, output))
+}
+
+fn materialize_member_stream(
+    state_path: &Path,
+    result: &ScanResult,
+    reader: &mut (impl Read + ?Sized),
+) -> Result<PathBuf> {
+    let archive_label = archive_kind_label(&result.path);
+    let (cache_root, temporary, mut output) = create_materialization_output(state_path)?;
     let outcome = (|| -> Result<PathBuf> {
-        let mut output = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temporary)
-            .with_context(|| format!("creating temporary ROM {}", temporary.display()))?;
         let mut buffer = vec![0u8; 1024 * 1024];
         let mut crc32 = Crc32::new();
         let mut md5 = Md5::new();
@@ -1297,73 +1654,97 @@ fn materialize_member_stream(
             .sync_all()
             .with_context(|| format!("syncing temporary ROM {}", temporary.display()))?;
         drop(output);
-        if written != result.file_size {
-            bail!(
-                "{archive_label} member {} produced {written} bytes after {} were reviewed",
-                result.archive_member,
-                result.file_size
-            );
-        }
         let crc32 = format!("{:08X}", crc32.finalize());
         let md5 = format!("{:X}", md5.finalize());
         let sha1 = format!("{:X}", sha1.finalize());
         let sha256 = format!("{:x}", sha256.finalize());
-        for (label, reviewed, actual) in [
-            ("CRC32", result.crc32.as_str(), crc32.as_str()),
-            ("MD5", result.md5.as_str(), md5.as_str()),
-            ("SHA-1", result.sha1.as_str(), sha1.as_str()),
-        ] {
-            if !reviewed.is_empty() && reviewed != actual {
-                bail!(
-                    "{archive_label} member {} changed {label} after review",
-                    result.archive_member
-                );
-            }
-        }
-        let extension = Path::new(&result.archive_member)
-            .extension()
-            .and_then(|value| value.to_str())
-            .filter(|value| {
-                !value.is_empty()
-                    && value.len() <= 16
-                    && value
-                        .chars()
-                        .all(|character| character.is_ascii_alphanumeric())
-            })
-            .context("reviewed archive member has no portable ROM extension")?
-            .to_ascii_lowercase();
-        let target_directory = cache_root.join(&sha256);
-        fs::create_dir_all(&target_directory).with_context(|| {
-            format!(
-                "creating ROM content directory {}",
-                target_directory.display()
-            )
-        })?;
-        let target = target_directory.join(format!("content.{extension}"));
-        if target.exists() {
-            if !target.is_file() || hash_sha256(&target)? != sha256 {
-                bail!(
-                    "existing ROM cache target is not the reviewed content: {}",
-                    target.display()
-                );
-            }
-            fs::remove_file(&temporary)
-                .with_context(|| format!("removing temporary ROM {}", temporary.display()))?;
-            return Ok(target);
-        }
-        fs::rename(&temporary, &target).with_context(|| {
-            format!(
-                "publishing reviewed {archive_label} member {} to {}",
-                result.archive_member,
-                target.display()
-            )
-        })?;
-        Ok(target)
+        publish_materialized_member(
+            &cache_root,
+            &temporary,
+            result,
+            written,
+            &crc32,
+            &md5,
+            &sha1,
+            &sha256,
+        )
     })();
     if outcome.is_err() {
         let _ = fs::remove_file(&temporary);
     }
     outcome
+}
+
+#[allow(clippy::too_many_arguments)]
+fn publish_materialized_member(
+    cache_root: &Path,
+    temporary: &Path,
+    result: &ScanResult,
+    written: u64,
+    crc32: &str,
+    md5: &str,
+    sha1: &str,
+    sha256: &str,
+) -> Result<PathBuf> {
+    let archive_label = archive_kind_label(&result.path);
+    if written != result.file_size {
+        bail!(
+            "{archive_label} member {} produced {written} bytes after {} were reviewed",
+            result.archive_member,
+            result.file_size
+        );
+    }
+    for (label, reviewed, actual) in [
+        ("CRC32", result.crc32.as_str(), crc32),
+        ("MD5", result.md5.as_str(), md5),
+        ("SHA-1", result.sha1.as_str(), sha1),
+    ] {
+        if !reviewed.is_empty() && reviewed != actual {
+            bail!(
+                "{archive_label} member {} changed {label} after review",
+                result.archive_member
+            );
+        }
+    }
+    let extension = Path::new(&result.archive_member)
+        .extension()
+        .and_then(|value| value.to_str())
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 16
+                && value
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric())
+        })
+        .context("reviewed archive member has no portable ROM extension")?
+        .to_ascii_lowercase();
+    let target_directory = cache_root.join(sha256);
+    fs::create_dir_all(&target_directory).with_context(|| {
+        format!(
+            "creating ROM content directory {}",
+            target_directory.display()
+        )
+    })?;
+    let target = target_directory.join(format!("content.{extension}"));
+    if target.exists() {
+        if !target.is_file() || hash_sha256(&target)? != sha256 {
+            bail!(
+                "existing ROM cache target is not the reviewed content: {}",
+                target.display()
+            );
+        }
+        fs::remove_file(temporary)
+            .with_context(|| format!("removing temporary ROM {}", temporary.display()))?;
+        return Ok(target);
+    }
+    fs::rename(temporary, &target).with_context(|| {
+        format!(
+            "publishing reviewed {archive_label} member {} to {}",
+            result.archive_member,
+            target.display()
+        )
+    })?;
+    Ok(target)
 }
 
 fn hash_sha256(path: &Path) -> Result<String> {
@@ -1746,6 +2127,16 @@ mod tests {
                 .unwrap();
         }
         archive.finish().unwrap();
+    }
+
+    fn rar_fixture(path: &Path, members: &[(&str, &[u8])]) {
+        let mut archive = rars::Builder::new(rars::ArchiveVersion::Rar50);
+        for (name, content) in members {
+            archive
+                .add_bytes(name.as_bytes().to_vec(), content.to_vec(), None, None)
+                .unwrap();
+        }
+        archive.write_to_path(path, None).unwrap();
     }
 
     #[test]
@@ -2145,6 +2536,191 @@ mod tests {
         ));
         assert!(!output.results[0].selected);
         assert_eq!(output.results[0].archive_member_count, 0);
+    }
+
+    #[test]
+    fn single_rom_rar_member_receives_an_exact_checksum_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        let archive_path = rom_root.join("Exact Game.rar");
+        rar_fixture(
+            &archive_path,
+            &[
+                ("__MACOSX/._Exact Game.nes", b"metadata"),
+                ("docs/readme.txt", b"documentation"),
+                ("roms/Exact Game (USA).nes", b"exact-rom"),
+            ],
+        );
+
+        let cancel = AtomicBool::new(false);
+        let output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        assert_eq!(output.results.len(), 1);
+        let result = &output.results[0];
+        assert!(matches!(result.match_state, MatchState::Exact(_)));
+        assert!(result.selected);
+        assert_eq!(result.archive_member_count, 1);
+        assert_eq!(result.archive_member, "roms/Exact Game (USA).nes");
+        assert_eq!(result.file_size, 9);
+        assert_eq!(result.platform, "Nintendo Entertainment System");
+        assert_eq!(result.match_method, "RAR archive member SHA-1 + MD5");
+
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 1);
+        let connection = Connection::open(state).unwrap();
+        let stored_path = connection
+            .query_row("SELECT path_display FROM local_rom_files", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .unwrap();
+        assert_eq!(stored_path, archive_path.to_string_lossy());
+    }
+
+    #[test]
+    fn multi_rom_rar_members_are_reviewed_and_materialized_individually() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        let archive_path = rom_root.join("Collection.rar");
+        rar_fixture(
+            &archive_path,
+            &[("One.nes", b"exact-rom"), ("Two.nes", b"another-rom")],
+        );
+
+        let cancel = AtomicBool::new(false);
+        let mut output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        assert_eq!(output.results.len(), 2);
+        assert!(matches!(
+            output.results[0].match_state,
+            MatchState::Exact(_)
+        ));
+        assert!(!output.results[0].selected);
+        assert_eq!(output.results[0].archive_member, "One.nes");
+        assert_eq!(output.results[0].archive_member_count, 2);
+        assert_eq!(
+            output.results[0].match_method,
+            "RAR archive member SHA-1 + MD5"
+        );
+        assert_eq!(output.results[1].match_state, MatchState::Unmatched);
+        assert!(!output.results[1].selected);
+
+        output
+            .results
+            .iter_mut()
+            .for_each(|result| result.selected = true);
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
+        let connection = Connection::open(&state).unwrap();
+        let mut statement = connection
+            .prepare(
+                "SELECT path_display, archive_member, source_archive_path_display, game_uid
+                 FROM local_rom_files ORDER BY archive_member",
+            )
+            .unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].1, "One.nes");
+        assert_eq!(rows[0].2, archive_path.to_string_lossy());
+        assert_eq!(rows[0].3.as_deref(), Some("game-1"));
+        assert_eq!(fs::read(&rows[0].0).unwrap(), b"exact-rom");
+        assert_eq!(rows[1].1, "Two.nes");
+        assert_eq!(rows[1].2, archive_path.to_string_lossy());
+        assert_eq!(rows[1].3, None);
+        assert_eq!(fs::read(&rows[1].0).unwrap(), b"another-rom");
+    }
+
+    #[test]
+    fn reviewed_multi_rom_rar_member_rejects_archive_changes_before_commit() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        let archive_path = rom_root.join("Collection.rar");
+        rar_fixture(
+            &archive_path,
+            &[("One.nes", b"exact-rom"), ("Two.nes", b"another-rom")],
+        );
+
+        let cancel = AtomicBool::new(false);
+        let mut output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        output
+            .results
+            .iter_mut()
+            .find(|result| matches!(result.match_state, MatchState::Exact(_)))
+            .unwrap()
+            .selected = true;
+        rar_fixture(
+            &archive_path,
+            &[("One.nes", b"other-rom"), ("Two.nes", b"another-rom")],
+        );
+
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        let error = format!("{:#}", commit_scan_to(&state, &output).unwrap_err());
+        assert!(error.contains("changed CRC32 after review"));
+        let connection = Connection::open(&state).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM local_rom_files", [], |row| {
+                    row.get::<_, usize>(0)
+                })
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn encrypted_rar_is_an_actionable_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        let archive_path = rom_root.join("Encrypted.rar");
+        let mut archive = rars::Builder::new(rars::ArchiveVersion::Rar50)
+            .store(true)
+            .password(Some(b"private".to_vec()));
+        archive
+            .add_bytes(
+                b"Exact Game.nes".to_vec(),
+                b"exact-rom".to_vec(),
+                None,
+                None,
+            )
+            .unwrap();
+        archive.write_to_path(&archive_path, None).unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        assert_eq!(output.results.len(), 1);
+        let MatchState::Error(error) = &output.results[0].match_state else {
+            panic!("encrypted RAR was not rejected")
+        };
+        assert!(error.contains("encrypted"));
+        assert!(!output.results[0].selected);
     }
 
     #[test]

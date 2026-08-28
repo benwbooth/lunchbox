@@ -189,10 +189,10 @@ and reapplies the current search and platform filters after ingestion.
 supported files off the GUI thread, streams progress, can be cancelled during
 large-file hashing, and presents a searchable, sortable review table. Unique
 SHA-1/MD5 matches are selected by default; filenames never establish identity.
-For ZIP or 7z archives containing exactly one recognized ROM, the scanner streams
-that member without extracting it and hashes the emulated bytes, while retaining
-the original archive as the local launch path. The review row shows the container
-and member separately. Archives with multiple recognized ROMs expose one
+For ZIP, 7z, or RAR archives containing exactly one recognized ROM, the scanner
+streams that member without extracting it and hashes the emulated bytes, while
+retaining the original archive as the local launch path. The review row shows the
+container and member separately. Archives with multiple recognized ROMs expose one
 checksum-identified row per safe member but select none automatically, because an
 arcade set or another multi-file game must not be split by guesswork. Explicitly
 selected members are revalidated, materialized atomically into a content-addressed
@@ -206,6 +206,8 @@ That reviewed identity is restored on later scans only when the lossless source
 path, archive member, byte size, MD5, and SHA-1 all still agree. Imports and
 rescans are idempotent, retain missing-path history, and store lossless OS-native
 path bytes alongside display paths.
+RAR support is pure Rust; encrypted and multi-volume archives are rejected with
+an actionable review error rather than invoking a host utility or guessing.
 
 The equivalent catalog environment variables are
 `LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and

@@ -92,7 +92,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   progress, cancellation, exact/ambiguous reporting, and idempotent rescans
   with named extension presets, resumable hash caches, duplicate/change audits,
   and a missing-file management view.
-- Extend native ZIP/7z member inspection and manual matching review with RAR,
+- Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
 - Editable game and release metadata, tags, playlists, custom fields, and a
   richer session-history inspector beyond the implemented activity summary.
