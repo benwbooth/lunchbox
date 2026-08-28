@@ -59,6 +59,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   file ingestion through configurable link/copy policies. The native seeding
   policy can follow qBittorrent or durably pause a Lunchbox-owned torrent after
   all selected bundle members import, with automatic retry and no data removal.
+- Unified native Find Artwork workflow for SteamGridDB and IGDB with
+  provider-specific media categories, Twitch client-credentials authentication,
+  operating-system credential storage, explicit exact-game review, durable
+  stable provider links, individual artwork review, and one shared bounded,
+  signature-validating, atomic publisher. IGDB commercial use remains gated on
+  the distributor obtaining the required provider partnership.
 - Native local-ROM folder scan with a platform selector, extension-aware
   discovery, optional SHA-1/MD5 identity verification, cancellable streaming
   progress, searchable/sortable review, bulk/per-file selection, idempotent

@@ -15,6 +15,7 @@ use crate::download_plan::DownloadPlan;
 const KEYRING_SERVICE: &str = "com.lunchbox.Lunchbox";
 const QBITTORRENT_KEYRING_ACCOUNT: &str = "qbittorrent-password";
 const STEAMGRIDDB_KEYRING_ACCOUNT: &str = "steamgriddb-api-key";
+const IGDB_KEYRING_ACCOUNT: &str = "igdb-twitch-credentials";
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -2230,6 +2231,41 @@ pub fn save_steamgriddb_api_key(api_key: &str) -> Result<()> {
     save_secret(STEAMGRIDDB_KEYRING_ACCOUNT, api_key, "SteamGridDB API key")
 }
 
+#[derive(Deserialize, Serialize)]
+struct IgdbCredentials {
+    client_id: String,
+    client_secret: String,
+}
+
+pub fn load_igdb_credentials() -> Result<Option<(String, String)>> {
+    let Some(encoded) = load_secret(IGDB_KEYRING_ACCOUNT, "IGDB Twitch credentials")? else {
+        return Ok(None);
+    };
+    let credentials: IgdbCredentials =
+        serde_json::from_str(&encoded).context("decoding IGDB Twitch credentials")?;
+    if credentials.client_id.trim().is_empty() || credentials.client_secret.trim().is_empty() {
+        bail!("saved IGDB Twitch credentials are incomplete");
+    }
+    Ok(Some((credentials.client_id, credentials.client_secret)))
+}
+
+pub fn save_igdb_credentials(client_id: &str, client_secret: &str) -> Result<()> {
+    let client_id = client_id.trim();
+    let client_secret = client_secret.trim();
+    if client_id.is_empty() && client_secret.is_empty() {
+        return save_secret(IGDB_KEYRING_ACCOUNT, "", "IGDB Twitch credentials");
+    }
+    if client_id.is_empty() || client_secret.is_empty() {
+        bail!("both the IGDB Twitch client ID and client secret are required");
+    }
+    let encoded = serde_json::to_string(&IgdbCredentials {
+        client_id: client_id.to_owned(),
+        client_secret: client_secret.to_owned(),
+    })
+    .context("encoding IGDB Twitch credentials")?;
+    save_secret(IGDB_KEYRING_ACCOUNT, &encoded, "IGDB Twitch credentials")
+}
+
 fn load_secret(account: &str, label: &str) -> Result<Option<String>> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, account)
         .context("opening the operating system credential store")?;
@@ -4293,5 +4329,18 @@ mod tests {
         for worker in workers {
             assert_eq!(worker.join().unwrap(), AppSettings::default());
         }
+    }
+
+    #[test]
+    fn igdb_credentials_round_trip_as_one_keyring_payload() {
+        let encoded = serde_json::to_string(&IgdbCredentials {
+            client_id: "native-client".to_owned(),
+            client_secret: "native-secret".to_owned(),
+        })
+        .unwrap();
+        let decoded: IgdbCredentials = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.client_id, "native-client");
+        assert_eq!(decoded.client_secret, "native-secret");
+        assert!(!encoded.contains("steamgriddb"));
     }
 }

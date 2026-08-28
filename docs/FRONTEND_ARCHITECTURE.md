@@ -481,14 +481,17 @@ launch argument profiles and replacement templates are native for ordinary ROM
 and prepared-PC plans, with contextual and searchable cross-emulator editors
 plus a shell-free placeholder compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
-SteamGridDB is the first reviewed alternate-provider slice. Settings stores its
-API key through the native credential store, never SQLite. A provider search
-returns candidates only; a human must choose the exact game before the stable
-SteamGridDB ID is recorded against the positive LaunchBox catalog ID. The same
-flow then presents individual safe, static backgrounds, covers, or logos for
-explicit selection. Rust bounds and validates the downloaded image bytes and
-atomically publishes them below `lb-<id>/steamgriddb/`, replacing only the same
-SteamGridDB media kind while preserving all other cached candidates.
+SteamGridDB and IGDB are native behind one Find Artwork workflow. Settings
+stores the SteamGridDB key and the IGDB/Twitch client-credentials payload in the
+native credential store, never SQLite. A provider search returns candidates
+only; a human must choose the exact game before that provider's stable ID is
+recorded against the positive LaunchBox catalog ID. SteamGridDB then presents
+static backgrounds, covers, or logos; IGDB presents covers, artwork, or
+screenshots using an in-memory cached Twitch application token. Both providers
+use the same 16 MiB, HTTPS-only (except loopback fixtures), PNG/JPEG/WebP
+signature-validating publisher and atomically replace only their own media kind.
+IGDB attribution and the non-commercial/commercial-partnership boundary are
+visible in Settings.
 
 `--steamgriddb-ui-probe` exercises this complete QML workflow against an API
 fixture selected with `LUNCHBOX_STEAMGRIDDB_API_URL`: search, exact-game review,
@@ -496,6 +499,13 @@ artwork enumeration, rendered preview, screenshot, validated publication, and
 the durable provider link. `LUNCHBOX_STEAMGRIDDB_API_KEY` is accepted only as a
 runtime override for unattended verification; interactive configuration remains
 in the credential store.
+
+`--igdb-ui-probe` exercises Twitch token acquisition, Apicalypse game search,
+exact-game review, provider-link persistence, IGDB artwork enumeration, rendered
+preview, screenshot, and validated publication against the deterministic Rust
+fixture server in `crates/lunchbox-app/examples/igdb_fixture.rs`. The credential
+and endpoint environment variables exist only to make unattended verification
+independent of a live account; interactive credentials remain in the keyring.
 
 Playlists and smart collections, the remaining alternate media providers,
 specialized machine launch profiles, the remaining settings, broader

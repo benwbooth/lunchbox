@@ -11,9 +11,9 @@ ApplicationWindow {
     id: root
     visible: true
     width: controllerProfileUiProbe || launchProfileUiProbe
-           || launchProfileManagerUiProbe || steamGridDbUiProbe ? 1920 : 1440
+           || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe ? 1920 : 1440
     height: controllerProfileUiProbe || launchProfileUiProbe
-            || launchProfileManagerUiProbe || steamGridDbUiProbe ? 1200 : 900
+            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
@@ -120,6 +120,10 @@ ApplicationWindow {
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool settingsMediaPriorityUiProbe: Qt.application.arguments.indexOf("--settings-media-priority-ui-probe") >= 0
     readonly property bool steamGridDbUiProbe: Qt.application.arguments.indexOf("--steamgriddb-ui-probe") >= 0
+    readonly property bool igdbUiProbe: Qt.application.arguments.indexOf("--igdb-ui-probe") >= 0
+    property string artworkProvider: igdbUiProbe ? "igdb" : "steamgriddb"
+    readonly property var artworkProviderModel: artworkProvider === "igdb" ? igdb : steamGridDb
+    readonly property string artworkProviderName: artworkProvider === "igdb" ? "IGDB" : "SteamGridDB"
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
@@ -423,12 +427,23 @@ ApplicationWindow {
         importDialogLoader.item.open()
     }
 
-    function openSteamGridDbArtwork(artworkType) {
+    function openFindArtwork(artworkType) {
         if (selectedDatabaseId <= 0)
             return
         steamGridDbDialog.open()
-        steamGridDb.begin_selection(selectedDatabaseId, gameDetails.title,
-                                    gameDetails.platform, artworkType)
+        artworkProviderModel.begin_selection(selectedDatabaseId, gameDetails.title,
+                                             gameDetails.platform, artworkType)
+    }
+
+    function switchArtworkProvider(provider) {
+        if (artworkProvider === provider)
+            return
+        artworkProviderModel.cancel()
+        artworkProvider = provider
+        const kind = provider === "igdb" && steamGridDbKind.currentValue === "clear-logo"
+                   ? "fanart" : steamGridDbKind.currentValue
+        artworkProviderModel.begin_selection(selectedDatabaseId, gameDetails.title,
+                                             gameDetails.platform, kind)
     }
 
     LibraryModel {
@@ -625,6 +640,10 @@ ApplicationWindow {
         id: steamGridDb
     }
 
+    IgdbModel {
+        id: igdb
+    }
+
     Connections {
         target: steamGridDb
         function onPublished_revisionChanged() {
@@ -646,6 +665,75 @@ ApplicationWindow {
         function onArtwork_countChanged() {
             if (root.steamGridDbUiProbe && steamGridDb.artwork_count > 0)
                 steamGridDbScreenshotTimer.restart()
+        }
+    }
+
+    Connections {
+        target: igdb
+        function onPublished_revisionChanged() {
+            if (igdb.published_revision <= 0)
+                return
+            library.refresh_media()
+            if (root.igdbUiProbe) {
+                console.warn("LUNCHBOX_IGDB_UI_READY game="
+                             + igdb.selected_game_name + " artwork="
+                             + igdb.artwork_count + " screenshot="
+                             + root.screenshotOutput)
+                Qt.quit()
+            }
+        }
+        function onGame_countChanged() {
+            if (root.igdbUiProbe && igdb.game_count > 0)
+                igdbAutoChooseTimer.restart()
+        }
+        function onArtwork_countChanged() {
+            if (root.igdbUiProbe && igdb.artwork_count > 0)
+                igdbScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: igdbAutoChooseTimer
+        interval: 40
+        repeat: false
+        onTriggered: igdb.choose_game(0)
+    }
+
+    Timer {
+        id: igdbScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            if (!root.igdbUiProbe)
+                return
+            if (igdb.selected_game_name.length === 0 || igdb.artwork_count === 0) {
+                console.error("LUNCHBOX_IGDB_UI_FAILED empty reviewed result")
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                igdb.publish_artwork(0)
+                return
+            }
+            steamGridDbDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_IGDB_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                igdb.publish_artwork(0)
+            })
+        }
+    }
+
+    Timer {
+        interval: 10000
+        running: root.igdbUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_IGDB_UI_FAILED timeout message=" + igdb.message)
+            Qt.exit(2)
         }
     }
 
@@ -1149,6 +1237,14 @@ ApplicationWindow {
             library.shell_ready()
             if (library.startup_probe)
                 Qt.quit()
+            else if (root.igdbUiProbe) {
+                igdb.begin_selection(140, "Super Mario Bros.",
+                                     "Nintendo Entertainment System", "fanart")
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
+                steamGridDbDialog.open()
+            }
             else if (root.importUiProbe)
                 root.openImportDialog()
             else if (root.settingsUiProbe || root.settingsRegionUiProbe
@@ -3144,10 +3240,10 @@ ApplicationWindow {
                             visible: library.media_retrieval_enabled
                             text: "+"
                             font.pixelSize: 17
-                            Accessible.name: "Find reviewed artwork on SteamGridDB"
-                            onClicked: root.openSteamGridDbArtwork("fanart")
+                            Accessible.name: "Find reviewed artwork"
+                            onClicked: root.openFindArtwork("fanart")
                             ToolTip.visible: hovered
-                            ToolTip.text: "Find and explicitly review SteamGridDB artwork"
+                            ToolTip.text: "Find and explicitly review artwork from configured sources"
                         }
                     }
                 }
@@ -6198,14 +6294,17 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: Math.min(1040, root.width - 64)
         height: Math.min(790, root.height - 64)
-        padding: 0
+        leftPadding: 20
+        rightPadding: 20
+        topPadding: 12
+        bottomPadding: 14
         closePolicy: Popup.CloseOnEscape
         onOpened: {
             steamGridDbSearch.text = gameDetails.title
             steamGridDbSearch.forceActiveFocus()
             steamGridDbSearch.selectAll()
         }
-        onClosed: steamGridDb.cancel()
+        onClosed: artworkProviderModel.cancel()
 
         background: Rectangle {
             color: root.panel
@@ -6228,7 +6327,7 @@ ApplicationWindow {
                 spacing: 3
                 Text {
                     width: parent.width
-                    text: "STEAMGRIDDB ARTWORK"
+                    text: "FIND ARTWORK"
                     color: root.ink
                     font.pixelSize: 16
                     font.weight: Font.Bold
@@ -6258,6 +6357,38 @@ ApplicationWindow {
             anchors.margins: 20
             spacing: 10
 
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    text: "SOURCE"
+                    color: root.muted
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.0
+                }
+                HeaderButton {
+                    text: "SteamGridDB"
+                    active: root.artworkProvider === "steamgriddb"
+                    enabled: !root.artworkProviderModel.busy
+                    onClicked: root.switchArtworkProvider("steamgriddb")
+                }
+                HeaderButton {
+                    text: "IGDB"
+                    active: root.artworkProvider === "igdb"
+                    enabled: !root.artworkProviderModel.busy
+                    onClicked: root.switchArtworkProvider("igdb")
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: root.artworkProvider === "igdb"
+                          ? "Powered by IGDB"
+                          : "Community artwork via SteamGridDB"
+                    color: root.muted
+                    font.pixelSize: 9
+                }
+            }
+
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: steamGridDbNotice.implicitHeight + 22
@@ -6268,7 +6399,9 @@ ApplicationWindow {
                     id: steamGridDbNotice
                     anchors.fill: parent
                     anchors.margins: 11
-                    text: "Search results never establish identity automatically. Choose the exact SteamGridDB game, then choose one artwork file. Lunchbox stores that reviewed provider link for future visits."
+                    text: "Search results never establish identity automatically. Choose the exact "
+                          + root.artworkProviderName
+                          + " game, then choose one artwork file. Lunchbox stores a separate reviewed link for each source."
                     color: "#9cc9e6"
                     font.pixelSize: 10
                     wrapMode: Text.WordWrap
@@ -6281,14 +6414,16 @@ ApplicationWindow {
                 TextField {
                     id: steamGridDbSearch
                     Layout.fillWidth: true
-                    placeholderText: "Search SteamGridDB games"
-                    enabled: !steamGridDb.busy
-                    onAccepted: steamGridDb.search_games(text)
+                    placeholderText: "Search " + root.artworkProviderName + " games"
+                    enabled: !root.artworkProviderModel.busy
+                    onAccepted: root.artworkProviderModel.search_games(text)
                 }
                 Button {
                     text: "Search games"
-                    enabled: !steamGridDb.busy && steamGridDbSearch.text.length >= 2
-                    onClicked: steamGridDb.search_games(steamGridDbSearch.text)
+                    enabled: !root.artworkProviderModel.busy
+                             && steamGridDbSearch.text.length >= 2
+                    onClicked: root.artworkProviderModel.search_games(
+                                   steamGridDbSearch.text)
                 }
                 ComboBox {
                     id: steamGridDbKind
@@ -6298,12 +6433,23 @@ ApplicationWindow {
                     model: [
                         { label: "Background", value: "fanart" },
                         { label: "Cover / grid", value: "box-front" },
+                        { label: "Screenshot", value: "screenshot" },
                         { label: "Clear logo", value: "clear-logo" }
                     ]
-                    currentIndex: steamGridDb.artwork_type === "box-front" ? 1
-                                  : steamGridDb.artwork_type === "clear-logo" ? 2 : 0
-                    enabled: !steamGridDb.busy
-                    onActivated: steamGridDb.choose_artwork_kind(currentValue)
+                    delegate: ItemDelegate {
+                        required property var modelData
+                        width: steamGridDbKind.width
+                        text: modelData.label
+                        enabled: root.artworkProvider === "igdb"
+                                 ? modelData.value !== "clear-logo"
+                                 : modelData.value !== "screenshot"
+                    }
+                    currentIndex: root.artworkProviderModel.artwork_type === "box-front" ? 1
+                                  : root.artworkProviderModel.artwork_type === "screenshot" ? 2
+                                  : root.artworkProviderModel.artwork_type === "clear-logo" ? 3 : 0
+                    enabled: !root.artworkProviderModel.busy
+                    onActivated: root.artworkProviderModel.choose_artwork_kind(
+                                     currentValue)
                 }
             }
 
@@ -6318,7 +6464,7 @@ ApplicationWindow {
                     anchors.margins: 9
                     spacing: 9
                     BusyIndicator {
-                        visible: steamGridDb.busy
+                        visible: root.artworkProviderModel.busy
                         running: visible
                         Layout.preferredWidth: 20
                         Layout.preferredHeight: 20
@@ -6326,16 +6472,17 @@ ApplicationWindow {
                     Text {
                         id: steamGridDbStatus
                         Layout.fillWidth: true
-                        text: steamGridDb.message
+                        text: root.artworkProviderModel.message
                         color: root.muted
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
                     }
                     Button {
-                        visible: steamGridDb.selected_game_name.length > 0
+                        visible: root.artworkProviderModel.selected_game_name.length > 0
                         text: "Change game"
-                        enabled: !steamGridDb.busy
-                        onClicked: steamGridDb.search_games(steamGridDbSearch.text)
+                        enabled: !root.artworkProviderModel.busy
+                        onClicked: root.artworkProviderModel.search_games(
+                                       steamGridDbSearch.text)
                     }
                 }
             }
@@ -6343,7 +6490,7 @@ ApplicationWindow {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: steamGridDb.selected_game_name.length > 0 ? 1 : 0
+                currentIndex: root.artworkProviderModel.selected_game_name.length > 0 ? 1 : 0
 
                 Item {
                     Rectangle {
@@ -6360,14 +6507,14 @@ ApplicationWindow {
                         reuseItems: true
                         spacing: 5
                         model: {
-                            steamGridDb.revision
-                            return steamGridDb.game_count
+                            root.artworkProviderModel.revision
+                            return root.artworkProviderModel.game_count
                         }
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                         delegate: Rectangle {
                             id: steamGridDbGameRow
                             required property int index
-                            property int providerRevision: steamGridDb.revision
+                            property int providerRevision: root.artworkProviderModel.revision
                             width: steamGridDbGames.width - 10
                             height: 66
                             radius: 8
@@ -6386,7 +6533,7 @@ ApplicationWindow {
                                     width: parent.width
                                     text: {
                                         steamGridDbGameRow.providerRevision
-                                        return steamGridDb.game_name_at(
+                                        return root.artworkProviderModel.game_name_at(
                                                     steamGridDbGameRow.index)
                                     }
                                     color: root.ink
@@ -6398,7 +6545,7 @@ ApplicationWindow {
                                     width: parent.width
                                     text: {
                                         steamGridDbGameRow.providerRevision
-                                        return steamGridDb.game_detail_at(
+                                        return root.artworkProviderModel.game_detail_at(
                                                     steamGridDbGameRow.index)
                                     }
                                     color: root.muted
@@ -6413,11 +6560,12 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Use exact game"
                                 active: true
-                                enabled: !steamGridDb.busy
-                                onClicked: steamGridDb.choose_game(steamGridDbGameRow.index)
+                                enabled: !root.artworkProviderModel.busy
+                                onClicked: root.artworkProviderModel.choose_game(
+                                               steamGridDbGameRow.index)
                             }
                             TapHandler {
-                                onDoubleTapped: steamGridDb.choose_game(
+                                onDoubleTapped: root.artworkProviderModel.choose_game(
                                                      steamGridDbGameRow.index)
                             }
                         }
@@ -6440,14 +6588,14 @@ ApplicationWindow {
                         cellWidth: Math.max(190, Math.floor(width / 4))
                         cellHeight: 220
                         model: {
-                            steamGridDb.revision
-                            return steamGridDb.artwork_count
+                            root.artworkProviderModel.revision
+                            return root.artworkProviderModel.artwork_count
                         }
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                         delegate: Item {
                             id: steamGridDbArtworkCard
                             required property int index
-                            property int providerRevision: steamGridDb.revision
+                            property int providerRevision: root.artworkProviderModel.revision
                             width: steamGridDbArtwork.cellWidth
                             height: steamGridDbArtwork.cellHeight
                             Rectangle {
@@ -6467,13 +6615,14 @@ ApplicationWindow {
                                     height: 140
                                     source: {
                                         steamGridDbArtworkCard.providerRevision
-                                        return steamGridDb.artwork_thumbnail_at(
+                                        return root.artworkProviderModel.artwork_thumbnail_at(
                                                     steamGridDbArtworkCard.index)
                                     }
                                     asynchronous: true
                                     cache: true
                                     mipmap: true
-                                    fillMode: steamGridDb.artwork_type === "fanart"
+                                    fillMode: root.artworkProviderModel.artwork_type === "fanart"
+                                              || root.artworkProviderModel.artwork_type === "screenshot"
                                               ? Image.PreserveAspectCrop
                                               : Image.PreserveAspectFit
                                 }
@@ -6486,7 +6635,7 @@ ApplicationWindow {
                                     anchors.bottomMargin: 5
                                     text: {
                                         steamGridDbArtworkCard.providerRevision
-                                        return steamGridDb.artwork_detail_at(
+                                        return root.artworkProviderModel.artwork_detail_at(
                                                     steamGridDbArtworkCard.index)
                                     }
                                     color: root.muted
@@ -6500,10 +6649,11 @@ ApplicationWindow {
                                     anchors.bottom: parent.bottom
                                     anchors.margins: 7
                                     height: 32
-                                    text: steamGridDb.busy ? "Saving…" : "Use artwork"
+                                    text: root.artworkProviderModel.busy
+                                          ? "Saving…" : "Use artwork"
                                     active: true
-                                    enabled: !steamGridDb.busy
-                                    onClicked: steamGridDb.publish_artwork(
+                                    enabled: !root.artworkProviderModel.busy
+                                    onClicked: root.artworkProviderModel.publish_artwork(
                                                    steamGridDbArtworkCard.index)
                                 }
                             }
@@ -6516,8 +6666,9 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Text {
                     Layout.fillWidth: true
-                    text: steamGridDb.selected_game_name.length > 0
-                          ? "Reviewed provider link: " + steamGridDb.selected_game_name
+                    text: root.artworkProviderModel.selected_game_name.length > 0
+                          ? "Reviewed " + root.artworkProviderName + " link: "
+                            + root.artworkProviderModel.selected_game_name
                           : "No game is linked until you explicitly choose a result."
                     color: root.muted
                     font.pixelSize: 10
@@ -6546,6 +6697,7 @@ ApplicationWindow {
         onOpened: {
             appSettings.refresh_controllers()
             steamGridDb.initialize()
+            igdb.initialize()
         }
 
         background: Rectangle {
@@ -7048,7 +7200,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 8
                     Text {
-                        text: "STEAMGRIDDB ARTWORK"
+                        text: "ARTWORK SOURCES · STEAMGRIDDB"
                         color: root.accent
                         font.pixelSize: 10
                         font.weight: Font.Bold
@@ -7121,6 +7273,109 @@ ApplicationWindow {
                             onClicked: Qt.openUrlExternally(
                                            "https://www.steamgriddb.com/profile/preferences")
                         }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: "ARTWORK SOURCES · IGDB"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Search IGDB covers, artwork, and screenshots through a Twitch application. Credentials stay in the operating system credential store, and every game match still requires explicit review."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        TextField {
+                            id: igdbClientId
+                            Layout.fillWidth: true
+                            placeholderText: igdb.credentials_saved
+                                             ? "Saved Twitch client ID (leave blank to use)"
+                                             : "Twitch client ID"
+                            enabled: !igdb.busy
+                        }
+                        TextField {
+                            id: igdbClientSecret
+                            Layout.fillWidth: true
+                            placeholderText: igdb.credentials_saved
+                                             ? "Saved client secret (leave blank to use)"
+                                             : "Twitch client secret"
+                            echoMode: TextInput.Password
+                            enabled: !igdb.busy
+                        }
+                        Button {
+                            text: "Test"
+                            enabled: !igdb.busy
+                                     && (igdb.credentials_saved
+                                         || (igdbClientId.text.length > 0
+                                             && igdbClientSecret.text.length > 0))
+                            onClicked: igdb.test_connection(igdbClientId.text,
+                                                           igdbClientSecret.text)
+                        }
+                        HeaderButton {
+                            text: igdb.busy ? "Testing…" : "Save & test"
+                            active: true
+                            enabled: !igdb.busy && igdbClientId.text.length > 0
+                                     && igdbClientSecret.text.length > 0
+                            onClicked: igdb.save_and_test_credentials(
+                                           igdbClientId.text, igdbClientSecret.text)
+                        }
+                        Button {
+                            visible: igdb.credentials_saved
+                            text: "Clear saved"
+                            enabled: !igdb.busy
+                            onClicked: {
+                                igdbClientId.text = ""
+                                igdbClientSecret.text = ""
+                                igdb.clear_credentials()
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        BusyIndicator {
+                            visible: igdb.busy
+                            running: visible
+                            Layout.preferredWidth: 18
+                            Layout.preferredHeight: 18
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: igdb.message
+                            color: root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                        Button {
+                            text: "Register Twitch app ↗"
+                            flat: true
+                            onClicked: Qt.openUrlExternally(
+                                           "https://dev.twitch.tv/console/apps")
+                        }
+                        Button {
+                            text: "IGDB API terms ↗"
+                            flat: true
+                            onClicked: Qt.openUrlExternally("https://api-docs.igdb.com/")
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "IGDB API access is free for non-commercial use; commercial distribution requires an IGDB partnership."
+                        color: root.muted
+                        font.pixelSize: 9
+                        wrapMode: Text.WordWrap
                     }
                 }
 

@@ -251,13 +251,16 @@ miss cache, validates a fresh LibRetro PNG, and replaces only Lunchbox's owned
 LibRetro file through a synced temporary file. Other providers remain available,
 and a miss or transfer error restores the existing image.
 
-SteamGridDB artwork retrieval is native as well. The API key lives only in the
-operating-system credential store. Search results are always review candidates:
-the user chooses the exact SteamGridDB game before Lunchbox persists its stable
-provider ID, then chooses an individual static, safe background, cover, or logo.
-The selected PNG, JPEG, or WebP is bounded, format-validated, and atomically
-published to SteamGridDB's own cache directory without deleting another
-provider's media.
+The unified native **Find Artwork** flow supports SteamGridDB and IGDB. Provider
+credentials live only in the operating-system credential store. Search results
+are always review candidates: the user chooses the exact provider game before
+Lunchbox persists its stable provider ID, then chooses one individual artwork
+file. SteamGridDB supplies backgrounds, covers, and logos; IGDB supplies covers,
+artwork, and screenshots through Twitch client-credentials authentication. Both
+use the same bounded PNG/JPEG/WebP signature validation and atomic provider-owned
+cache publisher, so replacing one source and media kind cannot delete another
+provider's media. IGDB access is suitable for non-commercial use unless the
+distributor has arranged the required commercial partnership.
 
 The details hero can switch from flat artwork to an interactive native 3D box
 whenever an exact cached front cover exists. Qt Quick 3D renders separate front,
