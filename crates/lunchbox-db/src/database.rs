@@ -15,6 +15,7 @@ use crate::source;
 const SCHEMA: &str = include_str!("../../../schema/001_initial.sql");
 const MIGRATION_3: &str = include_str!("../../../schema/003_local_collection.sql");
 const MIGRATION_4: &str = include_str!("../../../schema/004_emulator_install_sources.sql");
+const MIGRATION_5: &str = include_str!("../../../schema/005_firmware_rules.sql");
 const PROVIDER_REGISTRY_JSON: &str = include_str!("../../../sources/metadata-providers.json");
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +43,7 @@ pub struct BuildResult {
     pub database_bytes: u64,
     pub database_sha256: String,
     pub emulator_import: EmulatorImportStats,
+    pub firmware_import: crate::firmware::FirmwareImportStats,
     pub libretro_import: LibretroImportStats,
     pub audit: audit::AuditReport,
 }
@@ -114,11 +116,22 @@ fn migrate_connection(connection: &Connection) -> Result<()> {
             connection
                 .execute_batch(MIGRATION_4)
                 .context("applying schema migration 4")?;
+            connection
+                .execute_batch(MIGRATION_5)
+                .context("applying schema migration 5")?;
         }
-        3 => connection
-            .execute_batch(MIGRATION_4)
-            .context("applying schema migration 4")?,
-        4 => {}
+        3 => {
+            connection
+                .execute_batch(MIGRATION_4)
+                .context("applying schema migration 4")?;
+            connection
+                .execute_batch(MIGRATION_5)
+                .context("applying schema migration 5")?;
+        }
+        4 => connection
+            .execute_batch(MIGRATION_5)
+            .context("applying schema migration 5")?,
+        5 => {}
         0..=1 => bail!(
             "database schema version {current_version} is too old for an in-place migration; rebuild it from declared inputs"
         ),
@@ -216,6 +229,7 @@ pub fn build(
     seed_providers(&connection)?;
 
     let emulator_import = emulators::import(&mut connection, emulator_source, timestamp)?;
+    let firmware_import = crate::firmware::import(&mut connection)?;
     let emulator_source_hash = sha256_file(emulator_source)?;
     let libretro_manifest = source::load_libretro_manifest(libretro_manifest_path)?;
     let libretro_import = libretro::import(
@@ -243,7 +257,11 @@ pub fn build(
             "emulator_install_sources_sha256",
             sha256_bytes(emulators::INSTALL_SOURCES_JSON.as_bytes()),
         ),
-        ("schema_version", "4".to_owned()),
+        (
+            "firmware_rules_sha256",
+            sha256_bytes(crate::firmware::RULES_JSON.as_bytes()),
+        ),
+        ("schema_version", "5".to_owned()),
     ]);
     for (key, value) in metadata {
         connection.execute(
@@ -293,6 +311,7 @@ pub fn build(
         database_bytes: fs::metadata(database)?.len(),
         database_sha256: sha256_file(database)?,
         emulator_import,
+        firmware_import,
         libretro_import,
         audit: final_audit,
     })
@@ -354,12 +373,14 @@ mod tests {
     }
 
     #[test]
-    fn schema_two_migrates_through_host_scoped_install_sources_once() -> Result<()> {
+    fn schema_two_migrates_through_firmware_rules_once() -> Result<()> {
         let connection = Connection::open_in_memory()?;
         configure(&connection)?;
         initialize_connection(&connection, "1970-01-01T00:00:00Z")?;
         connection.execute_batch(
-            "DROP TABLE local_files;
+            "DROP TABLE firmware_rules;
+             DROP TABLE firmware_sources;
+             DROP TABLE local_files;
              DROP TABLE collection_roots;
              DROP TABLE emulator_packages;
              CREATE TABLE emulator_packages (
@@ -370,7 +391,7 @@ mod tests {
                  package_id TEXT NOT NULL,
                  PRIMARY KEY (emulator_id, manager, package_id)
              ) STRICT, WITHOUT ROWID;
-             DELETE FROM schema_migrations WHERE version IN (3, 4);",
+             DELETE FROM schema_migrations WHERE version IN (3, 4, 5);",
         )?;
 
         migrate_connection(&connection)?;
@@ -379,6 +400,14 @@ mod tests {
         assert_eq!(
             connection.query_row(
                 "SELECT count(*) FROM schema_migrations WHERE version=3",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            1
+        );
+        assert_eq!(
+            connection.query_row(
+                "SELECT count(*) FROM schema_migrations WHERE version=5",
                 [],
                 |row| row.get::<_, i64>(0),
             )?,
@@ -396,6 +425,15 @@ mod tests {
             connection.query_row(
                 "SELECT count(*) FROM sqlite_schema
                  WHERE type='table' AND name IN ('collection_roots','local_files')",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            2
+        );
+        assert_eq!(
+            connection.query_row(
+                "SELECT count(*) FROM sqlite_schema
+                 WHERE type='table' AND name IN ('firmware_sources','firmware_rules')",
                 [],
                 |row| row.get::<_, i64>(0),
             )?,

@@ -128,6 +128,20 @@ with atomic replacement and ownership-safe removal. Managed native,
 AppImage/GitHub, Nix-profile, Flatpak, and Wine installations feed the same
 launch discovery used by local ROMs and prepared PC games.
 
+Firmware is resolved for the selected runtime and core, rather than from one
+global folder per platform. The canonical catalog carries 118 reviewed rules
+and 17 exact sources recovered from the legacy Lunchbox design, including
+required and optional packages, HLE fallbacks, launch-scoped MAME files, and
+manual-only dumps. The game-details card can download exact Minerva packages,
+official HTTPS files, and reviewed GitHub source archives; it can also import an
+exact local package. Imports are traversal-safe and bounded, retain archive and
+per-file SHA-256 provenance in the local state database, and activate through a
+staged package store. Sync and repair verify the complete manifest before
+copying to native RetroArch, DuckStation, PCSX2, Dolphin, Flycast, openMSX,
+MAME, 86Box, PCem, and other reviewed runtime layouts on Linux, Windows, and
+macOS. Manual-only firmware opens a dedicated native folder with instructions;
+Lunchbox never bundles firmware or silently substitutes a different package.
+
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder
 picker; qBittorrent/container paths are deliberately retained as verbatim

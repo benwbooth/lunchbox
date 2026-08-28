@@ -102,6 +102,8 @@ ApplicationWindow {
     readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
     readonly property bool emulatorManagerProbe: Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
     readonly property bool emulatorManagerUiProbe: Qt.application.arguments.indexOf("--emulator-manager-ui-probe") >= 0
+    readonly property bool firmwareProbe: Qt.application.arguments.indexOf("--firmware-probe") >= 0
+    readonly property bool firmwareUiProbe: Qt.application.arguments.indexOf("--firmware-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
@@ -357,6 +359,11 @@ ApplicationWindow {
                     searchField.text = "A Nightmare on Elm Street"
                     library.apply_filter(searchField.text, "", "")
                 }
+                else if (root.firmwareProbe || root.firmwareUiProbe) {
+                    root.openGame("local-file:firmware-ui-probe", 0,
+                                  "Buck Rogers: Planet of Zoom", "Coleco ADAM",
+                                  true, false)
+                }
                 else {
                     root.scheduleFilter()
                     if (root.filterUiProbe)
@@ -552,6 +559,10 @@ ApplicationWindow {
                     && root.launchProbeTriggered
                     && gameDetails.launch_status.indexOf("Could not launch") === 0)
                 Qt.exit(2)
+        }
+        function onFirmware_rule_countChanged() {
+            if (root.firmwareProbe && gameDetails.firmware_rule_count > 0)
+                Qt.quit()
         }
     }
 
@@ -2576,6 +2587,150 @@ ApplicationWindow {
                                 }
                             }
 
+                            Rectangle {
+                                width: parent.width
+                                height: firmwareColumn.implicitHeight + 24
+                                visible: gameDetails.firmware_rule_count > 0
+                                radius: 9
+                                color: gameDetails.firmware_missing_count > 0
+                                       || gameDetails.firmware_manual_count > 0
+                                       ? "#321f24" : "#142d2a"
+                                border.color: gameDetails.firmware_missing_count > 0
+                                              || gameDetails.firmware_manual_count > 0
+                                              ? "#7a3c48" : "#315c54"
+
+                                Column {
+                                    id: firmwareColumn
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 5
+                                    Row {
+                                        width: parent.width
+                                        spacing: 8
+                                        Text {
+                                            width: parent.width - firmwareFolderButton.width - 8
+                                            text: gameDetails.firmware_manual_count > 0
+                                                  ? "MANUAL FIRMWARE REQUIRED"
+                                                  : gameDetails.firmware_missing_count > 0
+                                                    ? "FIRMWARE REQUIRED"
+                                                    : gameDetails.firmware_optional_count > 0
+                                                      ? "OPTIONAL FIRMWARE AVAILABLE"
+                                                    : "FIRMWARE READY"
+                                            color: gameDetails.firmware_missing_count > 0
+                                                   || gameDetails.firmware_manual_count > 0
+                                                   ? "#ff9b91" : root.accentCool
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.7
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        Button {
+                                            id: firmwareFolderButton
+                                            visible: gameDetails.firmware_runtime_path.length > 0
+                                            width: visible ? 86 : 0
+                                            height: 26
+                                            text: "OPEN FOLDER"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            onClicked: gameDetails.open_firmware_directory()
+                                            background: Rectangle {
+                                                radius: 6
+                                                color: parent.down ? "#2a394c" : "#202b3a"
+                                                border.color: root.line
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: root.ink
+                                                font: parent.font
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: gameDetails.firmware_summary
+                                        color: root.ink
+                                        font.pixelSize: 10
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: gameDetails.firmware_package_summary
+                                        color: root.muted
+                                        font.pixelSize: 9
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: gameDetails.firmware_source_summary
+                                              + (gameDetails.firmware_runtime_path.length > 0
+                                                 ? " · " + gameDetails.firmware_runtime_path : "")
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Button {
+                                        width: parent.width
+                                        height: 30
+                                        visible: gameDetails.firmware_can_download
+                                                 || gameDetails.firmware_can_sync
+                                        enabled: !gameDetails.firmware_busy
+                                        text: gameDetails.firmware_busy ? "VERIFYING…"
+                                              : gameDetails.firmware_can_download
+                                                ? "DOWNLOAD & INSTALL"
+                                                : "SYNC / REPAIR"
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        onClicked: {
+                                            if (gameDetails.firmware_can_download)
+                                                gameDetails.download_firmware()
+                                            else
+                                                gameDetails.sync_firmware()
+                                        }
+                                        background: Rectangle {
+                                            radius: 6
+                                            color: parent.enabled
+                                                   ? (parent.down ? "#315047" : "#203a35")
+                                                   : "#18212c"
+                                            border.color: parent.enabled ? root.accentCool : root.line
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: parent.enabled ? root.accentCool : root.muted
+                                            font: parent.font
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                    Button {
+                                        width: parent.width
+                                        height: 28
+                                        visible: gameDetails.firmware_needs_import
+                                        enabled: !gameDetails.firmware_busy
+                                        text: "IMPORT A LOCAL COPY INSTEAD"
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        onClicked: firmwarePackageDialog.open()
+                                        background: Rectangle {
+                                            radius: 6
+                                            color: parent.down ? "#2a394c" : "#202b3a"
+                                            border.color: root.line
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: parent.enabled ? root.muted : "#526071"
+                                            font: parent.font
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                }
+                            }
+
                             Text {
                                 width: parent.width
                                 visible: gameDetails.launch_status.length > 0
@@ -2595,6 +2750,7 @@ ApplicationWindow {
                                 enabled: gameDetails.can_launch
                                          && !gameDetails.launch_busy
                                          && !gameDetails.game_running
+                                         && !gameDetails.firmware_busy
                                 font.pixelSize: 11
                                 font.weight: Font.Bold
                                 onClicked: gameDetails.launch_game()
@@ -3460,6 +3616,14 @@ ApplicationWindow {
         id: importDirectoryDialog
         title: "Choose a ROM collection to scan"
         onAccepted: localImport.choose_directory(selectedFolder)
+    }
+
+    FileDialog {
+        id: firmwarePackageDialog
+        title: "Choose the exact firmware package shown in Game Details"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Firmware packages (*.zip *.xml *.bin *.rom *.dat)", "All files (*)"]
+        onAccepted: gameDetails.import_firmware_package(selectedFile)
     }
 
     Loader {

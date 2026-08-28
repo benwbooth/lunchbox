@@ -178,8 +178,8 @@ fn validate_canonical_schema(connection: &Connection) -> Result<()> {
             |row| row.get(0),
         )
         .context("reading Lunchbox schema version")?;
-    if schema_version != 4 {
-        bail!("unsupported Lunchbox schema version {schema_version}; expected version 4");
+    if schema_version != 5 {
+        bail!("unsupported Lunchbox schema version {schema_version}; expected version 5");
     }
     Ok(())
 }
@@ -872,14 +872,14 @@ mod tests {
     }
 
     #[test]
-    fn loads_schema_four_catalog_with_linked_local_and_downloadable_state() {
+    fn loads_schema_five_catalog_with_linked_local_and_downloadable_state() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("catalog.db");
         let connection = Connection::open(&path).unwrap();
         connection
             .execute_batch(
                 "CREATE TABLE schema_migrations (version INTEGER);\n\
-                 INSERT INTO schema_migrations VALUES (4);\n\
+                 INSERT INTO schema_migrations VALUES (5);\n\
                  CREATE TABLE games (\n\
                      id TEXT PRIMARY KEY, canonical_title TEXT, sort_title TEXT, status TEXT\n\
                  );\n\

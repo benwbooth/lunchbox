@@ -2,7 +2,9 @@
 pub mod qobject {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib/qurl.h");
         type QString = cxx_qt_lib::QString;
+        type QUrl = cxx_qt_lib::QUrl;
     }
 
     unsafe extern "RustQt" {
@@ -42,6 +44,18 @@ pub mod qobject {
         #[qproperty(QString, emulator_summary)]
         #[qproperty(QString, launch_status)]
         #[qproperty(QString, emulator_preference_scope)]
+        #[qproperty(bool, firmware_busy)]
+        #[qproperty(bool, firmware_needs_import)]
+        #[qproperty(bool, firmware_can_download)]
+        #[qproperty(bool, firmware_can_sync)]
+        #[qproperty(i32, firmware_rule_count)]
+        #[qproperty(i32, firmware_missing_count)]
+        #[qproperty(i32, firmware_manual_count)]
+        #[qproperty(i32, firmware_optional_count)]
+        #[qproperty(QString, firmware_summary)]
+        #[qproperty(QString, firmware_source_summary)]
+        #[qproperty(QString, firmware_package_summary)]
+        #[qproperty(QString, firmware_runtime_path)]
         #[qproperty(i32, bundle_count)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_bundle)]
@@ -102,6 +116,18 @@ pub mod qobject {
         fn clear_platform_emulator_preference(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn open_firmware_directory(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn import_firmware_package(self: Pin<&mut GameDetailsModel>, url: QUrl);
+
+        #[qinvokable]
+        fn download_firmware(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn sync_firmware(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -143,7 +169,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QString, QUrl};
 
 use crate::game_details::{
     self, GameDetails, MinervaBundle, ReleasePreferences, TorrentFileCandidate,
@@ -184,6 +210,18 @@ pub struct GameDetailsModelRust {
     emulator_summary: QString,
     launch_status: QString,
     emulator_preference_scope: QString,
+    firmware_busy: bool,
+    firmware_needs_import: bool,
+    firmware_can_download: bool,
+    firmware_can_sync: bool,
+    firmware_rule_count: i32,
+    firmware_missing_count: i32,
+    firmware_manual_count: i32,
+    firmware_optional_count: i32,
+    firmware_summary: QString,
+    firmware_source_summary: QString,
+    firmware_package_summary: QString,
+    firmware_runtime_path: QString,
     bundle_count: i32,
     file_count: i32,
     selected_bundle: i32,
@@ -203,6 +241,8 @@ pub struct GameDetailsModelRust {
     local_file_path: PathBuf,
     local_file_paths: Vec<PathBuf>,
     rom_emulator_options: Vec<crate::emulator::RomEmulatorOption>,
+    rom_firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
+    pending_firmware_message: Option<String>,
     prepared_install: Option<crate::exo_install::PreparedInstall>,
 }
 
@@ -243,6 +283,18 @@ impl Default for GameDetailsModelRust {
             emulator_summary: QString::default(),
             launch_status: QString::default(),
             emulator_preference_scope: QString::default(),
+            firmware_busy: false,
+            firmware_needs_import: false,
+            firmware_can_download: false,
+            firmware_can_sync: false,
+            firmware_rule_count: 0,
+            firmware_missing_count: 0,
+            firmware_manual_count: 0,
+            firmware_optional_count: 0,
+            firmware_summary: QString::default(),
+            firmware_source_summary: QString::default(),
+            firmware_package_summary: QString::default(),
+            firmware_runtime_path: QString::default(),
             bundle_count: 0,
             file_count: 0,
             selected_bundle: -1,
@@ -262,6 +314,8 @@ impl Default for GameDetailsModelRust {
             local_file_path: PathBuf::new(),
             local_file_paths: Vec::new(),
             rom_emulator_options: Vec::new(),
+            rom_firmware_statuses: Vec::new(),
+            pending_firmware_message: None,
             prepared_install: None,
         }
     }
@@ -289,7 +343,10 @@ fn is_emulator_launch_probe() -> bool {
 
 enum EmulatorDiscoveryResult {
     Prepared(crate::emulator::LaunchAvailability),
-    Rom(crate::emulator::RomLaunchAvailability),
+    Rom {
+        availability: crate::emulator::RomLaunchAvailability,
+        firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
+    },
 }
 
 enum LaunchInput {
@@ -371,6 +428,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_prepare_busy(false);
         self.as_mut().set_launch_discovery_busy(false);
         self.as_mut().set_launch_busy(false);
+        self.as_mut().set_firmware_busy(false);
+        self.as_mut().rust_mut().pending_firmware_message = None;
         self.as_mut().set_panel_open(false);
     }
 
@@ -395,12 +454,16 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_launch_status(QString::default());
         self.as_mut()
             .set_emulator_preference_scope(QString::default());
+        self.as_mut().set_firmware_busy(false);
+        self.as_mut().rust_mut().pending_firmware_message = None;
+        self.as_mut().clear_firmware_status();
         self.as_mut().set_can_launch(false);
         self.as_mut().set_game_running(false);
         self.as_mut().rust_mut().database_id = 0;
         self.as_mut().rust_mut().local_file_path = PathBuf::new();
         self.as_mut().rust_mut().local_file_paths.clear();
         self.as_mut().rust_mut().rom_emulator_options.clear();
+        self.as_mut().rust_mut().rom_firmware_statuses.clear();
         self.as_mut().rust_mut().prepared_install = None;
         self.as_mut().rust_mut().bundles.clear();
         self.as_mut().rust_mut().files.clear();
@@ -764,6 +827,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_emulator_name(QString::default());
         self.as_mut().set_emulator_summary(QString::default());
         self.as_mut().rust_mut().rom_emulator_options.clear();
+        self.as_mut().rust_mut().rom_firmware_statuses.clear();
+        self.as_mut().clear_firmware_status();
         self.as_mut().set_emulator_option_count(0);
         self.as_mut().set_selected_emulator_option(-1);
         self.as_mut()
@@ -785,15 +850,25 @@ impl qobject::GameDetailsModel {
                     }
                     let preference = crate::settings::SettingsStore::open_default()?
                         .emulator_preference(&game_id, &platform)?;
-                    crate::emulator::inspect_rom_launch_availability(
+                    let rom_path = selected_local_file
+                        .as_deref()
+                        .context("selected local game file disappeared")?;
+                    let availability = crate::emulator::inspect_rom_launch_availability(
                         &platform,
-                        selected_local_file
-                            .as_deref()
-                            .context("selected local game file disappeared")?,
+                        rom_path,
                         &catalog_database,
                         preference.as_ref(),
-                    )
-                    .map(EmulatorDiscoveryResult::Rom)
+                    )?;
+                    let firmware_statuses = crate::firmware::statuses_for_options(
+                        &catalog_database,
+                        &platform,
+                        rom_path,
+                        &availability.options,
+                    )?;
+                    Ok(EmulatorDiscoveryResult::Rom {
+                        availability,
+                        firmware_statuses,
+                    })
                 })()
                 .map_err(|error| error.to_string());
                 let completed_game_id = game_id.clone();
@@ -843,12 +918,16 @@ impl qobject::GameDetailsModel {
                     self.as_mut().set_emulator_summary(QString::default());
                 }
             }
-            Ok(EmulatorDiscoveryResult::Rom(availability)) => {
+            Ok(EmulatorDiscoveryResult::Rom {
+                availability,
+                firmware_statuses,
+            }) => {
                 let selected_index = availability.selected_index;
                 let selected =
                     selected_index.and_then(|index| availability.options.get(index).cloned());
                 let option_count = availability.options.len();
                 self.as_mut().rust_mut().rom_emulator_options = availability.options;
+                self.as_mut().rust_mut().rom_firmware_statuses = firmware_statuses;
                 self.as_mut()
                     .set_emulator_option_count(count_i32(option_count));
                 self.as_mut().set_selected_emulator_option(
@@ -865,6 +944,7 @@ impl qobject::GameDetailsModel {
                     self.as_mut().set_emulator_name(qstring(option.label()));
                     self.as_mut()
                         .set_emulator_summary(qstring(option.summary()));
+                    self.as_mut().update_selected_firmware(selected_index);
                 } else {
                     self.as_mut().set_can_launch(false);
                     self.as_mut().set_emulator_name(qstring(
@@ -875,6 +955,7 @@ impl qobject::GameDetailsModel {
                         },
                     ));
                     self.as_mut().set_emulator_summary(QString::default());
+                    self.as_mut().clear_firmware_status();
                 }
             }
             Err(error) => {
@@ -882,6 +963,9 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_launch_status(qstring(format!("Could not inspect emulators: {error}")));
             }
+        }
+        if let Some(message) = self.as_mut().rust_mut().pending_firmware_message.take() {
+            self.as_mut().set_launch_status(qstring(message));
         }
     }
 
@@ -924,6 +1008,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_emulator_name(qstring(option.label()));
         self.as_mut()
             .set_emulator_summary(qstring(option.summary()));
+        self.as_mut().update_selected_firmware(Some(index));
         self.as_mut()
             .set_emulator_preference_scope(QString::default());
         self.as_mut().set_launch_status(qstring(
@@ -1010,6 +1095,306 @@ impl qobject::GameDetailsModel {
         }
     }
 
+    pub fn open_firmware_directory(mut self: Pin<&mut Self>) {
+        let statuses = self.as_ref().selected_firmware_statuses();
+        match crate::firmware::open_firmware_directory(&statuses) {
+            Ok(path) => self.as_mut().set_launch_status(qstring(format!(
+                "Opened firmware directory {}.",
+                path.display()
+            ))),
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not open the firmware directory: {error}"
+            ))),
+        }
+    }
+
+    pub fn import_firmware_package(mut self: Pin<&mut Self>, url: QUrl) {
+        if *self.as_ref().firmware_busy() {
+            return;
+        }
+        let Some(path) = url
+            .to_local_file()
+            .map(|path| PathBuf::from(path.to_string()))
+        else {
+            self.as_mut().set_launch_status(qstring(
+                "Choose a firmware package from the local filesystem.",
+            ));
+            return;
+        };
+        let statuses = self.as_ref().selected_firmware_statuses();
+        if !statuses
+            .iter()
+            .any(|status| status.target_strategy != "manual_import" && !status.imported)
+        {
+            self.as_mut().set_launch_status(qstring(
+                "No unimported package is selected for this emulator.",
+            ));
+            return;
+        }
+        let generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        self.as_mut().set_firmware_busy(true);
+        self.as_mut()
+            .set_launch_status(qstring("Importing and verifying firmware package…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-firmware-import".into())
+            .spawn(move || {
+                let result = crate::firmware::import_and_sync(&statuses, &path)
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_firmware_action(generation, game_id, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_firmware_busy(false);
+            self.as_mut()
+                .set_launch_status(qstring(format!("Could not start firmware import: {error}")));
+        }
+    }
+
+    pub fn download_firmware(mut self: Pin<&mut Self>) {
+        if *self.as_ref().firmware_busy() {
+            return;
+        }
+        let statuses = self.as_ref().selected_firmware_statuses();
+        if !statuses.iter().any(|status| {
+            status.target_strategy != "manual_import"
+                && !status.imported
+                && status.source_transport != "manual"
+        }) {
+            self.as_mut().set_launch_status(qstring(
+                "No downloadable firmware package is selected for this emulator.",
+            ));
+            return;
+        }
+        let generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        self.as_mut().set_firmware_busy(true);
+        self.as_mut()
+            .set_launch_status(qstring("Resolving the exact firmware source…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let progress_game_id = game_id.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-firmware-download".into())
+            .spawn(move || {
+                let result = crate::firmware::acquire_and_sync(&statuses, |message| {
+                    let progress_game_id = progress_game_id.clone();
+                    let _ = progress_thread.queue(move |mut model| {
+                        model.as_mut().update_firmware_progress(
+                            generation,
+                            progress_game_id,
+                            message,
+                        );
+                    });
+                })
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_firmware_action(generation, game_id, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_firmware_busy(false);
+            self.as_mut().set_launch_status(qstring(format!(
+                "Could not start firmware download: {error}"
+            )));
+        }
+    }
+
+    pub fn sync_firmware(mut self: Pin<&mut Self>) {
+        if *self.as_ref().firmware_busy() {
+            return;
+        }
+        let statuses = self.as_ref().selected_firmware_statuses();
+        if !statuses.iter().any(|status| {
+            status.target_strategy != "manual_import"
+                && status.imported
+                && !status.target_path.is_empty()
+        }) {
+            self.as_mut().set_launch_status(qstring(
+                "No imported package needs runtime sync for this emulator.",
+            ));
+            return;
+        }
+        let generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        self.as_mut().set_firmware_busy(true);
+        self.as_mut()
+            .set_launch_status(qstring("Verifying and syncing firmware…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-firmware-sync".into())
+            .spawn(move || {
+                let result =
+                    crate::firmware::sync_imported(&statuses).map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_firmware_action(generation, game_id, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_firmware_busy(false);
+            self.as_mut()
+                .set_launch_status(qstring(format!("Could not start firmware sync: {error}")));
+        }
+    }
+
+    fn finish_firmware_action(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_id: String,
+        result: Result<String, String>,
+    ) {
+        if generation != self.as_ref().rust().details_generation
+            || game_id != self.as_ref().game_id().to_string()
+        {
+            return;
+        }
+        self.as_mut().set_firmware_busy(false);
+        match result {
+            Ok(message) => {
+                self.as_mut().rust_mut().pending_firmware_message = Some(message);
+                self.as_mut().refresh_emulators();
+            }
+            Err(error) => self.as_mut().set_launch_status(qstring(format!(
+                "Could not import or sync firmware: {error}"
+            ))),
+        }
+    }
+
+    fn update_firmware_progress(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_id: String,
+        message: String,
+    ) {
+        if generation == self.as_ref().rust().details_generation
+            && game_id == self.as_ref().game_id().to_string()
+            && *self.as_ref().firmware_busy()
+        {
+            self.as_mut().set_launch_status(qstring(message));
+        }
+    }
+
+    fn clear_firmware_status(mut self: Pin<&mut Self>) {
+        self.as_mut().set_firmware_rule_count(0);
+        self.as_mut().set_firmware_missing_count(0);
+        self.as_mut().set_firmware_manual_count(0);
+        self.as_mut().set_firmware_optional_count(0);
+        self.as_mut().set_firmware_needs_import(false);
+        self.as_mut().set_firmware_can_download(false);
+        self.as_mut().set_firmware_can_sync(false);
+        self.as_mut().set_firmware_summary(QString::default());
+        self.as_mut()
+            .set_firmware_source_summary(QString::default());
+        self.as_mut()
+            .set_firmware_package_summary(QString::default());
+        self.as_mut().set_firmware_runtime_path(QString::default());
+    }
+
+    fn update_selected_firmware(mut self: Pin<&mut Self>, index: Option<usize>) {
+        let statuses = index
+            .and_then(|index| {
+                self.as_ref()
+                    .rust()
+                    .rom_firmware_statuses
+                    .get(index)
+                    .cloned()
+            })
+            .unwrap_or_default();
+        if statuses.is_empty() {
+            self.as_mut().clear_firmware_status();
+            return;
+        }
+        let missing = statuses
+            .iter()
+            .filter(|status| status.needs_action())
+            .count();
+        let manual = statuses
+            .iter()
+            .filter(|status| status.target_strategy == "manual_import" && !status.imported)
+            .count();
+        let optional = statuses
+            .iter()
+            .filter(|status| status.supports_hle_fallback && !status.imported)
+            .count();
+        let needs_import = statuses
+            .iter()
+            .any(|status| status.target_strategy != "manual_import" && !status.imported);
+        let can_download = statuses.iter().any(|status| {
+            status.target_strategy != "manual_import"
+                && !status.imported
+                && status.source_transport != "manual"
+        });
+        let can_sync = statuses.iter().any(|status| {
+            status.target_strategy != "manual_import"
+                && status.imported
+                && !status.target_path.is_empty()
+        });
+        let mut sources = statuses
+            .iter()
+            .map(crate::firmware::FirmwareStatus::source_label)
+            .collect::<Vec<_>>();
+        sources.sort_unstable();
+        sources.dedup();
+        let mut packages = statuses
+            .iter()
+            .map(|status| status.package_name.as_str())
+            .collect::<Vec<_>>();
+        packages.sort_unstable();
+        packages.dedup();
+        let runtime_path = statuses
+            .iter()
+            .map(|status| status.runtime_path.as_str())
+            .find(|path| !path.is_empty())
+            .unwrap_or_default();
+        self.as_mut()
+            .set_firmware_rule_count(count_i32(statuses.len()));
+        self.as_mut().set_firmware_missing_count(count_i32(missing));
+        self.as_mut().set_firmware_manual_count(count_i32(manual));
+        self.as_mut()
+            .set_firmware_optional_count(count_i32(optional));
+        if missing > 0 {
+            self.as_mut().set_can_launch(false);
+        }
+        self.as_mut().set_firmware_needs_import(needs_import);
+        self.as_mut().set_firmware_can_download(can_download);
+        self.as_mut().set_firmware_can_sync(can_sync);
+        self.as_mut()
+            .set_firmware_summary(qstring(crate::firmware::summarize(&statuses)));
+        self.as_mut()
+            .set_firmware_source_summary(qstring(sources.join(" · ")));
+        self.as_mut()
+            .set_firmware_package_summary(qstring(packages.join(" · ")));
+        self.as_mut()
+            .set_firmware_runtime_path(qstring(runtime_path));
+        if (has_cli_flag("--firmware-probe") || has_cli_flag("--firmware-ui-probe"))
+            && !statuses.is_empty()
+        {
+            println!(
+                "LUNCHBOX_FIRMWARE_READY rules={} missing={} manual={} optional={} launch_ready={} runtime={runtime_path:?}",
+                statuses.len(),
+                missing,
+                manual,
+                optional,
+                *self.as_ref().can_launch()
+            );
+        }
+    }
+
+    fn selected_firmware_statuses(&self) -> Vec<crate::firmware::FirmwareStatus> {
+        usize::try_from(*self.selected_emulator_option())
+            .ok()
+            .and_then(|index| self.rust().rom_firmware_statuses.get(index).cloned())
+            .unwrap_or_default()
+    }
+
     fn selected_rom_emulator_option(&self) -> Option<crate::emulator::RomEmulatorOption> {
         usize::try_from(*self.selected_emulator_option())
             .ok()
@@ -1018,6 +1403,18 @@ impl qobject::GameDetailsModel {
 
     pub fn launch_game(mut self: Pin<&mut Self>) {
         if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
+            return;
+        }
+        if self
+            .as_ref()
+            .selected_firmware_statuses()
+            .iter()
+            .any(crate::firmware::FirmwareStatus::needs_action)
+        {
+            self.as_mut().set_can_launch(false);
+            self.as_mut().set_launch_status(qstring(
+                "Install or configure the required firmware before launching this game.",
+            ));
             return;
         }
         let launch_input = if let Some(install) = self.as_ref().rust().prepared_install.clone() {

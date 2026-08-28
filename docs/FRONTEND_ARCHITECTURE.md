@@ -161,6 +161,18 @@ The initial implementation enforces this shape:
   `Z:` drive. RetroArch cores use exact catalog slugs and host-specific
   Libretro buildbot filenames, extract only the expected archive member, and
   replace files atomically. The same receipts are consumed by launch discovery.
+- Firmware remains a `runtime -> rules -> target` system, matching the legacy
+  architecture instead of assuming one BIOS directory per platform. Canonical
+  rules bind an exact emulator or RetroArch core and platform to one reviewed
+  source package, required/HLE policy, install mode, and target strategy.
+  Acquisition reuses the native qBittorrent client for exact Minerva members
+  and uses bounded HTTPS for official and GitHub archives. Local imports and
+  downloaded packages enter an isolated staged store only after safe-path,
+  size, file-count, and duplicate-entry validation. SQLite records the archive
+  digest and a complete per-file manifest. Repair verifies both before copying
+  or merging into a host-native runtime directory; it never invokes a command
+  shell. Manual-only dumps use a dedicated native directory and retain their
+  instructions without pretending that Lunchbox can acquire them.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -275,6 +287,11 @@ persisted MAME standalone default. On the current Linux host it launched the
 installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path
 list and MAME's ROM-free `pong` driver, then exited successfully;
 `--arcade-launch-ui-probe` leaves that state open for review.
+`--firmware-probe` opens an imported Coleco ADAM identity, runs normal emulator
+discovery, prints the exact resolved rule counts and runtime path, and exits
+only after firmware state reaches Qt. `--firmware-ui-probe` leaves that state
+open so the selected installed MAME runtime's five required packages, Minerva
+source, native target, and acquisition controls can be reviewed visually.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to

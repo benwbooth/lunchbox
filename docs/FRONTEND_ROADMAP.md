@@ -105,8 +105,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe
   record/history cleanup, and durable post-import pause policy with explicit
   retry/recovery controls and richer error history.
-- BIOS availability audit and explicit acquisition workflows, with provenance
-  and checksums retained for every imported artifact.
+- Extend the implemented runtime-scoped firmware inventory, exact Minerva and
+  official-source acquisition, local import, per-file integrity manifests, and
+  repair workflow with a whole-library missing-firmware audit and native
+  Windows/macOS release-host verification.
 
 ## Metadata and media
 

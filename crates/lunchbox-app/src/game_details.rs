@@ -743,6 +743,10 @@ pub(crate) fn torrent_bytes(bundle: &MinervaBundle) -> Result<Vec<u8>> {
     Ok(fetch_torrent(&bundle.torrent_url)?.as_ref().clone())
 }
 
+pub(crate) fn torrent_bytes_for_url(url: &str) -> Result<Vec<u8>> {
+    Ok(fetch_torrent(url)?.as_ref().clone())
+}
+
 fn rank_file_candidates(
     files: Vec<TorrentFileCandidate>,
     game_title: &str,

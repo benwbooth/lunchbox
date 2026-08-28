@@ -729,7 +729,7 @@ fn normalized_state(qbittorrent_state: &str, progress: f64) -> String {
     }
 }
 
-fn client_path_join(root: &str, child: &str) -> String {
+pub(crate) fn client_path_join(root: &str, child: &str) -> String {
     let root = root.trim_end_matches(['/', '\\']);
     let separator = if root.contains('\\') && !root.contains('/') {
         '\\'
@@ -756,7 +756,7 @@ fn safe_path_component(value: &str) -> String {
     }
 }
 
-fn safe_torrent_relative_path(value: &str) -> Result<PathBuf> {
+pub(crate) fn safe_torrent_relative_path(value: &str) -> Result<PathBuf> {
     let normalized = value.replace('\\', "/");
     let path = Path::new(&normalized);
     let mut safe = PathBuf::new();

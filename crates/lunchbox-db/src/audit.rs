@@ -53,6 +53,8 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
         "emulators",
         "emulator_platforms",
         "emulator_packages",
+        "firmware_sources",
+        "firmware_rules",
         "data_quality_issues",
     ] {
         counts.insert(table.to_owned(), table_count(connection, table)?);
@@ -230,6 +232,33 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
         [],
         |record| record.get(0),
     )?;
+    let invalid_firmware_rules: i64 = connection.query_row(
+        "SELECT count(*)
+         FROM firmware_rules r
+         JOIN emulators e ON e.id=r.emulator_id
+         JOIN firmware_sources s ON s.id=r.source_id
+         WHERE trim(r.runtime_name)=''
+            OR trim(r.source_package_name)=''
+            OR trim(r.notes)=''
+            OR (r.supports_hle_fallback=1 AND r.required=1)
+            OR ((s.transport='manual') <> (r.target_strategy='manual_import'))
+            OR (r.target_strategy='mame_rompath' AND r.runtime_kind<>'mame')
+            OR (r.runtime_kind='retroarch' AND lower(e.name)<>'retroarch')
+            OR (r.runtime_kind<>'retroarch' AND lower(e.name)<>lower(r.runtime_name))
+            OR (r.runtime_kind='retroarch' AND NOT EXISTS (
+                SELECT 1 FROM emulator_platforms ep
+                WHERE instr(';' || replace(ep.core_name, '; ', ';') || ';',
+                            ';' || r.runtime_name || ';') > 0
+            ))",
+        [],
+        |record| record.get(0),
+    )?;
+    let unused_firmware_sources: i64 = connection.query_row(
+        "SELECT count(*) FROM firmware_sources s
+         WHERE NOT EXISTS (SELECT 1 FROM firmware_rules r WHERE r.source_id=s.id)",
+        [],
+        |record| record.get(0),
+    )?;
 
     let checks = vec![
         error_check("sqlite_integrity", integrity == "ok", integrity),
@@ -302,6 +331,16 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
             "host_scoped_emulator_install_sources",
             invalid_emulator_packages == 0,
             invalid_emulator_packages.to_string(),
+        ),
+        error_check(
+            "runtime_scoped_firmware_rules",
+            invalid_firmware_rules == 0,
+            invalid_firmware_rules.to_string(),
+        ),
+        error_check(
+            "firmware_source_coverage",
+            unused_firmware_sources == 0,
+            unused_firmware_sources.to_string(),
         ),
         error_check(
             "open_error_quality_issues",

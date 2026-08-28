@@ -6,6 +6,7 @@ mod emulator;
 mod emulator_manager;
 pub mod emulator_manager_model;
 mod exo_install;
+mod firmware;
 mod game_details;
 pub mod game_details_model;
 mod ingest;

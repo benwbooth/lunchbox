@@ -93,6 +93,52 @@ pub struct ManagedEmulatorInstall {
     pub updated_at: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FirmwarePackageReceipt {
+    pub source_id: String,
+    pub package_name: String,
+    pub archive_path: String,
+    pub extracted_root: String,
+    pub sha256: String,
+    pub file_count: i64,
+    pub imported_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FirmwareFileReceipt {
+    pub source_id: String,
+    pub package_name: String,
+    pub relative_path: String,
+    pub store_path: String,
+    pub sha256: String,
+    pub file_size: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FirmwareInstallReceipt {
+    pub rule_key: String,
+    pub runtime_path: String,
+    pub target_path: String,
+    pub source_id: String,
+    pub package_name: String,
+    pub synced_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FirmwareDownloadReceipt {
+    pub source_id: String,
+    pub package_name: String,
+    pub torrent_url: String,
+    pub info_hash: String,
+    pub file_index: u32,
+    pub file_path: String,
+    pub local_path: String,
+    pub state: String,
+    pub progress: f64,
+    pub message: String,
+    pub updated_at: i64,
+}
+
 impl Default for LibraryPreferences {
     fn default() -> Self {
         Self {
@@ -519,6 +565,213 @@ impl SettingsStore {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn firmware_packages(&self) -> Result<Vec<FirmwarePackageReceipt>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT source_id, package_name, archive_path, extracted_root,
+                    sha256, file_count, imported_at
+             FROM firmware_packages
+             ORDER BY source_id, package_name",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(FirmwarePackageReceipt {
+                source_id: row.get(0)?,
+                package_name: row.get(1)?,
+                archive_path: row.get(2)?,
+                extracted_root: row.get(3)?,
+                sha256: row.get(4)?,
+                file_count: row.get(5)?,
+                imported_at: row.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn firmware_files(
+        &self,
+        source_id: &str,
+        package_name: &str,
+    ) -> Result<Vec<FirmwareFileReceipt>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT source_id, package_name, relative_path, store_path,
+                    sha256, file_size
+             FROM firmware_files
+             WHERE source_id=?1 AND package_name=?2
+             ORDER BY relative_path",
+        )?;
+        let rows = statement.query_map(params![source_id, package_name], |row| {
+            Ok(FirmwareFileReceipt {
+                source_id: row.get(0)?,
+                package_name: row.get(1)?,
+                relative_path: row.get(2)?,
+                store_path: row.get(3)?,
+                sha256: row.get(4)?,
+                file_size: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn firmware_installs(&self) -> Result<Vec<FirmwareInstallReceipt>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT rule_key, runtime_path, target_path, source_id,
+                    package_name, synced_at
+             FROM firmware_installs
+             ORDER BY rule_key, runtime_path",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(FirmwareInstallReceipt {
+                rule_key: row.get(0)?,
+                runtime_path: row.get(1)?,
+                target_path: row.get(2)?,
+                source_id: row.get(3)?,
+                package_name: row.get(4)?,
+                synced_at: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn record_firmware_package(
+        &self,
+        receipt: &FirmwarePackageReceipt,
+        files: &[FirmwareFileReceipt],
+    ) -> Result<()> {
+        validate_firmware_package_receipt(receipt)?;
+        if usize::try_from(receipt.file_count).ok() != Some(files.len()) {
+            bail!("firmware package receipt does not match its file manifest");
+        }
+        for file in files {
+            validate_firmware_file_receipt(receipt, file)?;
+        }
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO firmware_packages (
+                 source_id, package_name, archive_path, extracted_root,
+                 sha256, file_count, imported_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(source_id, package_name) DO UPDATE SET
+                 archive_path=excluded.archive_path,
+                 extracted_root=excluded.extracted_root,
+                 sha256=excluded.sha256,
+                 file_count=excluded.file_count,
+                 imported_at=excluded.imported_at",
+            params![
+                receipt.source_id,
+                receipt.package_name,
+                receipt.archive_path,
+                receipt.extracted_root,
+                receipt.sha256,
+                receipt.file_count,
+                receipt.imported_at,
+            ],
+        )?;
+        transaction.execute(
+            "DELETE FROM firmware_files WHERE source_id=?1 AND package_name=?2",
+            params![receipt.source_id, receipt.package_name],
+        )?;
+        {
+            let mut insert = transaction.prepare(
+                "INSERT INTO firmware_files (
+                     source_id, package_name, relative_path, store_path,
+                     sha256, file_size
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            for file in files {
+                insert.execute(params![
+                    file.source_id,
+                    file.package_name,
+                    file.relative_path,
+                    file.store_path,
+                    file.sha256,
+                    file.file_size,
+                ])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn record_firmware_install(&self, receipt: &FirmwareInstallReceipt) -> Result<()> {
+        validate_firmware_install_receipt(receipt)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO firmware_installs (
+                 rule_key, runtime_path, target_path, source_id,
+                 package_name, synced_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(rule_key, runtime_path) DO UPDATE SET
+                 target_path=excluded.target_path,
+                 source_id=excluded.source_id,
+                 package_name=excluded.package_name,
+                 synced_at=excluded.synced_at",
+            params![
+                receipt.rule_key,
+                receipt.runtime_path,
+                receipt.target_path,
+                receipt.source_id,
+                receipt.package_name,
+                receipt.synced_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn firmware_downloads_for_info_hash(
+        &self,
+        info_hash: &str,
+    ) -> Result<Vec<FirmwareDownloadReceipt>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT source_id, package_name, torrent_url, info_hash,
+                    file_index, file_path, local_path, state, progress,
+                    message, updated_at
+             FROM firmware_downloads
+             WHERE info_hash=?1
+             ORDER BY source_id, package_name",
+        )?;
+        let rows = statement.query_map([info_hash], firmware_download_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn record_firmware_download(&self, receipt: &FirmwareDownloadReceipt) -> Result<()> {
+        validate_firmware_download_receipt(receipt)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO firmware_downloads (
+                 source_id, package_name, torrent_url, info_hash, file_index,
+                 file_path, local_path, state, progress, message, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(source_id, package_name) DO UPDATE SET
+                 torrent_url=excluded.torrent_url,
+                 info_hash=excluded.info_hash,
+                 file_index=excluded.file_index,
+                 file_path=excluded.file_path,
+                 local_path=excluded.local_path,
+                 state=excluded.state,
+                 progress=excluded.progress,
+                 message=excluded.message,
+                 updated_at=excluded.updated_at",
+            params![
+                receipt.source_id,
+                receipt.package_name,
+                receipt.torrent_url,
+                receipt.info_hash,
+                i64::from(receipt.file_index),
+                receipt.file_path,
+                receipt.local_path,
+                receipt.state,
+                receipt.progress,
+                receipt.message,
+                receipt.updated_at,
+            ],
+        )?;
+        Ok(())
     }
 
     pub fn record_managed_emulator_install(
@@ -1171,6 +1424,60 @@ fn migrate(connection: &Connection) -> Result<()> {
              updated_at INTEGER NOT NULL,
              PRIMARY KEY (host_system_slug, manager, package_id)
          );
+         CREATE TABLE IF NOT EXISTS firmware_packages (
+             source_id TEXT NOT NULL,
+             package_name TEXT NOT NULL,
+             archive_path TEXT NOT NULL,
+             extracted_root TEXT NOT NULL,
+             sha256 TEXT NOT NULL CHECK (length(sha256)=64),
+             file_count INTEGER NOT NULL CHECK (file_count >= 0),
+             imported_at INTEGER NOT NULL,
+             PRIMARY KEY (source_id, package_name)
+         );
+         CREATE TABLE IF NOT EXISTS firmware_files (
+             source_id TEXT NOT NULL,
+             package_name TEXT NOT NULL,
+             relative_path TEXT NOT NULL,
+             store_path TEXT NOT NULL,
+             sha256 TEXT NOT NULL CHECK (length(sha256)=64),
+             file_size INTEGER NOT NULL CHECK (file_size >= 0),
+             PRIMARY KEY (source_id, package_name, relative_path),
+             FOREIGN KEY (source_id, package_name)
+                 REFERENCES firmware_packages(source_id, package_name)
+                 ON DELETE CASCADE
+         );
+         CREATE INDEX IF NOT EXISTS firmware_files_sha256
+             ON firmware_files(sha256);
+         CREATE TABLE IF NOT EXISTS firmware_downloads (
+             source_id TEXT NOT NULL,
+             package_name TEXT NOT NULL,
+             torrent_url TEXT NOT NULL,
+             info_hash TEXT NOT NULL,
+             file_index INTEGER NOT NULL CHECK (file_index >= 0),
+             file_path TEXT NOT NULL,
+             local_path TEXT NOT NULL,
+             state TEXT NOT NULL CHECK (
+                 state IN ('queued', 'downloading', 'paused', 'complete', 'imported', 'failed')
+             ),
+             progress REAL NOT NULL CHECK (progress >= 0.0 AND progress <= 1.0),
+             message TEXT NOT NULL,
+             updated_at INTEGER NOT NULL,
+             PRIMARY KEY (source_id, package_name)
+         );
+         CREATE INDEX IF NOT EXISTS firmware_downloads_info_hash
+             ON firmware_downloads(info_hash, state);
+         CREATE TABLE IF NOT EXISTS firmware_installs (
+             rule_key TEXT NOT NULL,
+             runtime_path TEXT NOT NULL,
+             target_path TEXT NOT NULL,
+             source_id TEXT NOT NULL,
+             package_name TEXT NOT NULL,
+             synced_at INTEGER NOT NULL,
+             PRIMARY KEY (rule_key, runtime_path),
+             FOREIGN KEY (source_id, package_name)
+                 REFERENCES firmware_packages(source_id, package_name)
+                 ON DELETE CASCADE
+         );
          CREATE TABLE IF NOT EXISTS prepared_game_installs (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -1314,6 +1621,99 @@ fn validate_managed_emulator_install(
         "flatpak" | "appimage" | "nix" | "github" | "direct" | "winget" | "homebrew" | "libretro"
     ) {
         bail!("unsupported emulator install manager {manager}");
+    }
+    Ok(())
+}
+
+fn validate_firmware_package_receipt(receipt: &FirmwarePackageReceipt) -> Result<()> {
+    if receipt.source_id.trim().is_empty() || receipt.package_name.trim().is_empty() {
+        bail!("firmware packages require exact source and package identities");
+    }
+    if receipt.archive_path.trim().is_empty() || receipt.extracted_root.trim().is_empty() {
+        bail!("firmware package receipts require archive and extracted paths");
+    }
+    if receipt.sha256.len() != 64 || !receipt.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        bail!("firmware package receipts require a SHA-256 digest");
+    }
+    if receipt.file_count < 0 {
+        bail!("firmware package file counts cannot be negative");
+    }
+    Ok(())
+}
+
+fn validate_firmware_file_receipt(
+    package: &FirmwarePackageReceipt,
+    file: &FirmwareFileReceipt,
+) -> Result<()> {
+    if file.source_id != package.source_id || file.package_name != package.package_name {
+        bail!("firmware file manifest identities do not match their package");
+    }
+    if file.relative_path.trim().is_empty()
+        || file.store_path.trim().is_empty()
+        || Path::new(&file.relative_path).is_absolute()
+        || Path::new(&file.relative_path)
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        bail!("firmware file manifests require safe relative paths");
+    }
+    if file.sha256.len() != 64
+        || !file.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || file.file_size < 0
+    {
+        bail!("firmware file manifests require a digest and non-negative size");
+    }
+    Ok(())
+}
+
+fn validate_firmware_install_receipt(receipt: &FirmwareInstallReceipt) -> Result<()> {
+    if receipt.rule_key.trim().is_empty()
+        || receipt.runtime_path.trim().is_empty()
+        || receipt.target_path.trim().is_empty()
+        || receipt.source_id.trim().is_empty()
+        || receipt.package_name.trim().is_empty()
+    {
+        bail!("firmware install receipts require exact rule, package, and path identities");
+    }
+    Ok(())
+}
+
+fn firmware_download_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<FirmwareDownloadReceipt> {
+    let file_index = row.get::<_, i64>(4)?;
+    Ok(FirmwareDownloadReceipt {
+        source_id: row.get(0)?,
+        package_name: row.get(1)?,
+        torrent_url: row.get(2)?,
+        info_hash: row.get(3)?,
+        file_index: u32::try_from(file_index).unwrap_or_default(),
+        file_path: row.get(5)?,
+        local_path: row.get(6)?,
+        state: row.get(7)?,
+        progress: row.get(8)?,
+        message: row.get(9)?,
+        updated_at: row.get(10)?,
+    })
+}
+
+fn validate_firmware_download_receipt(receipt: &FirmwareDownloadReceipt) -> Result<()> {
+    if receipt.source_id.trim().is_empty()
+        || receipt.package_name.trim().is_empty()
+        || !receipt.torrent_url.starts_with("https://")
+        || receipt.info_hash.trim().is_empty()
+        || receipt.file_path.trim().is_empty()
+        || receipt.local_path.trim().is_empty()
+    {
+        bail!("firmware downloads require exact source, torrent, file, and path identities");
+    }
+    if !matches!(
+        receipt.state.as_str(),
+        "queued" | "downloading" | "paused" | "complete" | "imported" | "failed"
+    ) || !(0.0..=1.0).contains(&receipt.progress)
+        || !receipt.progress.is_finite()
+    {
+        bail!("firmware download state is invalid");
     }
     Ok(())
 }
@@ -1616,6 +2016,100 @@ mod tests {
             store
                 .record_managed_emulator_install("", "linux", "snap", "bad", "")
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn firmware_receipts_are_exact_and_idempotent() {
+        let (_directory, store) = store();
+        let mut package = FirmwarePackageReceipt {
+            source_id: "minerva:retroarch-system-files".into(),
+            package_name: "Sony - PlayStation (SwanStation).zip".into(),
+            archive_path: "/store/firmware/playstation.zip".into(),
+            extracted_root: "/store/firmware/playstation".into(),
+            sha256: "a".repeat(64),
+            file_count: 1,
+            imported_at: 10,
+        };
+        let file = FirmwareFileReceipt {
+            source_id: package.source_id.clone(),
+            package_name: package.package_name.clone(),
+            relative_path: "scph5501.bin".into(),
+            store_path: "/store/firmware/playstation/scph5501.bin".into(),
+            sha256: "b".repeat(64),
+            file_size: 512 * 1024,
+        };
+        store
+            .record_firmware_package(&package, std::slice::from_ref(&file))
+            .unwrap();
+        package.imported_at = 11;
+        store
+            .record_firmware_package(&package, std::slice::from_ref(&file))
+            .unwrap();
+
+        let install = FirmwareInstallReceipt {
+            rule_key: "duckstation:DuckStation:Sony Playstation".into(),
+            runtime_path: "/runtime/bios".into(),
+            target_path: "/runtime/bios".into(),
+            source_id: package.source_id.clone(),
+            package_name: package.package_name.clone(),
+            synced_at: 12,
+        };
+        store.record_firmware_install(&install).unwrap();
+        store.record_firmware_install(&install).unwrap();
+
+        assert_eq!(store.firmware_packages().unwrap(), vec![package]);
+        assert_eq!(
+            store
+                .firmware_files(
+                    "minerva:retroarch-system-files",
+                    "Sony - PlayStation (SwanStation).zip"
+                )
+                .unwrap(),
+            vec![file.clone()]
+        );
+        assert_eq!(store.firmware_installs().unwrap(), vec![install]);
+        let mut download = FirmwareDownloadReceipt {
+            source_id: "minerva:retroarch-system-files".into(),
+            package_name: "Sony - PlayStation (SwanStation).zip".into(),
+            torrent_url: "https://example.invalid/firmware.torrent".into(),
+            info_hash: "abc123".into(),
+            file_index: 42,
+            file_path: "firmware/playstation.zip".into(),
+            local_path: "/downloads/firmware/playstation.zip".into(),
+            state: "downloading".into(),
+            progress: 0.5,
+            message: "Downloading".into(),
+            updated_at: 13,
+        };
+        store.record_firmware_download(&download).unwrap();
+        download.state = "complete".into();
+        download.progress = 1.0;
+        download.updated_at = 14;
+        store.record_firmware_download(&download).unwrap();
+        assert_eq!(
+            store.firmware_downloads_for_info_hash("abc123").unwrap(),
+            vec![download]
+        );
+        assert!(
+            store
+                .record_firmware_package(
+                    &FirmwarePackageReceipt {
+                        sha256: "bad".into(),
+                        ..store.firmware_packages().unwrap().remove(0)
+                    },
+                    std::slice::from_ref(&file)
+                )
+                .is_err()
+        );
+        let connection = Connection::open(store.path()).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM firmware_files", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            1
         );
     }
 

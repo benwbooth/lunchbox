@@ -2,6 +2,7 @@ mod audit;
 mod compress;
 mod database;
 mod emulators;
+mod firmware;
 mod ids;
 mod inspect;
 mod libretro;
@@ -154,6 +155,7 @@ fn main() -> Result<()> {
         } => {
             let mut connection = database::open_existing(&database)?;
             let stats = emulators::import(&mut connection, &source, &import_timestamp)?;
+            firmware::import(&mut connection)?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Command::PrepareLibretro { manifest, cache } => {
