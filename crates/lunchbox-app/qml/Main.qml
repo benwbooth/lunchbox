@@ -10,12 +10,12 @@ import Lunchbox
 ApplicationWindow {
     id: root
     visible: true
-    width: controllerProfileUiProbe || launchProfileUiProbe
+    width: bigBoxUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || variantUiProbe
            ? 1920 : 1440
-    height: controllerProfileUiProbe || launchProfileUiProbe
+    height: bigBoxUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || variantUiProbe
@@ -48,6 +48,9 @@ ApplicationWindow {
     property bool clearAllDownloadHistory: false
     property int pendingDownloadPlanIndex: -1
     property bool gridMode: true
+    property bool bigBoxActive: false
+    property int bigBoxPreviousVisibility: Window.Windowed
+    property bool bigBoxProbeCaptured: false
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
@@ -119,6 +122,7 @@ ApplicationWindow {
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
+    readonly property bool bigBoxUiProbe: Qt.application.arguments.indexOf("--bigbox-ui-probe") >= 0
     readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
     readonly property bool favoriteProbe: Qt.application.arguments.indexOf("--favorite-probe") >= 0
     readonly property bool favoriteUiProbe: Qt.application.arguments.indexOf("--favorite-ui-probe") >= 0
@@ -187,7 +191,10 @@ ApplicationWindow {
     palette.highlightedText: "#10141c"
 
     onClosing: close => {
-        if (library.favorite_pending_count > 0 || library.collection_busy) {
+        if (root.bigBoxActive) {
+            close.accepted = false
+            root.exitBigBox()
+        } else if (library.favorite_pending_count > 0 || library.collection_busy) {
             close.accepted = false
             closeAfterFavoriteSave = true
         }
@@ -231,6 +238,32 @@ ApplicationWindow {
     function openLaunchProfileManager() {
         launchProfileManagerDialog.open()
         launchProfileManager.initialize()
+    }
+
+    function enterBigBox() {
+        if (bigBoxActive)
+            return
+        bigBoxPreviousVisibility = root.visibility
+        bigBoxActive = true
+        if (!bigBoxUiProbe)
+            root.showFullScreen()
+        bigBoxView.forceActiveFocus()
+    }
+
+    function exitBigBox() {
+        if (!bigBoxActive)
+            return
+        bigBoxActive = false
+        if (!bigBoxUiProbe) {
+            if (bigBoxPreviousVisibility === Window.FullScreen)
+                root.showFullScreen()
+            else if (bigBoxPreviousVisibility === Window.Maximized)
+                root.showMaximized()
+            else
+                root.showNormal()
+        }
+        if (gameViewLoader.item)
+            gameViewLoader.item.forceActiveFocus()
     }
 
     function selectLibrary(availabilityKey) {
@@ -615,7 +648,8 @@ ApplicationWindow {
     MediaPlayer {
         id: gameVideoPlayer
         property bool resumeApplied: false
-        source: gameDetails.video_available ? gameDetails.video_url : ""
+        source: !root.bigBoxActive && gameDetails.video_available
+                ? gameDetails.video_url : ""
         audioOutput: gameVideoAudio
         videoOutput: mediaFullscreen.opened ? fullscreenVideoOutput : detailVideoOutput
         loops: MediaPlayer.Infinite
@@ -935,6 +969,11 @@ ApplicationWindow {
             if (library.ready) {
                 if (library.catalog_probe)
                     Qt.quit()
+                else if (root.bigBoxUiProbe) {
+                    root.selectedGameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                    library.apply_filter("Super Mario Bros.",
+                                         "Nintendo Entertainment System", "")
+                }
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
                 else if (root.libraryAuditUiProbe) {
@@ -989,6 +1028,9 @@ ApplicationWindow {
         function onFilteringChanged() {
             if (library.filter_probe && library.ready && !library.filtering)
                 Qt.quit()
+            else if (root.bigBoxUiProbe && library.ready && !library.filtering
+                     && !root.bigBoxActive)
+                root.enterBigBox()
             else if ((root.favoriteProbe || root.favoriteUiProbe)
                      && library.ready && !library.filtering
                      && searchField.text.length > 0)
@@ -1107,6 +1149,77 @@ ApplicationWindow {
             }
             if (root.smartCollectionProbe || root.smartCollectionUiProbe)
                 root.finishSmartCollectionProbe()
+        }
+    }
+
+    Connections {
+        target: gameDetails
+        function onLoadingChanged() {
+            if (root.bigBoxUiProbe && root.bigBoxActive
+                    && !root.bigBoxProbeCaptured
+                    && !gameDetails.loading
+                    && gameDetails.title.length > 0)
+                bigBoxScreenshotTimer.restart()
+        }
+        function onTitleChanged() {
+            if (root.bigBoxUiProbe && root.bigBoxActive
+                    && !root.bigBoxProbeCaptured
+                    && !gameDetails.loading
+                    && gameDetails.title.length > 0)
+                bigBoxScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: bigBoxScreenshotTimer
+        interval: 650
+        repeat: false
+        onTriggered: {
+            if (!root.bigBoxActive || library.filtered_count <= 0
+                    || bigBoxView.selectedGameId.length === 0
+                    || gameDetails.title.length === 0) {
+                console.error("LUNCHBOX_BIGBOX_UI_FAILED empty live selection")
+                Qt.exit(2)
+                return
+            }
+            if (bigBoxView.selectedGameId
+                    !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                    || gameDetails.game_id !== bigBoxView.selectedGameId
+                    || library.row_for_game(bigBoxView.selectedGameId) < 0) {
+                console.error("LUNCHBOX_BIGBOX_UI_FAILED focus restoration")
+                Qt.exit(2)
+                return
+            }
+            root.bigBoxProbeCaptured = true
+            if (root.screenshotOutput.length === 0) {
+                console.warn("LUNCHBOX_BIGBOX_UI_READY title=" + gameDetails.title
+                             + " games=" + library.filtered_count)
+                Qt.exit(0)
+                return
+            }
+            bigBoxView.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_BIGBOX_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.warn("LUNCHBOX_BIGBOX_UI_READY title=" + gameDetails.title
+                             + " games=" + library.filtered_count
+                             + " screenshot=" + root.screenshotOutput)
+                Qt.exit(0)
+            })
+        }
+    }
+
+    Timer {
+        interval: 15000
+        running: root.bigBoxUiProbe && !root.bigBoxProbeCaptured
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_BIGBOX_UI_FAILED timeout status="
+                          + library.status_message)
+            Qt.exit(2)
         }
     }
 
@@ -2892,6 +3005,31 @@ ApplicationWindow {
         }
     }
 
+    BigBoxView {
+        id: bigBoxView
+        anchors.fill: parent
+        z: 1000
+        active: root.bigBoxActive
+        library: library
+        details: gameDetails
+        preferredGameId: root.selectedGameId
+        currentFilterKey: root.availability
+        onExitRequested: root.exitBigBox()
+        onFilterRequested: key => root.selectLibrary(key)
+        onGameSelected: function(gameId, databaseId, title, platform,
+                                 local, downloadable) {
+            root.openGame(gameId, databaseId, title, platform,
+                          local, downloadable)
+        }
+        onDetailsRequested: function(gameId, databaseId, title, platform,
+                                     local, downloadable) {
+            root.exitBigBox()
+            root.openGame(gameId, databaseId, title, platform,
+                          local, downloadable)
+        }
+        onLaunchRequested: gameDetails.launch_game()
+    }
+
     Rectangle {
         id: header
         anchors.left: parent.left
@@ -2974,6 +3112,15 @@ ApplicationWindow {
             anchors.rightMargin: 20
             anchors.verticalCenter: parent.verticalCenter
             spacing: 9
+            HeaderButton {
+                text: "▣"
+                implicitWidth: 42
+                leftPadding: 0
+                rightPadding: 0
+                onClicked: root.enterBigBox()
+                ToolTip.visible: hovered
+                ToolTip.text: "Couch mode"
+            }
             HeaderButton {
                 text: "Minerva  " + library.downloadable_game_count
                 visible: root.width >= 1280

@@ -173,6 +173,9 @@ pub mod qobject {
         fn favorite_pending(self: &LibraryModel, game_uid: QString) -> bool;
 
         #[qinvokable]
+        fn row_for_game(self: &LibraryModel, game_uid: QString) -> i32;
+
+        #[qinvokable]
         fn set_favorite(self: Pin<&mut LibraryModel>, game_uid: QString, favorite: bool);
 
         #[qinvokable]
@@ -1294,6 +1297,19 @@ impl qobject::LibraryModel {
         self.rust()
             .favorite_requests
             .contains(&game_uid.to_string())
+    }
+
+    pub fn row_for_game(&self, game_uid: QString) -> i32 {
+        let game_uid = game_uid.to_string();
+        let Some(catalog_index) = self.rust().game_index_by_id.get(&game_uid) else {
+            return -1;
+        };
+        self.rust()
+            .filtered_indices
+            .iter()
+            .position(|index| index == catalog_index)
+            .map(saturating_i32)
+            .unwrap_or(-1)
     }
 
     pub fn set_favorite(mut self: Pin<&mut Self>, game_uid: QString, favorite: bool) {

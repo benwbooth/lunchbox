@@ -22,6 +22,12 @@ filtering run on worker threads, while virtualized Qt views consume a native
 `QAbstractListModel`. Use `--startup-probe` to measure shell construction without
 waiting for database loading.
 
+The header's Couch Mode control opens a fullscreen, keyboard-operated
+living-room presentation over those same models. It preserves the exact
+selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent
+views, and routes Play, favorite changes, download options, and desktop details
+through the existing native services. Escape returns to desktop mode.
+
 To exercise the preserved acquisition-first catalog, layer the local legacy
 game catalog, Minerva bundle index, and optional user state over the canonical
 database:

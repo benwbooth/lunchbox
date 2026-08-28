@@ -469,6 +469,16 @@ persisted MAME standalone default. On the current Linux host it launched the
 installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path
 list and MAME's ROM-free `pong` driver, then exited successfully;
 `--arcade-launch-ui-probe` leaves that state open for review.
+
+`--bigbox-ui-probe --screenshot-output PATH` opens the native couch-mode shell
+at a 1920x1200-class test size, filters the real catalog to the preserved Super
+Mario Bros. family, restores the exact stable UUID for LaunchBox database ID
+140, loads its real details and cached media, captures the full presentation,
+and exits only after the selected row, details identity, and filtered-row lookup
+agree. Pass `--media-directory PATH` to exercise an existing media cache. The
+interactive Couch Mode control enters true fullscreen and Escape restores the
+desktop window.
+
 `--firmware-probe` opens an imported Coleco ADAM identity, runs normal emulator
 discovery, prints the exact resolved rule counts and runtime path, and exits
 only after firmware state reaches Qt. `--firmware-ui-probe` leaves that state

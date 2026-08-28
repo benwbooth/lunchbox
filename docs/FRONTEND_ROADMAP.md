@@ -98,6 +98,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   exercised; package mutations and Windows/macOS behavior retain release-host
   gates.
 - Measurable shell-ready and catalog-ready probes.
+- A native couch-mode browse/play slice backed by the same Rust catalog,
+  details, media, favorite, filter, download, and launch services as desktop
+  mode. It restores the exact selected stable UUID, virtualizes the horizontal
+  cover shelf, works without a mouse by keyboard, enters real fullscreen, and
+  returns to the complete desktop management surface without duplicating state.
 
 ## Collection management
 
@@ -183,8 +188,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 ## Full-screen interface
 
-- A separate controller-first Qt Quick presentation backed by the same Rust
-  models and services—not a second database or duplicated backend.
+- Extend the implemented native Qt Quick couch-mode browse/play presentation,
+  which already shares the Rust models and services rather than creating a
+  second database or duplicated backend.
 - Theme packages, platform/game wheels, details and game menus, attract mode,
   startup/shutdown/pause screens, screensaver, background music, sound packs,
   marquee monitor support, parental lock, and couch-safe settings.

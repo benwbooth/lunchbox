@@ -7,7 +7,7 @@ fn main() {
             .depend("QtQuick.Layouts")
             .depend("QtQuick3D")
             .depend("QtMultimedia")
-            .qml_files(["qml/Box3DViewer.qml", "qml/Main.qml"]),
+            .qml_files(["qml/BigBoxView.qml", "qml/Box3DViewer.qml", "qml/Main.qml"]),
     )
     .qt_module("Quick")
     .qt_module("QuickControls2")
