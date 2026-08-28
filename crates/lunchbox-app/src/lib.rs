@@ -46,6 +46,19 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--archive-import-probe") {
+        return match local_import::archive_import_probe() {
+            Ok(evidence) => {
+                println!("LUNCHBOX_ARCHIVE_IMPORT_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_ARCHIVE_IMPORT_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--alternate-title-probe") {
         return match game_details::alternate_title_probe() {
             Ok(evidence) => {

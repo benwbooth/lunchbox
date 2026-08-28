@@ -98,7 +98,9 @@ ApplicationWindow {
     readonly property int activeFilterCount: (availability.length > 0 ? 1 : 0)
                                                + (library.hide_non_retail ? 1 : 0)
                                                + (library.hide_adult ? 1 : 0)
+    readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
     readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
+                                          || archiveImportUiProbe
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
@@ -940,11 +942,47 @@ ApplicationWindow {
                 localImport.start_scan("", true)
         }
         function onResult_countChanged() {
+            if (root.archiveImportUiProbe && localImport.result_count > 0)
+                archiveImportScreenshotTimer.restart()
             if (root.importCommitProbe && localImport.result_count > 0
                     && localImport.selected_count === 0) {
                 localImport.select_visible("all")
                 localImport.import_selected()
             }
+        }
+    }
+
+    Timer {
+        id: archiveImportScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            const status = localImport.result_status_at(0)
+            const archiveDetail = localImport.result_archive_detail_at(0)
+            if (status !== "EXACT" || archiveDetail.length === 0) {
+                console.error("LUNCHBOX_ARCHIVE_IMPORT_UI_FAILED status="
+                              + status + " detail=" + archiveDetail)
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                console.log("LUNCHBOX_ARCHIVE_IMPORT_UI_READY detail="
+                            + archiveDetail)
+                Qt.quit()
+                return
+            }
+            importDialogLoader.item.contentItem.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_ARCHIVE_IMPORT_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_ARCHIVE_IMPORT_UI_READY detail="
+                            + archiveDetail + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
         }
     }
 
@@ -5536,15 +5574,27 @@ ApplicationWindow {
                         checked: { importRow.importRevision; return localImport.result_selected_at(importRow.index) }
                         onClicked: localImport.toggle_selected(importRow.index)
                     }
-                    Text {
+                    Column {
                         anchors.left: parent.left
                         anchors.leftMargin: 45
                         anchors.verticalCenter: parent.verticalCenter
                         width: 240
-                        text: { importRow.importRevision; return localImport.result_file_name_at(importRow.index) }
-                        color: root.ink
-                        font.pixelSize: 11
-                        elide: Text.ElideMiddle
+                        spacing: 3
+                        Text {
+                            width: parent.width
+                            text: { importRow.importRevision; return localImport.result_file_name_at(importRow.index) }
+                            color: root.ink
+                            font.pixelSize: 11
+                            elide: Text.ElideMiddle
+                        }
+                        Text {
+                            width: parent.width
+                            visible: text.length > 0
+                            text: { importRow.importRevision; return localImport.result_archive_detail_at(importRow.index) }
+                            color: root.accentCool
+                            font.pixelSize: 9
+                            elide: Text.ElideMiddle
+                        }
                     }
                     Rectangle {
                         anchors.left: parent.left

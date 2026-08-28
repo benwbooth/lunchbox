@@ -87,6 +87,12 @@ review. Titles and directory names are never fuzzy-accepted.
 A completed rescan marks disappeared paths as `missing`; it does not delete their history or user
 metadata. A changed file at the same path is relinked to its new content-addressed artifact.
 
-Archives are currently inventoried as container artifacts. Their members are not silently treated
-as games. Archive-member indexing needs format-aware extraction and will be implemented separately
-so that hashes correspond to the actual emulated content rather than guessed filenames.
+The desktop scanner handles the common one-ROM ZIP case without extraction: it
+enumerates contained paths, rejects unsafe, encrypted, nested-archive, and
+metadata entries, then streams the sole recognized ROM member through the same
+CRC32/MD5/SHA-1 pipeline. The original ZIP remains the persisted local path and
+the review UI presents the member beneath its container. A ZIP with multiple
+recognized ROM members stays unselected and receives no guessed identity.
+Multi-member selection and 7z/RAR member inspection remain separate work. The
+canonical `scan-local` data command still inventories archives as container
+artifacts rather than silently treating members as games.

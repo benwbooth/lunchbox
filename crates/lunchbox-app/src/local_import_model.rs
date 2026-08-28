@@ -65,6 +65,9 @@ pub mod qobject {
         fn result_file_name_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn result_archive_detail_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn result_path_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -395,6 +398,7 @@ impl qobject::LocalImportModel {
                     .filter(|(_, result)| {
                         (search.is_empty()
                             || result.file_name.to_lowercase().contains(&search)
+                            || result.archive_member.to_lowercase().contains(&search)
                             || result.display_title.to_lowercase().contains(&search)
                             || result.platform.to_lowercase().contains(&search)
                             || matched_title(result).to_lowercase().contains(&search))
@@ -547,9 +551,36 @@ impl qobject::LocalImportModel {
             .unwrap_or_default()
     }
 
+    pub fn result_archive_detail_at(&self, index: i32) -> QString {
+        self.result_at(index)
+            .map(|result| {
+                if !result.archive_member.is_empty() {
+                    qstring(format!("↳ {}", result.archive_member))
+                } else if result.archive_member_count > 1 {
+                    qstring(format!(
+                        "{} ROM members · review required",
+                        result.archive_member_count
+                    ))
+                } else {
+                    QString::default()
+                }
+            })
+            .unwrap_or_default()
+    }
+
     pub fn result_path_at(&self, index: i32) -> QString {
         self.result_at(index)
-            .map(|result| qstring(result.path.to_string_lossy()))
+            .map(|result| {
+                if result.archive_member.is_empty() {
+                    qstring(result.path.to_string_lossy())
+                } else {
+                    qstring(format!(
+                        "{}  ›  {}",
+                        result.path.to_string_lossy(),
+                        result.archive_member
+                    ))
+                }
+            })
             .unwrap_or_default()
     }
 
@@ -593,7 +624,13 @@ impl qobject::LocalImportModel {
                         "No strong checksum match · kept local-only".to_owned()
                     }
                     MatchState::InventoryOnly => {
-                        "Checksums disabled · local inventory only".to_owned()
+                        if result.archive_member_count > 1 {
+                            format!("{} · no identity guessed", result.match_method)
+                        } else if result.archive_member_count == 1 {
+                            "ZIP member checksums disabled · local inventory only".to_owned()
+                        } else {
+                            "Checksums disabled · local inventory only".to_owned()
+                        }
                     }
                     MatchState::Error(error) => error.clone(),
                 })

@@ -21,9 +21,10 @@ const FALLBACK_ROM_EXTENSIONS: &[&str] = &[
     "7z", "a26", "a52", "a78", "atr", "atx", "bin", "car", "cas", "chd", "cia", "ciso", "col",
     "cso", "cue", "dsi", "fds", "fig", "gba", "gbc", "gcm", "gcz", "gen", "gg", "int", "iso",
     "j64", "jag", "lnx", "md", "m3u", "n64", "nds", "nes", "ngc", "ngp", "pbp", "pce", "pkg",
-    "rar", "rvz", "sfc", "sgb", "sgx", "smc", "smd", "sms", "swc", "unf", "unif", "v64", "vec",
-    "wad", "wbfs", "ws", "wsc", "xex", "xfd", "z64", "zip", "32x", "3ds",
+    "rar", "rvz", "sfc", "sgb", "sgx", "smc", "smd", "sms", "swc", "unf", "unh", "unif", "v64",
+    "vec", "wad", "wbfs", "ws", "wsc", "xex", "xfd", "z64", "zip", "32x", "3ds",
 ];
+const ARCHIVE_EXTENSIONS: &[&str] = &["zip", "7z", "rar"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MatchIdentity {
@@ -59,6 +60,8 @@ pub struct ScanResult {
     pub path: PathBuf,
     pub relative_path: PathBuf,
     pub file_name: String,
+    pub archive_member: String,
+    pub archive_member_count: usize,
     pub display_title: String,
     pub platform: String,
     pub file_size: u64,
@@ -99,6 +102,21 @@ struct MatchIndex {
     by_md5: HashMap<String, Vec<Candidate>>,
     extension_platforms: HashMap<String, Vec<String>>,
     extensions: HashSet<String>,
+}
+
+#[derive(Clone, Debug)]
+enum ZipInspection {
+    Empty,
+    Multiple {
+        member_count: usize,
+        inferred_platform: Option<String>,
+    },
+    Single {
+        member_name: String,
+        extension: String,
+        size: u64,
+        digests: Option<Digests>,
+    },
 }
 
 pub fn load_platform_names(discovery_path: &Path) -> Result<Vec<String>> {
@@ -255,17 +273,9 @@ pub fn scan_directory(
             .and_then(|value| value.to_str())
             .map(str::to_ascii_lowercase)
             .unwrap_or_default();
-        let inferred_platform = if platform_hint.is_empty() {
-            index
-                .extension_platforms
-                .get(&extension)
-                .and_then(|names| (names.len() == 1).then(|| names[0].clone()))
-        } else {
-            Some(platform_hint.to_owned())
-        };
-        let digests = if checksums_enabled {
-            match hash_file(path, cancelled) {
-                Ok(Some(digests)) => Some(digests),
+        let zip_inspection = if extension == "zip" {
+            match inspect_zip(path, &index, checksums_enabled, cancelled) {
+                Ok(Some(inspection)) => Some(inspection),
                 Ok(None) => break,
                 Err(error) => {
                     results.push(error_result(&root, path, error.to_string()));
@@ -276,11 +286,77 @@ pub fn scan_directory(
         } else {
             None
         };
-        let (match_state, match_method) = if let Some(digests) = &digests {
+        let mut archive_member = String::new();
+        let mut archive_member_count = 0usize;
+        let mut identity_file_name = file_name.clone();
+        let mut identity_file_size = metadata.len();
+        let mut identity_extension = extension.clone();
+        let mut archive_platform = None;
+        let mut predetermined_match = None;
+        let digests = match zip_inspection {
+            Some(ZipInspection::Empty) => {
+                predetermined_match = Some((
+                    MatchState::Error("ZIP contains no recognized ROM members".to_owned()),
+                    "archive inspection".to_owned(),
+                ));
+                None
+            }
+            Some(ZipInspection::Multiple {
+                member_count,
+                inferred_platform,
+            }) => {
+                archive_member_count = member_count;
+                archive_platform = inferred_platform;
+                predetermined_match = Some((
+                    MatchState::InventoryOnly,
+                    format!("ZIP contains {member_count} ROM members; review required"),
+                ));
+                None
+            }
+            Some(ZipInspection::Single {
+                member_name,
+                extension,
+                size,
+                digests,
+            }) => {
+                archive_member = member_name.clone();
+                archive_member_count = 1;
+                identity_file_name = member_name;
+                identity_file_size = size;
+                identity_extension = extension;
+                digests
+            }
+            None if checksums_enabled => match hash_file(path, cancelled) {
+                Ok(Some(digests)) => Some(digests),
+                Ok(None) => break,
+                Err(error) => {
+                    results.push(error_result(&root, path, error.to_string()));
+                    report_progress(&progress, paths.len(), position, file_name);
+                    continue;
+                }
+            },
+            None => None,
+        };
+        let inferred_platform = if platform_hint.is_empty() {
+            archive_platform.or_else(|| {
+                index
+                    .extension_platforms
+                    .get(&identity_extension)
+                    .and_then(|names| (names.len() == 1).then(|| names[0].clone()))
+            })
+        } else {
+            Some(platform_hint.to_owned())
+        };
+        let (match_state, mut match_method) = if let Some(value) = predetermined_match {
+            value
+        } else if let Some(digests) = &digests {
             match_digest(&index, &digests.sha1, &digests.md5, platform_hint)
         } else {
             (MatchState::InventoryOnly, "not checked".to_owned())
         };
+        if !archive_member.is_empty() {
+            match_method = format!("ZIP member {match_method}");
+        }
         let platform = match &match_state {
             MatchState::Exact(identity) => identity.platform.clone(),
             _ => inferred_platform.unwrap_or_else(|| "Unassigned".to_owned()),
@@ -294,9 +370,11 @@ pub fn scan_directory(
             path: path.clone(),
             relative_path: path.strip_prefix(&root).unwrap_or(path).to_path_buf(),
             file_name: file_name.clone(),
-            display_title: display_title(&file_name),
+            archive_member,
+            archive_member_count,
+            display_title: display_title(&identity_file_name),
             platform,
-            file_size: metadata.len(),
+            file_size: identity_file_size,
             modified_unix_ns,
             crc32: digests
                 .as_ref()
@@ -329,6 +407,40 @@ pub fn scan_directory(
     })
 }
 
+pub(crate) fn archive_import_probe() -> Result<String> {
+    let discovery_path = catalog::requested_discovery_database_path()
+        .context("--games-database is required for the archive import probe")?;
+    let root = catalog::requested_path("--import-directory", "LUNCHBOX_IMPORT_DIRECTORY")
+        .context("--import-directory is required for the archive import probe")?;
+    let cancelled = AtomicBool::new(false);
+    let output = scan_directory(
+        &discovery_path,
+        &root,
+        "",
+        true,
+        &cancelled,
+        Arc::new(|_| {}),
+    )?;
+    let result = output
+        .results
+        .iter()
+        .find(|result| {
+            result.archive_member_count == 1 && matches!(result.match_state, MatchState::Exact(_))
+        })
+        .context("no single-ROM ZIP member received an exact checksum identity")?;
+    let MatchState::Exact(identity) = &result.match_state else {
+        unreachable!("probe predicate requires an exact identity");
+    };
+    Ok(format!(
+        "archive={:?} member={:?} title={:?} platform={:?} method={:?}",
+        result.file_name,
+        result.archive_member,
+        identity.title,
+        identity.platform,
+        result.match_method
+    ))
+}
+
 fn report_progress(
     progress: &Arc<dyn Fn(ScanProgress) + Send + Sync>,
     total_files: usize,
@@ -342,16 +454,135 @@ fn report_progress(
     });
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Digests {
     crc32: String,
     md5: String,
     sha1: String,
 }
 
+fn inspect_zip(
+    path: &Path,
+    index: &MatchIndex,
+    checksums_enabled: bool,
+    cancelled: &AtomicBool,
+) -> Result<Option<ZipInspection>> {
+    let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .with_context(|| format!("reading ZIP directory {}", path.display()))?;
+    let mut members = Vec::new();
+    for member_index in 0..archive.len() {
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let entry = archive
+            .by_index(member_index)
+            .with_context(|| format!("reading ZIP member #{member_index} in {}", path.display()))?;
+        let Some(member_path) = entry.enclosed_name() else {
+            continue;
+        };
+        if entry.is_dir()
+            || entry
+                .unix_mode()
+                .is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
+            continue;
+        }
+        let member_name = member_path.to_string_lossy().replace('\\', "/");
+        let file_name = member_path
+            .file_name()
+            .map(|value| value.to_string_lossy())
+            .unwrap_or_default();
+        if member_name
+            .split('/')
+            .next()
+            .is_some_and(|component| component == "__MACOSX")
+            || file_name.starts_with("._")
+        {
+            continue;
+        }
+        let extension = member_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_default();
+        if extension.is_empty()
+            || ARCHIVE_EXTENSIONS.contains(&extension.as_str())
+            || !index.extensions.contains(&extension)
+        {
+            continue;
+        }
+        members.push((member_index, member_name, extension, entry.size()));
+    }
+
+    match members.len() {
+        0 => Ok(Some(ZipInspection::Empty)),
+        1 => {
+            let (member_index, member_name, extension, size) = members.remove(0);
+            let digests = if checksums_enabled {
+                let mut entry = archive.by_index(member_index).with_context(|| {
+                    format!("reopening ZIP member {member_name} in {}", path.display())
+                })?;
+                if entry.encrypted() {
+                    bail!(
+                        "ZIP member {member_name} in {} is encrypted and cannot be verified",
+                        path.display()
+                    );
+                }
+                match hash_reader(
+                    &mut entry,
+                    cancelled,
+                    &format!("ZIP member {member_name} in {}", path.display()),
+                )? {
+                    Some(digests) => Some(digests),
+                    None => return Ok(None),
+                }
+            } else {
+                None
+            };
+            Ok(Some(ZipInspection::Single {
+                member_name,
+                extension,
+                size,
+                digests,
+            }))
+        }
+        member_count => {
+            let mut platforms = HashSet::new();
+            let mut all_members_have_one_platform = true;
+            for (_, _, extension, _) in &members {
+                let Some(names) = index.extension_platforms.get(extension) else {
+                    all_members_have_one_platform = false;
+                    break;
+                };
+                if names.len() != 1 {
+                    all_members_have_one_platform = false;
+                    break;
+                }
+                platforms.insert(names[0].clone());
+            }
+            let inferred_platform = (all_members_have_one_platform && platforms.len() == 1)
+                .then(|| platforms.into_iter().next())
+                .flatten();
+            Ok(Some(ZipInspection::Multiple {
+                member_count,
+                inferred_platform,
+            }))
+        }
+    }
+}
+
 fn hash_file(path: &Path, cancelled: &AtomicBool) -> Result<Option<Digests>> {
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let mut reader = BufReader::with_capacity(1024 * 1024, file);
+    hash_reader(&mut reader, cancelled, &path.display().to_string())
+}
+
+fn hash_reader(
+    reader: &mut impl Read,
+    cancelled: &AtomicBool,
+    description: &str,
+) -> Result<Option<Digests>> {
     let mut buffer = vec![0u8; 1024 * 1024];
     let mut crc32 = Crc32::new();
     let mut md5 = Md5::new();
@@ -362,7 +593,7 @@ fn hash_file(path: &Path, cancelled: &AtomicBool) -> Result<Option<Digests>> {
         }
         let read = reader
             .read(&mut buffer)
-            .with_context(|| format!("reading {}", path.display()))?;
+            .with_context(|| format!("reading {description}"))?;
         if read == 0 {
             break;
         }
@@ -422,6 +653,8 @@ fn error_result(root: &Path, path: &Path, error: String) -> ScanResult {
         path: path.to_path_buf(),
         relative_path: path.strip_prefix(root).unwrap_or(path).to_path_buf(),
         file_name: file_name.clone(),
+        archive_member: String::new(),
+        archive_member_count: 0,
         display_title: display_title(&file_name),
         platform: "Unassigned".to_owned(),
         file_size: 0,
@@ -646,6 +879,7 @@ pub(crate) fn decode_path(_bytes: Vec<u8>, _encoding: &str, display: String) -> 
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Write;
 
     fn discovery_fixture(path: &Path, content: &[u8]) {
         let mut crc = Crc32::new();
@@ -673,6 +907,130 @@ mod tests {
                 params![crc, md5, sha1],
             )
             .unwrap();
+    }
+
+    fn zip_fixture(path: &Path, members: &[(&str, &[u8])]) {
+        let file = File::create(path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        for (name, content) in members {
+            archive
+                .start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(content).unwrap();
+        }
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn single_rom_zip_member_receives_an_exact_checksum_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        zip_fixture(
+            &rom_root.join("Exact Game.zip"),
+            &[
+                ("__MACOSX/._Exact Game.nes", b"metadata"),
+                ("docs/readme.txt", b"documentation"),
+                ("roms/Exact Game (USA).nes", b"exact-rom"),
+            ],
+        );
+
+        let cancel = AtomicBool::new(false);
+        let output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        assert_eq!(output.results.len(), 1);
+        let result = &output.results[0];
+        assert!(matches!(result.match_state, MatchState::Exact(_)));
+        assert!(result.selected);
+        assert_eq!(result.archive_member_count, 1);
+        assert_eq!(result.archive_member, "roms/Exact Game (USA).nes");
+        assert_eq!(result.display_title, "Exact Game");
+        assert_eq!(result.file_size, 9);
+        assert_eq!(result.platform, "Nintendo Entertainment System");
+        assert_eq!(result.match_method, "ZIP member SHA-1 + MD5");
+
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 1);
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 1);
+        let connection = Connection::open(state).unwrap();
+        let stored = connection
+            .query_row(
+                "SELECT file_name, display_title, file_size, game_uid, match_method
+                 FROM local_rom_files",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            stored,
+            (
+                "Exact Game.zip".to_owned(),
+                "Exact Game".to_owned(),
+                9,
+                "game-1".to_owned(),
+                "ZIP member SHA-1 + MD5".to_owned(),
+            )
+        );
+    }
+
+    #[test]
+    fn multi_rom_zip_is_kept_for_explicit_review_without_guessing_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        zip_fixture(
+            &rom_root.join("Collection.zip"),
+            &[("One.nes", b"exact-rom"), ("Two.nes", b"another-rom")],
+        );
+
+        let cancel = AtomicBool::new(false);
+        let output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        let result = &output.results[0];
+        assert_eq!(result.match_state, MatchState::InventoryOnly);
+        assert!(!result.selected);
+        assert_eq!(result.archive_member_count, 2);
+        assert!(result.archive_member.is_empty());
+        assert_eq!(result.platform, "Nintendo Entertainment System");
+        assert_eq!(
+            result.match_method,
+            "ZIP contains 2 ROM members; review required"
+        );
+        assert!(result.sha1.is_empty());
+    }
+
+    #[test]
+    fn zip_without_a_rom_member_is_an_actionable_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        zip_fixture(
+            &rom_root.join("Documentation.zip"),
+            &[("readme.txt", b"not a rom")],
+        );
+
+        let cancel = AtomicBool::new(false);
+        let output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        let result = &output.results[0];
+        assert!(matches!(result.match_state, MatchState::Error(_)));
+        assert!(!result.selected);
+        assert_eq!(result.match_method, "archive inspection");
     }
 
     #[test]

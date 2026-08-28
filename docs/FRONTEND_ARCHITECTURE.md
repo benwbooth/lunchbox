@@ -291,6 +291,14 @@ checks; it uses the same model, worker, database, and QML as an interactive
 folder selection. Adding `--import-commit-probe` selects the readable results
 and commits them to the chosen `--state-database`, enabling a fully unattended,
 idempotent scan-to-collection integration test.
+`--archive-import-probe --games-database PATH --import-directory PATH` succeeds
+only when a ZIP with one safe recognized ROM member receives an exact SHA-1/MD5
+catalog identity. `--archive-import-ui-probe` follows the same real scan through
+the Qt review table; adding `--screenshot-output ABSOLUTE_PATH` captures the
+native archive/member presentation and exits. Inspection is streamed and never
+extracts or mutates the source archive. Multiple ROM members, encrypted members,
+unsafe paths, and archives without a recognized ROM fail closed or remain
+explicitly unselected rather than acquiring a guessed identity.
 
 `--download-ui-probe` leaves the persistent native Downloads drawer open.
 `--settings-ui-probe` leaves the native settings dialog open, including the
@@ -452,7 +460,6 @@ and prepared-PC plans, with contextual and searchable cross-emulator editors
 plus a shell-free placeholder compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
 Playlists and smart collections, the remaining alternate media providers,
-available-version-only emulator update reporting, specialized
-machine launch profiles, the remaining settings,
-archive-member identity workflows, broader manual-provider coverage, and the controller-first
-full-screen interface follow on the same shared models.
+specialized machine launch profiles, the remaining settings, multi-member and
+non-ZIP archive identity workflows, broader manual-provider coverage, and the
+controller-first full-screen interface follow on the same shared models.

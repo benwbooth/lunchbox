@@ -189,6 +189,11 @@ and reapplies the current search and platform filters after ingestion.
 supported files off the GUI thread, streams progress, can be cancelled during
 large-file hashing, and presents a searchable, sortable review table. Unique
 SHA-1/MD5 matches are selected by default; filenames never establish identity.
+For ZIPs containing exactly one recognized ROM, the scanner streams that member
+without extracting it and hashes the emulated bytes, while retaining the original
+archive as the local launch path. The review row shows the container and member
+separately. ZIPs with multiple recognized ROMs remain unselected and explicitly
+require review; Lunchbox does not guess which member is the game.
 Users can also include ambiguous or unmatched files, which remain visible as
 honest local-only entries in `My Collection` without suppressing an unrelated
 Minerva game. Imports and rescans are idempotent, retain missing-path history,
