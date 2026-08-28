@@ -59,6 +59,8 @@ ApplicationWindow {
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
     property int downloadPlanProbeBundleIndex: 0
+    property bool launchProbeTriggered: false
+    property bool launchProbeObservedRunning: false
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -90,6 +92,7 @@ ApplicationWindow {
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
     readonly property bool exoPrepareProbe: Qt.application.arguments.indexOf("--exo-prepare-probe") >= 0
     readonly property bool exoPrepareUiProbe: Qt.application.arguments.indexOf("--exo-prepare-ui-probe") >= 0
+    readonly property bool exoLaunchProbe: Qt.application.arguments.indexOf("--exo-launch-probe") >= 0
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe
 
     palette.window: "#0c1119"
@@ -482,6 +485,26 @@ ApplicationWindow {
                     && !gameDetails.prepare_busy)
                 Qt.quit()
         }
+        function onCan_launchChanged() {
+            if (root.exoLaunchProbe && gameDetails.can_launch
+                    && !root.launchProbeTriggered) {
+                root.launchProbeTriggered = true
+                gameDetails.launch_game()
+            }
+        }
+        function onGame_runningChanged() {
+            if (!root.exoLaunchProbe || !root.launchProbeTriggered)
+                return
+            if (gameDetails.game_running)
+                root.launchProbeObservedRunning = true
+            else if (root.launchProbeObservedRunning)
+                Qt.quit()
+        }
+        function onLaunch_statusChanged() {
+            if (root.exoLaunchProbe && root.launchProbeTriggered
+                    && gameDetails.launch_status.indexOf("Could not launch") === 0)
+                Qt.exit(2)
+        }
     }
 
     Connections {
@@ -548,7 +571,8 @@ ApplicationWindow {
             else if (root.exoArchiveUiProbe)
                 root.openGame("0faf424e-bb45-4d5f-b88d-771936a35f8a", 14329,
                               "Prince of Persia", "MS-DOS", false, true)
-            else if (root.exoPrepareProbe || root.exoPrepareUiProbe)
+            else if (root.exoPrepareProbe || root.exoPrepareUiProbe
+                     || root.exoLaunchProbe)
                 root.openGame("exo-prepare-probe", 0,
                               "Prince of Persia", "MS-DOS", true, false)
         }
@@ -2184,6 +2208,8 @@ ApplicationWindow {
                                 height: 18
                                 running: gameDetails.loading || gameDetails.torrent_loading
                                          || gameDetails.prepare_busy
+                                         || gameDetails.launch_discovery_busy
+                                         || gameDetails.launch_busy
                                 visible: running
                             }
                             Text {
@@ -2337,6 +2363,103 @@ ApplicationWindow {
                                             easing.type: Easing.InOutCubic
                                         }
                                     }
+                                }
+                            }
+                            Rectangle {
+                                width: parent.width
+                                height: 1
+                                visible: gameDetails.prepared
+                                color: "#31504b"
+                            }
+                            Row {
+                                width: parent.width
+                                visible: gameDetails.prepared
+                                spacing: 8
+                                Column {
+                                    width: parent.width - refreshEmulators.width - 8
+                                    spacing: 3
+                                    Text {
+                                        width: parent.width
+                                        text: gameDetails.launch_discovery_busy
+                                              ? "DETECTING EMULATOR…"
+                                              : gameDetails.emulator_name.length > 0
+                                                ? gameDetails.emulator_name.toUpperCase()
+                                                : "EMULATOR"
+                                        color: gameDetails.can_launch ? root.ink : root.muted
+                                        font.pixelSize: 10
+                                        font.weight: Font.Bold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        visible: gameDetails.emulator_summary.length > 0
+                                        text: gameDetails.emulator_summary
+                                        color: root.muted
+                                        font.pixelSize: 9
+                                        elide: Text.ElideMiddle
+                                    }
+                                }
+                                Button {
+                                    id: refreshEmulators
+                                    width: 76
+                                    height: 30
+                                    text: "REFRESH"
+                                    enabled: !gameDetails.launch_discovery_busy
+                                             && !gameDetails.launch_busy
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    onClicked: gameDetails.refresh_emulators()
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: parent.down ? "#28364a" : "#202b3a"
+                                        border.color: root.line
+                                    }
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: root.muted
+                                        font: parent.font
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                visible: gameDetails.prepared
+                                         && gameDetails.launch_status.length > 0
+                                text: gameDetails.launch_status
+                                color: gameDetails.can_launch ? "#a8d9cf" : root.muted
+                                font.pixelSize: 10
+                                lineHeight: 1.25
+                                wrapMode: Text.WordWrap
+                            }
+                            Button {
+                                width: parent.width
+                                height: 42
+                                visible: gameDetails.prepared
+                                text: gameDetails.launch_busy ? "STARTING…"
+                                      : gameDetails.game_running ? "GAME IS RUNNING"
+                                      : "PLAY"
+                                enabled: gameDetails.can_launch
+                                         && !gameDetails.launch_busy
+                                         && !gameDetails.game_running
+                                         && !gameDetails.prepare_busy
+                                font.pixelSize: 11
+                                font.weight: Font.Bold
+                                onClicked: gameDetails.launch_game()
+                                background: Rectangle {
+                                    radius: 8
+                                    color: parent.enabled
+                                           ? (parent.down ? "#d24e36" : root.accent)
+                                           : "#26313e"
+                                    border.color: parent.enabled ? "#ff8a70" : root.line
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: parent.enabled ? "#ffffff" : root.muted
+                                    font: parent.font
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                             }
                             Button {

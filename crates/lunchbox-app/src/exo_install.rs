@@ -59,6 +59,14 @@ impl ExoCollection {
 
     fn metadata_candidates(self) -> &'static [&'static str] {
         match self {
+            Self::Dos if cfg!(windows) => &[
+                "Content/!DOSmetadata.zip",
+                "Full Release/Content/!DOSmetadata.zip",
+                "Content/!DOS_linux_metadata.zip",
+                "Full Release/Content/!DOS_linux_metadata.zip",
+                "Linux Patches/eXoDOS/Content/!DOS_linux_metadata.zip",
+                "eXo/Linux Patches/eXoDOS/Content/!DOS_linux_metadata.zip",
+            ],
             Self::Dos => &[
                 "Content/!DOS_linux_metadata.zip",
                 "Full Release/Content/!DOS_linux_metadata.zip",
@@ -74,6 +82,14 @@ impl ExoCollection {
 
     fn utility_candidates(self) -> &'static [&'static str] {
         match self {
+            Self::Dos if cfg!(windows) => &[
+                "eXo/util/util.zip",
+                "Full Release/eXo/util/util.zip",
+                "eXo/util/utilDOS_linux.zip",
+                "Full Release/eXo/util/utilDOS_linux.zip",
+                "Linux Patches/eXoDOS/eXo/util/utilDOS_linux.zip",
+                "eXo/Linux Patches/eXoDOS/eXo/util/utilDOS_linux.zip",
+            ],
             Self::Dos => &[
                 "eXo/util/utilDOS_linux.zip",
                 "Full Release/eXo/util/utilDOS_linux.zip",

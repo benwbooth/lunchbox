@@ -108,11 +108,15 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 ## Emulators and launching
 
-- Host-aware emulator discovery for Linux, macOS, and Windows.
+- Host-aware canonical-catalog discovery and prepared eXo process launch are
+  native for Linux, macOS, and Windows path models. Linux Flatpak launch is
+  runtime-verified; Windows and macOS still need native release-host gates.
+- eXoDOS/eXoWin3x DOSBox and ScummVM exception plans plus eXoWin9x DOSBox-X,
+  86Box, and PCBox-compatible profiles are native. Writable VM child disks and
+  process lifecycle reporting are included.
 - Managed downloads, updates, version pinning, core management, BIOS checks,
   platform defaults, per-game overrides, and command preview.
-- RetroArch, standalone emulator, DOSBox, ScummVM, arcade, and PC launch
-  profiles.
+- Generic RetroArch, standalone ROM, arcade, and non-eXo PC launch profiles.
 - Controller detection and mapping, pre-launch validation, process supervision,
   pause/resume, clean shutdown, and play-stat recording.
 

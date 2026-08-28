@@ -70,9 +70,16 @@ matching metadata/game-data/utility archives, safely extracts title files and
 shared MT-32/DOSBox/86Box/PCBox assets, and atomically publishes a versioned
 cache keyed by the stable game ID and source signature. It can be cancelled
 without leaving a published partial tree, and unchanged sources are reused on
-retry or restart. Emulator discovery and launching are the next separate
-vertical slice; the UI does not claim a game can launch until that contract is
-implemented.
+retry or restart. Prepared installs now detect compatible standalone emulators
+off the GUI thread from the canonical host/package catalog and expose a real
+`Play` action only when one is installed. Native executable, macOS app-bundle,
+Windows install-directory, and Linux Flatpak discovery are path-aware and do
+not invoke a shell. eXo exception metadata selects DOSBox or ScummVM, while
+Win9x launchers route to DOSBox-X, 86Box, or a PCBox-compatible profile. VM
+parent disks produce persistent writable children without hard-linking them.
+Linux Flatpak detection and process launch have been exercised end to end;
+native Windows and macOS launch branches are covered structurally but still
+require their platform release gates.
 
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder

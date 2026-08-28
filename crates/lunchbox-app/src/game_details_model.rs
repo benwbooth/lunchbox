@@ -13,6 +13,10 @@ pub mod qobject {
         #[qproperty(bool, torrent_loading)]
         #[qproperty(bool, download_busy)]
         #[qproperty(bool, prepare_busy)]
+        #[qproperty(bool, launch_discovery_busy)]
+        #[qproperty(bool, launch_busy)]
+        #[qproperty(bool, can_launch)]
+        #[qproperty(bool, game_running)]
         #[qproperty(QString, game_id)]
         #[qproperty(QString, title)]
         #[qproperty(QString, platform)]
@@ -34,6 +38,9 @@ pub mod qobject {
         #[qproperty(QString, preparation_phase)]
         #[qproperty(QString, preparation_file)]
         #[qproperty(QString, prepared_summary)]
+        #[qproperty(QString, emulator_name)]
+        #[qproperty(QString, emulator_summary)]
+        #[qproperty(QString, launch_status)]
         #[qproperty(i32, bundle_count)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_bundle)]
@@ -64,6 +71,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn cancel_preparation(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn refresh_emulators(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn launch_game(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
@@ -99,6 +112,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
 
+use anyhow::Context;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
@@ -112,6 +126,10 @@ pub struct GameDetailsModelRust {
     torrent_loading: bool,
     download_busy: bool,
     prepare_busy: bool,
+    launch_discovery_busy: bool,
+    launch_busy: bool,
+    can_launch: bool,
+    game_running: bool,
     game_id: QString,
     title: QString,
     platform: QString,
@@ -133,6 +151,9 @@ pub struct GameDetailsModelRust {
     preparation_phase: QString,
     preparation_file: QString,
     prepared_summary: QString,
+    emulator_name: QString,
+    emulator_summary: QString,
+    launch_status: QString,
     bundle_count: i32,
     file_count: i32,
     selected_bundle: i32,
@@ -142,9 +163,11 @@ pub struct GameDetailsModelRust {
     details_generation: u64,
     torrent_generation: u64,
     preparation_generation: u64,
+    launch_generation: u64,
     preparation_cancel: Option<Arc<AtomicBool>>,
     database_id: i64,
     local_file_path: PathBuf,
+    prepared_install: Option<crate::exo_install::PreparedInstall>,
 }
 
 impl Default for GameDetailsModelRust {
@@ -155,6 +178,10 @@ impl Default for GameDetailsModelRust {
             torrent_loading: false,
             download_busy: false,
             prepare_busy: false,
+            launch_discovery_busy: false,
+            launch_busy: false,
+            can_launch: false,
+            game_running: false,
             game_id: QString::default(),
             title: QString::default(),
             platform: QString::default(),
@@ -176,6 +203,9 @@ impl Default for GameDetailsModelRust {
             preparation_phase: QString::default(),
             preparation_file: QString::default(),
             prepared_summary: QString::default(),
+            emulator_name: QString::default(),
+            emulator_summary: QString::default(),
+            launch_status: QString::default(),
             bundle_count: 0,
             file_count: 0,
             selected_bundle: -1,
@@ -185,9 +215,11 @@ impl Default for GameDetailsModelRust {
             details_generation: 0,
             torrent_generation: 0,
             preparation_generation: 0,
+            launch_generation: 0,
             preparation_cancel: None,
             database_id: 0,
             local_file_path: PathBuf::new(),
+            prepared_install: None,
         }
     }
 }
@@ -198,6 +230,10 @@ fn qstring(value: impl AsRef<str>) -> QString {
 
 fn count_i32(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
+}
+
+fn has_cli_flag(flag: &str) -> bool {
+    std::env::args_os().any(|argument| argument == flag)
 }
 
 impl qobject::GameDetailsModel {
@@ -213,6 +249,7 @@ impl qobject::GameDetailsModel {
         let title_string = title.to_string();
         let platform_string = platform.to_string();
         self.as_mut().invalidate_preparation();
+        self.as_mut().invalidate_launch_state();
         self.as_mut().rust_mut().details_generation =
             self.as_ref().rust().details_generation.wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
@@ -256,6 +293,7 @@ impl qobject::GameDetailsModel {
 
     pub fn close_panel(mut self: Pin<&mut Self>) {
         self.as_mut().invalidate_preparation();
+        self.as_mut().invalidate_launch_state();
         self.as_mut().rust_mut().details_generation =
             self.as_ref().rust().details_generation.wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
@@ -263,6 +301,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_loading(false);
         self.as_mut().set_torrent_loading(false);
         self.as_mut().set_prepare_busy(false);
+        self.as_mut().set_launch_discovery_busy(false);
+        self.as_mut().set_launch_busy(false);
         self.as_mut().set_panel_open(false);
     }
 
@@ -282,8 +322,14 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_preparation_phase(QString::default());
         self.as_mut().set_preparation_file(QString::default());
         self.as_mut().set_prepared_summary(QString::default());
+        self.as_mut().set_emulator_name(QString::default());
+        self.as_mut().set_emulator_summary(QString::default());
+        self.as_mut().set_launch_status(QString::default());
+        self.as_mut().set_can_launch(false);
+        self.as_mut().set_game_running(false);
         self.as_mut().rust_mut().database_id = 0;
         self.as_mut().rust_mut().local_file_path = PathBuf::new();
+        self.as_mut().rust_mut().prepared_install = None;
         self.as_mut().rust_mut().bundles.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
@@ -319,6 +365,7 @@ impl qobject::GameDetailsModel {
                     })
                     .unwrap_or_default();
                 let prepared = details.prepared_install.is_some();
+                let prepared_install = details.prepared_install.clone();
                 self.as_mut().set_description(qstring(&details.description));
                 self.as_mut()
                     .set_release_date(qstring(&details.release_date));
@@ -335,6 +382,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_local(details.local);
                 self.as_mut().set_downloadable(details.downloadable);
                 self.as_mut().rust_mut().local_file_path = details.local_file_path;
+                self.as_mut().rust_mut().prepared_install = prepared_install;
                 self.as_mut().set_preparable(preparable);
                 self.as_mut().set_prepared(prepared);
                 self.as_mut()
@@ -351,6 +399,9 @@ impl qobject::GameDetailsModel {
                     format!("{bundle_count} Minerva source bundles available")
                 };
                 self.as_mut().set_message(qstring(message));
+                if prepared {
+                    self.as_mut().refresh_emulators();
+                }
             }
             Err(error) => self
                 .as_mut()
@@ -597,6 +648,264 @@ impl qobject::GameDetailsModel {
         }
     }
 
+    pub fn refresh_emulators(mut self: Pin<&mut Self>) {
+        if *self.as_ref().launch_discovery_busy() || *self.as_ref().launch_busy() {
+            return;
+        }
+        let Some(prepared) = self.as_ref().rust().prepared_install.clone() else {
+            self.as_mut().set_can_launch(false);
+            self.as_mut().set_emulator_name(QString::default());
+            self.as_mut().set_emulator_summary(QString::default());
+            self.as_mut().set_launch_status(qstring(
+                "Prepare this PC install before detecting emulators.",
+            ));
+            return;
+        };
+        let Some(catalog_database) = crate::catalog::requested_database_path() else {
+            self.as_mut().set_can_launch(false);
+            self.as_mut().set_launch_status(qstring(
+                "The canonical Lunchbox database is unavailable, so emulator metadata cannot be loaded.",
+            ));
+            return;
+        };
+
+        self.as_mut().rust_mut().launch_generation =
+            self.as_ref().rust().launch_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().launch_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        self.as_mut().set_launch_discovery_busy(true);
+        self.as_mut().set_can_launch(false);
+        self.as_mut().set_emulator_name(QString::default());
+        self.as_mut().set_emulator_summary(QString::default());
+        self.as_mut()
+            .set_launch_status(qstring("Detecting compatible emulators…"));
+
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-emulator-discovery".into())
+            .spawn(move || {
+                let availability =
+                    crate::emulator::inspect_launch_availability(&prepared, &catalog_database)
+                        .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_emulator_discovery(generation, game_id, availability);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_launch_discovery_busy(false);
+            self.as_mut().set_launch_status(qstring(format!(
+                "Could not start emulator detection: {error}"
+            )));
+        }
+    }
+
+    fn finish_emulator_discovery(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        completed_game_id: String,
+        availability: Result<crate::emulator::LaunchAvailability, String>,
+    ) {
+        if generation != self.as_ref().rust().launch_generation
+            || self.as_ref().game_id().to_string() != completed_game_id
+        {
+            return;
+        }
+        self.as_mut().set_launch_discovery_busy(false);
+        match availability {
+            Ok(availability) => {
+                self.as_mut()
+                    .set_launch_status(qstring(&availability.detail));
+                if let Some(emulator) = availability.emulator {
+                    self.as_mut().set_can_launch(true);
+                    self.as_mut().set_emulator_name(qstring(&emulator.name));
+                    self.as_mut()
+                        .set_emulator_summary(qstring(emulator.executable.summary()));
+                } else {
+                    self.as_mut().set_can_launch(false);
+                    self.as_mut().set_emulator_name(qstring(format!(
+                        "Install {}",
+                        availability.requirement
+                    )));
+                    self.as_mut().set_emulator_summary(QString::default());
+                }
+            }
+            Err(error) => {
+                self.as_mut().set_can_launch(false);
+                self.as_mut()
+                    .set_launch_status(qstring(format!("Could not inspect emulators: {error}")));
+            }
+        }
+    }
+
+    pub fn launch_game(mut self: Pin<&mut Self>) {
+        if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
+            return;
+        }
+        let Some(prepared) = self.as_ref().rust().prepared_install.clone() else {
+            self.as_mut()
+                .set_launch_status(qstring("Prepare this PC install before launching it."));
+            return;
+        };
+        let Some(catalog_database) = crate::catalog::requested_database_path() else {
+            self.as_mut().set_launch_status(qstring(
+                "The canonical Lunchbox database is unavailable, so the emulator cannot be selected.",
+            ));
+            return;
+        };
+
+        self.as_mut().rust_mut().launch_generation =
+            self.as_ref().rust().launch_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().launch_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        self.as_mut().set_launch_busy(true);
+        self.as_mut().set_launch_status(qstring(
+            "Building the exact launch plan and preparing writable runtime files…",
+        ));
+
+        let qt_thread = self.as_ref().qt_thread();
+        let started_thread = qt_thread.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-emulator-launch".into())
+            .spawn(move || {
+                let launch = (|| -> anyhow::Result<Result<(), String>> {
+                    let plan = crate::emulator::build_launch_plan(&prepared, &catalog_database)?;
+                    let emulator_name = plan.emulator_name.clone();
+                    let command_summary = plan.command_summary();
+                    let cleanup_paths = plan.cleanup_paths.clone();
+                    let mut child = match crate::emulator::spawn_launch_plan(&plan) {
+                        Ok(child) => child,
+                        Err(error) => {
+                            crate::emulator::cleanup_after_launch(&cleanup_paths);
+                            return Err(error);
+                        }
+                    };
+                    let process_id = child.id();
+                    let started_game_id = game_id.clone();
+                    let _ = started_thread.queue(move |mut model| {
+                        model.as_mut().finish_launch_started(
+                            generation,
+                            started_game_id,
+                            emulator_name,
+                            process_id,
+                            command_summary,
+                        );
+                    });
+                    let status = child.wait();
+                    crate::emulator::cleanup_after_launch(&cleanup_paths);
+                    let status = status.context("waiting for the emulator process")?;
+                    Ok(if status.success() {
+                        Ok(())
+                    } else {
+                        Err(format!("emulator exited with {status}"))
+                    })
+                })();
+                match launch {
+                    Ok(exit) => {
+                        let _ = qt_thread.queue(move |mut model| {
+                            model.as_mut().finish_launch_exit(generation, game_id, exit);
+                        });
+                    }
+                    Err(error) => {
+                        let error = error.to_string();
+                        let _ = qt_thread.queue(move |mut model| {
+                            model
+                                .as_mut()
+                                .finish_launch_failure(generation, game_id, error);
+                        });
+                    }
+                }
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_launch_busy(false);
+            self.as_mut().set_launch_status(qstring(format!(
+                "Could not start emulator launch worker: {error}"
+            )));
+        }
+    }
+
+    fn finish_launch_started(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        completed_game_id: String,
+        emulator_name: String,
+        process_id: u32,
+        command_summary: String,
+    ) {
+        if generation != self.as_ref().rust().launch_generation
+            || self.as_ref().game_id().to_string() != completed_game_id
+        {
+            return;
+        }
+        self.as_mut().set_launch_busy(false);
+        self.as_mut().set_game_running(true);
+        self.as_mut().set_emulator_name(qstring(&emulator_name));
+        self.as_mut().set_launch_status(qstring(format!(
+            "Running with {emulator_name} · process {process_id}"
+        )));
+        self.as_mut().set_message(qstring(format!(
+            "Launched with {emulator_name}. {command_summary}"
+        )));
+        if has_cli_flag("--exo-launch-probe") {
+            println!(
+                "LUNCHBOX_EMULATOR_STARTED name={emulator_name:?} pid={process_id} command={command_summary:?}"
+            );
+        }
+    }
+
+    fn finish_launch_exit(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        completed_game_id: String,
+        exit: Result<(), String>,
+    ) {
+        if generation != self.as_ref().rust().launch_generation
+            || self.as_ref().game_id().to_string() != completed_game_id
+        {
+            return;
+        }
+        self.as_mut().set_launch_busy(false);
+        self.as_mut().set_game_running(false);
+        match exit {
+            Ok(()) => {
+                self.as_mut()
+                    .set_launch_status(qstring("The emulator session finished normally."));
+                if has_cli_flag("--exo-launch-probe") {
+                    println!("LUNCHBOX_EMULATOR_EXITED status=success");
+                }
+            }
+            Err(error) => {
+                self.as_mut()
+                    .set_launch_status(qstring(format!("The emulator session ended: {error}")));
+                if has_cli_flag("--exo-launch-probe") {
+                    println!("LUNCHBOX_EMULATOR_EXITED status={error:?}");
+                }
+            }
+        }
+    }
+
+    fn finish_launch_failure(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        completed_game_id: String,
+        error: String,
+    ) {
+        if generation != self.as_ref().rust().launch_generation
+            || self.as_ref().game_id().to_string() != completed_game_id
+        {
+            return;
+        }
+        self.as_mut().set_launch_busy(false);
+        self.as_mut().set_game_running(false);
+        self.as_mut().set_launch_status(qstring(format!(
+            "Could not launch this prepared install: {error}"
+        )));
+        if has_cli_flag("--exo-launch-probe") {
+            eprintln!("LUNCHBOX_EMULATOR_FAILED error={error:?}");
+        }
+    }
+
     fn update_preparation_progress(
         mut self: Pin<&mut Self>,
         generation: u64,
@@ -648,6 +957,7 @@ impl qobject::GameDetailsModel {
                     prepared.launch_config_path.display()
                 );
                 self.as_mut().set_prepared(true);
+                self.as_mut().rust_mut().prepared_install = Some(prepared.clone());
                 self.as_mut().set_preparation_phase(qstring("Ready"));
                 self.as_mut()
                     .set_preparation_file(qstring(prepared.launch_config_path.to_string_lossy()));
@@ -657,6 +967,7 @@ impl qobject::GameDetailsModel {
                 } else {
                     format!("Prepared install completed atomically. {summary}")
                 }));
+                self.as_mut().refresh_emulators();
             }
             Err(error) => {
                 self.as_mut().set_preparation_phase(qstring("Not prepared"));
@@ -680,6 +991,15 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().preparation_generation =
             self.as_ref().rust().preparation_generation.wrapping_add(1);
         self.as_mut().set_prepare_busy(false);
+    }
+
+    fn invalidate_launch_state(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().launch_generation =
+            self.as_ref().rust().launch_generation.wrapping_add(1);
+        self.as_mut().set_launch_discovery_busy(false);
+        self.as_mut().set_launch_busy(false);
+        self.as_mut().set_can_launch(false);
+        self.as_mut().set_game_running(false);
     }
 
     fn finish_queue(

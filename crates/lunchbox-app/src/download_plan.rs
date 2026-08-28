@@ -346,6 +346,14 @@ impl ExoCollection {
 
     fn metadata_candidates(self) -> &'static [&'static str] {
         match self {
+            Self::Dos if cfg!(windows) => &[
+                "Content/!DOSmetadata.zip",
+                "Full Release/Content/!DOSmetadata.zip",
+                "Content/!DOS_linux_metadata.zip",
+                "Full Release/Content/!DOS_linux_metadata.zip",
+                "Linux Patches/eXoDOS/Content/!DOS_linux_metadata.zip",
+                "eXo/Linux Patches/eXoDOS/Content/!DOS_linux_metadata.zip",
+            ],
             Self::Dos => &[
                 "Content/!DOS_linux_metadata.zip",
                 "Full Release/Content/!DOS_linux_metadata.zip",
@@ -361,6 +369,14 @@ impl ExoCollection {
 
     fn utility_candidates(self) -> &'static [&'static str] {
         match self {
+            Self::Dos if cfg!(windows) => &[
+                "eXo/util/util.zip",
+                "Full Release/eXo/util/util.zip",
+                "eXo/util/utilDOS_linux.zip",
+                "Full Release/eXo/util/utilDOS_linux.zip",
+                "Linux Patches/eXoDOS/eXo/util/utilDOS_linux.zip",
+                "eXo/Linux Patches/eXoDOS/eXo/util/utilDOS_linux.zip",
+            ],
             Self::Dos => &[
                 "eXo/util/utilDOS_linux.zip",
                 "Full Release/eXo/util/utilDOS_linux.zip",
@@ -413,20 +429,11 @@ pub fn build_exo_plan(files: &[TorrentPlanFile], selected_index: usize) -> Optio
             roles.insert(companion.index, "game-data");
         }
     }
-    let metadata = files.iter().find(|file| {
-        collection
-            .metadata_candidates()
-            .iter()
-            .any(|suffix| path_ends_with(&file.filename, suffix))
-    })?;
+    let metadata = first_file_matching_suffixes(files, collection.metadata_candidates())?;
     roles.insert(metadata.index, "metadata");
     if matches!(collection, ExoCollection::Dos | ExoCollection::Win9x)
-        && let Some(utilities) = files.iter().find(|file| {
-            collection
-                .utility_candidates()
-                .iter()
-                .any(|suffix| path_ends_with(&file.filename, suffix))
-        })
+        && let Some(utilities) =
+            first_file_matching_suffixes(files, collection.utility_candidates())
     {
         roles.insert(utilities.index, "utilities");
     }
@@ -462,6 +469,17 @@ pub fn build_exo_plan(files: &[TorrentPlanFile], selected_index: usize) -> Optio
     };
     plan.validate().ok()?;
     Some(plan)
+}
+
+fn first_file_matching_suffixes<'a>(
+    files: &'a [TorrentPlanFile],
+    suffixes: &[&str],
+) -> Option<&'a TorrentPlanFile> {
+    suffixes.iter().find_map(|suffix| {
+        files
+            .iter()
+            .find(|file| path_ends_with(&file.filename, suffix))
+    })
 }
 
 pub fn exo_primary_priority(path: &str) -> Option<u8> {

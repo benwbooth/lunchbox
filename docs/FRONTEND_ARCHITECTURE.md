@@ -103,7 +103,20 @@ The initial implementation enforces this shape:
   rename and recorded by stable game UUID only after its launch config exists.
   Refreshing an unchanged game reuses the verified cache. The details panel
   shows preparation state, throttled progress, cancellation, and retry without
-  blocking Qt. Emulator process launch is a separate vertical slice.
+  blocking Qt.
+- Prepared-PC launch classification is pure Rust and treats legacy BAT/BSH
+  files as bounded data formats; Lunchbox never executes them. Exact supported
+  patterns choose DOSBox, ScummVM, DOSBox-X, 86Box, or PCBox-compatible plans,
+  while traversal and unsupported helper-process commands fail closed. The
+  canonical emulator catalog supplies host/package metadata. Discovery covers
+  native executables, Windows application directories, macOS app bundles, and
+  Linux Flatpaks off the Qt thread. Launches use `Command` argument vectors and
+  native `PathBuf`/`OsString` values with no shell. Flatpak access is limited to
+  the prepared install root; Win9x parent disks are reflinked or copied into
+  persistent writable children, and temporary MT-32 exception files are
+  removed after process exit. Qt reports detection, starting, running, and exit
+  state. The unattended `--exo-launch-probe` exercises the real discovered
+  emulator and waits for its process to exit.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -195,6 +208,12 @@ the CXX-Qt model, and exits only after the cache is verified ready. Reusing the
 same state and archive paths verifies idempotent cache reuse.
 `--exo-prepare-ui-probe` leaves that game's details panel open for visual review
 of the PC-install card and prepared path.
+`--exo-launch-probe` uses the same prepared identity, canonical emulator
+catalog, asynchronous Qt actions, and real process supervisor. It launches the
+detected emulator, prints the exact program/argument-vector evidence, waits for
+exit, and then closes. On the current Linux host this route discovered and ran
+`com.dosbox_x.DOSBox-X` through Flatpak against a fresh prepared cache; DOSBox-X
+loaded the exact generated config and exited successfully.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to
@@ -223,12 +242,13 @@ for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, completed-file
-ingestion, optical and eXo related-file plans, eXo prepared installs, durable safe seeding policy,
-local-folder scan/review/import, legacy
+ingestion, optical and eXo related-file plans, eXo prepared installs and launch,
+durable safe seeding policy, local-folder scan/review/import, legacy
 content filters, and durable favorites are now native. Existing game media is
 now indexed and rendered natively. On-demand LibRetro retrieval and durable
 negative caching are native.
 Playlists and smart collections, alternate media providers, media rotation and
-redownload, emulator installation and launch, the remaining settings,
+redownload, managed emulator installation/update and generic ROM/arcade launch,
+the remaining settings,
 archive-member and manual identity workflows, and the controller-first
 full-screen interface follow on the same shared models.
