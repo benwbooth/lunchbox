@@ -130,6 +130,7 @@ ApplicationWindow {
     readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
     readonly property bool emulatorManagerProbe: Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
     readonly property bool emulatorManagerUiProbe: Qt.application.arguments.indexOf("--emulator-manager-ui-probe") >= 0
+    readonly property bool emulatorUpdateUiProbe: Qt.application.arguments.indexOf("--emulator-update-ui-probe") >= 0
     readonly property bool firmwareProbe: Qt.application.arguments.indexOf("--firmware-probe") >= 0
     readonly property bool firmwareUiProbe: Qt.application.arguments.indexOf("--firmware-ui-probe") >= 0
     readonly property bool activityUiProbe: Qt.application.arguments.indexOf("--activity-ui-probe") >= 0
@@ -183,6 +184,11 @@ ApplicationWindow {
     function openEmulatorManager() {
         emulatorManagerDialog.open()
         emulatorManager.initialize()
+    }
+
+    function openEmulatorUpdates() {
+        emulatorUpdateDialog.open()
+        emulatorUpdates.initialize()
     }
 
     function openLaunchProfileManager() {
@@ -499,6 +505,10 @@ ApplicationWindow {
         id: emulatorManager
     }
 
+    EmulatorUpdateModel {
+        id: emulatorUpdates
+    }
+
     LaunchProfileManagerModel {
         id: launchProfileManager
     }
@@ -508,6 +518,14 @@ ApplicationWindow {
         function onInitializedChanged() {
             if (root.emulatorManagerProbe && emulatorManager.initialized)
                 Qt.quit()
+        }
+    }
+
+    Connections {
+        target: emulatorUpdates
+        function onInitializedChanged() {
+            if (root.emulatorUpdateUiProbe && emulatorUpdates.initialized)
+                emulatorUpdateScreenshotTimer.restart()
         }
     }
 
@@ -940,6 +958,8 @@ ApplicationWindow {
             }
             else if (root.emulatorManagerProbe)
                 emulatorManager.initialize()
+            else if (root.emulatorUpdateUiProbe)
+                root.openEmulatorUpdates()
             else if (root.launchProfileManagerUiProbe)
                 root.openLaunchProfileManager()
             else if (root.releaseCandidateUiProbe)
@@ -6924,6 +6944,13 @@ ApplicationWindow {
                     enabled: !emulatorManager.busy
                     onClicked: emulatorManager.refresh()
                 }
+                HeaderButton {
+                    text: emulatorUpdates.initialized && emulatorUpdates.row_count > 0
+                          ? emulatorUpdates.row_count + " updates" : "Check updates"
+                    active: emulatorUpdates.initialized && emulatorUpdates.row_count > 0
+                    enabled: !emulatorManager.busy && !emulatorUpdates.busy
+                    onClicked: root.openEmulatorUpdates()
+                }
                 RoundButton {
                     text: "×"
                     flat: true
@@ -7120,13 +7147,6 @@ ApplicationWindow {
                                 active: true
                                 onClicked: emulatorManager.install_at(emulatorRow.index)
                             }
-                            HeaderButton {
-                                visible: !emulatorManager.busy
-                                         && emulatorManager.can_update_at(emulatorRow.index)
-                                text: "Update"
-                                active: true
-                                onClicked: emulatorManager.update_at(emulatorRow.index)
-                            }
                             Button {
                                 visible: !emulatorManager.busy
                                          && emulatorManager.can_uninstall_at(emulatorRow.index)
@@ -7212,6 +7232,401 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: emulatorUpdateDialog
+        parent: Overlay.overlay
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(920, root.width - 80)
+        height: Math.min(720, root.height - 80)
+        padding: 0
+        closePolicy: emulatorUpdates.busy ? Popup.NoAutoClose : Popup.CloseOnEscape
+        onClosed: {
+            if (emulatorManager.initialized && !emulatorManager.busy)
+                emulatorManager.refresh()
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            width: parent.width
+            height: 82
+            color: root.panelRaised
+            radius: 14
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 14
+                spacing: 14
+                Rectangle {
+                    Layout.preferredWidth: 44
+                    Layout.preferredHeight: 44
+                    radius: 12
+                    color: "#253229"
+                    border.color: "#3b654f"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "↥"
+                        color: root.accentCool
+                        font.pixelSize: 23
+                        font.weight: Font.Bold
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: "EMULATOR UPDATES"
+                        color: root.ink
+                        font.pixelSize: 17
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: "Review exact version changes before updating any runtime"
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                }
+                Rectangle {
+                    visible: emulatorUpdates.initialized
+                    Layout.preferredWidth: updateCountText.implicitWidth + 22
+                    Layout.preferredHeight: 30
+                    radius: 15
+                    color: emulatorUpdates.row_count > 0 ? "#30291f" : "#172c28"
+                    border.color: emulatorUpdates.row_count > 0 ? "#5b4930" : "#28584f"
+                    Text {
+                        id: updateCountText
+                        anchors.centerIn: parent
+                        text: emulatorUpdates.row_count > 0
+                              ? emulatorUpdates.row_count + " available" : "up to date"
+                        color: emulatorUpdates.row_count > 0 ? root.accent : root.accentCool
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                    }
+                }
+                RoundButton {
+                    text: "×"
+                    flat: true
+                    enabled: !emulatorUpdates.busy
+                    font.pixelSize: 20
+                    onClicked: emulatorUpdateDialog.close()
+                }
+            }
+        }
+
+        contentItem: Rectangle {
+            id: emulatorUpdatePanel
+            color: root.panel
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 52
+                    color: "#101620"
+                    border.color: root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 18
+                        anchors.rightMargin: 18
+                        spacing: 10
+                        HeaderButton {
+                            text: emulatorUpdates.selected_count === emulatorUpdates.row_count
+                                  && emulatorUpdates.row_count > 0
+                                  ? "Clear selection" : "Select all"
+                            enabled: !emulatorUpdates.busy && emulatorUpdates.row_count > 0
+                            onClicked: emulatorUpdates.select_all(
+                                           emulatorUpdates.selected_count !== emulatorUpdates.row_count)
+                        }
+                        Text {
+                            text: emulatorUpdates.selected_count + " selected"
+                            color: root.muted
+                            font.pixelSize: 10
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: "Updates run only when requested here"
+                            color: "#657186"
+                            font.pixelSize: 9
+                        }
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    ListView {
+                        id: emulatorUpdateList
+                        anchors.fill: parent
+                        anchors.margins: 13
+                        clip: true
+                        spacing: 8
+                        reuseItems: true
+                        model: emulatorUpdates.row_count
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                        delegate: Rectangle {
+                            id: emulatorUpdateRow
+                            required property int index
+                            readonly property int modelRevision: emulatorUpdates.revision
+                            readonly property string updateStatus: {
+                                modelRevision
+                                return emulatorUpdates.status_at(index)
+                            }
+                            readonly property string updateDetail: {
+                                modelRevision
+                                return emulatorUpdates.status_detail_at(index)
+                            }
+                            width: ListView.view.width
+                            height: updateDetail.length > 0 ? 98 : 80
+                            radius: 10
+                            color: updateHover.hovered ? "#1b2330" : "#151c27"
+                            border.color: updateStatus === "UPDATED" ? "#28584f"
+                                          : updateStatus === "FAILED" ? "#713c43" : root.line
+
+                            HoverHandler { id: updateHover }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 13
+                                anchors.rightMargin: 15
+                                spacing: 12
+                                CheckBox {
+                                    checked: {
+                                        emulatorUpdateRow.modelRevision
+                                        return emulatorUpdates.selected_at(emulatorUpdateRow.index)
+                                    }
+                                    enabled: !emulatorUpdates.busy
+                                             && (emulatorUpdateRow.updateStatus === "PENDING"
+                                                 || emulatorUpdateRow.updateStatus === "FAILED")
+                                    onToggled: {
+                                        const saved = emulatorUpdates.selected_at(
+                                                          emulatorUpdateRow.index)
+                                        if (checked !== saved)
+                                            emulatorUpdates.set_selected(
+                                                emulatorUpdateRow.index, checked)
+                                    }
+                                    Accessible.name: "Select "
+                                                     + emulatorUpdates.name_at(
+                                                         emulatorUpdateRow.index)
+                                }
+                                Rectangle {
+                                    Layout.preferredWidth: 42
+                                    Layout.preferredHeight: 42
+                                    radius: 11
+                                    color: emulatorUpdateRow.updateStatus === "UPDATED"
+                                           ? "#1b3430" : "#292a30"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "↥"
+                                        color: emulatorUpdateRow.updateStatus === "UPDATED"
+                                               ? root.accentCool : root.accent
+                                        font.pixelSize: 18
+                                        font.weight: Font.Black
+                                    }
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 3
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 9
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: emulatorUpdates.name_at(emulatorUpdateRow.index)
+                                            color: root.ink
+                                            font.pixelSize: 13
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        Rectangle {
+                                            Layout.preferredWidth: updateSource.implicitWidth + 14
+                                            Layout.preferredHeight: 20
+                                            radius: 6
+                                            color: "#202938"
+                                            border.color: root.line
+                                            Text {
+                                                id: updateSource
+                                                anchors.centerIn: parent
+                                                text: emulatorUpdates.source_at(
+                                                          emulatorUpdateRow.index)
+                                                color: "#b7c2d2"
+                                                font.pixelSize: 9
+                                                font.weight: Font.Bold
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: emulatorUpdates.version_at(emulatorUpdateRow.index)
+                                        color: root.accentCool
+                                        font.pixelSize: 11
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        visible: emulatorUpdateRow.updateDetail.length > 0
+                                        text: emulatorUpdateRow.updateDetail
+                                        color: emulatorUpdateRow.updateStatus === "FAILED"
+                                               ? "#ff8c82" : root.muted
+                                        font.pixelSize: 9
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                BusyIndicator {
+                                    visible: emulatorUpdateRow.updateStatus === "UPDATING"
+                                    running: visible
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
+                                }
+                                Text {
+                                    Layout.preferredWidth: 76
+                                    text: emulatorUpdateRow.updateStatus
+                                    color: emulatorUpdateRow.updateStatus === "UPDATED"
+                                           ? root.accentCool
+                                           : emulatorUpdateRow.updateStatus === "FAILED"
+                                             ? "#ff8c82" : root.accent
+                                    horizontalAlignment: Text.AlignRight
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.5
+                                }
+                            }
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        width: Math.min(430, parent.width - 80)
+                        spacing: 10
+                        visible: emulatorUpdates.busy && !emulatorUpdates.initialized
+                        BusyIndicator {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            running: parent.visible
+                        }
+                        Text {
+                            width: parent.width
+                            text: "Checking package sources…"
+                            color: root.muted
+                            font.pixelSize: 12
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        width: Math.min(460, parent.width - 80)
+                        spacing: 8
+                        visible: emulatorUpdates.initialized && !emulatorUpdates.busy
+                                 && emulatorUpdates.row_count === 0
+                        Text {
+                            width: parent.width
+                            text: "Everything is current"
+                            color: root.ink
+                            font.pixelSize: 17
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        Text {
+                            width: parent.width
+                            text: "No supported emulator installation has a newer verified build."
+                            color: root.muted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 66
+                    color: "#101620"
+                    border.color: root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 18
+                        anchors.rightMargin: 18
+                        spacing: 10
+                        BusyIndicator {
+                            visible: emulatorUpdates.busy
+                            running: visible
+                            Layout.preferredWidth: 20
+                            Layout.preferredHeight: 20
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text {
+                                Layout.fillWidth: true
+                                text: emulatorUpdates.message
+                                color: emulatorUpdates.message.indexOf("failed") >= 0
+                                       || emulatorUpdates.message.indexOf("Could not") >= 0
+                                       ? "#ff8c82" : root.muted
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                visible: emulatorUpdates.busy && emulatorUpdates.row_count > 0
+                                text: emulatorUpdates.completed_count + " of "
+                                      + emulatorUpdates.batch_count + " completed"
+                                color: "#657186"
+                                font.pixelSize: 9
+                            }
+                        }
+                        HeaderButton {
+                            text: emulatorUpdates.busy ? "Checking…" : "↻  Refresh"
+                            enabled: !emulatorUpdates.busy
+                            onClicked: emulatorUpdates.refresh()
+                        }
+                        HeaderButton {
+                            text: emulatorUpdates.busy
+                                  ? "Updating…" : "Update selected ("
+                                    + emulatorUpdates.selected_count + ")"
+                            active: true
+                            enabled: !emulatorUpdates.busy
+                                     && emulatorUpdates.selected_count > 0
+                            onClicked: emulatorUpdates.update_selected()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: emulatorUpdateScreenshotTimer
+        interval: 900
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0)
+                return
+            emulatorUpdatePanel.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_EMULATOR_UPDATE_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_EMULATOR_UPDATE_UI_READY updates="
+                            + emulatorUpdates.row_count + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
         }
     }
 

@@ -41,6 +41,21 @@ pub struct ManagedEmulator {
     pub install_path: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ManagedEmulatorUpdate {
+    pub row: ManagedEmulator,
+    pub display_name: String,
+    pub source_label: String,
+    pub current_version: String,
+    pub available_version: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct EmulatorUpdateInventory {
+    pub updates: Vec<ManagedEmulatorUpdate>,
+    pub warnings: Vec<String>,
+}
+
 impl ManagedEmulator {
     pub fn status_label(&self) -> &'static str {
         if self.installed && self.managed {
@@ -103,6 +118,9 @@ struct InstallationState {
     version: String,
     install_path: String,
 }
+
+type InstalledSourceGroup = (InstallSource, InstallationState, bool, BTreeSet<String>);
+type InstalledSourceGroups = BTreeMap<(String, String, String), InstalledSourceGroup>;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -247,6 +265,115 @@ pub fn load_managed_emulators() -> Result<Vec<ManagedEmulator>> {
         })
     });
     Ok(rows)
+}
+
+pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
+    let host = current_host_slug()?;
+    let database = catalog::requested_database_path()
+        .context("No canonical database found. Pass --database PATH or set LUNCHBOX_DATABASE.")?;
+    let connection = catalog::open_read_only(&database, "Lunchbox emulator catalog")?;
+    let mut statement = connection.prepare(
+        "SELECT e.id, e.name, p.host_system_slug, p.manager, p.package_id, p.metadata_json
+         FROM emulator_packages p
+         JOIN emulators e ON e.id=p.emulator_id
+         WHERE p.host_system_slug=?1
+         ORDER BY p.manager, p.package_id, e.name COLLATE NOCASE, e.id",
+    )?;
+    let sources = statement
+        .query_map([host], |row| {
+            Ok(InstallSource {
+                emulator_id: row.get(0)?,
+                name: row.get(1)?,
+                host_system_slug: row.get(2)?,
+                manager: row.get(3)?,
+                package_id: row.get(4)?,
+                metadata_json: row.get(5)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+
+    let store = SettingsStore::open_default()?;
+    let receipts = store
+        .managed_emulator_installs()?
+        .into_iter()
+        .map(|receipt| (receipt_key(&receipt), receipt))
+        .collect::<HashMap<_, _>>();
+    let snapshot = HostSnapshot::load(host, &sources)?;
+    let mut installed = InstalledSourceGroups::new();
+    for source in sources {
+        validate_source(&source)?;
+        for state in
+            snapshot.installation_states_for_updates(&source, receipts.get(&source_key(&source)))?
+        {
+            let managed = receipts.contains_key(&source_key(&source));
+            let group_key = (
+                source.manager.clone(),
+                source.package_id.clone(),
+                state.install_path.clone(),
+            );
+            installed
+                .entry(group_key)
+                .and_modify(|(_, _, grouped_managed, names)| {
+                    *grouped_managed |= managed;
+                    names.insert(source.name.clone());
+                })
+                .or_insert_with(|| {
+                    let mut names = BTreeSet::new();
+                    names.insert(source.name.clone());
+                    (source.clone(), state, managed, names)
+                });
+        }
+    }
+
+    let mut checks = UpdateChecks::load(host, &installed);
+    let mut updates = Vec::new();
+    for (_, (source, state, managed, names)) in installed {
+        let row = ManagedEmulator {
+            emulator_id: source.emulator_id,
+            name: source.name,
+            host_system_slug: source.host_system_slug,
+            source_label: manager_label(&source.manager).to_owned(),
+            manager_available: manager_available(&source.manager, &source.metadata_json),
+            manager: source.manager,
+            package_id: source.package_id,
+            metadata_json: source.metadata_json,
+            installed: true,
+            managed,
+            version: state.version.clone(),
+            install_path: state.install_path,
+        };
+        match checks.check(&row) {
+            UpdateCheckResult::Available(available_version) => {
+                updates.push(ManagedEmulatorUpdate {
+                    display_name: summarize_emulator_names(&names),
+                    source_label: update_source_label(&row),
+                    current_version: state.version,
+                    available_version,
+                    row,
+                });
+            }
+            UpdateCheckResult::Failed(error) => checks.warnings.push(format!(
+                "{} via {}: {error}",
+                summarize_emulator_names(&names),
+                manager_label(&row.manager)
+            )),
+            UpdateCheckResult::Current | UpdateCheckResult::Unsupported => {}
+        }
+    }
+    updates.sort_by(|left, right| {
+        left.display_name
+            .to_ascii_lowercase()
+            .cmp(&right.display_name.to_ascii_lowercase())
+            .then_with(|| left.source_label.cmp(&right.source_label))
+            .then_with(|| left.row.package_id.cmp(&right.row.package_id))
+    });
+    checks.warnings.sort();
+    checks.warnings.dedup();
+    Ok(EmulatorUpdateInventory {
+        updates,
+        warnings: checks.warnings,
+    })
 }
 
 fn load_libretro_core_rows(
@@ -648,6 +775,31 @@ fn manager_label(manager: &str) -> &'static str {
     }
 }
 
+fn summarize_emulator_names(names: &BTreeSet<String>) -> String {
+    let Some(first) = names.iter().next() else {
+        return "Unknown emulator".to_owned();
+    };
+    if names.len() == 1 {
+        return first.clone();
+    }
+    let primary = names
+        .iter()
+        .find(|name| !name.contains(" ("))
+        .unwrap_or(first);
+    format!("{primary} (+{} variants)", names.len() - 1)
+}
+
+fn update_source_label(row: &ManagedEmulator) -> String {
+    match row.manager.as_str() {
+        "flatpak" if row.install_path == "system" => "Flatpak · system".to_owned(),
+        "flatpak" => "Flatpak · user".to_owned(),
+        "appimage" | "github" => read_program_manifest(&row.emulator_id, &row.manager)
+            .map(|manifest| format!("{} · {}", row.source_label, manifest.update_transport))
+            .unwrap_or_else(|| row.source_label.clone()),
+        _ => row.source_label.clone(),
+    }
+}
+
 fn manager_available(manager: &str, metadata_json: &str) -> bool {
     match manager {
         "flatpak" => cfg!(target_os = "linux") && command_path("flatpak").is_ok(),
@@ -891,8 +1043,244 @@ fn receipt_key(receipt: &ManagedEmulatorInstall) -> (String, String, String) {
     )
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum UpdateCheckResult {
+    Current,
+    Available(String),
+    Unsupported,
+    Failed(String),
+}
+
+#[derive(Default)]
+struct UpdateChecks {
+    flatpak: HashMap<(String, String), String>,
+    homebrew: HashMap<String, String>,
+    github: HashMap<String, Result<String, String>>,
+    warnings: Vec<String>,
+}
+
+impl UpdateChecks {
+    fn load(host: &str, installed: &InstalledSourceGroups) -> Self {
+        let mut checks = Self::default();
+        if host == "linux" {
+            for (scope, flag) in [("user", "--user"), ("system", "--system")] {
+                let needed = installed.values().any(|(source, state, _, _)| {
+                    source.manager == "flatpak" && state.install_path == scope
+                });
+                if !needed {
+                    continue;
+                }
+                match load_flatpak_updates(scope, flag) {
+                    Ok(updates) => checks.flatpak.extend(updates),
+                    Err(error) => checks
+                        .warnings
+                        .push(format!("Flatpak {scope} update check: {error:#}")),
+                }
+            }
+        }
+        if host == "macos"
+            && installed
+                .values()
+                .any(|(source, _, _, _)| source.manager == "homebrew")
+        {
+            match load_homebrew_updates() {
+                Ok(updates) => checks.homebrew = updates,
+                Err(error) => checks
+                    .warnings
+                    .push(format!("Homebrew update check: {error:#}")),
+            }
+        }
+        checks
+    }
+
+    fn check(&mut self, row: &ManagedEmulator) -> UpdateCheckResult {
+        if !row.manager_available {
+            return UpdateCheckResult::Unsupported;
+        }
+        match row.manager.as_str() {
+            "flatpak" => self
+                .flatpak
+                .get(&(row.install_path.clone(), row.package_id.clone()))
+                .cloned()
+                .map(UpdateCheckResult::Available)
+                .unwrap_or(UpdateCheckResult::Current),
+            "nix" => match latest_nixpkgs_version(&row.package_id) {
+                Ok(available) if versions_match(&row.version, &available) => {
+                    UpdateCheckResult::Current
+                }
+                Ok(_) if row.version.trim().is_empty() => UpdateCheckResult::Failed(
+                    "the installed Nix profile version could not be determined".to_owned(),
+                ),
+                Ok(available) => UpdateCheckResult::Available(available),
+                Err(error) => UpdateCheckResult::Failed(format!("{error:#}")),
+            },
+            "appimage" | "github" => {
+                if row.version.trim().is_empty() {
+                    return UpdateCheckResult::Failed(
+                        "the installed release version could not be determined".to_owned(),
+                    );
+                }
+                let result = self
+                    .github
+                    .entry(row.package_id.clone())
+                    .or_insert_with(|| {
+                        github_latest_release(&row.package_id)
+                            .map(|release| normalize_version(&release.tag_name))
+                            .map_err(|error| format!("{error:#}"))
+                    });
+                match result {
+                    Ok(available) if versions_match(&row.version, available) => {
+                        UpdateCheckResult::Current
+                    }
+                    Ok(available) => UpdateCheckResult::Available(available.clone()),
+                    Err(error) => UpdateCheckResult::Failed(error.clone()),
+                }
+            }
+            "winget" => check_winget_update(&row.package_id),
+            "homebrew" => self
+                .homebrew
+                .get(&row.package_id)
+                .cloned()
+                .map(UpdateCheckResult::Available)
+                .unwrap_or(UpdateCheckResult::Current),
+            "direct" | "libretro" => UpdateCheckResult::Unsupported,
+            _ => UpdateCheckResult::Unsupported,
+        }
+    }
+}
+
+fn versions_match(installed: &str, available: &str) -> bool {
+    installed
+        .trim()
+        .trim_start_matches(['v', 'V'])
+        .eq_ignore_ascii_case(available.trim().trim_start_matches(['v', 'V']))
+}
+
+fn latest_nixpkgs_version(package_id: &str) -> Result<String> {
+    validate_package_id("nix", package_id)?;
+    let output = run_checked(
+        command_path("nix")?,
+        ["eval", "--raw", &format!("nixpkgs#{package_id}.version")],
+        "Nixpkgs version check",
+    )?;
+    let version = String::from_utf8(output.stdout)
+        .context("Nixpkgs returned a non-UTF-8 version")?
+        .trim()
+        .to_owned();
+    if version.is_empty() {
+        bail!("Nixpkgs returned an empty version for {package_id}");
+    }
+    Ok(version)
+}
+
+fn load_flatpak_updates(scope: &str, flag: &str) -> Result<HashMap<(String, String), String>> {
+    let output = run_checked(
+        command_path("flatpak")?,
+        [
+            "remote-ls",
+            flag,
+            "--updates",
+            "--app",
+            "--columns=application,version",
+        ],
+        &format!("Flatpak {scope} update inventory"),
+    )?;
+    Ok(parse_flatpak_update_output(scope, &output.stdout))
+}
+
+fn parse_flatpak_update_output(scope: &str, output: &[u8]) -> HashMap<(String, String), String> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\t').map(str::trim);
+            let package_id = fields.next()?.to_owned();
+            (!package_id.is_empty()).then(|| {
+                (
+                    (scope.to_owned(), package_id),
+                    fields.next().unwrap_or_default().to_owned(),
+                )
+            })
+        })
+        .collect()
+}
+
+fn load_homebrew_updates() -> Result<HashMap<String, String>> {
+    let output = run_checked(
+        command_path("brew")?,
+        ["outdated", "--json=v2"],
+        "Homebrew update inventory",
+    )?;
+    parse_homebrew_update_output(&output.stdout)
+}
+
+fn parse_homebrew_update_output(output: &[u8]) -> Result<HashMap<String, String>> {
+    let value: serde_json::Value =
+        serde_json::from_slice(output).context("parsing Homebrew outdated JSON")?;
+    let mut updates = HashMap::new();
+    for kind in ["formulae", "casks"] {
+        let rows = value
+            .get(kind)
+            .and_then(serde_json::Value::as_array)
+            .with_context(|| format!("Homebrew outdated JSON has no {kind} array"))?;
+        for row in rows {
+            let Some(name) = row.get("name").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let available = row
+                .get("current_version")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            updates.insert(name.to_owned(), available.to_owned());
+        }
+    }
+    Ok(updates)
+}
+
+fn check_winget_update(package_id: &str) -> UpdateCheckResult {
+    if !cfg!(target_os = "windows") {
+        return UpdateCheckResult::Unsupported;
+    }
+    let Ok(winget) = command_path("winget") else {
+        return UpdateCheckResult::Unsupported;
+    };
+    let output = match Command::new(winget)
+        .args([
+            "upgrade",
+            "--disable-interactivity",
+            "--accept-source-agreements",
+            "-e",
+            "--id",
+            package_id,
+        ])
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => return UpdateCheckResult::Failed(error.to_string()),
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if output.status.success() && output_has_exact_package_id(&stdout, package_id) {
+        UpdateCheckResult::Available(String::new())
+    } else if output.status.success() {
+        UpdateCheckResult::Current
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let detail = if stderr.is_empty() {
+            stdout.trim().to_owned()
+        } else {
+            stderr
+        };
+        UpdateCheckResult::Failed(format!("winget update check failed: {detail}"))
+    }
+}
+
+fn output_has_exact_package_id(output: &str, package_id: &str) -> bool {
+    output
+        .lines()
+        .any(|line| line.split_whitespace().any(|field| field == package_id))
+}
+
 struct HostSnapshot {
-    flatpaks: HashMap<String, (String, String)>,
+    flatpaks: HashMap<(String, String), String>,
     nix_profile: Option<NixProfileList>,
     homebrew: HashMap<String, String>,
 }
@@ -931,13 +1319,16 @@ impl HostSnapshot {
         receipt: Option<&ManagedEmulatorInstall>,
     ) -> Result<InstallationState> {
         match source.manager.as_str() {
-            "flatpak" => Ok(self
-                .flatpaks
-                .get(&source.package_id)
-                .map(|(version, scope)| InstallationState {
-                    installed: true,
-                    version: version.clone(),
-                    install_path: scope.clone(),
+            "flatpak" => Ok(["user", "system"]
+                .into_iter()
+                .find_map(|scope| {
+                    self.flatpaks
+                        .get(&(scope.to_owned(), source.package_id.clone()))
+                        .map(|version| InstallationState {
+                            installed: true,
+                            version: version.clone(),
+                            install_path: scope.to_owned(),
+                        })
                 })
                 .unwrap_or_default()),
             "nix" => Ok(self
@@ -976,6 +1367,29 @@ impl HostSnapshot {
                 .unwrap_or_default()),
             _ => Ok(InstallationState::default()),
         }
+    }
+
+    fn installation_states_for_updates(
+        &self,
+        source: &InstallSource,
+        receipt: Option<&ManagedEmulatorInstall>,
+    ) -> Result<Vec<InstallationState>> {
+        if source.manager == "flatpak" {
+            return Ok(["user", "system"]
+                .into_iter()
+                .filter_map(|scope| {
+                    self.flatpaks
+                        .get(&(scope.to_owned(), source.package_id.clone()))
+                        .map(|version| InstallationState {
+                            installed: true,
+                            version: version.clone(),
+                            install_path: scope.to_owned(),
+                        })
+                })
+                .collect());
+        }
+        let state = self.installation_state(source, receipt)?;
+        Ok(state.installed.then_some(state).into_iter().collect())
     }
 }
 
@@ -1018,7 +1432,7 @@ where
     Ok(output)
 }
 
-fn installed_flatpaks() -> HashMap<String, (String, String)> {
+fn installed_flatpaks() -> HashMap<(String, String), String> {
     let Ok(flatpak) = command_path("flatpak") else {
         return HashMap::new();
     };
@@ -1042,12 +1456,10 @@ fn installed_flatpaks() -> HashMap<String, (String, String)> {
             else {
                 continue;
             };
-            installed.entry(app_id.to_owned()).or_insert_with(|| {
-                (
-                    fields.next().unwrap_or_default().trim().to_owned(),
-                    scope.to_owned(),
-                )
-            });
+            installed.insert(
+                (scope.to_owned(), app_id.to_owned()),
+                fields.next().unwrap_or_default().trim().to_owned(),
+            );
         }
     }
     installed
@@ -1142,12 +1554,18 @@ fn nix_store_version(paths: &[String], package: &str) -> Option<String> {
         let name = Path::new(path).file_name()?.to_str()?;
         let derivation = name.split_once('-')?.1;
         derivation
-            .strip_prefix(&format!("{package}-"))
+            .match_indices('-')
+            .map(|(index, _)| &derivation[index + 1..])
+            .find(|candidate| {
+                candidate.starts_with(|character: char| character.is_ascii_digit())
+                    || candidate.starts_with("unstable-")
+                    || candidate.starts_with("git-")
+            })
             .map(ToOwned::to_owned)
             .or_else(|| {
                 derivation
-                    .rsplit_once('-')
-                    .map(|(_, version)| version.to_owned())
+                    .strip_prefix(&format!("{package}-"))
+                    .map(ToOwned::to_owned)
             })
     })
 }
@@ -1787,6 +2205,78 @@ mod tests {
         assert!(validate_package_id("homebrew", "name;rm").is_err());
         assert!(validate_package_id("winget", "bad value").is_err());
         assert!(validate_package_id("libretro", "mesen;rm").is_err());
+    }
+
+    #[test]
+    fn flatpak_update_parser_preserves_scope_and_available_version() {
+        let updates = parse_flatpak_update_output(
+            "system",
+            b"org.libretro.RetroArch\t1.22.2\norg.mamedev.MAME\t0.290\n",
+        );
+        assert_eq!(
+            updates.get(&("system".to_owned(), "org.libretro.RetroArch".to_owned())),
+            Some(&"1.22.2".to_owned())
+        );
+        assert_eq!(
+            updates.get(&("system".to_owned(), "org.mamedev.MAME".to_owned())),
+            Some(&"0.290".to_owned())
+        );
+        assert!(!updates.contains_key(&("user".to_owned(), "org.mamedev.MAME".to_owned())));
+    }
+
+    #[test]
+    fn homebrew_update_parser_combines_formulae_and_casks() {
+        let updates = parse_homebrew_update_output(
+            br#"{
+              "formulae": [{"name":"mame","current_version":"0.290"}],
+              "casks": [{"name":"retroarch","current_version":"1.22.2"}]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(updates.get("mame"), Some(&"0.290".to_owned()));
+        assert_eq!(updates.get("retroarch"), Some(&"1.22.2".to_owned()));
+    }
+
+    #[test]
+    fn update_identity_and_version_comparisons_are_exact() {
+        assert!(output_has_exact_package_id(
+            "RetroArch  Libretro.RetroArch  1.21.0  1.22.2",
+            "Libretro.RetroArch"
+        ));
+        assert!(!output_has_exact_package_id(
+            "RetroArch  Libretro.RetroArch.Beta  1.21.0  1.22.2",
+            "Libretro.RetroArch"
+        ));
+        assert!(versions_match("v1.22.2", "1.22.2"));
+        assert!(!versions_match("1.21.0", "1.22.2"));
+    }
+
+    #[test]
+    fn duplicate_package_names_have_a_stable_summary() {
+        let names = BTreeSet::from([
+            "MAME (Arcade)".to_owned(),
+            "MAME".to_owned(),
+            "MAME (Software Lists)".to_owned(),
+        ]);
+        assert_eq!(summarize_emulator_names(&names), "MAME (+2 variants)");
+    }
+
+    #[test]
+    fn nix_store_versions_handle_wrapped_package_names() {
+        assert_eq!(
+            nix_store_version(
+                &["/nix/store/hash-retroarch-with-cores-1.21.0".to_owned()],
+                "retroarch"
+            ),
+            Some("1.21.0".to_owned())
+        );
+        assert_eq!(
+            nix_store_version(
+                &["/nix/store/hash-dolphin-emu-unstable-2026-08-01".to_owned()],
+                "dolphin-emu"
+            ),
+            Some("unstable-2026-08-01".to_owned())
+        );
     }
 
     #[test]

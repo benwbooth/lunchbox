@@ -198,6 +198,16 @@ The initial implementation enforces this shape:
   `Z:` drive. RetroArch cores use exact catalog slugs and host-specific
   Libretro buildbot filenames, extract only the expected archive member, and
   replace files atomically. The same receipts are consumed by launch discovery.
+- Update discovery is intentionally independent of the manager's preferred
+  install source. Exact manager/package/path tuples preserve alternate
+  backends, including distinct user and system Flatpak installations. Named
+  workers compare Flatpak update inventories, Nixpkgs versions, managed
+  GitHub/AppImage release manifests, exact winget results, and Homebrew's JSON
+  inventory. Only proven updates enter the Qt review model. Rows start selected,
+  run sequentially only after an explicit request, and retain Pending,
+  Updating, Updated, or Failed state with the underlying error. Partial source
+  failures are warnings; direct downloads and Libretro buildbot cores without a
+  reliable comparable version are not presented as updates.
 - Firmware remains a `runtime -> rules -> target` system, matching the legacy
   architecture instead of assuming one BIOS directory per platform. Canonical
   rules bind an exact emulator or RetroArch core and platform to one reviewed

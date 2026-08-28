@@ -143,6 +143,16 @@ with atomic replacement and ownership-safe removal. Managed native,
 AppImage/GitHub, Nix-profile, Flatpak, and Wine installations feed the same
 launch discovery used by local ROMs and prepared PC games.
 
+Emulator updates are a separate explicit review step, matching the useful part
+of the legacy manager without automatic background mutation. Lunchbox checks
+every installed backend instead of only the manager's preferred source, lists
+only proven available updates with current and available versions, selects
+rows for review, and applies the chosen updates sequentially with durable
+per-row progress and errors. Linux checks user/system Flatpaks, the isolated
+Nix profile, and managed GitHub/AppImage releases; Windows queries exact winget
+IDs; macOS consumes Homebrew's structured outdated inventory. A failed source
+check is reported as a warning and never converted into a false update.
+
 Firmware is resolved for the selected runtime and core, rather than from one
 global folder per platform. The canonical catalog carries 118 reviewed rules
 and 17 exact sources recovered from the legacy Lunchbox design, including

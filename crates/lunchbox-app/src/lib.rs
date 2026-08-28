@@ -6,6 +6,7 @@ pub mod download_queue_model;
 mod emulator;
 mod emulator_manager;
 pub mod emulator_manager_model;
+pub mod emulator_update_model;
 mod exo_install;
 mod firmware;
 mod game_details;
@@ -45,6 +46,36 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--emulator-update-probe") {
+        return match emulator_manager::load_available_emulator_updates() {
+            Ok(inventory) => {
+                println!(
+                    "LUNCHBOX_EMULATOR_UPDATES_READY updates={} warnings={}",
+                    inventory.updates.len(),
+                    inventory.warnings.len()
+                );
+                for update in inventory.updates {
+                    println!(
+                        "LUNCHBOX_EMULATOR_UPDATE name={:?} source={:?} package={:?} current={:?} available={:?}",
+                        update.display_name,
+                        update.source_label,
+                        update.row.package_id,
+                        update.current_version,
+                        update.available_version
+                    );
+                }
+                for warning in inventory.warnings {
+                    eprintln!("LUNCHBOX_EMULATOR_UPDATE_WARNING {warning}");
+                }
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_EMULATOR_UPDATES_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--controller-probe") {
         let inventory = controllers::controller_inventory();
         println!(

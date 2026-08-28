@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-27",
+  "reviewed_at": "2026-08-28",
   "sources": [
     { "emulator": "Ares", "host": "linux", "manager": "nix", "package_id": "ares" },
     { "emulator": "ares", "host": "linux", "manager": "nix", "package_id": "ares" },
@@ -22,6 +22,7 @@
     { "emulator": "openMSX", "host": "linux", "manager": "nix", "package_id": "openmsx" },
     { "emulator": "PCSX2", "host": "linux", "manager": "nix", "package_id": "pcsx2" },
     { "emulator": "PPSSPP", "host": "linux", "manager": "nix", "package_id": "ppsspp" },
+    { "emulator": "RetroArch", "host": "linux", "manager": "nix", "package_id": "retroarch" },
     { "emulator": "ScummVM", "host": "linux", "manager": "nix", "package_id": "scummvm" },
     { "emulator": "Snes9x", "host": "linux", "manager": "nix", "package_id": "snes9x" },
     { "emulator": "Stella", "host": "linux", "manager": "nix", "package_id": "stella" },
