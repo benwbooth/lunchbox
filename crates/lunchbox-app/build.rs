@@ -16,6 +16,7 @@ fn main() {
     .file("src/download_queue_model.rs")
     .file("src/emulator_manager_model.rs")
     .file("src/game_details_model.rs")
+    .file("src/launch_profile_manager_model.rs")
     .file("src/library_model.rs")
     .file("src/local_import_model.rs")
     .file("src/settings_model.rs")

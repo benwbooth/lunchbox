@@ -10,8 +10,10 @@ import Lunchbox
 ApplicationWindow {
     id: root
     visible: true
-    width: controllerProfileUiProbe || launchProfileUiProbe ? 1920 : 1440
-    height: controllerProfileUiProbe || launchProfileUiProbe ? 1200 : 900
+    width: controllerProfileUiProbe || launchProfileUiProbe
+           || launchProfileManagerUiProbe ? 1920 : 1440
+    height: controllerProfileUiProbe || launchProfileUiProbe
+            || launchProfileManagerUiProbe ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
@@ -123,6 +125,7 @@ ApplicationWindow {
     readonly property bool romLaunchProbe: Qt.application.arguments.indexOf("--rom-launch-probe") >= 0
     readonly property bool romLaunchUiProbe: Qt.application.arguments.indexOf("--rom-launch-ui-probe") >= 0
     readonly property bool launchProfileUiProbe: Qt.application.arguments.indexOf("--launch-profile-ui-probe") >= 0
+    readonly property bool launchProfileManagerUiProbe: Qt.application.arguments.indexOf("--launch-profile-manager-ui-probe") >= 0
     readonly property bool arcadeLaunchProbe: Qt.application.arguments.indexOf("--arcade-launch-probe") >= 0
     readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
     readonly property bool emulatorManagerProbe: Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
@@ -180,6 +183,11 @@ ApplicationWindow {
     function openEmulatorManager() {
         emulatorManagerDialog.open()
         emulatorManager.initialize()
+    }
+
+    function openLaunchProfileManager() {
+        launchProfileManagerDialog.open()
+        launchProfileManager.initialize()
     }
 
     function selectLibrary(availabilityKey) {
@@ -491,11 +499,36 @@ ApplicationWindow {
         id: emulatorManager
     }
 
+    LaunchProfileManagerModel {
+        id: launchProfileManager
+    }
+
     Connections {
         target: emulatorManager
         function onInitializedChanged() {
             if (root.emulatorManagerProbe && emulatorManager.initialized)
                 Qt.quit()
+        }
+    }
+
+    Connections {
+        target: launchProfileManager
+        function onInitializedChanged() {
+            if (!root.launchProfileManagerUiProbe
+                    || !launchProfileManager.initialized)
+                return
+            launchProfileSearch.text = "mame_rompath"
+            launchProfileScopeFilter.currentIndex = 2
+            launchProfileManager.apply_filter("mame_rompath", "platform", "all")
+            if (launchProfileManager.row_count > 0)
+                launchProfileManager.edit_at(0)
+            launchProfileManagerScreenshotTimer.restart()
+        }
+        function onEditor_revisionChanged() {
+            launchProfileManagerExtraArguments.text =
+                    launchProfileManager.editor_extra_arguments
+            launchProfileManagerCommandTemplate.text =
+                    launchProfileManager.editor_command_template
         }
     }
 
@@ -907,6 +940,8 @@ ApplicationWindow {
             }
             else if (root.emulatorManagerProbe)
                 emulatorManager.initialize()
+            else if (root.launchProfileManagerUiProbe)
+                root.openLaunchProfileManager()
             else if (root.releaseCandidateUiProbe)
                 root.openGame("52f67472-bddb-4e5b-951b-43364f996573", 1726,
                               "Super Mario Land", "Nintendo Game Boy", false, true)
@@ -6737,12 +6772,24 @@ ApplicationWindow {
                             wrapMode: Text.WordWrap
                         }
                     }
-                    HeaderButton {
-                        text: "Manage emulators"
-                        active: true
-                        onClicked: {
-                            settingsDialog.close()
-                            root.openEmulatorManager()
+                    ColumnLayout {
+                        spacing: 7
+                        HeaderButton {
+                            Layout.fillWidth: true
+                            text: "Manage emulators"
+                            active: true
+                            onClicked: {
+                                settingsDialog.close()
+                                root.openEmulatorManager()
+                            }
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Launch commands"
+                            onClicked: {
+                                settingsDialog.close()
+                                root.openLaunchProfileManager()
+                            }
                         }
                     }
                 }
@@ -7165,6 +7212,589 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: launchProfileManagerDialog
+        parent: Overlay.overlay
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(1240, root.width - 64)
+        height: Math.min(880, root.height - 64)
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            width: parent.width
+            height: 78
+            color: root.panelRaised
+            radius: 14
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 14
+                spacing: 14
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: "LAUNCH COMMANDS"
+                        color: root.ink
+                        font.pixelSize: 17
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: "Exact emulator/runtime profiles · game overrides remain in Game Details"
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                }
+                HeaderButton {
+                    text: launchProfileManager.busy ? "Refreshing…" : "↻  Refresh"
+                    enabled: !launchProfileManager.busy
+                    onClicked: launchProfileManager.refresh()
+                }
+                RoundButton {
+                    text: "×"
+                    flat: true
+                    font.pixelSize: 20
+                    onClicked: launchProfileManagerDialog.close()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            id: launchProfileManagerPanel
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 72
+                color: "#101620"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 18
+                    spacing: 10
+                    TextField {
+                        id: launchProfileSearch
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 38
+                        placeholderText: "Search platform, emulator, core, argument, or template"
+                        selectByMouse: true
+                        color: root.ink
+                        placeholderTextColor: root.muted
+                        selectionColor: root.accent
+                        selectedTextColor: "#101318"
+                        background: Rectangle {
+                            radius: 7
+                            color: "#0b121b"
+                            border.color: launchProfileSearch.activeFocus
+                                          ? root.accent : root.line
+                        }
+                        onTextEdited: launchProfileManager.apply_filter(
+                                          text,
+                                          launchProfileScopeFilter.currentValue,
+                                          launchProfileCustomizationFilter.currentValue)
+                    }
+                    ComboBox {
+                        id: launchProfileScopeFilter
+                        Layout.preferredWidth: 166
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "All scopes", value: "all" },
+                            { label: "All platforms", value: "global" },
+                            { label: "Per platform", value: "platform" }
+                        ]
+                        contentItem: Text {
+                            leftPadding: 10
+                            rightPadding: 28
+                            text: launchProfileScopeFilter.displayText
+                            color: root.ink
+                            font.pixelSize: 10
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        background: Rectangle {
+                            radius: 7
+                            color: "#0b121b"
+                            border.color: launchProfileScopeFilter.activeFocus
+                                          ? root.accent : root.line
+                        }
+                        onActivated: launchProfileManager.apply_filter(
+                                         launchProfileSearch.text, currentValue,
+                                         launchProfileCustomizationFilter.currentValue)
+                    }
+                    ComboBox {
+                        id: launchProfileCustomizationFilter
+                        Layout.preferredWidth: 166
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "All profiles", value: "all" },
+                            { label: "Customized", value: "customized" },
+                            { label: "Built-in", value: "built-in" }
+                        ]
+                        contentItem: Text {
+                            leftPadding: 10
+                            rightPadding: 28
+                            text: launchProfileCustomizationFilter.displayText
+                            color: root.ink
+                            font.pixelSize: 10
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        background: Rectangle {
+                            radius: 7
+                            color: "#0b121b"
+                            border.color: launchProfileCustomizationFilter.activeFocus
+                                          ? root.accent : root.line
+                        }
+                        onActivated: launchProfileManager.apply_filter(
+                                         launchProfileSearch.text,
+                                         launchProfileScopeFilter.currentValue,
+                                         currentValue)
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: launchProfileCount.implicitWidth + 22
+                        Layout.preferredHeight: 30
+                        radius: 15
+                        color: "#172c28"
+                        border.color: "#28584f"
+                        Text {
+                            id: launchProfileCount
+                            anchors.centerIn: parent
+                            text: launchProfileManager.row_count + " shown · "
+                                  + launchProfileManager.customized_count + " custom"
+                            color: root.accentCool
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 0
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: root.panel
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 0
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 34
+                            color: "#0e141d"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 16
+                                spacing: 12
+                                Text {
+                                    Layout.preferredWidth: 164
+                                    text: "SCOPE"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                }
+                                Text {
+                                    Layout.preferredWidth: 174
+                                    text: "EMULATOR"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                }
+                                Text {
+                                    Layout.preferredWidth: 145
+                                    text: "RUNTIME"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "BUILT-IN / STATUS"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                }
+                            }
+                        }
+                        ListView {
+                            id: launchProfileList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            reuseItems: true
+                            spacing: 1
+                            model: launchProfileManager.row_count
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            delegate: Rectangle {
+                                id: launchProfileRow
+                                required property int index
+                                readonly property int modelRevision: launchProfileManager.revision
+                                readonly property bool customized:
+                                    launchProfileManager.customized_at(index)
+                                width: ListView.view.width
+                                height: 66
+                                color: launchProfileRowMouse.containsMouse
+                                       ? "#1b2532" : index % 2 === 0
+                                         ? "#141c27" : "#111923"
+                                border.color: customized ? "#28584f" : "transparent"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 16
+                                    anchors.rightMargin: 16
+                                    spacing: 12
+                                    Text {
+                                        Layout.preferredWidth: 164
+                                        text: launchProfileManager.scope_at(
+                                                  launchProfileRow.index)
+                                        color: root.ink
+                                        font.pixelSize: 11
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.preferredWidth: 174
+                                        text: launchProfileManager.emulator_at(
+                                                  launchProfileRow.index)
+                                        color: root.ink
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.preferredWidth: 145
+                                        text: launchProfileManager.runtime_at(
+                                                  launchProfileRow.index)
+                                        color: "#b7c2d2"
+                                        font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: launchProfileManager.default_template_at(
+                                                      launchProfileRow.index)
+                                            color: root.muted
+                                            font.family: "monospace"
+                                            font.pixelSize: 9
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            text: launchProfileManager.customization_at(
+                                                      launchProfileRow.index)
+                                            color: launchProfileRow.customized
+                                                   ? root.accentCool : "#657186"
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                        }
+                                    }
+                                }
+                                MouseArea {
+                                    id: launchProfileRowMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: launchProfileManager.edit_at(
+                                                   launchProfileRow.index)
+                                }
+                            }
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 8
+                                visible: launchProfileManager.initialized
+                                         && !launchProfileManager.busy
+                                         && launchProfileManager.row_count === 0
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "No matching launch profiles"
+                                    color: root.ink
+                                    font.pixelSize: 14
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "Try another search or filter."
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                }
+                            }
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 10
+                        visible: launchProfileManager.busy
+                                 && !launchProfileManager.initialized
+                        BusyIndicator {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            running: parent.visible
+                        }
+                        Text {
+                            text: "Loading exact runtime profiles…"
+                            color: root.muted
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 410
+                    Layout.fillHeight: true
+                    color: "#101720"
+                    border.color: root.line
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 10
+                        visible: launchProfileManager.editor_open
+                        Text {
+                            Layout.fillWidth: true
+                            text: launchProfileManager.editor_title
+                            color: root.ink
+                            font.pixelSize: 15
+                            font.weight: Font.Bold
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: launchProfileManager.editor_identity
+                            color: root.muted
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 54
+                            radius: 8
+                            color: "#0b121b"
+                            border.color: root.line
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 9
+                                spacing: 3
+                                Text {
+                                    text: "BUILT-IN"
+                                    color: root.muted
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: launchProfileManager.editor_default_template
+                                    color: "#aeb9c9"
+                                    font.family: "monospace"
+                                    font.pixelSize: 9
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: launchProfileManager.editor_effective_summary
+                            color: root.accentCool
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
+                        Text {
+                            text: "EXTRA ARGUMENTS"
+                            color: root.muted
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                        }
+                        TextField {
+                            id: launchProfileManagerExtraArguments
+                            Layout.fillWidth: true
+                            placeholderText: "Example: --fullscreen --latency 1"
+                            selectByMouse: true
+                            color: root.ink
+                            placeholderTextColor: root.muted
+                            selectionColor: root.accent
+                            selectedTextColor: "#101318"
+                            background: Rectangle {
+                                radius: 7
+                                color: "#0b121b"
+                                border.color: launchProfileManagerExtraArguments.activeFocus
+                                              ? root.accent : root.line
+                            }
+                        }
+                        Text {
+                            text: "COMMAND TEMPLATE (OPTIONAL)"
+                            color: root.muted
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                        }
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 128
+                            TextArea {
+                                id: launchProfileManagerCommandTemplate
+                                placeholderText: "Leave blank for the built-in template"
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                color: root.ink
+                                placeholderTextColor: root.muted
+                                selectionColor: root.accent
+                                selectedTextColor: "#101318"
+                                background: Rectangle {
+                                    radius: 7
+                                    color: "#0b121b"
+                                    border.color: launchProfileManagerCommandTemplate.activeFocus
+                                                  ? root.accent : root.line
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Quotes group arguments. Lunchbox parses directly to argv; it never invokes a shell. A saved template replaces the built-in command, while extra arguments augment it only when the template is blank."
+                            color: root.muted
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: launchProfileManager.editor_status
+                            color: launchProfileManager.editor_status.indexOf(
+                                       "Could not") === 0 ? "#ff8b8b" : root.accentCool
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                            visible: text.length > 0
+                        }
+                        Item { Layout.fillHeight: true }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Button {
+                                text: "Clear profile"
+                                onClicked: launchProfileManager.clear_editor()
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: root.ink
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 7
+                                    color: parent.down ? "#3a2029" : "#251a21"
+                                    border.color: "#70404d"
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            HeaderButton {
+                                text: "Save profile"
+                                active: true
+                                onClicked: launchProfileManager.save_editor(
+                                               launchProfileManagerExtraArguments.text,
+                                               launchProfileManagerCommandTemplate.text)
+                            }
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        width: parent.width - 64
+                        spacing: 8
+                        visible: !launchProfileManager.editor_open
+                        Text {
+                            width: parent.width
+                            text: "Choose a profile"
+                            color: root.ink
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        Text {
+                            width: parent.width
+                            text: "Edit exact all-platform or per-platform values. Per-game overrides stay beside Play in Game Details."
+                            color: root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 54
+                color: "#0e141d"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 18
+                    spacing: 10
+                    BusyIndicator {
+                        visible: launchProfileManager.busy
+                        running: visible
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: launchProfileManager.message
+                        color: launchProfileManager.message.indexOf("Could not") >= 0
+                               ? "#ff8b8b" : root.muted
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: "Stable emulator IDs · no shell"
+                        color: "#657186"
+                        font.pixelSize: 9
+                    }
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: launchProfileManagerScreenshotTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0)
+                return
+            launchProfileManagerPanel.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_SCREENSHOT_FAILED path="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_LAUNCH_PROFILE_MANAGER_SCREENSHOT_READY path="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
         }
     }
 

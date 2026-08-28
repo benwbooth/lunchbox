@@ -1676,6 +1676,31 @@ impl SettingsStore {
             .context("loading an emulator launch profile")
     }
 
+    pub fn emulator_launch_profiles(&self) -> Result<Vec<EmulatorLaunchProfile>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+                    extra_arguments, command_template, updated_at
+             FROM emulator_launch_profiles
+             ORDER BY scope_kind, scope_key, emulator_id, runtime_kind, core_name",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok(EmulatorLaunchProfile {
+                    scope_kind: row.get(0)?,
+                    scope_key: row.get(1)?,
+                    emulator_id: row.get(2)?,
+                    runtime_kind: row.get(3)?,
+                    core_name: row.get(4)?,
+                    extra_arguments: row.get(5)?,
+                    command_template: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("listing emulator launch profiles")
+    }
+
     pub fn resolve_launch_customization(
         &self,
         game_uid: &str,
@@ -3260,6 +3285,13 @@ mod tests {
                 template_scope: "game".into(),
             }
         );
+        let profiles = store.emulator_launch_profiles().unwrap();
+        assert_eq!(profiles.len(), 3);
+        assert!(profiles.iter().any(|profile| {
+            profile.scope_kind == "platform"
+                && profile.scope_key == "nintendo-entertainment-system"
+                && profile.extra_arguments == "--latency 1"
+        }));
         assert!(
             store
                 .set_emulator_launch_profile(&EmulatorLaunchProfile {

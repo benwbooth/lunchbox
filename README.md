@@ -122,6 +122,11 @@ PC games. Built-in templates remain visible, saves are validated, and
 placeholders become direct native argument values with the existing Flatpak or
 Wine path mapping. Quotes only group arguments: Lunchbox never passes a profile
 through a shell or evaluates substitutions, pipes, globs, or redirection.
+Settings also opens a native Launch Commands manager over the complete catalog.
+Its virtualized, searchable matrix keeps standalone and exact RetroArch-core
+runtimes separate, filters all-platform/per-platform and built-in/customized
+rows, previews inherited behavior, and edits one stable-emulator-ID profile in
+a focused side panel without blocking the GUI.
 
 The native Emulator Manager restores the legacy host-aware lifecycle instead
 of delegating it to Electron. It discovers installations off the GUI thread,

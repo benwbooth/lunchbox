@@ -11,6 +11,7 @@ mod firmware;
 mod game_details;
 pub mod game_details_model;
 mod ingest;
+pub mod launch_profile_manager_model;
 pub mod library_model;
 mod local_import;
 pub mod local_import_model;

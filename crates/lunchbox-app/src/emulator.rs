@@ -402,18 +402,24 @@ pub fn parse_portable_arguments(arguments: &str) -> Result<Vec<String>> {
 }
 
 pub fn default_rom_launch_template(option: &RomEmulatorOption, platform: &str) -> String {
-    if option.runtime_kind == EmulatorRuntimeKind::RetroArch {
+    default_rom_launch_template_for(&option.emulator_name, option.runtime_kind, platform)
+}
+
+pub fn default_rom_launch_template_for(
+    emulator_name: &str,
+    runtime_kind: EmulatorRuntimeKind,
+    platform: &str,
+) -> String {
+    if runtime_kind == EmulatorRuntimeKind::RetroArch {
         return "--verbose -L %{core} %f".to_owned();
     }
-    if option.emulator_name.eq_ignore_ascii_case("MAME") && is_arcade_family_platform(platform) {
+    if emulator_name.eq_ignore_ascii_case("MAME") && is_arcade_family_platform(platform) {
         return "-rompath %{mame_rompath} %{mame_romset}".to_owned();
     }
-    if option.emulator_name.eq_ignore_ascii_case("Hypseus Singe")
-        && is_arcade_family_platform(platform)
-    {
+    if emulator_name.eq_ignore_ascii_case("Hypseus Singe") && is_arcade_family_platform(platform) {
         return "%{hypseus_game} vldp -fullscreen -framefile %{hypseus_framefile} -homedir %{hypseus_support_root} -datadir %{hypseus_support_root} -romdir %{hypseus_romdir}".to_owned();
     }
-    if option.emulator_name.eq_ignore_ascii_case("Altirra") {
+    if emulator_name.eq_ignore_ascii_case("Altirra") {
         return "%{altirra_media_switch} %f".to_owned();
     }
     "%f".to_owned()

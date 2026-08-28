@@ -177,7 +177,13 @@ The initial implementation enforces this shape:
   Flatpak, or Wine path adapter has been selected. Prepared launches recheck
   the discovered emulator ID before applying a profile. The inline Qt editor
   exposes built-in and effective templates, independent inheritance sources,
-  three save scopes, clear, validation errors, and no-shell semantics.
+  three save scopes, clear, validation errors, and no-shell semantics. A second
+  native manager loads the complete global/platform matrix on a worker,
+  deliberately represents standalone and each exact RetroArch core as separate
+  stable-ID rows, and filters a virtualized list by scope, customization, or any
+  platform/emulator/core/template text. Its focused editor uses the same store,
+  inheritance resolver, context-placeholder validator, and direct-argv rules;
+  game-scoped values remain beside Play where their game context is visible.
 - Emulator lifecycle data is part of the canonical database, with package
   records keyed by stable emulator ID, host, manager, and exact package ID.
   A maintained reviewed-source overlay supplements the legacy catalog for
@@ -344,6 +350,10 @@ the native launch-command editor, and scrolls it into view. Supplying
 `--screenshot-output ABSOLUTE_PATH` captures the rendered details pane through
 Qt itself and prints `LUNCHBOX_SCREENSHOT_READY`, avoiding host-specific
 window-manager screenshot tooling.
+`--launch-profile-manager-ui-probe` loads all exact catalog rows on the native
+worker, filters to the platform-scoped standalone MAME arcade template, opens
+its focused editor, and uses the same absolute screenshot argument to capture
+the virtualized manager body before exiting.
 `--activity-ui-probe` opens that persisted identity in the native Recently
 Played view with its statistics and completion picker visible.
 `--media-bundle-probe --media-directory PATH --state-database EMPTY_PATH`
@@ -420,8 +430,8 @@ through the same details card. On-demand LibRetro retrieval and durable
 negative caching, generic local-ROM launch, multi-file selection, and exact
 per-game/platform emulator defaults are native. Exact game/platform/global
 launch argument profiles and replacement templates are native for ordinary ROM
-and prepared-PC plans, with a contextual editor and shell-free placeholder
-compiler.
+and prepared-PC plans, with contextual and searchable cross-emulator editors
+plus a shell-free placeholder compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
 Playlists and smart collections, the remaining alternate media providers,
 available-version-only emulator update reporting, specialized

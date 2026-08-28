@@ -141,8 +141,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Exact game/platform/all-platform launch profiles are native for ordinary ROM
   and prepared eXo plans. Their contextual editor exposes independently
   inherited extra arguments and replacement templates; the bounded compiler
-  preserves native/Flatpak/Wine paths and never invokes a shell. Add a
-  searchable cross-emulator bulk-management table and complete Windows/macOS
+  preserves native/Flatpak/Wine paths and never invokes a shell. The native
+  Launch Commands manager adds a worker-loaded, virtualized, searchable matrix
+  for exact global/platform standalone and RetroArch-core rows with
+  built-in/customized filtering and focused save/clear. Complete Windows/macOS
   runtime-host certification.
 - Standalone MAME set-name/ROM-path and Hypseus framefile/support/bundle
   profiles are native. Derived Arcade Laserdisc and Arcade Pinball labels map
