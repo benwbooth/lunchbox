@@ -14,6 +14,7 @@ pub mod library_model;
 mod local_import;
 pub mod local_import_model;
 mod media;
+mod media_acquisition;
 mod qbittorrent;
 mod settings;
 pub mod settings_model;
@@ -41,6 +42,20 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--manual-candidate-probe") {
+        let title = "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)";
+        return match media_acquisition::manual_candidate_probe(title) {
+            Ok(candidate) => {
+                println!("LUNCHBOX_MANUAL_CANDIDATE title={title:?} {candidate}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_MANUAL_CANDIDATE_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--initialize-state") {
         return match settings::SettingsStore::open_default() {
             Ok(store) => {

@@ -190,14 +190,23 @@ Rust accepts only canonicalized, non-empty files inside the configured media
 root, chooses the preferred provider deterministically, and gives each video a
 bounded SHA-256 content identity from its length plus head/tail samples so a
 replacement does not normally inherit stale progress without hashing an entire
-large video. Qt Multimedia
-auto-plays the clip muted and looped with native seek, sound, restart, and
-fullscreen controls; playback pauses before a game takes over or when details
-close. Five-second checkpoints are written off the GUI thread by stable game
-UUID and resume after restart. Manuals open with Qt's operating-system URL
-handler, without shell commands or platform-specific path strings. The current
-slice consumes preserved cached media; Minerva/EmuMovies acquisition remains
-the next media-parity step.
+large video. Qt Multimedia auto-plays the clip muted and looped with native
+seek, sound, restart, and fullscreen controls; playback pauses before a game
+takes over or when details close. Five-second checkpoints are written off the
+GUI thread by stable game UUID and resume after restart. Manuals open with Qt's
+operating-system URL handler, without shell commands or platform-specific path
+strings.
+
+The Minerva manual action searches the dedicated manual-scan torrent for a
+high-confidence exact title, asks qBittorrent for only that reviewed ZIP member,
+persists byte progress across restarts, and supports cancellation without
+disrupting other manuals selected from the same torrent. A completed non-empty
+ZIP is validated and copied through a same-directory temporary file before an
+atomic rename into the owned media cache. Availability is intentionally limited
+to exact entries in Minerva's current archive; a broad fuzzy match is never
+silently downloaded. EmuMovies fallback remains gated on documented developer
+API access rather than embedding the legacy application's retired credentials
+or endpoints.
 
 The preserved game catalog is a local runtime input and is not added to the
 published artifact because redistribution permission for its LaunchBox-derived

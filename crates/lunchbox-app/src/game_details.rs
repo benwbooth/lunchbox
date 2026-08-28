@@ -52,6 +52,7 @@ pub struct GameDetails {
     pub supplemental_media: crate::media::SupplementalMedia,
     pub video_media_key: String,
     pub video_progress: Option<crate::settings::MediaPlaybackProgress>,
+    pub manual_transfer: Option<crate::settings::MediaTransfer>,
     pub bundles: Vec<MinervaBundle>,
 }
 
@@ -183,6 +184,7 @@ pub fn load(
 fn load_supplemental_media(details: &mut GameDetails) -> Result<()> {
     details.supplemental_media =
         crate::media::supplemental_media(&details.id, details.database_id)?;
+    details.manual_transfer = crate::media_acquisition::load_manual_transfer(&details.id)?;
     let Some(video) = details.supplemental_media.video.as_ref() else {
         return Ok(());
     };
@@ -866,6 +868,15 @@ fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
     } else {
         0.0
     }
+}
+
+pub(crate) fn torrent_file_match_score(filename: &str, game_title: &str) -> f64 {
+    let query = normalized_words(title_without_tags(game_title));
+    if query.is_empty() {
+        return 0.0;
+    }
+    let query_tokens = significant_tokens(&query);
+    file_match_score(filename, &query, &query_tokens)
 }
 
 fn title_without_tags(value: &str) -> &str {

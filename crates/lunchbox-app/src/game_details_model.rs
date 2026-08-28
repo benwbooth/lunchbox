@@ -36,6 +36,12 @@ pub mod qobject {
         #[qproperty(bool, media_visible)]
         #[qproperty(bool, video_available)]
         #[qproperty(bool, manual_available)]
+        #[qproperty(bool, manual_transfer_active)]
+        #[qproperty(bool, manual_action_busy)]
+        #[qproperty(QString, manual_download_state)]
+        #[qproperty(i32, manual_download_progress)]
+        #[qproperty(QString, manual_download_detail)]
+        #[qproperty(QString, manual_download_message)]
         #[qproperty(bool, video_progress_busy)]
         #[qproperty(QUrl, video_url)]
         #[qproperty(QUrl, manual_url)]
@@ -159,6 +165,15 @@ pub mod qobject {
         fn reset_video_progress(self: Pin<&mut GameDetailsModel>, duration_ms: i32);
 
         #[qinvokable]
+        fn download_manual(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn refresh_manual_download(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn cancel_manual_download(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -233,6 +248,12 @@ pub struct GameDetailsModelRust {
     media_visible: bool,
     video_available: bool,
     manual_available: bool,
+    manual_transfer_active: bool,
+    manual_action_busy: bool,
+    manual_download_state: QString,
+    manual_download_progress: i32,
+    manual_download_detail: QString,
+    manual_download_message: QString,
     video_progress_busy: bool,
     video_url: QUrl,
     manual_url: QUrl,
@@ -326,6 +347,12 @@ impl Default for GameDetailsModelRust {
             media_visible: false,
             video_available: false,
             manual_available: false,
+            manual_transfer_active: false,
+            manual_action_busy: false,
+            manual_download_state: QString::default(),
+            manual_download_progress: 0,
+            manual_download_detail: QString::default(),
+            manual_download_message: QString::default(),
             video_progress_busy: false,
             video_url: QUrl::default(),
             manual_url: QUrl::default(),
@@ -598,6 +625,13 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_media_visible(false);
         self.as_mut().set_video_available(false);
         self.as_mut().set_manual_available(false);
+        self.as_mut().set_manual_transfer_active(false);
+        self.as_mut().set_manual_action_busy(false);
+        self.as_mut().set_manual_download_state(QString::default());
+        self.as_mut().set_manual_download_progress(0);
+        self.as_mut().set_manual_download_detail(QString::default());
+        self.as_mut()
+            .set_manual_download_message(QString::default());
         self.as_mut().set_video_progress_busy(false);
         self.as_mut().set_video_url(QUrl::default());
         self.as_mut().set_manual_url(QUrl::default());
@@ -662,6 +696,7 @@ impl qobject::GameDetailsModel {
                 let supplemental_media = details.supplemental_media.clone();
                 let video_media_key = details.video_media_key.clone();
                 let video_progress = details.video_progress.clone();
+                let manual_transfer = details.manual_transfer.clone();
                 let preparable = crate::exo_install::is_preparable_archive(
                     &details.platform,
                     &details.local_file_path,
@@ -697,6 +732,7 @@ impl qobject::GameDetailsModel {
                     supplemental_media,
                     video_media_key,
                     video_progress,
+                    manual_transfer,
                 );
                 self.as_mut().rust_mut().database_id = details.database_id;
                 self.as_mut().set_local(details.local);
@@ -766,11 +802,11 @@ impl qobject::GameDetailsModel {
         media: crate::media::SupplementalMedia,
         video_media_key: String,
         video_progress: Option<crate::settings::MediaPlaybackProgress>,
+        manual_transfer: Option<crate::settings::MediaTransfer>,
     ) {
         let video_available = media.video.is_some();
         let manual_available = media.manual.is_some();
-        self.as_mut()
-            .set_media_visible(video_available || manual_available);
+        self.as_mut().set_media_visible(true);
         self.as_mut().set_video_available(video_available);
         self.as_mut().set_manual_available(manual_available);
         self.as_mut().set_video_url(
@@ -811,15 +847,229 @@ impl qobject::GameDetailsModel {
             .map(|progress| i32::try_from(progress.position_ms).unwrap_or(i32::MAX))
             .unwrap_or_default();
         self.as_mut().set_video_resume_position(resume_position);
+        self.as_mut().apply_manual_transfer(manual_transfer);
         let message = match (video_available, manual_available) {
             (true, true) => "Gameplay video and manual are ready.",
             (true, false) => "Gameplay video is ready.",
             (false, true) => "Game manual is ready.",
-            (false, false) => "",
+            (false, false) => "Cached media is not available yet.",
         };
         self.as_mut().set_media_message(qstring(message));
         let media_revision = self.as_ref().media_revision().wrapping_add(1);
         self.as_mut().set_media_revision(media_revision);
+    }
+
+    fn apply_manual_transfer(
+        mut self: Pin<&mut Self>,
+        transfer: Option<crate::settings::MediaTransfer>,
+    ) {
+        let Some(transfer) = transfer else {
+            self.as_mut().set_manual_transfer_active(false);
+            self.as_mut()
+                .set_manual_download_state(qstring("not_started"));
+            self.as_mut().set_manual_download_progress(0);
+            self.as_mut().set_manual_download_detail(QString::default());
+            self.as_mut().set_manual_download_message(qstring(
+                "Search Minerva's manual-scan archive for an exact title match.",
+            ));
+            return;
+        };
+
+        self.as_mut()
+            .set_manual_transfer_active(crate::media_acquisition::transfer_needs_refresh(
+                &transfer.state,
+            ));
+        self.as_mut()
+            .set_manual_download_state(qstring(&transfer.state));
+        self.as_mut().set_manual_download_progress(
+            (transfer.progress.clamp(0.0, 1.0) * 100.0).round() as i32,
+        );
+        let mut detail = if transfer.total_bytes > 0 {
+            format!(
+                "{} / {}",
+                game_details::format_bytes(transfer.downloaded_bytes),
+                game_details::format_bytes(transfer.total_bytes)
+            )
+        } else {
+            String::new()
+        };
+        if transfer.download_speed > 0 {
+            if !detail.is_empty() {
+                detail.push_str(" · ");
+            }
+            detail.push_str(&format!(
+                "{}/s",
+                game_details::format_bytes(transfer.download_speed)
+            ));
+        }
+        self.as_mut().set_manual_download_detail(qstring(detail));
+        self.as_mut()
+            .set_manual_download_message(qstring(transfer.message));
+    }
+
+    pub fn download_manual(mut self: Pin<&mut Self>) {
+        if *self.as_ref().manual_action_busy()
+            || *self.as_ref().manual_available()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        let generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        let completed_game_id = game_id.clone();
+        let database_id = self.as_ref().rust().database_id;
+        let title = self.as_ref().title().to_string();
+        let platform = self.as_ref().platform().to_string();
+        self.as_mut().set_manual_action_busy(true);
+        self.as_mut()
+            .set_manual_download_state(qstring("searching"));
+        self.as_mut()
+            .set_manual_download_message(qstring("Searching Minerva for an exact manual…"));
+
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-manual-enqueue".into())
+            .spawn(move || {
+                let result = crate::media_acquisition::enqueue_manual(
+                    &game_id,
+                    database_id,
+                    &title,
+                    &platform,
+                )
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_manual_action(generation, completed_game_id, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_manual_action_busy(false);
+            self.as_mut().set_manual_download_state(qstring("error"));
+            self.as_mut().set_manual_download_message(qstring(format!(
+                "Could not start the manual search: {error}"
+            )));
+        }
+    }
+
+    fn finish_manual_action(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_id: String,
+        result: Result<crate::settings::MediaTransfer, String>,
+    ) {
+        if generation != self.as_ref().rust().details_generation
+            || game_id != self.as_ref().game_id().to_string()
+        {
+            return;
+        }
+        self.as_mut().set_manual_action_busy(false);
+        match result {
+            Ok(transfer) => self.as_mut().apply_manual_transfer(Some(transfer)),
+            Err(error) => {
+                self.as_mut().set_manual_transfer_active(false);
+                self.as_mut().set_manual_download_state(qstring("error"));
+                self.as_mut().set_manual_download_progress(0);
+                self.as_mut().set_manual_download_detail(QString::default());
+                self.as_mut().set_manual_download_message(qstring(error));
+            }
+        }
+    }
+
+    pub fn refresh_manual_download(mut self: Pin<&mut Self>) {
+        if *self.as_ref().manual_action_busy()
+            || !*self.as_ref().manual_transfer_active()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        let generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        let completed_game_id = game_id.clone();
+        self.as_mut().set_manual_action_busy(true);
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-manual-refresh".into())
+            .spawn(move || {
+                let result = crate::media_acquisition::refresh_manual(&game_id)
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_manual_refresh(generation, completed_game_id, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_manual_action_busy(false);
+            self.as_mut().set_manual_download_message(qstring(format!(
+                "Could not refresh the manual download: {error}"
+            )));
+        }
+    }
+
+    fn finish_manual_refresh(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_id: String,
+        result: Result<crate::media_acquisition::MediaRefresh, String>,
+    ) {
+        if generation != self.as_ref().rust().details_generation
+            || game_id != self.as_ref().game_id().to_string()
+        {
+            return;
+        }
+        self.as_mut().set_manual_action_busy(false);
+        match result {
+            Ok(refresh) => {
+                let published = refresh.published;
+                self.as_mut().apply_manual_transfer(Some(refresh.transfer));
+                if published {
+                    let game_id = self.as_ref().game_id().clone();
+                    let title = self.as_ref().title().clone();
+                    let platform = self.as_ref().platform().clone();
+                    let local = *self.as_ref().local();
+                    let downloadable = *self.as_ref().downloadable();
+                    self.as_mut()
+                        .select_game(game_id, title, platform, local, downloadable);
+                }
+            }
+            Err(error) => self
+                .as_mut()
+                .set_manual_download_message(qstring(format!("Download check failed: {error}"))),
+        }
+    }
+
+    pub fn cancel_manual_download(mut self: Pin<&mut Self>) {
+        if *self.as_ref().manual_action_busy()
+            || !*self.as_ref().manual_transfer_active()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        let generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        let completed_game_id = game_id.clone();
+        self.as_mut().set_manual_action_busy(true);
+        self.as_mut()
+            .set_manual_download_message(qstring("Cancelling this manual download…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-manual-cancel".into())
+            .spawn(move || {
+                let result = crate::media_acquisition::cancel_manual(&game_id)
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_manual_action(generation, completed_game_id, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_manual_action_busy(false);
+            self.as_mut().set_manual_download_message(qstring(format!(
+                "Could not start manual cancellation: {error}"
+            )));
+        }
     }
 
     pub fn save_video_progress(mut self: Pin<&mut Self>, position_ms: i32, duration_ms: i32) {

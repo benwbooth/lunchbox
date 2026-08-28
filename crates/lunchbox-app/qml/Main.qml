@@ -118,6 +118,7 @@ ApplicationWindow {
     readonly property bool activityUiProbe: Qt.application.arguments.indexOf("--activity-ui-probe") >= 0
     readonly property bool mediaBundleProbe: Qt.application.arguments.indexOf("--media-bundle-probe") >= 0
     readonly property bool mediaBundleUiProbe: Qt.application.arguments.indexOf("--media-bundle-ui-probe") >= 0
+    readonly property bool manualDownloadUiProbe: Qt.application.arguments.indexOf("--manual-download-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
@@ -813,6 +814,10 @@ ApplicationWindow {
                 root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
                               "Super Mario Bros.", "Nintendo Entertainment System",
                               false, true)
+            else if (root.manualDownloadUiProbe)
+                root.openGame("ffb0ddd4-d5e1-4f78-90c8-068db5022cd5", 0,
+                              "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)",
+                              "Sega - PICO", false, false)
         }
     }
 
@@ -841,6 +846,14 @@ ApplicationWindow {
         running: downloadQueue.active_count > 0 || downloadsDrawer.opened
         repeat: true
         onTriggered: downloadQueue.refresh()
+    }
+
+    Timer {
+        interval: 2000
+        running: gameDetails.manual_transfer_active
+                 && !gameDetails.manual_action_busy
+        repeat: true
+        onTriggered: gameDetails.refresh_manual_download()
     }
 
     Timer {
@@ -3048,6 +3061,132 @@ ApplicationWindow {
                                             font.weight: Font.Bold
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                visible: !gameDetails.manual_available
+                                width: parent.width
+                                height: visible ? manualDownloadColumn.implicitHeight + 20 : 0
+                                radius: 8
+                                color: "#151f2c"
+                                border.color: gameDetails.manual_transfer_active
+                                              ? root.accentCool : root.line
+
+                                Column {
+                                    id: manualDownloadColumn
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 10
+                                    spacing: 8
+
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: 10
+                                        Column {
+                                            Layout.fillWidth: true
+                                            spacing: 3
+                                            Text {
+                                                text: "GAME MANUAL"
+                                                color: root.ink
+                                                font.pixelSize: 10
+                                                font.weight: Font.Bold
+                                            }
+                                            Text {
+                                                text: gameDetails.manual_transfer_active
+                                                      ? gameDetails.manual_download_state.toUpperCase()
+                                                        + " · MINERVA"
+                                                      : "NOT CACHED · MINERVA"
+                                                color: gameDetails.manual_transfer_active
+                                                       ? root.accentCool : root.muted
+                                                font.pixelSize: 7
+                                                font.weight: Font.Bold
+                                                font.letterSpacing: 0.5
+                                            }
+                                        }
+                                        BusyIndicator {
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            running: gameDetails.manual_action_busy
+                                            visible: running
+                                        }
+                                        Button {
+                                            Layout.preferredWidth: 74
+                                            Layout.preferredHeight: 32
+                                            text: gameDetails.manual_transfer_active
+                                                  ? "CANCEL" : "FIND"
+                                            enabled: !gameDetails.manual_action_busy
+                                            onClicked: {
+                                                if (gameDetails.manual_transfer_active)
+                                                    gameDetails.cancel_manual_download()
+                                                else
+                                                    gameDetails.download_manual()
+                                            }
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: parent.down ? "#344254"
+                                                                      : gameDetails.manual_transfer_active
+                                                                        ? "#263647" : root.accent
+                                                border.color: gameDetails.manual_transfer_active
+                                                              ? root.accentCool : "transparent"
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: gameDetails.manual_transfer_active
+                                                       ? root.ink : "#17110a"
+                                                font.pixelSize: 8
+                                                font.weight: Font.Bold
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
+                                    }
+
+                                    ProgressBar {
+                                        id: manualDownloadProgress
+                                        visible: gameDetails.manual_transfer_active
+                                        width: parent.width
+                                        height: visible ? 7 : 0
+                                        from: 0
+                                        to: 100
+                                        value: gameDetails.manual_download_progress
+                                        background: Rectangle {
+                                            implicitHeight: 5
+                                            radius: 3
+                                            color: "#303b4d"
+                                        }
+                                        contentItem: Item {
+                                            implicitHeight: 5
+                                            Rectangle {
+                                                width: manualDownloadProgress.visualPosition
+                                                       * parent.width
+                                                height: parent.height
+                                                radius: 3
+                                                color: root.accentCool
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: 8
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: gameDetails.manual_download_message
+                                            color: gameDetails.manual_download_state === "error"
+                                                   ? "#f3a49c" : root.muted
+                                            font.pixelSize: 8
+                                            wrapMode: Text.WordWrap
+                                        }
+                                        Text {
+                                            visible: gameDetails.manual_download_detail.length > 0
+                                            text: gameDetails.manual_download_detail
+                                            color: root.ink
+                                            font.pixelSize: 8
+                                            font.features: { "tnum": 1 }
                                         }
                                     }
                                 }

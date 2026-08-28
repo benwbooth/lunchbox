@@ -526,7 +526,7 @@ fn control_job(mut job: DownloadJob, action: QueueAction) -> Result<QueueUpdate>
     let mut related_jobs = store.jobs_for_info_hash(&job.info_hash)?;
     match action {
         QueueAction::Pause => {
-            client.pause(&job.info_hash)?;
+            client.pause_owned(&job.info_hash)?;
             for related in &mut related_jobs {
                 if !matches!(related.state.as_str(), "queued" | "downloading" | "paused") {
                     continue;
@@ -538,7 +538,7 @@ fn control_job(mut job: DownloadJob, action: QueueAction) -> Result<QueueUpdate>
             }
         }
         QueueAction::Resume => {
-            client.resume(&job.info_hash)?;
+            client.resume_owned(&job.info_hash)?;
             for related in &mut related_jobs {
                 if !matches!(related.state.as_str(), "queued" | "downloading" | "paused") {
                     continue;
@@ -556,7 +556,7 @@ fn control_job(mut job: DownloadJob, action: QueueAction) -> Result<QueueUpdate>
                 .cloned()
                 .collect::<Vec<_>>();
             if remaining.is_empty() {
-                client.cancel(&job.info_hash)?;
+                client.cancel_owned(&job.info_hash)?;
                 job.message = "Cancelled; torrent removed and files preserved".to_owned();
             } else {
                 let selection = qbittorrent::active_selection(&remaining, false, &[])?;

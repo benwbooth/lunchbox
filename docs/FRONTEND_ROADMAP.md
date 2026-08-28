@@ -117,9 +117,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Canonical-game metadata enrichment with provenance and per-field conflict
   review.
-- Extend the native cached manual/video bundle and durable exact-media resume
-  state with Minerva-first manual acquisition, EmuMovies fallback, visible
-  transfer progress/cancellation, and soundtrack browsing.
+- Extend the implemented exact Minerva manual acquisition, durable visible
+  progress/cancellation, validated atomic cache publication, and native cached
+  manual/video bundle with an authorized EmuMovies API adapter, video
+  acquisition, and soundtrack browsing.
 - Configurable media-source priority, image replacement, missing-media audit,
   and background download queue.
 - Extend the responsive game details and native video/fullscreen/manual surface

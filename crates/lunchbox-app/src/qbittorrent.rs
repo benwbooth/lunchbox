@@ -214,7 +214,7 @@ impl QbittorrentClient {
         })
     }
 
-    pub fn pause(&self, info_hash: &str) -> Result<()> {
+    fn pause(&self, info_hash: &str) -> Result<()> {
         self.control_with_fallback("torrents/stop", "torrents/pause", info_hash)
     }
 
@@ -226,11 +226,19 @@ impl QbittorrentClient {
         self.pause(info_hash)
     }
 
-    pub fn resume(&self, info_hash: &str) -> Result<()> {
+    fn resume(&self, info_hash: &str) -> Result<()> {
         self.start(info_hash)
     }
 
-    pub fn cancel(&self, info_hash: &str) -> Result<()> {
+    pub fn resume_owned(&self, info_hash: &str) -> Result<()> {
+        let info = self
+            .torrent_info(info_hash)?
+            .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
+        ensure_owned(&info)?;
+        self.resume(info_hash)
+    }
+
+    fn cancel(&self, info_hash: &str) -> Result<()> {
         let response = self
             .agent
             .post(self.endpoint("torrents/delete"))
@@ -239,6 +247,14 @@ impl QbittorrentClient {
             .context("removing torrent from qBittorrent")?;
         let (status, body) = response_text(response)?;
         require_success(status, &body, "qBittorrent cancel request")
+    }
+
+    pub fn cancel_owned(&self, info_hash: &str) -> Result<()> {
+        let info = self
+            .torrent_info(info_hash)?
+            .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
+        ensure_owned(&info)?;
+        self.cancel(info_hash)
     }
 
     pub fn reconfigure(
@@ -1031,6 +1047,48 @@ mod tests {
         let _login = requests.recv().unwrap();
         let ownership_check = requests.recv().unwrap();
         assert!(ownership_check.starts_with("GET /api/v2/torrents/info?hashes=abc123 HTTP/1.1"));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn owned_resume_and_cancel_recheck_category_before_mutating() {
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: r#"[{"hash":"abc123","category":"lunchbox"}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"[{"hash":"abc123","category":"lunchbox"}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+
+        client.resume_owned("ABC123").unwrap();
+        client.cancel_owned("ABC123").unwrap();
+
+        let _login = requests.recv().unwrap();
+        let resume_ownership = requests.recv().unwrap();
+        assert!(resume_ownership.starts_with("GET /api/v2/torrents/info?hashes=ABC123 HTTP/1.1"));
+        let resume = requests.recv().unwrap();
+        assert!(resume.starts_with("POST /api/v2/torrents/start HTTP/1.1"));
+        let cancel_ownership = requests.recv().unwrap();
+        assert!(cancel_ownership.starts_with("GET /api/v2/torrents/info?hashes=ABC123 HTTP/1.1"));
+        let cancel = requests.recv().unwrap();
+        assert!(cancel.starts_with("POST /api/v2/torrents/delete HTTP/1.1"));
+        assert!(cancel.contains("hashes=ABC123&deleteFiles=false"));
         worker.join().unwrap();
     }
 

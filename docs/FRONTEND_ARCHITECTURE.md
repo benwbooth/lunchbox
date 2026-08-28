@@ -303,6 +303,18 @@ through the CXX-Qt model, and exits only after the SQLite worker returns.
 inspection. The card uses Qt Multimedia for cross-platform playback and Qt's
 native URL handler for manuals; Rust never invokes a shell or constructs an
 OS-specific opener command.
+`--manual-candidate-probe --minerva-database PATH` reads the live Minerva
+catalog and its bounded cached torrent metadata without starting Qt or
+downloading game content. It exits successfully only when the fixed Cooking
+Pico title resolves to one exact ZIP member and prints its info hash, index,
+byte size, score, and reviewed path. `--manual-download-ui-probe` opens that
+same catalog identity with the polished missing-manual action visible. The
+normal Find action runs off the GUI thread, records a generic durable media
+transfer, reuses qBittorrent's exact-file ownership checks, shows byte progress,
+and can cancel one selection while leaving other manuals in the shared torrent
+active. Completion requires a non-empty readable ZIP inside the configured
+native torrent root; publication uses a unique same-directory temporary file,
+flush, sync, and atomic rename under the configured media root.
 `--arcade-launch-probe` exercises the same chooser and supervisor with a
 persisted MAME standalone default. On the current Linux host it launched the
 installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path
@@ -344,11 +356,13 @@ qBittorrent setup, exact-file selection, queue control, completed-file
 ingestion, optical and eXo related-file plans, eXo prepared installs and launch,
 durable safe seeding policy, local-folder scan/review/import, legacy
 content filters, and durable favorites are now native. Existing game media is
-now indexed and rendered natively. On-demand LibRetro retrieval and durable
+now indexed and rendered natively, and exact Minerva manual acquisition has
+durable transfer, progress, shared-torrent cancellation, and safe publication
+through the same details card. On-demand LibRetro retrieval and durable
 negative caching, generic local-ROM launch, multi-file selection, and exact
 per-game/platform emulator defaults are native.
 Playlists and smart collections, alternate media providers, media rotation and
 redownload, available-version-only emulator update reporting, specialized
 machine launch profiles, the remaining settings,
-archive-member and manual identity workflows, and the controller-first
+archive-member identity workflows, broader manual-provider coverage, and the controller-first
 full-screen interface follow on the same shared models.

@@ -428,7 +428,7 @@ pub fn supplemental_media(game_id: &str, database_id: i64) -> Result<Supplementa
     let root = requested_media_directory();
     let mut directories = Vec::with_capacity(2);
     if database_id > 0 {
-        directories.push(root.join(format!("lb-{database_id}")));
+        directories.push(game_media_directory_in(&root, game_id, database_id)?);
     }
     if !game_id.trim().is_empty() && safe_game_identity(game_id) {
         directories.push(root.join(format!("game-{game_id}")));
@@ -441,6 +441,20 @@ pub fn supplemental_media(game_id: &str, database_id: i64) -> Result<Supplementa
         select_supplemental_asset(&mut selected.manual, candidate.manual);
     }
     Ok(selected)
+}
+
+pub fn game_media_directory(game_id: &str, database_id: i64) -> Result<PathBuf> {
+    game_media_directory_in(&requested_media_directory(), game_id, database_id)
+}
+
+fn game_media_directory_in(root: &Path, game_id: &str, database_id: i64) -> Result<PathBuf> {
+    if database_id > 0 {
+        return Ok(root.join(format!("lb-{database_id}")));
+    }
+    if game_id.trim().is_empty() || !safe_game_identity(game_id) {
+        bail!("a bounded stable game identity is required for local media");
+    }
+    Ok(root.join(format!("game-{game_id}")))
 }
 
 pub fn media_identity(path: &Path) -> Result<String> {

@@ -167,6 +167,31 @@ pub struct MediaPlaybackProgress {
     pub updated_at: i64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct MediaTransfer {
+    pub game_uid: String,
+    pub launchbox_db_id: i64,
+    pub title: String,
+    pub platform: String,
+    pub media_kind: String,
+    pub provider: String,
+    pub transport: String,
+    pub source_url: String,
+    pub remote_job_id: String,
+    pub source_item_index: u32,
+    pub source_item_path: String,
+    pub local_download_path: PathBuf,
+    pub local_target_path: PathBuf,
+    pub state: String,
+    pub progress: f64,
+    pub download_speed: u64,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub message: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 impl Default for LibraryPreferences {
     fn default() -> Self {
         Self {
@@ -627,6 +652,118 @@ impl SettingsStore {
             duration_ms,
             updated_at,
         })
+    }
+
+    pub fn media_transfer(
+        &self,
+        game_uid: &str,
+        media_kind: &str,
+    ) -> Result<Option<MediaTransfer>> {
+        validate_media_transfer_identity(game_uid, media_kind)?;
+        let connection = self.connection()?;
+        Ok(connection
+            .query_row(
+                "SELECT game_uid, launchbox_db_id, title, platform, media_kind,
+                        provider, transport, source_url, remote_job_id,
+                        source_item_index, source_item_path,
+                        local_download_path, local_target_path,
+                        state, progress, download_speed, downloaded_bytes,
+                        total_bytes, message, created_at, updated_at
+                 FROM media_transfers WHERE game_uid=?1 AND media_kind=?2",
+                params![game_uid, media_kind],
+                media_transfer_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn media_transfers_for_remote_job(
+        &self,
+        provider: &str,
+        remote_job_id: &str,
+    ) -> Result<Vec<MediaTransfer>> {
+        if provider.trim().is_empty()
+            || provider.chars().count() > 128
+            || remote_job_id.trim().is_empty()
+            || remote_job_id.chars().count() > 512
+        {
+            bail!("media transfer requires bounded provider and remote job identities");
+        }
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT game_uid, launchbox_db_id, title, platform, media_kind,
+                    provider, transport, source_url, remote_job_id,
+                    source_item_index, source_item_path,
+                    local_download_path, local_target_path,
+                    state, progress, download_speed, downloaded_bytes,
+                    total_bytes, message, created_at, updated_at
+             FROM media_transfers
+             WHERE provider=?1 AND lower(remote_job_id)=lower(?2)
+             ORDER BY created_at, game_uid, media_kind",
+        )?;
+        let rows =
+            statement.query_map(params![provider, remote_job_id], media_transfer_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_media_transfer(&self, transfer: &MediaTransfer) -> Result<()> {
+        validate_media_transfer(transfer)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO media_transfers (
+                 game_uid, launchbox_db_id, title, platform, media_kind,
+                 provider, transport, source_url, remote_job_id,
+                 source_item_index, source_item_path,
+                 local_download_path, local_target_path,
+                 state, progress, download_speed, downloaded_bytes,
+                 total_bytes, message, created_at, updated_at
+             ) VALUES (
+                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                 ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+             )
+             ON CONFLICT(game_uid, media_kind) DO UPDATE SET
+                 launchbox_db_id=excluded.launchbox_db_id,
+                 title=excluded.title,
+                 platform=excluded.platform,
+                 provider=excluded.provider,
+                 transport=excluded.transport,
+                 source_url=excluded.source_url,
+                 remote_job_id=excluded.remote_job_id,
+                 source_item_index=excluded.source_item_index,
+                 source_item_path=excluded.source_item_path,
+                 local_download_path=excluded.local_download_path,
+                 local_target_path=excluded.local_target_path,
+                 state=excluded.state,
+                 progress=excluded.progress,
+                 download_speed=excluded.download_speed,
+                 downloaded_bytes=excluded.downloaded_bytes,
+                 total_bytes=excluded.total_bytes,
+                 message=excluded.message,
+                 updated_at=excluded.updated_at",
+            params![
+                transfer.game_uid,
+                transfer.launchbox_db_id,
+                transfer.title,
+                transfer.platform,
+                transfer.media_kind,
+                transfer.provider,
+                transfer.transport,
+                transfer.source_url,
+                transfer.remote_job_id,
+                i64::from(transfer.source_item_index),
+                transfer.source_item_path,
+                path_text(&transfer.local_download_path),
+                path_text(&transfer.local_target_path),
+                transfer.state,
+                transfer.progress,
+                i64::try_from(transfer.download_speed).unwrap_or(i64::MAX),
+                i64::try_from(transfer.downloaded_bytes).unwrap_or(i64::MAX),
+                i64::try_from(transfer.total_bytes).unwrap_or(i64::MAX),
+                transfer.message,
+                transfer.created_at,
+                transfer.updated_at,
+            ],
+        )?;
+        Ok(())
     }
 
     pub fn begin_play_session(
@@ -1690,6 +1827,39 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS media_playback_progress_updated
              ON media_playback_progress(updated_at DESC, game_uid);
+         CREATE TABLE IF NOT EXISTS media_transfers (
+             game_uid TEXT NOT NULL,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             media_kind TEXT NOT NULL CHECK (media_kind IN ('manual', 'video')),
+             provider TEXT NOT NULL CHECK (provider IN ('minerva', 'emumovies')),
+             transport TEXT NOT NULL CHECK (transport IN ('torrent', 'http')),
+             source_url TEXT NOT NULL,
+             remote_job_id TEXT NOT NULL,
+             source_item_index INTEGER NOT NULL CHECK (source_item_index >= 0),
+             source_item_path TEXT NOT NULL,
+             local_download_path TEXT NOT NULL,
+             local_target_path TEXT NOT NULL,
+             state TEXT NOT NULL CHECK (
+                 state IN (
+                     'queued', 'downloading', 'paused', 'complete',
+                     'published', 'cancelled', 'error'
+                 )
+             ),
+             progress REAL NOT NULL CHECK (progress BETWEEN 0.0 AND 1.0),
+             download_speed INTEGER NOT NULL CHECK (download_speed >= 0),
+             downloaded_bytes INTEGER NOT NULL CHECK (downloaded_bytes >= 0),
+             total_bytes INTEGER NOT NULL CHECK (total_bytes >= 0),
+             message TEXT NOT NULL,
+             created_at INTEGER NOT NULL CHECK (created_at >= 0),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+             PRIMARY KEY (game_uid, media_kind)
+         );
+         CREATE INDEX IF NOT EXISTS media_transfers_remote_job
+             ON media_transfers(provider, remote_job_id, state);
+         CREATE INDEX IF NOT EXISTS media_transfers_updated
+             ON media_transfers(updated_at DESC, game_uid);
          CREATE TABLE IF NOT EXISTS user_collections (
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -1920,6 +2090,96 @@ fn validate_media_playback_identity(game_uid: &str, media_key: &str) -> Result<(
         bail!("media playback identity fields exceed their safety limits");
     }
     Ok(())
+}
+
+fn validate_media_transfer_identity(game_uid: &str, media_kind: &str) -> Result<()> {
+    if game_uid.trim().is_empty() || game_uid.chars().count() > 512 {
+        bail!("media transfer requires a bounded stable game identity");
+    }
+    if !matches!(media_kind, "manual" | "video") {
+        bail!("unsupported media transfer kind {media_kind}");
+    }
+    Ok(())
+}
+
+fn validate_media_transfer(transfer: &MediaTransfer) -> Result<()> {
+    validate_media_transfer_identity(&transfer.game_uid, &transfer.media_kind)?;
+    if !matches!(transfer.provider.as_str(), "minerva" | "emumovies") {
+        bail!("unsupported media transfer provider {}", transfer.provider);
+    }
+    if !matches!(transfer.transport.as_str(), "torrent" | "http") {
+        bail!(
+            "unsupported media transfer transport {}",
+            transfer.transport
+        );
+    }
+    if transfer.launchbox_db_id < 0 {
+        bail!("media transfer LaunchBox ID cannot be negative");
+    }
+    for (label, value, limit) in [
+        ("title", transfer.title.as_str(), 2_048),
+        ("platform", transfer.platform.as_str(), 1_024),
+        ("source URL", transfer.source_url.as_str(), 8_192),
+        ("remote job identity", transfer.remote_job_id.as_str(), 512),
+        (
+            "source item path",
+            transfer.source_item_path.as_str(),
+            8_192,
+        ),
+        ("message", transfer.message.as_str(), 8_192),
+    ] {
+        if value.trim().is_empty() || value.chars().count() > limit {
+            bail!("media transfer {label} is empty or exceeds its safety limit");
+        }
+    }
+    if transfer.local_download_path.as_os_str().is_empty()
+        || transfer.local_target_path.as_os_str().is_empty()
+    {
+        bail!("media transfer paths cannot be empty");
+    }
+    if !matches!(
+        transfer.state.as_str(),
+        "queued" | "downloading" | "paused" | "complete" | "published" | "cancelled" | "error"
+    ) {
+        bail!("unsupported media transfer state {}", transfer.state);
+    }
+    if !transfer.progress.is_finite() || !(0.0..=1.0).contains(&transfer.progress) {
+        bail!("media transfer progress must be between zero and one");
+    }
+    if transfer.created_at < 0 || transfer.updated_at < 0 {
+        bail!("media transfer timestamps cannot be negative");
+    }
+    Ok(())
+}
+
+fn media_transfer_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaTransfer> {
+    let source_item_index = row.get::<_, i64>(9)?;
+    let download_speed = row.get::<_, i64>(15)?;
+    let downloaded_bytes = row.get::<_, i64>(16)?;
+    let total_bytes = row.get::<_, i64>(17)?;
+    Ok(MediaTransfer {
+        game_uid: row.get(0)?,
+        launchbox_db_id: row.get(1)?,
+        title: row.get(2)?,
+        platform: row.get(3)?,
+        media_kind: row.get(4)?,
+        provider: row.get(5)?,
+        transport: row.get(6)?,
+        source_url: row.get(7)?,
+        remote_job_id: row.get(8)?,
+        source_item_index: u32::try_from(source_item_index).unwrap_or_default(),
+        source_item_path: row.get(10)?,
+        local_download_path: PathBuf::from(row.get::<_, String>(11)?),
+        local_target_path: PathBuf::from(row.get::<_, String>(12)?),
+        state: row.get(13)?,
+        progress: row.get(14)?,
+        download_speed: u64::try_from(download_speed).unwrap_or_default(),
+        downloaded_bytes: u64::try_from(downloaded_bytes).unwrap_or_default(),
+        total_bytes: u64::try_from(total_bytes).unwrap_or_default(),
+        message: row.get(18)?,
+        created_at: row.get(19)?,
+        updated_at: row.get(20)?,
+    })
 }
 
 fn play_activity_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlayActivity> {
@@ -2570,6 +2830,73 @@ mod tests {
                 .save_media_playback_progress("game-1", "sha256:replacement", -1, 80_000)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn media_transfers_are_durable_scoped_and_share_remote_jobs() {
+        let (_directory, store) = store();
+        let mut first = MediaTransfer {
+            game_uid: "game-one".into(),
+            launchbox_db_id: 42,
+            title: "First Game".into(),
+            platform: "Sega Pico".into(),
+            media_kind: "manual".into(),
+            provider: "minerva".into(),
+            transport: "torrent".into(),
+            source_url: "https://example.invalid/manuals.torrent".into(),
+            remote_job_id: "ABCDEF012345".into(),
+            source_item_index: 3,
+            source_item_path: "Manuals/First Game.zip".into(),
+            local_download_path: PathBuf::from("/downloads/Manuals/First Game.zip"),
+            local_target_path: PathBuf::from("/media/game-one/minerva/manual.zip"),
+            state: "queued".into(),
+            progress: 0.0,
+            download_speed: 0,
+            downloaded_bytes: 0,
+            total_bytes: 1_024,
+            message: "Queued".into(),
+            created_at: 10,
+            updated_at: 10,
+        };
+        let second = MediaTransfer {
+            game_uid: "game-two".into(),
+            source_item_index: 7,
+            source_item_path: "Manuals/Second Game.zip".into(),
+            local_download_path: PathBuf::from("/downloads/Manuals/Second Game.zip"),
+            local_target_path: PathBuf::from("/media/game-two/minerva/manual.zip"),
+            created_at: 11,
+            updated_at: 11,
+            ..first.clone()
+        };
+        store.upsert_media_transfer(&first).unwrap();
+        store.upsert_media_transfer(&second).unwrap();
+        assert_eq!(
+            store.media_transfer("game-one", "manual").unwrap(),
+            Some(first.clone())
+        );
+        assert_eq!(
+            store
+                .media_transfers_for_remote_job("minerva", "abcdef012345")
+                .unwrap(),
+            vec![first.clone(), second]
+        );
+
+        first.state = "downloading".into();
+        first.progress = 0.5;
+        first.download_speed = 2_048;
+        first.downloaded_bytes = 512;
+        first.message = "Downloading".into();
+        first.updated_at = 12;
+        store.upsert_media_transfer(&first).unwrap();
+        assert_eq!(
+            store.media_transfer("game-one", "manual").unwrap(),
+            Some(first)
+        );
+
+        let mut invalid = store.media_transfer("game-two", "manual").unwrap().unwrap();
+        invalid.progress = f64::NAN;
+        assert!(store.upsert_media_transfer(&invalid).is_err());
+        assert!(store.media_transfer("game-one", "soundtrack").is_err());
     }
 
     #[test]
