@@ -115,6 +115,7 @@ ApplicationWindow {
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
+    readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
@@ -785,6 +786,14 @@ ApplicationWindow {
                 gameDetails.load_bundle_files(0)
             }
         }
+        function onAlternate_title_countChanged() {
+            if (root.alternateTitleUiProbe
+                    && gameDetails.alternate_title_count > 0) {
+                console.log("LUNCHBOX_ALTERNATE_TITLES_READY count="
+                            + gameDetails.alternate_title_count)
+                alternateTitleProbeScrollTimer.restart()
+            }
+        }
         function onFile_countChanged() {
             if (root.releaseCandidateUiProbe && gameDetails.file_count > 0)
                 detailsProbeScrollTimer.restart()
@@ -962,6 +971,10 @@ ApplicationWindow {
                 root.openEmulatorUpdates()
             else if (root.launchProfileManagerUiProbe)
                 root.openLaunchProfileManager()
+            else if (root.alternateTitleUiProbe)
+                root.openGame("8ec34bc8-73d5-4e4a-be7b-73ed58e0dc9a", 2361,
+                              "Pokémon Silver Version",
+                              "Nintendo Game Boy Color", false, true)
             else if (root.releaseCandidateUiProbe)
                 root.openGame("52f67472-bddb-4e5b-951b-43364f996573", 1726,
                               "Super Mario Land", "Nintendo Game Boy", false, true)
@@ -1080,6 +1093,39 @@ ApplicationWindow {
         onTriggered: detailScroll.contentItem.contentY = Math.max(
                          0, fileCandidateHeading.mapToItem(
                              detailScroll.contentItem, 0, 0).y - 12)
+    }
+
+    Timer {
+        id: alternateTitleProbeScrollTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            detailScroll.contentItem.contentY = Math.max(
+                        0, alternateTitleSection.mapToItem(
+                            detailScroll.contentItem, 0, 0).y - 12)
+            alternateTitleScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: alternateTitleScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0)
+                return
+            detailsPane.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SCREENSHOT_FAILED path="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_SCREENSHOT_READY path="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
     }
 
     Timer {
@@ -3559,6 +3605,70 @@ ApplicationWindow {
                         Text { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.release_type.length > 0; text: "TYPE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                    }
+
+                    Column {
+                        id: alternateTitleSection
+                        width: parent.width
+                        visible: !gameDetails.loading
+                                 && gameDetails.alternate_title_count > 0
+                        spacing: 8
+
+                        Text {
+                            text: "ALSO KNOWN AS"
+                            color: "#687488"
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.9
+                        }
+
+                        Flow {
+                            id: alternateTitleFlow
+                            width: parent.width
+                            height: childrenRect.height
+                            spacing: 6
+
+                            Repeater {
+                                model: gameDetails.alternate_title_count
+                                delegate: Rectangle {
+                                    id: alternateTitleChip
+                                    required property int index
+                                    property int revision: gameDetails.detail_revision
+                                    property string aliasName: {
+                                        alternateTitleChip.revision
+                                        return gameDetails.alternate_title_at(
+                                                    alternateTitleChip.index)
+                                    }
+                                    property string aliasRegion: {
+                                        alternateTitleChip.revision
+                                        return gameDetails.alternate_title_region_at(
+                                                    alternateTitleChip.index)
+                                    }
+                                    width: Math.min(alternateTitleFlow.width,
+                                                    alternateTitleText.implicitWidth + 18)
+                                    height: 26
+                                    radius: 7
+                                    color: "#182532"
+                                    border.color: "#31475b"
+
+                                    Text {
+                                        id: alternateTitleText
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.leftMargin: 9
+                                        anchors.rightMargin: 9
+                                        text: alternateTitleChip.aliasRegion.length > 0
+                                              ? alternateTitleChip.aliasName + " · "
+                                                + alternateTitleChip.aliasRegion
+                                              : alternateTitleChip.aliasName
+                                        color: "#b8cfe2"
+                                        font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Text {

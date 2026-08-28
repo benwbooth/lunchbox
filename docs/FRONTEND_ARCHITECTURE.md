@@ -318,6 +318,14 @@ profile before it can enter settings state, and removes exact player,
 platform, game, and default references when a profile is deleted. The
 `--controller-profile-ui-probe` opens the editor against a fresh state database,
 applies the two-button preset, and reports its real button and mapping counts.
+`--alternate-title-probe --games-database PATH --minerva-database PATH` loads
+Pokémon Silver by its stable catalog UUID, proves its alternate names came from
+the same exact LaunchBox database ID, and succeeds only when one of those names
+matches a real current Minerva torrent member. `--alternate-title-ui-probe`
+opens the same record with its localized names rendered as native metadata
+chips; adding `--screenshot-output ABSOLUTE_PATH` captures the details pane and
+exits. Alternate names expand download search only: they never merge catalog
+records, replace UUIDs, or bypass explicit candidate review.
 The `--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
 Minerva bundle, and scrolls the details pane to the ranked native candidate
 cards for deterministic visual review against the preserved discovery catalog.

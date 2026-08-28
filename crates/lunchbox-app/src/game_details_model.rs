@@ -32,6 +32,7 @@ pub mod qobject {
         #[qproperty(QString, esrb)]
         #[qproperty(QString, release_type)]
         #[qproperty(QString, notes)]
+        #[qproperty(i32, alternate_title_count)]
         #[qproperty(QString, message)]
         #[qproperty(bool, media_visible)]
         #[qproperty(bool, video_available)]
@@ -208,6 +209,12 @@ pub mod qobject {
         fn bundle_detail_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn alternate_title_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn alternate_title_region_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn file_name_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -246,7 +253,7 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::game_details::{
-    self, GameDetails, MinervaBundle, ReleasePreferences, TorrentFileCandidate,
+    self, AlternateTitle, GameDetails, MinervaBundle, ReleasePreferences, TorrentFileCandidate,
 };
 
 pub struct GameDetailsModelRust {
@@ -272,6 +279,7 @@ pub struct GameDetailsModelRust {
     esrb: QString,
     release_type: QString,
     notes: QString,
+    alternate_title_count: i32,
     message: QString,
     media_visible: bool,
     video_available: bool,
@@ -338,6 +346,7 @@ pub struct GameDetailsModelRust {
     selected_emulator_option: i32,
     detail_revision: i32,
     bundles: Vec<MinervaBundle>,
+    alternate_titles: Vec<AlternateTitle>,
     files: Vec<TorrentFileCandidate>,
     details_generation: u64,
     torrent_generation: u64,
@@ -381,6 +390,7 @@ impl Default for GameDetailsModelRust {
             esrb: QString::default(),
             release_type: QString::default(),
             notes: QString::default(),
+            alternate_title_count: 0,
             message: QString::from("Select a game to inspect it."),
             media_visible: false,
             video_available: false,
@@ -447,6 +457,7 @@ impl Default for GameDetailsModelRust {
             selected_emulator_option: -1,
             detail_revision: 0,
             bundles: Vec::new(),
+            alternate_titles: Vec::new(),
             files: Vec::new(),
             details_generation: 0,
             torrent_generation: 0,
@@ -707,6 +718,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_notes(QString::default());
+        self.as_mut().set_alternate_title_count(0);
         self.as_mut().set_media_visible(false);
         self.as_mut().set_video_available(false);
         self.as_mut().set_manual_available(false);
@@ -756,6 +768,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().prepared_emulator = None;
         self.as_mut().rust_mut().prepared_install = None;
         self.as_mut().rust_mut().bundles.clear();
+        self.as_mut().rust_mut().alternate_titles.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
         self.as_mut().set_file_count(0);
@@ -814,6 +827,10 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
                 self.as_mut().set_notes(qstring(&details.notes));
+                let alternate_title_count = details.alternate_titles.len();
+                self.as_mut().rust_mut().alternate_titles = details.alternate_titles.clone();
+                self.as_mut()
+                    .set_alternate_title_count(count_i32(alternate_title_count));
                 self.as_mut().apply_supplemental_media(
                     supplemental_media,
                     video_media_key,
@@ -1418,6 +1435,7 @@ impl qobject::GameDetailsModel {
             self.as_ref().rust().torrent_generation.wrapping_add(1);
         let generation = self.as_ref().rust().torrent_generation;
         let title = self.as_ref().title().to_string();
+        let alternate_titles = self.as_ref().rust().alternate_titles.clone();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_file_count(0);
         self.as_mut().set_selected_bundle(index);
@@ -1435,6 +1453,7 @@ impl qobject::GameDetailsModel {
                     game_details::load_torrent_files(
                         &bundle,
                         &title,
+                        &alternate_titles,
                         &ReleasePreferences {
                             region_priority: settings.region_priority,
                             version_preference: settings.version_preference,
@@ -3012,6 +3031,22 @@ impl qobject::GameDetailsModel {
             .unwrap_or_default()
     }
 
+    pub fn alternate_title_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().alternate_titles.get(index))
+            .map(|title| qstring(&title.name))
+            .unwrap_or_default()
+    }
+
+    pub fn alternate_title_region_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().alternate_titles.get(index))
+            .map(|title| qstring(&title.region))
+            .unwrap_or_default()
+    }
+
     pub fn file_name_at(&self, index: i32) -> QString {
         self.file(index)
             .map(|file| {
@@ -3063,6 +3098,10 @@ impl qobject::GameDetailsModel {
                 }
                 if !file.version.is_empty() {
                     details.push(file.version.clone());
+                }
+                if !file.matched_title.is_empty() && file.matched_title != self.title().to_string()
+                {
+                    details.push(format!("matched as {}", file.matched_title));
                 }
                 details.push(format!("{:.0}% title match", file.match_score * 100.0));
                 details.push(game_details::format_bytes(file.byte_size));

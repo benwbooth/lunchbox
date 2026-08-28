@@ -42,6 +42,7 @@ pub struct GameDetails {
     pub esrb: String,
     pub release_type: String,
     pub notes: String,
+    pub alternate_titles: Vec<AlternateTitle>,
     pub local: bool,
     pub downloadable: bool,
     pub database_id: i64,
@@ -54,6 +55,12 @@ pub struct GameDetails {
     pub video_progress: Option<crate::settings::MediaPlaybackProgress>,
     pub manual_transfer: Option<crate::settings::MediaTransfer>,
     pub bundles: Vec<MinervaBundle>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AlternateTitle {
+    pub name: String,
+    pub region: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,6 +97,7 @@ pub struct TorrentFileCandidate {
     pub filename: String,
     pub byte_size: u64,
     pub match_score: f64,
+    pub matched_title: String,
     pub region: String,
     pub version: String,
     pub download_plan: Option<DownloadPlan>,
@@ -171,6 +179,11 @@ pub fn load(
             details.release_type = row.8;
             details.notes = row.9;
             details.database_id = row.10;
+            details.alternate_titles = load_alternate_titles_from_connection(
+                &connection,
+                details.database_id,
+                &details.title,
+            )?;
         }
     }
 
@@ -179,6 +192,52 @@ pub fn load(
     load_prepared_state(&mut details)?;
     load_supplemental_media(&mut details)?;
     Ok(details)
+}
+
+fn load_alternate_titles_from_connection(
+    connection: &rusqlite::Connection,
+    launchbox_db_id: i64,
+    primary_title: &str,
+) -> Result<Vec<AlternateTitle>> {
+    if launchbox_db_id <= 0 {
+        return Ok(Vec::new());
+    }
+    let table_count: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_schema
+         WHERE type='table' AND name='game_alternate_names'",
+        [],
+        |row| row.get(0),
+    )?;
+    if table_count == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut statement = connection.prepare(
+        "SELECT trim(alternate_name), trim(coalesce(region, ''))
+         FROM game_alternate_names
+         WHERE launchbox_db_id=?1 AND trim(alternate_name) <> ''
+         ORDER BY lower(trim(alternate_name)), lower(trim(coalesce(region, '')))",
+    )?;
+    let rows = statement.query_map([launchbox_db_id], |row| {
+        Ok(AlternateTitle {
+            name: row.get(0)?,
+            region: row.get(1)?,
+        })
+    })?;
+    let primary_title = primary_title.trim();
+    let mut seen = HashSet::new();
+    let mut titles = Vec::new();
+    for title in rows {
+        let title = title?;
+        if title.name == primary_title {
+            continue;
+        }
+        let key = (title.name.to_lowercase(), title.region.to_lowercase());
+        if seen.insert(key) {
+            titles.push(title);
+        }
+    }
+    Ok(titles)
 }
 
 fn load_supplemental_media(details: &mut GameDetails) -> Result<()> {
@@ -415,6 +474,7 @@ fn explicit_fallback_matches(platform_key: &str, provider_key: &str, collection:
 pub fn load_torrent_files(
     bundle: &MinervaBundle,
     game_title: &str,
+    alternate_titles: &[AlternateTitle],
     preferences: &ReleasePreferences,
 ) -> Result<Vec<TorrentFileCandidate>> {
     let plan_files = indexed_torrent_files(&bundle.torrent_url)?;
@@ -425,6 +485,7 @@ pub fn load_torrent_files(
             filename: file.filename.clone(),
             byte_size: file.byte_size,
             match_score: 0.0,
+            matched_title: String::new(),
             region: String::new(),
             version: String::new(),
             download_plan: None,
@@ -435,20 +496,92 @@ pub fn load_torrent_files(
         .collection
         .eq_ignore_ascii_case("Laserdisc Collection")
     {
-        let romset_names = mame_romset_names(game_title)?;
         let provider_key = catalog::normalize_platform_key(&bundle.provider_platform);
-        let plans = match provider_key.as_str() {
-            "mame" => build_mame_laserdisc_plans(&plan_files, game_title, &romset_names),
-            "hypseus-singe" => {
-                build_hypseus_laserdisc_plans(&plan_files, game_title, &romset_names)
-            }
-            "daphne" => build_daphne_laserdisc_plans(&plan_files, game_title, &romset_names),
-            _ => Vec::new(),
-        };
-        return Ok(machine_plan_candidates(plans, preferences));
+        let mut candidates = Vec::new();
+        for lookup_title in lookup_titles(game_title, alternate_titles) {
+            let romset_names = mame_romset_names(lookup_title)?;
+            let plans = match provider_key.as_str() {
+                "mame" => build_mame_laserdisc_plans(&plan_files, lookup_title, &romset_names),
+                "hypseus-singe" => {
+                    build_hypseus_laserdisc_plans(&plan_files, lookup_title, &romset_names)
+                }
+                "daphne" => build_daphne_laserdisc_plans(&plan_files, lookup_title, &romset_names),
+                _ => Vec::new(),
+            };
+            candidates.extend(machine_plan_candidates(plans, preferences, lookup_title));
+        }
+        let mut seen_plans = HashSet::new();
+        candidates.retain(|candidate| {
+            candidate.download_plan.as_ref().is_some_and(|plan| {
+                seen_plans.insert(format!(
+                    "{}:{}",
+                    plan.kind,
+                    plan.display_name.to_ascii_lowercase()
+                ))
+            })
+        });
+        candidates.sort_by(|left, right| {
+            release_preference_order(left, right, preferences)
+                .then_with(|| left.byte_size.cmp(&right.byte_size))
+                .then_with(|| left.filename.cmp(&right.filename))
+        });
+        candidates.truncate(MAX_FILE_CANDIDATES);
+        return Ok(candidates);
     }
 
-    rank_file_candidates(files, game_title, preferences)
+    rank_file_candidates(files, game_title, alternate_titles, preferences)
+}
+
+pub(crate) fn alternate_title_probe() -> Result<String> {
+    const ID: &str = "8ec34bc8-73d5-4e4a-be7b-73ed58e0dc9a";
+    const TITLE: &str = "Pokémon Silver Version";
+    let details = load(ID, TITLE, "Nintendo Game Boy Color", false, true)?;
+    if details.alternate_titles.is_empty() {
+        bail!("the exact-linked Pokémon Silver record has no alternate titles");
+    }
+    let bundle = details
+        .bundles
+        .iter()
+        .find(|bundle| {
+            bundle.collection.eq_ignore_ascii_case("No-Intro")
+                && catalog::normalize_platform_key(&bundle.provider_platform)
+                    == "nintendo-game-boy-color"
+        })
+        .context("the exact Nintendo Game Boy Color No-Intro bundle is unavailable")?;
+    let candidates = load_torrent_files(
+        bundle,
+        &details.title,
+        &details.alternate_titles,
+        &ReleasePreferences {
+            region_priority: crate::region_priority::default_region_priority(),
+            version_preference: "latest".to_owned(),
+        },
+    )?;
+    let candidate = candidates
+        .iter()
+        .find(|candidate| {
+            !candidate.matched_title.is_empty() && candidate.matched_title != details.title
+        })
+        .context("no Minerva candidate matched an exact-linked alternate title")?;
+    Ok(format!(
+        "aliases={} matched_title={:?} score={:.2} file={:?}",
+        details.alternate_titles.len(),
+        candidate.matched_title,
+        candidate.match_score,
+        candidate.filename
+    ))
+}
+
+fn lookup_titles<'a>(
+    primary_title: &'a str,
+    alternate_titles: &'a [AlternateTitle],
+) -> Vec<&'a str> {
+    let mut seen = HashSet::new();
+    std::iter::once(primary_title)
+        .chain(alternate_titles.iter().map(|title| title.name.as_str()))
+        .filter(|title| !title.trim().is_empty())
+        .filter(|title| seen.insert(title.trim().to_lowercase()))
+        .collect()
 }
 
 fn indexed_torrent_files(url: &str) -> Result<Arc<Vec<TorrentPlanFile>>> {
@@ -571,6 +704,7 @@ fn mame_romset_names_from_connection(
 fn machine_plan_candidates(
     plans: Vec<DownloadPlan>,
     preferences: &ReleasePreferences,
+    matched_title: &str,
 ) -> Vec<TorrentFileCandidate> {
     let mut candidates = plans
         .into_iter()
@@ -582,6 +716,7 @@ fn machine_plan_candidates(
                 filename: representative.torrent_path.clone(),
                 byte_size: plan.total_bytes(),
                 match_score: 1.0,
+                matched_title: matched_title.to_owned(),
                 region,
                 version,
                 download_plan: Some(plan),
@@ -773,14 +908,19 @@ pub(crate) fn torrent_bytes_for_url(url: &str) -> Result<Vec<u8>> {
 fn rank_file_candidates(
     files: Vec<TorrentFileCandidate>,
     game_title: &str,
+    alternate_titles: &[AlternateTitle],
     preferences: &ReleasePreferences,
 ) -> Result<Vec<TorrentFileCandidate>> {
-    let query = normalized_words(title_without_tags(game_title));
-    if query.is_empty() {
+    let queries = lookup_titles(game_title, alternate_titles)
+        .into_iter()
+        .filter_map(|title| {
+            let query = normalized_words(title_without_tags(title));
+            (!query.is_empty()).then_some((title, query))
+        })
+        .collect::<Vec<_>>();
+    if queries.is_empty() {
         bail!("game title has no searchable characters");
     }
-
-    let query_tokens = significant_tokens(&query);
     let plan_files = files
         .iter()
         .map(|file| TorrentPlanFile {
@@ -792,7 +932,14 @@ fn rank_file_candidates(
     let mut candidates = files
         .into_iter()
         .filter_map(|mut file| {
-            file.match_score = file_match_score(&file.filename, &query, &query_tokens);
+            for (title, query) in &queries {
+                let tokens = significant_tokens(query);
+                let score = file_match_score(&file.filename, query, &tokens);
+                if score > file.match_score {
+                    file.match_score = score;
+                    file.matched_title = (*title).to_owned();
+                }
+            }
             (file.region, file.version) = release_labels(&file.filename);
             (file.match_score >= 0.35).then_some(file)
         })
@@ -1100,6 +1247,7 @@ mod tests {
             filename: filename.into(),
             byte_size: 10,
             match_score: 0.0,
+            matched_title: String::new(),
             region: String::new(),
             version: String::new(),
             download_plan: None,
@@ -1112,11 +1260,80 @@ mod tests {
             candidate(0, "Nintendo/Game Boy/Super Mario Land (USA, Europe).zip"),
             candidate(1, "Nintendo/Game Boy/Mario Tennis (USA).zip"),
         ];
-        let ranked =
-            rank_file_candidates(files, "Super Mario Land", &preferences("USA", "latest")).unwrap();
+        let ranked = rank_file_candidates(
+            files,
+            "Super Mario Land",
+            &[],
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].index, 0);
         assert_eq!(ranked[0].match_score, 1.0);
+        assert_eq!(ranked[0].matched_title, "Super Mario Land");
+    }
+
+    #[test]
+    fn exact_linked_alternate_title_can_win_candidate_matching() {
+        let files = vec![candidate(
+            0,
+            "Nintendo/Game Boy Color/Pokemon - Silver Version (USA, Europe).zip",
+        )];
+        let alternate_titles = vec![AlternateTitle {
+            name: "Pokemon - Silver Version".into(),
+            region: String::new(),
+        }];
+        let ranked = rank_file_candidates(
+            files,
+            "Pokémon Silver Version",
+            &alternate_titles,
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].match_score, 1.0);
+        assert_eq!(ranked[0].matched_title, "Pokemon - Silver Version");
+    }
+
+    #[test]
+    fn alternate_titles_require_an_exact_provider_link_and_deduplicate_rows() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE game_alternate_names (
+                    launchbox_db_id INTEGER NOT NULL,
+                    alternate_name TEXT NOT NULL,
+                    region TEXT
+                 );
+                 INSERT INTO game_alternate_names VALUES
+                    (2361, 'Pokémon Silver Version', 'North America'),
+                    (2361, 'Pokemon - Silver Version', NULL),
+                    (2361, 'Pokemon - Silver Version', NULL),
+                    (2361, 'Pocket Monsters Gin', 'Japan'),
+                    (2360, 'Pokemon - Gold Version', NULL);",
+            )
+            .unwrap();
+        let titles =
+            load_alternate_titles_from_connection(&connection, 2361, "Pokémon Silver Version")
+                .unwrap();
+        assert_eq!(
+            titles,
+            vec![
+                AlternateTitle {
+                    name: "Pocket Monsters Gin".into(),
+                    region: "Japan".into(),
+                },
+                AlternateTitle {
+                    name: "Pokemon - Silver Version".into(),
+                    region: String::new(),
+                },
+            ]
+        );
+        assert!(
+            load_alternate_titles_from_connection(&connection, 0, "Anything")
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1141,7 +1358,8 @@ mod tests {
             candidate(2, "Game (Japan) (Rev 3).zip"),
         ];
         let ranked =
-            rank_file_candidates(files, "Game (USA)", &preferences("Japan", "latest")).unwrap();
+            rank_file_candidates(files, "Game (USA)", &[], &preferences("Japan", "latest"))
+                .unwrap();
         assert_eq!(
             ranked.iter().map(|file| file.index).collect::<Vec<_>>(),
             [2, 1, 0]
@@ -1160,6 +1378,7 @@ mod tests {
         let ranked = rank_file_candidates(
             files,
             "Game",
+            &[],
             &ReleasePreferences {
                 region_priority: vec!["Europe".into(), "USA".into(), "Japan".into()],
                 version_preference: "latest".into(),
@@ -1179,7 +1398,7 @@ mod tests {
             candidate(1, "Game (Europe).zip"),
         ];
         let ranked =
-            rank_file_candidates(files, "Game", &preferences("Europe", "original")).unwrap();
+            rank_file_candidates(files, "Game", &[], &preferences("Europe", "original")).unwrap();
         assert_eq!(
             ranked.iter().map(|file| file.index).collect::<Vec<_>>(),
             [1, 0]
@@ -1199,9 +1418,13 @@ mod tests {
         files[2].byte_size = 200;
         files[3].byte_size = 2_000;
 
-        let ranked =
-            rank_file_candidates(files, "Final Fantasy VII", &preferences("USA", "latest"))
-                .unwrap();
+        let ranked = rank_file_candidates(
+            files,
+            "Final Fantasy VII",
+            &[],
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
         assert_eq!(ranked.len(), 1);
         let plan = ranked[0].download_plan.as_ref().expect("optical plan");
         assert_eq!(ranked[0].index, 0);
@@ -1228,8 +1451,13 @@ mod tests {
         files[3].byte_size = 40;
         files[4].byte_size = 1;
 
-        let ranked =
-            rank_file_candidates(files, "Prince of Persia", &preferences("USA", "latest")).unwrap();
+        let ranked = rank_file_candidates(
+            files,
+            "Prince of Persia",
+            &[],
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].index, 2);
         assert_eq!(ranked[0].byte_size, 100);
@@ -1509,6 +1737,13 @@ mod tests {
 
     #[test]
     #[ignore = "requires local discovery/Minerva databases and network access"]
+    fn live_minerva_metadata_matches_exact_linked_alternate_title() {
+        let evidence = alternate_title_probe().unwrap();
+        assert!(evidence.contains("matched_title="));
+    }
+
+    #[test]
+    #[ignore = "requires local discovery/Minerva databases and network access"]
     fn live_minerva_metadata_contains_ranked_game_candidate() {
         let discovery_path = catalog::requested_discovery_database_path()
             .expect("local lunchbox-games.db is required for this probe");
@@ -1527,6 +1762,7 @@ mod tests {
         let files = load_torrent_files(
             &details.bundles[0],
             &details.title,
+            &details.alternate_titles,
             &preferences("USA", "latest"),
         )
         .unwrap();
@@ -1552,7 +1788,13 @@ mod tests {
             .bundles
             .iter()
             .filter_map(|bundle| {
-                load_torrent_files(bundle, &details.title, &preferences("USA", "latest")).ok()
+                load_torrent_files(
+                    bundle,
+                    &details.title,
+                    &details.alternate_titles,
+                    &preferences("USA", "latest"),
+                )
+                .ok()
             })
             .flat_map(|files| files.into_iter())
             .find_map(|file| file.download_plan)
@@ -1578,7 +1820,13 @@ mod tests {
             .iter()
             .filter(|bundle| bundle.collection.eq_ignore_ascii_case("eXo"))
             .filter_map(|bundle| {
-                load_torrent_files(bundle, &details.title, &preferences("USA", "latest")).ok()
+                load_torrent_files(
+                    bundle,
+                    &details.title,
+                    &details.alternate_titles,
+                    &preferences("USA", "latest"),
+                )
+                .ok()
             })
             .flat_map(|files| files.into_iter())
             .find_map(|file| file.download_plan)
@@ -1619,8 +1867,13 @@ mod tests {
         let mut has_hypseus = false;
         let mut has_daphne = false;
         for bundle in laserdisc_bundles {
-            let files =
-                load_torrent_files(bundle, &details.title, &preferences("USA", "latest")).unwrap();
+            let files = load_torrent_files(
+                bundle,
+                &details.title,
+                &details.alternate_titles,
+                &preferences("USA", "latest"),
+            )
+            .unwrap();
             for plan in files
                 .into_iter()
                 .filter_map(|candidate| candidate.download_plan)
