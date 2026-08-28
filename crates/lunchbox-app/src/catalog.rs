@@ -46,6 +46,7 @@ pub struct Filter {
     pub hide_adult: bool,
     pub favorite_game_ids: Arc<HashSet<String>>,
     pub collection_game_ids: Arc<HashSet<String>>,
+    pub recent_game_order: Arc<std::collections::HashMap<String, i64>>,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -711,7 +712,7 @@ fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
 
 pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
     let search = filter.search.trim().to_lowercase();
-    catalog
+    let mut indices = catalog
         .games
         .iter()
         .enumerate()
@@ -724,6 +725,7 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                     "local" => game.local,
                     "downloadable" => game.downloadable && !game.local,
                     "favorites" => filter.favorite_game_ids.contains(&game.id),
+                    "recent" => filter.recent_game_order.contains_key(&game.id),
                     availability if availability.starts_with("collection:") => {
                         filter.collection_game_ids.contains(&game.id)
                     }
@@ -731,7 +733,20 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                 }
         })
         .map(|(index, _)| index)
-        .collect()
+        .collect::<Vec<_>>();
+    if filter.availability == "recent" {
+        indices.sort_by(|left, right| {
+            let left_game = &catalog.games[*left];
+            let right_game = &catalog.games[*right];
+            filter
+                .recent_game_order
+                .get(&right_game.id)
+                .cmp(&filter.recent_game_order.get(&left_game.id))
+                .then_with(|| left_game.title.cmp(&right_game.title))
+                .then_with(|| left_game.id.cmp(&right_game.id))
+        });
+    }
+    indices
 }
 
 #[cfg(test)]
@@ -794,6 +809,20 @@ mod tests {
                 }
             )
             .is_empty()
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    availability: "recent".into(),
+                    recent_game_order: Arc::new(std::collections::HashMap::from([
+                        ("metroid".to_owned(), 10),
+                        ("outrun".to_owned(), 20),
+                    ])),
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
         );
     }
 

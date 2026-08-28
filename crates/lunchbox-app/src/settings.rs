@@ -139,6 +139,25 @@ pub struct FirmwareDownloadReceipt {
     pub updated_at: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlayActivity {
+    pub game_uid: String,
+    pub launchbox_db_id: i64,
+    pub title: String,
+    pub platform: String,
+    pub play_count: i64,
+    pub total_play_time_seconds: i64,
+    pub last_played_at: i64,
+    pub first_played_at: i64,
+    pub completion_state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlaySessionStart {
+    pub session_id: String,
+    pub started_at: i64,
+}
+
 impl Default for LibraryPreferences {
     fn default() -> Self {
         Self {
@@ -495,6 +514,172 @@ impl SettingsStore {
                 params![game_uid],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn play_activity(&self, game_uid: &str) -> Result<Option<PlayActivity>> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to load play activity");
+        }
+        let connection = self.connection()?;
+        Ok(connection
+            .query_row(
+                "SELECT game_uid, launchbox_db_id, title, platform, play_count,
+                        total_play_time_seconds, last_played_at, first_played_at,
+                        completion_state
+                 FROM game_activity WHERE game_uid=?1",
+                [game_uid],
+                play_activity_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn recent_play_activity(&self, limit: usize) -> Result<Vec<PlayActivity>> {
+        let limit = i64::try_from(limit.min(500)).unwrap_or(500);
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT game_uid, launchbox_db_id, title, platform, play_count,
+                    total_play_time_seconds, last_played_at, first_played_at,
+                    completion_state
+             FROM game_activity
+             WHERE play_count > 0
+             ORDER BY last_played_at DESC, game_uid
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map([limit], play_activity_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn begin_play_session(
+        &self,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        title: &str,
+        platform: &str,
+        emulator: &str,
+    ) -> Result<PlaySessionStart> {
+        validate_play_identity(game_uid, title, platform)?;
+        if emulator.trim().is_empty() {
+            bail!("a play session requires an emulator identity");
+        }
+        let now = unix_timestamp();
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO game_activity (
+                 game_uid, launchbox_db_id, title, platform, play_count,
+                 total_play_time_seconds, last_played_at, first_played_at,
+                 completion_state
+             ) VALUES (?1, ?2, ?3, ?4, 1, 0, ?5, ?5, 'in_progress')
+             ON CONFLICT(game_uid) DO UPDATE SET
+                 launchbox_db_id=excluded.launchbox_db_id,
+                 title=excluded.title,
+                 platform=excluded.platform,
+                 play_count=game_activity.play_count + 1,
+                 last_played_at=excluded.last_played_at,
+                 first_played_at=CASE
+                     WHEN game_activity.play_count=0 OR game_activity.first_played_at=0
+                         THEN excluded.first_played_at
+                     ELSE game_activity.first_played_at
+                 END,
+                 completion_state=CASE
+                     WHEN game_activity.completion_state='not_started' THEN 'in_progress'
+                     ELSE game_activity.completion_state
+                 END",
+            params![game_uid, launchbox_db_id, title, platform, now],
+        )?;
+        transaction.execute(
+            "INSERT INTO play_sessions (
+                 id, game_uid, launchbox_db_id, title, platform, emulator,
+                 started_at, ended_at, duration_seconds, outcome
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, 0, 'running')",
+            params![
+                session_id,
+                game_uid,
+                launchbox_db_id,
+                title,
+                platform,
+                emulator,
+                now
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(PlaySessionStart {
+            session_id,
+            started_at: now,
+        })
+    }
+
+    pub fn finish_play_session(
+        &self,
+        session_id: &str,
+        duration_seconds: u64,
+        outcome: &str,
+    ) -> Result<bool> {
+        if session_id.trim().is_empty() {
+            bail!("a play session identity is required");
+        }
+        if !matches!(outcome, "completed" | "failed" | "terminated") {
+            bail!("unsupported play session outcome {outcome}");
+        }
+        let duration = i64::try_from(duration_seconds).unwrap_or(i64::MAX);
+        let ended_at = unix_timestamp();
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let game_uid = transaction
+            .query_row(
+                "SELECT game_uid FROM play_sessions WHERE id=?1 AND outcome='running'",
+                [session_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(game_uid) = game_uid else {
+            transaction.rollback()?;
+            return Ok(false);
+        };
+        let changed = transaction.execute(
+            "UPDATE play_sessions
+             SET ended_at=?2, duration_seconds=?3, outcome=?4
+             WHERE id=?1 AND outcome='running'",
+            params![session_id, ended_at, duration, outcome],
+        )?;
+        if changed == 1 {
+            transaction.execute(
+                "UPDATE game_activity
+                 SET total_play_time_seconds=total_play_time_seconds + ?2
+                 WHERE game_uid=?1",
+                params![game_uid, duration],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(changed == 1)
+    }
+
+    pub fn set_completion_state(
+        &self,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        title: &str,
+        platform: &str,
+        completion_state: &str,
+    ) -> Result<()> {
+        validate_play_identity(game_uid, title, platform)?;
+        validate_completion_state(completion_state)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO game_activity (
+                 game_uid, launchbox_db_id, title, platform, play_count,
+                 total_play_time_seconds, last_played_at, first_played_at,
+                 completion_state
+             ) VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5)
+             ON CONFLICT(game_uid) DO UPDATE SET
+                 launchbox_db_id=excluded.launchbox_db_id,
+                 title=excluded.title,
+                 platform=excluded.platform,
+                 completion_state=excluded.completion_state",
+            params![game_uid, launchbox_db_id, title, platform, completion_state],
+        )?;
         Ok(())
     }
 
@@ -1373,6 +1558,49 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON favorite_games(launchbox_db_id) WHERE launchbox_db_id > 0;
          CREATE INDEX IF NOT EXISTS favorite_games_added_at
              ON favorite_games(added_at DESC);
+         CREATE TABLE IF NOT EXISTS game_activity (
+             game_uid TEXT PRIMARY KEY,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             play_count INTEGER NOT NULL DEFAULT 0 CHECK (play_count >= 0),
+             total_play_time_seconds INTEGER NOT NULL DEFAULT 0 CHECK (
+                 total_play_time_seconds >= 0
+             ),
+             last_played_at INTEGER NOT NULL DEFAULT 0 CHECK (last_played_at >= 0),
+             first_played_at INTEGER NOT NULL DEFAULT 0 CHECK (first_played_at >= 0),
+             completion_state TEXT NOT NULL DEFAULT 'not_started' CHECK (
+                 completion_state IN (
+                     'not_started', 'in_progress', 'completed', 'on_hold', 'abandoned'
+                 )
+             )
+         );
+         CREATE INDEX IF NOT EXISTS game_activity_recent
+             ON game_activity(last_played_at DESC, game_uid) WHERE play_count > 0;
+         CREATE INDEX IF NOT EXISTS game_activity_completion
+             ON game_activity(completion_state, game_uid);
+         CREATE TABLE IF NOT EXISTS play_sessions (
+             id TEXT PRIMARY KEY,
+             game_uid TEXT NOT NULL REFERENCES game_activity(game_uid) ON DELETE CASCADE,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             emulator TEXT NOT NULL,
+             started_at INTEGER NOT NULL CHECK (started_at >= 0),
+             ended_at INTEGER,
+             duration_seconds INTEGER NOT NULL DEFAULT 0 CHECK (duration_seconds >= 0),
+             outcome TEXT NOT NULL CHECK (
+                 outcome IN ('running', 'completed', 'failed', 'terminated')
+             ),
+             CHECK (
+                 (outcome='running' AND ended_at IS NULL)
+                 OR (outcome<>'running' AND ended_at IS NOT NULL)
+             )
+         );
+         CREATE INDEX IF NOT EXISTS play_sessions_game_started
+             ON play_sessions(game_uid, started_at DESC);
+         CREATE INDEX IF NOT EXISTS play_sessions_running
+             ON play_sessions(outcome, started_at) WHERE outcome='running';
          CREATE TABLE IF NOT EXISTS user_collections (
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -1570,6 +1798,43 @@ fn validate_collection_name(name: &str) -> Result<String> {
         bail!("collection name must be at most 100 characters");
     }
     Ok(name.to_owned())
+}
+
+fn validate_play_identity(game_uid: &str, title: &str, platform: &str) -> Result<()> {
+    if game_uid.trim().is_empty() || title.trim().is_empty() || platform.trim().is_empty() {
+        bail!("play activity requires a stable game identity, title, and platform");
+    }
+    if game_uid.chars().count() > 512
+        || title.chars().count() > 1000
+        || platform.chars().count() > 500
+    {
+        bail!("play activity identity fields exceed their safety limits");
+    }
+    Ok(())
+}
+
+fn validate_completion_state(completion_state: &str) -> Result<()> {
+    if !matches!(
+        completion_state,
+        "not_started" | "in_progress" | "completed" | "on_hold" | "abandoned"
+    ) {
+        bail!("unsupported completion state {completion_state}");
+    }
+    Ok(())
+}
+
+fn play_activity_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlayActivity> {
+    Ok(PlayActivity {
+        game_uid: row.get(0)?,
+        launchbox_db_id: row.get(1)?,
+        title: row.get(2)?,
+        platform: row.get(3)?,
+        play_count: row.get(4)?,
+        total_play_time_seconds: row.get(5)?,
+        last_played_at: row.get(6)?,
+        first_played_at: row.get(7)?,
+        completion_state: row.get(8)?,
+    })
 }
 
 fn validate_collection_description(description: &str) -> Result<String> {
@@ -2114,6 +2379,65 @@ mod tests {
     }
 
     #[test]
+    fn play_sessions_track_real_duration_and_finalize_once() {
+        let (_directory, store) = store();
+        assert!(store.play_activity("game-1").unwrap().is_none());
+        store
+            .set_completion_state(
+                "game-1",
+                42,
+                "Metroid",
+                "Nintendo Entertainment System",
+                "not_started",
+            )
+            .unwrap();
+        let session = store
+            .begin_play_session(
+                "game-1",
+                42,
+                "Metroid",
+                "Nintendo Entertainment System",
+                "RetroArch · fceumm",
+            )
+            .unwrap();
+        assert!(
+            store
+                .finish_play_session(&session.session_id, 93, "completed")
+                .unwrap()
+        );
+        assert!(
+            !store
+                .finish_play_session(&session.session_id, 93, "completed")
+                .unwrap()
+        );
+
+        let activity = store.play_activity("game-1").unwrap().unwrap();
+        assert_eq!(activity.play_count, 1);
+        assert_eq!(activity.total_play_time_seconds, 93);
+        assert_eq!(activity.completion_state, "in_progress");
+        assert!(activity.first_played_at > 0);
+        assert!(activity.last_played_at >= activity.first_played_at);
+        assert_eq!(store.recent_play_activity(10).unwrap(), vec![activity]);
+
+        assert!(
+            store
+                .set_completion_state(
+                    "game-1",
+                    42,
+                    "Metroid",
+                    "Nintendo Entertainment System",
+                    "finished",
+                )
+                .is_err()
+        );
+        assert!(
+            store
+                .finish_play_session(&session.session_id, 0, "unknown")
+                .is_err()
+        );
+    }
+
+    #[test]
     fn named_collections_preserve_membership_and_cascade_on_delete() {
         let (_directory, store) = store();
         let collection = store
@@ -2284,6 +2608,17 @@ mod tests {
             .optional()
             .unwrap();
         assert_eq!(prepared_table, Some(1));
+        for table in ["game_activity", "play_sessions"] {
+            let migrated: Option<i64> = connection
+                .query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(migrated, Some(1), "missing migrated table {table}");
+        }
     }
 
     #[test]

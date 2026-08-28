@@ -178,6 +178,13 @@ membership. Selecting a collection remains composable with search and platform
 navigation, and collection writes run off the GUI thread with visible failure
 rollback.
 
+Play activity is stored by the same stable game UUID. Lunchbox starts a durable
+session only after an emulator process exists, records play count and last-played
+immediately, then adds measured elapsed time exactly once when that process
+exits. The details pane shows plays, time, recency, and editable completion state;
+Recently Played stays composable with search and platform navigation. Unfinished
+rows remain auditable after interruption instead of guessing play time.
+
 The preserved game catalog is a local runtime input and is not added to the
 published artifact because redistribution permission for its LaunchBox-derived
 records has not been established.

@@ -48,6 +48,7 @@ pub struct GameDetails {
     pub local_file_path: PathBuf,
     pub local_file_paths: Vec<PathBuf>,
     pub prepared_install: Option<PreparedInstall>,
+    pub activity: Option<crate::settings::PlayActivity>,
     pub bundles: Vec<MinervaBundle>,
 }
 
@@ -111,6 +112,9 @@ pub fn load(
         downloadable,
         ..GameDetails::default()
     };
+    details.activity = crate::settings::SettingsStore::open_default()?
+        .play_activity(id)
+        .context("loading play activity")?;
 
     if let Some(local_file_id) = id.strip_prefix("local-file:") {
         let state_path = crate::settings::state_database_path()?;

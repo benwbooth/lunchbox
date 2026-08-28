@@ -56,6 +56,14 @@ The initial implementation enforces this shape:
   Favorite writes run on named workers, update the native views optimistically,
   and roll the UI back if SQLite rejects the change. Window shutdown is deferred
   until an accepted favorite write has left the in-process worker.
+- Play activity uses the same stable game UUID boundary. A `game_activity` row
+  stores aggregate count, elapsed time, first/last timestamps, and completion
+  state; immutable-identity `play_sessions` rows retain emulator, start/end,
+  elapsed seconds, and outcome. The supervisor creates both records only after
+  a real emulator process exists, measures with a monotonic clock, and applies
+  duration in the same transaction that closes a still-running session. This
+  makes finalization idempotent. Recently Played is a compact in-memory order
+  map refreshed off-thread and composed with search/platform filtering.
 - qBittorrent paths and host paths are separate types at the service boundary:
   host paths use Rust `PathBuf` and native folder dialogs, while remote or
   container paths remain literal strings. The app never rewrites a Windows
@@ -278,10 +286,14 @@ loaded the exact generated config and exited successfully.
 migrates the Rust-owned local state without starting Qt. `--rom-launch-probe`
 opens an exact imported-file identity, discovers the installed runtime/core,
 launches it through the normal CXX-Qt action, bounds the emulator session, and
-exits only after process cleanup. On the current Linux host it ran Flatpak
-RetroArch with `fceumm_libretro.so`, loaded the owned Faxanadu NES file, created
-a real Wayland/OpenGL session, and exited successfully. `--rom-launch-ui-probe`
-leaves the same `Play Locally` controls open for visual inspection.
+exits only after process cleanup and the finalized activity row has returned to
+Qt. It prints both started and finalized play-count/time evidence. On the
+current Linux host it ran Flatpak RetroArch with `fceumm_libretro.so`, loaded
+the owned Faxanadu NES file, created a real Wayland/OpenGL session, and persisted
+one terminated session with measured elapsed time. `--rom-launch-ui-probe`
+leaves the same `Play Locally` controls open for visual inspection;
+`--activity-ui-probe` opens that persisted identity in the native Recently
+Played view with its statistics and completion picker visible.
 `--arcade-launch-probe` exercises the same chooser and supervisor with a
 persisted MAME standalone default. On the current Linux host it launched the
 installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path

@@ -67,6 +67,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   sidebar counts and navigation, per-game membership controls, asynchronous
   persistence with rollback, restart recovery, and composition with search and
   platform filters.
+- Stable-UUID play activity with durable per-launch sessions, exactly-once
+  elapsed-time finalization, count/time/last-played statistics, editable
+  completion state, and a live Recently Played view.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
 - Native Emulator Manager with host-scoped exact package identities, off-thread
@@ -85,8 +88,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   and a missing-file management view.
 - Archive-member inspection, multidisc grouping, patches, alternate versions,
   and manual matching review.
-- Editable game and release metadata, tags, playlists, custom
-  fields, completion state, play count, play time, and last-played history.
+- Editable game and release metadata, tags, playlists, custom fields, and a
+  richer session-history inspector beyond the implemented activity summary.
 - Extend the implemented stable-UUID favorites and named collections with smart
   rules, manual ordering, bulk membership changes, and portable export.
 - Non-destructive merge/split/relink tools backed by the database identity event
@@ -142,8 +145,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   BIOS checks, lifecycle cancellation/recovery, and command preview to the
   native manager.
 - Dedicated Daphne runtime, TeknoParrot, and non-eXo PC launch profiles.
-- Controller detection and mapping, pre-launch validation, process supervision,
-  pause/resume, clean shutdown, and play-stat recording.
+- Controller detection and mapping, pre-launch validation, pause/resume, and
+  clean shutdown. Process supervision and play-stat recording are native.
 
 ## Full-screen interface
 

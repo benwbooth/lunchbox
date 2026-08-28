@@ -64,10 +64,12 @@ pub mod qobject {
         #[qproperty(i32, media_missing_count)]
         #[qproperty(i32, media_error_count)]
         #[qproperty(i32, favorite_count)]
+        #[qproperty(i32, recent_count)]
         #[qproperty(i32, favorite_pending_count)]
         #[qproperty(i32, favorite_revision)]
         #[qproperty(i32, collection_count)]
         #[qproperty(i32, collection_revision)]
+        #[qproperty(i32, activity_revision)]
         #[qproperty(i32, media_revision)]
         #[qproperty(i32, platform_revision)]
         type LibraryModel = super::LibraryModelRust;
@@ -77,6 +79,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn reload(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn refresh_activity(self: Pin<&mut LibraryModel>);
 
         #[qinvokable]
         fn apply_filter(
@@ -227,7 +232,9 @@ use crate::catalog::{self, Catalog, Filter};
 use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
-use crate::settings::{LibraryPreferences, SettingsStore, UserCollection, UserCollections};
+use crate::settings::{
+    LibraryPreferences, PlayActivity, SettingsStore, UserCollection, UserCollections,
+};
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
 type CatalogLoadResult = Result<
@@ -236,6 +243,7 @@ type CatalogLoadResult = Result<
         Result<LibraryPreferences, String>,
         Result<HashSet<String>, String>,
         Result<UserCollections, String>,
+        Result<Vec<PlayActivity>, String>,
     ),
     String,
 >;
@@ -323,10 +331,12 @@ pub struct LibraryModelRust {
     media_missing_count: i32,
     media_error_count: i32,
     favorite_count: i32,
+    recent_count: i32,
     favorite_pending_count: i32,
     favorite_revision: i32,
     collection_count: i32,
     collection_revision: i32,
+    activity_revision: i32,
     media_revision: i32,
     platform_revision: i32,
     catalog: Arc<Catalog>,
@@ -346,6 +356,8 @@ pub struct LibraryModelRust {
     favorite_game_ids: Arc<HashSet<String>>,
     favorite_requests: HashSet<String>,
     favorite_started: Option<std::time::Instant>,
+    recent_game_order: Arc<HashMap<String, i64>>,
+    activity_generation: u64,
     collections: Arc<Vec<UserCollection>>,
     collection_members: Arc<HashMap<String, Arc<HashSet<String>>>>,
     collection_started: Option<std::time::Instant>,
@@ -401,10 +413,12 @@ impl Default for LibraryModelRust {
             media_missing_count: 0,
             media_error_count: 0,
             favorite_count: 0,
+            recent_count: 0,
             favorite_pending_count: 0,
             favorite_revision: 0,
             collection_count: 0,
             collection_revision: 0,
+            activity_revision: 0,
             media_revision: 0,
             platform_revision: 0,
             catalog: Arc::new(Catalog::default()),
@@ -424,6 +438,8 @@ impl Default for LibraryModelRust {
             favorite_game_ids: Arc::new(HashSet::new()),
             favorite_requests: HashSet::new(),
             favorite_started: None,
+            recent_game_order: Arc::new(HashMap::new()),
+            activity_generation: 0,
             collections: Arc::new(Vec::new()),
             collection_members: Arc::new(HashMap::new()),
             collection_started: None,
@@ -478,6 +494,61 @@ impl qobject::LibraryModel {
         self.as_mut().start_load();
     }
 
+    pub fn refresh_activity(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().activity_generation =
+            self.as_ref().rust().activity_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().activity_generation;
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-activity-load".into())
+            .spawn(move || {
+                let result = SettingsStore::open_default()
+                    .and_then(|store| store.recent_play_activity(500))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_activity_refresh(generation, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_status_message(qstring(format!(
+                "Could not start play-activity refresh: {error}"
+            )));
+        }
+    }
+
+    fn finish_activity_refresh(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<Vec<PlayActivity>, String>,
+    ) {
+        if generation != self.as_ref().rust().activity_generation {
+            return;
+        }
+        match result {
+            Ok(activity) => {
+                let recent_game_order = activity
+                    .into_iter()
+                    .map(|activity| (activity.game_uid, activity.last_played_at))
+                    .collect::<HashMap<_, _>>();
+                let recent_count = self
+                    .as_ref()
+                    .rust()
+                    .catalog
+                    .games
+                    .iter()
+                    .filter(|game| recent_game_order.contains_key(&game.id))
+                    .count();
+                self.as_mut().rust_mut().recent_game_order = Arc::new(recent_game_order);
+                self.as_mut().set_recent_count(saturating_i32(recent_count));
+                let revision = self.as_ref().activity_revision().wrapping_add(1);
+                self.as_mut().set_activity_revision(revision);
+            }
+            Err(error) => self
+                .as_mut()
+                .set_status_message(qstring(format!("Could not refresh play activity: {error}"))),
+        }
+    }
+
     fn start_load(mut self: Pin<&mut Self>) {
         let Some(path) = catalog::requested_database_path() else {
             self.as_mut().set_ready(false);
@@ -507,7 +578,7 @@ impl qobject::LibraryModel {
             .spawn(move || {
                 let loaded = catalog::load(&path)
                     .map(|catalog| {
-                        let (preferences, favorites, collections) =
+                        let (preferences, favorites, collections, activity) =
                             match SettingsStore::open_default() {
                                 Ok(store) => (
                                     store
@@ -515,13 +586,21 @@ impl qobject::LibraryModel {
                                         .map_err(|error| error.to_string()),
                                     store.favorite_game_ids().map_err(|error| error.to_string()),
                                     store.user_collections().map_err(|error| error.to_string()),
+                                    store
+                                        .recent_play_activity(500)
+                                        .map_err(|error| error.to_string()),
                                 ),
                                 Err(error) => {
                                     let error = error.to_string();
-                                    (Err(error.clone()), Err(error.clone()), Err(error))
+                                    (
+                                        Err(error.clone()),
+                                        Err(error.clone()),
+                                        Err(error.clone()),
+                                        Err(error),
+                                    )
                                 }
                             };
-                        (catalog, preferences, favorites, collections)
+                        (catalog, preferences, favorites, collections, activity)
                     })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -541,7 +620,7 @@ impl qobject::LibraryModel {
         }
         self.as_mut().set_loading(false);
         match loaded {
-            Ok((catalog, preferences, favorites, collections)) => {
+            Ok((catalog, preferences, favorites, collections, activity)) => {
                 let preference_warning = match preferences {
                     Ok(preferences) => {
                         let artwork_kind =
@@ -578,6 +657,21 @@ impl qobject::LibraryModel {
                     Err(error) => (Vec::new(), HashMap::new(), Some(error)),
                 };
                 let collection_count = collections.len();
+                let (recent_game_order, activity_warning) = match activity {
+                    Ok(activity) => (
+                        activity
+                            .into_iter()
+                            .map(|activity| (activity.game_uid, activity.last_played_at))
+                            .collect::<HashMap<_, _>>(),
+                        None,
+                    ),
+                    Err(error) => (HashMap::new(), Some(error)),
+                };
+                let recent_count = catalog
+                    .games
+                    .iter()
+                    .filter(|game| recent_game_order.contains_key(&game.id))
+                    .count();
                 let indices = (0..catalog.games.len()).collect::<Vec<_>>();
                 self.as_mut().begin_reset_model();
                 {
@@ -586,6 +680,7 @@ impl qobject::LibraryModel {
                     rust.catalog = Arc::new(catalog);
                     rust.filtered_indices = indices;
                     rust.favorite_game_ids = Arc::new(favorite_game_ids);
+                    rust.recent_game_order = Arc::new(recent_game_order);
                     rust.collections = Arc::new(collections);
                     rust.collection_members = Arc::new(collection_members);
                 }
@@ -634,6 +729,7 @@ impl qobject::LibraryModel {
                     .set_emulator_count(saturating_i32(emulator_count));
                 self.as_mut()
                     .set_favorite_count(saturating_i32(favorite_count));
+                self.as_mut().set_recent_count(saturating_i32(recent_count));
                 let favorite_revision = self.as_ref().favorite_revision().wrapping_add(1);
                 self.as_mut().set_favorite_revision(favorite_revision);
                 if let Some(warning) = &favorite_warning {
@@ -689,6 +785,9 @@ impl qobject::LibraryModel {
                 if let Some(warning) = collection_warning {
                     status.push_str(&format!(" — collections unavailable: {warning}"));
                 }
+                if let Some(warning) = activity_warning {
+                    status.push_str(&format!(" — play activity unavailable: {warning}"));
+                }
                 self.as_mut().set_status_message(qstring(status));
                 self.as_mut().start_media_load();
                 if self.as_ref().rust().reload_pending {
@@ -732,6 +831,7 @@ impl qobject::LibraryModel {
             hide_adult: *self.as_ref().hide_adult(),
             favorite_game_ids: Arc::clone(&self.as_ref().rust().favorite_game_ids),
             collection_game_ids,
+            recent_game_order: Arc::clone(&self.as_ref().rust().recent_game_order),
         };
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);

@@ -63,6 +63,7 @@ ApplicationWindow {
     property int downloadPlanProbeBundleIndex: 0
     property bool launchProbeTriggered: false
     property bool launchProbeObservedRunning: false
+    property bool launchProbeAwaitingActivity: false
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -71,6 +72,13 @@ ApplicationWindow {
         { key: "title-screen", label: "Title screen" },
         { key: "fanart", label: "Fan art" },
         { key: "clear-logo", label: "Clear logo" }
+    ]
+    readonly property var completionChoices: [
+        { key: "not_started", label: "Not started" },
+        { key: "in_progress", label: "In progress" },
+        { key: "completed", label: "Completed" },
+        { key: "on_hold", label: "On hold" },
+        { key: "abandoned", label: "Abandoned" }
     ]
     readonly property int activeFilterCount: (availability.length > 0 ? 1 : 0)
                                                + (library.hide_non_retail ? 1 : 0)
@@ -104,6 +112,7 @@ ApplicationWindow {
     readonly property bool emulatorManagerUiProbe: Qt.application.arguments.indexOf("--emulator-manager-ui-probe") >= 0
     readonly property bool firmwareProbe: Qt.application.arguments.indexOf("--firmware-probe") >= 0
     readonly property bool firmwareUiProbe: Qt.application.arguments.indexOf("--firmware-ui-probe") >= 0
+    readonly property bool activityUiProbe: Qt.application.arguments.indexOf("--activity-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
@@ -221,7 +230,17 @@ ApplicationWindow {
             return "Minerva Downloads"
         if (availability === "favorites")
             return "Favorites"
+        if (availability === "recent")
+            return "Recently Played"
         return "All Games"
+    }
+
+    function completionIndex(key) {
+        for (let index = 0; index < completionChoices.length; ++index) {
+            if (completionChoices[index].key === key)
+                return index
+        }
+        return 0
     }
 
     function accentFor(value) {
@@ -364,6 +383,9 @@ ApplicationWindow {
                                   "Buck Rogers: Planet of Zoom", "Coleco ADAM",
                                   true, false)
                 }
+                else if (root.activityUiProbe) {
+                    root.selectLibrary("recent")
+                }
                 else {
                     root.scheduleFilter()
                     if (root.filterUiProbe)
@@ -420,6 +442,10 @@ ApplicationWindow {
             if (library.ready)
                 root.scheduleFilter()
         }
+        function onActivity_revisionChanged() {
+            if (library.ready && root.availability === "recent")
+                root.scheduleFilter()
+        }
         function onFavorite_pending_countChanged() {
             if (root.closeAfterFavoriteSave
                     && library.favorite_pending_count === 0
@@ -473,6 +499,12 @@ ApplicationWindow {
 
     Connections {
         target: gameDetails
+        function onActivity_revisionChanged() {
+            library.refresh_activity()
+            if (root.emulatorLaunchProbe && root.launchProbeAwaitingActivity
+                    && !gameDetails.game_running)
+                Qt.quit()
+        }
         function onDownload_busyChanged() {
             if (!gameDetails.download_busy)
                 downloadQueue.refresh()
@@ -552,7 +584,7 @@ ApplicationWindow {
             if (gameDetails.game_running)
                 root.launchProbeObservedRunning = true
             else if (root.launchProbeObservedRunning)
-                Qt.quit()
+                root.launchProbeAwaitingActivity = true
         }
         function onLaunch_statusChanged() {
             if (root.emulatorLaunchProbe
@@ -643,6 +675,9 @@ ApplicationWindow {
                 root.openGame("local-file:arcade-launch-probe", 0,
                               "Pong", "Arcade", true, false)
             else if (root.romLaunchProbe || root.romLaunchUiProbe)
+                root.openGame("local-file:rom-launch-probe", 0,
+                              "Faxanadu", "Nintendo Entertainment System", true, false)
+            else if (root.activityUiProbe)
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)
         }
@@ -754,6 +789,12 @@ ApplicationWindow {
                 description: "Games saved to your personal Favorites list"
                 checked: root.availability === "favorites"
                 onToggled: root.selectLibrary(checked ? "" : "favorites")
+            }
+            FilterToggle {
+                label: "Recently played"
+                description: "Games ordered by your latest play session"
+                checked: root.availability === "recent"
+                onToggled: root.selectLibrary(checked ? "" : "recent")
             }
             Rectangle {
                 width: parent.width
@@ -1685,6 +1726,13 @@ ApplicationWindow {
                 onClicked: root.selectLibrary("favorites")
             }
             NavButton {
+                label: "Recently Played"
+                glyph: "◷"
+                count: library.recent_count.toString()
+                active: root.selectedPlatform === "" && root.availability === "recent"
+                onClicked: root.selectLibrary("recent")
+            }
+            NavButton {
                 label: "Minerva"
                 glyph: "↓"
                 count: library.downloadable_game_count.toString()
@@ -1833,12 +1881,15 @@ ApplicationWindow {
                 spacing: 10
                 Column {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     spacing: 3
                     Text {
+                        width: parent.width
                         text: root.platformHeading()
                         color: root.ink
                         font.pixelSize: 27
                         font.weight: Font.Bold
+                        elide: Text.ElideRight
                     }
                     Text {
                         text: library.filtering ? "Updating results…" : library.filtered_count + " games"
@@ -1847,17 +1898,17 @@ ApplicationWindow {
                     }
                 }
                 StatusPill {
-                    visible: content.width > 700
+                    visible: content.width > 900
                     label: "local files"
                     value: library.local_file_count.toString()
                 }
                 StatusPill {
-                    visible: content.width > 700
+                    visible: content.width > 900
                     label: "offers"
                     value: library.offer_count.toString()
                 }
                 StatusPill {
-                    visible: content.width > 700
+                    visible: content.width > 900
                     label: library.media_loading ? "artwork" : "with art"
                     value: library.media_loading ? "…" : library.media_game_count.toString()
                 }
@@ -2296,6 +2347,150 @@ ApplicationWindow {
                                 color: root.muted
                                 font.pixelSize: 11
                                 wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        visible: !gameDetails.loading && gameDetails.activity_visible
+                        width: parent.width
+                        height: activityColumn.implicitHeight + 24
+                        radius: 11
+                        color: "#171f2b"
+                        border.color: "#354155"
+
+                        Column {
+                            id: activityColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    width: parent.width - activityBusy.width - 8
+                                    text: "MY ACTIVITY"
+                                    color: root.accent
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1.1
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                BusyIndicator {
+                                    id: activityBusy
+                                    width: 18
+                                    height: 18
+                                    running: gameDetails.activity_busy
+                                    visible: running
+                                }
+                            }
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Column {
+                                    width: (parent.width - 16) / 3
+                                    spacing: 2
+                                    Text {
+                                        text: gameDetails.play_count.toString()
+                                        color: root.ink
+                                        font.pixelSize: 17
+                                        font.weight: Font.Bold
+                                        font.features: { "tnum": 1 }
+                                    }
+                                    Text {
+                                        text: gameDetails.play_count === 1 ? "PLAY" : "PLAYS"
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                    }
+                                }
+                                Column {
+                                    width: (parent.width - 16) / 3
+                                    spacing: 2
+                                    Text {
+                                        width: parent.width
+                                        text: gameDetails.play_time
+                                        color: root.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.Bold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: "PLAY TIME"
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                    }
+                                }
+                                Column {
+                                    width: (parent.width - 16) / 3
+                                    spacing: 2
+                                    Text {
+                                        width: parent.width
+                                        text: gameDetails.last_played
+                                        color: root.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.Bold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: "LAST PLAYED"
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                    }
+                                }
+                            }
+
+                            Row {
+                                width: parent.width
+                                spacing: 10
+                                Text {
+                                    width: 88
+                                    height: completionPicker.height
+                                    text: "COMPLETION"
+                                    color: root.muted
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.6
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                ComboBox {
+                                    id: completionPicker
+                                    width: parent.width - 98
+                                    height: 34
+                                    enabled: !gameDetails.activity_busy
+                                    model: root.completionChoices
+                                    textRole: "label"
+                                    currentIndex: root.completionIndex(gameDetails.completion_state)
+                                    onActivated: function(index) {
+                                        gameDetails.save_completion_state(
+                                                    root.completionChoices[index].key)
+                                    }
+                                    contentItem: Text {
+                                        leftPadding: 10
+                                        rightPadding: 28
+                                        text: completionPicker.displayText
+                                        color: completionPicker.enabled ? root.ink : root.muted
+                                        font.pixelSize: 10
+                                        font.weight: Font.Medium
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                    }
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: "#101721"
+                                        border.color: completionPicker.activeFocus
+                                                      ? root.accent : root.line
+                                    }
+                                }
                             }
                         }
                     }

@@ -33,6 +33,13 @@ pub mod qobject {
         #[qproperty(QString, release_type)]
         #[qproperty(QString, notes)]
         #[qproperty(QString, message)]
+        #[qproperty(bool, activity_busy)]
+        #[qproperty(bool, activity_visible)]
+        #[qproperty(i32, play_count)]
+        #[qproperty(QString, play_time)]
+        #[qproperty(QString, last_played)]
+        #[qproperty(QString, completion_state)]
+        #[qproperty(i32, activity_revision)]
         #[qproperty(bool, local)]
         #[qproperty(bool, downloadable)]
         #[qproperty(bool, preparable)]
@@ -128,6 +135,9 @@ pub mod qobject {
         fn sync_firmware(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn save_completion_state(self: Pin<&mut GameDetailsModel>, state: QString);
+
+        #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -199,6 +209,13 @@ pub struct GameDetailsModelRust {
     release_type: QString,
     notes: QString,
     message: QString,
+    activity_busy: bool,
+    activity_visible: bool,
+    play_count: i32,
+    play_time: QString,
+    last_played: QString,
+    completion_state: QString,
+    activity_revision: i32,
     local: bool,
     downloadable: bool,
     preparable: bool,
@@ -236,6 +253,7 @@ pub struct GameDetailsModelRust {
     torrent_generation: u64,
     preparation_generation: u64,
     launch_generation: u64,
+    activity_load_generation: u64,
     preparation_cancel: Option<Arc<AtomicBool>>,
     database_id: i64,
     local_file_path: PathBuf,
@@ -272,6 +290,13 @@ impl Default for GameDetailsModelRust {
             release_type: QString::default(),
             notes: QString::default(),
             message: QString::from("Select a game to inspect it."),
+            activity_busy: false,
+            activity_visible: false,
+            play_count: 0,
+            play_time: QString::from("Never played"),
+            last_played: QString::from("Never"),
+            completion_state: QString::from("not_started"),
+            activity_revision: 0,
             local: false,
             downloadable: false,
             preparable: false,
@@ -309,6 +334,7 @@ impl Default for GameDetailsModelRust {
             torrent_generation: 0,
             preparation_generation: 0,
             launch_generation: 0,
+            activity_load_generation: 0,
             preparation_cancel: None,
             database_id: 0,
             local_file_path: PathBuf::new(),
@@ -327,6 +353,43 @@ fn qstring(value: impl AsRef<str>) -> QString {
 
 fn count_i32(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
+}
+
+fn format_play_time(seconds: i64, play_count: i64) -> String {
+    let seconds = u64::try_from(seconds).unwrap_or_default();
+    if seconds == 0 {
+        return if play_count > 0 {
+            "Under 1 min".to_owned()
+        } else {
+            "Never played".to_owned()
+        };
+    }
+    if seconds < 60 {
+        return "Under 1 min".to_owned();
+    }
+    let hours = seconds / 3_600;
+    let minutes = (seconds % 3_600) / 60;
+    if hours == 0 {
+        format!("{minutes} min")
+    } else if minutes == 0 {
+        format!("{hours} hr")
+    } else {
+        format!("{hours} hr {minutes} min")
+    }
+}
+
+fn format_last_played(timestamp: i64) -> String {
+    if timestamp <= 0 {
+        return "Never".to_owned();
+    }
+    let elapsed = crate::settings::unix_timestamp().saturating_sub(timestamp);
+    match elapsed {
+        0..=59 => "Just now".to_owned(),
+        60..=3_599 => format!("{} min ago", elapsed / 60),
+        3_600..=86_399 => format!("{} hr ago", elapsed / 3_600),
+        86_400..=172_799 => "Yesterday".to_owned(),
+        _ => format!("{} days ago", elapsed / 86_400),
+    }
 }
 
 fn has_cli_flag(flag: &str) -> bool {
@@ -359,6 +422,15 @@ enum LaunchInput {
         platform: String,
         option: crate::emulator::RomEmulatorOption,
     },
+}
+
+struct LaunchStarted {
+    game_id: String,
+    emulator_name: String,
+    process_id: u32,
+    command_summary: String,
+    tracking_warning: Option<String>,
+    activity_recorded: bool,
 }
 
 impl qobject::GameDetailsModel {
@@ -444,6 +516,12 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_notes(QString::default());
+        self.as_mut().set_activity_busy(false);
+        self.as_mut().set_activity_visible(false);
+        self.as_mut().set_play_count(0);
+        self.as_mut().set_play_time(qstring("Never played"));
+        self.as_mut().set_last_played(qstring("Never"));
+        self.as_mut().set_completion_state(qstring("not_started"));
         self.as_mut().set_preparable(false);
         self.as_mut().set_prepared(false);
         self.as_mut().set_preparation_phase(QString::default());
@@ -488,6 +566,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_loading(false);
         match loaded {
             Ok(details) => {
+                let activity = details.activity.clone();
                 let preparable = crate::exo_install::is_preparable_archive(
                     &details.platform,
                     &details.local_file_path,
@@ -522,6 +601,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut().rust_mut().database_id = details.database_id;
                 self.as_mut().set_local(details.local);
                 self.as_mut().set_downloadable(details.downloadable);
+                self.as_mut().apply_play_activity(activity, details.local);
                 self.as_mut().rust_mut().local_file_path = details.local_file_path;
                 self.as_mut().rust_mut().local_file_paths = local_file_paths;
                 self.as_mut()
@@ -552,6 +632,184 @@ impl qobject::GameDetailsModel {
             Err(error) => self
                 .as_mut()
                 .set_message(qstring(format!("Could not load game details: {error}"))),
+        }
+    }
+
+    fn apply_play_activity(
+        mut self: Pin<&mut Self>,
+        activity: Option<crate::settings::PlayActivity>,
+        local: bool,
+    ) {
+        self.as_mut()
+            .set_activity_visible(local || activity.is_some());
+        if let Some(activity) = activity {
+            self.as_mut()
+                .set_play_count(i32::try_from(activity.play_count.max(0)).unwrap_or(i32::MAX));
+            self.as_mut().set_play_time(qstring(format_play_time(
+                activity.total_play_time_seconds,
+                activity.play_count,
+            )));
+            self.as_mut()
+                .set_last_played(qstring(format_last_played(activity.last_played_at)));
+            self.as_mut()
+                .set_completion_state(qstring(activity.completion_state));
+        } else {
+            self.as_mut().set_play_count(0);
+            self.as_mut().set_play_time(qstring("Never played"));
+            self.as_mut().set_last_played(qstring("Never"));
+            self.as_mut().set_completion_state(qstring("not_started"));
+        }
+    }
+
+    pub fn save_completion_state(mut self: Pin<&mut Self>, state: QString) {
+        if *self.as_ref().activity_busy() || !*self.as_ref().activity_visible() {
+            return;
+        }
+        let state = state.to_string();
+        if state == self.as_ref().completion_state().to_string() {
+            return;
+        }
+        let previous = self.as_ref().completion_state().to_string();
+        let game_id = self.as_ref().game_id().to_string();
+        let title = self.as_ref().title().to_string();
+        let platform = self.as_ref().platform().to_string();
+        let database_id = self.as_ref().rust().database_id;
+        let generation = self.as_ref().rust().details_generation;
+        self.as_mut().set_activity_busy(true);
+        self.as_mut().set_completion_state(qstring(&state));
+        let completed_game_id = game_id.clone();
+        let rollback = previous.clone();
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-completion-save".into())
+            .spawn(move || {
+                let result = crate::settings::SettingsStore::open_default()
+                    .and_then(|store| {
+                        store.set_completion_state(&game_id, database_id, &title, &platform, &state)
+                    })
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_completion_save(
+                        generation,
+                        completed_game_id,
+                        previous,
+                        result,
+                    );
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_activity_busy(false);
+            self.as_mut().set_completion_state(qstring(rollback));
+            self.as_mut().set_launch_status(qstring(format!(
+                "Could not start completion-state save: {error}"
+            )));
+        }
+    }
+
+    fn finish_completion_save(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        completed_game_id: String,
+        previous: String,
+        result: Result<(), String>,
+    ) {
+        if generation != self.as_ref().rust().details_generation
+            || completed_game_id != self.as_ref().game_id().to_string()
+        {
+            return;
+        }
+        self.as_mut().set_activity_busy(false);
+        match result {
+            Ok(()) => {
+                let revision = self.as_ref().activity_revision().wrapping_add(1);
+                self.as_mut().set_activity_revision(revision);
+                self.as_mut()
+                    .set_launch_status(qstring("Saved this game's completion state."));
+            }
+            Err(error) => {
+                self.as_mut().set_completion_state(qstring(previous));
+                self.as_mut().set_launch_status(qstring(format!(
+                    "Could not save completion state: {error}"
+                )));
+            }
+        }
+    }
+
+    fn reload_play_activity(mut self: Pin<&mut Self>, notify_library: bool) {
+        self.as_mut().rust_mut().activity_load_generation = self
+            .as_ref()
+            .rust()
+            .activity_load_generation
+            .wrapping_add(1);
+        let generation = self.as_ref().rust().activity_load_generation;
+        let details_generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        let completed_game_id = game_id.clone();
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-play-activity-load".into())
+            .spawn(move || {
+                let result = crate::settings::SettingsStore::open_default()
+                    .and_then(|store| store.play_activity(&game_id))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_play_activity_reload(
+                        generation,
+                        details_generation,
+                        completed_game_id,
+                        notify_library,
+                        result,
+                    );
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_launch_status(qstring(format!(
+                "Could not start play-activity refresh: {error}"
+            )));
+        }
+    }
+
+    fn finish_play_activity_reload(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        details_generation: u64,
+        completed_game_id: String,
+        notify_library: bool,
+        result: Result<Option<crate::settings::PlayActivity>, String>,
+    ) {
+        if generation != self.as_ref().rust().activity_load_generation
+            || details_generation != self.as_ref().rust().details_generation
+            || completed_game_id != self.as_ref().game_id().to_string()
+        {
+            return;
+        }
+        match result {
+            Ok(activity) => {
+                if is_emulator_launch_probe()
+                    && let Some(activity) = activity.as_ref()
+                {
+                    let phase = if *self.as_ref().game_running() {
+                        "started"
+                    } else {
+                        "finalized"
+                    };
+                    println!(
+                        "LUNCHBOX_ACTIVITY_READY phase={phase} plays={} total_seconds={} completion={:?}",
+                        activity.play_count,
+                        activity.total_play_time_seconds,
+                        activity.completion_state,
+                    );
+                }
+                let local = *self.as_ref().local();
+                self.as_mut().apply_play_activity(activity, local);
+                if notify_library {
+                    let revision = self.as_ref().activity_revision().wrapping_add(1);
+                    self.as_mut().set_activity_revision(revision);
+                }
+            }
+            Err(error) => self
+                .as_mut()
+                .set_launch_status(qstring(format!("Could not refresh play activity: {error}"))),
         }
     }
 
@@ -1454,6 +1712,9 @@ impl qobject::GameDetailsModel {
             self.as_ref().rust().launch_generation.wrapping_add(1);
         let generation = self.as_ref().rust().launch_generation;
         let game_id = self.as_ref().game_id().to_string();
+        let activity_title = self.as_ref().title().to_string();
+        let activity_platform = self.as_ref().platform().to_string();
+        let activity_database_id = self.as_ref().rust().database_id;
         let rom_probe = is_local_launch_probe();
         self.as_mut().set_launch_busy(true);
         self.as_mut().set_launch_status(qstring(
@@ -1465,7 +1726,7 @@ impl qobject::GameDetailsModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-emulator-launch".into())
             .spawn(move || {
-                let launch = (|| -> anyhow::Result<Result<(), String>> {
+                let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool)> {
                     let plan = match &launch_input {
                         LaunchInput::Prepared {
                             install,
@@ -1488,14 +1749,35 @@ impl qobject::GameDetailsModel {
                         }
                     };
                     let process_id = child.id();
+                    let play_started = Instant::now();
+                    let play_session =
+                        crate::settings::SettingsStore::open_default().and_then(|store| {
+                            store.begin_play_session(
+                                &game_id,
+                                activity_database_id,
+                                &activity_title,
+                                &activity_platform,
+                                &emulator_name,
+                            )
+                        });
+                    let activity_recorded = play_session.is_ok();
+                    let tracking_warning = play_session
+                        .as_ref()
+                        .err()
+                        .map(|error| format!("Play activity could not be recorded: {error}"));
                     let started_game_id = game_id.clone();
+                    let started_warning = tracking_warning.clone();
                     let _ = started_thread.queue(move |mut model| {
                         model.as_mut().finish_launch_started(
                             generation,
-                            started_game_id,
-                            emulator_name,
-                            process_id,
-                            command_summary,
+                            LaunchStarted {
+                                game_id: started_game_id,
+                                emulator_name,
+                                process_id,
+                                command_summary,
+                                tracking_warning: started_warning,
+                                activity_recorded,
+                            },
                         );
                     });
                     let probe_terminated = if rom_probe {
@@ -1518,16 +1800,49 @@ impl qobject::GameDetailsModel {
                     let status = child.wait();
                     crate::emulator::cleanup_after_launch(&cleanup_paths);
                     let status = status.context("waiting for the emulator process")?;
-                    Ok(if status.success() || probe_terminated {
+                    let outcome = if probe_terminated {
+                        "terminated"
+                    } else if status.success() {
+                        "completed"
+                    } else {
+                        "failed"
+                    };
+                    let mut tracking_warning = tracking_warning;
+                    if let Ok(play_session) = play_session
+                        && let Err(error) =
+                            crate::settings::SettingsStore::open_default().and_then(|store| {
+                                let finalized = store.finish_play_session(
+                                    &play_session.session_id,
+                                    play_started.elapsed().as_secs(),
+                                    outcome,
+                                )?;
+                                anyhow::ensure!(
+                                    finalized,
+                                    "the play session was no longer running"
+                                );
+                                Ok(())
+                            })
+                    {
+                        tracking_warning =
+                            Some(format!("Play duration could not be finalized: {error}"));
+                    }
+                    let exit = if status.success() || probe_terminated {
                         Ok(())
                     } else {
                         Err(format!("emulator exited with {status}"))
-                    })
+                    };
+                    Ok((exit, tracking_warning, activity_recorded))
                 })();
                 match launch {
-                    Ok(exit) => {
+                    Ok((exit, tracking_warning, activity_recorded)) => {
                         let _ = qt_thread.queue(move |mut model| {
-                            model.as_mut().finish_launch_exit(generation, game_id, exit);
+                            model.as_mut().finish_launch_exit(
+                                generation,
+                                game_id,
+                                exit,
+                                tracking_warning,
+                                activity_recorded,
+                            );
                         });
                     }
                     Err(error) => {
@@ -1548,32 +1863,39 @@ impl qobject::GameDetailsModel {
         }
     }
 
-    fn finish_launch_started(
-        mut self: Pin<&mut Self>,
-        generation: u64,
-        completed_game_id: String,
-        emulator_name: String,
-        process_id: u32,
-        command_summary: String,
-    ) {
+    fn finish_launch_started(mut self: Pin<&mut Self>, generation: u64, started: LaunchStarted) {
         if generation != self.as_ref().rust().launch_generation
-            || self.as_ref().game_id().to_string() != completed_game_id
+            || self.as_ref().game_id().to_string() != started.game_id
         {
             return;
         }
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(true);
-        self.as_mut().set_emulator_name(qstring(&emulator_name));
-        self.as_mut().set_launch_status(qstring(format!(
-            "Running with {emulator_name} · process {process_id}"
-        )));
+        self.as_mut()
+            .set_emulator_name(qstring(&started.emulator_name));
+        let mut status = format!(
+            "Running with {} · process {}",
+            started.emulator_name, started.process_id
+        );
+        if let Some(warning) = started.tracking_warning {
+            status.push_str(&format!(" · {warning}"));
+        }
+        self.as_mut().set_launch_status(qstring(status));
         self.as_mut().set_message(qstring(format!(
-            "Launched with {emulator_name}. {command_summary}"
+            "Launched with {}. {}",
+            started.emulator_name, started.command_summary
         )));
         if is_emulator_launch_probe() {
             println!(
-                "LUNCHBOX_EMULATOR_STARTED name={emulator_name:?} pid={process_id} command={command_summary:?}"
+                "LUNCHBOX_EMULATOR_STARTED name={:?} pid={} activity_recorded={} command={:?}",
+                started.emulator_name,
+                started.process_id,
+                started.activity_recorded,
+                started.command_summary,
             );
+        }
+        if started.activity_recorded {
+            self.as_mut().reload_play_activity(true);
         }
     }
 
@@ -1582,6 +1904,8 @@ impl qobject::GameDetailsModel {
         generation: u64,
         completed_game_id: String,
         exit: Result<(), String>,
+        tracking_warning: Option<String>,
+        activity_recorded: bool,
     ) {
         if generation != self.as_ref().rust().launch_generation
             || self.as_ref().game_id().to_string() != completed_game_id
@@ -1590,21 +1914,27 @@ impl qobject::GameDetailsModel {
         }
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(false);
-        match exit {
+        let base_status = match exit {
             Ok(()) => {
-                self.as_mut()
-                    .set_launch_status(qstring("The emulator session finished normally."));
                 if is_emulator_launch_probe() {
                     println!("LUNCHBOX_EMULATOR_EXITED status=success");
                 }
+                "The emulator session finished normally.".to_owned()
             }
             Err(error) => {
-                self.as_mut()
-                    .set_launch_status(qstring(format!("The emulator session ended: {error}")));
                 if is_emulator_launch_probe() {
                     println!("LUNCHBOX_EMULATOR_EXITED status={error:?}");
                 }
+                format!("The emulator session ended: {error}")
             }
+        };
+        self.as_mut()
+            .set_launch_status(qstring(match tracking_warning {
+                Some(warning) => format!("{base_status} {warning}"),
+                None => base_status,
+            }));
+        if activity_recorded {
+            self.as_mut().reload_play_activity(true);
         }
     }
 
@@ -2007,4 +2337,20 @@ fn queue_download(
     )?;
     store.upsert_job(&job)?;
     Ok(title)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_last_played, format_play_time};
+
+    #[test]
+    fn activity_labels_stay_compact_in_the_details_card() {
+        assert_eq!(format_play_time(0, 0), "Never played");
+        assert_eq!(format_play_time(0, 1), "Under 1 min");
+        assert_eq!(format_play_time(59, 1), "Under 1 min");
+        assert_eq!(format_play_time(60, 1), "1 min");
+        assert_eq!(format_play_time(3_600, 1), "1 hr");
+        assert_eq!(format_play_time(3_900, 1), "1 hr 5 min");
+        assert_eq!(format_last_played(0), "Never");
+    }
 }
