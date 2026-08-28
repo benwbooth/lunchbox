@@ -199,8 +199,13 @@ selected members are revalidated, materialized atomically into a content-address
 owned cache, and recorded with the exact source archive and member provenance.
 Users can also include ambiguous or unmatched files, which remain visible as
 honest local-only entries in `My Collection` without suppressing an unrelated
-Minerva game. Imports and rescans are idempotent, retain missing-path history,
-and store lossless OS-native path bytes alongside display paths.
+Minerva game. Every readable review row also offers `Match…`: it searches
+canonical and alternate catalog titles, optionally constrained to one platform,
+but never accepts a suggestion until the user explicitly chooses `Link ROM`.
+That reviewed identity is restored on later scans only when the lossless source
+path, archive member, byte size, MD5, and SHA-1 all still agree. Imports and
+rescans are idempotent, retain missing-path history, and store lossless OS-native
+path bytes alongside display paths.
 
 The equivalent catalog environment variables are
 `LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and

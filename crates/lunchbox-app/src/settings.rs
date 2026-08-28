@@ -2275,7 +2275,9 @@ fn migrate(connection: &Connection) -> Result<()> {
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
              matched_title TEXT,
              match_state TEXT NOT NULL CHECK (
-                 match_state IN ('exact', 'ambiguous', 'unmatched', 'inventory_only', 'error')
+                 match_state IN (
+                     'exact', 'reviewed', 'ambiguous', 'unmatched', 'inventory_only', 'error'
+                 )
              ),
              match_method TEXT NOT NULL,
              included INTEGER NOT NULL CHECK (included IN (0, 1)),
@@ -2575,6 +2577,9 @@ fn migrate(connection: &Connection) -> Result<()> {
                  ON local_rom_files(root_id, relative_path_bytes, archive_member);",
         )?;
     }
+    if !local_rom_match_state_allows_reviewed(connection)? {
+        migrate_local_rom_match_state(connection)?;
+    }
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
             "ALTER TABLE download_jobs ADD COLUMN launchbox_db_id INTEGER NOT NULL DEFAULT 0",
@@ -2647,6 +2652,96 @@ fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<b
         }
     }
     Ok(false)
+}
+
+fn local_rom_match_state_allows_reviewed(connection: &Connection) -> Result<bool> {
+    let definition = connection.query_row(
+        "SELECT sql FROM sqlite_schema WHERE type='table' AND name='local_rom_files'",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    Ok(definition.contains("'reviewed'"))
+}
+
+fn migrate_local_rom_match_state(connection: &Connection) -> Result<()> {
+    connection.execute_batch(
+        "PRAGMA foreign_keys=OFF;
+         BEGIN IMMEDIATE;
+         DROP INDEX IF EXISTS local_rom_files_root_relative;
+         DROP INDEX IF EXISTS local_rom_files_game_uid;
+         DROP INDEX IF EXISTS local_rom_files_visible;
+         ALTER TABLE local_rom_files RENAME TO local_rom_files_before_reviewed;
+         CREATE TABLE local_rom_files (
+             id TEXT PRIMARY KEY,
+             root_id TEXT NOT NULL REFERENCES local_collection_roots(id) ON DELETE CASCADE,
+             path_display TEXT NOT NULL,
+             path_bytes BLOB NOT NULL,
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             relative_path_display TEXT NOT NULL,
+             relative_path_bytes BLOB NOT NULL,
+             relative_path_encoding TEXT NOT NULL CHECK (
+                 relative_path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             file_name TEXT NOT NULL,
+             archive_member TEXT NOT NULL DEFAULT '',
+             source_archive_path_display TEXT NOT NULL DEFAULT '',
+             source_archive_path_bytes BLOB NOT NULL DEFAULT X'',
+             source_archive_path_encoding TEXT NOT NULL DEFAULT '' CHECK (
+                 source_archive_path_encoding IN (
+                     '', 'unix_bytes', 'windows_utf16le', 'utf8'
+                 )
+             ),
+             display_title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             file_size INTEGER NOT NULL CHECK (file_size >= 0),
+             modified_unix_ns INTEGER,
+             crc32 TEXT NOT NULL,
+             md5 TEXT NOT NULL,
+             sha1 TEXT NOT NULL,
+             game_uid TEXT,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             matched_title TEXT,
+             match_state TEXT NOT NULL CHECK (
+                 match_state IN (
+                     'exact', 'reviewed', 'ambiguous', 'unmatched', 'inventory_only', 'error'
+                 )
+             ),
+             match_method TEXT NOT NULL,
+             included INTEGER NOT NULL CHECK (included IN (0, 1)),
+             availability TEXT NOT NULL CHECK (availability IN ('present', 'missing')),
+             imported_at INTEGER NOT NULL
+         );
+         INSERT INTO local_rom_files (
+             id, root_id, path_display, path_bytes, path_encoding,
+             relative_path_display, relative_path_bytes, relative_path_encoding,
+             file_name, archive_member, source_archive_path_display,
+             source_archive_path_bytes, source_archive_path_encoding, display_title,
+             platform, file_size, modified_unix_ns, crc32, md5, sha1, game_uid,
+             launchbox_db_id, matched_title, match_state, match_method, included,
+             availability, imported_at
+         )
+         SELECT
+             id, root_id, path_display, path_bytes, path_encoding,
+             relative_path_display, relative_path_bytes, relative_path_encoding,
+             file_name, archive_member, source_archive_path_display,
+             source_archive_path_bytes, source_archive_path_encoding, display_title,
+             platform, file_size, modified_unix_ns, crc32, md5, sha1, game_uid,
+             launchbox_db_id, matched_title, match_state, match_method, included,
+             availability, imported_at
+         FROM local_rom_files_before_reviewed;
+         DROP TABLE local_rom_files_before_reviewed;
+         CREATE UNIQUE INDEX local_rom_files_root_relative
+             ON local_rom_files(root_id, relative_path_bytes, archive_member);
+         CREATE INDEX local_rom_files_game_uid
+             ON local_rom_files(game_uid) WHERE game_uid IS NOT NULL;
+         CREATE INDEX local_rom_files_visible
+             ON local_rom_files(included, availability);
+         COMMIT;
+         PRAGMA foreign_keys=ON;",
+    )?;
+    Ok(())
 }
 
 fn validate_collection_name(name: &str) -> Result<String> {
@@ -3920,7 +4015,7 @@ mod tests {
         drop(connection);
 
         SettingsStore::at(&path).unwrap();
-        let connection = Connection::open(path).unwrap();
+        let connection = Connection::open(&path).unwrap();
         for column in [
             "archive_member",
             "source_archive_path_display",
@@ -3955,6 +4050,25 @@ mod tests {
             )
             .unwrap();
         assert!(index_sql.contains("archive_member"));
+        assert!(local_rom_match_state_allows_reviewed(&connection).unwrap());
+        connection
+            .execute(
+                "UPDATE local_rom_files SET match_state='reviewed' WHERE id='old-file'",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        SettingsStore::at(&path).unwrap();
+        let connection = Connection::open(path).unwrap();
+        let migrated_state = connection
+            .query_row(
+                "SELECT match_state FROM local_rom_files WHERE id='old-file'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap();
+        assert_eq!(migrated_state, "reviewed");
     }
 
     #[test]

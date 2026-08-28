@@ -305,6 +305,14 @@ closed rather than acquiring a guessed identity. The unattended
 `--multi-archive-import-probe` requires explicit database, import-directory, and
 state paths; it exercises member review, materialization, provenance, and an
 idempotent repeated commit through the packaged binary.
+`--manual-match-probe` additionally requires `--manual-match-query` and
+`--manual-match-platform`. It starts from exactly one unmatched ROM, requires a
+unique canonical title/platform candidate, applies the same explicit-review
+operation as the UI, commits it, rescans from disk, and succeeds only when the
+reviewed stable identity and manual provenance restore from exact path/member,
+size, MD5, and SHA-1 evidence. `--manual-match-ui-probe` opens the real resolver,
+performs its asynchronous canonical/alternate-title search, and optionally
+captures the populated review surface with `--screenshot-output`.
 
 `--download-ui-probe` leaves the persistent native Downloads drawer open.
 `--settings-ui-probe` leaves the native settings dialog open, including the

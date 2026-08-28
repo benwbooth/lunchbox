@@ -99,8 +99,10 @@ ApplicationWindow {
                                                + (library.hide_non_retail ? 1 : 0)
                                                + (library.hide_adult ? 1 : 0)
     readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
+    readonly property bool manualMatchUiProbe: Qt.application.arguments.indexOf("--manual-match-ui-probe") >= 0
     readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
                                           || archiveImportUiProbe
+                                          || manualMatchUiProbe
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
@@ -944,11 +946,25 @@ ApplicationWindow {
         function onResult_countChanged() {
             if (root.archiveImportUiProbe && localImport.result_count > 0)
                 archiveImportScreenshotTimer.restart()
+            if (root.manualMatchUiProbe && localImport.result_count > 0) {
+                const status = localImport.result_status_at(0)
+                if (status !== "UNMATCHED") {
+                    console.error("LUNCHBOX_MANUAL_MATCH_UI_FAILED status=" + status)
+                    Qt.exit(2)
+                    return
+                }
+                localImport.begin_manual_match(0)
+                manualMatchDialog.open()
+            }
             if (root.importCommitProbe && localImport.result_count > 0
                     && localImport.selected_count === 0) {
                 localImport.select_visible("all")
                 localImport.import_selected()
             }
+        }
+        function onMatch_candidate_countChanged() {
+            if (root.manualMatchUiProbe && localImport.match_candidate_count > 0)
+                manualMatchScreenshotTimer.restart()
         }
     }
 
@@ -981,6 +997,52 @@ ApplicationWindow {
                 console.log("LUNCHBOX_ARCHIVE_IMPORT_UI_READY detail="
                             + archiveDetail + " screenshot="
                             + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        id: manualMatchScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            const title = localImport.match_candidate_title_at(0)
+            const platform = localImport.match_candidate_platform_at(0)
+            const detail = localImport.match_candidate_detail_at(0)
+            if (title.length === 0 || platform.length === 0) {
+                console.error("LUNCHBOX_MANUAL_MATCH_UI_FAILED empty candidate")
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                if (!localImport.apply_manual_match(0)
+                        || localImport.result_status_at(0) !== "REVIEWED") {
+                    console.error("LUNCHBOX_MANUAL_MATCH_UI_FAILED apply")
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_MANUAL_MATCH_UI_READY title=" + title
+                            + " platform=" + platform + " detail=" + detail)
+                Qt.quit()
+                return
+            }
+            manualMatchDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_MANUAL_MATCH_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                if (!localImport.apply_manual_match(0)
+                        || localImport.result_status_at(0) !== "REVIEWED") {
+                    console.error("LUNCHBOX_MANUAL_MATCH_UI_FAILED apply")
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_MANUAL_MATCH_UI_READY title=" + title
+                            + " platform=" + platform + " detail=" + detail
+                            + " screenshot=" + root.screenshotOutput)
                 Qt.quit()
             })
         }
@@ -5457,6 +5519,7 @@ ApplicationWindow {
                     Text {
                         visible: localImport.total_files > 0
                         text: localImport.matched_count + " exact  ·  "
+                              + localImport.reviewed_count + " reviewed  ·  "
                               + localImport.unmatched_count + " other"
                         color: root.accentCool
                         font.pixelSize: 11
@@ -5483,6 +5546,7 @@ ApplicationWindow {
                     model: [
                         { label: "All results", value: "all" },
                         { label: "Exact", value: "exact" },
+                        { label: "Reviewed", value: "reviewed" },
                         { label: "Ambiguous", value: "ambiguous" },
                         { label: "Unmatched", value: "unmatched" },
                         { label: "Inventory only", value: "inventory_only" },
@@ -5604,8 +5668,10 @@ ApplicationWindow {
                         height: 24
                         radius: 12
                         color: statusText.text === "EXACT" ? "#18302c"
+                             : statusText.text === "REVIEWED" ? "#172b3b"
                              : statusText.text === "ERROR" ? "#351d24" : "#292631"
                         border.color: statusText.text === "EXACT" ? root.accentCool
+                                    : statusText.text === "REVIEWED" ? "#68b8e8"
                                     : statusText.text === "ERROR" ? "#ef7182" : root.accent
                         Text {
                             id: statusText
@@ -5630,7 +5696,7 @@ ApplicationWindow {
                     Column {
                         anchors.left: parent.left
                         anchors.leftMargin: 620
-                        anchors.right: sizeLabel.left
+                        anchors.right: manualMatchButton.left
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 3
@@ -5648,6 +5714,24 @@ ApplicationWindow {
                             font.pixelSize: 9
                             elide: Text.ElideRight
                         }
+                    }
+                    Button {
+                        id: manualMatchButton
+                        anchors.right: sizeLabel.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 72
+                        height: 28
+                        visible: statusText.text !== "ERROR"
+                        enabled: !localImport.busy
+                        text: statusText.text === "EXACT"
+                              || statusText.text === "REVIEWED" ? "Change…" : "Match…"
+                        onClicked: {
+                            localImport.begin_manual_match(importRow.index)
+                            manualMatchDialog.open()
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Explicitly link this ROM to one catalog record"
                     }
                     Text {
                         id: sizeLabel
@@ -5684,6 +5768,278 @@ ApplicationWindow {
                 }
                 }
             }
+            }
+        }
+    }
+
+    Dialog {
+        id: manualMatchDialog
+        parent: Overlay.overlay
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(780, root.width - 70)
+        height: Math.min(680, root.height - 70)
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+        onOpened: {
+            manualMatchSearch.text = localImport.match_default_query
+            const targetPlatform = localImport.match_default_platform
+            manualMatchPlatform.currentIndex = 0
+            for (let index = 1; index < manualMatchPlatform.model.length; ++index) {
+                if (manualMatchPlatform.model[index].value === targetPlatform) {
+                    manualMatchPlatform.currentIndex = index
+                    break
+                }
+            }
+            manualMatchSearch.forceActiveFocus()
+            manualMatchSearch.selectAll()
+            manualMatchSearchTimer.restart()
+        }
+        onClosed: localImport.cancel_manual_match()
+
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            width: parent.width
+            height: 72
+            color: root.panelRaised
+            radius: 14
+            Column {
+                anchors.left: parent.left
+                anchors.leftMargin: 22
+                anchors.right: manualMatchClose.left
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3
+                Text {
+                    width: parent.width
+                    text: "MATCH ROM TO CATALOG"
+                    color: root.ink
+                    font.pixelSize: 16
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                }
+                Text {
+                    width: parent.width
+                    text: localImport.match_file_name
+                          + (localImport.match_archive_detail.length > 0
+                             ? "  ›  " + localImport.match_archive_detail : "")
+                    color: root.accentCool
+                    font.pixelSize: 10
+                    elide: Text.ElideMiddle
+                }
+            }
+            RoundButton {
+                id: manualMatchClose
+                anchors.right: parent.right
+                anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                text: "×"
+                flat: true
+                contentItem: Text {
+                    text: manualMatchClose.text
+                    color: manualMatchClose.hovered ? root.ink : root.muted
+                    font.pixelSize: 20
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: manualMatchDialog.close()
+            }
+        }
+
+        contentItem: ColumnLayout {
+            anchors.margins: 20
+            spacing: 10
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: manualMatchNotice.implicitHeight + 22
+                radius: 8
+                color: "#122131"
+                border.color: "#264761"
+                Text {
+                    id: manualMatchNotice
+                    anchors.fill: parent
+                    anchors.margins: 11
+                    text: "Search results are suggestions only. Lunchbox links the ROM only after you explicitly choose one record; filenames never prove identity."
+                    color: "#9cc9e6"
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                TextField {
+                    id: manualMatchSearch
+                    Layout.fillWidth: true
+                    placeholderText: "Search canonical or alternate titles"
+                    onTextEdited: manualMatchSearchTimer.restart()
+                    onAccepted: manualMatchSearchTimer.restart()
+                }
+                ComboBox {
+                    id: manualMatchPlatform
+                    Layout.preferredWidth: 250
+                    textRole: "label"
+                    valueRole: "value"
+                    model: {
+                        const values = [{ label: "All platforms", value: "" }]
+                        const revision = localImport.platform_count
+                        for (let index = 0; index < revision; ++index) {
+                            const name = localImport.platform_name_at(index)
+                            values.push({ label: name, value: name })
+                        }
+                        return values
+                    }
+                    onActivated: manualMatchSearchTimer.restart()
+                }
+                HeaderButton {
+                    text: localImport.matching ? "Searching…" : "Search"
+                    active: true
+                    enabled: !localImport.matching && manualMatchSearch.text.length >= 2
+                    onClicked: manualMatchSearchTimer.restart()
+                }
+            }
+
+            Timer {
+                id: manualMatchSearchTimer
+                interval: 140
+                repeat: false
+                onTriggered: localImport.search_manual_matches(
+                                 manualMatchSearch.text,
+                                 manualMatchPlatform.currentValue)
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 42
+                radius: 7
+                color: "#111824"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    BusyIndicator {
+                        visible: localImport.matching
+                        running: visible
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: localImport.match_message
+                        color: root.muted
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        visible: localImport.match_candidate_count > 0
+                        text: localImport.match_candidate_count + " candidates"
+                        color: root.accentCool
+                        font.pixelSize: 10
+                        font.weight: Font.DemiBold
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 32
+                color: root.panelRaised
+                border.color: root.line
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    Text { width: 310; anchors.verticalCenter: parent.verticalCenter; text: "GAME"; color: root.muted; font.pixelSize: 9; font.weight: Font.Bold }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: "PLATFORM / MATCH SOURCE"; color: root.muted; font.pixelSize: 9; font.weight: Font.Bold }
+                }
+            }
+
+            ListView {
+                id: manualMatchResults
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                reuseItems: true
+                spacing: 3
+                model: localImport.match_candidate_count
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                delegate: Rectangle {
+                    id: manualCandidateRow
+                    required property int index
+                    property int candidateRevision: localImport.match_revision
+                    width: manualMatchResults.width
+                    height: 58
+                    radius: 7
+                    color: manualCandidateHover.hovered ? "#202a38"
+                                                        : index % 2 ? "#141b26" : "#111824"
+                    border.color: root.line
+                    HoverHandler { id: manualCandidateHover }
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 14
+                        anchors.right: manualCandidateApply.left
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 3
+                        Text {
+                            width: parent.width
+                            text: { manualCandidateRow.candidateRevision; return localImport.match_candidate_title_at(manualCandidateRow.index) }
+                            color: root.ink
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            width: parent.width
+                            text: { manualCandidateRow.candidateRevision; return localImport.match_candidate_platform_at(manualCandidateRow.index)
+                                    + "  ·  " + localImport.match_candidate_detail_at(manualCandidateRow.index) }
+                            color: root.muted
+                            font.pixelSize: 9
+                            elide: Text.ElideRight
+                        }
+                    }
+                    HeaderButton {
+                        id: manualCandidateApply
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Link ROM"
+                        active: true
+                        onClicked: {
+                            if (localImport.apply_manual_match(manualCandidateRow.index))
+                                manualMatchDialog.close()
+                        }
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        onDoubleTapped: {
+                            if (localImport.apply_manual_match(manualCandidateRow.index))
+                                manualMatchDialog.close()
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: "Your reviewed link is saved only when you import the ROM."
+                    color: root.muted
+                    font.pixelSize: 10
+                }
+                Button {
+                    text: "Cancel"
+                    onClicked: manualMatchDialog.close()
+                }
             }
         }
     }

@@ -66,7 +66,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   availability updates. ZIP and 7z members are reviewed and hashed independently;
   multi-member archives select nothing automatically, while explicit member
   imports are digest-revalidated and materialized atomically with exact source
-  provenance. Unmatched and ambiguous files remain local-only.
+  provenance. Unmatched and ambiguous files remain local-only unless the user
+  explicitly links one through canonical/alternate-title search; reviewed links
+  restore only against unchanged path, archive member, size, MD5, and SHA-1.
 - Stable-UUID favorites and named collections with native create/edit/delete,
   sidebar counts and navigation, per-game membership controls, asynchronous
   persistence with rollback, restart recovery, and composition with search and
@@ -90,8 +92,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   progress, cancellation, exact/ambiguous reporting, and idempotent rescans
   with named extension presets, resumable hash caches, duplicate/change audits,
   and a missing-file management view.
-- Archive-member inspection, multidisc grouping, patches, alternate versions,
-  and manual matching review.
+- Extend native ZIP/7z member inspection and manual matching review with RAR,
+  multidisc grouping, patches, and alternate-version management.
 - Editable game and release metadata, tags, playlists, custom fields, and a
   richer session-history inspector beyond the implemented activity summary.
 - Extend the implemented stable-UUID favorites and named collections with smart

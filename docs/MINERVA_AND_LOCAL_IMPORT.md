@@ -55,8 +55,14 @@ uses the discovery catalog's Libretro SHA-1/MD5 evidence for unique exact game
 links, and refreshes both `My Collection` and the Minerva/not-installed filter
 as soon as selected results are committed. Ambiguous hashes and unmatched files
 remain selectable local-only entries; they never inherit a catalog identity by
-filename. The preview supports text/status filters, sorting, bulk or per-row
-selection, live progress, and cancellation.
+filename. A user can explicitly open `Match…`, search canonical and alternate
+titles with an optional exact platform filter, inspect the stable catalog ID,
+and choose one record. Search ordering is suggestion-only; identity is created
+only by that click. A reviewed link is saved with manual provenance and restored
+only when the lossless path, archive member, byte size, MD5, and SHA-1 remain an
+exact match. Duplicate persisted keys fail closed instead of restoring an
+ambiguous decision. The preview supports text/status filters, sorting, bulk or
+per-row selection, live progress, and cancellation.
 
 `scan-local` recursively inventories regular files without following symbolic links. An optional
 comma-separated extension filter limits the scan. Every included file is read once while CRC32,

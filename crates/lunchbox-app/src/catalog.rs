@@ -121,6 +121,23 @@ pub(crate) fn requested_path(argument_name: &str, environment_name: &str) -> Opt
         .map(PathBuf::from)
 }
 
+pub(crate) fn requested_value(argument_name: &str, environment_name: &str) -> Option<String> {
+    let equals_prefix = format!("{argument_name}=");
+    let mut arguments = env::args().skip(1);
+    while let Some(argument) = arguments.next() {
+        if argument == argument_name {
+            return arguments.next().filter(|value| !value.is_empty());
+        }
+        if let Some(value) = argument.strip_prefix(&equals_prefix) {
+            return (!value.is_empty()).then(|| value.to_owned());
+        }
+    }
+
+    env::var(environment_name)
+        .ok()
+        .filter(|value| !value.is_empty())
+}
+
 fn existing_path<const N: usize>(paths: [PathBuf; N]) -> Option<PathBuf> {
     paths.into_iter().find(|path| path.is_file())
 }

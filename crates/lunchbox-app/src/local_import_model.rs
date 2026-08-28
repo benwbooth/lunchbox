@@ -14,17 +14,26 @@ pub mod qobject {
         #[qproperty(bool, busy)]
         #[qproperty(bool, scanning)]
         #[qproperty(bool, importing)]
+        #[qproperty(bool, matching)]
         #[qproperty(QString, directory)]
         #[qproperty(QString, message)]
+        #[qproperty(QString, match_message)]
+        #[qproperty(QString, match_file_name)]
+        #[qproperty(QString, match_archive_detail)]
+        #[qproperty(QString, match_default_query)]
+        #[qproperty(QString, match_default_platform)]
         #[qproperty(QString, current_file)]
         #[qproperty(i32, total_files)]
         #[qproperty(i32, scanned_files)]
         #[qproperty(i32, matched_count)]
+        #[qproperty(i32, reviewed_count)]
         #[qproperty(i32, unmatched_count)]
         #[qproperty(i32, result_count)]
         #[qproperty(i32, selected_count)]
         #[qproperty(i32, platform_count)]
         #[qproperty(i32, revision)]
+        #[qproperty(i32, match_revision)]
+        #[qproperty(i32, match_candidate_count)]
         #[qproperty(i32, collection_revision)]
         type LocalImportModel = super::LocalImportModelRust;
 
@@ -57,6 +66,31 @@ pub mod qobject {
 
         #[qinvokable]
         fn import_selected(self: Pin<&mut LocalImportModel>);
+
+        #[qinvokable]
+        fn begin_manual_match(self: Pin<&mut LocalImportModel>, index: i32);
+
+        #[qinvokable]
+        fn search_manual_matches(
+            self: Pin<&mut LocalImportModel>,
+            query: QString,
+            platform: QString,
+        );
+
+        #[qinvokable]
+        fn apply_manual_match(self: Pin<&mut LocalImportModel>, index: i32) -> bool;
+
+        #[qinvokable]
+        fn cancel_manual_match(self: Pin<&mut LocalImportModel>);
+
+        #[qinvokable]
+        fn match_candidate_title_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn match_candidate_platform_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn match_candidate_detail_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
         fn platform_name_at(self: &LocalImportModel, index: i32) -> QString;
@@ -102,30 +136,44 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::catalog;
-use crate::local_import::{self, MatchState, ScanOutput, ScanProgress, ScanResult};
+use crate::local_import::{
+    self, ManualMatchCandidate, MatchState, ScanOutput, ScanProgress, ScanResult,
+};
 
 pub struct LocalImportModelRust {
     initialized: bool,
     busy: bool,
     scanning: bool,
     importing: bool,
+    matching: bool,
     directory: QString,
     message: QString,
+    match_message: QString,
+    match_file_name: QString,
+    match_archive_detail: QString,
+    match_default_query: QString,
+    match_default_platform: QString,
     current_file: QString,
     total_files: i32,
     scanned_files: i32,
     matched_count: i32,
+    reviewed_count: i32,
     unmatched_count: i32,
     result_count: i32,
     selected_count: i32,
     platform_count: i32,
     revision: i32,
+    match_revision: i32,
+    match_candidate_count: i32,
     collection_revision: i32,
     platforms: Vec<String>,
     output: Option<ScanOutput>,
     visible_indices: Vec<usize>,
     cancel: Option<Arc<AtomicBool>>,
     generation: u64,
+    match_result_index: Option<usize>,
+    match_candidates: Vec<ManualMatchCandidate>,
+    match_generation: u64,
 }
 
 impl Default for LocalImportModelRust {
@@ -138,23 +186,37 @@ impl Default for LocalImportModelRust {
             busy: false,
             scanning: false,
             importing: false,
+            matching: false,
             directory,
             message: QString::from("Choose a ROM folder to scan your existing collection."),
+            match_message: QString::from(
+                "Search the catalog, then explicitly choose the record this ROM represents.",
+            ),
+            match_file_name: QString::default(),
+            match_archive_detail: QString::default(),
+            match_default_query: QString::default(),
+            match_default_platform: QString::default(),
             current_file: QString::default(),
             total_files: 0,
             scanned_files: 0,
             matched_count: 0,
+            reviewed_count: 0,
             unmatched_count: 0,
             result_count: 0,
             selected_count: 0,
             platform_count: 0,
             revision: 0,
+            match_revision: 0,
+            match_candidate_count: 0,
             collection_revision: 0,
             platforms: Vec::new(),
             output: None,
             visible_indices: Vec::new(),
             cancel: None,
             generation: 0,
+            match_result_index: None,
+            match_candidates: Vec::new(),
+            match_generation: 0,
         }
     }
 }
@@ -242,6 +304,15 @@ impl qobject::LocalImportModel {
             ));
             return;
         };
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_message(qstring(format!(
+                    "Could not locate Lunchbox state for ROM import: {error}"
+                )));
+                return;
+            }
+        };
 
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
@@ -254,6 +325,7 @@ impl qobject::LocalImportModel {
         self.as_mut().set_total_files(0);
         self.as_mut().set_scanned_files(0);
         self.as_mut().set_matched_count(0);
+        self.as_mut().set_reviewed_count(0);
         self.as_mut().set_unmatched_count(0);
         self.as_mut().set_result_count(0);
         self.as_mut().set_selected_count(0);
@@ -273,14 +345,18 @@ impl qobject::LocalImportModel {
         let spawn = std::thread::Builder::new()
             .name("lunchbox-rom-scan".into())
             .spawn(move || {
-                let result = local_import::scan_directory(
-                    &discovery_path,
-                    &root,
-                    &platform,
-                    checksums_enabled,
-                    &cancel,
-                    progress,
-                )
+                let result = (|| -> anyhow::Result<ScanOutput> {
+                    let mut output = local_import::scan_directory(
+                        &discovery_path,
+                        &root,
+                        &platform,
+                        checksums_enabled,
+                        &cancel,
+                        progress,
+                    )?;
+                    local_import::restore_manual_matches(&state_path, &mut output)?;
+                    Ok(output)
+                })()
                 .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_scan(generation, result);
@@ -328,6 +404,11 @@ impl qobject::LocalImportModel {
                     .iter()
                     .filter(|result| matches!(result.match_state, MatchState::Exact(_)))
                     .count();
+                let reviewed = output
+                    .results
+                    .iter()
+                    .filter(|result| matches!(result.match_state, MatchState::Reviewed(_)))
+                    .count();
                 let selected = output
                     .results
                     .iter()
@@ -340,8 +421,10 @@ impl qobject::LocalImportModel {
                 self.as_mut().set_total_files(saturating_i32(total));
                 self.as_mut().set_scanned_files(saturating_i32(total));
                 self.as_mut().set_matched_count(saturating_i32(matched));
-                self.as_mut()
-                    .set_unmatched_count(saturating_i32(total.saturating_sub(matched)));
+                self.as_mut().set_reviewed_count(saturating_i32(reviewed));
+                self.as_mut().set_unmatched_count(saturating_i32(
+                    total.saturating_sub(matched).saturating_sub(reviewed),
+                ));
                 self.as_mut().set_result_count(saturating_i32(total));
                 self.as_mut().set_selected_count(saturating_i32(selected));
                 self.as_mut().set_current_file(QString::default());
@@ -352,12 +435,12 @@ impl qobject::LocalImportModel {
                     )
                 } else if walk_errors > 0 {
                     format!(
-                        "Scanned {total} ROMs: {matched} exact matches. {walk_errors} filesystem entries could not be read."
+                        "Scanned {total} ROMs: {matched} exact and {reviewed} reviewed matches. {walk_errors} filesystem entries could not be read."
                     )
                 } else {
                     format!(
-                        "Scanned {total} ROMs: {matched} exact matches and {} unmatched or ambiguous.",
-                        total.saturating_sub(matched)
+                        "Scanned {total} ROMs: {matched} exact, {reviewed} reviewed, and {} unmatched or ambiguous.",
+                        total.saturating_sub(matched).saturating_sub(reviewed)
                     )
                 }));
             }
@@ -528,13 +611,224 @@ impl qobject::LocalImportModel {
                 let revision = self.as_ref().collection_revision().wrapping_add(1);
                 self.as_mut().set_collection_revision(revision);
                 self.as_mut().set_message(qstring(format!(
-                    "Imported {count} ROM files. Exact matches now leave the Minerva ‘not installed’ view; unmatched files remain visible in My Collection."
+                    "Imported {count} ROM files. Exact and explicitly reviewed matches now leave the Minerva ‘not installed’ view; local-only files remain visible in My Collection."
                 )));
             }
             Err(error) => self
                 .as_mut()
                 .set_message(qstring(format!("ROM import failed: {error}"))),
         }
+    }
+
+    pub fn begin_manual_match(mut self: Pin<&mut Self>, index: i32) {
+        let Some(result_index) = self.as_ref().visible_result_index(index) else {
+            return;
+        };
+        let (file_name, archive_detail, query, platform) = {
+            let model = self.as_ref();
+            let Some(result) = model
+                .rust()
+                .output
+                .as_ref()
+                .and_then(|output| output.results.get(result_index))
+            else {
+                return;
+            };
+            if matches!(result.match_state, MatchState::Error(_)) {
+                return;
+            }
+            (
+                result.file_name.clone(),
+                result.archive_member.clone(),
+                result.display_title.clone(),
+                (result.platform != "Unassigned").then(|| result.platform.clone()),
+            )
+        };
+        self.as_mut().rust_mut().match_generation =
+            self.as_ref().rust().match_generation.wrapping_add(1);
+        self.as_mut().rust_mut().match_result_index = Some(result_index);
+        self.as_mut().rust_mut().match_candidates.clear();
+        self.as_mut().set_matching(false);
+        self.as_mut().set_match_candidate_count(0);
+        self.as_mut().set_match_file_name(qstring(file_name));
+        self.as_mut()
+            .set_match_archive_detail(qstring(archive_detail));
+        self.as_mut().set_match_default_query(qstring(query));
+        self.as_mut()
+            .set_match_default_platform(qstring(platform.unwrap_or_default()));
+        self.as_mut().set_match_message(qstring(
+            "Search suggestions never establish identity. Choose one catalog record explicitly.",
+        ));
+        self.as_mut().bump_match_revision();
+    }
+
+    pub fn search_manual_matches(mut self: Pin<&mut Self>, query: QString, platform: QString) {
+        if self.as_ref().rust().match_result_index.is_none() {
+            return;
+        }
+        let query = query.to_string().trim().to_owned();
+        if query.chars().count() < 2 {
+            self.as_mut().rust_mut().match_generation =
+                self.as_ref().rust().match_generation.wrapping_add(1);
+            self.as_mut().rust_mut().match_candidates.clear();
+            self.as_mut().set_matching(false);
+            self.as_mut().set_match_candidate_count(0);
+            self.as_mut()
+                .set_match_message(qstring("Enter at least two characters to search."));
+            self.as_mut().bump_match_revision();
+            return;
+        }
+        let Some(discovery_path) = catalog::requested_discovery_database_path() else {
+            self.as_mut()
+                .set_match_message(qstring("The discovery games database is unavailable."));
+            return;
+        };
+        let platform = platform.to_string();
+        self.as_mut().rust_mut().match_generation =
+            self.as_ref().rust().match_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().match_generation;
+        self.as_mut().rust_mut().match_candidates.clear();
+        self.as_mut().set_matching(true);
+        self.as_mut().set_match_candidate_count(0);
+        self.as_mut()
+            .set_match_message(qstring(format!("Searching the catalog for “{query}”…")));
+        self.as_mut().bump_match_revision();
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-manual-rom-match".into())
+            .spawn(move || {
+                let result = local_import::search_manual_match_candidates(
+                    &discovery_path,
+                    &query,
+                    &platform,
+                )
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_manual_match_search(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_matching(false);
+            self.as_mut()
+                .set_match_message(qstring(format!("Could not start catalog search: {error}")));
+        }
+    }
+
+    fn finish_manual_match_search(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<Vec<ManualMatchCandidate>, String>,
+    ) {
+        if generation != self.as_ref().rust().match_generation {
+            return;
+        }
+        self.as_mut().set_matching(false);
+        match result {
+            Ok(candidates) => {
+                let count = candidates.len();
+                self.as_mut().rust_mut().match_candidates = candidates;
+                self.as_mut()
+                    .set_match_candidate_count(saturating_i32(count));
+                self.as_mut().set_match_message(qstring(if count == 0 {
+                    "No catalog records matched. Try a broader title or all platforms.".to_owned()
+                } else {
+                    format!(
+                        "Found {count} possible catalog records. Nothing is linked until you choose one."
+                    )
+                }));
+            }
+            Err(error) => self
+                .as_mut()
+                .set_match_message(qstring(format!("Catalog search failed: {error}"))),
+        }
+        self.as_mut().bump_match_revision();
+    }
+
+    pub fn apply_manual_match(mut self: Pin<&mut Self>, index: i32) -> bool {
+        let candidate = {
+            let model = self.as_ref();
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| model.rust().match_candidates.get(index))
+                .cloned()
+        };
+        let Some(candidate) = candidate else {
+            return false;
+        };
+        let Some(result_index) = self.as_ref().rust().match_result_index else {
+            return false;
+        };
+        let mut model = self.as_mut();
+        let mut rust = model.as_mut().rust_mut();
+        let result = rust
+            .output
+            .as_mut()
+            .and_then(|output| output.results.get_mut(result_index));
+        let Some(result) = result else {
+            return false;
+        };
+        if let Err(error) = local_import::apply_manual_match(result, &candidate) {
+            self.as_mut()
+                .set_match_message(qstring(format!("Could not link ROM: {error}")));
+            return false;
+        }
+        let title = candidate.identity.title.clone();
+        let platform = candidate.identity.platform.clone();
+        self.as_mut().update_match_counts();
+        self.as_mut().update_selected_count();
+        self.as_mut().bump_revision();
+        self.as_mut().set_message(qstring(format!(
+            "Linked this ROM to {title} ({platform}) by explicit review. Import to save the decision."
+        )));
+        true
+    }
+
+    pub fn cancel_manual_match(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().match_generation =
+            self.as_ref().rust().match_generation.wrapping_add(1);
+        self.as_mut().rust_mut().match_result_index = None;
+        self.as_mut().rust_mut().match_candidates.clear();
+        self.as_mut().set_matching(false);
+        self.as_mut().set_match_candidate_count(0);
+        self.as_mut().bump_match_revision();
+    }
+
+    pub fn match_candidate_title_at(&self, index: i32) -> QString {
+        self.match_candidate_at(index)
+            .map(|candidate| qstring(&candidate.identity.title))
+            .unwrap_or_default()
+    }
+
+    pub fn match_candidate_platform_at(&self, index: i32) -> QString {
+        self.match_candidate_at(index)
+            .map(|candidate| qstring(&candidate.identity.platform))
+            .unwrap_or_default()
+    }
+
+    pub fn match_candidate_detail_at(&self, index: i32) -> QString {
+        self.match_candidate_at(index)
+            .map(|candidate| {
+                if candidate.matched_name.is_empty() {
+                    qstring(format!(
+                        "Canonical title · catalog ID {}",
+                        candidate.identity.game_uid
+                    ))
+                } else {
+                    qstring(format!(
+                        "Alternate title: {} · catalog ID {}",
+                        candidate.matched_name, candidate.identity.game_uid
+                    ))
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    fn match_candidate_at(&self, index: i32) -> Option<&ManualMatchCandidate> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().match_candidates.get(index))
     }
 
     pub fn platform_name_at(&self, index: i32) -> QString {
@@ -608,6 +902,7 @@ impl qobject::LocalImportModel {
             .map(|result| {
                 qstring(match &result.match_state {
                     MatchState::Exact(_) => "EXACT",
+                    MatchState::Reviewed(_) => "REVIEWED",
                     MatchState::Ambiguous(_) => "AMBIGUOUS",
                     MatchState::Unmatched => "UNMATCHED",
                     MatchState::InventoryOnly => "INVENTORY",
@@ -623,6 +918,9 @@ impl qobject::LocalImportModel {
                 qstring(match &result.match_state {
                     MatchState::Exact(identity) => {
                         format!("{} · {}", identity.title, result.match_method)
+                    }
+                    MatchState::Reviewed(identity) => {
+                        format!("{} · explicitly linked by you", identity.title)
                     }
                     MatchState::Ambiguous(count) => {
                         format!("{count} catalog records share this checksum · kept local-only")
@@ -684,15 +982,49 @@ impl qobject::LocalImportModel {
         self.as_mut().set_selected_count(saturating_i32(count));
     }
 
+    fn update_match_counts(mut self: Pin<&mut Self>) {
+        let (exact, reviewed, total) = self
+            .as_ref()
+            .rust()
+            .output
+            .as_ref()
+            .map(|output| {
+                (
+                    output
+                        .results
+                        .iter()
+                        .filter(|result| matches!(result.match_state, MatchState::Exact(_)))
+                        .count(),
+                    output
+                        .results
+                        .iter()
+                        .filter(|result| matches!(result.match_state, MatchState::Reviewed(_)))
+                        .count(),
+                    output.results.len(),
+                )
+            })
+            .unwrap_or_default();
+        self.as_mut().set_matched_count(saturating_i32(exact));
+        self.as_mut().set_reviewed_count(saturating_i32(reviewed));
+        self.as_mut().set_unmatched_count(saturating_i32(
+            total.saturating_sub(exact).saturating_sub(reviewed),
+        ));
+    }
+
     fn bump_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().revision().wrapping_add(1);
         self.as_mut().set_revision(revision);
+    }
+
+    fn bump_match_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().match_revision().wrapping_add(1);
+        self.as_mut().set_match_revision(revision);
     }
 }
 
 fn matched_title(result: &ScanResult) -> &str {
     match &result.match_state {
-        MatchState::Exact(identity) => &identity.title,
+        MatchState::Exact(identity) | MatchState::Reviewed(identity) => &identity.title,
         _ => &result.display_title,
     }
 }
@@ -700,10 +1032,11 @@ fn matched_title(result: &ScanResult) -> &str {
 fn match_rank(state: &MatchState) -> u8 {
     match state {
         MatchState::Exact(_) => 0,
-        MatchState::Ambiguous(_) => 1,
-        MatchState::Unmatched => 2,
-        MatchState::InventoryOnly => 3,
-        MatchState::Error(_) => 4,
+        MatchState::Reviewed(_) => 1,
+        MatchState::Ambiguous(_) => 2,
+        MatchState::Unmatched => 3,
+        MatchState::InventoryOnly => 4,
+        MatchState::Error(_) => 5,
     }
 }
 
@@ -745,6 +1078,10 @@ mod tests {
         assert!(
             match_rank(&MatchState::Exact(MatchIdentityFixture::identity()))
                 < match_rank(&MatchState::Unmatched)
+        );
+        assert!(
+            match_rank(&MatchState::Reviewed(MatchIdentityFixture::identity()))
+                < match_rank(&MatchState::Ambiguous(2))
         );
     }
 

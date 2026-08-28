@@ -26,6 +26,7 @@ const FALLBACK_ROM_EXTENSIONS: &[&str] = &[
     "vec", "wad", "wbfs", "ws", "wsc", "xex", "xfd", "z64", "zip", "32x", "3ds",
 ];
 const ARCHIVE_EXTENSIONS: &[&str] = &["zip", "7z", "rar"];
+const MANUAL_MATCH_METHOD: &str = "manual user selection";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MatchIdentity {
@@ -38,6 +39,7 @@ pub struct MatchIdentity {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MatchState {
     Exact(MatchIdentity),
+    Reviewed(MatchIdentity),
     Ambiguous(usize),
     Unmatched,
     InventoryOnly,
@@ -48,12 +50,19 @@ impl MatchState {
     pub fn key(&self) -> &'static str {
         match self {
             Self::Exact(_) => "exact",
+            Self::Reviewed(_) => "reviewed",
             Self::Ambiguous(_) => "ambiguous",
             Self::Unmatched => "unmatched",
             Self::InventoryOnly => "inventory_only",
             Self::Error(_) => "error",
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ManualMatchCandidate {
+    pub identity: MatchIdentity,
+    pub matched_name: String,
 }
 
 #[derive(Clone, Debug)]
@@ -136,6 +145,90 @@ pub fn load_platform_names(discovery_path: &Path) -> Result<Vec<String>> {
         connection.prepare("SELECT name FROM platforms ORDER BY name COLLATE NOCASE")?;
     let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn search_manual_match_candidates(
+    discovery_path: &Path,
+    query: &str,
+    platform: &str,
+) -> Result<Vec<ManualMatchCandidate>> {
+    let query = query.trim();
+    if query.chars().count() < 2 {
+        return Ok(Vec::new());
+    }
+    let platform = platform.trim();
+    let connection = catalog::open_read_only(discovery_path, "Lunchbox discovery database")?;
+    let mut statement = connection.prepare(
+        "WITH candidates AS (
+             SELECT g.id, g.title, p.name,
+                    coalesce(g.launchbox_db_id, 0) AS launchbox_db_id,
+                    '' AS matched_name
+             FROM games g JOIN platforms p ON p.id=g.platform_id
+             WHERE (?2='' OR p.name=?2)
+               AND instr(lower(g.title), lower(?1)) > 0
+             UNION ALL
+             SELECT g.id, g.title, p.name,
+                    coalesce(g.launchbox_db_id, 0) AS launchbox_db_id,
+                    a.alternate_name
+             FROM game_alternate_names a
+             JOIN games g ON g.launchbox_db_id=a.launchbox_db_id
+             JOIN platforms p ON p.id=g.platform_id
+             WHERE (?2='' OR p.name=?2)
+               AND instr(lower(a.alternate_name), lower(?1)) > 0
+         )
+         SELECT id, title, name, launchbox_db_id, matched_name
+         FROM candidates
+         ORDER BY CASE
+                    WHEN lower(title)=lower(?1) THEN 0
+                    WHEN lower(matched_name)=lower(?1) THEN 1
+                    WHEN instr(lower(title), lower(?1))=1 THEN 2
+                    ELSE 3
+                  END,
+                  length(title), title COLLATE NOCASE, name COLLATE NOCASE,
+                  matched_name COLLATE NOCASE
+         LIMIT 250",
+    )?;
+    let rows = statement.query_map(params![query, platform], |row| {
+        Ok(ManualMatchCandidate {
+            identity: MatchIdentity {
+                game_uid: row.get(0)?,
+                title: row.get(1)?,
+                platform: row.get(2)?,
+                launchbox_db_id: row.get(3)?,
+            },
+            matched_name: row.get(4)?,
+        })
+    })?;
+    let mut seen = HashSet::new();
+    let mut candidates = Vec::new();
+    for candidate in rows {
+        let candidate = candidate?;
+        if seen.insert(candidate.identity.game_uid.clone()) {
+            candidates.push(candidate);
+            if candidates.len() == 100 {
+                break;
+            }
+        }
+    }
+    Ok(candidates)
+}
+
+pub fn apply_manual_match(result: &mut ScanResult, candidate: &ManualMatchCandidate) -> Result<()> {
+    if matches!(result.match_state, MatchState::Error(_)) {
+        bail!("an unreadable ROM cannot be linked to a catalog game");
+    }
+    if candidate.identity.game_uid.trim().is_empty()
+        || candidate.identity.title.trim().is_empty()
+        || candidate.identity.platform.trim().is_empty()
+        || candidate.identity.launchbox_db_id < 0
+    {
+        bail!("manual match candidate has an invalid catalog identity");
+    }
+    result.platform.clone_from(&candidate.identity.platform);
+    result.match_state = MatchState::Reviewed(candidate.identity.clone());
+    result.match_method = MANUAL_MATCH_METHOD.to_owned();
+    result.selected = true;
+    Ok(())
 }
 
 fn load_match_index(discovery_path: &Path) -> Result<MatchIndex> {
@@ -380,7 +473,9 @@ pub fn scan_directory(
                 match_method = format!("{} member {match_method}", archive_kind_label(path));
             }
             let platform = match &match_state {
-                MatchState::Exact(identity) => identity.platform.clone(),
+                MatchState::Exact(identity) | MatchState::Reviewed(identity) => {
+                    identity.platform.clone()
+                }
                 _ => inferred_platform.unwrap_or_else(|| "Unassigned".to_owned()),
             };
             results.push(ScanResult {
@@ -427,6 +522,87 @@ pub fn scan_directory(
         walk_errors,
         cancelled: cancelled.load(Ordering::Relaxed),
     })
+}
+
+#[derive(Clone, Debug)]
+struct PersistedManualMatch {
+    file_size: u64,
+    md5: String,
+    sha1: String,
+    identity: MatchIdentity,
+}
+
+pub fn restore_manual_matches(state_path: &Path, output: &mut ScanOutput) -> Result<usize> {
+    if !output.checksums_enabled || !state_path.is_file() {
+        return Ok(0);
+    }
+    let store = SettingsStore::at(state_path)?;
+    let connection = store.connection()?;
+    let mut statement = connection.prepare(
+        "SELECT CASE WHEN length(coalesce(source_archive_path_bytes, x'')) > 0
+                     THEN source_archive_path_bytes ELSE path_bytes END,
+                archive_member, file_size, upper(md5), upper(sha1),
+                game_uid, launchbox_db_id, matched_title, platform
+         FROM local_rom_files
+         WHERE included=1 AND match_method=?1
+           AND nullif(game_uid, '') IS NOT NULL
+           AND nullif(md5, '') IS NOT NULL
+           AND nullif(sha1, '') IS NOT NULL",
+    )?;
+    let rows = statement.query_map([MANUAL_MATCH_METHOD], |row| {
+        let file_size = row.get::<_, i64>(2)?;
+        Ok((
+            (row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?),
+            PersistedManualMatch {
+                file_size: u64::try_from(file_size).unwrap_or_default(),
+                md5: row.get(3)?,
+                sha1: row.get(4)?,
+                identity: MatchIdentity {
+                    game_uid: row.get(5)?,
+                    launchbox_db_id: row.get(6)?,
+                    title: row.get(7)?,
+                    platform: row.get(8)?,
+                },
+            },
+        ))
+    })?;
+    let mut persisted: HashMap<(Vec<u8>, String), Option<PersistedManualMatch>> = HashMap::new();
+    for row in rows {
+        let (key, manual_match) = row?;
+        match persisted.entry(key) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(Some(manual_match));
+            }
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                entry.insert(None);
+            }
+        }
+    }
+
+    let mut restored = 0usize;
+    for result in &mut output.results {
+        let key = (
+            encode_path(&result.path).bytes,
+            result.archive_member.clone(),
+        );
+        let Some(Some(manual_match)) = persisted.get(&key) else {
+            continue;
+        };
+        if manual_match.file_size != result.file_size
+            || result.md5.is_empty()
+            || result.sha1.is_empty()
+            || !manual_match.md5.eq_ignore_ascii_case(&result.md5)
+            || !manual_match.sha1.eq_ignore_ascii_case(&result.sha1)
+        {
+            continue;
+        }
+        result.platform.clone_from(&manual_match.identity.platform);
+        result.match_state = MatchState::Reviewed(manual_match.identity.clone());
+        result.match_method = MANUAL_MATCH_METHOD.to_owned();
+        result.selected = true;
+        restored = restored.saturating_add(1);
+    }
+    Ok(restored)
 }
 
 pub(crate) fn archive_import_probe() -> Result<String> {
@@ -580,6 +756,104 @@ pub(crate) fn multi_archive_import_probe() -> Result<String> {
         "archive={:?} members={selected_count} exact={exact_count} cache_paths={} state={:?}",
         archive_path.file_name().unwrap_or_default(),
         materialized_paths.len(),
+        state_path
+    ))
+}
+
+pub(crate) fn manual_match_probe() -> Result<String> {
+    let discovery_path = catalog::requested_discovery_database_path()
+        .context("--games-database is required for the manual match probe")?;
+    let root = catalog::requested_path("--import-directory", "LUNCHBOX_IMPORT_DIRECTORY")
+        .context("--import-directory is required for the manual match probe")?;
+    let state_path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
+        .context("--state-database is required for the manual match probe")?;
+    let query = catalog::requested_value("--manual-match-query", "LUNCHBOX_MANUAL_MATCH_QUERY")
+        .context("--manual-match-query is required for the manual match probe")?;
+    let platform =
+        catalog::requested_value("--manual-match-platform", "LUNCHBOX_MANUAL_MATCH_PLATFORM")
+            .context("--manual-match-platform is required for the manual match probe")?;
+    let store = SettingsStore::at(&state_path)?;
+    let cancelled = AtomicBool::new(false);
+    let mut output = scan_directory(
+        &discovery_path,
+        &root,
+        &platform,
+        true,
+        &cancelled,
+        Arc::new(|_| {}),
+    )?;
+    for result in &mut output.results {
+        result.selected = false;
+    }
+    let unmatched = output
+        .results
+        .iter()
+        .enumerate()
+        .filter(|(_, result)| matches!(result.match_state, MatchState::Unmatched))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if unmatched.len() != 1 {
+        bail!(
+            "manual match probe requires exactly one unmatched ROM, found {}",
+            unmatched.len()
+        );
+    }
+    let candidates = search_manual_match_candidates(&discovery_path, &query, &platform)?;
+    let exact_candidates = candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.identity.title.eq_ignore_ascii_case(&query)
+                && candidate.identity.platform == platform
+        })
+        .collect::<Vec<_>>();
+    if exact_candidates.len() != 1 {
+        bail!(
+            "manual match probe requires one exact reviewed title/platform candidate, found {}",
+            exact_candidates.len()
+        );
+    }
+    let result_index = unmatched[0];
+    let source_path = output.results[result_index].path.clone();
+    let archive_member = output.results[result_index].archive_member.clone();
+    let identity = exact_candidates[0].identity.clone();
+    apply_manual_match(&mut output.results[result_index], exact_candidates[0])?;
+    let imported = commit_scan_to(store.path(), &output)?;
+    if imported != 1 {
+        bail!("manual match probe imported {imported} ROMs instead of one");
+    }
+
+    let mut rescanned = scan_directory(
+        &discovery_path,
+        &root,
+        &platform,
+        true,
+        &cancelled,
+        Arc::new(|_| {}),
+    )?;
+    let restored = restore_manual_matches(store.path(), &mut rescanned)?;
+    if restored != 1 {
+        bail!("manual match probe restored {restored} reviewed links instead of one");
+    }
+    let result = rescanned
+        .results
+        .iter()
+        .find(|result| result.path == source_path && result.archive_member == archive_member)
+        .context("reviewed ROM disappeared during the verification rescan")?;
+    let MatchState::Reviewed(restored_identity) = &result.match_state else {
+        bail!("manual match did not restore as an explicitly reviewed identity");
+    };
+    if restored_identity != &identity
+        || result.match_method != MANUAL_MATCH_METHOD
+        || !result.selected
+    {
+        bail!("restored manual match lost identity, provenance, or selection state");
+    }
+    Ok(format!(
+        "file={:?} title={:?} platform={:?} game_uid={:?} state={:?}",
+        source_path.file_name().unwrap_or_default(),
+        identity.title,
+        identity.platform,
+        identity.game_uid,
         state_path
     ))
 }
@@ -1264,7 +1538,7 @@ fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
         }
         let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, &identity_bytes).to_string();
         let (game_uid, database_id, matched_title) = match &result.match_state {
-            MatchState::Exact(identity) => (
+            MatchState::Exact(identity) | MatchState::Reviewed(identity) => (
                 Some(identity.game_uid.as_str()),
                 identity.launchbox_db_id,
                 Some(identity.title.as_str()),
@@ -1431,7 +1705,17 @@ mod tests {
                      launchbox_db_id INTEGER, libretro_crc32 TEXT,
                      libretro_md5 TEXT, libretro_sha1 TEXT
                  );
+                 CREATE TABLE game_alternate_names (
+                     id INTEGER PRIMARY KEY, launchbox_db_id INTEGER,
+                     alternate_name TEXT, region TEXT
+                 );
                  INSERT INTO platforms VALUES (1, 'Nintendo Entertainment System', 'nes, zip');",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO game_alternate_names VALUES (1, 42, 'The Exact Alias', 'World')",
+                [],
             )
             .unwrap();
         connection
@@ -1462,6 +1746,91 @@ mod tests {
                 .unwrap();
         }
         archive.finish().unwrap();
+    }
+
+    #[test]
+    fn manual_match_search_includes_alternate_titles_without_accepting_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        discovery_fixture(&discovery, b"exact-rom");
+
+        let candidates = search_manual_match_candidates(
+            &discovery,
+            "exact alias",
+            "Nintendo Entertainment System",
+        )
+        .unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].identity.game_uid, "game-1");
+        assert_eq!(candidates[0].identity.title, "Exact Game");
+        assert_eq!(candidates[0].matched_name, "The Exact Alias");
+        assert!(
+            search_manual_match_candidates(&discovery, "exact", "Another Platform")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn reviewed_manual_match_survives_only_an_exact_content_rescan() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        let rom_path = rom_root.join("Mystery.nes");
+        fs::write(&rom_path, b"unknown-rom").unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let mut output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        assert_eq!(output.results.len(), 1);
+        assert_eq!(output.results[0].match_state, MatchState::Unmatched);
+        assert!(!output.results[0].selected);
+        let candidate = search_manual_match_candidates(
+            &discovery,
+            "Exact Game",
+            "Nintendo Entertainment System",
+        )
+        .unwrap()
+        .remove(0);
+        apply_manual_match(&mut output.results[0], &candidate).unwrap();
+        assert!(matches!(
+            output.results[0].match_state,
+            MatchState::Reviewed(_)
+        ));
+        assert!(output.results[0].selected);
+
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 1);
+        let connection = Connection::open(&state).unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT match_state || ':' || match_method FROM local_rom_files",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            "reviewed:manual user selection"
+        );
+
+        let mut repeated =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        assert_eq!(restore_manual_matches(&state, &mut repeated).unwrap(), 1);
+        let MatchState::Reviewed(identity) = &repeated.results[0].match_state else {
+            panic!("reviewed identity was not restored");
+        };
+        assert_eq!(identity.game_uid, "game-1");
+        assert!(repeated.results[0].selected);
+
+        fs::write(&rom_path, b"changed-rom").unwrap();
+        let mut changed =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        assert_eq!(restore_manual_matches(&state, &mut changed).unwrap(), 0);
+        assert_eq!(changed.results[0].match_state, MatchState::Unmatched);
+        assert!(!changed.results[0].selected);
     }
 
     #[test]
