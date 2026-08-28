@@ -21,6 +21,7 @@ fn main() {
     .file("src/emulator_manager_model.rs")
     .file("src/emulator_update_model.rs")
     .file("src/game_details_model.rs")
+    .file("src/gamepad_input.rs")
     .file("src/igdb_model.rs")
     .file("src/launch_profile_manager_model.rs")
     .file("src/library_audit_model.rs")

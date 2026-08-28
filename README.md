@@ -22,11 +22,14 @@ filtering run on worker threads, while virtualized Qt views consume a native
 `QAbstractListModel`. Use `--startup-probe` to measure shell construction without
 waiting for database loading.
 
-The header's Couch Mode control opens a fullscreen, keyboard-operated
+The header's Couch Mode control opens a fullscreen, keyboard-and-gamepad
 living-room presentation over those same models. It preserves the exact
 selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent
 views, and routes Play, favorite changes, download options, and desktop details
-through the existing native services. Escape returns to desktop mode.
+through the existing native services. A native Rust input worker handles
+hotplugging, analog dead zones, deliberate hold-repeat, paging, and Xbox,
+PlayStation, Nintendo, or generic button labels without blocking Qt. Escape or
+the controller's east face button returns to desktop mode.
 
 Settings can install or refresh the complete official RetroArch Slang and GLSL
 shader collections. The Rust service discovers native RetroArch locations on

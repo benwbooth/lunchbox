@@ -517,12 +517,37 @@ second isolated target reused archives with unchanged SHA-256 digests.
 at a 1920x1200-class test size, filters the real catalog to the preserved Super
 Mario Bros. family, restores the exact stable UUID for LaunchBox database ID
 140, loads its real details and cached media, captures the full presentation,
-and exits only after the selected row, details identity, and filtered-row lookup
-agree. Pass `--media-directory PATH` to exercise an existing media cache. The
-interactive Couch Mode control enters true fullscreen and Escape restores the
-desktop window. Its hidden shelf is inert: selection and details loading begin
-only after Couch Mode becomes active, so constructing or filtering the desktop
+starts the real gamepad backend, and exits only after the selected row, details
+identity, filtered-row lookup, and backend readiness agree. Pass
+`--media-directory PATH` to exercise an existing media cache. The interactive
+Couch Mode control enters true fullscreen and Escape restores the desktop
+window. Its hidden shelf is inert: selection and details loading begin only
+after Couch Mode becomes active, so constructing or filtering the desktop
 cannot silently replace the user's current game.
+
+`GamepadInput` is a CXX-Qt Rust service backed by GilRs. It owns a named worker
+thread, performs blocking device reads there rather than on the GUI thread,
+publishes hotplug snapshots through the Qt event queue, and disables unused
+force feedback. D-pad and left-stick input share one QML navigation-action path
+with keyboard input; 0.68/0.38 analog engage/release thresholds prevent center
+jitter, while a 380 ms initial delay and 90 ms repeat interval make long shelves
+fast without accidental double moves. Directional input, five-item paging,
+accept, back, favorite, details, category focus, and shelf-home are mapped.
+Focus is restored on entry, every handled action, and application reactivation.
+Controller-family inference changes the visible Xbox, PlayStation, Nintendo, or
+generic button hints without changing semantic actions. The worker remains
+listening after Couch Mode closes so re-entry and hotplug status are immediate;
+the inactive QML view ignores its actions.
+
+`--couch-gamepad-ui-probe --screenshot-output PATH` uses the guarded native test
+seam to inject the same semantic actions that the worker publishes. Against the
+real 303,560-game catalog it proves right movement, exact stable-UUID restoration
+after left movement, action/shelf focus movement, controller-aware presentation,
+and the final 1920x1200 capture. The ordinary Couch Mode probe separately starts
+the real GilRs backend and waits for it to report ready. No controller was
+attached to the current Linux host, so attached-device input and hotplug remain
+explicit Linux, Windows, and macOS release-host gates rather than inferred from
+the deterministic routing probe.
 
 `--firmware-probe` opens an imported Coleco ADAM identity, runs normal emulator
 discovery, prints the exact resolved rule counts and runtime path, and exits

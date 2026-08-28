@@ -51,6 +51,8 @@ ApplicationWindow {
     property bool couchModeActive: false
     property int couchModePreviousVisibility: Window.Windowed
     property bool couchModeProbeCaptured: false
+    property int couchGamepadProbeStage: 0
+    property string couchGamepadProbeMovedGameId: ""
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
@@ -124,7 +126,9 @@ ApplicationWindow {
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
-    readonly property bool couchModeUiProbe: Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
+    readonly property bool couchGamepadUiProbe: Qt.application.arguments.indexOf("--couch-gamepad-ui-probe") >= 0
+    readonly property bool couchModeUiProbe: couchGamepadUiProbe
+                                             || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
     readonly property bool tagsUiProbe: Qt.application.arguments.indexOf("--tags-ui-probe") >= 0
     readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
@@ -208,6 +212,11 @@ ApplicationWindow {
         }
     }
 
+    onActiveChanged: {
+        if (active && couchModeActive)
+            couchModeView.forceActiveFocus()
+    }
+
     function scheduleFilter() {
         filterDelay.restart()
     }
@@ -252,6 +261,7 @@ ApplicationWindow {
         if (couchModeActive)
             return
         couchModePreviousVisibility = root.visibility
+        gamepadInput.initialize()
         couchModeActive = true
         if (!couchModeUiProbe)
             root.showFullScreen()
@@ -673,6 +683,10 @@ ApplicationWindow {
 
     GameDetailsModel {
         id: gameDetails
+    }
+
+    GamepadInput {
+        id: gamepadInput
     }
 
     AudioOutput {
@@ -1460,6 +1474,16 @@ ApplicationWindow {
         interval: 650
         repeat: false
         onTriggered: {
+            if (!root.couchGamepadUiProbe && !gamepadInput.ready) {
+                couchModeScreenshotTimer.restart()
+                return
+            }
+            if (!root.couchGamepadUiProbe && !gamepadInput.available) {
+                console.error("LUNCHBOX_COUCH_MODE_UI_FAILED gamepad="
+                              + gamepadInput.status_message)
+                Qt.exit(2)
+                return
+            }
             if (!root.couchModeActive || library.filtered_count <= 0
                     || couchModeView.selectedGameId.length === 0
                     || gameDetails.title.length === 0) {
@@ -1475,10 +1499,33 @@ ApplicationWindow {
                 Qt.exit(2)
                 return
             }
+            if (root.couchGamepadUiProbe
+                    && root.couchGamepadProbeStage === 0) {
+                if (!gamepadInput.ready || !gamepadInput.available
+                        || gamepadInput.connected_count !== 1
+                        || couchModeView.navigationZone !== 2) {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED initialization status="
+                                  + gamepadInput.status_message + " zone="
+                                  + couchModeView.navigationZone)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 1
+                gamepadInput.probe_navigation_action("right")
+                couchGamepadProbeTimer.restart()
+                return
+            }
+            if (root.couchGamepadUiProbe
+                    && root.couchGamepadProbeStage < 5)
+                return
             root.couchModeProbeCaptured = true
             if (root.screenshotOutput.length === 0) {
-                console.warn("LUNCHBOX_COUCH_MODE_UI_READY title=" + gameDetails.title
-                             + " games=" + library.filtered_count)
+                console.warn((root.couchGamepadUiProbe
+                              ? "LUNCHBOX_COUCH_GAMEPAD_UI_READY"
+                              : "LUNCHBOX_COUCH_MODE_UI_READY")
+                             + " title=" + gameDetails.title
+                             + " games=" + library.filtered_count
+                             + " actions=" + gamepadInput.navigation_revision)
                 Qt.exit(0)
                 return
             }
@@ -1489,11 +1536,69 @@ ApplicationWindow {
                     Qt.exit(2)
                     return
                 }
-                console.warn("LUNCHBOX_COUCH_MODE_UI_READY title=" + gameDetails.title
+                console.warn((root.couchGamepadUiProbe
+                              ? "LUNCHBOX_COUCH_GAMEPAD_UI_READY"
+                              : "LUNCHBOX_COUCH_MODE_UI_READY")
+                             + " title=" + gameDetails.title
                              + " games=" + library.filtered_count
+                             + " actions=" + gamepadInput.navigation_revision
                              + " screenshot=" + root.screenshotOutput)
                 Qt.exit(0)
             })
+        }
+    }
+
+    Timer {
+        id: couchGamepadProbeTimer
+        interval: 280
+        repeat: false
+        onTriggered: {
+            if (!root.couchGamepadUiProbe)
+                return
+            if (root.couchGamepadProbeStage === 1) {
+                if (couchModeView.selectedGameId.length === 0
+                        || couchModeView.selectedGameId
+                           === "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED right navigation")
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeMovedGameId = couchModeView.selectedGameId
+                root.couchGamepadProbeStage = 2
+                gamepadInput.probe_navigation_action("left")
+                couchGamepadProbeTimer.restart()
+            } else if (root.couchGamepadProbeStage === 2) {
+                if (couchModeView.selectedGameId
+                        !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED left restoration moved="
+                                  + root.couchGamepadProbeMovedGameId + " current="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 3
+                gamepadInput.probe_navigation_action("up")
+                couchGamepadProbeTimer.restart()
+            } else if (root.couchGamepadProbeStage === 3) {
+                if (couchModeView.navigationZone !== 1) {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED up focus zone="
+                                  + couchModeView.navigationZone)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 4
+                gamepadInput.probe_navigation_action("down")
+                couchGamepadProbeTimer.restart()
+            } else if (root.couchGamepadProbeStage === 4) {
+                if (couchModeView.navigationZone !== 2) {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED down focus zone="
+                                  + couchModeView.navigationZone)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 5
+                couchModeScreenshotTimer.restart()
+            }
         }
     }
 
@@ -1503,7 +1608,9 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             console.error("LUNCHBOX_COUCH_MODE_UI_FAILED timeout status="
-                          + library.status_message)
+                          + library.status_message + " gamepad="
+                          + gamepadInput.status_message + " stage="
+                          + root.couchGamepadProbeStage)
             Qt.exit(2)
         }
     }
@@ -3410,6 +3517,7 @@ ApplicationWindow {
         active: root.couchModeActive
         library: library
         details: gameDetails
+        gamepad: gamepadInput
         preferredGameId: root.selectedGameId
         currentFilterKey: root.availability
         onExitRequested: root.exitCouchMode()

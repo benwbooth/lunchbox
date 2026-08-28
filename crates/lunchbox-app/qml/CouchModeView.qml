@@ -7,6 +7,7 @@ Item {
 
     required property var library
     required property var details
+    required property var gamepad
     property bool active: false
     property int navigationZone: 2
     property int categoryIndex: 0
@@ -154,6 +155,62 @@ Item {
         }
     }
 
+    function handleNavigation(action) {
+        if (!active)
+            return false
+        forceActiveFocus()
+        if (action === "back") {
+            exitRequested()
+        } else if (action === "up") {
+            navigationZone = Math.max(0, navigationZone - 1)
+        } else if (action === "down") {
+            navigationZone = Math.min(2, navigationZone + 1)
+        } else if (action === "left") {
+            if (navigationZone === 0)
+                categoryIndex = Math.max(0, categoryIndex - 1)
+            else if (navigationZone === 1)
+                actionIndex = Math.max(0, actionIndex - 1)
+            else
+                moveShelf(-1)
+        } else if (action === "right") {
+            if (navigationZone === 0)
+                categoryIndex = Math.min(categories.length - 1,
+                                         categoryIndex + 1)
+            else if (navigationZone === 1)
+                actionIndex = Math.min(2, actionIndex + 1)
+            else
+                moveShelf(1)
+        } else if (action === "page_left") {
+            navigationZone = 2
+            moveShelf(-5)
+        } else if (action === "page_right") {
+            navigationZone = 2
+            moveShelf(5)
+        } else if (action === "home") {
+            navigationZone = 2
+            shelf.currentIndex = shelf.count > 0 ? 0 : -1
+        } else if (action === "accept") {
+            if (navigationZone === 0)
+                chooseCategory(categoryIndex)
+            else if (navigationZone === 1)
+                activateAction(actionIndex)
+            else
+                activateAction(0)
+        } else if (action === "favorite") {
+            if (!favoriteBusy && selectedGameId.length > 0)
+                library.set_favorite(selectedGameId, !favorite)
+        } else if (action === "details") {
+            requestDetails()
+        } else if (action === "menu") {
+            navigationZone = 0
+        } else if (action === "cycle_zone") {
+            navigationZone = (navigationZone + 1) % 3
+        } else {
+            return false
+        }
+        return true
+    }
+
     onActiveChanged: {
         if (active) {
             forceActiveFocus()
@@ -183,59 +240,39 @@ Item {
     Keys.onPressed: event => {
         if (!active)
             return
+        let action = ""
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
-            exitRequested()
-            event.accepted = true
+            action = "back"
         } else if (event.key === Qt.Key_Up) {
-            navigationZone = Math.max(0, navigationZone - 1)
-            event.accepted = true
+            action = "up"
         } else if (event.key === Qt.Key_Down) {
-            navigationZone = Math.min(2, navigationZone + 1)
-            event.accepted = true
+            action = "down"
         } else if (event.key === Qt.Key_Left) {
-            if (navigationZone === 0)
-                categoryIndex = Math.max(0, categoryIndex - 1)
-            else if (navigationZone === 1)
-                actionIndex = Math.max(0, actionIndex - 1)
-            else
-                moveShelf(-1)
-            event.accepted = true
+            action = "left"
         } else if (event.key === Qt.Key_Right) {
-            if (navigationZone === 0)
-                categoryIndex = Math.min(categories.length - 1, categoryIndex + 1)
-            else if (navigationZone === 1)
-                actionIndex = Math.min(2, actionIndex + 1)
-            else
-                moveShelf(1)
-            event.accepted = true
+            action = "right"
         } else if (event.key === Qt.Key_PageUp) {
-            moveShelf(-5)
-            event.accepted = true
+            action = "page_left"
         } else if (event.key === Qt.Key_PageDown) {
-            moveShelf(5)
-            event.accepted = true
+            action = "page_right"
         } else if (event.key === Qt.Key_Home) {
-            shelf.currentIndex = shelf.count > 0 ? 0 : -1
-            event.accepted = true
+            action = "home"
         } else if (event.key === Qt.Key_End) {
+            navigationZone = 2
             shelf.currentIndex = shelf.count - 1
             event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                    || event.key === Qt.Key_Space) {
-            if (navigationZone === 0)
-                chooseCategory(categoryIndex)
-            else if (navigationZone === 1)
-                activateAction(actionIndex)
-            else
-                activateAction(0)
-            event.accepted = true
+            action = "accept"
         } else if (event.key === Qt.Key_F && !favoriteBusy) {
-            library.set_favorite(selectedGameId, !favorite)
-            event.accepted = true
+            action = "favorite"
+        } else if (event.key === Qt.Key_D) {
+            action = "details"
         } else if (event.key === Qt.Key_Tab) {
-            navigationZone = (navigationZone + 1) % 3
-            event.accepted = true
+            action = "cycle_zone"
         }
+        if (action.length > 0)
+            event.accepted = handleNavigation(action)
     }
 
     Rectangle {
@@ -367,23 +404,51 @@ Item {
         }
     }
 
-    Rectangle {
+    Row {
         anchors.right: parent.right
         anchors.rightMargin: 50
         anchors.verticalCenter: brand.verticalCenter
-        width: 40
-        height: 40
-        radius: 12
-        color: exitHover.hovered ? "#4a242a35" : "#2f161b24"
-        border.color: exitHover.hovered ? view.accent : "#5b303846"
-        Text {
-            anchors.centerIn: parent
-            text: "×"
-            color: view.ink
-            font.pixelSize: 23
+        spacing: 10
+
+        Rectangle {
+            visible: view.gamepad.ready
+            width: visible ? gamepadStatus.implicitWidth + 26 : 0
+            height: 40
+            radius: 12
+            color: "#2f161b24"
+            border.color: view.gamepad.connected_count > 0
+                          ? view.accentCool
+                          : view.gamepad.available ? "#5b303846" : "#8b4651"
+            Text {
+                id: gamepadStatus
+                anchors.centerIn: parent
+                text: view.gamepad.connected_count > 0
+                      ? "●  " + view.gamepad.connected_count + " CONTROLLER"
+                      : view.gamepad.available ? "○  CONTROLLER READY"
+                        : "!  GAMEPAD UNAVAILABLE"
+                color: view.gamepad.connected_count > 0
+                       ? view.accentCool : view.muted
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 0.8
+            }
         }
-        HoverHandler { id: exitHover }
-        TapHandler { onTapped: view.exitRequested() }
+
+        Rectangle {
+            width: 40
+            height: 40
+            radius: 12
+            color: exitHover.hovered ? "#4a242a35" : "#2f161b24"
+            border.color: exitHover.hovered ? view.accent : "#5b303846"
+            Text {
+                anchors.centerIn: parent
+                text: "×"
+                color: view.ink
+                font.pixelSize: 23
+            }
+            HoverHandler { id: exitHover }
+            TapHandler { onTapped: view.exitRequested() }
+        }
     }
 
     Column {
@@ -785,36 +850,45 @@ Item {
         spacing: 22
 
         Text {
-            text: "← →  BROWSE"
+            text: view.gamepad.connected_count > 0
+                  ? "D-PAD / STICK  MOVE" : "← →  BROWSE"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
             font.letterSpacing: 0.8
         }
         Text {
-            text: "↑ ↓  MOVE"
+            text: view.gamepad.connected_count > 0
+                  ? view.gamepad.button_label("accept") + "  SELECT"
+                  : "↑ ↓  MOVE"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
             font.letterSpacing: 0.8
         }
         Text {
-            text: "ENTER  SELECT"
+            text: view.gamepad.connected_count > 0
+                  ? view.gamepad.button_label("favorite") + "  FAVORITE"
+                  : "ENTER  SELECT"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
             font.letterSpacing: 0.8
         }
         Text {
-            text: "F  FAVORITE"
+            text: view.gamepad.connected_count > 0
+                  ? view.gamepad.button_label("details") + "  DETAILS"
+                  : "F  FAVORITE"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
             font.letterSpacing: 0.8
         }
-        Item { width: Math.max(0, parent.width - 480); height: 1 }
+        Item { width: Math.max(0, parent.width - 660); height: 1 }
         Text {
-            text: "ESC  DESKTOP MODE"
+            text: view.gamepad.connected_count > 0
+                  ? view.gamepad.button_label("back") + "  DESKTOP MODE"
+                  : "ESC  DESKTOP MODE"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
@@ -856,6 +930,14 @@ Item {
                                                       shelf.count - 1))
             if (view.active)
                 selectionDelay.restart()
+        }
+    }
+
+    Connections {
+        target: view.gamepad
+        function onNavigation_revisionChanged() {
+            if (view.active)
+                view.handleNavigation(view.gamepad.navigation_action)
         }
     }
 }

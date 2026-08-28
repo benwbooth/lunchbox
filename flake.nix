@@ -44,7 +44,8 @@
             pkg-config
             qt6.wrapQtAppsHook
           ];
-          buildInputs = qtModules;
+          buildInputs = qtModules
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.systemd ];
           dontUseCmakeConfigure = true;
           dontUseNinjaBuild = true;
           dontUseNinjaInstall = true;
@@ -111,7 +112,8 @@
             rustc
             rustfmt
             sqlite
-          ]) ++ qtModules;
+          ]) ++ qtModules
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.systemd ];
 
           QMAKE = "${qtEnv}/bin/qmake";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";

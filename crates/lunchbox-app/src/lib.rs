@@ -12,6 +12,7 @@ mod exo_install;
 mod firmware;
 mod game_details;
 pub mod game_details_model;
+pub mod gamepad_input;
 mod igdb;
 pub mod igdb_model;
 mod ingest;
