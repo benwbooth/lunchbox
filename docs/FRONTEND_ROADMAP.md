@@ -117,9 +117,15 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Generic local-ROM RetroArch and standalone discovery/launch are native, with
   multi-file selection and exact per-game/platform stable-ID/core defaults.
   Linux Flatpak RetroArch plus real core/content loading is runtime-verified.
+- Standalone MAME set-name/ROM-path and Hypseus framefile/support/bundle
+  profiles are native. Derived Arcade Laserdisc and Arcade Pinball labels map
+  to the canonical Arcade emulator catalog without being collapsed in the UI.
+  Linux Flatpak MAME launch is runtime-verified with the ROM-free Pong driver.
+  Known archive-oriented FinalBurn Neo, Flycast, and Supermodel executables
+  retain the legacy bounded direct-file contract.
 - Managed downloads, updates, version pinning, core management, BIOS checks,
   and command preview.
-- Dedicated MAME, Daphne, Hypseus, pinball, and non-eXo PC launch profiles.
+- Dedicated Daphne acquisition, TeknoParrot, and non-eXo PC launch profiles.
 - Controller detection and mapping, pre-launch validation, process supervision,
   pause/resume, clean shutdown, and play-stat recording.
 

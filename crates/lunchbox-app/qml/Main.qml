@@ -95,6 +95,9 @@ ApplicationWindow {
     readonly property bool exoLaunchProbe: Qt.application.arguments.indexOf("--exo-launch-probe") >= 0
     readonly property bool romLaunchProbe: Qt.application.arguments.indexOf("--rom-launch-probe") >= 0
     readonly property bool romLaunchUiProbe: Qt.application.arguments.indexOf("--rom-launch-ui-probe") >= 0
+    readonly property bool arcadeLaunchProbe: Qt.application.arguments.indexOf("--arcade-launch-probe") >= 0
+    readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
+    readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe
 
     palette.window: "#0c1119"
@@ -488,14 +491,14 @@ ApplicationWindow {
                 Qt.quit()
         }
         function onCan_launchChanged() {
-            if ((root.exoLaunchProbe || root.romLaunchProbe) && gameDetails.can_launch
+            if (root.emulatorLaunchProbe && gameDetails.can_launch
                     && !root.launchProbeTriggered) {
                 root.launchProbeTriggered = true
                 gameDetails.launch_game()
             }
         }
         function onGame_runningChanged() {
-            if ((!root.exoLaunchProbe && !root.romLaunchProbe)
+            if (!root.emulatorLaunchProbe
                     || !root.launchProbeTriggered)
                 return
             if (gameDetails.game_running)
@@ -504,7 +507,7 @@ ApplicationWindow {
                 Qt.quit()
         }
         function onLaunch_statusChanged() {
-            if ((root.exoLaunchProbe || root.romLaunchProbe)
+            if (root.emulatorLaunchProbe
                     && root.launchProbeTriggered
                     && gameDetails.launch_status.indexOf("Could not launch") === 0)
                 Qt.exit(2)
@@ -579,6 +582,9 @@ ApplicationWindow {
                      || root.exoLaunchProbe)
                 root.openGame("exo-prepare-probe", 0,
                               "Prince of Persia", "MS-DOS", true, false)
+            else if (root.arcadeLaunchProbe || root.arcadeLaunchUiProbe)
+                root.openGame("local-file:arcade-launch-probe", 0,
+                              "Pong", "Arcade", true, false)
             else if (root.romLaunchProbe || root.romLaunchUiProbe)
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)

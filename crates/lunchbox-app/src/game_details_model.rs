@@ -279,6 +279,14 @@ fn has_cli_flag(flag: &str) -> bool {
     std::env::args_os().any(|argument| argument == flag)
 }
 
+fn is_local_launch_probe() -> bool {
+    has_cli_flag("--rom-launch-probe") || has_cli_flag("--arcade-launch-probe")
+}
+
+fn is_emulator_launch_probe() -> bool {
+    has_cli_flag("--exo-launch-probe") || is_local_launch_probe()
+}
+
 enum EmulatorDiscoveryResult {
     Prepared(crate::emulator::LaunchAvailability),
     Rom(crate::emulator::RomLaunchAvailability),
@@ -781,6 +789,9 @@ impl qobject::GameDetailsModel {
                         .emulator_preference(&game_id, &platform)?;
                     crate::emulator::inspect_rom_launch_availability(
                         &platform,
+                        selected_local_file
+                            .as_deref()
+                            .context("selected local game file disappeared")?,
                         &catalog_database,
                         preference.as_ref(),
                     )
@@ -1048,7 +1059,7 @@ impl qobject::GameDetailsModel {
             self.as_ref().rust().launch_generation.wrapping_add(1);
         let generation = self.as_ref().rust().launch_generation;
         let game_id = self.as_ref().game_id().to_string();
-        let rom_probe = has_cli_flag("--rom-launch-probe");
+        let rom_probe = is_local_launch_probe();
         self.as_mut().set_launch_busy(true);
         self.as_mut().set_launch_status(qstring(
             "Building the exact launch plan and preparing writable runtime files…",
@@ -1164,7 +1175,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_message(qstring(format!(
             "Launched with {emulator_name}. {command_summary}"
         )));
-        if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
+        if is_emulator_launch_probe() {
             println!(
                 "LUNCHBOX_EMULATOR_STARTED name={emulator_name:?} pid={process_id} command={command_summary:?}"
             );
@@ -1188,14 +1199,14 @@ impl qobject::GameDetailsModel {
             Ok(()) => {
                 self.as_mut()
                     .set_launch_status(qstring("The emulator session finished normally."));
-                if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
+                if is_emulator_launch_probe() {
                     println!("LUNCHBOX_EMULATOR_EXITED status=success");
                 }
             }
             Err(error) => {
                 self.as_mut()
                     .set_launch_status(qstring(format!("The emulator session ended: {error}")));
-                if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
+                if is_emulator_launch_probe() {
                     println!("LUNCHBOX_EMULATOR_EXITED status={error:?}");
                 }
             }
@@ -1217,7 +1228,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_game_running(false);
         self.as_mut()
             .set_launch_status(qstring(format!("Could not launch this game: {error}")));
-        if has_cli_flag("--exo-launch-probe") || has_cli_flag("--rom-launch-probe") {
+        if is_emulator_launch_probe() {
             eprintln!("LUNCHBOX_EMULATOR_FAILED error={error:?}");
         }
     }

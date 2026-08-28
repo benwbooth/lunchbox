@@ -125,8 +125,13 @@ The initial implementation enforces this shape:
   normalized platform default. Multiple imported files remain distinct native
   `PathBuf` values. Launch plans pass the selected ROM and exact core as
   `OsString` arguments, grant Flatpak only the containing directory, and never
-  invoke a command shell. Dedicated arcade/laserdisc/pinball profiles fail
-  closed until their required machine arguments and assets are modeled.
+  invoke a command shell. Standalone MAME preserves ZIP/7z sets and passes an
+  exact `-rompath` plus set name. Hypseus accepts only a present TXT framefile
+  below a `vldp` or `singe` bundle with a ROM directory and complete support
+  tree, then passes exact framefile/home/data/ROM paths. Unsupported standalone
+  arcade machines fail closed instead of receiving a generic archive path;
+  only the legacy-known archive-oriented FinalBurn Neo, Flycast, and Supermodel
+  executables retain the direct-file contract.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -232,6 +237,11 @@ exits only after process cleanup. On the current Linux host it ran Flatpak
 RetroArch with `fceumm_libretro.so`, loaded the owned Faxanadu NES file, created
 a real Wayland/OpenGL session, and exited successfully. `--rom-launch-ui-probe`
 leaves the same `Play Locally` controls open for visual inspection.
+`--arcade-launch-probe` exercises the same chooser and supervisor with a
+persisted MAME standalone default. On the current Linux host it launched the
+installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path
+list and MAME's ROM-free `pong` driver, then exited successfully;
+`--arcade-launch-ui-probe` leaves that state open for review.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to

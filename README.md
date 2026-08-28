@@ -90,8 +90,15 @@ local files without losing native path bytes. Launches use direct argument
 vectors; Flatpak access is limited to the ROM directory. The unattended Linux
 gate has loaded a real NES ROM through the installed RetroArch Flatpak and the
 exact `fceumm` core. Arcade, laserdisc, and pinball files deliberately require
-their dedicated launch-profile work instead of being passed to a generic
-emulator command.
+dedicated profiles instead of being passed to a generic emulator command.
+Standalone MAME ZIP/7z sets now retain their archive and launch by exact set
+name with the collection and runtime ROM directories; Hypseus framefiles
+validate their `vldp`/`singe` bundle, ROM directory, and support assets before
+building its native laserdisc argument vector. Known archive-oriented CLI
+emulators (FinalBurn Neo, Flycast, and Supermodel) retain the legacy direct-file
+contract. The MAME Flatpak path has been runtime-verified with MAME's ROM-free
+Pong driver. Daphne acquisition layouts and TeknoParrot remain explicit
+follow-on work.
 
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder

@@ -331,6 +331,7 @@ pub fn build_launch_plan(
 
 pub fn inspect_rom_launch_availability(
     platform: &str,
+    rom_path: &Path,
     catalog_database: &Path,
     preference: Option<&crate::settings::EmulatorPreference>,
 ) -> Result<RomLaunchAvailability> {
@@ -343,6 +344,7 @@ pub fn inspect_rom_launch_availability(
     for definition in &definitions {
         if let Some(choice) =
             discover_definition(&definition.emulator, host, &path_entries, &flatpak_apps)
+            && standalone_rom_profile_supported(&choice, platform, rom_path)
         {
             options.push(RomEmulatorOption {
                 emulator_id: choice.id,
@@ -355,6 +357,9 @@ pub fn inspect_rom_launch_availability(
             });
         }
         for core in &definition.cores {
+            if is_arcade_family_platform(platform) && !is_arcade_archive(rom_path) {
+                continue;
+            }
             if let Some((executable, core_path)) =
                 discover_retroarch_core(core, host, &path_entries, &flatpak_apps)
             {
@@ -450,7 +455,7 @@ pub fn build_rom_launch_plan(
     if !rom_path.is_file() {
         bail!("local game file is missing: {}", rom_path.display());
     }
-    let current_directory = rom_path
+    let mut current_directory = rom_path
         .parent()
         .map(Path::to_path_buf)
         .context("local game file has no containing directory")?;
@@ -458,13 +463,30 @@ pub fn build_rom_launch_plan(
 
     match option.runtime_kind {
         EmulatorRuntimeKind::Standalone => {
-            if requires_specialized_arcade_profile(platform) {
+            if option.emulator_name.eq_ignore_ascii_case("MAME")
+                && is_arcade_family_platform(platform)
+            {
+                arguments.extend(mame_arcade_launch_arguments(rom_path, &option.executable)?);
+            } else if option.emulator_name.eq_ignore_ascii_case("Hypseus Singe")
+                && is_arcade_family_platform(platform)
+            {
+                let context = hypseus_launch_context(&option.executable, rom_path)?;
+                arguments.extend(context.arguments(&option.executable));
+                current_directory = context.support_root;
+            } else if is_generic_arcade_archive_emulator(&option.emulator_name)
+                && is_arcade_family_platform(platform)
+                && is_arcade_archive(rom_path)
+            {
+                arguments.push(path_argument_for_executable(rom_path, &option.executable));
+            } else if is_arcade_family_platform(platform) {
                 bail!(
-                    "{} requires its dedicated MAME, Daphne, or Hypseus launch profile",
-                    platform
+                    "{} does not yet have a safe {} standalone machine profile",
+                    platform,
+                    option.emulator_name
                 );
+            } else {
+                arguments.push(path_argument_for_executable(rom_path, &option.executable));
             }
-            arguments.push(path_argument_for_executable(rom_path, &option.executable));
         }
         EmulatorRuntimeKind::RetroArch => {
             let core_path = option
@@ -681,7 +703,7 @@ fn load_platform_emulator_definitions(
     host: HostPlatform,
     platform: &str,
 ) -> Result<Vec<PlatformEmulatorDefinition>> {
-    let platform_key = crate::catalog::normalize_platform_key(platform);
+    let platform_key = emulator_catalog_platform_key(platform);
     if platform_key.is_empty() {
         bail!("a platform is required for emulator discovery");
     }
@@ -1220,11 +1242,227 @@ fn path_argument_for_executable(path: &Path, executable: &EmulatorExecutable) ->
     }
 }
 
-fn requires_specialized_arcade_profile(platform: &str) -> bool {
+fn emulator_catalog_platform_key(platform: &str) -> String {
+    let key = crate::catalog::normalize_platform_key(platform);
+    if matches!(key.as_str(), "arcade-pinball" | "arcade-laserdisc") {
+        "arcade".to_owned()
+    } else {
+        key
+    }
+}
+
+fn is_arcade_family_platform(platform: &str) -> bool {
     matches!(
-        platform.trim().to_ascii_lowercase().as_str(),
-        "arcade" | "arcade pinball" | "arcade laserdisc"
+        crate::catalog::normalize_platform_key(platform).as_str(),
+        "arcade" | "arcade-pinball" | "arcade-laserdisc"
     )
+}
+
+fn is_arcade_archive(path: &Path) -> bool {
+    path.extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("zip") || extension.eq_ignore_ascii_case("7z")
+        })
+}
+
+fn standalone_rom_profile_supported(
+    emulator: &EmulatorChoice,
+    platform: &str,
+    rom_path: &Path,
+) -> bool {
+    if !is_arcade_family_platform(platform) {
+        return true;
+    }
+    if emulator.name.eq_ignore_ascii_case("MAME") {
+        return is_arcade_archive(rom_path);
+    }
+    if emulator.name.eq_ignore_ascii_case("Hypseus Singe") {
+        return hypseus_launch_context(&emulator.executable, rom_path).is_ok();
+    }
+    is_generic_arcade_archive_emulator(&emulator.name) && is_arcade_archive(rom_path)
+}
+
+fn is_generic_arcade_archive_emulator(name: &str) -> bool {
+    ["FinalBurn Neo", "Flycast", "Supermodel"]
+        .into_iter()
+        .any(|candidate| name.eq_ignore_ascii_case(candidate))
+}
+
+fn mame_arcade_launch_arguments(
+    rom_path: &Path,
+    executable: &EmulatorExecutable,
+) -> Result<Vec<OsString>> {
+    if !is_arcade_archive(rom_path) {
+        bail!(
+            "MAME arcade launch requires a ZIP or 7z ROM-set archive, not {}",
+            rom_path.display()
+        );
+    }
+    let romset = rom_path
+        .file_stem()
+        .filter(|stem| !stem.is_empty())
+        .context("MAME ROM-set archive has no set name")?;
+    let rom_parent = rom_path
+        .parent()
+        .context("MAME ROM-set archive has no containing directory")?;
+    let mut rompath = path_argument_for_executable(rom_parent, executable);
+    if let Some(runtime) = mame_runtime_roms_directory(executable) {
+        let runtime = path_argument_for_executable(&runtime, executable);
+        if runtime != rompath {
+            rompath.push(";");
+            rompath.push(runtime);
+        }
+    }
+    Ok(vec![OsString::from("-rompath"), rompath, romset.to_owned()])
+}
+
+fn mame_runtime_roms_directory(executable: &EmulatorExecutable) -> Option<PathBuf> {
+    let base_dirs = directories::BaseDirs::new()?;
+    match executable {
+        EmulatorExecutable::Flatpak { app_id, .. }
+            if app_id.eq_ignore_ascii_case("org.mamedev.MAME") =>
+        {
+            Some(
+                base_dirs
+                    .home_dir()
+                    .join(".var/app/org.mamedev.MAME/data/mame/roms"),
+            )
+        }
+        EmulatorExecutable::Flatpak { .. } => None,
+        EmulatorExecutable::Native(_) => {
+            if cfg!(target_os = "windows") {
+                Some(base_dirs.data_local_dir().join("mame/roms"))
+            } else {
+                Some(base_dirs.home_dir().join(".mame/roms"))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct HypseusLaunchContext {
+    game_name: OsString,
+    framefile: PathBuf,
+    support_root: PathBuf,
+    rom_directory: PathBuf,
+}
+
+impl HypseusLaunchContext {
+    fn arguments(&self, executable: &EmulatorExecutable) -> Vec<OsString> {
+        let support_root = hypseus_directory_argument(&self.support_root, executable);
+        vec![
+            self.game_name.clone(),
+            OsString::from("vldp"),
+            OsString::from("-fullscreen"),
+            OsString::from("-framefile"),
+            path_argument_for_executable(&self.framefile, executable),
+            OsString::from("-homedir"),
+            support_root.clone(),
+            OsString::from("-datadir"),
+            support_root,
+            OsString::from("-romdir"),
+            path_argument_for_executable(&self.rom_directory, executable),
+        ]
+    }
+}
+
+fn hypseus_launch_context(
+    executable: &EmulatorExecutable,
+    framefile: &Path,
+) -> Result<HypseusLaunchContext> {
+    if !framefile.is_file()
+        || !framefile
+            .extension()
+            .and_then(OsStr::to_str)
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("txt"))
+    {
+        bail!(
+            "Hypseus Singe requires a present laserdisc framefile, not {}",
+            framefile.display()
+        );
+    }
+    let game_name = framefile
+        .file_stem()
+        .filter(|stem| !stem.is_empty())
+        .context("Hypseus framefile has no game name")?
+        .to_owned();
+    let bundle_root = framefile
+        .ancestors()
+        .skip(1)
+        .find(|ancestor| {
+            ancestor
+                .file_name()
+                .and_then(OsStr::to_str)
+                .is_some_and(|name| {
+                    name.eq_ignore_ascii_case("vldp") || name.eq_ignore_ascii_case("singe")
+                })
+        })
+        .and_then(Path::parent)
+        .context("Hypseus framefile is not inside a vldp or singe bundle")?
+        .to_path_buf();
+    let rom_directory = bundle_root.join("roms");
+    if !rom_directory.is_dir() {
+        bail!(
+            "Hypseus laserdisc bundle is missing ROM directory {}",
+            rom_directory.display()
+        );
+    }
+    let support_root = resolve_hypseus_support_root(executable)?;
+    Ok(HypseusLaunchContext {
+        game_name,
+        framefile: framefile.to_path_buf(),
+        support_root,
+        rom_directory,
+    })
+}
+
+fn resolve_hypseus_support_root(executable: &EmulatorExecutable) -> Result<PathBuf> {
+    let EmulatorExecutable::Native(executable) = executable else {
+        bail!("Hypseus Flatpak support assets are not yet represented by the emulator catalog");
+    };
+    let executable_parent = executable
+        .parent()
+        .context("Hypseus executable has no containing directory")?;
+    let mut candidates = vec![executable_parent.to_path_buf()];
+    if cfg!(target_os = "macos")
+        && let Some(contents) = executable_parent.parent()
+    {
+        candidates.push(contents.join("Resources"));
+    }
+    if let Some(prefix) = executable_parent.parent() {
+        candidates.push(prefix.join("share/hypseus-singe"));
+        candidates.push(prefix.join("share/hypseus"));
+    }
+    candidates.extend([
+        PathBuf::from("/usr/local/share/hypseus-singe"),
+        PathBuf::from("/usr/share/hypseus-singe"),
+    ]);
+    candidates.sort();
+    candidates.dedup();
+    candidates
+        .into_iter()
+        .find(|candidate| hypseus_support_tree_complete(candidate))
+        .with_context(|| {
+            format!(
+                "Hypseus support assets were not found beside {} or in a platform share directory",
+                executable.display()
+            )
+        })
+}
+
+fn hypseus_support_tree_complete(directory: &Path) -> bool {
+    directory.join("pics/overlayleds2.bmp").is_file()
+        && directory.join("fonts/default.ttf").is_file()
+        && directory.join("hypinput.ini").is_file()
+}
+
+fn hypseus_directory_argument(directory: &Path, executable: &EmulatorExecutable) -> OsString {
+    let mut argument = path_argument_for_executable(directory, executable);
+    if !directory.as_os_str().is_empty() {
+        argument.push(std::path::MAIN_SEPARATOR_STR);
+    }
+    argument
 }
 
 fn flatpak_mount_point(path: &Path) -> Result<PathBuf> {
@@ -1941,6 +2179,9 @@ del *.rom
             definitions[0].emulator.packages["flatpak"],
             ["dev.mesen.Mesen"]
         );
+        assert_eq!(emulator_catalog_platform_key("Arcade Laserdisc"), "arcade");
+        assert_eq!(emulator_catalog_platform_key("Arcade Pinball"), "arcade");
+        assert!(is_arcade_family_platform("arcade-laserdisc"));
     }
 
     #[test]
@@ -2009,22 +2250,124 @@ del *.rom
     }
 
     #[test]
-    fn generic_rom_plan_rejects_arcade_without_a_machine_profile() {
+    fn mame_arcade_plan_uses_rompath_and_set_name_without_extracting_archive() {
         let temp = TempDir::new().unwrap();
-        let rom = temp.path().join("game.zip");
-        fs::write(&rom, b"rom").unwrap();
+        let rom = temp.path().join("pong.zip");
+        fs::write(&rom, b"romset").unwrap();
         let option = RomEmulatorOption {
             emulator_id: "mame-id".to_owned(),
             emulator_name: "MAME".to_owned(),
             runtime_kind: EmulatorRuntimeKind::Standalone,
             core_name: String::new(),
-            executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/mame")),
+            executable: EmulatorExecutable::Flatpak {
+                command: PathBuf::from("/usr/bin/flatpak"),
+                app_id: "org.mamedev.MAME".to_owned(),
+            },
+            core_path: None,
+            recommended: true,
+        };
+
+        let plan = build_rom_launch_plan(&rom, "Arcade Laserdisc", &option).unwrap();
+        assert_eq!(plan.program, Path::new("/usr/bin/flatpak"));
+        assert_eq!(plan.arguments[2], "org.mamedev.MAME");
+        assert_eq!(plan.arguments[3], "-rompath");
+        assert!(
+            plan.arguments[4]
+                .to_string_lossy()
+                .contains(&temp.path().to_string_lossy().to_string())
+        );
+        assert_eq!(plan.arguments[5], "pong");
+        assert!(
+            !plan
+                .arguments
+                .iter()
+                .any(|argument| argument == rom.as_os_str())
+        );
+    }
+
+    #[test]
+    fn hypseus_plan_validates_bundle_and_support_tree() {
+        let temp = TempDir::new().unwrap();
+        let support = temp.path().join("hypseus");
+        let bundle = temp.path().join("Laserdisc Collection/Hypseus Singe");
+        let framefile = bundle.join("vldp/lair/lair.txt");
+        let rom_directory = bundle.join("roms");
+        fs::create_dir_all(support.join("pics")).unwrap();
+        fs::create_dir_all(support.join("fonts")).unwrap();
+        fs::create_dir_all(framefile.parent().unwrap()).unwrap();
+        fs::create_dir_all(&rom_directory).unwrap();
+        fs::write(support.join("pics/overlayleds2.bmp"), b"leds").unwrap();
+        fs::write(support.join("fonts/default.ttf"), b"font").unwrap();
+        fs::write(support.join("hypinput.ini"), b"input").unwrap();
+        fs::write(&framefile, b"video.m2v\n").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "hypseus-id".to_owned(),
+            emulator_name: "Hypseus Singe".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Native(support.join("hypseus")),
+            core_path: None,
+            recommended: true,
+        };
+
+        let plan = build_rom_launch_plan(&framefile, "Arcade Laserdisc", &option).unwrap();
+        assert_eq!(plan.current_directory, support);
+        assert_eq!(plan.arguments[0], "lair");
+        assert_eq!(plan.arguments[1], "vldp");
+        assert!(
+            plan.arguments
+                .iter()
+                .any(|argument| argument == "-framefile")
+        );
+        assert!(
+            plan.arguments
+                .iter()
+                .any(|argument| argument == framefile.as_os_str())
+        );
+        assert!(plan.arguments.iter().any(|argument| argument == "-romdir"));
+        assert!(plan.arguments.iter().any(|argument| {
+            argument
+                .to_string_lossy()
+                .contains(&rom_directory.to_string_lossy().to_string())
+        }));
+    }
+
+    #[test]
+    fn known_arcade_cli_emulator_receives_the_archive_path_directly() {
+        let temp = TempDir::new().unwrap();
+        let rom = temp.path().join("game.zip");
+        fs::write(&rom, b"rom").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "supermodel-id".to_owned(),
+            emulator_name: "Supermodel".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/supermodel")),
+            core_path: None,
+            recommended: true,
+        };
+
+        let plan = build_rom_launch_plan(&rom, "Arcade", &option).unwrap();
+        assert_eq!(plan.arguments, [rom.into_os_string()]);
+    }
+
+    #[test]
+    fn arcade_emulator_without_a_safe_profile_is_rejected() {
+        let temp = TempDir::new().unwrap();
+        let rom = temp.path().join("game.zip");
+        fs::write(&rom, b"rom").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "teknoparrot-id".to_owned(),
+            emulator_name: "TeknoParrot".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/teknoparrot")),
             core_path: None,
             recommended: true,
         };
 
         let error = build_rom_launch_plan(&rom, "Arcade", &option).unwrap_err();
-        assert!(error.to_string().contains("dedicated MAME"));
+        assert!(error.to_string().contains("safe TeknoParrot"));
     }
 
     #[test]
