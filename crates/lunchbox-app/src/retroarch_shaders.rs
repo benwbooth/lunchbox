@@ -167,8 +167,13 @@ pub fn install(
             "existing RetroArch shader packs were not installed by Lunchbox; confirm replacement before continuing"
         );
     }
-    let cache = shader_cache_directory()?;
-    fs::create_dir_all(&cache)?;
+    let cache = if archive_directory.is_none() {
+        let cache = shader_cache_directory()?;
+        fs::create_dir_all(&cache)?;
+        Some(cache)
+    } else {
+        None
+    };
     let mut archives = Vec::with_capacity(SHADER_PACKS.len());
     for (index, pack) in SHADER_PACKS.iter().enumerate() {
         check_cancelled(cancelled)?;
@@ -179,7 +184,14 @@ pub fn install(
         let archive = if let Some(directory) = archive_directory.as_deref() {
             resolve_local_archive(pack, directory)?
         } else {
-            resolve_official_archive(pack, &cache, cancelled, Arc::clone(&progress))?
+            resolve_official_archive(
+                pack,
+                cache
+                    .as_deref()
+                    .context("shader cache was not initialized")?,
+                cancelled,
+                Arc::clone(&progress),
+            )?
         };
         archives.push((*pack, archive));
     }

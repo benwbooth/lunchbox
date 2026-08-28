@@ -99,12 +99,16 @@ canonical metadata. See [external torrent providers](docs/EXTERNAL_TORRENT_PROVI
 
 The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age
-rating, release type, and personal notes. Edits are durable per stable game UUID
-in the writable profile database and immediately update desktop search, sorting,
-collections, details, and couch mode. The canonical title, platform, provider
-links, ROM identity, and file records remain read-only and continue to drive
-Minerva matching, artwork lookup, downloads, activity, and launching. Restoring
-catalog values removes the local overlay instead of rewriting source data.
+rating, release type, personal notes, and per-game tags. Edits are durable per
+stable game UUID in the writable profile database and immediately update desktop
+search, sorting, collections, details, and Couch Mode. Tags appear as clickable
+chips, compose with the other library filters, and can drive exact smart-
+collection rules. Metadata and tag changes publish in one SQLite transaction;
+tag spelling is normalized and case-insensitive duplicates are rejected. The
+canonical title, platform, provider links, ROM identity, and file records remain
+read-only and continue to drive Minerva matching, artwork lookup, downloads,
+activity, and launching. Restoring catalog values removes only the metadata
+overlay and keeps the user's tags.
 
 The Minerva Laserdisc Collection is handled as machine media instead of a
 single guessed file. Exact-title records from the pinned canonical LibRetro

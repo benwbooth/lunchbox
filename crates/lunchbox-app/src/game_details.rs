@@ -42,6 +42,7 @@ pub struct GameDetails {
     pub esrb: String,
     pub release_type: String,
     pub notes: String,
+    pub tags: Vec<String>,
     pub canonical_metadata: crate::settings::GameMetadata,
     pub effective_metadata: crate::settings::GameMetadata,
     pub alternate_titles: Vec<AlternateTitle>,
@@ -247,9 +248,13 @@ fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
         release_type: details.release_type.clone(),
         notes: details.notes.clone(),
     };
-    let metadata_override = crate::settings::SettingsStore::open_default()?
+    let settings = crate::settings::SettingsStore::open_default()?;
+    let metadata_override = settings
         .game_metadata_override(&details.id)
         .context("loading local game metadata overrides")?;
+    details.tags = settings
+        .game_tags(&details.id)
+        .context("loading local game tags")?;
     let effective = metadata_override.apply(&canonical);
     details.title.clone_from(&effective.title);
     details.description.clone_from(&effective.description);

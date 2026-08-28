@@ -18,6 +18,7 @@ const MAX_PORTABLE_GAMES: usize = 500_000;
 pub struct SmartCollectionRules {
     pub title_contains: String,
     pub platform: String,
+    pub tag: String,
     pub availability: String,
     pub favorite: String,
     pub completion_state: String,
@@ -29,6 +30,7 @@ impl Default for SmartCollectionRules {
         Self {
             title_contains: String::new(),
             platform: String::new(),
+            tag: String::new(),
             availability: "any".to_owned(),
             favorite: "any".to_owned(),
             completion_state: "any".to_owned(),
@@ -41,6 +43,7 @@ impl SmartCollectionRules {
     pub fn normalized(mut self) -> Result<Self> {
         self.title_contains = self.title_contains.trim().to_owned();
         self.platform = self.platform.trim().to_owned();
+        self.tag = self.tag.trim().to_owned();
         self.availability = self.availability.trim().to_owned();
         self.favorite = self.favorite.trim().to_owned();
         self.completion_state = self.completion_state.trim().to_owned();
@@ -52,6 +55,9 @@ impl SmartCollectionRules {
     pub fn validate(&self) -> Result<()> {
         if self.title_contains.chars().count() > 200 || self.platform.chars().count() > 200 {
             bail!("smart collection text rules must be 200 characters or fewer");
+        }
+        if self.tag.chars().count() > 50 {
+            bail!("smart collection tags must be 50 characters or fewer");
         }
         if !matches!(
             self.availability.as_str(),
@@ -105,6 +111,7 @@ impl SmartCollectionRules {
             completion_states,
             title_needle,
             &game.title,
+            &[],
         )
     }
 
@@ -115,6 +122,7 @@ impl SmartCollectionRules {
         completion_states: &HashMap<String, String>,
         title_needle: &str,
         display_title: &str,
+        tags: &[String],
     ) -> bool {
         let canonical_title = game
             .search_key
@@ -125,6 +133,11 @@ impl SmartCollectionRules {
             || canonical_title.contains(title_needle)
             || display_title.to_lowercase().contains(title_needle);
         let platform_matches = self.platform.is_empty() || game.platform == self.platform;
+        let normalized_rule_tag = self.tag.to_lowercase();
+        let tag_matches = self.tag.is_empty()
+            || tags
+                .iter()
+                .any(|tag| tag.to_lowercase() == normalized_rule_tag);
         let availability_matches = match self.availability.as_str() {
             "installed" => game.local,
             "downloadable" => game.downloadable && !game.local,
@@ -150,6 +163,7 @@ impl SmartCollectionRules {
         };
         title_matches
             && platform_matches
+            && tag_matches
             && availability_matches
             && favorite_matches
             && completion_matches
@@ -163,6 +177,9 @@ impl SmartCollectionRules {
         }
         if !self.platform.is_empty() {
             rules.push(self.platform.clone());
+        }
+        if !self.tag.is_empty() {
+            rules.push(format!("tagged {}", self.tag));
         }
         match self.availability.as_str() {
             "installed" => rules.push("installed".to_owned()),
@@ -422,6 +439,34 @@ mod tests {
         assert!(rules.matches(&metroid, &favorites, &HashMap::new()));
         assert!(!rules.matches(&metroid, &HashSet::new(), &HashMap::new()));
         assert!(rules.summary().contains("Nintendo Entertainment System"));
+    }
+
+    #[test]
+    fn smart_rules_match_exact_user_tags() {
+        let rules = SmartCollectionRules {
+            tag: "Family".to_owned(),
+            ..SmartCollectionRules::default()
+        }
+        .normalized()
+        .unwrap();
+        let metroid = game("metroid", "Metroid", "Nintendo Entertainment System");
+        assert!(rules.matches_with_display_title(
+            &metroid,
+            &HashSet::new(),
+            &HashMap::new(),
+            "",
+            "Metroid",
+            &["family".to_owned(), "Couch Co-op".to_owned()],
+        ));
+        assert!(!rules.matches_with_display_title(
+            &metroid,
+            &HashSet::new(),
+            &HashMap::new(),
+            "",
+            "Metroid",
+            &["Family Friendly".to_owned()],
+        ));
+        assert_eq!(rules.summary(), "tagged Family");
     }
 
     #[test]

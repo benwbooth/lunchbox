@@ -47,7 +47,10 @@ pub mod qobject {
         #[qproperty(QString, metadata_esrb)]
         #[qproperty(QString, metadata_release_type)]
         #[qproperty(QString, metadata_notes)]
+        #[qproperty(QString, metadata_tags)]
         #[qproperty(i32, metadata_revision)]
+        #[qproperty(i32, tag_count)]
+        #[qproperty(i32, tag_revision)]
         #[qproperty(i32, variant_count)]
         #[qproperty(i32, alternate_title_count)]
         #[qproperty(QString, message)]
@@ -141,6 +144,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn reset_metadata(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn tag_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
         fn load_bundle_files(self: Pin<&mut GameDetailsModel>, index: i32);
@@ -349,7 +355,10 @@ pub struct GameDetailsModelRust {
     metadata_esrb: QString,
     metadata_release_type: QString,
     metadata_notes: QString,
+    metadata_tags: QString,
     metadata_revision: i32,
+    tag_count: i32,
+    tag_revision: i32,
     variant_count: i32,
     alternate_title_count: i32,
     message: QString,
@@ -421,6 +430,7 @@ pub struct GameDetailsModelRust {
     canonical_metadata: GameMetadata,
     effective_metadata: GameMetadata,
     metadata_generation: u64,
+    current_tags: Vec<String>,
     bundles: Vec<MinervaBundle>,
     variants: Vec<GameVariant>,
     alternate_titles: Vec<AlternateTitle>,
@@ -484,7 +494,10 @@ impl Default for GameDetailsModelRust {
             metadata_esrb: QString::default(),
             metadata_release_type: QString::default(),
             metadata_notes: QString::default(),
+            metadata_tags: QString::default(),
             metadata_revision: 0,
+            tag_count: 0,
+            tag_revision: 0,
             variant_count: 0,
             alternate_title_count: 0,
             message: QString::from("Select a game to inspect it."),
@@ -556,6 +569,7 @@ impl Default for GameDetailsModelRust {
             canonical_metadata: GameMetadata::default(),
             effective_metadata: GameMetadata::default(),
             metadata_generation: 0,
+            current_tags: Vec::new(),
             bundles: Vec::new(),
             variants: Vec::new(),
             alternate_titles: Vec::new(),
@@ -615,6 +629,54 @@ fn local_file_url(path: &std::path::Path) -> QUrl {
 
 fn count_i32(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
+}
+
+fn metadata_save_messages(
+    reset_requested: bool,
+    metadata_is_canonical: bool,
+    tag_count: usize,
+) -> (String, String) {
+    let tag_label = if tag_count == 1 { "tag" } else { "tags" };
+    if reset_requested {
+        let detail = if tag_count == 0 {
+            "Restored canonical catalog metadata.".to_owned()
+        } else {
+            format!("Restored canonical catalog metadata and kept {tag_count} local {tag_label}.")
+        };
+        return (
+            detail,
+            if tag_count == 0 {
+                "Canonical catalog metadata restored.".to_owned()
+            } else {
+                "Canonical catalog metadata restored. Local tags were kept.".to_owned()
+            },
+        );
+    }
+    if metadata_is_canonical {
+        if tag_count == 0 {
+            return (
+                "No local presentation changes are stored.".to_owned(),
+                "Canonical catalog metadata and identity are unchanged.".to_owned(),
+            );
+        }
+        return (
+            format!("Saved {tag_count} local {tag_label} without changing canonical metadata."),
+            "Local tags saved. Downloads and matching still use canonical identity.".to_owned(),
+        );
+    }
+    if tag_count == 0 {
+        return (
+            "Saved local metadata without changing canonical identity.".to_owned(),
+            "Local metadata saved. Downloads and matching still use canonical identity.".to_owned(),
+        );
+    }
+    (
+        format!(
+            "Saved local metadata and {tag_count} {tag_label} without changing canonical identity."
+        ),
+        "Local metadata and tags saved. Downloads and matching still use canonical identity."
+            .to_owned(),
+    )
 }
 
 fn format_play_time(seconds: i64, play_count: i64) -> String {
@@ -845,6 +907,8 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_metadata_release_type(qstring(&metadata.release_type));
         self.as_mut().set_metadata_notes(qstring(&metadata.notes));
+        let tags = self.as_ref().rust().current_tags.join(", ");
+        self.as_mut().set_metadata_tags(qstring(tags));
         self.as_mut().set_metadata_message(qstring(
             "Only presentation metadata is edited. Stable game identity, platform, provider matches, and files are preserved.",
         ));
@@ -918,7 +982,8 @@ impl qobject::GameDetailsModel {
                 .to_owned(),
             notes: self.as_ref().metadata_notes().to_string().trim().to_owned(),
         };
-        self.as_mut().start_metadata_save(effective);
+        let tags = self.as_ref().metadata_tags().to_string();
+        self.as_mut().start_metadata_save(effective, tags, false);
     }
 
     pub fn reset_metadata(mut self: Pin<&mut Self>) {
@@ -926,15 +991,26 @@ impl qobject::GameDetailsModel {
             return;
         }
         let canonical = self.as_ref().rust().canonical_metadata.clone();
-        self.as_mut().start_metadata_save(canonical);
+        let tags = self.as_ref().rust().current_tags.join(", ");
+        self.as_mut().start_metadata_save(canonical, tags, true);
     }
 
-    fn start_metadata_save(mut self: Pin<&mut Self>, effective: GameMetadata) {
+    fn start_metadata_save(
+        mut self: Pin<&mut Self>,
+        effective: GameMetadata,
+        tag_input: String,
+        reset_requested: bool,
+    ) {
         let canonical = self.as_ref().rust().canonical_metadata.clone();
         let metadata_override = GameMetadataOverride::from_effective(&canonical, &effective);
         if let Err(error) = metadata_override.validate() {
             self.as_mut()
                 .set_metadata_message(qstring(format!("Could not save metadata: {error}")));
+            return;
+        }
+        if let Err(error) = crate::settings::parse_game_tags(&tag_input) {
+            self.as_mut()
+                .set_metadata_message(qstring(format!("Could not save tags: {error}")));
             return;
         }
         self.as_mut().rust_mut().metadata_generation =
@@ -954,12 +1030,13 @@ impl qobject::GameDetailsModel {
             .spawn(move || {
                 let result = SettingsStore::open_default()
                     .and_then(|store| {
-                        store.save_game_metadata_override(
+                        store.save_game_metadata_and_tags(
                             &game_uid,
                             launchbox_db_id,
                             &canonical_title,
                             &platform,
                             &metadata_override,
+                            &tag_input,
                         )
                     })
                     .map_err(|error| error.to_string());
@@ -968,6 +1045,7 @@ impl qobject::GameDetailsModel {
                         generation,
                         effective,
                         saved_override,
+                        reset_requested,
                         result,
                     );
                 });
@@ -984,15 +1062,21 @@ impl qobject::GameDetailsModel {
         generation: u64,
         effective: GameMetadata,
         metadata_override: GameMetadataOverride,
-        result: Result<(), String>,
+        reset_requested: bool,
+        result: Result<Vec<String>, String>,
     ) {
         if generation != self.as_ref().rust().metadata_generation {
             return;
         }
         self.as_mut().set_metadata_busy(false);
         match result {
-            Ok(()) => {
-                let reset = metadata_override.is_empty();
+            Ok(tags) => {
+                let metadata_is_canonical = metadata_override.is_empty();
+                let tag_count = tags.len();
+                self.as_mut().rust_mut().current_tags = tags;
+                self.as_mut().set_tag_count(count_i32(tag_count));
+                let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
+                self.as_mut().set_tag_revision(tag_revision);
                 self.as_mut().rust_mut().effective_metadata = effective.clone();
                 self.as_mut().set_title(qstring(&effective.title));
                 self.as_mut()
@@ -1008,17 +1092,13 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_release_type(qstring(&effective.release_type));
                 self.as_mut().set_notes(qstring(&effective.notes));
-                self.as_mut().set_metadata_has_override(!reset);
-                self.as_mut().set_metadata_message(qstring(if reset {
-                    "Restored canonical catalog metadata."
-                } else {
-                    "Saved local metadata without changing canonical identity."
-                }));
-                self.as_mut().set_message(qstring(if reset {
-                    "Canonical catalog metadata restored."
-                } else {
-                    "Local metadata saved. Downloads and matching still use canonical identity."
-                }));
+                self.as_mut()
+                    .set_metadata_has_override(!metadata_is_canonical);
+                let (metadata_message, message) =
+                    metadata_save_messages(reset_requested, metadata_is_canonical, tag_count);
+                self.as_mut()
+                    .set_metadata_message(qstring(metadata_message));
+                self.as_mut().set_message(qstring(message));
                 self.as_mut().set_metadata_open(false);
                 let revision = self.as_ref().metadata_revision().wrapping_add(1);
                 self.as_mut().set_metadata_revision(revision);
@@ -1028,6 +1108,14 @@ impl qobject::GameDetailsModel {
                 .as_mut()
                 .set_metadata_message(qstring(format!("Could not save metadata: {error}"))),
         }
+    }
+
+    pub fn tag_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().current_tags.get(index))
+            .map(qstring)
+            .unwrap_or_default()
     }
 
     fn clear_details(mut self: Pin<&mut Self>) {
@@ -1041,6 +1129,11 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_notes(QString::default());
+        self.as_mut().set_metadata_tags(QString::default());
+        self.as_mut().rust_mut().current_tags.clear();
+        self.as_mut().set_tag_count(0);
+        let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
+        self.as_mut().set_tag_revision(tag_revision);
         self.as_mut().set_variant_count(0);
         self.as_mut().set_alternate_title_count(0);
         self.as_mut().set_media_visible(false);
@@ -1153,6 +1246,11 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
                 self.as_mut().set_notes(qstring(&details.notes));
+                let tag_count = details.tags.len();
+                self.as_mut().rust_mut().current_tags = details.tags.clone();
+                self.as_mut().set_tag_count(count_i32(tag_count));
+                let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
+                self.as_mut().set_tag_revision(tag_revision);
                 let has_override = !GameMetadataOverride::from_effective(
                     &details.canonical_metadata,
                     &details.effective_metadata,
@@ -3688,7 +3786,7 @@ fn queue_download(
 mod tests {
     use super::{
         LaunchProfileTarget, format_last_played, format_play_time, format_release_date,
-        validate_launch_profile_template,
+        metadata_save_messages, validate_launch_profile_template,
     };
 
     #[test]
@@ -3720,5 +3818,21 @@ mod tests {
         validate_launch_profile_template(&target, "-L %{core} %f").unwrap();
         let error = validate_launch_profile_template(&target, "%{config}").unwrap_err();
         assert!(error.to_string().contains("unavailable"));
+    }
+
+    #[test]
+    fn metadata_save_copy_distinguishes_tags_from_metadata_resets() {
+        assert_eq!(
+            metadata_save_messages(false, true, 2).0,
+            "Saved 2 local tags without changing canonical metadata."
+        );
+        assert_eq!(
+            metadata_save_messages(true, true, 2).0,
+            "Restored canonical catalog metadata and kept 2 local tags."
+        );
+        assert_eq!(
+            metadata_save_messages(false, false, 1).0,
+            "Saved local metadata and 1 tag without changing canonical identity."
+        );
     }
 }

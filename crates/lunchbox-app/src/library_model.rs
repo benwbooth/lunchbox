@@ -26,6 +26,7 @@ pub mod qobject {
         #[qproperty(QString, status_message)]
         #[qproperty(QString, current_platform)]
         #[qproperty(QString, availability_filter)]
+        #[qproperty(QString, tag_filter)]
         #[qproperty(bool, loading)]
         #[qproperty(bool, filtering)]
         #[qproperty(bool, ready)]
@@ -72,6 +73,8 @@ pub mod qobject {
         #[qproperty(i32, activity_revision)]
         #[qproperty(i32, media_revision)]
         #[qproperty(i32, metadata_revision)]
+        #[qproperty(i32, tag_count)]
+        #[qproperty(i32, tag_revision)]
         #[qproperty(i32, platform_revision)]
         type LibraryModel = super::LibraryModelRust;
 
@@ -89,6 +92,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn refresh_metadata(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn select_tag_filter(self: Pin<&mut LibraryModel>, tag: QString);
+
+        #[qinvokable]
+        fn tag_name_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn tag_game_count_at(self: &LibraryModel, index: i32) -> i32;
 
         #[qinvokable]
         fn apply_filter(
@@ -245,6 +257,7 @@ pub mod qobject {
             self: Pin<&mut LibraryModel>,
             title_contains: QString,
             platform: QString,
+            tag: QString,
             availability: QString,
             favorite: QString,
             completion_state: QString,
@@ -364,7 +377,7 @@ use crate::media::{
 };
 use crate::settings::{
     GameMetadataOverride, LibraryPreferences, PlayActivity, SettingsStore, UserCollection,
-    UserCollections,
+    UserCollections, UserTag, UserTags,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -376,6 +389,7 @@ type CatalogLoadResult = Result<
         Result<UserCollections, String>,
         Result<Vec<PlayActivity>, String>,
         Result<HashMap<String, GameMetadataOverride>, String>,
+        Result<UserTags, String>,
     ),
     String,
 >;
@@ -434,6 +448,7 @@ pub struct LibraryModelRust {
     status_message: QString,
     current_platform: QString,
     availability_filter: QString,
+    tag_filter: QString,
     loading: bool,
     filtering: bool,
     ready: bool,
@@ -480,6 +495,8 @@ pub struct LibraryModelRust {
     activity_revision: i32,
     media_revision: i32,
     metadata_revision: i32,
+    tag_count: i32,
+    tag_revision: i32,
     platform_revision: i32,
     catalog: Arc<Catalog>,
     media: Arc<MediaIndex>,
@@ -505,6 +522,8 @@ pub struct LibraryModelRust {
     collection_order: Arc<HashMap<String, Arc<Vec<String>>>>,
     completion_states: Arc<HashMap<String, String>>,
     metadata_titles: Arc<HashMap<String, String>>,
+    tags: Arc<Vec<UserTag>>,
+    game_tags: Arc<HashMap<String, Vec<String>>>,
     metadata_generation: u64,
     game_index_by_id: Arc<HashMap<String, usize>>,
     current_search: String,
@@ -520,6 +539,7 @@ impl Default for LibraryModelRust {
             status_message: QString::from("Starting instantly; catalog loading is deferred."),
             current_platform: QString::default(),
             availability_filter: QString::default(),
+            tag_filter: QString::default(),
             loading: false,
             filtering: false,
             ready: false,
@@ -570,6 +590,8 @@ impl Default for LibraryModelRust {
             activity_revision: 0,
             media_revision: 0,
             metadata_revision: 0,
+            tag_count: 0,
+            tag_revision: 0,
             platform_revision: 0,
             catalog: Arc::new(Catalog::default()),
             media: Arc::new(MediaIndex::default()),
@@ -595,6 +617,8 @@ impl Default for LibraryModelRust {
             collection_order: Arc::new(HashMap::new()),
             completion_states: Arc::new(HashMap::new()),
             metadata_titles: Arc::new(HashMap::new()),
+            tags: Arc::new(Vec::new()),
+            game_tags: Arc::new(HashMap::new()),
             metadata_generation: 0,
             game_index_by_id: Arc::new(HashMap::new()),
             current_search: String::new(),
@@ -647,6 +671,7 @@ fn collection_member_game(
 fn smart_rules_from_fields(
     title_contains: QString,
     platform: QString,
+    tag: QString,
     availability: QString,
     favorite: QString,
     completion_state: QString,
@@ -655,6 +680,7 @@ fn smart_rules_from_fields(
     SmartCollectionRules {
         title_contains: title_contains.to_string(),
         platform: platform.to_string(),
+        tag: tag.to_string(),
         availability: availability.to_string(),
         favorite: favorite.to_string(),
         completion_state: completion_state.to_string(),
@@ -737,14 +763,16 @@ impl qobject::LibraryModel {
             .name("lunchbox-metadata-load".into())
             .spawn(move || {
                 let result = SettingsStore::open_default()
-                    .and_then(|store| store.all_game_metadata_overrides())
-                    .map(|metadata| {
-                        metadata
+                    .and_then(|store| {
+                        let metadata = store.all_game_metadata_overrides()?;
+                        let tags = store.all_user_tags()?;
+                        let titles = metadata
                             .into_iter()
                             .filter_map(|(game_uid, metadata)| {
                                 metadata.title.map(|title| (game_uid, title))
                             })
-                            .collect::<HashMap<_, _>>()
+                            .collect::<HashMap<_, _>>();
+                        Ok((titles, tags))
                     })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -761,17 +789,34 @@ impl qobject::LibraryModel {
     fn finish_metadata_refresh(
         mut self: Pin<&mut Self>,
         generation: u64,
-        result: Result<HashMap<String, String>, String>,
+        result: Result<(HashMap<String, String>, UserTags), String>,
     ) {
         if generation != self.as_ref().rust().metadata_generation {
             return;
         }
         match result {
-            Ok(metadata_titles) => {
+            Ok((metadata_titles, tags)) => {
                 self.as_mut().begin_reset_model();
                 self.as_mut().rust_mut().metadata_titles = Arc::new(metadata_titles);
+                self.as_mut().rust_mut().game_tags = Arc::new(tags.game_tags);
+                self.as_mut().rust_mut().tags = Arc::new(tags.tags);
                 self.as_mut().rebuild_smart_collections();
                 self.as_mut().end_reset_model();
+                let tag_count = self.as_ref().rust().tags.len();
+                self.as_mut().set_tag_count(saturating_i32(tag_count));
+                let active_tag_filter = self.as_ref().tag_filter().to_string().to_lowercase();
+                if !active_tag_filter.is_empty()
+                    && !self
+                        .as_ref()
+                        .rust()
+                        .tags
+                        .iter()
+                        .any(|tag| tag.name.to_lowercase() == active_tag_filter)
+                {
+                    self.as_mut().set_tag_filter(QString::default());
+                }
+                let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
+                self.as_mut().set_tag_revision(tag_revision);
                 let collection_revision = self.as_ref().collection_revision().wrapping_add(1);
                 self.as_mut().set_collection_revision(collection_revision);
                 let metadata_revision = self.as_ref().metadata_revision().wrapping_add(1);
@@ -785,6 +830,48 @@ impl qobject::LibraryModel {
                 "Could not refresh metadata overrides: {error}"
             ))),
         }
+    }
+
+    pub fn select_tag_filter(mut self: Pin<&mut Self>, tag: QString) {
+        let requested = tag.to_string();
+        let normalized_request = requested.trim().to_lowercase();
+        let canonical = if requested.trim().is_empty() {
+            String::new()
+        } else {
+            self.as_ref()
+                .rust()
+                .tags
+                .iter()
+                .find(|tag| tag.name.to_lowercase() == normalized_request)
+                .map(|tag| tag.name.clone())
+                .unwrap_or_default()
+        };
+        if self.as_ref().tag_filter().to_string() == canonical {
+            return;
+        }
+        self.as_mut().set_tag_filter(qstring(&canonical));
+        if *self.as_ref().ready() {
+            let search = qstring(&self.as_ref().rust().current_search);
+            let platform = self.as_ref().current_platform().clone();
+            let availability = self.as_ref().availability_filter().clone();
+            self.as_mut().apply_filter(search, platform, availability);
+        }
+    }
+
+    pub fn tag_name_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().tags.get(index))
+            .map(|tag| qstring(&tag.name))
+            .unwrap_or_default()
+    }
+
+    pub fn tag_game_count_at(&self, index: i32) -> i32 {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().tags.get(index))
+            .map(|tag| saturating_i32(tag.game_count))
+            .unwrap_or_default()
     }
 
     fn finish_activity_refresh(
@@ -866,7 +953,7 @@ impl qobject::LibraryModel {
             .spawn(move || {
                 let loaded = catalog::load(&path)
                     .map(|catalog| {
-                        let (preferences, favorites, collections, activity, metadata) =
+                        let (preferences, favorites, collections, activity, metadata, tags) =
                             match SettingsStore::open_default() {
                                 Ok(store) => (
                                     store
@@ -878,10 +965,12 @@ impl qobject::LibraryModel {
                                     store
                                         .all_game_metadata_overrides()
                                         .map_err(|error| error.to_string()),
+                                    store.all_user_tags().map_err(|error| error.to_string()),
                                 ),
                                 Err(error) => {
                                     let error = error.to_string();
                                     (
+                                        Err(error.clone()),
                                         Err(error.clone()),
                                         Err(error.clone()),
                                         Err(error.clone()),
@@ -897,6 +986,7 @@ impl qobject::LibraryModel {
                             collections,
                             activity,
                             metadata,
+                            tags,
                         )
                     })
                     .map_err(|error| error.to_string());
@@ -917,7 +1007,7 @@ impl qobject::LibraryModel {
         }
         self.as_mut().set_loading(false);
         match loaded {
-            Ok((catalog, preferences, favorites, collections, activity, metadata)) => {
+            Ok((catalog, preferences, favorites, collections, activity, metadata, tags)) => {
                 let preference_warning = match preferences {
                     Ok(preferences) => {
                         let artwork_kind =
@@ -981,16 +1071,22 @@ impl qobject::LibraryModel {
                     ),
                     Err(error) => (HashMap::new(), Some(error)),
                 };
+                let (tags, game_tags, tag_warning) = match tags {
+                    Ok(tags) => (tags.tags, tags.game_tags, None),
+                    Err(error) => (Vec::new(), HashMap::new(), Some(error)),
+                };
                 let recent_count = catalog
                     .games
                     .iter()
                     .filter(|game| recent_game_order.contains_key(&game.id))
                     .count();
                 let metadata_titles = Arc::new(metadata_titles);
+                let game_tags = Arc::new(game_tags);
                 let indices = catalog::filter_indices(
                     &catalog,
                     &Filter {
                         display_titles: Arc::clone(&metadata_titles),
+                        game_tags: Arc::clone(&game_tags),
                         ..Filter::default()
                     },
                 );
@@ -1010,6 +1106,8 @@ impl qobject::LibraryModel {
                     rust.recent_game_order = Arc::new(recent_game_order);
                     rust.completion_states = Arc::new(completion_states);
                     rust.metadata_titles = metadata_titles;
+                    rust.tags = Arc::new(tags);
+                    rust.game_tags = game_tags;
                     rust.game_index_by_id = Arc::new(game_index_by_id);
                     rust.collections = Arc::new(collections);
                     rust.collection_order = Arc::new(collection_order);
@@ -1061,6 +1159,10 @@ impl qobject::LibraryModel {
                 self.as_mut()
                     .set_favorite_count(saturating_i32(favorite_count));
                 self.as_mut().set_recent_count(saturating_i32(recent_count));
+                let tag_count = self.as_ref().rust().tags.len();
+                self.as_mut().set_tag_count(saturating_i32(tag_count));
+                let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
+                self.as_mut().set_tag_revision(tag_revision);
                 let favorite_revision = self.as_ref().favorite_revision().wrapping_add(1);
                 self.as_mut().set_favorite_revision(favorite_revision);
                 if let Some(warning) = &favorite_warning {
@@ -1124,6 +1226,9 @@ impl qobject::LibraryModel {
                 if let Some(warning) = metadata_warning {
                     status.push_str(&format!(" — metadata overrides unavailable: {warning}"));
                 }
+                if let Some(warning) = tag_warning {
+                    status.push_str(&format!(" — tags unavailable: {warning}"));
+                }
                 self.as_mut().set_status_message(qstring(status));
                 self.as_mut().start_media_load();
                 if self.as_ref().rust().reload_pending {
@@ -1171,6 +1276,7 @@ impl qobject::LibraryModel {
             search: search.to_string(),
             platform: platform.to_string(),
             availability: availability_text,
+            tag: self.as_ref().tag_filter().to_string(),
             hide_non_retail: *self.as_ref().hide_non_retail(),
             hide_adult: *self.as_ref().hide_adult(),
             favorite_game_ids: Arc::clone(&self.as_ref().rust().favorite_game_ids),
@@ -1178,6 +1284,7 @@ impl qobject::LibraryModel {
             collection_game_order,
             recent_game_order: Arc::clone(&self.as_ref().rust().recent_game_order),
             display_titles: Arc::clone(&self.as_ref().rust().metadata_titles),
+            game_tags: Arc::clone(&self.as_ref().rust().game_tags),
         };
         self.as_mut().rust_mut().current_search = search.to_string();
         self.as_mut().set_current_platform(platform);
@@ -1650,6 +1757,7 @@ impl qobject::LibraryModel {
         qstring(match field.to_string().as_str() {
             "title" => &rules.title_contains,
             "platform" => &rules.platform,
+            "tag" => &rules.tag,
             "availability" => &rules.availability,
             "favorite" => &rules.favorite,
             "completion" => &rules.completion_state,
@@ -1725,6 +1833,7 @@ impl qobject::LibraryModel {
         mut self: Pin<&mut Self>,
         title_contains: QString,
         platform: QString,
+        tag: QString,
         availability: QString,
         favorite: QString,
         completion_state: QString,
@@ -1733,6 +1842,7 @@ impl qobject::LibraryModel {
         match smart_rules_from_fields(
             title_contains,
             platform,
+            tag,
             availability,
             favorite,
             completion_state,
@@ -2212,6 +2322,7 @@ impl qobject::LibraryModel {
         let favorites = Arc::clone(&self.as_ref().rust().favorite_game_ids);
         let completion_states = Arc::clone(&self.as_ref().rust().completion_states);
         let metadata_titles = Arc::clone(&self.as_ref().rust().metadata_titles);
+        let game_tags = Arc::clone(&self.as_ref().rust().game_tags);
         let game_index_by_id = Arc::clone(&self.as_ref().rust().game_index_by_id);
         let mut collections = self.as_ref().rust().collections.as_ref().clone();
         let mut order = self.as_ref().rust().collection_order.as_ref().clone();
@@ -2233,6 +2344,7 @@ impl qobject::LibraryModel {
                                     &completion_states,
                                     &title_needle,
                                     metadata_display_title(game, &metadata_titles),
+                                    game_tags.get(&game.id).map(Vec::as_slice).unwrap_or(&[]),
                                 )
                             })
                             .map(|game| game.id.clone())

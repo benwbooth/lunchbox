@@ -310,6 +310,19 @@ custom title is absent, edits the exact Super Mario Bros. UUID through the real
 native dialog, persists it off-thread, refreshes the library, proves the custom
 title is searchable, and asserts that the canonical title is still unchanged.
 
+User tags are normalized, stable-UUID records in the same writable state
+database. A metadata-and-tags save is one transaction, so validation or storage
+failure cannot publish only half of an edit. Tag names collapse whitespace,
+deduplicate case-insensitively while preserving the chosen spelling, and are
+bounded to 32 tags per game and 50 characters per tag. Orphaned tag rows are
+removed after the last membership disappears. Search includes tag names; the
+Filters surface and details chips apply an exact tag filter; smart collections
+can use the same exact rule. `--tags-ui-probe --state-database EMPTY_PATH
+--screenshot-output ABSOLUTE_PATH` edits the exact Super Mario Bros. UUID through
+the real worker, proves the two durable tags entered the global index, applies
+one through the native filter, asserts a single result and the details chips,
+and captures the real details pane.
+
 `--collection-probe --state-database EMPTY_PATH` creates a named collection,
 adds a real catalog game by stable UUID, applies the native collection filter,
 and exits only after persistence succeeds. Reusing the state path verifies that
@@ -507,7 +520,9 @@ Mario Bros. family, restores the exact stable UUID for LaunchBox database ID
 and exits only after the selected row, details identity, and filtered-row lookup
 agree. Pass `--media-directory PATH` to exercise an existing media cache. The
 interactive Couch Mode control enters true fullscreen and Escape restores the
-desktop window.
+desktop window. Its hidden shelf is inert: selection and details loading begin
+only after Couch Mode becomes active, so constructing or filtering the desktop
+cannot silently replace the user's current game.
 
 `--firmware-probe` opens an imported Coleco ADAM identity, runs normal emulator
 discovery, prints the exact resolved rule counts and runtime path, and exits

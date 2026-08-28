@@ -13,12 +13,12 @@ ApplicationWindow {
     width: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
-           || variantUiProbe || metadataUiProbe || retroarchShaderUiProbe
+           || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
-            || variantUiProbe || metadataUiProbe || retroarchShaderUiProbe
+            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -113,6 +113,7 @@ ApplicationWindow {
         { key: "abandoned", label: "Abandoned" }
     ]
     readonly property int activeFilterCount: (availability.length > 0 ? 1 : 0)
+                                               + (library.tag_filter.length > 0 ? 1 : 0)
                                                + (library.hide_non_retail ? 1 : 0)
                                                + (library.hide_adult ? 1 : 0)
     readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
@@ -125,6 +126,7 @@ ApplicationWindow {
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
     readonly property bool couchModeUiProbe: Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
+    readonly property bool tagsUiProbe: Qt.application.arguments.indexOf("--tags-ui-probe") >= 0
     readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
     readonly property bool favoriteProbe: Qt.application.arguments.indexOf("--favorite-probe") >= 0
     readonly property bool favoriteUiProbe: Qt.application.arguments.indexOf("--favorite-ui-probe") >= 0
@@ -182,6 +184,7 @@ ApplicationWindow {
     property bool variantProbeSwitched: false
     property string variantProbeExpectedId: ""
     property int metadataProbeStage: 0
+    property int tagsProbeStage: 0
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
 
     palette.window: "#0c1119"
@@ -295,6 +298,7 @@ ApplicationWindow {
         collectionType.currentIndex = 0
         collectionTitleRule.text = ""
         collectionPlatformRule.currentIndex = 0
+        collectionTagRule.currentIndex = 0
         collectionAvailabilityRule.currentIndex = 0
         collectionFavoriteRule.currentIndex = 0
         collectionCompletionRule.currentIndex = 0
@@ -311,6 +315,7 @@ ApplicationWindow {
         collectionType.currentIndex = editingCollectionKind === "smart" ? 1 : 0
         collectionTitleRule.text = library.collection_rule_at(index, "title")
         selectCollectionPlatformRule(library.collection_rule_at(index, "platform"))
+        selectCollectionTagRule(library.collection_rule_at(index, "tag"))
         selectCollectionRule(collectionAvailabilityRule,
                              library.collection_rule_at(index, "availability"))
         selectCollectionRule(collectionFavoriteRule,
@@ -343,6 +348,15 @@ ApplicationWindow {
                ? library.platform_name_at(collectionPlatformRule.currentIndex - 1) : ""
     }
 
+    function selectCollectionTagRule(tag) {
+        collectionTagRule.currentIndex = root.libraryTagIndex(tag)
+    }
+
+    function collectionTagRuleValue() {
+        return collectionTagRule.currentIndex > 0
+               ? library.tag_name_at(collectionTagRule.currentIndex - 1) : ""
+    }
+
     function saveEditedCollection() {
         if (collectionNameField.text.trim().length === 0 || library.collection_busy)
             return
@@ -350,6 +364,7 @@ ApplicationWindow {
         if (smart && !library.set_smart_collection_rule_draft(
                 collectionTitleRule.text,
                 collectionPlatformRuleValue(),
+                collectionTagRuleValue(),
                 collectionAvailabilityRule.currentValue,
                 collectionFavoriteRule.currentValue,
                 collectionCompletionRule.currentValue,
@@ -441,19 +456,33 @@ ApplicationWindow {
     }
 
     function platformHeading() {
+        let heading = "All Games"
         if (selectedCollectionId.length > 0)
-            return selectedCollectionName
-        if (selectedPlatform.length > 0)
-            return selectedPlatform
-        if (availability === "local")
-            return "My Collection"
-        if (availability === "downloadable")
-            return "Minerva Downloads"
-        if (availability === "favorites")
-            return "Favorites"
-        if (availability === "recent")
-            return "Recently Played"
-        return "All Games"
+            heading = selectedCollectionName
+        else if (selectedPlatform.length > 0)
+            heading = selectedPlatform
+        else if (availability === "local")
+            heading = "My Collection"
+        else if (availability === "downloadable")
+            heading = "Minerva Downloads"
+        else if (availability === "favorites")
+            heading = "Favorites"
+        else if (availability === "recent")
+            heading = "Recently Played"
+        if (library.tag_filter.length > 0)
+            heading += "  ·  " + library.tag_filter
+        return heading
+    }
+
+    function libraryTagIndex(name) {
+        if (name.length === 0)
+            return 0
+        for (let index = 0; index < library.tag_count; ++index) {
+            if (library.tag_name_at(index).toLocaleLowerCase()
+                    === name.toLocaleLowerCase())
+                return index + 1
+        }
+        return 0
     }
 
     function completionIndex(key) {
@@ -1007,6 +1036,12 @@ ApplicationWindow {
             if (library.ready) {
                 if (library.catalog_probe)
                     Qt.quit()
+                else if (root.tagsUiProbe) {
+                    root.tagsProbeStage = 0
+                    root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                                  "Super Mario Bros.",
+                                  "Nintendo Entertainment System", false, true)
+                }
                 else if (root.metadataUiProbe) {
                     console.warn("LUNCHBOX_METADATA_UI_STAGE catalog-ready")
                     root.metadataProbeStage = -1
@@ -1034,7 +1069,7 @@ ApplicationWindow {
                         root.finishSmartCollectionProbe()
                     } else {
                         library.set_smart_collection_rule_draft(
-                                    "", "", "downloadable", "any", "any", "any")
+                                    "", "", "", "downloadable", "any", "any", "any")
                         library.create_smart_collection(
                                     "Ready from Minerva",
                                     "Games available to download and not installed locally")
@@ -1073,6 +1108,21 @@ ApplicationWindow {
         function onFilteringChanged() {
             if (library.filter_probe && library.ready && !library.filtering)
                 Qt.quit()
+            else if (root.tagsUiProbe && root.tagsProbeStage === 3
+                     && library.ready && !library.filtering) {
+                if (library.filtered_count !== 1
+                        || library.tag_filter !== "Couch Co-op"
+                        || gameDetails.tag_count !== 2) {
+                    console.error("LUNCHBOX_TAGS_UI_FAILED filter results="
+                                  + library.filtered_count + " tag="
+                                  + library.tag_filter + " details="
+                                  + gameDetails.tag_count)
+                    Qt.exit(2)
+                    return
+                }
+                root.tagsProbeStage = 4
+                tagsScreenshotTimer.restart()
+            }
             else if (root.metadataUiProbe && root.metadataProbeStage === -1
                      && library.ready && !library.filtering) {
                 if (library.filtered_count !== 0) {
@@ -1132,6 +1182,13 @@ ApplicationWindow {
                 searchField.text = root.metadataProbeTitle
                 library.apply_filter(searchField.text,
                                      "Nintendo Entertainment System", "")
+            }
+        }
+        function onTag_revisionChanged() {
+            if (root.tagsUiProbe && root.tagsProbeStage === 2
+                    && library.tag_count === 2) {
+                root.tagsProbeStage = 3
+                library.select_tag_filter("Couch Co-op")
             }
         }
         function onMedia_revisionChanged() {
@@ -1259,12 +1316,84 @@ ApplicationWindow {
         }
         function onMetadata_revisionChanged() {
             library.refresh_metadata()
+            if (root.tagsUiProbe && root.tagsProbeStage === 1)
+                root.tagsProbeStage = 2
             if (root.metadataUiProbe && root.metadataProbeStage === 1)
                 root.metadataProbeStage = 2
+        }
+        function onTag_revisionChanged() {
+            if (root.tagsUiProbe && root.tagsProbeStage === 0
+                    && !gameDetails.loading && gameDetails.game_id.length > 0) {
+                root.tagsProbeStage = 1
+                tagsEditorTimer.restart()
+            }
         }
         function onMetadata_openChanged() {
             if (!gameDetails.metadata_open && metadataDialog.visible)
                 metadataDialog.close()
+        }
+    }
+
+    Timer {
+        id: tagsEditorTimer
+        interval: 50
+        repeat: false
+        onTriggered: {
+            gameDetails.open_metadata_editor()
+            if (!gameDetails.metadata_open) {
+                console.error("LUNCHBOX_TAGS_UI_FAILED editor did not open loading="
+                              + gameDetails.loading + " busy="
+                              + gameDetails.metadata_busy + " game="
+                              + gameDetails.game_id)
+                Qt.exit(2)
+                return
+            }
+            gameDetails.metadata_tags = "Couch Co-op, Family"
+            gameDetails.save_metadata()
+        }
+    }
+
+    Timer {
+        id: tagsScreenshotTimer
+        interval: 650
+        repeat: false
+        onTriggered: {
+            if (!root.tagsUiProbe || root.tagsProbeStage !== 4)
+                return
+            if (gameDetails.tag_at(0) !== "Couch Co-op"
+                    || gameDetails.tag_at(1) !== "Family") {
+                console.error("LUNCHBOX_TAGS_UI_FAILED detail tags")
+                Qt.exit(2)
+                return
+            }
+            console.warn("LUNCHBOX_TAGS_UI_READY tags=" + library.tag_count
+                         + " results=" + library.filtered_count
+                         + " screenshot=" + root.screenshotOutput)
+            if (root.screenshotOutput.length === 0) {
+                Qt.quit()
+                return
+            }
+            detailsPane.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_TAGS_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 12000
+        running: root.tagsUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_TAGS_UI_FAILED timeout stage="
+                          + root.tagsProbeStage + " message="
+                          + gameDetails.metadata_message)
+            Qt.exit(2)
         }
     }
 
@@ -2380,6 +2509,7 @@ ApplicationWindow {
                     enabled: root.activeFilterCount > 0
                     onClicked: {
                         library.set_content_filters(false, false)
+                        library.select_tag_filter("")
                         root.selectLibrary("")
                     }
                 }
@@ -2413,6 +2543,37 @@ ApplicationWindow {
                 height: 1
                 color: root.line
             }
+            Text {
+                width: parent.width
+                topPadding: 7
+                text: "USER TAG"
+                color: "#687488"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+            ComboBox {
+                id: libraryTagFilter
+                width: parent.width
+                height: 40
+                model: library.tag_count + 1
+                currentIndex: root.libraryTagIndex(library.tag_filter)
+                displayText: currentIndex === 0
+                             ? "All tags"
+                             : library.tag_name_at(currentIndex - 1)
+                               + "  (" + library.tag_game_count_at(currentIndex - 1) + ")"
+                delegate: ItemDelegate {
+                    required property int index
+                    width: libraryTagFilter.width
+                    text: index === 0 ? "All tags"
+                          : library.tag_name_at(index - 1)
+                            + "  ·  " + library.tag_game_count_at(index - 1) + " games"
+                }
+                onActivated: library.select_tag_filter(
+                                 index === 0 ? "" : library.tag_name_at(index - 1))
+                ToolTip.visible: hovered && library.tag_count === 0
+                ToolTip.text: "Add tags from Edit Metadata in a game's details"
+            }
             FilterToggle {
                 label: "Hide non-retail"
                 description: "Homebrew, hacks, unlicensed and pirate releases"
@@ -2435,7 +2596,7 @@ ApplicationWindow {
                 width: parent.width
                 topPadding: 7
                 bottomPadding: 3
-                text: "Filters combine with search and platform selection. Minerva always excludes installed games."
+                text: "Filters combine with search, tags, and platform selection. Minerva always excludes installed games."
                 color: "#6f7c90"
                 font.pixelSize: 9
                 wrapMode: Text.WordWrap
@@ -3321,7 +3482,7 @@ ApplicationWindow {
             height: 40
             leftPadding: 42
             rightPadding: 14
-            placeholderText: "Search games and platforms"
+            placeholderText: "Search games, platforms, and tags"
             placeholderTextColor: "#687488"
             color: root.ink
             selectionColor: root.accent
@@ -4167,6 +4328,48 @@ ApplicationWindow {
                                 font.pixelSize: 9
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.7
+                            }
+                        }
+                    }
+
+                    Flow {
+                        width: parent.width
+                        spacing: 7
+                        visible: gameDetails.tag_count > 0
+                        height: visible ? implicitHeight : 0
+                        Repeater {
+                            model: gameDetails.tag_count
+                            delegate: Rectangle {
+                                id: detailTagChip
+                                required property int index
+                                readonly property string tagName: {
+                                    gameDetails.tag_revision
+                                    return gameDetails.tag_at(index)
+                                }
+                                width: detailTagLabel.implicitWidth + 24
+                                height: 27
+                                radius: 9
+                                color: library.tag_filter === tagName ? "#4a3821" : "#1a2831"
+                                border.color: library.tag_filter === tagName
+                                              ? root.accent : "#315563"
+                                Text {
+                                    id: detailTagLabel
+                                    anchors.centerIn: parent
+                                    text: detailTagChip.tagName
+                                    color: library.tag_filter === detailTagChip.tagName
+                                           ? root.accent : root.accentCool
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: library.select_tag_filter(
+                                                   library.tag_filter === detailTagChip.tagName
+                                                   ? "" : detailTagChip.tagName)
+                                }
+                                Accessible.role: Accessible.Button
+                                Accessible.name: "Filter library by " + tagName
                             }
                         }
                     }
@@ -6281,6 +6484,7 @@ ApplicationWindow {
         readonly property bool smartRuleConfigured: !smartMode
             || collectionTitleRule.text.trim().length > 0
             || collectionPlatformRule.currentIndex > 0
+            || collectionTagRule.currentIndex > 0
             || collectionAvailabilityRule.currentValue !== "any"
             || collectionFavoriteRule.currentValue !== "any"
             || collectionCompletionRule.currentValue !== "any"
@@ -6420,6 +6624,23 @@ ApplicationWindow {
                                 text: index === 0 ? "All platforms"
                                       : library.platform_name_at(index - 1)
                             }
+                        }
+                        Text { text: "Tag"; color: root.muted; font.pixelSize: 10 }
+                        ComboBox {
+                            id: collectionTagRule
+                            Layout.fillWidth: true
+                            model: library.tag_count + 1
+                            displayText: currentIndex === 0
+                                         ? "Any tag"
+                                         : library.tag_name_at(currentIndex - 1)
+                            delegate: ItemDelegate {
+                                required property int index
+                                width: collectionTagRule.width
+                                text: index === 0 ? "Any tag"
+                                      : library.tag_name_at(index - 1)
+                            }
+                            ToolTip.visible: hovered && library.tag_count === 0
+                            ToolTip.text: "Create tags from a game's metadata editor first"
                         }
                         Text { text: "Availability"; color: root.muted; font.pixelSize: 10 }
                         ComboBox {
@@ -9178,6 +9399,7 @@ ApplicationWindow {
                                 }
                             }
                         }
+
                     }
                     Text {
                         Layout.fillWidth: true
@@ -12363,6 +12585,42 @@ ApplicationWindow {
                                     color: "#101721"
                                     border.color: parent.activeFocus ? root.accent : root.line
                                 }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            Text {
+                                Layout.fillWidth: true
+                                text: "TAGS"
+                                color: root.muted
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                            TextField {
+                                id: metadataTagsField
+                                Layout.fillWidth: true
+                                text: gameDetails.metadata_tags
+                                maximumLength: 1700
+                                placeholderText: "Family, Couch Co-op, Backlog"
+                                color: root.ink
+                                placeholderTextColor: "#637085"
+                                selectByMouse: true
+                                onTextEdited: gameDetails.metadata_tags = text
+                                background: Rectangle {
+                                    radius: 9
+                                    color: "#101721"
+                                    border.color: parent.activeFocus ? root.accent : root.line
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Comma-separated · up to 32 tags · searchable and available to smart collections"
+                                color: "#6f7d91"
+                                font.pixelSize: 9
+                                wrapMode: Text.WordWrap
                             }
                         }
                     }

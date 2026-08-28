@@ -642,10 +642,14 @@ Item {
             preferredHighlightEnd: width * 0.64
             highlightRangeMode: ListView.ApplyRange
             onCurrentIndexChanged: {
+                if (!view.active)
+                    return
                 view.captureCurrentGame()
                 selectionDelay.restart()
             }
             onCurrentItemChanged: {
+                if (!view.active)
+                    return
                 view.captureCurrentGame()
                 selectionDelay.restart()
             }
@@ -822,7 +826,10 @@ Item {
         id: selectionDelay
         interval: 120
         repeat: false
-        onTriggered: view.loadCurrentGame()
+        onTriggered: {
+            if (view.active)
+                view.loadCurrentGame()
+        }
     }
 
     Timer {
@@ -847,7 +854,8 @@ Item {
             }
             shelf.currentIndex = Math.max(0, Math.min(shelf.currentIndex,
                                                       shelf.count - 1))
-            selectionDelay.restart()
+            if (view.active)
+                selectionDelay.restart()
         }
     }
 }

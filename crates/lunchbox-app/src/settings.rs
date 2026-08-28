@@ -339,6 +339,39 @@ pub struct UserCollections {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserTag {
+    pub id: String,
+    pub name: String,
+    pub game_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UserTags {
+    pub tags: Vec<UserTag>,
+    pub game_tags: HashMap<String, Vec<String>>,
+}
+
+pub fn parse_game_tags(input: &str) -> Result<Vec<String>> {
+    if input.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut tags = Vec::new();
+    let mut normalized_names = HashSet::new();
+    for raw_name in input.split(',') {
+        let name = normalize_tag_name(raw_name)?;
+        let normalized = normalized_tag_name(&name);
+        if normalized_names.insert(normalized) {
+            tags.push(name);
+        }
+    }
+    if tags.len() > 32 {
+        bail!("a game can have at most 32 tags");
+    }
+    tags.sort_by_cached_key(|name| normalized_tag_name(name));
+    Ok(tags)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EmulatorPreference {
     pub emulator_id: String,
     pub runtime_kind: String,
@@ -1107,76 +1140,111 @@ impl SettingsStore {
         Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
     }
 
-    pub fn save_game_metadata_override(
+    pub fn game_tags(&self, game_uid: &str) -> Result<Vec<String>> {
+        validate_tag_game_uid(game_uid)?;
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT t.name
+             FROM game_tags gt
+             JOIN user_tags t ON t.id=gt.tag_id
+             WHERE gt.game_uid=?1
+             ORDER BY t.normalized_name, t.name",
+        )?;
+        let rows = statement.query_map([game_uid], |row| row.get::<_, String>(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn all_user_tags(&self) -> Result<UserTags> {
+        let connection = self.connection()?;
+        let mut tag_statement = connection.prepare(
+            "SELECT t.id, t.name, COUNT(gt.game_uid)
+             FROM user_tags t
+             LEFT JOIN game_tags gt ON gt.tag_id=t.id
+             GROUP BY t.id, t.name, t.normalized_name
+             ORDER BY t.normalized_name, t.name",
+        )?;
+        let tag_rows = tag_statement.query_map([], |row| {
+            Ok(UserTag {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                game_count: row.get::<_, i64>(2)?.max(0) as usize,
+            })
+        })?;
+        let tags = tag_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut membership_statement = connection.prepare(
+            "SELECT gt.game_uid, t.name
+             FROM game_tags gt
+             JOIN user_tags t ON t.id=gt.tag_id
+             ORDER BY gt.game_uid, t.normalized_name, t.name",
+        )?;
+        let membership_rows = membership_statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut game_tags = HashMap::<String, Vec<String>>::new();
+        for row in membership_rows {
+            let (game_uid, name) = row?;
+            game_tags.entry(game_uid).or_default().push(name);
+        }
+        Ok(UserTags { tags, game_tags })
+    }
+
+    pub fn save_game_metadata_and_tags(
         &self,
         game_uid: &str,
         launchbox_db_id: i64,
         canonical_title: &str,
         platform: &str,
         metadata: &GameMetadataOverride,
-    ) -> Result<()> {
-        if game_uid.trim().is_empty() {
-            bail!("a stable game identity is required to save metadata overrides");
-        }
-        if canonical_title.trim().is_empty() || platform.trim().is_empty() {
-            bail!("canonical title and platform are required to save metadata overrides");
-        }
-        if launchbox_db_id < 0 {
-            bail!("LaunchBox database identity cannot be negative");
-        }
+        tag_input: &str,
+    ) -> Result<Vec<String>> {
+        validate_metadata_identity(game_uid, launchbox_db_id, canonical_title, platform)?;
         metadata.validate()?;
-        let connection = self.connection()?;
-        if metadata.is_empty() {
-            connection.execute(
-                "DELETE FROM game_metadata_overrides WHERE game_uid=?1",
-                [game_uid],
-            )?;
-            return Ok(());
-        }
-        connection.execute(
-            "INSERT INTO game_metadata_overrides (
-                 game_uid, launchbox_db_id, canonical_title, platform,
-                 title, description, release_date, developer, publisher,
-                 genre, players, rating, esrb, release_type, notes, updated_at
-             ) VALUES (
-                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
-             )
-             ON CONFLICT(game_uid) DO UPDATE SET
-                 launchbox_db_id=excluded.launchbox_db_id,
-                 canonical_title=excluded.canonical_title,
-                 platform=excluded.platform,
-                 title=excluded.title,
-                 description=excluded.description,
-                 release_date=excluded.release_date,
-                 developer=excluded.developer,
-                 publisher=excluded.publisher,
-                 genre=excluded.genre,
-                 players=excluded.players,
-                 rating=excluded.rating,
-                 esrb=excluded.esrb,
-                 release_type=excluded.release_type,
-                 notes=excluded.notes,
-                 updated_at=excluded.updated_at",
-            params![
-                game_uid,
-                launchbox_db_id,
-                canonical_title,
-                platform,
-                metadata.title,
-                metadata.description,
-                metadata.release_date,
-                metadata.developer,
-                metadata.publisher,
-                metadata.genre,
-                metadata.players,
-                metadata.rating,
-                metadata.esrb,
-                metadata.release_type,
-                metadata.notes,
-                unix_timestamp(),
-            ],
+        let tags = parse_game_tags(tag_input)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        save_game_metadata_override_on(
+            &transaction,
+            game_uid,
+            launchbox_db_id,
+            canonical_title,
+            platform,
+            metadata,
         )?;
-        Ok(())
+        transaction.execute("DELETE FROM game_tags WHERE game_uid=?1", [game_uid])?;
+        let timestamp = unix_timestamp();
+        let mut stored_names = Vec::with_capacity(tags.len());
+        for name in tags {
+            let normalized = normalized_tag_name(&name);
+            let id = stable_tag_id(&normalized);
+            transaction.execute(
+                "INSERT INTO user_tags (
+                     id, name, normalized_name, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?4)
+                 ON CONFLICT(normalized_name) DO UPDATE SET updated_at=excluded.updated_at",
+                params![id, name, normalized, timestamp],
+            )?;
+            let (stored_id, stored_name) = transaction.query_row(
+                "SELECT id, name FROM user_tags WHERE normalized_name=?1",
+                [&normalized],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )?;
+            transaction.execute(
+                "INSERT INTO game_tags (tag_id, game_uid, added_at) VALUES (?1, ?2, ?3)",
+                params![stored_id, game_uid, timestamp],
+            )?;
+            stored_names.push(stored_name);
+        }
+        transaction.execute(
+            "DELETE FROM user_tags
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM game_tags gt WHERE gt.tag_id=user_tags.id
+             )",
+            [],
+        )?;
+        transaction.commit()?;
+        stored_names.sort_by_cached_key(|name| normalized_tag_name(name));
+        Ok(stored_names)
     }
 
     pub fn favorite_game_ids(&self) -> Result<HashSet<String>> {
@@ -2874,6 +2942,21 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS game_metadata_overrides_updated
              ON game_metadata_overrides(updated_at DESC, game_uid);
+         CREATE TABLE IF NOT EXISTS user_tags (
+             id TEXT PRIMARY KEY,
+             name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 50),
+             normalized_name TEXT NOT NULL UNIQUE CHECK (length(normalized_name) > 0),
+             created_at INTEGER NOT NULL CHECK (created_at >= 0),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+         );
+         CREATE TABLE IF NOT EXISTS game_tags (
+             tag_id TEXT NOT NULL REFERENCES user_tags(id) ON DELETE CASCADE,
+             game_uid TEXT NOT NULL CHECK (length(game_uid) BETWEEN 1 AND 512),
+             added_at INTEGER NOT NULL CHECK (added_at >= 0),
+             PRIMARY KEY (tag_id, game_uid)
+         );
+         CREATE INDEX IF NOT EXISTS game_tags_game
+             ON game_tags(game_uid, tag_id);
          CREATE TABLE IF NOT EXISTS favorite_games (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -3371,6 +3454,121 @@ fn validate_collection_name(name: &str) -> Result<String> {
         bail!("collection name must be at most 100 characters");
     }
     Ok(name.to_owned())
+}
+
+fn normalize_tag_name(name: &str) -> Result<String> {
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        bail!("tag names cannot be empty");
+    }
+    if name.chars().count() > 50 {
+        bail!("tag names must be at most 50 characters");
+    }
+    if name.contains(',') {
+        bail!("tag names cannot contain commas");
+    }
+    if name.chars().any(|character| character.is_control()) {
+        bail!("tag names cannot contain control characters");
+    }
+    Ok(name)
+}
+
+fn normalized_tag_name(name: &str) -> String {
+    name.to_lowercase()
+}
+
+fn stable_tag_id(normalized_name: &str) -> String {
+    uuid::Uuid::new_v5(
+        &uuid::Uuid::NAMESPACE_URL,
+        format!("https://lunchbox.games/user-tag/{normalized_name}").as_bytes(),
+    )
+    .to_string()
+}
+
+fn validate_tag_game_uid(game_uid: &str) -> Result<()> {
+    if game_uid.trim().is_empty() || game_uid.chars().count() > 512 {
+        bail!("tags require a bounded stable game identity");
+    }
+    Ok(())
+}
+
+fn validate_metadata_identity(
+    game_uid: &str,
+    launchbox_db_id: i64,
+    canonical_title: &str,
+    platform: &str,
+) -> Result<()> {
+    validate_tag_game_uid(game_uid)?;
+    if canonical_title.trim().is_empty() || platform.trim().is_empty() {
+        bail!("canonical title and platform are required to save metadata overrides");
+    }
+    if launchbox_db_id < 0 {
+        bail!("LaunchBox database identity cannot be negative");
+    }
+    Ok(())
+}
+
+fn save_game_metadata_override_on(
+    connection: &Connection,
+    game_uid: &str,
+    launchbox_db_id: i64,
+    canonical_title: &str,
+    platform: &str,
+    metadata: &GameMetadataOverride,
+) -> Result<()> {
+    validate_metadata_identity(game_uid, launchbox_db_id, canonical_title, platform)?;
+    metadata.validate()?;
+    if metadata.is_empty() {
+        connection.execute(
+            "DELETE FROM game_metadata_overrides WHERE game_uid=?1",
+            [game_uid],
+        )?;
+        return Ok(());
+    }
+    connection.execute(
+        "INSERT INTO game_metadata_overrides (
+             game_uid, launchbox_db_id, canonical_title, platform,
+             title, description, release_date, developer, publisher,
+             genre, players, rating, esrb, release_type, notes, updated_at
+         ) VALUES (
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+         )
+         ON CONFLICT(game_uid) DO UPDATE SET
+             launchbox_db_id=excluded.launchbox_db_id,
+             canonical_title=excluded.canonical_title,
+             platform=excluded.platform,
+             title=excluded.title,
+             description=excluded.description,
+             release_date=excluded.release_date,
+             developer=excluded.developer,
+             publisher=excluded.publisher,
+             genre=excluded.genre,
+             players=excluded.players,
+             rating=excluded.rating,
+             esrb=excluded.esrb,
+             release_type=excluded.release_type,
+             notes=excluded.notes,
+             updated_at=excluded.updated_at",
+        params![
+            game_uid,
+            launchbox_db_id,
+            canonical_title,
+            platform,
+            metadata.title,
+            metadata.description,
+            metadata.release_date,
+            metadata.developer,
+            metadata.publisher,
+            metadata.genre,
+            metadata.players,
+            metadata.rating,
+            metadata.esrb,
+            metadata.release_type,
+            metadata.notes,
+            unix_timestamp(),
+        ],
+    )?;
+    Ok(())
 }
 
 fn validated_collection_game_uids(game_uids: &[String]) -> Result<Vec<String>> {
@@ -3955,12 +4153,13 @@ mod tests {
         let metadata = GameMetadataOverride::from_effective(&canonical, &effective);
         assert_eq!(metadata.description.as_deref(), Some(""));
         store
-            .save_game_metadata_override(
+            .save_game_metadata_and_tags(
                 "stable-metroid-uid",
                 42,
                 &canonical.title,
                 "Nintendo Entertainment System",
                 &metadata,
+                "",
             )
             .unwrap();
 
@@ -4004,12 +4203,13 @@ mod tests {
         );
 
         store
-            .save_game_metadata_override(
+            .save_game_metadata_and_tags(
                 "stable-metroid-uid",
                 42,
                 &canonical.title,
                 "Nintendo Entertainment System",
                 &GameMetadataOverride::default(),
+                "",
             )
             .unwrap();
         assert_eq!(
@@ -4027,7 +4227,7 @@ mod tests {
         };
         assert!(
             store
-                .save_game_metadata_override("game", 0, "Game", "Platform", &invalid_rating)
+                .save_game_metadata_and_tags("game", 0, "Game", "Platform", &invalid_rating, "",)
                 .is_err()
         );
         let invalid_title = GameMetadataOverride {
@@ -4036,12 +4236,12 @@ mod tests {
         };
         assert!(
             store
-                .save_game_metadata_override("game", 0, "Game", "Platform", &invalid_title)
+                .save_game_metadata_and_tags("game", 0, "Game", "Platform", &invalid_title, "",)
                 .is_err()
         );
         assert!(
             store
-                .save_game_metadata_override(
+                .save_game_metadata_and_tags(
                     "",
                     0,
                     "Game",
@@ -4049,9 +4249,112 @@ mod tests {
                     &GameMetadataOverride {
                         title: Some("Custom".into()),
                         ..GameMetadataOverride::default()
-                    }
+                    },
+                    "",
                 )
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn game_tags_are_normalized_durable_and_saved_atomically_with_metadata() {
+        let (_directory, store) = store();
+        let metadata = GameMetadataOverride {
+            notes: Some("Best on the couch".into()),
+            ..GameMetadataOverride::default()
+        };
+        let stored = store
+            .save_game_metadata_and_tags(
+                "stable-mario-uid",
+                140,
+                "Super Mario Bros.",
+                "Nintendo Entertainment System",
+                &metadata,
+                " Family , Couch   Co-op, family ",
+            )
+            .unwrap();
+        assert_eq!(stored, vec!["Couch Co-op", "Family"]);
+        assert_eq!(store.game_tags("stable-mario-uid").unwrap(), stored);
+
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        let all = reopened.all_user_tags().unwrap();
+        assert_eq!(all.game_tags["stable-mario-uid"], stored);
+        assert_eq!(
+            all.tags
+                .iter()
+                .map(|tag| (&tag.name, tag.game_count))
+                .collect::<Vec<_>>(),
+            vec![(&"Couch Co-op".to_owned(), 1), (&"Family".to_owned(), 1)]
+        );
+        let first_ids = all
+            .tags
+            .iter()
+            .map(|tag| tag.id.clone())
+            .collect::<Vec<_>>();
+
+        reopened
+            .save_game_metadata_and_tags(
+                "stable-mario-uid",
+                140,
+                "Super Mario Bros.",
+                "Nintendo Entertainment System",
+                &GameMetadataOverride::default(),
+                "family, RPG",
+            )
+            .unwrap();
+        assert_eq!(
+            reopened.game_tags("stable-mario-uid").unwrap(),
+            vec!["Family", "RPG"]
+        );
+        let all = reopened.all_user_tags().unwrap();
+        assert_eq!(
+            all.tags
+                .iter()
+                .map(|tag| tag.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Family", "RPG"]
+        );
+        assert_eq!(all.tags[0].id, first_ids[1]);
+        assert_eq!(
+            reopened.game_metadata_override("stable-mario-uid").unwrap(),
+            GameMetadataOverride::default()
+        );
+
+        let invalid = reopened.save_game_metadata_and_tags(
+            "stable-mario-uid",
+            140,
+            "Super Mario Bros.",
+            "Nintendo Entertainment System",
+            &metadata,
+            "valid,",
+        );
+        assert!(invalid.is_err());
+        assert_eq!(
+            reopened.game_tags("stable-mario-uid").unwrap(),
+            vec!["Family", "RPG"]
+        );
+        assert_eq!(
+            reopened.game_metadata_override("stable-mario-uid").unwrap(),
+            GameMetadataOverride::default()
+        );
+    }
+
+    #[test]
+    fn game_tag_validation_is_bounded_and_case_insensitive() {
+        assert_eq!(
+            parse_game_tags("Action, action, ACTION, Role Playing").unwrap(),
+            vec!["Action", "Role Playing"]
+        );
+        assert!(parse_game_tags("one,,two").is_err());
+        assert!(parse_game_tags(&"x".repeat(51)).is_err());
+        assert!(
+            parse_game_tags(
+                &(0..33)
+                    .map(|index| format!("tag {index}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+            .is_err()
         );
     }
 

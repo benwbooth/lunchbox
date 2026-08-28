@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -42,6 +42,7 @@ pub struct Filter {
     pub search: String,
     pub platform: String,
     pub availability: String,
+    pub tag: String,
     pub hide_non_retail: bool,
     pub hide_adult: bool,
     pub favorite_game_ids: Arc<HashSet<String>>,
@@ -49,6 +50,7 @@ pub struct Filter {
     pub collection_game_order: Arc<std::collections::HashMap<String, usize>>,
     pub recent_game_order: Arc<std::collections::HashMap<String, i64>>,
     pub display_titles: Arc<std::collections::HashMap<String, String>>,
+    pub game_tags: Arc<HashMap<String, Vec<String>>>,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -742,6 +744,7 @@ fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
 
 pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
     let search = filter.search.trim().to_lowercase();
+    let selected_tag = filter.tag.trim().to_lowercase();
     let mut indices = catalog
         .games
         .iter()
@@ -752,8 +755,15 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                 || filter
                     .display_titles
                     .get(&game.id)
-                    .is_some_and(|title| title.to_lowercase().contains(&search)))
+                    .is_some_and(|title| title.to_lowercase().contains(&search))
+                || filter.game_tags.get(&game.id).is_some_and(|tags| {
+                    tags.iter().any(|tag| tag.to_lowercase().contains(&search))
+                }))
                 && (filter.platform.is_empty() || game.platform == filter.platform)
+                && (selected_tag.is_empty()
+                    || filter.game_tags.get(&game.id).is_some_and(|tags| {
+                        tags.iter().any(|tag| tag.to_lowercase() == selected_tag)
+                    }))
                 && (!filter.hide_non_retail || !game.non_retail)
                 && (!filter.hide_adult || !game.adult)
                 && match filter.availability.as_str() {
@@ -923,6 +933,52 @@ mod tests {
         );
         assert_eq!(catalog.games[0].title, "Metroid");
         assert_eq!(catalog.games[0].id, "metroid");
+    }
+
+    #[test]
+    fn user_tags_are_searchable_and_filter_by_exact_membership() {
+        let catalog = fixture_catalog();
+        let game_tags = Arc::new(HashMap::from([
+            (
+                "metroid".to_owned(),
+                vec!["Couch Co-op".to_owned(), "Family".to_owned()],
+            ),
+            ("outrun".to_owned(), vec!["Arcade Night".to_owned()]),
+        ]));
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "couch".into(),
+                    game_tags: Arc::clone(&game_tags),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    tag: "family".into(),
+                    platform: "Nintendo Entertainment System".into(),
+                    game_tags: Arc::clone(&game_tags),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    tag: "Arcade".into(),
+                    game_tags,
+                    ..Filter::default()
+                }
+            )
+            .is_empty()
+        );
     }
 
     #[test]
