@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -12,6 +12,7 @@ use crate::catalog;
 use crate::download_plan::{
     DownloadPlan, TorrentPlanFile, build_exo_plan, build_optical_plan, exo_primary_priority,
 };
+use crate::exo_install::PreparedInstall;
 
 const MAX_TORRENT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILE_CANDIDATES: usize = 100;
@@ -35,6 +36,8 @@ pub struct GameDetails {
     pub local: bool,
     pub downloadable: bool,
     pub database_id: i64,
+    pub local_file_path: PathBuf,
+    pub prepared_install: Option<PreparedInstall>,
     pub bundles: Vec<MinervaBundle>,
 }
 
@@ -102,6 +105,7 @@ pub fn load(
     if let Some(local_file_id) = id.strip_prefix("local-file:") {
         let state_path = crate::settings::state_database_path()?;
         load_local_only_details(&mut details, local_file_id, &state_path)?;
+        load_prepared_state(&mut details)?;
         return Ok(details);
     }
 
@@ -153,7 +157,29 @@ pub fn load(
 
     details.bundles = resolve_minerva_bundles(&details)?;
     details.downloadable = !details.local && !details.bundles.is_empty();
+    load_prepared_state(&mut details)?;
     Ok(details)
+}
+
+fn load_prepared_state(details: &mut GameDetails) -> Result<()> {
+    if !details.local {
+        return Ok(());
+    }
+    let store = crate::settings::SettingsStore::open_default()?;
+    if details.local_file_path.as_os_str().is_empty() {
+        details.local_file_path = store
+            .connection()?
+            .query_row(
+                "SELECT file_path FROM installed_games WHERE game_uid=?1",
+                [&details.id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .map(PathBuf::from)
+            .unwrap_or_default();
+    }
+    details.prepared_install = crate::exo_install::cached_install(&store, &details.id)?;
+    Ok(())
 }
 
 fn load_local_only_details(details: &mut GameDetails, id: &str, state_path: &Path) -> Result<()> {
@@ -206,6 +232,7 @@ fn load_local_only_details(details: &mut GameDetails, id: &str, state_path: &Pat
     );
     details.local = true;
     details.downloadable = false;
+    details.local_file_path = path;
     Ok(())
 }
 
@@ -1007,6 +1034,7 @@ mod tests {
         assert!(details.notes.contains("Mystery Game.nes"));
         assert!(details.notes.contains("SHA-1 ABC · MD5 DEF"));
         assert!(details.description.contains("no proven catalog identity"));
+        assert_eq!(details.local_file_path, rom);
     }
 
     #[test]

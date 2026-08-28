@@ -25,6 +25,7 @@ sha1.workspace = true
 ureq.workspace = true
 uuid.workspace = true
 walkdir.workspace = true
+zip.workspace = true
 
 [build-dependencies]
 cxx-qt-build.workspace = true

@@ -713,7 +713,7 @@ impl SettingsStore {
         Ok(())
     }
 
-    fn connection(&self) -> Result<Connection> {
+    pub(crate) fn connection(&self) -> Result<Connection> {
         let connection = Connection::open(&self.path)
             .with_context(|| format!("opening Lunchbox state {}", self.path.display()))?;
         connection.busy_timeout(std::time::Duration::from_secs(2))?;
@@ -917,7 +917,27 @@ fn migrate(connection: &Connection) -> Result<()> {
          CREATE INDEX IF NOT EXISTS user_collection_games_order
              ON user_collection_games(collection_id, sort_order, game_uid);
          CREATE INDEX IF NOT EXISTS user_collection_games_game
-             ON user_collection_games(game_uid);",
+             ON user_collection_games(game_uid);
+         CREATE TABLE IF NOT EXISTS prepared_game_installs (
+             game_uid TEXT PRIMARY KEY,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             platform TEXT NOT NULL,
+             collection TEXT NOT NULL CHECK (
+                 collection IN ('exodos', 'exowin3x', 'exowin9x')
+             ),
+             shortname TEXT NOT NULL,
+             source_archive_path TEXT NOT NULL,
+             companion_archive_path TEXT,
+             metadata_archive_path TEXT NOT NULL,
+             utility_archive_path TEXT,
+             source_signature TEXT NOT NULL,
+             install_root TEXT NOT NULL,
+             launch_config_path TEXT NOT NULL,
+             prepared_at INTEGER NOT NULL,
+             last_used_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS prepared_game_installs_launchbox_id
+             ON prepared_game_installs(launchbox_db_id) WHERE launchbox_db_id > 0;",
     )?;
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
@@ -1362,6 +1382,15 @@ mod tests {
         assert!(column_exists(&connection, "download_jobs", "download_plan").unwrap());
         assert!(column_exists(&connection, "app_settings", "preferred_region").unwrap());
         assert!(column_exists(&connection, "app_settings", "version_preference").unwrap());
+        let prepared_table: Option<i64> = connection
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prepared_game_installs'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(prepared_table, Some(1));
     }
 
     #[test]

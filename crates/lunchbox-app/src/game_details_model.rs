@@ -12,6 +12,7 @@ pub mod qobject {
         #[qproperty(bool, loading)]
         #[qproperty(bool, torrent_loading)]
         #[qproperty(bool, download_busy)]
+        #[qproperty(bool, prepare_busy)]
         #[qproperty(QString, game_id)]
         #[qproperty(QString, title)]
         #[qproperty(QString, platform)]
@@ -28,6 +29,11 @@ pub mod qobject {
         #[qproperty(QString, message)]
         #[qproperty(bool, local)]
         #[qproperty(bool, downloadable)]
+        #[qproperty(bool, preparable)]
+        #[qproperty(bool, prepared)]
+        #[qproperty(QString, preparation_phase)]
+        #[qproperty(QString, preparation_file)]
+        #[qproperty(QString, prepared_summary)]
         #[qproperty(i32, bundle_count)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_bundle)]
@@ -52,6 +58,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn queue_file(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
+        fn prepare_game(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn cancel_preparation(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
@@ -81,7 +93,11 @@ pub mod qobject {
     impl cxx_qt::Threading for GameDetailsModel {}
 }
 
+use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::time::{Duration, Instant};
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
@@ -95,6 +111,7 @@ pub struct GameDetailsModelRust {
     loading: bool,
     torrent_loading: bool,
     download_busy: bool,
+    prepare_busy: bool,
     game_id: QString,
     title: QString,
     platform: QString,
@@ -111,6 +128,11 @@ pub struct GameDetailsModelRust {
     message: QString,
     local: bool,
     downloadable: bool,
+    preparable: bool,
+    prepared: bool,
+    preparation_phase: QString,
+    preparation_file: QString,
+    prepared_summary: QString,
     bundle_count: i32,
     file_count: i32,
     selected_bundle: i32,
@@ -119,7 +141,10 @@ pub struct GameDetailsModelRust {
     files: Vec<TorrentFileCandidate>,
     details_generation: u64,
     torrent_generation: u64,
+    preparation_generation: u64,
+    preparation_cancel: Option<Arc<AtomicBool>>,
     database_id: i64,
+    local_file_path: PathBuf,
 }
 
 impl Default for GameDetailsModelRust {
@@ -129,6 +154,7 @@ impl Default for GameDetailsModelRust {
             loading: false,
             torrent_loading: false,
             download_busy: false,
+            prepare_busy: false,
             game_id: QString::default(),
             title: QString::default(),
             platform: QString::default(),
@@ -145,6 +171,11 @@ impl Default for GameDetailsModelRust {
             message: QString::from("Select a game to inspect it."),
             local: false,
             downloadable: false,
+            preparable: false,
+            prepared: false,
+            preparation_phase: QString::default(),
+            preparation_file: QString::default(),
+            prepared_summary: QString::default(),
             bundle_count: 0,
             file_count: 0,
             selected_bundle: -1,
@@ -153,7 +184,10 @@ impl Default for GameDetailsModelRust {
             files: Vec::new(),
             details_generation: 0,
             torrent_generation: 0,
+            preparation_generation: 0,
+            preparation_cancel: None,
             database_id: 0,
+            local_file_path: PathBuf::new(),
         }
     }
 }
@@ -178,6 +212,7 @@ impl qobject::GameDetailsModel {
         let game_id_string = game_id.to_string();
         let title_string = title.to_string();
         let platform_string = platform.to_string();
+        self.as_mut().invalidate_preparation();
         self.as_mut().rust_mut().details_generation =
             self.as_ref().rust().details_generation.wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
@@ -220,12 +255,14 @@ impl qobject::GameDetailsModel {
     }
 
     pub fn close_panel(mut self: Pin<&mut Self>) {
+        self.as_mut().invalidate_preparation();
         self.as_mut().rust_mut().details_generation =
             self.as_ref().rust().details_generation.wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
             self.as_ref().rust().torrent_generation.wrapping_add(1);
         self.as_mut().set_loading(false);
         self.as_mut().set_torrent_loading(false);
+        self.as_mut().set_prepare_busy(false);
         self.as_mut().set_panel_open(false);
     }
 
@@ -240,7 +277,13 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_notes(QString::default());
+        self.as_mut().set_preparable(false);
+        self.as_mut().set_prepared(false);
+        self.as_mut().set_preparation_phase(QString::default());
+        self.as_mut().set_preparation_file(QString::default());
+        self.as_mut().set_prepared_summary(QString::default());
         self.as_mut().rust_mut().database_id = 0;
+        self.as_mut().rust_mut().local_file_path = PathBuf::new();
         self.as_mut().rust_mut().bundles.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
@@ -260,6 +303,22 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_loading(false);
         match loaded {
             Ok(details) => {
+                let preparable = crate::exo_install::is_preparable_archive(
+                    &details.platform,
+                    &details.local_file_path,
+                );
+                let prepared_summary = details
+                    .prepared_install
+                    .as_ref()
+                    .map(|prepared| {
+                        format!(
+                            "{} prepared · {}",
+                            prepared.collection.display_name(),
+                            prepared.launch_config_path.display()
+                        )
+                    })
+                    .unwrap_or_default();
+                let prepared = details.prepared_install.is_some();
                 self.as_mut().set_description(qstring(&details.description));
                 self.as_mut()
                     .set_release_date(qstring(&details.release_date));
@@ -275,6 +334,11 @@ impl qobject::GameDetailsModel {
                 self.as_mut().rust_mut().database_id = details.database_id;
                 self.as_mut().set_local(details.local);
                 self.as_mut().set_downloadable(details.downloadable);
+                self.as_mut().rust_mut().local_file_path = details.local_file_path;
+                self.as_mut().set_preparable(preparable);
+                self.as_mut().set_prepared(prepared);
+                self.as_mut()
+                    .set_prepared_summary(qstring(prepared_summary));
                 let bundle_count = details.bundles.len();
                 self.as_mut().rust_mut().bundles = details.bundles;
                 self.as_mut().set_bundle_count(count_i32(bundle_count));
@@ -432,6 +496,190 @@ impl qobject::GameDetailsModel {
             self.as_mut()
                 .set_message(qstring(format!("Could not start download worker: {error}")));
         }
+    }
+
+    pub fn prepare_game(mut self: Pin<&mut Self>) {
+        if *self.as_ref().prepare_busy() {
+            return;
+        }
+        if !*self.as_ref().preparable() {
+            self.as_mut().set_message(qstring(
+                "This installed file is not an exact eXoDOS, eXoWin3x, or eXoWin9x game archive.",
+            ));
+            return;
+        }
+        let archive_path = self.as_ref().rust().local_file_path.clone();
+        if !archive_path.is_file() {
+            self.as_mut().set_preparable(false);
+            self.as_mut().set_message(qstring(format!(
+                "The installed archive is no longer available: {}",
+                archive_path.display()
+            )));
+            return;
+        }
+
+        self.as_mut().rust_mut().preparation_generation =
+            self.as_ref().rust().preparation_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().preparation_generation;
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().preparation_cancel = Some(Arc::clone(&cancel));
+        let game_id = self.as_ref().game_id().to_string();
+        let completed_game_id = game_id.clone();
+        let launchbox_db_id = self.as_ref().rust().database_id;
+        let platform = self.as_ref().platform().to_string();
+        self.as_mut().set_prepare_busy(true);
+        self.as_mut()
+            .set_preparation_phase(qstring("Preparing install"));
+        self.as_mut().set_preparation_file(QString::default());
+        self.as_mut().set_message(qstring(
+            "Preparing the exact eXo game, metadata, and shared runtime assets…",
+        ));
+
+        let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-exo-prepare".into())
+            .spawn(move || {
+                let mut last_update = Instant::now()
+                    .checked_sub(Duration::from_secs(1))
+                    .unwrap_or_else(Instant::now);
+                let mut last_phase = String::new();
+                let prepared = (|| -> anyhow::Result<crate::exo_install::PreparedInstall> {
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let settings = store.load()?;
+                    crate::exo_install::prepare_install(
+                        &settings,
+                        &store,
+                        &game_id,
+                        launchbox_db_id,
+                        &platform,
+                        &archive_path,
+                        &cancel,
+                        |progress| {
+                            let phase_changed = progress.phase != last_phase;
+                            if phase_changed || last_update.elapsed() >= Duration::from_millis(100)
+                            {
+                                last_phase.clone_from(&progress.phase);
+                                last_update = Instant::now();
+                                let progress_generation = generation;
+                                let _ = progress_thread.queue(move |mut model| {
+                                    model
+                                        .as_mut()
+                                        .update_preparation_progress(progress_generation, progress);
+                                });
+                            }
+                        },
+                    )
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_preparation(generation, completed_game_id, prepared);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_prepare_busy(false);
+            self.as_mut().rust_mut().preparation_cancel = None;
+            self.as_mut().set_message(qstring(format!(
+                "Could not start eXo preparation worker: {error}"
+            )));
+        }
+    }
+
+    pub fn cancel_preparation(mut self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().preparation_cancel.as_ref() {
+            cancel.store(true, AtomicOrdering::Relaxed);
+            self.as_mut().set_preparation_phase(qstring("Cancelling…"));
+            self.as_mut().set_message(qstring(
+                "Cancelling eXo preparation and removing the private staging directory…",
+            ));
+        }
+    }
+
+    fn update_preparation_progress(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        progress: crate::exo_install::PreparationProgress,
+    ) {
+        if generation != self.as_ref().rust().preparation_generation
+            || !*self.as_ref().prepare_busy()
+        {
+            return;
+        }
+        self.as_mut()
+            .set_preparation_phase(qstring(&progress.phase));
+        self.as_mut()
+            .set_preparation_file(qstring(&progress.current_file));
+        let detail = if progress.current_file.is_empty() {
+            progress.phase
+        } else if progress.completed_bytes == 0 {
+            format!("{} · {}", progress.phase, progress.current_file)
+        } else {
+            format!(
+                "{} · {} · {}",
+                progress.phase,
+                progress.current_file,
+                game_details::format_bytes(progress.completed_bytes)
+            )
+        };
+        self.as_mut().set_message(qstring(detail));
+    }
+
+    fn finish_preparation(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        completed_game_id: String,
+        prepared: Result<crate::exo_install::PreparedInstall, String>,
+    ) {
+        if generation != self.as_ref().rust().preparation_generation
+            || self.as_ref().game_id().to_string() != completed_game_id
+        {
+            return;
+        }
+        self.as_mut().set_prepare_busy(false);
+        self.as_mut().rust_mut().preparation_cancel = None;
+        match prepared {
+            Ok(prepared) => {
+                let reused = prepared.reused;
+                let summary = format!(
+                    "{} prepared · {}",
+                    prepared.collection.display_name(),
+                    prepared.launch_config_path.display()
+                );
+                self.as_mut().set_prepared(true);
+                self.as_mut().set_preparation_phase(qstring("Ready"));
+                self.as_mut()
+                    .set_preparation_file(qstring(prepared.launch_config_path.to_string_lossy()));
+                self.as_mut().set_prepared_summary(qstring(&summary));
+                self.as_mut().set_message(qstring(if reused {
+                    format!("Reused the verified prepared install. {summary}")
+                } else {
+                    format!("Prepared install completed atomically. {summary}")
+                }));
+            }
+            Err(error) => {
+                self.as_mut().set_preparation_phase(qstring("Not prepared"));
+                self.as_mut().set_message(qstring(
+                    if error.to_ascii_lowercase().contains("cancelled") {
+                        "eXo preparation was cancelled; no partial install was published."
+                            .to_owned()
+                    } else {
+                        format!("Could not prepare eXo install: {error}")
+                    },
+                ));
+            }
+        }
+    }
+
+    fn invalidate_preparation(mut self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().preparation_cancel.as_ref() {
+            cancel.store(true, AtomicOrdering::Relaxed);
+        }
+        self.as_mut().rust_mut().preparation_cancel = None;
+        self.as_mut().rust_mut().preparation_generation =
+            self.as_ref().rust().preparation_generation.wrapping_add(1);
+        self.as_mut().set_prepare_busy(false);
     }
 
     fn finish_queue(

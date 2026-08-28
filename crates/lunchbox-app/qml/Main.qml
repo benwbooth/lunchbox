@@ -88,6 +88,8 @@ ApplicationWindow {
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
+    readonly property bool exoPrepareProbe: Qt.application.arguments.indexOf("--exo-prepare-probe") >= 0
+    readonly property bool exoPrepareUiProbe: Qt.application.arguments.indexOf("--exo-prepare-ui-probe") >= 0
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe
 
     palette.window: "#0c1119"
@@ -465,6 +467,21 @@ ApplicationWindow {
                 }
             }
         }
+        function onPreparableChanged() {
+            if (root.exoPrepareProbe && gameDetails.preparable
+                    && !gameDetails.prepared && !gameDetails.prepare_busy)
+                gameDetails.prepare_game()
+        }
+        function onPreparedChanged() {
+            if (root.exoPrepareProbe && gameDetails.prepared
+                    && !gameDetails.prepare_busy)
+                Qt.quit()
+        }
+        function onPrepare_busyChanged() {
+            if (root.exoPrepareProbe && gameDetails.prepared
+                    && !gameDetails.prepare_busy)
+                Qt.quit()
+        }
     }
 
     Connections {
@@ -531,6 +548,9 @@ ApplicationWindow {
             else if (root.exoArchiveUiProbe)
                 root.openGame("0faf424e-bb45-4d5f-b88d-771936a35f8a", 14329,
                               "Prince of Persia", "MS-DOS", false, true)
+            else if (root.exoPrepareProbe || root.exoPrepareUiProbe)
+                root.openGame("exo-prepare-probe", 0,
+                              "Prince of Persia", "MS-DOS", true, false)
         }
     }
 
@@ -2163,6 +2183,7 @@ ApplicationWindow {
                                 width: 18
                                 height: 18
                                 running: gameDetails.loading || gameDetails.torrent_loading
+                                         || gameDetails.prepare_busy
                                 visible: running
                             }
                             Text {
@@ -2219,6 +2240,135 @@ ApplicationWindow {
                         font.pixelSize: 10
                         lineHeight: 1.3
                         wrapMode: Text.WrapAnywhere
+                    }
+
+                    Rectangle {
+                        visible: !gameDetails.loading
+                                 && (gameDetails.preparable || gameDetails.prepared
+                                     || gameDetails.prepare_busy)
+                        width: parent.width
+                        height: prepareColumn.implicitHeight + 28
+                        radius: 11
+                        color: gameDetails.prepared ? "#142d2a" : "#171f2b"
+                        border.color: gameDetails.prepared ? root.accentCool : "#3b4658"
+
+                        Column {
+                            id: prepareColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            spacing: 9
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    width: parent.width - prepareState.width - 8
+                                    text: "PC INSTALL"
+                                    color: gameDetails.prepared ? root.accentCool : root.accent
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1.1
+                                }
+                                Rectangle {
+                                    id: prepareState
+                                    width: prepareStateText.implicitWidth + 14
+                                    height: 22
+                                    radius: 7
+                                    color: gameDetails.prepared ? "#1d493f" : "#252f3e"
+                                    border.color: gameDetails.prepared ? root.accentCool : root.line
+                                    Text {
+                                        id: prepareStateText
+                                        anchors.centerIn: parent
+                                        text: gameDetails.prepare_busy ? "WORKING"
+                                              : gameDetails.prepared ? "READY" : "ARCHIVED"
+                                        color: gameDetails.prepared ? root.accentCool : root.muted
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.7
+                                    }
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: gameDetails.prepared
+                                      ? "The game and its exact launch metadata are available in Lunchbox's versioned prepared cache."
+                                      : "Unpack this eXo archive with its matching metadata and shared runtime assets into a reusable, private cache."
+                                color: "#b8c2d0"
+                                font.pixelSize: 11
+                                lineHeight: 1.25
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                width: parent.width
+                                visible: gameDetails.prepared_summary.length > 0
+                                         || gameDetails.preparation_file.length > 0
+                                text: gameDetails.prepared_summary.length > 0
+                                      ? gameDetails.prepared_summary
+                                      : gameDetails.preparation_file
+                                color: root.muted
+                                font.pixelSize: 9
+                                wrapMode: Text.WrapAnywhere
+                                maximumLineCount: 3
+                                elide: Text.ElideMiddle
+                            }
+                            Rectangle {
+                                id: prepareProgress
+                                width: parent.width
+                                height: 4
+                                visible: gameDetails.prepare_busy
+                                radius: 2
+                                color: "#263246"
+                                clip: true
+                                Rectangle {
+                                    id: prepareProgressThumb
+                                    width: Math.max(48, prepareProgress.width * 0.32)
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: root.accentCool
+                                    SequentialAnimation on x {
+                                        running: gameDetails.prepare_busy
+                                        loops: Animation.Infinite
+                                        NumberAnimation {
+                                            from: -prepareProgressThumb.width
+                                            to: prepareProgress.width
+                                            duration: 900
+                                            easing.type: Easing.InOutCubic
+                                        }
+                                    }
+                                }
+                            }
+                            Button {
+                                width: parent.width
+                                height: 36
+                                text: gameDetails.prepare_busy ? "CANCEL PREPARATION"
+                                      : gameDetails.prepared ? "VERIFY & REFRESH INSTALL"
+                                      : "PREPARE INSTALL"
+                                enabled: gameDetails.preparable || gameDetails.prepare_busy
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                onClicked: {
+                                    if (gameDetails.prepare_busy)
+                                        gameDetails.cancel_preparation()
+                                    else
+                                        gameDetails.prepare_game()
+                                }
+                                background: Rectangle {
+                                    radius: 8
+                                    color: parent.down ? "#28364a"
+                                           : gameDetails.prepared ? "#1d493f" : "#263246"
+                                    border.color: gameDetails.prepared ? root.accentCool : root.accent
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: gameDetails.prepared ? root.accentCool : root.ink
+                                    font: parent.font
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
                     }
 
                     Rectangle {

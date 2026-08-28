@@ -64,6 +64,16 @@ Lunchbox-owned torrent after every selected file in that bundle has imported.
 The pause request is non-destructive, survives restart when deferred, and
 retries automatically when qBittorrent is temporarily unavailable.
 
+Installed eXoDOS, eXoWin3x, and eXoWin9x archives expose a native `PC Install`
+card in game details. Preparation runs off the GUI thread, resolves the exact
+matching metadata/game-data/utility archives, safely extracts title files and
+shared MT-32/DOSBox/86Box/PCBox assets, and atomically publishes a versioned
+cache keyed by the stable game ID and source signature. It can be cancelled
+without leaving a published partial tree, and unchanged sources are reused on
+retry or restart. Emulator discovery and launching are the next separate
+vertical slice; the UI does not claim a game can launch until that contract is
+implemented.
+
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder
 picker; qBittorrent/container paths are deliberately retained as verbatim

@@ -40,7 +40,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   durable acquisition plan with exact game-data/metadata/utility dependencies,
   legacy DOS language priority, role-aware confirmation, aggregate progress,
   a shared per-torrent archive cache, idempotent staging, and exact-primary-only
-  collection identity. Prepared extraction and emulator launch remain separate
+  collection identity. Prepared extraction is also native: stable-ID cache
+  records, exact title metadata, nested shared utilities, safe ZIP paths,
+  cooperative cancellation, atomic publication, reuse, and details-panel
+  status/retry behavior are complete. Emulator launch remains separate
   emulator-management work.
 - Native qBittorrent settings and connection testing, operating-system
   credential storage, exact reviewed-file priority, optional whole-torrent

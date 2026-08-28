@@ -92,6 +92,18 @@ The initial implementation enforces this shape:
   idempotently below `ROM/.lunchbox-pc-archives/INFO_HASH`, so shared dependencies
   can be reused by the later prepared-install pipeline without appearing as
   separate installed games; only the exact primary archive is recorded.
+- An installed eXo primary can be prepared from its exact native path on a named
+  worker. The source archive set is fingerprinted and expanded below
+  `ROM/.lunchbox-pc-cache/installs/COLLECTION/GAME_UID/SIGNATURE`; title metadata
+  and DOS game data are selected by their exact legacy subtrees. Shared utility
+  archives are fingerprinted separately, including nested `EXTDOS` and
+  `EXTWin9x` ZIPs, so MT-32, DOSBox, 86Box, and PCBox parent assets are reused.
+  ZIP paths must remain relative and contained. Cancellation removes only the
+  app-owned UUID staging tree; a complete tree is published by same-filesystem
+  rename and recorded by stable game UUID only after its launch config exists.
+  Refreshing an unchanged game reuses the verified cache. The details panel
+  shows preparation state, throttled progress, cancellation, and retry without
+  blocking Qt. Emulator process launch is a separate vertical slice.
 - Local collection scanning enumerates without following symlinks and hashes on
   a named worker. Progress is throttled before crossing the Qt bridge, and an
   atomic cancellation token is checked between every read chunk. The review
@@ -177,6 +189,12 @@ aggregate size, playlist naming and dialog layout without starting a download.
 the live eXo related-archive review dialog. It verifies the canonical default
 game archive, same-name game data, Linux metadata, shared utilities, aggregate
 size, role labels, and layout without starting a download.
+`--exo-prepare-probe --state-database FIXTURE_PATH` opens the fixed
+`exo-prepare-probe` installed identity, runs the real preparation action through
+the CXX-Qt model, and exits only after the cache is verified ready. Reusing the
+same state and archive paths verifies idempotent cache reuse.
+`--exo-prepare-ui-probe` leaves that game's details panel open for visual review
+of the PC-install card and prepared path.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to
@@ -205,7 +223,7 @@ for Lunchbox-owned behavior. Features should move as vertical slices: model and
 service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, completed-file
-ingestion, optical and eXo related-file plans, durable safe seeding policy,
+ingestion, optical and eXo related-file plans, eXo prepared installs, durable safe seeding policy,
 local-folder scan/review/import, legacy
 content filters, and durable favorites are now native. Existing game media is
 now indexed and rendered natively. On-demand LibRetro retrieval and durable

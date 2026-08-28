@@ -1,6 +1,7 @@
 mod catalog;
 mod download_plan;
 pub mod download_queue_model;
+mod exo_install;
 mod game_details;
 pub mod game_details_model;
 mod ingest;
