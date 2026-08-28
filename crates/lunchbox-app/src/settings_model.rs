@@ -31,6 +31,7 @@ pub mod qobject {
         #[qproperty(QString, preferred_region)]
         #[qproperty(i32, region_revision)]
         #[qproperty(QString, version_preference)]
+        #[qproperty(i32, media_provider_revision)]
         #[qproperty(bool, controller_enabled)]
         #[qproperty(QString, controller_output_target)]
         #[qproperty(bool, controller_busy)]
@@ -71,6 +72,21 @@ pub mod qobject {
 
         #[qinvokable]
         fn reset_region_priority(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn media_provider_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn media_provider_name_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn media_provider_description_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn move_media_provider(self: Pin<&mut SettingsModel>, from: i32, to: i32);
+
+        #[qinvokable]
+        fn reset_media_provider_priority(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
         fn refresh_controllers(self: Pin<&mut SettingsModel>);
@@ -232,6 +248,8 @@ pub struct SettingsModelRust {
     region_priority: Vec<String>,
     region_revision: i32,
     version_preference: QString,
+    media_provider_priority: Vec<String>,
+    media_provider_revision: i32,
     controller_enabled: bool,
     controller_output_target: QString,
     controller_busy: bool,
@@ -275,6 +293,8 @@ impl Default for SettingsModelRust {
             region_priority: crate::region_priority::default_region_priority(),
             region_revision: 0,
             version_preference: QString::from("latest"),
+            media_provider_priority: crate::media::default_provider_priority(),
+            media_provider_revision: 0,
             controller_enabled: false,
             controller_output_target: QString::from("xb360"),
             controller_busy: false,
@@ -530,6 +550,63 @@ impl qobject::SettingsModel {
         self.as_mut().set_connection_ok(false);
         self.as_mut().set_message(qstring(
             "Default region priority restored. Save settings to apply it.",
+        ));
+    }
+
+    pub fn media_provider_count(&self) -> i32 {
+        i32::try_from(self.rust().media_provider_priority.len()).unwrap_or(i32::MAX)
+    }
+
+    pub fn media_provider_name_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().media_provider_priority.get(index))
+            .map(|provider| qstring(crate::media::provider_display_name(provider)))
+            .unwrap_or_default()
+    }
+
+    pub fn media_provider_description_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().media_provider_priority.get(index))
+            .map(|provider| qstring(crate::media::provider_description(provider)))
+            .unwrap_or_default()
+    }
+
+    pub fn move_media_provider(mut self: Pin<&mut Self>, from: i32, to: i32) {
+        let Ok(from) = usize::try_from(from) else {
+            return;
+        };
+        let Ok(to) = usize::try_from(to) else {
+            return;
+        };
+        let count = self.as_ref().rust().media_provider_priority.len();
+        if from >= count || to >= count || from == to {
+            return;
+        }
+        let provider = self
+            .as_mut()
+            .rust_mut()
+            .media_provider_priority
+            .remove(from);
+        self.as_mut()
+            .rust_mut()
+            .media_provider_priority
+            .insert(to, provider);
+        self.as_mut().bump_media_provider_revision();
+        self.as_mut().set_connection_ok(false);
+        self.as_mut().set_message(qstring(
+            "Media source priority changed. Save settings to reindex cached media.",
+        ));
+    }
+
+    pub fn reset_media_provider_priority(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().media_provider_priority =
+            crate::media::default_provider_priority();
+        self.as_mut().bump_media_provider_revision();
+        self.as_mut().set_connection_ok(false);
+        self.as_mut().set_message(qstring(
+            "Default media source priority restored. Save settings to reindex cached media.",
         ));
     }
 
@@ -1124,6 +1201,8 @@ impl qobject::SettingsModel {
     fn apply_settings(mut self: Pin<&mut Self>, settings: AppSettings) {
         let region_priority =
             crate::region_priority::effective_region_priority(&settings.region_priority);
+        let media_provider_priority =
+            crate::media::effective_provider_priority(&settings.media_provider_priority);
         let controller_mapping = settings.controller_mapping.clone();
         self.as_mut()
             .set_qbittorrent_host(qstring(settings.qbittorrent_host));
@@ -1157,6 +1236,8 @@ impl qobject::SettingsModel {
         self.as_mut().bump_region_revision();
         self.as_mut()
             .set_version_preference(qstring(settings.version_preference));
+        self.as_mut().rust_mut().media_provider_priority = media_provider_priority;
+        self.as_mut().bump_media_provider_revision();
         self.as_mut()
             .set_controller_enabled(controller_mapping.enabled);
         self.as_mut()
@@ -1189,6 +1270,7 @@ impl qobject::SettingsModel {
             preferred_region: self.preferred_region().to_string(),
             region_priority: self.rust().region_priority.clone(),
             version_preference: self.version_preference().to_string(),
+            media_provider_priority: self.rust().media_provider_priority.clone(),
             controller_mapping: {
                 let mut mapping = self.rust().controller_mapping.clone();
                 mapping.enabled = *self.controller_enabled();
@@ -1223,6 +1305,11 @@ impl qobject::SettingsModel {
     fn bump_region_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().region_revision().wrapping_add(1);
         self.as_mut().set_region_revision(revision);
+    }
+
+    fn bump_media_provider_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().media_provider_revision().wrapping_add(1);
+        self.as_mut().set_media_provider_revision(revision);
     }
 
     fn controller_at(&self, index: i32) -> Option<ControllerDevice> {

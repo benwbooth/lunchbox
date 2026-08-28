@@ -66,6 +66,7 @@ ApplicationWindow {
     property bool downloadHistoryTriggered: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
+    property bool settingsMediaPriorityTriggered: false
     property bool box3dProbeOpened: false
     property bool mediaRotationProbeOpened: false
     property int pendingEmulatorUninstallIndex: -1
@@ -117,6 +118,7 @@ ApplicationWindow {
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
+    readonly property bool settingsMediaPriorityUiProbe: Qt.application.arguments.indexOf("--settings-media-priority-ui-probe") >= 0
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
@@ -576,12 +578,29 @@ ApplicationWindow {
                 appSettings.version_preference = "original"
                 appSettings.save()
             }
+            if (root.settingsMediaPriorityUiProbe && appSettings.initialized
+                    && !root.settingsMediaPriorityTriggered) {
+                root.settingsMediaPriorityTriggered = true
+                appSettings.move_media_provider(
+                            appSettings.media_provider_count() - 1, 0)
+                appSettings.save()
+            }
         }
         function onBusyChanged() {
             root.finishSettingsProbeWhenSaved()
         }
         function onMessageChanged() {
             root.finishSettingsProbeWhenSaved()
+            if (appSettings.message.indexOf("Settings saved.") === 0) {
+                library.refresh_media()
+                if (root.settingsMediaPriorityUiProbe
+                        && root.settingsMediaPriorityTriggered) {
+                    settingsScroll.contentItem.contentY = Math.max(
+                        0, mediaProviderPrioritySection.mapToItem(
+                            settingsScroll.contentItem, 0, 0).y - 18)
+                    settingsMediaPriorityScreenshotTimer.restart()
+                }
+            }
         }
     }
 
@@ -1060,6 +1079,7 @@ ApplicationWindow {
             else if (root.importUiProbe)
                 root.openImportDialog()
             else if (root.settingsUiProbe || root.settingsRegionUiProbe
+                     || root.settingsMediaPriorityUiProbe
                      || root.controllerUiProbe || root.controllerProfileUiProbe) {
                 settingsDialog.open()
                 if (root.controllerUiProbe)
@@ -1126,6 +1146,40 @@ ApplicationWindow {
         onTriggered: settingsScroll.contentItem.contentY = Math.max(
                          0, regionPrioritySection.mapToItem(
                              settingsScroll.contentItem, 0, 0).y - 18)
+    }
+
+    Timer {
+        id: settingsMediaPriorityScreenshotTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+            const count = appSettings.media_provider_count()
+            const first = count > 0 ? appSettings.media_provider_name_at(0) : ""
+            if (count !== 9 || first !== "Web search cache") {
+                console.error("LUNCHBOX_MEDIA_PRIORITY_UI_FAILED count="
+                              + count + " first=" + first)
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                console.log("LUNCHBOX_MEDIA_PRIORITY_UI_READY count="
+                            + count + " first=" + first)
+                Qt.quit()
+                return
+            }
+            settingsDialog.contentItem.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_MEDIA_PRIORITY_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_MEDIA_PRIORITY_UI_READY count="
+                            + count + " first=" + first + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
     }
 
     Timer {
@@ -6048,9 +6102,11 @@ ApplicationWindow {
         id: settingsDialog
         modal: true
         anchors.centerIn: parent
-        width: Math.min(root.controllerProfileUiProbe ? 1120 : 760,
+        width: Math.min(root.controllerProfileUiProbe
+                        || root.settingsMediaPriorityUiProbe ? 1120 : 760,
                         root.width - 60)
-        height: Math.min(root.controllerProfileUiProbe ? 1080 : 760,
+        height: Math.min(root.controllerProfileUiProbe
+                         || root.settingsMediaPriorityUiProbe ? 1080 : 760,
                          root.height - 60)
         padding: 0
         closePolicy: Popup.CloseOnEscape
@@ -6410,6 +6466,144 @@ ApplicationWindow {
                         ]
                         currentIndex: appSettings.version_preference === "original" ? 1 : 0
                         onActivated: appSettings.version_preference = currentValue
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    id: mediaProviderPrioritySection
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "MEDIA SOURCE PRIORITY"
+                                color: root.accent
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1.2
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Choose which source wins when more than one cached image, video, or manual is available. Saving immediately reindexes the library in the background."
+                                color: root.muted
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                        Button {
+                            text: "Reset defaults"
+                            enabled: !appSettings.busy
+                            onClicked: appSettings.reset_media_provider_priority()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 474
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+                        border.width: 1
+
+                        ListView {
+                            id: mediaProviderPriorityList
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            clip: true
+                            spacing: 4
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: {
+                                appSettings.media_provider_revision
+                                return appSettings.media_provider_count()
+                            }
+                            ScrollBar.vertical: ScrollBar { }
+
+                            delegate: Rectangle {
+                                id: mediaProviderRow
+                                required property int index
+                                width: mediaProviderPriorityList.width - 10
+                                height: 48
+                                radius: 7
+                                color: index === 0 ? "#1c2a35" : "#161e29"
+                                border.color: index === 0 ? root.accent : "#202b3b"
+                                border.width: 1
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 5
+                                    spacing: 9
+                                    Text {
+                                        Layout.preferredWidth: 22
+                                        text: (mediaProviderRow.index + 1).toString().padStart(2, "0")
+                                        color: mediaProviderRow.index === 0
+                                               ? root.accent : root.muted
+                                        font.pixelSize: 10
+                                        font.family: "monospace"
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: {
+                                                appSettings.media_provider_revision
+                                                return appSettings.media_provider_name_at(
+                                                            mediaProviderRow.index)
+                                            }
+                                            color: root.ink
+                                            font.pixelSize: 11
+                                            font.weight: mediaProviderRow.index === 0
+                                                         ? Font.DemiBold : Font.Normal
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: {
+                                                appSettings.media_provider_revision
+                                                return appSettings.media_provider_description_at(
+                                                            mediaProviderRow.index)
+                                            }
+                                            color: root.muted
+                                            font.pixelSize: 9
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    ToolButton {
+                                        text: "↑"
+                                        enabled: mediaProviderRow.index > 0
+                                                 && !appSettings.busy
+                                        Accessible.name: "Move media source up"
+                                        onClicked: appSettings.move_media_provider(
+                                                       mediaProviderRow.index,
+                                                       mediaProviderRow.index - 1)
+                                    }
+                                    ToolButton {
+                                        text: "↓"
+                                        enabled: mediaProviderRow.index + 1
+                                                 < appSettings.media_provider_count()
+                                                 && !appSettings.busy
+                                        Accessible.name: "Move media source down"
+                                        onClicked: appSettings.move_media_provider(
+                                                       mediaProviderRow.index,
+                                                       mediaProviderRow.index + 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Priority applies to media already present in Lunchbox's cache. Provider downloads remain available only where a configured native retrieval adapter exists."
+                        color: root.muted
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
                     }
                 }
 

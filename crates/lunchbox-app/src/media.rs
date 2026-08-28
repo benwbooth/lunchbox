@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::catalog;
 
-const PROVIDER_PRIORITY: [&str; 9] = [
+pub(crate) const DEFAULT_PROVIDER_PRIORITY: [&str; 9] = [
     "local",
     "launchbox",
     "libretro",
@@ -22,6 +22,66 @@ const PROVIDER_PRIORITY: [&str; 9] = [
     "screenscraper",
     "websearch",
 ];
+
+pub(crate) fn provider_display_name(provider: &str) -> &'static str {
+    match provider {
+        "local" => "Local files",
+        "launchbox" => "LaunchBox cache",
+        "libretro" => "LibRetro Thumbnails",
+        "steamgriddb" => "SteamGridDB",
+        "igdb" => "IGDB",
+        "minerva" => "Minerva",
+        "emumovies" => "EmuMovies",
+        "screenscraper" => "ScreenScraper",
+        "websearch" => "Web search cache",
+        _ => "Unknown provider",
+    }
+}
+
+pub(crate) fn provider_description(provider: &str) -> &'static str {
+    match provider {
+        "local" => "User-managed artwork already stored with the game",
+        "launchbox" => "Imported LaunchBox artwork already present in the cache",
+        "libretro" => "Free retro box art, screenshots, title screens, and logos",
+        "steamgriddb" => "Community artwork for modern, PC, and console games",
+        "igdb" => "Broad commercial game covers, screenshots, and artwork",
+        "minerva" => "Media distributed beside Minerva acquisition records",
+        "emumovies" => "Premium retro artwork, videos, and manuals",
+        "screenscraper" => "Checksum-oriented community game media",
+        "websearch" => "Explicitly reviewed artwork cached from a web search",
+        _ => "Provider is not recognized",
+    }
+}
+
+pub(crate) fn default_provider_priority() -> Vec<String> {
+    DEFAULT_PROVIDER_PRIORITY
+        .iter()
+        .map(|provider| (*provider).to_owned())
+        .collect()
+}
+
+pub(crate) fn normalize_provider_priority(priority: &[String]) -> Result<Vec<String>> {
+    if priority.len() != DEFAULT_PROVIDER_PRIORITY.len() {
+        bail!(
+            "media provider priority must contain all {} providers exactly once",
+            DEFAULT_PROVIDER_PRIORITY.len()
+        );
+    }
+    let mut seen = std::collections::HashSet::new();
+    for provider in priority {
+        if !DEFAULT_PROVIDER_PRIORITY.contains(&provider.as_str()) {
+            bail!("unsupported media provider {provider}");
+        }
+        if !seen.insert(provider.as_str()) {
+            bail!("media provider priority contains duplicate {provider}");
+        }
+    }
+    Ok(priority.to_vec())
+}
+
+pub(crate) fn effective_provider_priority(priority: &[String]) -> Vec<String> {
+    normalize_provider_priority(priority).unwrap_or_else(|_| default_provider_priority())
+}
 
 const LIBRETRO_THUMBNAILS_URL: &str = "https://thumbnails.libretro.com";
 const MEDIA_DOWNLOAD_WORKERS: usize = 2;
@@ -372,12 +432,20 @@ pub struct MediaIndex {
     pub asset_count: usize,
     pub skipped_entries: usize,
     pub warning: Option<String>,
+    provider_priority: Vec<String>,
 }
 
 impl MediaIndex {
+    #[cfg(test)]
     pub fn scan(root: PathBuf) -> Self {
+        Self::scan_with_provider_priority(root, default_provider_priority())
+    }
+
+    pub fn scan_with_provider_priority(root: PathBuf, provider_priority: Vec<String>) -> Self {
+        let provider_priority = effective_provider_priority(&provider_priority);
         let mut index = Self {
             root: root.clone(),
+            provider_priority: provider_priority.clone(),
             ..Self::default()
         };
         let directories = match fs::read_dir(&root) {
@@ -404,7 +472,11 @@ impl MediaIndex {
             let Some(database_id) = parse_launchbox_directory(&directory.file_name()) else {
                 continue;
             };
-            let media = scan_game_directory(&directory.path(), &mut index.skipped_entries);
+            let media = scan_game_directory(
+                &directory.path(),
+                &mut index.skipped_entries,
+                &provider_priority,
+            );
             if !media.is_empty() {
                 index.asset_count += media.asset_count();
                 index.games.insert(database_id, media);
@@ -453,7 +525,7 @@ impl MediaIndex {
             MediaAsset {
                 path,
                 source: source.to_owned(),
-                source_rank: provider_rank(source),
+                source_rank: provider_rank(source, &self.provider_priority),
                 format_rank: 0,
             },
         );
@@ -481,6 +553,10 @@ pub fn requested_media_directory() -> PathBuf {
 
 pub fn supplemental_media(game_id: &str, database_id: i64) -> Result<SupplementalMedia> {
     let root = requested_media_directory();
+    let provider_priority = crate::settings::SettingsStore::open_default()
+        .and_then(|store| store.load())
+        .map(|settings| effective_provider_priority(&settings.media_provider_priority))
+        .unwrap_or_else(|_| default_provider_priority());
     let mut directories = Vec::with_capacity(2);
     if database_id > 0 {
         directories.push(game_media_directory_in(&root, game_id, database_id)?);
@@ -491,7 +567,7 @@ pub fn supplemental_media(game_id: &str, database_id: i64) -> Result<Supplementa
 
     let mut selected = SupplementalMedia::default();
     for directory in directories {
-        let candidate = scan_supplemental_directory(&root, &directory)?;
+        let candidate = scan_supplemental_directory(&root, &directory, &provider_priority)?;
         select_supplemental_asset(&mut selected.video, candidate.video);
         select_supplemental_asset(&mut selected.manual, candidate.manual);
     }
@@ -551,7 +627,11 @@ fn safe_game_identity(game_id: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
 }
 
-fn scan_supplemental_directory(root: &Path, directory: &Path) -> Result<SupplementalMedia> {
+fn scan_supplemental_directory(
+    root: &Path,
+    directory: &Path,
+    provider_priority: &[String],
+) -> Result<SupplementalMedia> {
     if !directory.is_dir() {
         return Ok(SupplementalMedia::default());
     }
@@ -589,7 +669,7 @@ fn scan_supplemental_directory(root: &Path, directory: &Path) -> Result<Suppleme
             continue;
         }
         let source_name = source.file_name().to_string_lossy().to_lowercase();
-        let source_rank = provider_rank(&source_name);
+        let source_rank = provider_rank(&source_name, provider_priority);
         for file in fs::read_dir(source.path())
             .with_context(|| format!("reading media source {}", source.path().display()))?
         {
@@ -695,7 +775,11 @@ fn parse_launchbox_directory(value: &std::ffi::OsStr) -> Option<i64> {
     (database_id > 0).then_some(database_id)
 }
 
-fn scan_game_directory(path: &Path, skipped_entries: &mut usize) -> GameMedia {
+fn scan_game_directory(
+    path: &Path,
+    skipped_entries: &mut usize,
+    provider_priority: &[String],
+) -> GameMedia {
     let mut media = GameMedia::default();
     let Ok(sources) = fs::read_dir(path) else {
         *skipped_entries += 1;
@@ -714,7 +798,7 @@ fn scan_game_directory(path: &Path, skipped_entries: &mut usize) -> GameMedia {
             continue;
         }
         let source_name = source.file_name().to_string_lossy().to_lowercase();
-        let source_rank = provider_rank(&source_name);
+        let source_rank = provider_rank(&source_name, provider_priority);
         let Ok(files) = fs::read_dir(source.path()) else {
             *skipped_entries += 1;
             continue;
@@ -755,11 +839,17 @@ fn scan_game_directory(path: &Path, skipped_entries: &mut usize) -> GameMedia {
     media
 }
 
-fn provider_rank(source: &str) -> usize {
-    PROVIDER_PRIORITY
+fn provider_rank(source: &str, provider_priority: &[String]) -> usize {
+    if provider_priority.is_empty() {
+        return DEFAULT_PROVIDER_PRIORITY
+            .iter()
+            .position(|candidate| *candidate == source)
+            .unwrap_or(DEFAULT_PROVIDER_PRIORITY.len());
+    }
+    provider_priority
         .iter()
-        .position(|candidate| *candidate == source)
-        .unwrap_or(PROVIDER_PRIORITY.len())
+        .position(|candidate| candidate == source)
+        .unwrap_or(provider_priority.len())
 }
 
 fn image_format_rank(path: &Path) -> Option<usize> {
@@ -1327,6 +1417,44 @@ mod tests {
     }
 
     #[test]
+    fn configured_provider_priority_changes_the_selected_candidate() {
+        let directory = tempfile::tempdir().unwrap();
+        touch(&directory.path().join("lb-1019/steamgriddb/box-front.png"));
+        touch(&directory.path().join("lb-1019/launchbox/box-front.jpg"));
+        let mut priority = default_provider_priority();
+        let steam_grid_index = priority
+            .iter()
+            .position(|provider| provider == "steamgriddb")
+            .unwrap();
+        let steam_grid = priority.remove(steam_grid_index);
+        priority.insert(0, steam_grid);
+
+        let index = MediaIndex::scan_with_provider_priority(directory.path().to_owned(), priority);
+        let cover = index.exact(1019, ArtworkKind::BoxFront).unwrap();
+        assert_eq!(cover.source, "steamgriddb");
+        assert!(cover.path.ends_with("steamgriddb/box-front.png"));
+    }
+
+    #[test]
+    fn provider_priority_requires_the_complete_unique_provider_set() {
+        let mut duplicate = default_provider_priority();
+        duplicate[1] = "local".into();
+        assert!(normalize_provider_priority(&duplicate).is_err());
+
+        let mut unknown = default_provider_priority();
+        unknown[1] = "untrusted".into();
+        assert!(normalize_provider_priority(&unknown).is_err());
+
+        let mut missing = default_provider_priority();
+        missing.pop();
+        assert!(normalize_provider_priority(&missing).is_err());
+        assert_eq!(
+            effective_provider_priority(&missing),
+            default_provider_priority()
+        );
+    }
+
+    #[test]
     fn selected_artwork_uses_explicit_kind_fallbacks() {
         let mut media = GameMedia::default();
         media.insert(
@@ -1376,12 +1504,40 @@ mod tests {
         touch(&directory.path().join("lb-140/minerva/manual.zip"));
         touch(&directory.path().join("lb-140/local/video.webm"));
 
-        let media = scan_supplemental_directory(directory.path(), &directory.path().join("lb-140"))
-            .unwrap();
+        let media = scan_supplemental_directory(
+            directory.path(),
+            &directory.path().join("lb-140"),
+            &default_provider_priority(),
+        )
+        .unwrap();
         assert_eq!(media.video.unwrap().source, "local");
         let manual = media.manual.unwrap();
         assert_eq!(manual.source, "minerva");
         assert!(manual.path.ends_with("minerva/manual.zip"));
+    }
+
+    #[test]
+    fn supplemental_media_uses_the_configured_provider_priority() {
+        let directory = tempfile::tempdir().unwrap();
+        touch(&directory.path().join("lb-140/local/video.webm"));
+        touch(&directory.path().join("lb-140/emumovies/video.mp4"));
+        let mut priority = default_provider_priority();
+        let emumovies_index = priority
+            .iter()
+            .position(|provider| provider == "emumovies")
+            .unwrap();
+        let emumovies = priority.remove(emumovies_index);
+        priority.insert(0, emumovies);
+
+        let media = scan_supplemental_directory(
+            directory.path(),
+            &directory.path().join("lb-140"),
+            &priority,
+        )
+        .unwrap();
+        let video = media.video.unwrap();
+        assert_eq!(video.source, "emumovies");
+        assert!(video.path.ends_with("emumovies/video.mp4"));
     }
 
     #[test]

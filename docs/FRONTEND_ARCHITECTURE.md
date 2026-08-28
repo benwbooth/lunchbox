@@ -323,6 +323,14 @@ the save completes. Inspecting or reusing the state path verifies persistence
 and restart recovery.
 `--settings-release-probe --state-database EMPTY_PATH` similarly saves Japan
 plus original-release preferences through the real bridge. The
+`--settings-media-priority-ui-probe --state-database EMPTY_PATH` route moves
+the last provider to first place through the same CXX-Qt editor, saves the
+complete validated provider set, starts the real off-thread media reindex, and
+exits only after verifying the resulting nine-row order; adding
+`--screenshot-output ABSOLUTE_PATH` captures the populated priority surface.
+The saved order governs all cached artwork, video, and manual candidates and
+falls back to the complete default only when an older state database has no
+valid order. The
 `--controller-probe` route performs a non-Qt real-host inventory and prints the
 native controller, InputPlumber service, managed-device, target, and warning
 counts. `--controller-ui-probe --state-database EMPTY_PATH` opens the same

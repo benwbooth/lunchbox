@@ -244,10 +244,12 @@ strings.
 Artwork indexing keeps every valid cached candidate instead of discarding all
 but the preferred provider. The details hero exposes previous/next controls and
 the current source while preserving the legacy provider and media-type fallback
-order. Its refresh action bypasses the seven-day miss cache, validates a fresh
-LibRetro PNG, and replaces only Lunchbox's owned LibRetro file through a synced
-temporary file. Other providers remain available, and a miss or transfer error
-restores the existing image.
+order. The complete provider order is editable and durable in Settings; saving
+it immediately rebuilds the in-memory artwork index off the GUI thread and also
+governs cached videos and manuals. Its refresh action bypasses the seven-day
+miss cache, validates a fresh LibRetro PNG, and replaces only Lunchbox's owned
+LibRetro file through a synced temporary file. Other providers remain available,
+and a miss or transfer error restores the existing image.
 
 The details hero can switch from flat artwork to an interactive native 3D box
 whenever an exact cached front cover exists. Qt Quick 3D renders separate front,

@@ -81,6 +81,9 @@ pub mod qobject {
         fn reload(self: Pin<&mut LibraryModel>);
 
         #[qinvokable]
+        fn refresh_media(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
         fn refresh_activity(self: Pin<&mut LibraryModel>);
 
         #[qinvokable]
@@ -524,6 +527,13 @@ impl qobject::LibraryModel {
             return;
         }
         self.as_mut().start_load();
+    }
+
+    pub fn refresh_media(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().ready() {
+            return;
+        }
+        self.as_mut().start_media_load();
     }
 
     pub fn refresh_activity(mut self: Pin<&mut Self>) {
@@ -1670,7 +1680,13 @@ impl qobject::LibraryModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-media-index".into())
             .spawn(move || {
-                let index = MediaIndex::scan(directory);
+                let provider_priority = crate::settings::SettingsStore::open_default()
+                    .and_then(|store| store.load())
+                    .map(|settings| {
+                        crate::media::effective_provider_priority(&settings.media_provider_priority)
+                    })
+                    .unwrap_or_else(|_| crate::media::default_provider_priority());
+                let index = MediaIndex::scan_with_provider_priority(directory, provider_priority);
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_media_load(generation, index);
                 });
