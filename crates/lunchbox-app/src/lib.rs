@@ -59,6 +59,19 @@ pub fn run() -> i32 {
         };
     }
 
+    if std::env::args().any(|argument| argument == "--multi-archive-import-probe") {
+        return match local_import::multi_archive_import_probe() {
+            Ok(evidence) => {
+                println!("LUNCHBOX_MULTI_ARCHIVE_IMPORT_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_MULTI_ARCHIVE_IMPORT_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--alternate-title-probe") {
         return match game_details::alternate_title_probe() {
             Ok(evidence) => {

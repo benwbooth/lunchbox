@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::{BufReader, Read};
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,6 +11,7 @@ use crc32fast::Hasher as Crc32;
 use md5::Md5;
 use rusqlite::{Connection, params};
 use sha1::{Digest, Sha1};
+use sha2::Sha256;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -107,16 +108,26 @@ struct MatchIndex {
 #[derive(Clone, Debug)]
 enum ZipInspection {
     Empty,
-    Multiple {
-        member_count: usize,
-        inferred_platform: Option<String>,
-    },
-    Single {
-        member_name: String,
-        extension: String,
-        size: u64,
-        digests: Option<Digests>,
-    },
+    Members(Vec<ZipMemberInspection>),
+}
+
+#[derive(Clone, Debug)]
+struct ZipMemberInspection {
+    member_name: String,
+    extension: String,
+    size: u64,
+    digests: Option<Digests>,
+    error: Option<String>,
+}
+
+struct PreparedScanSource {
+    identity_file_name: String,
+    identity_file_size: u64,
+    identity_extension: String,
+    archive_member: String,
+    archive_member_count: usize,
+    digests: Option<Digests>,
+    error: Option<String>,
 }
 
 pub fn load_platform_names(discovery_path: &Path) -> Result<Vec<String>> {
@@ -286,112 +297,115 @@ pub fn scan_directory(
         } else {
             None
         };
-        let mut archive_member = String::new();
-        let mut archive_member_count = 0usize;
-        let mut identity_file_name = file_name.clone();
-        let mut identity_file_size = metadata.len();
-        let mut identity_extension = extension.clone();
-        let mut archive_platform = None;
-        let mut predetermined_match = None;
-        let digests = match zip_inspection {
-            Some(ZipInspection::Empty) => {
-                predetermined_match = Some((
-                    MatchState::Error("ZIP contains no recognized ROM members".to_owned()),
-                    "archive inspection".to_owned(),
-                ));
-                None
-            }
-            Some(ZipInspection::Multiple {
-                member_count,
-                inferred_platform,
-            }) => {
-                archive_member_count = member_count;
-                archive_platform = inferred_platform;
-                predetermined_match = Some((
-                    MatchState::InventoryOnly,
-                    format!("ZIP contains {member_count} ROM members; review required"),
-                ));
-                None
-            }
-            Some(ZipInspection::Single {
-                member_name,
-                extension,
-                size,
-                digests,
-            }) => {
-                archive_member = member_name.clone();
-                archive_member_count = 1;
-                identity_file_name = member_name;
-                identity_file_size = size;
-                identity_extension = extension;
-                digests
-            }
-            None if checksums_enabled => match hash_file(path, cancelled) {
-                Ok(Some(digests)) => Some(digests),
-                Ok(None) => break,
-                Err(error) => {
-                    results.push(error_result(&root, path, error.to_string()));
-                    report_progress(&progress, paths.len(), position, file_name);
-                    continue;
-                }
-            },
-            None => None,
-        };
-        let inferred_platform = if platform_hint.is_empty() {
-            archive_platform.or_else(|| {
-                index
-                    .extension_platforms
-                    .get(&identity_extension)
-                    .and_then(|names| (names.len() == 1).then(|| names[0].clone()))
-            })
-        } else {
-            Some(platform_hint.to_owned())
-        };
-        let (match_state, mut match_method) = if let Some(value) = predetermined_match {
-            value
-        } else if let Some(digests) = &digests {
-            match_digest(&index, &digests.sha1, &digests.md5, platform_hint)
-        } else {
-            (MatchState::InventoryOnly, "not checked".to_owned())
-        };
-        if !archive_member.is_empty() {
-            match_method = format!("ZIP member {match_method}");
-        }
-        let platform = match &match_state {
-            MatchState::Exact(identity) => identity.platform.clone(),
-            _ => inferred_platform.unwrap_or_else(|| "Unassigned".to_owned()),
-        };
         let modified_unix_ns = metadata
             .modified()
             .ok()
             .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
             .and_then(|value| i64::try_from(value.as_nanos()).ok());
-        results.push(ScanResult {
-            path: path.clone(),
-            relative_path: path.strip_prefix(&root).unwrap_or(path).to_path_buf(),
-            file_name: file_name.clone(),
-            archive_member,
-            archive_member_count,
-            display_title: display_title(&identity_file_name),
-            platform,
-            file_size: identity_file_size,
-            modified_unix_ns,
-            crc32: digests
-                .as_ref()
-                .map(|value| value.crc32.clone())
-                .unwrap_or_default(),
-            md5: digests
-                .as_ref()
-                .map(|value| value.md5.clone())
-                .unwrap_or_default(),
-            sha1: digests
-                .as_ref()
-                .map(|value| value.sha1.clone())
-                .unwrap_or_default(),
-            selected: matches!(match_state, MatchState::Exact(_)),
-            match_state,
-            match_method,
-        });
+        let sources = match zip_inspection {
+            Some(ZipInspection::Empty) => vec![PreparedScanSource {
+                identity_file_name: file_name.clone(),
+                identity_file_size: metadata.len(),
+                identity_extension: extension.clone(),
+                archive_member: String::new(),
+                archive_member_count: 0,
+                digests: None,
+                error: Some("ZIP contains no recognized ROM members".to_owned()),
+            }],
+            Some(ZipInspection::Members(members)) => {
+                let member_count = members.len();
+                members
+                    .into_iter()
+                    .map(|member| PreparedScanSource {
+                        identity_file_name: member.member_name.clone(),
+                        identity_file_size: member.size,
+                        identity_extension: member.extension,
+                        archive_member: member.member_name,
+                        archive_member_count: member_count,
+                        digests: member.digests,
+                        error: member.error,
+                    })
+                    .collect()
+            }
+            None => {
+                let digests = if checksums_enabled {
+                    match hash_file(path, cancelled) {
+                        Ok(Some(digests)) => Some(digests),
+                        Ok(None) => break,
+                        Err(error) => {
+                            results.push(error_result(&root, path, error.to_string()));
+                            report_progress(&progress, paths.len(), position, file_name);
+                            continue;
+                        }
+                    }
+                } else {
+                    None
+                };
+                vec![PreparedScanSource {
+                    identity_file_name: file_name.clone(),
+                    identity_file_size: metadata.len(),
+                    identity_extension: extension.clone(),
+                    archive_member: String::new(),
+                    archive_member_count: 0,
+                    digests,
+                    error: None,
+                }]
+            }
+        };
+        for source in sources {
+            let inferred_platform = if platform_hint.is_empty() {
+                index
+                    .extension_platforms
+                    .get(&source.identity_extension)
+                    .and_then(|names| (names.len() == 1).then(|| names[0].clone()))
+            } else {
+                Some(platform_hint.to_owned())
+            };
+            let (match_state, mut match_method) = if let Some(error) = source.error {
+                (MatchState::Error(error), "read error".to_owned())
+            } else if let Some(digests) = &source.digests {
+                match_digest(&index, &digests.sha1, &digests.md5, platform_hint)
+            } else {
+                (MatchState::InventoryOnly, "not checked".to_owned())
+            };
+            if !source.archive_member.is_empty() {
+                match_method = format!("ZIP member {match_method}");
+            }
+            let platform = match &match_state {
+                MatchState::Exact(identity) => identity.platform.clone(),
+                _ => inferred_platform.unwrap_or_else(|| "Unassigned".to_owned()),
+            };
+            results.push(ScanResult {
+                path: path.clone(),
+                relative_path: path.strip_prefix(&root).unwrap_or(path).to_path_buf(),
+                file_name: file_name.clone(),
+                archive_member: source.archive_member,
+                archive_member_count: source.archive_member_count,
+                display_title: display_title(&source.identity_file_name),
+                platform,
+                file_size: source.identity_file_size,
+                modified_unix_ns,
+                crc32: source
+                    .digests
+                    .as_ref()
+                    .map(|value| value.crc32.clone())
+                    .unwrap_or_default(),
+                md5: source
+                    .digests
+                    .as_ref()
+                    .map(|value| value.md5.clone())
+                    .unwrap_or_default(),
+                sha1: source
+                    .digests
+                    .as_ref()
+                    .map(|value| value.sha1.clone())
+                    .unwrap_or_default(),
+                selected: source.archive_member_count <= 1
+                    && matches!(match_state, MatchState::Exact(_)),
+                match_state,
+                match_method,
+            });
+        }
         if position % 8 == 0 || position + 1 == paths.len() {
             report_progress(&progress, paths.len(), position, file_name);
         }
@@ -438,6 +452,127 @@ pub(crate) fn archive_import_probe() -> Result<String> {
         identity.title,
         identity.platform,
         result.match_method
+    ))
+}
+
+pub(crate) fn multi_archive_import_probe() -> Result<String> {
+    let discovery_path = catalog::requested_discovery_database_path()
+        .context("--games-database is required for the multi-archive import probe")?;
+    let root = catalog::requested_path("--import-directory", "LUNCHBOX_IMPORT_DIRECTORY")
+        .context("--import-directory is required for the multi-archive import probe")?;
+    let state_path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
+        .context("--state-database is required for the multi-archive import probe")?;
+    let store = SettingsStore::at(&state_path)?;
+    let cancelled = AtomicBool::new(false);
+    let mut output = scan_directory(
+        &discovery_path,
+        &root,
+        "",
+        true,
+        &cancelled,
+        Arc::new(|_| {}),
+    )?;
+    let archive_path = output
+        .results
+        .iter()
+        .find(|result| {
+            result.archive_member_count > 1 && !matches!(result.match_state, MatchState::Error(_))
+        })
+        .map(|result| result.path.clone())
+        .context("no ZIP with multiple safe recognized ROM members was found")?;
+    let initial_selection_count = output
+        .results
+        .iter()
+        .filter(|result| result.path == archive_path && result.selected)
+        .count();
+    if initial_selection_count != 0 {
+        bail!(
+            "multi-ROM ZIP unexpectedly selected {initial_selection_count} members without review"
+        );
+    }
+
+    let mut selected_count = 0usize;
+    let mut exact_count = 0usize;
+    for result in &mut output.results {
+        let selected = result.path == archive_path
+            && result.archive_member_count > 1
+            && !matches!(result.match_state, MatchState::Error(_));
+        result.selected = selected;
+        if selected {
+            selected_count = selected_count.saturating_add(1);
+            exact_count = exact_count.saturating_add(usize::from(matches!(
+                result.match_state,
+                MatchState::Exact(_)
+            )));
+        }
+    }
+    if selected_count < 2 {
+        bail!("multi-ROM ZIP exposed only {selected_count} selectable members");
+    }
+    if exact_count == 0 {
+        bail!("multi-ROM ZIP exposed no exact checksum identities");
+    }
+
+    let imported = commit_scan_to(store.path(), &output)?;
+    if imported != selected_count {
+        bail!("imported {imported} members after {selected_count} were reviewed");
+    }
+    let source = encode_path(&archive_path);
+    let connection = store.connection()?;
+    let mut statement = connection.prepare(
+        "SELECT archive_member, path_display, path_bytes, path_encoding,
+                source_archive_path_display, source_archive_path_bytes,
+                source_archive_path_encoding
+         FROM local_rom_files
+         WHERE included=1 AND source_archive_path_bytes=?1
+         ORDER BY archive_member",
+    )?;
+    let rows = statement
+        .query_map([&source.bytes], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                decode_path(row.get(2)?, &row.get::<_, String>(3)?, row.get(1)?),
+                decode_path(row.get(5)?, &row.get::<_, String>(6)?, row.get(4)?),
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if rows.len() != selected_count {
+        bail!(
+            "state retained {} materialized members after {selected_count} were imported",
+            rows.len()
+        );
+    }
+    let mut members = HashSet::new();
+    let mut materialized_paths = HashSet::new();
+    for (member, path, persisted_source) in &rows {
+        if member.is_empty() || !members.insert(member) {
+            bail!("state did not retain unique non-empty archive member identities");
+        }
+        if persisted_source != &archive_path {
+            bail!("materialized member lost its exact source archive path");
+        }
+        if !path.is_file() || !materialized_paths.insert(path) {
+            bail!("materialized members do not have distinct readable launch paths");
+        }
+    }
+    let repeated = commit_scan_to(store.path(), &output)?;
+    if repeated != selected_count {
+        bail!("idempotent rescan imported {repeated} of {selected_count} members");
+    }
+    let retained = connection.query_row(
+        "SELECT count(*) FROM local_rom_files
+         WHERE included=1 AND source_archive_path_bytes=?1",
+        [&source.bytes],
+        |row| row.get::<_, usize>(0),
+    )?;
+    if retained != selected_count {
+        bail!("idempotent rescan retained {retained} of {selected_count} members");
+    }
+    Ok(format!(
+        "archive={:?} members={selected_count} exact={exact_count} cache_paths={} state={:?}",
+        archive_path.file_name().unwrap_or_default(),
+        materialized_paths.len(),
+        state_path
     ))
 }
 
@@ -515,61 +650,46 @@ fn inspect_zip(
         members.push((member_index, member_name, extension, entry.size()));
     }
 
-    match members.len() {
-        0 => Ok(Some(ZipInspection::Empty)),
-        1 => {
-            let (member_index, member_name, extension, size) = members.remove(0);
-            let digests = if checksums_enabled {
-                let mut entry = archive.by_index(member_index).with_context(|| {
-                    format!("reopening ZIP member {member_name} in {}", path.display())
-                })?;
-                if entry.encrypted() {
-                    bail!(
-                        "ZIP member {member_name} in {} is encrypted and cannot be verified",
-                        path.display()
-                    );
-                }
-                match hash_reader(
-                    &mut entry,
-                    cancelled,
-                    &format!("ZIP member {member_name} in {}", path.display()),
-                )? {
-                    Some(digests) => Some(digests),
-                    None => return Ok(None),
-                }
-            } else {
-                None
-            };
-            Ok(Some(ZipInspection::Single {
-                member_name,
-                extension,
-                size,
-                digests,
-            }))
-        }
-        member_count => {
-            let mut platforms = HashSet::new();
-            let mut all_members_have_one_platform = true;
-            for (_, _, extension, _) in &members {
-                let Some(names) = index.extension_platforms.get(extension) else {
-                    all_members_have_one_platform = false;
-                    break;
-                };
-                if names.len() != 1 {
-                    all_members_have_one_platform = false;
-                    break;
-                }
-                platforms.insert(names[0].clone());
-            }
-            let inferred_platform = (all_members_have_one_platform && platforms.len() == 1)
-                .then(|| platforms.into_iter().next())
-                .flatten();
-            Ok(Some(ZipInspection::Multiple {
-                member_count,
-                inferred_platform,
-            }))
-        }
+    if members.is_empty() {
+        return Ok(Some(ZipInspection::Empty));
     }
+    let mut inspected = Vec::with_capacity(members.len());
+    for (member_index, member_name, extension, size) in members {
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let mut entry = archive
+            .by_index(member_index)
+            .with_context(|| format!("reopening ZIP member {member_name} in {}", path.display()))?;
+        let (digests, error) = if entry.encrypted() {
+            (
+                None,
+                Some(format!(
+                    "ZIP member {member_name} is encrypted and cannot be imported"
+                )),
+            )
+        } else if checksums_enabled {
+            match hash_reader(
+                &mut entry,
+                cancelled,
+                &format!("ZIP member {member_name} in {}", path.display()),
+            ) {
+                Ok(Some(digests)) => (Some(digests), None),
+                Ok(None) => return Ok(None),
+                Err(error) => (None, Some(error.to_string())),
+            }
+        } else {
+            (None, None)
+        };
+        inspected.push(ZipMemberInspection {
+            member_name,
+            extension,
+            size,
+            digests,
+            error,
+        });
+    }
+    Ok(Some(ZipInspection::Members(inspected)))
 }
 
 fn hash_file(path: &Path, cancelled: &AtomicBool) -> Result<Option<Digests>> {
@@ -607,6 +727,176 @@ fn hash_reader(
         md5: format!("{:X}", md5.finalize()),
         sha1: format!("{:X}", sha1.finalize()),
     }))
+}
+
+fn materialize_archive_member(state_path: &Path, result: &ScanResult) -> Result<PathBuf> {
+    if result.archive_member.is_empty() || result.archive_member_count <= 1 {
+        bail!("archive materialization requires a selected member from a multi-ROM ZIP");
+    }
+    let source = File::open(&result.path)
+        .with_context(|| format!("opening source archive {}", result.path.display()))?;
+    let mut archive = zip::ZipArchive::new(source)
+        .with_context(|| format!("reading source archive {}", result.path.display()))?;
+    let mut matching_indices = Vec::new();
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .with_context(|| format!("reading ZIP member #{index} in {}", result.path.display()))?;
+        let Some(path) = entry.enclosed_name() else {
+            continue;
+        };
+        let name = path.to_string_lossy().replace('\\', "/");
+        if name == result.archive_member {
+            matching_indices.push(index);
+        }
+    }
+    if matching_indices.len() != 1 {
+        bail!(
+            "ZIP member {:?} occurs {} times; one exact safe member is required",
+            result.archive_member,
+            matching_indices.len()
+        );
+    }
+    let mut entry = archive
+        .by_index(matching_indices[0])
+        .with_context(|| format!("opening ZIP member {}", result.archive_member))?;
+    if entry.encrypted() {
+        bail!("ZIP member {} is encrypted", result.archive_member);
+    }
+    if entry.size() != result.file_size {
+        bail!(
+            "ZIP member {} changed size after review ({} -> {} bytes)",
+            result.archive_member,
+            result.file_size,
+            entry.size()
+        );
+    }
+
+    let state_parent = state_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let cache_root = state_parent.join("local-rom-cache");
+    fs::create_dir_all(&cache_root)
+        .with_context(|| format!("creating local ROM cache {}", cache_root.display()))?;
+    let temporary = cache_root.join(format!(".{}.tmp", Uuid::new_v4()));
+    let outcome = (|| -> Result<PathBuf> {
+        let mut output = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)
+            .with_context(|| format!("creating temporary ROM {}", temporary.display()))?;
+        let mut buffer = vec![0u8; 1024 * 1024];
+        let mut crc32 = Crc32::new();
+        let mut md5 = Md5::new();
+        let mut sha1 = Sha1::new();
+        let mut sha256 = Sha256::new();
+        let mut written = 0u64;
+        loop {
+            let read = entry
+                .read(&mut buffer)
+                .with_context(|| format!("reading ZIP member {}", result.archive_member))?;
+            if read == 0 {
+                break;
+            }
+            let bytes = &buffer[..read];
+            output
+                .write_all(bytes)
+                .with_context(|| format!("writing temporary ROM {}", temporary.display()))?;
+            crc32.update(bytes);
+            md5.update(bytes);
+            sha1.update(bytes);
+            sha256.update(bytes);
+            written = written.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
+        }
+        output
+            .sync_all()
+            .with_context(|| format!("syncing temporary ROM {}", temporary.display()))?;
+        drop(output);
+        if written != result.file_size {
+            bail!(
+                "ZIP member {} produced {written} bytes after {} were reviewed",
+                result.archive_member,
+                result.file_size
+            );
+        }
+        let crc32 = format!("{:08X}", crc32.finalize());
+        let md5 = format!("{:X}", md5.finalize());
+        let sha1 = format!("{:X}", sha1.finalize());
+        let sha256 = format!("{:x}", sha256.finalize());
+        for (label, reviewed, actual) in [
+            ("CRC32", result.crc32.as_str(), crc32.as_str()),
+            ("MD5", result.md5.as_str(), md5.as_str()),
+            ("SHA-1", result.sha1.as_str(), sha1.as_str()),
+        ] {
+            if !reviewed.is_empty() && reviewed != actual {
+                bail!(
+                    "ZIP member {} changed {label} after review",
+                    result.archive_member
+                );
+            }
+        }
+        let extension = Path::new(&result.archive_member)
+            .extension()
+            .and_then(|value| value.to_str())
+            .filter(|value| {
+                !value.is_empty()
+                    && value.len() <= 16
+                    && value
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric())
+            })
+            .context("reviewed ZIP member has no portable ROM extension")?
+            .to_ascii_lowercase();
+        let target_directory = cache_root.join(&sha256);
+        fs::create_dir_all(&target_directory).with_context(|| {
+            format!(
+                "creating ROM content directory {}",
+                target_directory.display()
+            )
+        })?;
+        let target = target_directory.join(format!("content.{extension}"));
+        if target.exists() {
+            if !target.is_file() || hash_sha256(&target)? != sha256 {
+                bail!(
+                    "existing ROM cache target is not the reviewed content: {}",
+                    target.display()
+                );
+            }
+            fs::remove_file(&temporary)
+                .with_context(|| format!("removing temporary ROM {}", temporary.display()))?;
+            return Ok(target);
+        }
+        fs::rename(&temporary, &target).with_context(|| {
+            format!(
+                "publishing reviewed ZIP member {} to {}",
+                result.archive_member,
+                target.display()
+            )
+        })?;
+        Ok(target)
+    })();
+    if outcome.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    outcome
+}
+
+fn hash_sha256(path: &Path) -> Result<String> {
+    let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut reader = BufReader::with_capacity(1024 * 1024, file);
+    let mut buffer = vec![0u8; 1024 * 1024];
+    let mut sha256 = Sha256::new();
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .with_context(|| format!("reading {}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        sha256.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", sha256.finalize()))
 }
 
 fn match_digest(
@@ -702,6 +992,16 @@ pub fn commit_scan(output: &ScanOutput) -> Result<usize> {
 fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
     let root_encoded = encode_path(&output.root);
     let root_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, &root_encoded.bytes).to_string();
+    let mut persisted_paths = Vec::with_capacity(output.results.len());
+    for result in &output.results {
+        let included = result.selected && !matches!(result.match_state, MatchState::Error(_));
+        let path = if included && result.archive_member_count > 1 {
+            materialize_archive_member(state_path, result)?
+        } else {
+            result.path.clone()
+        };
+        persisted_paths.push(path);
+    }
     let mut connection = Connection::open(state_path)
         .with_context(|| format!("opening Lunchbox state {}", state_path.display()))?;
     connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;")?;
@@ -733,12 +1033,25 @@ fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
     )?;
 
     let mut imported = 0usize;
-    for result in &output.results {
-        let path = encode_path(&result.path);
+    for (result, persisted_path) in output.results.iter().zip(persisted_paths) {
+        let path = encode_path(&persisted_path);
         let relative = encode_path(&result.relative_path);
+        let source_archive = if persisted_path != result.path {
+            encode_path(&result.path)
+        } else {
+            EncodedPath {
+                display: String::new(),
+                bytes: Vec::new(),
+                encoding: "",
+            }
+        };
         let mut identity_bytes = root_id.as_bytes().to_vec();
         identity_bytes.push(0);
         identity_bytes.extend_from_slice(&relative.bytes);
+        if result.archive_member_count > 1 {
+            identity_bytes.push(0);
+            identity_bytes.extend_from_slice(result.archive_member.as_bytes());
+        }
         let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, &identity_bytes).to_string();
         let (game_uid, database_id, matched_title) = match &result.match_state {
             MatchState::Exact(identity) => (
@@ -754,12 +1067,15 @@ fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
             "INSERT INTO local_rom_files (
                  id, root_id, path_display, path_bytes, path_encoding,
                  relative_path_display, relative_path_bytes, relative_path_encoding,
-                 file_name, display_title, platform, file_size, modified_unix_ns,
+                 file_name, archive_member, source_archive_path_display,
+                 source_archive_path_bytes, source_archive_path_encoding,
+                 display_title, platform, file_size, modified_unix_ns,
                  crc32, md5, sha1, game_uid, launchbox_db_id, matched_title,
                  match_state, match_method, included, availability, imported_at
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, 'present', ?23
+                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
+                 ?25, ?26, 'present', ?27
              )
              ON CONFLICT(id) DO UPDATE SET
                  path_display=excluded.path_display, path_bytes=excluded.path_bytes,
@@ -767,7 +1083,11 @@ fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
                  relative_path_display=excluded.relative_path_display,
                  relative_path_bytes=excluded.relative_path_bytes,
                  relative_path_encoding=excluded.relative_path_encoding,
-                 file_name=excluded.file_name, display_title=excluded.display_title,
+                 file_name=excluded.file_name, archive_member=excluded.archive_member,
+                 source_archive_path_display=excluded.source_archive_path_display,
+                 source_archive_path_bytes=excluded.source_archive_path_bytes,
+                 source_archive_path_encoding=excluded.source_archive_path_encoding,
+                 display_title=excluded.display_title,
                  platform=excluded.platform, file_size=excluded.file_size,
                  modified_unix_ns=excluded.modified_unix_ns, crc32=excluded.crc32,
                  md5=excluded.md5, sha1=excluded.sha1, game_uid=excluded.game_uid,
@@ -785,6 +1105,10 @@ fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
                 relative.bytes,
                 relative.encoding,
                 result.file_name,
+                result.archive_member,
+                source_archive.display,
+                source_archive.bytes,
+                source_archive.encoding,
                 result.display_title,
                 result.platform,
                 i64::try_from(result.file_size).unwrap_or(i64::MAX),
@@ -879,7 +1203,6 @@ pub(crate) fn decode_path(_bytes: Vec<u8>, _encoding: &str, display: String) -> 
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::Write;
 
     fn discovery_fixture(path: &Path, content: &[u8]) {
         let mut crc = Crc32::new();
@@ -985,7 +1308,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_rom_zip_is_kept_for_explicit_review_without_guessing_identity() {
+    fn multi_rom_zip_members_are_reviewed_and_materialized_individually() {
         let directory = tempfile::tempdir().unwrap();
         let discovery = directory.path().join("games.db");
         let rom_root = directory.path().join("roms");
@@ -997,19 +1320,107 @@ mod tests {
         );
 
         let cancel = AtomicBool::new(false);
-        let output =
+        let mut output =
             scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
-        let result = &output.results[0];
-        assert_eq!(result.match_state, MatchState::InventoryOnly);
-        assert!(!result.selected);
-        assert_eq!(result.archive_member_count, 2);
-        assert!(result.archive_member.is_empty());
-        assert_eq!(result.platform, "Nintendo Entertainment System");
-        assert_eq!(
-            result.match_method,
-            "ZIP contains 2 ROM members; review required"
+        assert_eq!(output.results.len(), 2);
+        assert!(matches!(
+            output.results[0].match_state,
+            MatchState::Exact(_)
+        ));
+        assert!(!output.results[0].selected);
+        assert_eq!(output.results[0].archive_member, "One.nes");
+        assert_eq!(output.results[0].archive_member_count, 2);
+        assert_eq!(output.results[0].match_method, "ZIP member SHA-1 + MD5");
+        assert_eq!(output.results[1].match_state, MatchState::Unmatched);
+        assert!(!output.results[1].selected);
+        assert_eq!(output.results[1].archive_member, "Two.nes");
+        assert_eq!(output.results[1].archive_member_count, 2);
+        assert_eq!(output.results[1].platform, "Nintendo Entertainment System");
+
+        output
+            .results
+            .iter_mut()
+            .for_each(|result| result.selected = true);
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
+        assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
+        let connection = Connection::open(&state).unwrap();
+        let mut statement = connection
+            .prepare(
+                "SELECT path_display, archive_member, source_archive_path_display,
+                        game_uid, included
+                 FROM local_rom_files ORDER BY archive_member",
+            )
+            .unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, bool>(4)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].1, "One.nes");
+        assert_eq!(rows[0].2, rom_root.join("Collection.zip").to_string_lossy());
+        assert_eq!(rows[0].3.as_deref(), Some("game-1"));
+        assert!(rows[0].4);
+        assert_eq!(fs::read(&rows[0].0).unwrap(), b"exact-rom");
+        assert_eq!(rows[1].1, "Two.nes");
+        assert_eq!(rows[1].2, rom_root.join("Collection.zip").to_string_lossy());
+        assert_eq!(rows[1].3, None);
+        assert!(rows[1].4);
+        assert_eq!(fs::read(&rows[1].0).unwrap(), b"another-rom");
+    }
+
+    #[test]
+    fn reviewed_multi_rom_member_rejects_archive_changes_before_commit() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        let archive_path = rom_root.join("Collection.zip");
+        zip_fixture(
+            &archive_path,
+            &[("One.nes", b"exact-rom"), ("Two.nes", b"another-rom")],
         );
-        assert!(result.sha1.is_empty());
+
+        let cancel = AtomicBool::new(false);
+        let mut output =
+            scan_directory(&discovery, &rom_root, "", true, &cancel, Arc::new(|_| {})).unwrap();
+        let exact = output
+            .results
+            .iter_mut()
+            .find(|result| matches!(result.match_state, MatchState::Exact(_)))
+            .unwrap();
+        exact.selected = true;
+        zip_fixture(
+            &archive_path,
+            &[("One.nes", b"other-rom"), ("Two.nes", b"another-rom")],
+        );
+
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        let error = commit_scan_to(&state, &output).unwrap_err().to_string();
+        assert!(error.contains("changed CRC32 after review"));
+        let connection = Connection::open(&state).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM local_rom_files", [], |row| {
+                    row.get::<_, usize>(0)
+                })
+                .unwrap(),
+            0
+        );
+        let cache_root = directory.path().join("local-rom-cache");
+        assert_eq!(fs::read_dir(cache_root).unwrap().count(), 0);
     }
 
     #[test]
@@ -1030,7 +1441,7 @@ mod tests {
         let result = &output.results[0];
         assert!(matches!(result.match_state, MatchState::Error(_)));
         assert!(!result.selected);
-        assert_eq!(result.match_method, "archive inspection");
+        assert_eq!(result.match_method, "read error");
     }
 
     #[test]

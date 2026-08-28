@@ -2256,6 +2256,14 @@ fn migrate(connection: &Connection) -> Result<()> {
                  relative_path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
              ),
              file_name TEXT NOT NULL,
+             archive_member TEXT NOT NULL DEFAULT '',
+             source_archive_path_display TEXT NOT NULL DEFAULT '',
+             source_archive_path_bytes BLOB NOT NULL DEFAULT X'',
+             source_archive_path_encoding TEXT NOT NULL DEFAULT '' CHECK (
+                 source_archive_path_encoding IN (
+                     '', 'unix_bytes', 'windows_utf16le', 'utf8'
+                 )
+             ),
              display_title TEXT NOT NULL,
              platform TEXT NOT NULL,
              file_size INTEGER NOT NULL CHECK (file_size >= 0),
@@ -2275,7 +2283,7 @@ fn migrate(connection: &Connection) -> Result<()> {
              imported_at INTEGER NOT NULL
          );
          CREATE UNIQUE INDEX IF NOT EXISTS local_rom_files_root_relative
-             ON local_rom_files(root_id, relative_path_bytes);
+             ON local_rom_files(root_id, relative_path_bytes, archive_member);
          CREATE INDEX IF NOT EXISTS local_rom_files_game_uid
              ON local_rom_files(game_uid) WHERE game_uid IS NOT NULL;
          CREATE INDEX IF NOT EXISTS local_rom_files_visible
@@ -2531,6 +2539,42 @@ fn migrate(connection: &Connection) -> Result<()> {
          CREATE INDEX IF NOT EXISTS prepared_game_installs_launchbox_id
              ON prepared_game_installs(launchbox_db_id) WHERE launchbox_db_id > 0;",
     )?;
+    let added_archive_member = !column_exists(connection, "local_rom_files", "archive_member")?;
+    if added_archive_member {
+        connection.execute(
+            "ALTER TABLE local_rom_files ADD COLUMN archive_member TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "local_rom_files", "source_archive_path_display")? {
+        connection.execute(
+            "ALTER TABLE local_rom_files ADD COLUMN source_archive_path_display TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "local_rom_files", "source_archive_path_bytes")? {
+        connection.execute(
+            "ALTER TABLE local_rom_files ADD COLUMN source_archive_path_bytes BLOB NOT NULL DEFAULT X''",
+            [],
+        )?;
+    }
+    if !column_exists(
+        connection,
+        "local_rom_files",
+        "source_archive_path_encoding",
+    )? {
+        connection.execute(
+            "ALTER TABLE local_rom_files ADD COLUMN source_archive_path_encoding TEXT NOT NULL DEFAULT '' CHECK (source_archive_path_encoding IN ('', 'unix_bytes', 'windows_utf16le', 'utf8'))",
+            [],
+        )?;
+    }
+    if added_archive_member {
+        connection.execute_batch(
+            "DROP INDEX IF EXISTS local_rom_files_root_relative;
+             CREATE UNIQUE INDEX local_rom_files_root_relative
+                 ON local_rom_files(root_id, relative_path_bytes, archive_member);",
+        )?;
+    }
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
             "ALTER TABLE download_jobs ADD COLUMN launchbox_db_id INTEGER NOT NULL DEFAULT 0",
@@ -3828,6 +3872,89 @@ mod tests {
                 .unwrap();
             assert_eq!(migrated, Some(1), "missing migrated table {table}");
         }
+    }
+
+    #[test]
+    fn older_local_collection_schema_adds_durable_archive_member_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE local_rom_files (
+                     id TEXT PRIMARY KEY,
+                     root_id TEXT NOT NULL,
+                     path_display TEXT NOT NULL,
+                     path_bytes BLOB NOT NULL,
+                     path_encoding TEXT NOT NULL,
+                     relative_path_display TEXT NOT NULL,
+                     relative_path_bytes BLOB NOT NULL,
+                     relative_path_encoding TEXT NOT NULL,
+                     file_name TEXT NOT NULL,
+                     display_title TEXT NOT NULL,
+                     platform TEXT NOT NULL,
+                     file_size INTEGER NOT NULL,
+                     modified_unix_ns INTEGER,
+                     crc32 TEXT NOT NULL,
+                     md5 TEXT NOT NULL,
+                     sha1 TEXT NOT NULL,
+                     game_uid TEXT,
+                     launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+                     matched_title TEXT,
+                     match_state TEXT NOT NULL,
+                     match_method TEXT NOT NULL,
+                     included INTEGER NOT NULL,
+                     availability TEXT NOT NULL,
+                     imported_at INTEGER NOT NULL
+                 );
+                 CREATE UNIQUE INDEX local_rom_files_root_relative
+                     ON local_rom_files(root_id, relative_path_bytes);
+                 INSERT INTO local_rom_files VALUES (
+                     'old-file', 'root', '/roms/Game.zip', X'01', 'unix_bytes',
+                     'Game.zip', X'02', 'unix_bytes', 'Game.zip', 'Game', 'System',
+                     10, NULL, '', '', '', NULL, 0, NULL, 'inventory_only',
+                     'not checked', 1, 'present', 1
+                 );",
+            )
+            .unwrap();
+        drop(connection);
+
+        SettingsStore::at(&path).unwrap();
+        let connection = Connection::open(path).unwrap();
+        for column in [
+            "archive_member",
+            "source_archive_path_display",
+            "source_archive_path_bytes",
+            "source_archive_path_encoding",
+        ] {
+            assert!(column_exists(&connection, "local_rom_files", column).unwrap());
+        }
+        let migrated = connection
+            .query_row(
+                "SELECT archive_member, source_archive_path_display,
+                        length(source_archive_path_bytes), source_archive_path_encoding
+                 FROM local_rom_files WHERE id='old-file'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(migrated, (String::new(), String::new(), 0, String::new()));
+        let index_sql = connection
+            .query_row(
+                "SELECT sql FROM sqlite_schema
+                 WHERE type='index' AND name='local_rom_files_root_relative'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap();
+        assert!(index_sql.contains("archive_member"));
     }
 
     #[test]

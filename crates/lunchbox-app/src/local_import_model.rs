@@ -555,7 +555,14 @@ impl qobject::LocalImportModel {
         self.result_at(index)
             .map(|result| {
                 if !result.archive_member.is_empty() {
-                    qstring(format!("↳ {}", result.archive_member))
+                    if result.archive_member_count > 1 {
+                        qstring(format!(
+                            "↳ {} · one of {} ROM members",
+                            result.archive_member, result.archive_member_count
+                        ))
+                    } else {
+                        qstring(format!("↳ {}", result.archive_member))
+                    }
                 } else if result.archive_member_count > 1 {
                     qstring(format!(
                         "{} ROM members · review required",
@@ -624,9 +631,7 @@ impl qobject::LocalImportModel {
                         "No strong checksum match · kept local-only".to_owned()
                     }
                     MatchState::InventoryOnly => {
-                        if result.archive_member_count > 1 {
-                            format!("{} · no identity guessed", result.match_method)
-                        } else if result.archive_member_count == 1 {
+                        if result.archive_member_count > 0 {
                             "ZIP member checksums disabled · local inventory only".to_owned()
                         } else {
                             "Checksums disabled · local inventory only".to_owned()

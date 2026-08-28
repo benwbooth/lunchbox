@@ -5667,7 +5667,8 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Text {
                     Layout.fillWidth: true
-                    text: localImport.selected_count + " selected · unmatched files are imported as local-only games"
+                    text: localImport.selected_count
+                          + " selected · multi-member archives require explicit review; unmatched files stay local-only"
                     color: root.muted
                     font.pixelSize: 11
                 }

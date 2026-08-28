@@ -296,9 +296,14 @@ only when a ZIP with one safe recognized ROM member receives an exact SHA-1/MD5
 catalog identity. `--archive-import-ui-probe` follows the same real scan through
 the Qt review table; adding `--screenshot-output ABSOLUTE_PATH` captures the
 native archive/member presentation and exits. Inspection is streamed and never
-extracts or mutates the source archive. Multiple ROM members, encrypted members,
-unsafe paths, and archives without a recognized ROM fail closed or remain
-explicitly unselected rather than acquiring a guessed identity.
+extracts or mutates the source archive. Multiple safe ROM members receive
+separate review rows and remain unselected until the user acts; selected members
+are revalidated and atomically materialized into content-addressed launch paths.
+Encrypted members, unsafe paths, and archives without a recognized ROM fail
+closed rather than acquiring a guessed identity. The unattended
+`--multi-archive-import-probe` requires explicit database, import-directory, and
+state paths; it exercises member review, materialization, provenance, and an
+idempotent repeated commit through the packaged binary.
 
 `--download-ui-probe` leaves the persistent native Downloads drawer open.
 `--settings-ui-probe` leaves the native settings dialog open, including the
@@ -460,6 +465,6 @@ and prepared-PC plans, with contextual and searchable cross-emulator editors
 plus a shell-free placeholder compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
 Playlists and smart collections, the remaining alternate media providers,
-specialized machine launch profiles, the remaining settings, multi-member and
-non-ZIP archive identity workflows, broader manual-provider coverage, and the
-controller-first full-screen interface follow on the same shared models.
+specialized machine launch profiles, the remaining settings, non-ZIP archive
+identity workflows, broader manual-provider coverage, and the controller-first
+full-screen interface follow on the same shared models.
