@@ -43,6 +43,7 @@ pub struct GameDetails {
     pub release_type: String,
     pub notes: String,
     pub alternate_titles: Vec<AlternateTitle>,
+    pub variants: Vec<GameVariant>,
     pub local: bool,
     pub downloadable: bool,
     pub database_id: i64,
@@ -61,6 +62,19 @@ pub struct GameDetails {
 pub struct AlternateTitle {
     pub name: String,
     pub region: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GameVariant {
+    pub id: String,
+    pub title: String,
+    pub release_label: String,
+    pub region: String,
+    pub version: String,
+    pub launchbox_db_id: i64,
+    pub local: bool,
+    pub downloadable: bool,
+    pub current: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -184,14 +198,326 @@ pub fn load(
                 details.database_id,
                 &details.title,
             )?;
+            let settings = crate::settings::SettingsStore::open_default()?.load()?;
+            details.variants = load_game_variants_from_connection(
+                &connection,
+                &details.id,
+                &details.title,
+                &ReleasePreferences {
+                    region_priority: settings.region_priority,
+                    version_preference: settings.version_preference,
+                },
+            )?;
         }
     }
 
     details.bundles = resolve_minerva_bundles(&details)?;
     details.downloadable = !details.local && !details.bundles.is_empty();
+    let identities = details
+        .variants
+        .iter()
+        .map(|variant| (variant.id.clone(), variant.launchbox_db_id))
+        .collect::<Vec<_>>();
+    let installed = catalog::installed_game_flags(&identities)?;
+    let platform_downloadable = !details.bundles.is_empty();
+    for (variant, local) in details.variants.iter_mut().zip(installed) {
+        variant.local = local;
+        variant.downloadable = !local && platform_downloadable;
+    }
     load_prepared_state(&mut details)?;
     load_supplemental_media(&mut details)?;
     Ok(details)
+}
+
+const MAX_GAME_VARIANTS: usize = 500;
+const MAX_VARIANT_QUERY_ROWS: usize = 2_000;
+
+#[derive(Clone, Debug)]
+struct VariantCandidate {
+    variant: GameVariant,
+    metadata_score: usize,
+}
+
+fn load_game_variants_from_connection(
+    connection: &rusqlite::Connection,
+    selected_id: &str,
+    selected_title: &str,
+    preferences: &ReleasePreferences,
+) -> Result<Vec<GameVariant>> {
+    let Some(platform_id) = connection
+        .query_row(
+            "SELECT platform_id FROM games WHERE id=?1",
+            [selected_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+    else {
+        return Ok(Vec::new());
+    };
+    let selected_identity = release_identity(selected_title);
+    let base = selected_identity
+        .as_ref()
+        .map(|identity| identity.base.as_str())
+        .unwrap_or(selected_title)
+        .trim();
+    if base.is_empty() {
+        return Ok(Vec::new());
+    }
+    let escaped = escape_like_pattern(base);
+    let parenthesized = format!("{escaped} (%");
+    let bracketed = format!("{escaped} [%");
+    let mut statement = connection.prepare(
+        "SELECT id, trim(title), coalesce(launchbox_db_id, 0),
+                (CASE WHEN trim(coalesce(description, '')) <> '' THEN 1 ELSE 0 END
+                 + CASE WHEN trim(coalesce(release_date, '')) <> '' THEN 1 ELSE 0 END
+                 + CASE WHEN trim(coalesce(developer, '')) <> '' THEN 1 ELSE 0 END
+                 + CASE WHEN trim(coalesce(publisher, '')) <> '' THEN 1 ELSE 0 END
+                 + CASE WHEN trim(coalesce(genre, '')) <> '' THEN 1 ELSE 0 END
+                 + CASE WHEN trim(coalesce(notes, '')) <> '' THEN 1 ELSE 0 END)
+         FROM games
+         WHERE platform_id=?1
+           AND (trim(title)=?2 COLLATE NOCASE
+                OR trim(title) LIKE ?3 ESCAPE '\\'
+                OR trim(title) LIKE ?4 ESCAPE '\\')
+         ORDER BY CASE WHEN id=?6 THEN 0 ELSE 1 END, lower(trim(title)), id
+         LIMIT ?5",
+    )?;
+    let rows = statement.query_map(
+        rusqlite::params![
+            platform_id,
+            base,
+            parenthesized,
+            bracketed,
+            i64::try_from(MAX_VARIANT_QUERY_ROWS).unwrap_or(i64::MAX),
+            selected_id,
+        ],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, usize>(3)?,
+            ))
+        },
+    )?;
+
+    let base_key = base.to_lowercase();
+    let mut deduplicated = HashMap::<String, VariantCandidate>::new();
+    for row in rows {
+        let (id, title, launchbox_db_id, metadata_score) = row?;
+        let identity = release_identity(&title);
+        let candidate_base = identity
+            .as_ref()
+            .map(|identity| identity.base.as_str())
+            .unwrap_or(title.as_str());
+        if candidate_base.trim().to_lowercase() != base_key {
+            continue;
+        }
+        if title.trim().to_lowercase() != base_key && identity.is_none() {
+            continue;
+        }
+        let (region, version) = release_labels(&title);
+        let release_label = identity
+            .map(|identity| identity.label)
+            .unwrap_or_else(|| "Original release".to_owned());
+        let candidate = VariantCandidate {
+            variant: GameVariant {
+                current: id == selected_id,
+                id,
+                title: title.clone(),
+                release_label,
+                region,
+                version,
+                launchbox_db_id,
+                local: false,
+                downloadable: false,
+            },
+            metadata_score,
+        };
+        let key = title.trim().to_lowercase();
+        match deduplicated.entry(key) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(candidate);
+            }
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                if prefer_variant_representative(&candidate, entry.get()) {
+                    entry.insert(candidate);
+                }
+            }
+        }
+    }
+    let mut variants = deduplicated.into_values().collect::<Vec<_>>();
+    if variants.len() <= 1 {
+        return Ok(Vec::new());
+    }
+    variants.sort_by(|left, right| {
+        variant_preference_order(&left.variant, &right.variant, preferences)
+            .then_with(|| {
+                left.variant
+                    .title
+                    .to_lowercase()
+                    .cmp(&right.variant.title.to_lowercase())
+            })
+            .then_with(|| left.variant.id.cmp(&right.variant.id))
+    });
+    if variants.len() > MAX_GAME_VARIANTS {
+        if let Some(current_index) = variants
+            .iter()
+            .position(|candidate| candidate.variant.current)
+        {
+            if current_index >= MAX_GAME_VARIANTS {
+                let current = variants.remove(current_index);
+                variants.truncate(MAX_GAME_VARIANTS - 1);
+                variants.push(current);
+            } else {
+                variants.truncate(MAX_GAME_VARIANTS);
+            }
+        } else {
+            variants.truncate(MAX_GAME_VARIANTS);
+        }
+    }
+    Ok(variants
+        .into_iter()
+        .map(|candidate| candidate.variant)
+        .collect())
+}
+
+fn prefer_variant_representative(left: &VariantCandidate, right: &VariantCandidate) -> bool {
+    left.variant.current
+        || (!right.variant.current
+            && ((left.variant.launchbox_db_id > 0 && right.variant.launchbox_db_id <= 0)
+                || ((left.variant.launchbox_db_id > 0) == (right.variant.launchbox_db_id > 0)
+                    && (left.metadata_score > right.metadata_score
+                        || (left.metadata_score == right.metadata_score
+                            && left.variant.id < right.variant.id)))))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ReleaseIdentity {
+    base: String,
+    label: String,
+}
+
+fn release_identity(title: &str) -> Option<ReleaseIdentity> {
+    let mut base_end = title.trim_end().len();
+    let mut labels = Vec::new();
+    while base_end > 0 {
+        let prefix = title[..base_end].trim_end();
+        let (opening, closing) = match prefix.as_bytes().last().copied() {
+            Some(b')') => ('(', ')'),
+            Some(b']') => ('[', ']'),
+            _ => break,
+        };
+        let Some(start) = prefix.rfind(opening) else {
+            break;
+        };
+        let tag = prefix[start + opening.len_utf8()..prefix.len() - closing.len_utf8()].trim();
+        if !is_catalog_release_tag(tag) {
+            break;
+        }
+        labels.push(prefix[start..].to_owned());
+        base_end = start;
+    }
+    if labels.is_empty() {
+        return None;
+    }
+    labels.reverse();
+    let base = title[..base_end].trim().to_owned();
+    (!base.is_empty()).then(|| ReleaseIdentity {
+        base,
+        label: labels.join(" "),
+    })
+}
+
+fn is_catalog_release_tag(tag: &str) -> bool {
+    canonical_region_tag(tag).is_some()
+        || is_version_tag(tag)
+        || is_language_tag(tag)
+        || matches!(
+            tag.trim().to_ascii_lowercase().as_str(),
+            "beta"
+                | "demo"
+                | "prototype"
+                | "proto"
+                | "sample"
+                | "unlicensed"
+                | "unl"
+                | "aftermarket"
+                | "homebrew"
+                | "translation"
+        )
+}
+
+fn is_language_tag(tag: &str) -> bool {
+    let parts = tag
+        .split([',', '/', '&', '+'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    !parts.is_empty()
+        && parts.iter().all(|part| {
+            matches!(
+                part.to_ascii_lowercase().as_str(),
+                "en" | "fr"
+                    | "de"
+                    | "es"
+                    | "it"
+                    | "nl"
+                    | "pt"
+                    | "sv"
+                    | "no"
+                    | "da"
+                    | "fi"
+                    | "ja"
+                    | "jp"
+                    | "ko"
+                    | "zh"
+                    | "pl"
+                    | "ru"
+                    | "cs"
+                    | "english"
+                    | "french"
+                    | "german"
+                    | "spanish"
+                    | "italian"
+                    | "dutch"
+                    | "portuguese"
+                    | "japanese"
+                    | "korean"
+                    | "chinese"
+            )
+        })
+}
+
+fn escape_like_pattern(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+fn variant_preference_order(
+    left: &GameVariant,
+    right: &GameVariant,
+    preferences: &ReleasePreferences,
+) -> std::cmp::Ordering {
+    crate::region_priority::priority_for_region(
+        (!left.region.is_empty()).then_some(left.region.as_str()),
+        &preferences.region_priority,
+    )
+    .cmp(&crate::region_priority::priority_for_region(
+        (!right.region.is_empty()).then_some(right.region.as_str()),
+        &preferences.region_priority,
+    ))
+    .then_with(|| {
+        let left = revision_rank(&left.version);
+        let right = revision_rank(&right.version);
+        if preferences.version_preference == "original" {
+            left.cmp(&right)
+        } else {
+            right.cmp(&left)
+        }
+    })
 }
 
 fn load_alternate_titles_from_connection(
@@ -569,6 +895,59 @@ pub(crate) fn alternate_title_probe() -> Result<String> {
         candidate.matched_title,
         candidate.match_score,
         candidate.filename
+    ))
+}
+
+pub(crate) fn variant_probe() -> Result<String> {
+    const ID: &str = "9697a5eb-e0b4-4f24-8d43-672701414ee7";
+    const TITLE: &str = "Super Mario Bros.";
+    let path = catalog::requested_discovery_database_path()
+        .context("--variant-probe requires a discovery games database")?;
+    let connection = catalog::open_read_only(&path, "Lunchbox discovery database")?;
+    let preferences = ReleasePreferences {
+        region_priority: crate::region_priority::default_region_priority(),
+        version_preference: "latest".to_owned(),
+    };
+    let variants = load_game_variants_from_connection(&connection, ID, TITLE, &preferences)?;
+    if variants.len() < 3 {
+        bail!(
+            "expected at least three exact-platform Super Mario Bros. releases, found {}",
+            variants.len()
+        );
+    }
+    let current = variants
+        .iter()
+        .filter(|variant| variant.current)
+        .collect::<Vec<_>>();
+    if current.len() != 1 || current[0].id != ID {
+        bail!("the canonical catalog UUID was not the sole current release");
+    }
+    let mut titles = HashSet::new();
+    if !variants
+        .iter()
+        .all(|variant| titles.insert(variant.title.trim().to_lowercase()))
+    {
+        bail!("display release rows were not deduplicated by exact full title");
+    }
+    let target = variants
+        .iter()
+        .find(|variant| variant.title.contains("(Europe)"))
+        .context("the preserved Europe release is unavailable")?;
+    let switched =
+        load_game_variants_from_connection(&connection, &target.id, &target.title, &preferences)?;
+    let switched_current = switched
+        .iter()
+        .filter(|variant| variant.current)
+        .collect::<Vec<_>>();
+    if switched_current.len() != 1 || switched_current[0].id != target.id {
+        bail!("switching releases did not preserve the target UUID");
+    }
+    Ok(format!(
+        "releases={} selected_id={:?} switched_id={:?} switched_title={:?}",
+        variants.len(),
+        ID,
+        target.id,
+        target.title
     ))
 }
 
@@ -1333,6 +1712,149 @@ mod tests {
             load_alternate_titles_from_connection(&connection, 0, "Anything")
                 .unwrap()
                 .is_empty()
+        );
+    }
+
+    fn variant_fixture() -> rusqlite::Connection {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE games (
+                    id TEXT PRIMARY KEY,
+                    platform_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    launchbox_db_id INTEGER,
+                    description TEXT,
+                    release_date TEXT,
+                    developer TEXT,
+                    publisher TEXT,
+                    genre TEXT,
+                    notes TEXT
+                 );
+                 INSERT INTO games VALUES
+                    ('base', 1, 'Game', 0, '', '', '', '', '', ''),
+                    ('usa-import', 1, 'Game (USA)', 0, '', '', '', '', '', ''),
+                    ('usa-linked', 1, 'Game (USA)', 101, 'Rich metadata', '1990',
+                     'Studio', 'Publisher', 'Action', 'Notes'),
+                    ('japan', 1, 'Game (Japan) (Rev 2)', 102, '', '', '', '', '', ''),
+                    ('subtitle', 1, 'Game (The Adventure)', 103, '', '', '', '', '', ''),
+                    ('sequel', 1, 'Game 2 (USA)', 104, '', '', '', '', '', ''),
+                    ('other-platform', 2, 'Game (Europe)', 105, '', '', '', '', '', '');",
+            )
+            .unwrap();
+        connection
+    }
+
+    #[test]
+    fn catalog_variants_are_bounded_to_exact_platform_and_recognized_release_tags() {
+        let connection = variant_fixture();
+        let variants = load_game_variants_from_connection(
+            &connection,
+            "base",
+            "Game",
+            &ReleasePreferences {
+                region_priority: vec!["Japan".into(), "USA".into(), "Europe".into()],
+                version_preference: "latest".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            variants
+                .iter()
+                .map(|variant| variant.id.as_str())
+                .collect::<Vec<_>>(),
+            ["japan", "usa-linked", "base"]
+        );
+        assert_eq!(variants[0].release_label, "(Japan) (Rev 2)");
+        assert_eq!(variants[0].region, "Japan");
+        assert_eq!(variants[0].version, "Rev 2");
+        assert!(variants[2].current);
+        assert!(!variants.iter().any(|variant| variant.id == "subtitle"));
+        assert!(!variants.iter().any(|variant| variant.id == "sequel"));
+        assert!(
+            !variants
+                .iter()
+                .any(|variant| variant.id == "other-platform")
+        );
+    }
+
+    #[test]
+    fn selected_duplicate_keeps_its_exact_identity_without_provider_id_transfer() {
+        let connection = variant_fixture();
+        let variants = load_game_variants_from_connection(
+            &connection,
+            "usa-import",
+            "Game (USA)",
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
+        let selected = variants
+            .iter()
+            .find(|variant| variant.current)
+            .expect("selected variant");
+        assert_eq!(selected.id, "usa-import");
+        assert_eq!(selected.launchbox_db_id, 0);
+        assert_eq!(
+            variants
+                .iter()
+                .filter(|variant| variant.title == "Game (USA)")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn selected_variant_survives_query_and_display_safety_caps() {
+        let mut connection = variant_fixture();
+        let transaction = connection.transaction().unwrap();
+        for revision in 0..=2_100 {
+            transaction
+                .execute(
+                    "INSERT INTO games VALUES
+                     (?1, 1, ?2, 0, '', '', '', '', '', '')",
+                    rusqlite::params![
+                        format!("revision-{revision}"),
+                        format!("Game (Rev {revision})")
+                    ],
+                )
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+
+        let variants = load_game_variants_from_connection(
+            &connection,
+            "revision-2100",
+            "Game (Rev 2100)",
+            &ReleasePreferences {
+                region_priority: vec!["USA".into(), "Japan".into()],
+                version_preference: "original".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(variants.len(), MAX_GAME_VARIANTS);
+        assert_eq!(
+            variants
+                .iter()
+                .filter(|variant| variant.current)
+                .map(|variant| variant.id.as_str())
+                .collect::<Vec<_>>(),
+            ["revision-2100"]
+        );
+    }
+
+    #[test]
+    fn catalog_release_identity_does_not_strip_arbitrary_parenthetical_titles() {
+        assert_eq!(
+            release_identity("Game (USA) (En,Fr)"),
+            Some(ReleaseIdentity {
+                base: "Game".into(),
+                label: "(USA) (En,Fr)".into(),
+            })
+        );
+        assert_eq!(release_identity("Game (The Adventure)"), None);
+        assert_eq!(
+            release_identity("Game (The Adventure) (USA)").unwrap().base,
+            "Game (The Adventure)"
         );
     }
 

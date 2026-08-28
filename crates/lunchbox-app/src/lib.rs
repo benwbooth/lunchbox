@@ -119,6 +119,19 @@ pub fn run() -> i32 {
         };
     }
 
+    if std::env::args().any(|argument| argument == "--variant-probe") {
+        return match game_details::variant_probe() {
+            Ok(evidence) => {
+                println!("LUNCHBOX_VARIANTS_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_VARIANTS_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--emulator-update-probe") {
         return match emulator_manager::load_available_emulator_updates() {
             Ok(inventory) => {

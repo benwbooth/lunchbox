@@ -46,8 +46,13 @@ contents, where title matches are presented as review candidates rather than
 silently accepted identities. Exact alternate names tied to the same positive
 LaunchBox database ID appear as regional metadata chips and expand member
 matching; the review row discloses the alias that produced a match. They never
-merge catalog records or replace the game's stable UUID. A persisted, fully
-ordered region list plus the latest/original release-version policy ranks
+merge catalog records or replace the game's stable UUID. Regional, language,
+prototype, and revision releases on the same exact platform appear as a native
+horizontal carousel. It is ordered by the saved region/version preferences and
+switches by the target row's exact UUID; duplicate full titles collapse only
+for presentation and never transfer IDs or metadata. Installed,
+Minerva-covered, catalog-only, and current states remain distinct. A persisted,
+fully ordered region list plus the latest/original release-version policy ranks
 otherwise equal candidates; the
 picker still exposes the exact region, revision, filename, size, and match
 quality before download. Region aliases and duplicate entries are normalized

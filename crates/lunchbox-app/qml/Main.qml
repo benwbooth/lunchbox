@@ -13,10 +13,12 @@ ApplicationWindow {
     width: controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+           || variantUiProbe
            ? 1920 : 1440
     height: controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+            || variantUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -142,6 +144,7 @@ ApplicationWindow {
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
+    readonly property bool variantUiProbe: Qt.application.arguments.indexOf("--variant-ui-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
@@ -169,6 +172,8 @@ ApplicationWindow {
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
     readonly property string screenshotOutput: root.argumentValue("--screenshot-output")
+    property bool variantProbeSwitched: false
+    property string variantProbeExpectedId: ""
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -438,6 +443,18 @@ ApplicationWindow {
         library.request_artwork(databaseId, title, platform, "box-front")
         refreshSelectedArtwork()
         gameDetails.select_game(gameId, title, platform, local, downloadable)
+    }
+
+    function openVariant(index) {
+        if (index < 0 || index >= gameDetails.variant_count
+                || gameDetails.variant_is_current_at(index))
+            return
+        root.openGame(gameDetails.variant_game_id_at(index),
+                      gameDetails.variant_database_id_at(index),
+                      gameDetails.variant_title_at(index),
+                      gameDetails.platform,
+                      gameDetails.variant_is_local_at(index),
+                      gameDetails.variant_is_downloadable_at(index))
     }
 
     function refreshSelectedArtwork() {
@@ -1193,6 +1210,51 @@ ApplicationWindow {
                 alternateTitleProbeScrollTimer.restart()
             }
         }
+        function onVariant_countChanged() {
+            if (!root.variantUiProbe || gameDetails.variant_count < 2)
+                return
+            let currentCount = 0
+            let switchIndex = -1
+            for (let index = 0; index < gameDetails.variant_count; ++index) {
+                if (gameDetails.variant_is_current_at(index)) {
+                    ++currentCount
+                } else if (switchIndex < 0
+                           || gameDetails.variant_title_at(index).indexOf("(Europe)") >= 0) {
+                    switchIndex = index
+                }
+            }
+            if (currentCount !== 1) {
+                console.error("LUNCHBOX_VARIANTS_FAILED current_count="
+                              + currentCount)
+                Qt.exit(2)
+                return
+            }
+            if (!root.variantProbeSwitched) {
+                if (switchIndex < 0) {
+                    console.error("LUNCHBOX_VARIANTS_FAILED no_switch_target")
+                    Qt.exit(2)
+                    return
+                }
+                root.variantProbeExpectedId = gameDetails.variant_game_id_at(switchIndex)
+                root.variantProbeSwitched = true
+                console.log("LUNCHBOX_VARIANTS_READY count="
+                            + gameDetails.variant_count + " target="
+                            + gameDetails.variant_title_at(switchIndex) + " id="
+                            + root.variantProbeExpectedId)
+                root.openVariant(switchIndex)
+                return
+            }
+            if (gameDetails.game_id !== root.variantProbeExpectedId) {
+                console.error("LUNCHBOX_VARIANTS_FAILED expected="
+                              + root.variantProbeExpectedId + " actual="
+                              + gameDetails.game_id)
+                Qt.exit(2)
+                return
+            }
+            console.log("LUNCHBOX_VARIANT_SWITCHED title=" + gameDetails.title
+                        + " id=" + gameDetails.game_id)
+            variantProbeScrollTimer.restart()
+        }
         function onFile_countChanged() {
             if (root.releaseCandidateUiProbe && gameDetails.file_count > 0)
                 detailsProbeScrollTimer.restart()
@@ -1581,6 +1643,10 @@ ApplicationWindow {
                 root.openGame("8ec34bc8-73d5-4e4a-be7b-73ed58e0dc9a", 2361,
                               "Pokémon Silver Version",
                               "Nintendo Game Boy Color", false, true)
+            else if (root.variantUiProbe)
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
             else if (root.releaseCandidateUiProbe)
                 root.openGame("52f67472-bddb-4e5b-951b-43364f996573", 1726,
                               "Super Mario Land", "Nintendo Game Boy", false, true)
@@ -1774,6 +1840,54 @@ ApplicationWindow {
                             + root.screenshotOutput)
                 Qt.quit()
             })
+        }
+    }
+
+    Timer {
+        id: variantProbeScrollTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            detailScroll.contentItem.contentY = Math.max(
+                        0, releaseVariantSection.mapToItem(
+                            detailScroll.contentItem, 0, 0).y - 12)
+            variantScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: variantScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0) {
+                Qt.quit()
+                return
+            }
+            detailsPane.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SCREENSHOT_FAILED path="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_SCREENSHOT_READY path="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 15000
+        running: root.variantUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_VARIANTS_FAILED timeout id="
+                          + gameDetails.game_id + " count="
+                          + gameDetails.variant_count + " message="
+                          + gameDetails.message)
+            Qt.exit(2)
         }
     }
 
@@ -4311,6 +4425,183 @@ ApplicationWindow {
                         Text { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.release_type.length > 0; text: "TYPE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                    }
+
+                    Column {
+                        id: releaseVariantSection
+                        width: parent.width
+                        visible: !gameDetails.loading && gameDetails.variant_count > 1
+                        spacing: 7
+
+                        RowLayout {
+                            width: parent.width
+                            spacing: 8
+                            Text {
+                                text: "RELEASES"
+                                color: "#687488"
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.9
+                            }
+                            Rectangle {
+                                width: releaseCountText.implicitWidth + 12
+                                height: 18
+                                radius: 9
+                                color: "#1b2a38"
+                                border.color: "#30485d"
+                                Text {
+                                    id: releaseCountText
+                                    anchors.centerIn: parent
+                                    text: gameDetails.variant_count
+                                    color: "#a8c6dc"
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    font.features: { "tnum": 1 }
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: "REGION + VERSION"
+                                color: "#536175"
+                                font.pixelSize: 8
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 0.7
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            text: "Separate catalog records, ordered by your release preferences."
+                            color: root.muted
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
+
+                        ListView {
+                            id: releaseVariantList
+                            width: parent.width
+                            height: 100
+                            orientation: ListView.Horizontal
+                            spacing: 8
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            reuseItems: true
+                            model: gameDetails.variant_count
+                            ScrollBar.horizontal: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                height: 3
+                            }
+
+                            delegate: Rectangle {
+                                id: releaseCard
+                                required property int index
+                                property int revision: gameDetails.detail_revision
+                                property string releaseTitle: {
+                                    releaseCard.revision
+                                    return gameDetails.variant_title_at(releaseCard.index)
+                                }
+                                property string releaseLabel: {
+                                    releaseCard.revision
+                                    return gameDetails.variant_label_at(releaseCard.index)
+                                }
+                                property string releaseStatus: {
+                                    releaseCard.revision
+                                    return gameDetails.variant_status_at(releaseCard.index)
+                                }
+                                property bool selectedRelease: {
+                                    releaseCard.revision
+                                    return gameDetails.variant_is_current_at(releaseCard.index)
+                                }
+                                width: Math.min(206, Math.max(172,
+                                               releaseVariantList.width * 0.54))
+                                height: 92
+                                radius: 10
+                                color: selectedRelease ? "#23384a"
+                                      : releaseHover.hovered ? "#1c2a39" : "#17212d"
+                                border.width: selectedRelease || activeFocus ? 2 : 1
+                                border.color: selectedRelease ? root.accentCool
+                                              : activeFocus ? root.accent : "#2c3c4e"
+                                activeFocusOnTab: true
+
+                                Rectangle {
+                                    visible: releaseCard.selectedRelease
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    height: 3
+                                    radius: 2
+                                    color: root.accentCool
+                                }
+
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 11
+                                    spacing: 5
+
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: 6
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: releaseCard.releaseLabel
+                                            color: releaseCard.selectedRelease
+                                                   ? root.ink : "#d7e2ec"
+                                            font.pixelSize: 11
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        Rectangle {
+                                            width: releaseStatusText.implicitWidth + 10
+                                            height: 17
+                                            radius: 5
+                                            color: releaseCard.releaseStatus === "CURRENT"
+                                                   ? "#20473f"
+                                                   : releaseCard.releaseStatus === "INSTALLED"
+                                                     ? "#2a3f31"
+                                                     : releaseCard.releaseStatus === "MINERVA"
+                                                       ? "#44351f" : "#252f3d"
+                                            Text {
+                                                id: releaseStatusText
+                                                anchors.centerIn: parent
+                                                text: releaseCard.releaseStatus
+                                                color: releaseCard.releaseStatus === "CURRENT"
+                                                       ? root.accentCool
+                                                       : releaseCard.releaseStatus === "MINERVA"
+                                                         ? root.accent : "#aab8c8"
+                                                font.pixelSize: 7
+                                                font.weight: Font.Bold
+                                                font.letterSpacing: 0.5
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        width: parent.width
+                                        text: releaseCard.releaseTitle
+                                        color: "#98a8ba"
+                                        font.pixelSize: 9
+                                        maximumLineCount: 2
+                                        wrapMode: Text.Wrap
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                HoverHandler { id: releaseHover }
+                                TapHandler {
+                                    enabled: !releaseCard.selectedRelease && !gameDetails.loading
+                                    onTapped: root.openVariant(releaseCard.index)
+                                }
+                                Keys.onReturnPressed: root.openVariant(releaseCard.index)
+                                Keys.onEnterPressed: root.openVariant(releaseCard.index)
+                                Keys.onSpacePressed: root.openVariant(releaseCard.index)
+
+                                ToolTip.visible: releaseHover.hovered
+                                                     && !releaseCard.selectedRelease
+                                ToolTip.text: "Open this exact catalog release"
+                            }
+                        }
                     }
 
                     Column {

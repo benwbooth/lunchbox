@@ -381,6 +381,15 @@ opens the same record with its localized names rendered as native metadata
 chips; adding `--screenshot-output ABSOLUTE_PATH` captures the details pane and
 exits. Alternate names expand download search only: they never merge catalog
 records, replace UUIDs, or bypass explicit candidate review.
+`--variant-probe --games-database PATH` exercises the preserved Super Mario
+Bros. release family without starting Qt. It requires one current row, unique
+full-title presentation entries, and an exact UUID round trip to the Europe
+release. `--variant-ui-probe` performs that switch through the production
+CXX-Qt accessors, verifies the exact destination UUID, scrolls to the native
+release carousel, and optionally captures it with `--screenshot-output`.
+Grouping is bounded to one exact platform plus contiguous recognized trailing
+region, language, release-state, or revision tags. It is navigation only:
+records, metadata, LaunchBox IDs, and local state are never merged or copied.
 The `--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
 Minerva bundle, and scrolls the details pane to the ranked native candidate
 cards for deterministic visual review against the preserved discovery catalog.

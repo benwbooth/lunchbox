@@ -455,6 +455,17 @@ fn load_installed_games(path: Option<&Path>) -> Result<InstalledGames> {
     Ok(installed)
 }
 
+pub(crate) fn installed_game_flags(identities: &[(String, i64)]) -> Result<Vec<bool>> {
+    let installed = load_installed_games(requested_user_database_path().as_deref())?;
+    Ok(identities
+        .iter()
+        .map(|(game_uid, launchbox_db_id)| {
+            installed.game_uids.contains(game_uid)
+                || (*launchbox_db_id > 0 && installed.database_ids.contains(launchbox_db_id))
+        })
+        .collect())
+}
+
 fn load_native_installed_games(installed: &mut InstalledGames) -> Result<()> {
     let path = crate::settings::state_database_path()?;
     if !path.is_file() {

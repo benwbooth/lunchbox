@@ -32,6 +32,7 @@ pub mod qobject {
         #[qproperty(QString, esrb)]
         #[qproperty(QString, release_type)]
         #[qproperty(QString, notes)]
+        #[qproperty(i32, variant_count)]
         #[qproperty(i32, alternate_title_count)]
         #[qproperty(QString, message)]
         #[qproperty(bool, media_visible)]
@@ -215,6 +216,30 @@ pub mod qobject {
         fn alternate_title_region_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn variant_title_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn variant_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn variant_game_id_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn variant_database_id_at(self: &GameDetailsModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn variant_status_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn variant_is_current_at(self: &GameDetailsModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn variant_is_local_at(self: &GameDetailsModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn variant_is_downloadable_at(self: &GameDetailsModel, index: i32) -> bool;
+
+        #[qinvokable]
         fn file_name_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -253,7 +278,8 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::game_details::{
-    self, AlternateTitle, GameDetails, MinervaBundle, ReleasePreferences, TorrentFileCandidate,
+    self, AlternateTitle, GameDetails, GameVariant, MinervaBundle, ReleasePreferences,
+    TorrentFileCandidate,
 };
 
 pub struct GameDetailsModelRust {
@@ -279,6 +305,7 @@ pub struct GameDetailsModelRust {
     esrb: QString,
     release_type: QString,
     notes: QString,
+    variant_count: i32,
     alternate_title_count: i32,
     message: QString,
     media_visible: bool,
@@ -346,6 +373,7 @@ pub struct GameDetailsModelRust {
     selected_emulator_option: i32,
     detail_revision: i32,
     bundles: Vec<MinervaBundle>,
+    variants: Vec<GameVariant>,
     alternate_titles: Vec<AlternateTitle>,
     files: Vec<TorrentFileCandidate>,
     details_generation: u64,
@@ -390,6 +418,7 @@ impl Default for GameDetailsModelRust {
             esrb: QString::default(),
             release_type: QString::default(),
             notes: QString::default(),
+            variant_count: 0,
             alternate_title_count: 0,
             message: QString::from("Select a game to inspect it."),
             media_visible: false,
@@ -457,6 +486,7 @@ impl Default for GameDetailsModelRust {
             selected_emulator_option: -1,
             detail_revision: 0,
             bundles: Vec::new(),
+            variants: Vec::new(),
             alternate_titles: Vec::new(),
             files: Vec::new(),
             details_generation: 0,
@@ -718,6 +748,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_notes(QString::default());
+        self.as_mut().set_variant_count(0);
         self.as_mut().set_alternate_title_count(0);
         self.as_mut().set_media_visible(false);
         self.as_mut().set_video_available(false);
@@ -768,6 +799,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().prepared_emulator = None;
         self.as_mut().rust_mut().prepared_install = None;
         self.as_mut().rust_mut().bundles.clear();
+        self.as_mut().rust_mut().variants.clear();
         self.as_mut().rust_mut().alternate_titles.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
@@ -827,6 +859,9 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
                 self.as_mut().set_notes(qstring(&details.notes));
+                let variant_count = details.variants.len();
+                self.as_mut().rust_mut().variants = details.variants.clone();
+                self.as_mut().set_variant_count(count_i32(variant_count));
                 let alternate_title_count = details.alternate_titles.len();
                 self.as_mut().rust_mut().alternate_titles = details.alternate_titles.clone();
                 self.as_mut()
@@ -3047,6 +3082,59 @@ impl qobject::GameDetailsModel {
             .unwrap_or_default()
     }
 
+    pub fn variant_title_at(&self, index: i32) -> QString {
+        self.variant(index)
+            .map(|variant| qstring(&variant.title))
+            .unwrap_or_default()
+    }
+
+    pub fn variant_label_at(&self, index: i32) -> QString {
+        self.variant(index)
+            .map(|variant| qstring(&variant.release_label))
+            .unwrap_or_default()
+    }
+
+    pub fn variant_game_id_at(&self, index: i32) -> QString {
+        self.variant(index)
+            .map(|variant| qstring(&variant.id))
+            .unwrap_or_default()
+    }
+
+    pub fn variant_database_id_at(&self, index: i32) -> i32 {
+        self.variant(index)
+            .map(|variant| i32::try_from(variant.launchbox_db_id).unwrap_or_default())
+            .unwrap_or_default()
+    }
+
+    pub fn variant_status_at(&self, index: i32) -> QString {
+        self.variant(index)
+            .map(|variant| {
+                qstring(if variant.current {
+                    "CURRENT"
+                } else if variant.local {
+                    "INSTALLED"
+                } else if variant.downloadable {
+                    "MINERVA"
+                } else {
+                    "CATALOG"
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn variant_is_current_at(&self, index: i32) -> bool {
+        self.variant(index).is_some_and(|variant| variant.current)
+    }
+
+    pub fn variant_is_local_at(&self, index: i32) -> bool {
+        self.variant(index).is_some_and(|variant| variant.local)
+    }
+
+    pub fn variant_is_downloadable_at(&self, index: i32) -> bool {
+        self.variant(index)
+            .is_some_and(|variant| variant.downloadable)
+    }
+
     pub fn file_name_at(&self, index: i32) -> QString {
         self.file(index)
             .map(|file| {
@@ -3243,6 +3331,12 @@ impl qobject::GameDetailsModel {
         usize::try_from(index)
             .ok()
             .and_then(|index| self.rust().bundles.get(index))
+    }
+
+    fn variant(&self, index: i32) -> Option<&GameVariant> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().variants.get(index))
     }
 
     fn file(&self, index: i32) -> Option<&TorrentFileCandidate> {
