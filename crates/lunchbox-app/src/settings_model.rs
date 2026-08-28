@@ -29,6 +29,7 @@ pub mod qobject {
         #[qproperty(QString, file_link_mode)]
         #[qproperty(QString, seeding_policy)]
         #[qproperty(QString, preferred_region)]
+        #[qproperty(i32, region_revision)]
         #[qproperty(QString, version_preference)]
         type SettingsModel = super::SettingsModelRust;
 
@@ -46,6 +47,18 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_directory(self: Pin<&mut SettingsModel>, field: QString, url: QUrl);
+
+        #[qinvokable]
+        fn region_count(self: &SettingsModel) -> i32;
+
+        #[qinvokable]
+        fn region_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn move_region(self: Pin<&mut SettingsModel>, from: i32, to: i32);
+
+        #[qinvokable]
+        fn reset_region_priority(self: Pin<&mut SettingsModel>);
     }
 
     impl cxx_qt::Threading for SettingsModel {}
@@ -54,7 +67,7 @@ pub mod qobject {
 use std::path::PathBuf;
 use std::pin::Pin;
 
-use cxx_qt::Threading;
+use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::qbittorrent;
@@ -80,6 +93,8 @@ pub struct SettingsModelRust {
     file_link_mode: QString,
     seeding_policy: QString,
     preferred_region: QString,
+    region_priority: Vec<String>,
+    region_revision: i32,
     version_preference: QString,
 }
 
@@ -105,6 +120,8 @@ impl Default for SettingsModelRust {
             file_link_mode: QString::from("symlink"),
             seeding_policy: QString::from("follow_client"),
             preferred_region: QString::from("USA"),
+            region_priority: crate::region_priority::default_region_priority(),
+            region_revision: 0,
             version_preference: QString::from("latest"),
         }
     }
@@ -304,6 +321,50 @@ impl qobject::SettingsModel {
         }
     }
 
+    pub fn region_count(&self) -> i32 {
+        i32::try_from(self.rust().region_priority.len()).unwrap_or(i32::MAX)
+    }
+
+    pub fn region_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().region_priority.get(index))
+            .map(|region| qstring(crate::region_priority::display_name(region)))
+            .unwrap_or_default()
+    }
+
+    pub fn move_region(mut self: Pin<&mut Self>, from: i32, to: i32) {
+        let Ok(from) = usize::try_from(from) else {
+            return;
+        };
+        let Ok(to) = usize::try_from(to) else {
+            return;
+        };
+        let count = self.as_ref().rust().region_priority.len();
+        if from >= count || to >= count || from == to {
+            return;
+        }
+        let region = self.as_mut().rust_mut().region_priority.remove(from);
+        self.as_mut().rust_mut().region_priority.insert(to, region);
+        self.as_mut().sync_primary_region();
+        self.as_mut().bump_region_revision();
+        self.as_mut().set_connection_ok(false);
+        self.as_mut().set_message(qstring(
+            "Region priority changed. Save settings to apply it to Minerva results.",
+        ));
+    }
+
+    pub fn reset_region_priority(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().region_priority =
+            crate::region_priority::default_region_priority();
+        self.as_mut().sync_primary_region();
+        self.as_mut().bump_region_revision();
+        self.as_mut().set_connection_ok(false);
+        self.as_mut().set_message(qstring(
+            "Default region priority restored. Save settings to apply it.",
+        ));
+    }
+
     pub fn set_directory(mut self: Pin<&mut Self>, field: QString, url: QUrl) {
         let Some(path) = url.to_local_file() else {
             self.as_mut()
@@ -320,6 +381,8 @@ impl qobject::SettingsModel {
     }
 
     fn apply_settings(mut self: Pin<&mut Self>, settings: AppSettings) {
+        let region_priority =
+            crate::region_priority::effective_region_priority(&settings.region_priority);
         self.as_mut()
             .set_qbittorrent_host(qstring(settings.qbittorrent_host));
         self.as_mut()
@@ -347,8 +410,9 @@ impl qobject::SettingsModel {
             .set_file_link_mode(qstring(settings.file_link_mode));
         self.as_mut()
             .set_seeding_policy(qstring(settings.seeding_policy));
-        self.as_mut()
-            .set_preferred_region(qstring(settings.preferred_region));
+        self.as_mut().rust_mut().region_priority = region_priority;
+        self.as_mut().sync_primary_region();
+        self.as_mut().bump_region_revision();
         self.as_mut()
             .set_version_preference(qstring(settings.version_preference));
     }
@@ -373,10 +437,36 @@ impl qobject::SettingsModel {
             file_link_mode: self.file_link_mode().to_string(),
             seeding_policy: self.seeding_policy().to_string(),
             preferred_region: self.preferred_region().to_string(),
+            region_priority: self.rust().region_priority.clone(),
             version_preference: self.version_preference().to_string(),
         };
         settings.validate().map_err(|error| error.to_string())?;
         Ok(settings)
+    }
+
+    fn sync_primary_region(mut self: Pin<&mut Self>) {
+        let primary = self
+            .as_ref()
+            .rust()
+            .region_priority
+            .iter()
+            .find(|region| !region.is_empty())
+            .cloned()
+            .unwrap_or_else(|| "USA".to_owned());
+        let legacy_primary = if matches!(
+            primary.as_str(),
+            "USA" | "Japan" | "Europe" | "World" | "Asia"
+        ) {
+            primary
+        } else {
+            "any".to_owned()
+        };
+        self.as_mut().set_preferred_region(qstring(legacy_primary));
+    }
+
+    fn bump_region_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().region_revision().wrapping_add(1);
+        self.as_mut().set_region_revision(revision);
     }
 }
 

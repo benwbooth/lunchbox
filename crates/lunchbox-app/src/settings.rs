@@ -29,6 +29,7 @@ pub struct AppSettings {
     pub file_link_mode: String,
     pub seeding_policy: String,
     pub preferred_region: String,
+    pub region_priority: Vec<String>,
     pub version_preference: String,
 }
 
@@ -47,6 +48,7 @@ impl Default for AppSettings {
             file_link_mode: "symlink".to_owned(),
             seeding_policy: "follow_client".to_owned(),
             preferred_region: "USA".to_owned(),
+            region_priority: Vec::new(),
             version_preference: "latest".to_owned(),
         }
     }
@@ -241,6 +243,7 @@ impl AppSettings {
         ) {
             bail!("unsupported preferred region {}", self.preferred_region);
         }
+        crate::region_priority::normalize_custom_priority(&self.region_priority)?;
         if !matches!(self.version_preference.as_str(), "latest" | "original") {
             bail!(
                 "unsupported release version preference {}",
@@ -386,14 +389,14 @@ impl SettingsStore {
 
     pub fn load(&self) -> Result<AppSettings> {
         let connection = self.connection()?;
-        let settings = connection
+        let mut settings = connection
             .query_row(
                 "SELECT qbittorrent_host, qbittorrent_port, qbittorrent_use_https,
                         qbittorrent_username, rom_directory,
                         qbittorrent_container_rom_directory, torrent_library_directory,
                         qbittorrent_container_torrent_library_directory,
                         download_entire_torrent, file_link_mode, seeding_policy,
-                        preferred_region, version_preference
+                        preferred_region, version_preference, region_priority_json
                  FROM app_settings WHERE id=1",
                 [],
                 |row| {
@@ -412,11 +415,27 @@ impl SettingsStore {
                         seeding_policy: row.get(10)?,
                         preferred_region: row.get(11)?,
                         version_preference: row.get(12)?,
+                        region_priority: serde_json::from_str(&row.get::<_, String>(13)?).map_err(
+                            |error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    13,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(error),
+                                )
+                            },
+                        )?,
                     })
                 },
             )
             .optional()?
             .unwrap_or_default();
+        if settings.region_priority.is_empty()
+            && !matches!(settings.preferred_region.as_str(), "USA" | "any")
+        {
+            settings
+                .region_priority
+                .push(settings.preferred_region.clone());
+        }
         settings.validate()?;
         Ok(settings)
     }
@@ -432,8 +451,8 @@ impl SettingsStore {
                  qbittorrent_container_rom_directory, torrent_library_directory,
                  qbittorrent_container_torrent_library_directory,
                  download_entire_torrent, file_link_mode, seeding_policy,
-                 preferred_region, version_preference
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                 preferred_region, version_preference, region_priority_json
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -447,7 +466,8 @@ impl SettingsStore {
                  file_link_mode=excluded.file_link_mode,
                  seeding_policy=excluded.seeding_policy,
                  preferred_region=excluded.preferred_region,
-                 version_preference=excluded.version_preference",
+                 version_preference=excluded.version_preference,
+                 region_priority_json=excluded.region_priority_json",
             params![
                 settings.qbittorrent_host,
                 i64::from(settings.qbittorrent_port),
@@ -462,6 +482,8 @@ impl SettingsStore {
                 settings.seeding_policy,
                 settings.preferred_region,
                 settings.version_preference,
+                serde_json::to_string(&settings.region_priority)
+                    .context("encoding release region priority")?,
             ],
         )?;
         transaction.commit()?;
@@ -1660,7 +1682,8 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              version_preference TEXT NOT NULL DEFAULT 'latest' CHECK (
                  version_preference IN ('latest', 'original')
-             )
+             ),
+             region_priority_json TEXT NOT NULL DEFAULT '[]'
          );
          CREATE TABLE IF NOT EXISTS library_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
@@ -2034,6 +2057,12 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !column_exists(connection, "app_settings", "region_priority_json")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN region_priority_json TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )?;
+    }
     Ok(())
 }
 
@@ -2390,6 +2419,7 @@ mod tests {
             file_link_mode: "hardlink".into(),
             seeding_policy: "pause_after_import".into(),
             preferred_region: "Japan".into(),
+            region_priority: vec!["Japan".into(), "Europe".into(), "USA".into()],
             version_preference: "original".into(),
         };
         store.save(&expected).unwrap();
@@ -2996,6 +3026,18 @@ mod tests {
         assert!(settings.validate().is_err());
 
         let settings = AppSettings {
+            region_priority: vec!["Moon".into()],
+            ..AppSettings::default()
+        };
+        assert!(settings.validate().is_err());
+
+        let settings = AppSettings {
+            region_priority: vec!["UK".into(), "United Kingdom".into()],
+            ..AppSettings::default()
+        };
+        assert!(settings.validate().is_err());
+
+        let settings = AppSettings {
             version_preference: "random".into(),
             ..AppSettings::default()
         };
@@ -3055,12 +3097,14 @@ mod tests {
         let settings = store.load().unwrap();
         assert_eq!(settings.seeding_policy, "follow_client");
         assert_eq!(settings.preferred_region, "USA");
+        assert!(settings.region_priority.is_empty());
         assert_eq!(settings.version_preference, "latest");
         let connection = Connection::open(&path).unwrap();
         assert!(column_exists(&connection, "download_jobs", "post_import_action").unwrap());
         assert!(column_exists(&connection, "download_jobs", "download_plan").unwrap());
         assert!(column_exists(&connection, "app_settings", "preferred_region").unwrap());
         assert!(column_exists(&connection, "app_settings", "version_preference").unwrap());
+        assert!(column_exists(&connection, "app_settings", "region_priority_json").unwrap());
         let prepared_table: Option<i64> = connection
             .query_row(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prepared_game_installs'",

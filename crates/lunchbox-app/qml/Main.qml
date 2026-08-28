@@ -100,6 +100,7 @@ ApplicationWindow {
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
+    readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
@@ -427,7 +428,12 @@ ApplicationWindow {
             if (root.settingsReleaseProbe && appSettings.initialized
                     && !root.settingsReleaseTriggered) {
                 root.settingsReleaseTriggered = true
-                appSettings.preferred_region = "Japan"
+                for (let index = 0; index < appSettings.region_count(); ++index) {
+                    if (appSettings.region_at(index) === "Japan") {
+                        appSettings.move_region(index, 0)
+                        break
+                    }
+                }
                 appSettings.version_preference = "original"
                 appSettings.save()
             }
@@ -781,7 +787,7 @@ ApplicationWindow {
                 Qt.quit()
             else if (root.importUiProbe)
                 root.openImportDialog()
-            else if (root.settingsUiProbe)
+            else if (root.settingsUiProbe || root.settingsRegionUiProbe)
                 settingsDialog.open()
             else if (root.emulatorManagerProbe)
                 emulatorManager.initialize()
@@ -826,6 +832,15 @@ ApplicationWindow {
         running: root.emulatorManagerUiProbe
         repeat: false
         onTriggered: root.openEmulatorManager()
+    }
+
+    Timer {
+        interval: 500
+        running: root.settingsRegionUiProbe
+        repeat: false
+        onTriggered: settingsScroll.contentItem.contentY = Math.max(
+                         0, regionPrioritySection.mapToItem(
+                             settingsScroll.contentItem, 0, 0).y - 18)
     }
 
     Timer {
@@ -4981,6 +4996,7 @@ ApplicationWindow {
         }
 
         contentItem: ScrollView {
+            id: settingsScroll
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ColumnLayout {
@@ -5178,36 +5194,112 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "These preferences rank otherwise equal Minerva candidates. Lunchbox still shows the exact region, revision, filename, and size for review before download."
+                    text: "Order every region used to rank otherwise equal Minerva candidates. Lunchbox still shows the exact region, revision, filename, and size for review before download."
                     color: root.muted
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                 }
-                RowLayout {
+                ColumnLayout {
+                    id: regionPrioritySection
                     Layout.fillWidth: true
-                    spacing: 9
-                    Text { text: "Preferred region"; color: root.ink; font.pixelSize: 12 }
-                    ComboBox {
-                        id: preferredRegion
+                    spacing: 7
+                    RowLayout {
                         Layout.fillWidth: true
-                        textRole: "label"
-                        valueRole: "value"
-                        model: [
-                            { label: "North America (USA)", value: "USA" },
-                            { label: "Japan", value: "Japan" },
-                            { label: "Europe", value: "Europe" },
-                            { label: "World / multi-region", value: "World" },
-                            { label: "Asia", value: "Asia" },
-                            { label: "No region preference", value: "any" }
-                        ]
-                        currentIndex: {
-                            for (let i = 0; i < model.length; ++i) {
-                                if (model[i].value === appSettings.preferred_region)
-                                    return i
-                            }
-                            return 0
+                        Text {
+                            Layout.fillWidth: true
+                            text: "REGION PRIORITY"
+                            color: root.ink
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
                         }
-                        onActivated: appSettings.preferred_region = currentValue
+                        Button {
+                            text: "Reset defaults"
+                            enabled: !appSettings.busy
+                            onClicked: appSettings.reset_region_priority()
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 258
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+                        border.width: 1
+
+                        ListView {
+                            id: regionPriorityList
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            clip: true
+                            spacing: 4
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: {
+                                appSettings.region_revision
+                                return appSettings.region_count()
+                            }
+                            ScrollBar.vertical: ScrollBar { }
+
+                            delegate: Rectangle {
+                                id: regionRow
+                                required property int index
+                                width: regionPriorityList.width - 10
+                                height: 36
+                                radius: 7
+                                color: index < 3 ? "#1c2a35" : "#161e29"
+                                border.color: index === 0 ? root.accent : "transparent"
+                                border.width: 1
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 5
+                                    spacing: 8
+                                    Text {
+                                        Layout.preferredWidth: 22
+                                        text: (regionRow.index + 1).toString().padStart(2, "0")
+                                        color: regionRow.index === 0 ? root.accent : root.muted
+                                        font.pixelSize: 10
+                                        font.family: "monospace"
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            appSettings.region_revision
+                                            return appSettings.region_at(regionRow.index)
+                                        }
+                                        color: root.ink
+                                        font.pixelSize: 12
+                                        font.weight: regionRow.index === 0
+                                                     ? Font.DemiBold : Font.Normal
+                                    }
+                                    ToolButton {
+                                        text: "↑"
+                                        enabled: regionRow.index > 0 && !appSettings.busy
+                                        Accessible.name: "Move region up"
+                                        onClicked: appSettings.move_region(
+                                                       regionRow.index,
+                                                       regionRow.index - 1)
+                                    }
+                                    ToolButton {
+                                        text: "↓"
+                                        enabled: regionRow.index + 1
+                                                 < appSettings.region_count()
+                                                 && !appSettings.busy
+                                        Accessible.name: "Move region down"
+                                        onClicked: appSettings.move_region(
+                                                       regionRow.index,
+                                                       regionRow.index + 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Use the arrow controls or keyboard focus to reorder. The first matching region wins; untagged releases are ordered explicitly as ‘No region’."
+                        color: root.muted
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
                     }
                 }
                 RowLayout {

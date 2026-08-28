@@ -29,8 +29,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   explicitly review-only title candidates. Candidate ranking strips catalog
   region/version tags before title comparison, normalizes common Roman-numeral
   sequels, then applies persisted region and latest/original-revision
-  preferences only between equally strong title matches. The exact variant is
-  always visible before download.
+  preferences only between equally strong title matches. The complete legacy
+  region ordering is native, durable, editable with keyboard-focusable controls,
+  and alias-normalized. The exact variant is always visible before download.
 - Generic multi-disc optical downloads are represented as a single durable plan:
   numeric/alphabetic/Roman disc markers, primary-image selection, common CUE,
   CCD, MDS and GDI sidecars, exact-member confirmation, aggregate progress,
@@ -102,9 +103,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   into the GUI process.
 - Complete game-level offer selection beyond the implemented exact-file,
   whole-torrent, generic optical-set, eXo archive-set, and arcade-laserdisc
-  paths: free-space enforcement and broader duplicate avoidance. Extend the
-  implemented primary-region choice into the legacy
-  arbitrary fallback-order editor when variant-rich catalog browsing lands.
+  paths: free-space enforcement and broader duplicate avoidance. Reuse the
+  implemented full region-order editor when variant-rich catalog browsing lands.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe
   record/history cleanup, and durable post-import pause policy with explicit
   retry/recovery controls and richer error history.

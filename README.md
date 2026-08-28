@@ -43,9 +43,11 @@ the content-filter preferences survive restart in the writable state database.
 Select a game to open its
 native details pane; Minerva sources can be inspected against the real torrent
 contents, where title matches are presented as review candidates rather than
-silently accepted identities. Persisted region and release-version preferences
-rank otherwise equal candidates; the picker still exposes the exact region,
-revision, filename, size, and match quality before download. A reviewed file
+silently accepted identities. A persisted, fully ordered region list plus the
+latest/original release-version policy ranks otherwise equal candidates; the
+picker still exposes the exact region, revision, filename, size, and match
+quality before download. Region aliases and duplicate entries are normalized
+before the ordering is saved. A reviewed file
 can be sent to qBittorrent from that pane. Valid torrent metadata is cached in
 the operating system cache directory for 24 hours, and the active torrent's
 decoded file index is shared between source views. Multi-disc optical matches

@@ -78,8 +78,9 @@ The initial implementation enforces this shape:
 - Minerva candidate matching treats provider filenames as review evidence, not
   identity. Region and revision tags are removed before title scoring, common
   multi-character Roman-numeral sequels are normalized, and a stronger title
-  match always wins. Persisted primary-region and latest/original-revision
-  choices only order equally strong candidates. The native picker shows the
+  match always wins. The complete persisted region ordering and
+  latest/original-revision choice only order equally strong candidates; aliases
+  and duplicates are normalized before persistence. The native picker shows the
   parsed region and revision and visually identifies the resulting best match.
 - Bounded torrent bytes are retained in a validated, URL-keyed OS cache for 24
   hours. The currently inspected torrent also has one decoded file index shared

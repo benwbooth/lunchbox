@@ -16,6 +16,7 @@ pub mod local_import_model;
 mod media;
 mod media_acquisition;
 mod qbittorrent;
+mod region_priority;
 mod settings;
 pub mod settings_model;
 

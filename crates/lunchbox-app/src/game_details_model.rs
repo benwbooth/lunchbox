@@ -1350,7 +1350,7 @@ impl qobject::GameDetailsModel {
                         &bundle,
                         &title,
                         &ReleasePreferences {
-                            preferred_region: settings.preferred_region,
+                            region_priority: settings.region_priority,
                             version_preference: settings.version_preference,
                         },
                     )

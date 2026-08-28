@@ -97,7 +97,7 @@ pub struct TorrentFileCandidate {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleasePreferences {
-    pub preferred_region: String,
+    pub region_priority: Vec<String>,
     pub version_preference: String,
 }
 
@@ -982,78 +982,23 @@ fn release_preference_order(
     right: &TorrentFileCandidate,
     preferences: &ReleasePreferences,
 ) -> std::cmp::Ordering {
-    region_priority(&left.region, &preferences.preferred_region)
-        .cmp(&region_priority(
-            &right.region,
-            &preferences.preferred_region,
-        ))
-        .then_with(|| {
-            let left = revision_rank(&left.version);
-            let right = revision_rank(&right.version);
-            if preferences.version_preference == "original" {
-                left.cmp(&right)
-            } else {
-                right.cmp(&left)
-            }
-        })
-}
-
-fn region_priority(region: &str, preferred_region: &str) -> usize {
-    const DEFAULT_ORDER: &[&str] = &[
-        "USA",
-        "Japan",
-        "Asia",
-        "World",
-        "Europe",
-        "Australia",
-        "Canada",
-        "Brazil",
-        "Korea",
-        "China",
-        "France",
-        "Germany",
-        "Italy",
-        "Spain",
-        "United Kingdom",
-        "Taiwan",
-        "Netherlands",
-        "Belgium",
-        "Greece",
-        "Portugal",
-        "Austria",
-        "Sweden",
-        "Finland",
-        "Russia",
-        "Switzerland",
-        "Hong Kong",
-        "Scandinavia",
-        "Denmark",
-        "Poland",
-        "Norway",
-        "New Zealand",
-        "Latin America",
-        "Unknown",
-    ];
-    if preferred_region == "any" {
-        return 0;
-    }
-    let regions = region.split(", ").collect::<Vec<_>>();
-    if regions
-        .iter()
-        .any(|region| region.eq_ignore_ascii_case(preferred_region))
-    {
-        return 0;
-    }
-    DEFAULT_ORDER
-        .iter()
-        .filter(|candidate| !candidate.eq_ignore_ascii_case(preferred_region))
-        .position(|candidate| {
-            regions
-                .iter()
-                .any(|region| region.eq_ignore_ascii_case(candidate))
-        })
-        .map(|position| position + 1)
-        .unwrap_or(usize::MAX)
+    crate::region_priority::priority_for_region(
+        (!left.region.is_empty()).then_some(left.region.as_str()),
+        &preferences.region_priority,
+    )
+    .cmp(&crate::region_priority::priority_for_region(
+        (!right.region.is_empty()).then_some(right.region.as_str()),
+        &preferences.region_priority,
+    ))
+    .then_with(|| {
+        let left = revision_rank(&left.version);
+        let right = revision_rank(&right.version);
+        if preferences.version_preference == "original" {
+            left.cmp(&right)
+        } else {
+            right.cmp(&left)
+        }
+    })
 }
 
 fn revision_rank(version: &str) -> (bool, [u32; 4]) {
@@ -1144,7 +1089,7 @@ mod tests {
 
     fn preferences(region: &str, version: &str) -> ReleasePreferences {
         ReleasePreferences {
-            preferred_region: region.into(),
+            region_priority: vec![region.into()],
             version_preference: version.into(),
         }
     }
@@ -1189,7 +1134,7 @@ mod tests {
     }
 
     #[test]
-    fn preferred_region_and_version_rank_equal_title_matches() {
+    fn custom_region_order_and_version_rank_equal_title_matches() {
         let files = vec![
             candidate(0, "Game (USA) (Rev 1).zip"),
             candidate(1, "Game (Japan) (Rev 1).zip"),
@@ -1203,6 +1148,28 @@ mod tests {
         );
         assert_eq!(ranked[0].region, "Japan");
         assert_eq!(ranked[0].version, "Rev 3");
+    }
+
+    #[test]
+    fn complete_custom_region_order_is_consumed_by_candidate_ranking() {
+        let files = vec![
+            candidate(0, "Game (Japan).zip"),
+            candidate(1, "Game (USA).zip"),
+            candidate(2, "Game (Europe).zip"),
+        ];
+        let ranked = rank_file_candidates(
+            files,
+            "Game",
+            &ReleasePreferences {
+                region_priority: vec!["Europe".into(), "USA".into(), "Japan".into()],
+                version_preference: "latest".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            ranked.iter().map(|file| file.index).collect::<Vec<_>>(),
+            [2, 1, 0]
+        );
     }
 
     #[test]
