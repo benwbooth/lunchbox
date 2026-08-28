@@ -62,7 +62,7 @@ native vertical slice is completed so that features are not silently lost.
 | Credentials in the system keyring | `backend/src/keyring_store.rs` | Implemented for qBittorrent, SteamGridDB, and IGDB/Twitch through the operating-system credential store; no secret column exists in SQLite |
 | Linux, macOS and Windows packaging | `.github/workflows/release.yml` | Nix Linux package works; native macOS/Windows runtime packaging remains in the ledger |
 | Keyboard/controller-first full-screen presentation | Product requirement beyond the Electron desktop UI | Tracked in `FRONTEND_ROADMAP.md` |
-| Loading minigame and GPU presentation | `src/components/minigame` | Behavior recorded |
+| Loading minigame and GPU presentation | `src/components/minigame` | Intentionally excluded from the native product. Empty and loading states remain focused on browsing, collection status, and actionable progress rather than running a background game simulation. |
 
 ## Port rule
 
