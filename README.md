@@ -115,6 +115,14 @@ Pong driver. A dedicated Daphne runtime profile and TeknoParrot remain explicit
 follow-on work; Daphne-source media already normalizes to the validated
 Hypseus-compatible layout.
 
+Each detected runtime also exposes a native launch-command editor. Exact game,
+platform, and all-platform profiles inherit independently for extra arguments
+and replacement templates, and apply to ordinary ROMs as well as prepared eXo
+PC games. Built-in templates remain visible, saves are validated, and
+placeholders become direct native argument values with the existing Flatpak or
+Wine path mapping. Quotes only group arguments: Lunchbox never passes a profile
+through a shell or evaluates substitutions, pipes, globs, or redirection.
+
 The native Emulator Manager restores the legacy host-aware lifecycle instead
 of delegating it to Electron. It discovers installations off the GUI thread,
 chooses one deterministic source per emulator, and installs, updates, or

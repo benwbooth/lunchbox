@@ -210,6 +210,26 @@ pub struct EmulatorPreference {
     pub scope: String,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct EmulatorLaunchProfile {
+    pub scope_kind: String,
+    pub scope_key: String,
+    pub emulator_id: String,
+    pub runtime_kind: String,
+    pub core_name: String,
+    pub extra_arguments: String,
+    pub command_template: String,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ResolvedLaunchCustomization {
+    pub extra_arguments: String,
+    pub command_template: String,
+    pub argument_scope: String,
+    pub template_scope: String,
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ManagedEmulatorInstall {
     pub emulator_id: String,
@@ -1620,6 +1640,163 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub fn emulator_launch_profile(
+        &self,
+        scope_kind: &str,
+        scope_key: &str,
+        emulator_id: &str,
+        runtime_kind: &str,
+        core_name: &str,
+    ) -> Result<Option<EmulatorLaunchProfile>> {
+        let scope_key = normalized_launch_scope_key(scope_kind, scope_key)?;
+        validate_emulator_preference("launch-profile", emulator_id, runtime_kind, core_name)?;
+        let connection = self.connection()?;
+        connection
+            .query_row(
+                "SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+                        extra_arguments, command_template, updated_at
+                 FROM emulator_launch_profiles
+                 WHERE scope_kind=?1 AND scope_key=?2 AND emulator_id=?3
+                   AND runtime_kind=?4 AND core_name=?5",
+                params![scope_kind, scope_key, emulator_id, runtime_kind, core_name],
+                |row| {
+                    Ok(EmulatorLaunchProfile {
+                        scope_kind: row.get(0)?,
+                        scope_key: row.get(1)?,
+                        emulator_id: row.get(2)?,
+                        runtime_kind: row.get(3)?,
+                        core_name: row.get(4)?,
+                        extra_arguments: row.get(5)?,
+                        command_template: row.get(6)?,
+                        updated_at: row.get(7)?,
+                    })
+                },
+            )
+            .optional()
+            .context("loading an emulator launch profile")
+    }
+
+    pub fn resolve_launch_customization(
+        &self,
+        game_uid: &str,
+        platform: &str,
+        emulator_id: &str,
+        runtime_kind: &str,
+        core_name: &str,
+    ) -> Result<ResolvedLaunchCustomization> {
+        validate_emulator_preference("launch-profile", emulator_id, runtime_kind, core_name)?;
+        let platform_key = catalog::normalize_platform_key(platform);
+        let mut profiles = Vec::new();
+        if !game_uid.trim().is_empty()
+            && let Some(profile) = self.emulator_launch_profile(
+                "game",
+                game_uid,
+                emulator_id,
+                runtime_kind,
+                core_name,
+            )?
+        {
+            profiles.push(profile);
+        }
+        if !platform_key.is_empty()
+            && let Some(profile) = self.emulator_launch_profile(
+                "platform",
+                &platform_key,
+                emulator_id,
+                runtime_kind,
+                core_name,
+            )?
+        {
+            profiles.push(profile);
+        }
+        if let Some(profile) =
+            self.emulator_launch_profile("global", "", emulator_id, runtime_kind, core_name)?
+        {
+            profiles.push(profile);
+        }
+
+        let mut resolved = ResolvedLaunchCustomization::default();
+        for profile in profiles {
+            if resolved.extra_arguments.is_empty() && !profile.extra_arguments.is_empty() {
+                resolved.extra_arguments = profile.extra_arguments;
+                resolved.argument_scope = profile.scope_kind.clone();
+            }
+            if resolved.command_template.is_empty() && !profile.command_template.is_empty() {
+                resolved.command_template = profile.command_template;
+                resolved.template_scope = profile.scope_kind;
+            }
+            if !resolved.extra_arguments.is_empty() && !resolved.command_template.is_empty() {
+                break;
+            }
+        }
+        Ok(resolved)
+    }
+
+    pub fn set_emulator_launch_profile(&self, profile: &EmulatorLaunchProfile) -> Result<()> {
+        let scope_key = normalized_launch_scope_key(&profile.scope_kind, &profile.scope_key)?;
+        validate_emulator_preference(
+            "launch-profile",
+            &profile.emulator_id,
+            &profile.runtime_kind,
+            &profile.core_name,
+        )?;
+        let extra_arguments = profile.extra_arguments.trim();
+        let command_template = profile.command_template.trim();
+        crate::emulator::validate_launch_extra_arguments(extra_arguments)?;
+        crate::emulator::validate_launch_template(command_template)?;
+        if extra_arguments.is_empty() && command_template.is_empty() {
+            return self.clear_emulator_launch_profile(
+                &profile.scope_kind,
+                &scope_key,
+                &profile.emulator_id,
+                &profile.runtime_kind,
+                &profile.core_name,
+            );
+        }
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO emulator_launch_profiles (
+                 scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+                 extra_arguments, command_template, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(scope_kind, scope_key, emulator_id, runtime_kind, core_name)
+             DO UPDATE SET
+                 extra_arguments=excluded.extra_arguments,
+                 command_template=excluded.command_template,
+                 updated_at=excluded.updated_at",
+            params![
+                profile.scope_kind,
+                scope_key,
+                profile.emulator_id,
+                profile.runtime_kind,
+                profile.core_name,
+                extra_arguments,
+                command_template,
+                unix_timestamp()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_emulator_launch_profile(
+        &self,
+        scope_kind: &str,
+        scope_key: &str,
+        emulator_id: &str,
+        runtime_kind: &str,
+        core_name: &str,
+    ) -> Result<()> {
+        let scope_key = normalized_launch_scope_key(scope_kind, scope_key)?;
+        validate_emulator_preference("launch-profile", emulator_id, runtime_kind, core_name)?;
+        self.connection()?.execute(
+            "DELETE FROM emulator_launch_profiles
+             WHERE scope_kind=?1 AND scope_key=?2 AND emulator_id=?3
+               AND runtime_kind=?4 AND core_name=?5",
+            params![scope_kind, scope_key, emulator_id, runtime_kind, core_name],
+        )?;
+        Ok(())
+    }
+
     pub fn user_collections(&self) -> Result<UserCollections> {
         let connection = self.connection()?;
         let mut collection_statement = connection.prepare(
@@ -2212,6 +2389,34 @@ fn migrate(connection: &Connection) -> Result<()> {
              core_name TEXT NOT NULL DEFAULT '',
              updated_at INTEGER NOT NULL
          );
+         CREATE TABLE IF NOT EXISTS emulator_launch_profiles (
+             scope_kind TEXT NOT NULL CHECK (
+                 scope_kind IN ('global', 'platform', 'game')
+             ),
+             scope_key TEXT NOT NULL,
+             emulator_id TEXT NOT NULL,
+             runtime_kind TEXT NOT NULL CHECK (
+                 runtime_kind IN ('standalone', 'retroarch')
+             ),
+             core_name TEXT NOT NULL DEFAULT '',
+             extra_arguments TEXT NOT NULL DEFAULT '',
+             command_template TEXT NOT NULL DEFAULT '',
+             updated_at INTEGER NOT NULL,
+             PRIMARY KEY (
+                 scope_kind, scope_key, emulator_id, runtime_kind, core_name
+             ),
+             CHECK (
+                 (scope_kind='global' AND scope_key='')
+                 OR (scope_kind<>'global' AND length(scope_key)>0)
+             ),
+             CHECK (length(extra_arguments)>0 OR length(command_template)>0),
+             CHECK (
+                 (runtime_kind='standalone' AND core_name='')
+                 OR (runtime_kind='retroarch' AND length(core_name)>0)
+             )
+         );
+         CREATE INDEX IF NOT EXISTS emulator_launch_profiles_emulator
+             ON emulator_launch_profiles(emulator_id, runtime_kind, core_name, scope_kind);
          CREATE TABLE IF NOT EXISTS managed_emulator_installs (
              emulator_id TEXT NOT NULL,
              host_system_slug TEXT NOT NULL CHECK (
@@ -2529,6 +2734,32 @@ fn validate_collection_description(description: &str) -> Result<String> {
         bail!("collection description must be at most 1000 characters");
     }
     Ok(description.to_owned())
+}
+
+fn normalized_launch_scope_key(scope_kind: &str, scope_key: &str) -> Result<String> {
+    match scope_kind {
+        "global" => {
+            if !scope_key.trim().is_empty() {
+                bail!("a global launch profile cannot include a scope key");
+            }
+            Ok(String::new())
+        }
+        "platform" => {
+            let key = catalog::normalize_platform_key(scope_key);
+            if key.is_empty() {
+                bail!("a platform launch profile requires an exact platform identity");
+            }
+            Ok(key)
+        }
+        "game" => {
+            let key = scope_key.trim();
+            if key.is_empty() || key.chars().count() > 512 {
+                bail!("a game launch profile requires a bounded stable game identity");
+            }
+            Ok(key.to_owned())
+        }
+        _ => bail!("unsupported launch profile scope {scope_kind}"),
+    }
 }
 
 fn validate_emulator_preference(
@@ -2972,6 +3203,105 @@ mod tests {
             store
                 .set_game_emulator_preference("game-one", "mesen-id", "retroarch", "")
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn launch_profiles_resolve_each_field_by_exact_scope_precedence() {
+        let (_directory, store) = store();
+        store
+            .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                scope_kind: "global".into(),
+                emulator_id: "mesen-id".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "mesen".into(),
+                extra_arguments: "--verbose".into(),
+                command_template: "--global %{core} %f".into(),
+                ..EmulatorLaunchProfile::default()
+            })
+            .unwrap();
+        store
+            .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                scope_kind: "platform".into(),
+                scope_key: "Nintendo Entertainment System".into(),
+                emulator_id: "mesen-id".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "mesen".into(),
+                extra_arguments: "--latency 1".into(),
+                ..EmulatorLaunchProfile::default()
+            })
+            .unwrap();
+        store
+            .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                scope_kind: "game".into(),
+                scope_key: "game-one".into(),
+                emulator_id: "mesen-id".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "mesen".into(),
+                command_template: "--game %{core} %f".into(),
+                ..EmulatorLaunchProfile::default()
+            })
+            .unwrap();
+
+        assert_eq!(
+            store
+                .resolve_launch_customization(
+                    "game-one",
+                    "nintendo entertainment system",
+                    "mesen-id",
+                    "retroarch",
+                    "mesen",
+                )
+                .unwrap(),
+            ResolvedLaunchCustomization {
+                extra_arguments: "--latency 1".into(),
+                command_template: "--game %{core} %f".into(),
+                argument_scope: "platform".into(),
+                template_scope: "game".into(),
+            }
+        );
+        assert!(
+            store
+                .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                    scope_kind: "game".into(),
+                    scope_key: "game-one".into(),
+                    emulator_id: "mesen-id".into(),
+                    runtime_kind: "retroarch".into(),
+                    core_name: "mesen".into(),
+                    extra_arguments: "'unterminated".into(),
+                    ..EmulatorLaunchProfile::default()
+                })
+                .is_err()
+        );
+        assert!(
+            store
+                .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                    scope_kind: "global".into(),
+                    scope_key: "wrong-key".into(),
+                    emulator_id: "mesen-id".into(),
+                    runtime_kind: "retroarch".into(),
+                    core_name: "mesen".into(),
+                    extra_arguments: "--test".into(),
+                    ..EmulatorLaunchProfile::default()
+                })
+                .is_err()
+        );
+
+        store
+            .clear_emulator_launch_profile("game", "game-one", "mesen-id", "retroarch", "mesen")
+            .unwrap();
+        assert_eq!(
+            store
+                .resolve_launch_customization(
+                    "game-one",
+                    "Nintendo Entertainment System",
+                    "mesen-id",
+                    "retroarch",
+                    "mesen",
+                )
+                .unwrap()
+                .template_scope,
+            "global"
         );
     }
 

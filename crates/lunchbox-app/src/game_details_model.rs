@@ -68,6 +68,15 @@ pub mod qobject {
         #[qproperty(QString, emulator_summary)]
         #[qproperty(QString, launch_status)]
         #[qproperty(QString, emulator_preference_scope)]
+        #[qproperty(bool, launch_profile_open)]
+        #[qproperty(QString, launch_profile_scope)]
+        #[qproperty(QString, launch_profile_default_template)]
+        #[qproperty(QString, launch_profile_effective_template)]
+        #[qproperty(QString, launch_profile_extra_arguments)]
+        #[qproperty(QString, launch_profile_command_template)]
+        #[qproperty(QString, launch_profile_inheritance)]
+        #[qproperty(QString, launch_profile_status)]
+        #[qproperty(i32, launch_profile_revision)]
         #[qproperty(bool, firmware_busy)]
         #[qproperty(bool, firmware_needs_import)]
         #[qproperty(bool, firmware_can_download)]
@@ -138,6 +147,25 @@ pub mod qobject {
 
         #[qinvokable]
         fn clear_platform_emulator_preference(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn open_launch_profile_editor(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn close_launch_profile_editor(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn select_launch_profile_scope(self: Pin<&mut GameDetailsModel>, scope: QString);
+
+        #[qinvokable]
+        fn save_launch_profile(
+            self: Pin<&mut GameDetailsModel>,
+            extra_arguments: QString,
+            command_template: QString,
+        );
+
+        #[qinvokable]
+        fn clear_launch_profile(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
         fn open_firmware_directory(self: Pin<&mut GameDetailsModel>);
@@ -280,6 +308,15 @@ pub struct GameDetailsModelRust {
     emulator_summary: QString,
     launch_status: QString,
     emulator_preference_scope: QString,
+    launch_profile_open: bool,
+    launch_profile_scope: QString,
+    launch_profile_default_template: QString,
+    launch_profile_effective_template: QString,
+    launch_profile_extra_arguments: QString,
+    launch_profile_command_template: QString,
+    launch_profile_inheritance: QString,
+    launch_profile_status: QString,
+    launch_profile_revision: i32,
     firmware_busy: bool,
     firmware_needs_import: bool,
     firmware_can_download: bool,
@@ -313,6 +350,7 @@ pub struct GameDetailsModelRust {
     local_file_paths: Vec<PathBuf>,
     rom_emulator_options: Vec<crate::emulator::RomEmulatorOption>,
     rom_firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
+    prepared_emulator: Option<crate::emulator::EmulatorChoice>,
     pending_firmware_message: Option<String>,
     prepared_install: Option<crate::exo_install::PreparedInstall>,
     video_media_key: String,
@@ -379,6 +417,15 @@ impl Default for GameDetailsModelRust {
             emulator_summary: QString::default(),
             launch_status: QString::default(),
             emulator_preference_scope: QString::default(),
+            launch_profile_open: false,
+            launch_profile_scope: QString::from("game"),
+            launch_profile_default_template: QString::default(),
+            launch_profile_effective_template: QString::default(),
+            launch_profile_extra_arguments: QString::default(),
+            launch_profile_command_template: QString::default(),
+            launch_profile_inheritance: QString::default(),
+            launch_profile_status: QString::default(),
+            launch_profile_revision: 0,
             firmware_busy: false,
             firmware_needs_import: false,
             firmware_can_download: false,
@@ -412,6 +459,7 @@ impl Default for GameDetailsModelRust {
             local_file_paths: Vec::new(),
             rom_emulator_options: Vec::new(),
             rom_firmware_statuses: Vec::new(),
+            prepared_emulator: None,
             pending_firmware_message: None,
             prepared_install: None,
             video_media_key: String::new(),
@@ -421,6 +469,32 @@ impl Default for GameDetailsModelRust {
 
 fn qstring(value: impl AsRef<str>) -> QString {
     QString::from(value.as_ref())
+}
+
+fn launch_scope_label(scope: &str) -> &'static str {
+    match scope {
+        "game" => "this game",
+        "platform" => "platform",
+        "global" => "all-platform",
+        _ => "inherited",
+    }
+}
+
+fn validate_launch_profile_template(
+    target: &LaunchProfileTarget,
+    template: &str,
+) -> anyhow::Result<()> {
+    for placeholder in crate::emulator::launch_template_placeholders(template)? {
+        anyhow::ensure!(
+            target
+                .available_placeholders
+                .iter()
+                .any(|available| available == &placeholder),
+            "placeholder %{{{placeholder}}} is unavailable for {}; use only placeholders shown by its built-in template",
+            target.emulator_label
+        );
+    }
+    Ok(())
 }
 
 fn local_file_url(path: &std::path::Path) -> QUrl {
@@ -522,12 +596,23 @@ enum LaunchInput {
     Prepared {
         install: crate::exo_install::PreparedInstall,
         catalog_database: PathBuf,
+        emulator_id: String,
     },
     Rom {
         path: PathBuf,
         platform: String,
         option: crate::emulator::RomEmulatorOption,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct LaunchProfileTarget {
+    emulator_id: String,
+    emulator_label: String,
+    runtime_kind: &'static str,
+    core_name: String,
+    default_template: String,
+    available_placeholders: Vec<String>,
 }
 
 struct LaunchStarted {
@@ -668,6 +753,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().local_file_paths.clear();
         self.as_mut().rust_mut().rom_emulator_options.clear();
         self.as_mut().rust_mut().rom_firmware_statuses.clear();
+        self.as_mut().rust_mut().prepared_emulator = None;
         self.as_mut().rust_mut().prepared_install = None;
         self.as_mut().rust_mut().bundles.clear();
         self.as_mut().rust_mut().files.clear();
@@ -1584,6 +1670,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_emulator_summary(QString::default());
         self.as_mut().rust_mut().rom_emulator_options.clear();
         self.as_mut().rust_mut().rom_firmware_statuses.clear();
+        self.as_mut().rust_mut().prepared_emulator = None;
         self.as_mut().clear_firmware_status();
         self.as_mut().set_emulator_option_count(0);
         self.as_mut().set_selected_emulator_option(-1);
@@ -1661,6 +1748,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_launch_status(qstring(&availability.detail));
                 if let Some(emulator) = availability.emulator {
+                    self.as_mut().rust_mut().prepared_emulator = Some(emulator.clone());
                     self.as_mut().set_can_launch(true);
                     self.as_mut().set_emulator_name(qstring(&emulator.name));
                     self.as_mut()
@@ -1760,6 +1848,8 @@ impl qobject::GameDetailsModel {
         };
         self.as_mut()
             .set_selected_emulator_option(i32::try_from(index).unwrap_or(i32::MAX));
+        self.as_mut().set_launch_profile_open(false);
+        self.as_mut().set_launch_profile_status(QString::default());
         self.as_mut().set_can_launch(true);
         self.as_mut().set_emulator_name(qstring(option.label()));
         self.as_mut()
@@ -1849,6 +1939,255 @@ impl qobject::GameDetailsModel {
                 "Could not clear the platform emulator default: {error}"
             ))),
         }
+    }
+
+    pub fn open_launch_profile_editor(mut self: Pin<&mut Self>) {
+        if let Err(error) = self.launch_profile_target() {
+            self.as_mut()
+                .set_launch_profile_status(qstring(error.to_string()));
+            return;
+        }
+        self.as_mut().set_launch_profile_open(true);
+        self.as_mut().load_launch_profile_scope("game");
+    }
+
+    pub fn close_launch_profile_editor(mut self: Pin<&mut Self>) {
+        self.as_mut().set_launch_profile_open(false);
+        self.as_mut().set_launch_profile_status(QString::default());
+    }
+
+    pub fn select_launch_profile_scope(mut self: Pin<&mut Self>, scope: QString) {
+        self.as_mut().load_launch_profile_scope(&scope.to_string());
+    }
+
+    pub fn save_launch_profile(
+        mut self: Pin<&mut Self>,
+        extra_arguments: QString,
+        command_template: QString,
+    ) {
+        let target = match self.launch_profile_target() {
+            Ok(target) => target,
+            Err(error) => {
+                self.as_mut()
+                    .set_launch_profile_status(qstring(error.to_string()));
+                return;
+            }
+        };
+        if let Err(error) = validate_launch_profile_template(&target, &command_template.to_string())
+        {
+            self.as_mut().set_launch_profile_status(qstring(format!(
+                "Could not save the launch profile: {error}"
+            )));
+            return;
+        }
+        let scope = self.as_ref().launch_profile_scope().to_string();
+        let scope_key = self.launch_profile_scope_key(&scope);
+        let result = scope_key.and_then(|scope_key| {
+            crate::settings::SettingsStore::open_default()?.set_emulator_launch_profile(
+                &crate::settings::EmulatorLaunchProfile {
+                    scope_kind: scope.clone(),
+                    scope_key,
+                    emulator_id: target.emulator_id.clone(),
+                    runtime_kind: target.runtime_kind.to_owned(),
+                    core_name: target.core_name.clone(),
+                    extra_arguments: extra_arguments.to_string(),
+                    command_template: command_template.to_string(),
+                    updated_at: 0,
+                },
+            )
+        });
+        match result {
+            Ok(()) => {
+                self.as_mut().load_launch_profile_scope(&scope);
+                self.as_mut().set_launch_profile_status(qstring(format!(
+                    "Saved the exact {} launch profile for {}.",
+                    launch_scope_label(&scope),
+                    target.emulator_label
+                )));
+                println!(
+                    "LUNCHBOX_LAUNCH_PROFILE_SAVED scope={} runtime={} template={} extra={}",
+                    scope,
+                    target.runtime_kind,
+                    !command_template.to_string().trim().is_empty(),
+                    !extra_arguments.to_string().trim().is_empty()
+                );
+            }
+            Err(error) => self.as_mut().set_launch_profile_status(qstring(format!(
+                "Could not save the launch profile: {error}"
+            ))),
+        }
+    }
+
+    pub fn clear_launch_profile(mut self: Pin<&mut Self>) {
+        let target = match self.launch_profile_target() {
+            Ok(target) => target,
+            Err(error) => {
+                self.as_mut()
+                    .set_launch_profile_status(qstring(error.to_string()));
+                return;
+            }
+        };
+        let scope = self.as_ref().launch_profile_scope().to_string();
+        let scope_key = self.launch_profile_scope_key(&scope);
+        let result = scope_key.and_then(|scope_key| {
+            crate::settings::SettingsStore::open_default()?.clear_emulator_launch_profile(
+                &scope,
+                &scope_key,
+                &target.emulator_id,
+                target.runtime_kind,
+                &target.core_name,
+            )
+        });
+        match result {
+            Ok(()) => {
+                self.as_mut().load_launch_profile_scope(&scope);
+                self.as_mut().set_launch_profile_status(qstring(format!(
+                    "Cleared the {} launch profile; inherited behavior is active.",
+                    launch_scope_label(&scope)
+                )));
+            }
+            Err(error) => self.as_mut().set_launch_profile_status(qstring(format!(
+                "Could not clear the launch profile: {error}"
+            ))),
+        }
+    }
+
+    fn load_launch_profile_scope(mut self: Pin<&mut Self>, scope: &str) {
+        if !matches!(scope, "game" | "platform" | "global") {
+            self.as_mut()
+                .set_launch_profile_status(qstring("Choose a valid launch profile scope."));
+            return;
+        }
+        let target = match self.launch_profile_target() {
+            Ok(target) => target,
+            Err(error) => {
+                self.as_mut()
+                    .set_launch_profile_status(qstring(error.to_string()));
+                return;
+            }
+        };
+        let Some(scope_key) = self.launch_profile_scope_key(scope).ok() else {
+            return;
+        };
+        let game_uid = self.as_ref().game_id().to_string();
+        let platform = self.as_ref().platform().to_string();
+        let loaded = (|| -> anyhow::Result<_> {
+            let store = crate::settings::SettingsStore::open_default()?;
+            let exact = store.emulator_launch_profile(
+                scope,
+                &scope_key,
+                &target.emulator_id,
+                target.runtime_kind,
+                &target.core_name,
+            )?;
+            let resolved = store.resolve_launch_customization(
+                &game_uid,
+                &platform,
+                &target.emulator_id,
+                target.runtime_kind,
+                &target.core_name,
+            )?;
+            Ok((exact, resolved))
+        })();
+        match loaded {
+            Ok((exact, resolved)) => {
+                let default_template = target.default_template;
+                let effective_template = if resolved.command_template.is_empty() {
+                    default_template.clone()
+                } else {
+                    resolved.command_template.clone()
+                };
+                let exact = exact.unwrap_or_default();
+                let argument_source = if resolved.argument_scope.is_empty() {
+                    "built-in"
+                } else {
+                    launch_scope_label(&resolved.argument_scope)
+                };
+                let template_source = if resolved.template_scope.is_empty() {
+                    "built-in"
+                } else {
+                    launch_scope_label(&resolved.template_scope)
+                };
+                self.as_mut().set_launch_profile_scope(qstring(scope));
+                self.as_mut()
+                    .set_launch_profile_default_template(qstring(default_template));
+                self.as_mut()
+                    .set_launch_profile_effective_template(qstring(effective_template));
+                self.as_mut()
+                    .set_launch_profile_extra_arguments(qstring(exact.extra_arguments));
+                self.as_mut()
+                    .set_launch_profile_command_template(qstring(exact.command_template));
+                self.as_mut().set_launch_profile_inheritance(qstring(format!(
+                    "Effective extra arguments: {argument_source} · command template: {template_source}"
+                )));
+                self.as_mut().set_launch_profile_status(QString::default());
+                let revision = self.as_ref().launch_profile_revision().wrapping_add(1);
+                self.as_mut().set_launch_profile_revision(revision);
+            }
+            Err(error) => self.as_mut().set_launch_profile_status(qstring(format!(
+                "Could not load the launch profile: {error}"
+            ))),
+        }
+    }
+
+    fn launch_profile_scope_key(&self, scope: &str) -> anyhow::Result<String> {
+        match scope {
+            "game" => {
+                let game_uid = self.game_id().to_string();
+                anyhow::ensure!(
+                    !game_uid.trim().is_empty(),
+                    "this game does not have a stable identity"
+                );
+                Ok(game_uid)
+            }
+            "platform" => {
+                let platform = self.platform().to_string();
+                anyhow::ensure!(!platform.trim().is_empty(), "this game has no platform");
+                Ok(platform)
+            }
+            "global" => Ok(String::new()),
+            _ => anyhow::bail!("unsupported launch profile scope {scope}"),
+        }
+    }
+
+    fn launch_profile_target(&self) -> anyhow::Result<LaunchProfileTarget> {
+        if let Some(option) = self.selected_rom_emulator_option() {
+            let default_template =
+                crate::emulator::default_rom_launch_template(&option, &self.platform().to_string());
+            let mut available_placeholders =
+                crate::emulator::launch_template_placeholders(&default_template)?;
+            if !available_placeholders.iter().any(|name| name == "file") {
+                available_placeholders.push("file".to_owned());
+            }
+            return Ok(LaunchProfileTarget {
+                emulator_id: option.emulator_id.clone(),
+                emulator_label: option.label(),
+                runtime_kind: option.runtime_kind.key(),
+                core_name: option.core_name.clone(),
+                default_template,
+                available_placeholders,
+            });
+        }
+        let prepared = self
+            .rust()
+            .prepared_install
+            .as_ref()
+            .context("Prepare this game before editing its launch command.")?;
+        let emulator = self.rust().prepared_emulator.as_ref().context(
+            "Select or install a compatible emulator before editing its launch command.",
+        )?;
+        let default_template =
+            crate::emulator::default_prepared_launch_template(prepared, &emulator.name)?;
+        let available_placeholders =
+            crate::emulator::launch_template_placeholders(&default_template)?;
+        Ok(LaunchProfileTarget {
+            emulator_id: emulator.id.clone(),
+            emulator_label: emulator.name.clone(),
+            runtime_kind: crate::emulator::EmulatorRuntimeKind::Standalone.key(),
+            core_name: String::new(),
+            default_template,
+            available_placeholders,
+        })
     }
 
     pub fn open_firmware_directory(mut self: Pin<&mut Self>) {
@@ -2180,9 +2519,16 @@ impl qobject::GameDetailsModel {
                 ));
                 return;
             };
+            let Some(emulator) = self.as_ref().rust().prepared_emulator.clone() else {
+                self.as_mut().set_launch_status(qstring(
+                    "Refresh emulator detection before launching this prepared game.",
+                ));
+                return;
+            };
             LaunchInput::Prepared {
                 install,
                 catalog_database,
+                emulator_id: emulator.id,
             }
         } else {
             let Some(path) = usize::try_from(*self.as_ref().selected_local_file())
@@ -2229,12 +2575,43 @@ impl qobject::GameDetailsModel {
                         LaunchInput::Prepared {
                             install,
                             catalog_database,
-                        } => crate::emulator::build_launch_plan(install, catalog_database)?,
+                            emulator_id,
+                        } => {
+                            let customization = crate::settings::SettingsStore::open_default()?
+                                .resolve_launch_customization(
+                                    &game_id,
+                                    &activity_platform,
+                                    emulator_id,
+                                    crate::emulator::EmulatorRuntimeKind::Standalone.key(),
+                                    "",
+                                )?;
+                            crate::emulator::build_prepared_launch_plan_with_customization(
+                                install,
+                                catalog_database,
+                                emulator_id,
+                                &customization,
+                            )?
+                        }
                         LaunchInput::Rom {
                             path,
                             platform,
                             option,
-                        } => crate::emulator::build_rom_launch_plan(path, platform, option)?,
+                        } => {
+                            let customization = crate::settings::SettingsStore::open_default()?
+                                .resolve_launch_customization(
+                                    &game_id,
+                                    platform,
+                                    &option.emulator_id,
+                                    option.runtime_kind.key(),
+                                    &option.core_name,
+                                )?;
+                            crate::emulator::build_rom_launch_plan_with_customization(
+                                path,
+                                platform,
+                                option,
+                                &customization,
+                            )?
+                        }
                     };
                     let emulator_name = plan.emulator_name.clone();
                     let command_summary = plan.command_summary();
@@ -2571,6 +2948,18 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_can_launch(false);
         self.as_mut().set_game_running(false);
+        self.as_mut().set_launch_profile_open(false);
+        self.as_mut()
+            .set_launch_profile_default_template(QString::default());
+        self.as_mut()
+            .set_launch_profile_effective_template(QString::default());
+        self.as_mut()
+            .set_launch_profile_extra_arguments(QString::default());
+        self.as_mut()
+            .set_launch_profile_command_template(QString::default());
+        self.as_mut()
+            .set_launch_profile_inheritance(QString::default());
+        self.as_mut().set_launch_profile_status(QString::default());
     }
 
     fn finish_queue(
@@ -2860,7 +3249,10 @@ fn queue_download(
 
 #[cfg(test)]
 mod tests {
-    use super::{format_last_played, format_play_time, format_release_date};
+    use super::{
+        LaunchProfileTarget, format_last_played, format_play_time, format_release_date,
+        validate_launch_profile_template,
+    };
 
     #[test]
     fn activity_labels_stay_compact_in_the_details_card() {
@@ -2876,5 +3268,20 @@ mod tests {
             "Sep 13, 1985"
         );
         assert_eq!(format_release_date("1994"), "1994");
+    }
+
+    #[test]
+    fn launch_profile_editor_rejects_placeholders_outside_the_exact_context() {
+        let target = LaunchProfileTarget {
+            emulator_id: "retroarch".to_owned(),
+            emulator_label: "RetroArch · FCEUmm".to_owned(),
+            runtime_kind: "retroarch",
+            core_name: "fceumm".to_owned(),
+            default_template: "--verbose -L %{core} %f".to_owned(),
+            available_placeholders: vec!["core".to_owned(), "file".to_owned()],
+        };
+        validate_launch_profile_template(&target, "-L %{core} %f").unwrap();
+        let error = validate_launch_profile_template(&target, "%{config}").unwrap_err();
+        assert!(error.to_string().contains("unavailable"));
     }
 }

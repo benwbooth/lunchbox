@@ -162,6 +162,22 @@ The initial implementation enforces this shape:
   arcade machines fail closed instead of receiving a generic archive path;
   only the legacy-known archive-oriented FinalBurn Neo, Flycast, and Supermodel
   executables retain the direct-file contract.
+- Launch customization is stored by exact emulator ID, runtime kind, core name,
+  and one of stable-game, normalized-platform, or all-platform scope. Extra
+  arguments and command templates resolve independently in game, platform,
+  global order, so overriding one field does not erase inherited behavior in
+  the other. The portable bounded parser treats quotes only as argument
+  grouping and preserves ordinary Windows backslashes. It never expands a
+  variable, command substitution, glob, pipe, or redirection. A blank template
+  inserts extra arguments at the reviewed emulator-specific position; a
+  non-empty template replaces the built-in argv and may consume only the
+  values available to that exact launch plan. `%f`, RetroArch, MAME, Hypseus,
+  Altirra, DOSBox, ScummVM, 86Box, and PCBox placeholders materialize directly
+  as native `OsString` path or literal values after the existing native,
+  Flatpak, or Wine path adapter has been selected. Prepared launches recheck
+  the discovered emulator ID before applying a profile. The inline Qt editor
+  exposes built-in and effective templates, independent inheritance sources,
+  three save scopes, clear, validation errors, and no-shell semantics.
 - Emulator lifecycle data is part of the canonical database, with package
   records keyed by stable emulator ID, host, manager, and exact package ID.
   A maintained reviewed-source overlay supplements the legacy catalog for
@@ -323,6 +339,11 @@ current Linux host it ran Flatpak RetroArch with `fceumm_libretro.so`, loaded
 the owned Faxanadu NES file, created a real Wayland/OpenGL session, and persisted
 one terminated session with measured elapsed time. `--rom-launch-ui-probe`
 leaves the same `Play Locally` controls open for visual inspection;
+`--launch-profile-ui-probe` waits for that exact runtime/core discovery, opens
+the native launch-command editor, and scrolls it into view. Supplying
+`--screenshot-output ABSOLUTE_PATH` captures the rendered details pane through
+Qt itself and prints `LUNCHBOX_SCREENSHOT_READY`, avoiding host-specific
+window-manager screenshot tooling.
 `--activity-ui-probe` opens that persisted identity in the native Recently
 Played view with its statistics and completion picker visible.
 `--media-bundle-probe --media-directory PATH --state-database EMPTY_PATH`
@@ -397,7 +418,10 @@ now indexed and rendered natively, and exact Minerva manual acquisition has
 durable transfer, progress, shared-torrent cancellation, and safe publication
 through the same details card. On-demand LibRetro retrieval and durable
 negative caching, generic local-ROM launch, multi-file selection, and exact
-per-game/platform emulator defaults are native.
+per-game/platform emulator defaults are native. Exact game/platform/global
+launch argument profiles and replacement templates are native for ordinary ROM
+and prepared-PC plans, with a contextual editor and shell-free placeholder
+compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
 Playlists and smart collections, the remaining alternate media providers,
 available-version-only emulator update reporting, specialized

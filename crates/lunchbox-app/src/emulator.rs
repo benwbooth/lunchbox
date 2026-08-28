@@ -290,6 +290,302 @@ impl LaunchPlan {
     }
 }
 
+const MAX_LAUNCH_ARGUMENT_TEXT: usize = 8 * 1024;
+const MAX_LAUNCH_ARGUMENTS: usize = 256;
+const TEMPLATE_SENTINEL_PREFIX: &str = "__LUNCHBOX_ARG_";
+const LAUNCH_TEMPLATE_PLACEHOLDERS: &[&str] = &[
+    "file",
+    "core",
+    "mame_rompath",
+    "mame_romset",
+    "hypseus_game",
+    "hypseus_framefile",
+    "hypseus_support_root",
+    "hypseus_romdir",
+    "altirra_media_switch",
+    "config",
+    "shared_config",
+    "vm_root",
+    "game_path",
+    "game_id",
+];
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum LaunchTemplateValue {
+    Literal(OsString),
+    Path(PathBuf),
+}
+
+pub fn validate_launch_extra_arguments(arguments: &str) -> Result<()> {
+    parse_portable_arguments(arguments).map(|_| ())
+}
+
+pub fn validate_launch_template(template: &str) -> Result<()> {
+    if template.len() > MAX_LAUNCH_ARGUMENT_TEXT {
+        bail!("launch command templates must be at most {MAX_LAUNCH_ARGUMENT_TEXT} bytes");
+    }
+    if template.contains(TEMPLATE_SENTINEL_PREFIX) {
+        bail!("launch command template contains a reserved internal token");
+    }
+    let placeholders = template_placeholders(template)?;
+    for placeholder in placeholders {
+        if !LAUNCH_TEMPLATE_PLACEHOLDERS.contains(&placeholder.as_str()) {
+            bail!("launch command template uses unknown placeholder %{{{placeholder}}}");
+        }
+    }
+    parse_portable_arguments(&replace_template_placeholders_with_tokens(template)?)?;
+    Ok(())
+}
+
+pub fn parse_portable_arguments(arguments: &str) -> Result<Vec<String>> {
+    if arguments.len() > MAX_LAUNCH_ARGUMENT_TEXT {
+        bail!("launch arguments must be at most {MAX_LAUNCH_ARGUMENT_TEXT} bytes");
+    }
+    let mut parsed = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut token_started = false;
+    let mut characters = arguments.chars().peekable();
+    while let Some(character) = characters.next() {
+        match quote {
+            Some('\'') => {
+                if character == '\'' {
+                    quote = None;
+                } else {
+                    current.push(character);
+                }
+            }
+            Some('"') => match character {
+                '"' => quote = None,
+                '\\' if matches!(characters.peek(), Some('"')) => {
+                    current.push(characters.next().expect("peeked argument character"));
+                }
+                _ => current.push(character),
+            },
+            Some(_) => unreachable!("portable argument parser has only two quote modes"),
+            None => match character {
+                '\'' | '"' => {
+                    quote = Some(character);
+                    token_started = true;
+                }
+                '\\' if matches!(
+                    characters.peek(),
+                    Some(next) if next.is_whitespace() || matches!(next, '\'' | '"')
+                ) =>
+                {
+                    current.push(characters.next().expect("peeked argument character"));
+                    token_started = true;
+                }
+                value if value.is_whitespace() => {
+                    if token_started {
+                        parsed.push(std::mem::take(&mut current));
+                        token_started = false;
+                    }
+                }
+                _ => {
+                    current.push(character);
+                    token_started = true;
+                }
+            },
+        }
+    }
+    if let Some(delimiter) = quote {
+        bail!("launch arguments contain an unterminated {delimiter} quote");
+    }
+    if token_started {
+        parsed.push(current);
+    }
+    if parsed.len() > MAX_LAUNCH_ARGUMENTS {
+        bail!("launch commands may contain at most {MAX_LAUNCH_ARGUMENTS} arguments");
+    }
+    Ok(parsed)
+}
+
+pub fn default_rom_launch_template(option: &RomEmulatorOption, platform: &str) -> String {
+    if option.runtime_kind == EmulatorRuntimeKind::RetroArch {
+        return "--verbose -L %{core} %f".to_owned();
+    }
+    if option.emulator_name.eq_ignore_ascii_case("MAME") && is_arcade_family_platform(platform) {
+        return "-rompath %{mame_rompath} %{mame_romset}".to_owned();
+    }
+    if option.emulator_name.eq_ignore_ascii_case("Hypseus Singe")
+        && is_arcade_family_platform(platform)
+    {
+        return "%{hypseus_game} vldp -fullscreen -framefile %{hypseus_framefile} -homedir %{hypseus_support_root} -datadir %{hypseus_support_root} -romdir %{hypseus_romdir}".to_owned();
+    }
+    if option.emulator_name.eq_ignore_ascii_case("Altirra") {
+        return "%{altirra_media_switch} %f".to_owned();
+    }
+    "%f".to_owned()
+}
+
+pub fn default_prepared_launch_template(
+    prepared: &PreparedInstall,
+    emulator_name: &str,
+) -> Result<String> {
+    let kind = classify_prepared_install(prepared)?;
+    Ok(prepared_launch_template(&kind, emulator_name))
+}
+
+fn prepared_launch_template(kind: &PreparedLaunchKind, emulator_name: &str) -> String {
+    match kind {
+        PreparedLaunchKind::Dosbox {
+            shared_options_path,
+            ..
+        } => {
+            if shared_options_path.is_some() {
+                "-conf %{config} -conf %{shared_config}".to_owned()
+            } else {
+                "-conf %{config}".to_owned()
+            }
+        }
+        PreparedLaunchKind::ScummVm(_) => {
+            "--config %{config} -p %{game_path} %{game_id}".to_owned()
+        }
+        PreparedLaunchKind::Win9xDosboxX { .. } => {
+            "-conf %{config} -conf %{shared_config} -nomenu -noconsole".to_owned()
+        }
+        PreparedLaunchKind::EightySixBox(_) => "-P %{vm_root}".to_owned(),
+        PreparedLaunchKind::PcBox(_) if emulator_name.eq_ignore_ascii_case("PCBox") => {
+            "-c %{config}".to_owned()
+        }
+        PreparedLaunchKind::PcBox(_) => "-P %{vm_root}".to_owned(),
+    }
+}
+
+fn template_placeholders(template: &str) -> Result<Vec<String>> {
+    let characters = template.chars().collect::<Vec<_>>();
+    let mut placeholders = Vec::new();
+    let mut index = 0;
+    while index < characters.len() {
+        if characters[index] != '%' {
+            index += 1;
+            continue;
+        }
+        let Some(next) = characters.get(index + 1).copied() else {
+            bail!("launch command template ends with a dangling percent sign");
+        };
+        match next {
+            '%' => index += 2,
+            'f' => {
+                placeholders.push("file".to_owned());
+                index += 2;
+            }
+            '{' => {
+                let Some(relative_end) = characters[index + 2..]
+                    .iter()
+                    .position(|character| *character == '}')
+                else {
+                    bail!("launch command template has an unterminated placeholder");
+                };
+                let end = index + 2 + relative_end;
+                let name = characters[index + 2..end].iter().collect::<String>();
+                if name.is_empty() {
+                    bail!("launch command template contains an empty placeholder");
+                }
+                placeholders.push(name);
+                index = end + 1;
+            }
+            unknown => bail!("launch command template uses unknown placeholder %{unknown}"),
+        }
+    }
+    Ok(placeholders)
+}
+
+pub fn launch_template_placeholders(template: &str) -> Result<Vec<String>> {
+    validate_launch_template(template)?;
+    template_placeholders(template)
+}
+
+fn replace_template_placeholders_with_tokens(template: &str) -> Result<String> {
+    let characters = template.chars().collect::<Vec<_>>();
+    let mut rendered = String::new();
+    let mut index = 0;
+    let mut placeholder_index = 0;
+    while index < characters.len() {
+        if characters[index] != '%' {
+            rendered.push(characters[index]);
+            index += 1;
+            continue;
+        }
+        let next = characters[index + 1];
+        match next {
+            '%' => {
+                rendered.push('%');
+                index += 2;
+            }
+            'f' => {
+                rendered.push_str(&format!("{TEMPLATE_SENTINEL_PREFIX}{placeholder_index}__"));
+                placeholder_index += 1;
+                index += 2;
+            }
+            '{' => {
+                let end = characters[index + 2..]
+                    .iter()
+                    .position(|character| *character == '}')
+                    .map(|relative| index + 2 + relative)
+                    .context("launch command template has an unterminated placeholder")?;
+                rendered.push_str(&format!("{TEMPLATE_SENTINEL_PREFIX}{placeholder_index}__"));
+                placeholder_index += 1;
+                index = end + 1;
+            }
+            _ => unreachable!("template syntax was validated before replacement"),
+        }
+    }
+    Ok(rendered)
+}
+
+fn compile_launch_template(
+    template: &str,
+    values: &BTreeMap<String, LaunchTemplateValue>,
+    executable: &EmulatorExecutable,
+) -> Result<Vec<OsString>> {
+    validate_launch_template(template)?;
+    let placeholder_names = template_placeholders(template)?;
+    let rendered = replace_template_placeholders_with_tokens(template)?;
+    let tokens = parse_portable_arguments(&rendered)?;
+    let sentinels = placeholder_names
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| {
+            let value = values.get(&name).cloned().with_context(|| {
+                format!("placeholder %{{{name}}} is not available for this launch")
+            })?;
+            Ok((format!("{TEMPLATE_SENTINEL_PREFIX}{index}__"), value))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let mut arguments = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        if let Some((_, value)) = sentinels.iter().find(|(sentinel, _)| sentinel == &token) {
+            arguments.push(materialize_template_value(value, executable));
+            continue;
+        }
+        let mut expanded = token;
+        for (sentinel, value) in &sentinels {
+            if !expanded.contains(sentinel) {
+                continue;
+            }
+            let materialized = materialize_template_value(value, executable);
+            let text = materialized.to_str().with_context(|| {
+                format!("placeholder embedded in an argument is not valid Unicode: {sentinel}")
+            })?;
+            expanded = expanded.replace(sentinel, text);
+        }
+        arguments.push(OsString::from(expanded));
+    }
+    Ok(arguments)
+}
+
+fn materialize_template_value(
+    value: &LaunchTemplateValue,
+    executable: &EmulatorExecutable,
+) -> OsString {
+    match value {
+        LaunchTemplateValue::Literal(value) => value.clone(),
+        LaunchTemplateValue::Path(path) => path_argument_for_executable(path, executable),
+    }
+}
+
 pub fn inspect_launch_availability(
     prepared: &PreparedInstall,
     catalog_database: &Path,
@@ -331,9 +627,11 @@ pub fn inspect_launch_availability(
     })
 }
 
-pub fn build_launch_plan(
+pub fn build_prepared_launch_plan_with_customization(
     prepared: &PreparedInstall,
     catalog_database: &Path,
+    expected_emulator_id: &str,
+    customization: &crate::settings::ResolvedLaunchCustomization,
 ) -> Result<LaunchPlan> {
     let kind = classify_prepared_install(prepared)?;
     let availability = inspect_launch_availability(prepared, catalog_database)?;
@@ -343,7 +641,13 @@ pub fn build_launch_plan(
             availability.requirement
         )
     })?;
-    build_plan_for_choice(prepared, kind, emulator)
+    if emulator.id != expected_emulator_id {
+        bail!(
+            "the detected prepared-install emulator changed from {expected_emulator_id} to {}; refresh detection before launching",
+            emulator.id
+        );
+    }
+    build_plan_for_choice(prepared, kind, emulator, customization)
 }
 
 pub fn inspect_rom_launch_availability(
@@ -469,10 +773,25 @@ pub fn inspect_rom_launch_availability(
     })
 }
 
+#[cfg(test)]
 pub fn build_rom_launch_plan(
     rom_path: &Path,
     platform: &str,
     option: &RomEmulatorOption,
+) -> Result<LaunchPlan> {
+    build_rom_launch_plan_with_customization(
+        rom_path,
+        platform,
+        option,
+        &crate::settings::ResolvedLaunchCustomization::default(),
+    )
+}
+
+pub fn build_rom_launch_plan_with_customization(
+    rom_path: &Path,
+    platform: &str,
+    option: &RomEmulatorOption,
+    customization: &crate::settings::ResolvedLaunchCustomization,
 ) -> Result<LaunchPlan> {
     if !rom_path.is_file() {
         bail!("local game file is missing: {}", rom_path.display());
@@ -481,33 +800,85 @@ pub fn build_rom_launch_plan(
         .parent()
         .map(Path::to_path_buf)
         .context("local game file has no containing directory")?;
-    let (program, mut arguments) = command_prefix(&option.executable, &current_directory)?;
+    let (program, mut prefix_arguments) = command_prefix(&option.executable, &current_directory)?;
+    let mut template_values = BTreeMap::from([(
+        "file".to_owned(),
+        LaunchTemplateValue::Path(rom_path.to_path_buf()),
+    )]);
 
-    match option.runtime_kind {
+    let (mut arguments, extra_insert_index) = match option.runtime_kind {
         EmulatorRuntimeKind::Standalone => {
             if option.emulator_name.eq_ignore_ascii_case("MAME")
                 && is_arcade_family_platform(platform)
             {
-                arguments.extend(mame_arcade_launch_arguments(rom_path, &option.executable)?);
+                let arguments = mame_arcade_launch_arguments(rom_path, &option.executable)?;
+                template_values.insert(
+                    "mame_rompath".to_owned(),
+                    LaunchTemplateValue::Literal(arguments[1].clone()),
+                );
+                template_values.insert(
+                    "mame_romset".to_owned(),
+                    LaunchTemplateValue::Literal(arguments[2].clone()),
+                );
+                (arguments, 0)
             } else if option.emulator_name.eq_ignore_ascii_case("Hypseus Singe")
                 && is_arcade_family_platform(platform)
             {
                 let context = hypseus_launch_context(&option.executable, rom_path)?;
-                arguments.extend(context.arguments(&option.executable));
+                let arguments = context.arguments(&option.executable);
+                template_values.insert(
+                    "hypseus_game".to_owned(),
+                    LaunchTemplateValue::Literal(context.game_name.clone()),
+                );
+                template_values.insert(
+                    "hypseus_framefile".to_owned(),
+                    LaunchTemplateValue::Path(context.framefile.clone()),
+                );
+                template_values.insert(
+                    "hypseus_support_root".to_owned(),
+                    LaunchTemplateValue::Literal(hypseus_directory_argument(
+                        &context.support_root,
+                        &option.executable,
+                    )),
+                );
+                template_values.insert(
+                    "hypseus_romdir".to_owned(),
+                    LaunchTemplateValue::Path(context.rom_directory.clone()),
+                );
                 current_directory = context.support_root;
+                (arguments, 3)
             } else if is_generic_arcade_archive_emulator(&option.emulator_name)
                 && is_arcade_family_platform(platform)
                 && is_arcade_archive(rom_path)
             {
-                arguments.push(path_argument_for_executable(rom_path, &option.executable));
+                (
+                    vec![path_argument_for_executable(rom_path, &option.executable)],
+                    0,
+                )
             } else if is_arcade_family_platform(platform) {
                 bail!(
                     "{} does not yet have a safe {} standalone machine profile",
                     platform,
                     option.emulator_name
                 );
+            } else if option.emulator_name.eq_ignore_ascii_case("Altirra") {
+                let media_switch = altirra_media_switch(rom_path);
+                template_values.insert(
+                    "altirra_media_switch".to_owned(),
+                    LaunchTemplateValue::Literal(OsString::from(media_switch)),
+                );
+                (
+                    vec![
+                        OsString::from(media_switch),
+                        path_argument_for_executable(rom_path, &option.executable),
+                    ],
+                    0,
+                )
             } else {
-                arguments.push(path_argument_for_executable(rom_path, &option.executable));
+                (
+                    vec![path_argument_for_executable(rom_path, &option.executable)],
+                    0,
+                )
             }
         }
         EmulatorRuntimeKind::RetroArch => {
@@ -515,17 +886,41 @@ pub fn build_rom_launch_plan(
                 .core_path
                 .as_deref()
                 .context("the selected RetroArch option has no exact core path")?;
-            arguments.push(OsString::from("--verbose"));
-            arguments.push(OsString::from("-L"));
-            arguments.push(path_argument_for_executable(core_path, &option.executable));
-            arguments.push(path_argument_for_executable(rom_path, &option.executable));
+            template_values.insert(
+                "core".to_owned(),
+                LaunchTemplateValue::Path(core_path.to_path_buf()),
+            );
+            (
+                vec![
+                    OsString::from("--verbose"),
+                    OsString::from("-L"),
+                    path_argument_for_executable(core_path, &option.executable),
+                    path_argument_for_executable(rom_path, &option.executable),
+                ],
+                3,
+            )
         }
+    };
+
+    if customization.command_template.trim().is_empty() {
+        let extra_arguments = parse_portable_arguments(&customization.extra_arguments)?
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>();
+        arguments.splice(extra_insert_index..extra_insert_index, extra_arguments);
+    } else {
+        arguments = compile_launch_template(
+            customization.command_template.trim(),
+            &template_values,
+            &option.executable,
+        )?;
     }
+    prefix_arguments.extend(arguments);
 
     Ok(LaunchPlan {
         emulator_name: option.label(),
         program,
-        arguments,
+        arguments: prefix_arguments,
         current_directory,
         environment: launch_environment(&option.executable),
         cleanup_paths: Vec::new(),
@@ -1217,9 +1612,11 @@ fn build_plan_for_choice(
     prepared: &PreparedInstall,
     kind: PreparedLaunchKind,
     emulator: EmulatorChoice,
+    customization: &crate::settings::ResolvedLaunchCustomization,
 ) -> Result<LaunchPlan> {
     let mut cleanup_paths = Vec::new();
-    let arguments = match kind {
+    let mut template_values = BTreeMap::new();
+    let (mut arguments, extra_insert_index) = match kind {
         PreparedLaunchKind::Dosbox {
             config_path,
             shared_options_path,
@@ -1232,11 +1629,17 @@ fn build_plan_for_choice(
                 OsString::from("-conf"),
                 path_argument(&config_path, &emulator),
             ];
+            template_values.insert("config".to_owned(), LaunchTemplateValue::Path(config_path));
             if let Some(options) = shared_options_path {
                 arguments.push(OsString::from("-conf"));
                 arguments.push(path_argument(&options, &emulator));
+                template_values.insert(
+                    "shared_config".to_owned(),
+                    LaunchTemplateValue::Path(options),
+                );
             }
-            arguments
+            let extra_insert_index = arguments.len();
+            (arguments, extra_insert_index)
         }
         PreparedLaunchKind::ScummVm(plan) => {
             let config_path = ensure_scummvm_config(&prepared.install_root, &plan.config_path)?;
@@ -1247,42 +1650,107 @@ fn build_plan_for_choice(
                     game_path.display()
                 );
             }
+            template_values.insert(
+                "config".to_owned(),
+                LaunchTemplateValue::Path(config_path.clone()),
+            );
+            template_values.insert(
+                "game_path".to_owned(),
+                LaunchTemplateValue::Path(game_path.clone()),
+            );
+            template_values.insert(
+                "game_id".to_owned(),
+                LaunchTemplateValue::Literal(OsString::from(&plan.game_id)),
+            );
             let mut arguments = vec![
                 OsString::from("--config"),
                 path_argument(&config_path, &emulator),
             ];
             arguments.extend(plan.extra_args.into_iter().map(OsString::from));
+            let extra_insert_index = arguments.len();
             arguments.push(OsString::from("-p"));
             arguments.push(path_argument(&game_path, &emulator));
             arguments.push(OsString::from(plan.game_id));
-            arguments
+            (arguments, extra_insert_index)
         }
         PreparedLaunchKind::Win9xDosboxX {
             config_path,
             shared_options_path,
-        } => vec![
-            OsString::from("-conf"),
-            path_argument(&config_path, &emulator),
-            OsString::from("-conf"),
-            path_argument(&shared_options_path, &emulator),
-            OsString::from("-nomenu"),
-            OsString::from("-noconsole"),
-        ],
+        } => {
+            template_values.insert(
+                "config".to_owned(),
+                LaunchTemplateValue::Path(config_path.clone()),
+            );
+            template_values.insert(
+                "shared_config".to_owned(),
+                LaunchTemplateValue::Path(shared_options_path.clone()),
+            );
+            let arguments = vec![
+                OsString::from("-conf"),
+                path_argument(&config_path, &emulator),
+                OsString::from("-conf"),
+                path_argument(&shared_options_path, &emulator),
+                OsString::from("-nomenu"),
+                OsString::from("-noconsole"),
+            ];
+            let extra_insert_index = arguments.len();
+            (arguments, extra_insert_index)
+        }
         PreparedLaunchKind::EightySixBox(plan) => {
             let vm_root = prepare_86box_vm(prepared, &plan)?;
-            vec![OsString::from("-P"), path_argument(&vm_root, &emulator)]
+            template_values.insert(
+                "vm_root".to_owned(),
+                LaunchTemplateValue::Path(vm_root.clone()),
+            );
+            (
+                vec![OsString::from("-P"), path_argument(&vm_root, &emulator)],
+                2,
+            )
         }
         PreparedLaunchKind::PcBox(plan) => {
             let native_pcbox = emulator.name.eq_ignore_ascii_case("PCBox");
             let (vm_root, config_path) = prepare_pcbox_vm(prepared, &plan, native_pcbox)?;
+            template_values.insert(
+                "vm_root".to_owned(),
+                LaunchTemplateValue::Path(vm_root.clone()),
+            );
+            template_values.insert(
+                "config".to_owned(),
+                LaunchTemplateValue::Path(config_path.clone()),
+            );
             if native_pcbox {
                 if matches!(emulator.executable, EmulatorExecutable::Flatpak { .. }) {
                     bail!("PCBox prepared installs currently require a native PCBox executable")
                 }
-                vec![OsString::from("-c"), config_path.into_os_string()]
+                (vec![OsString::from("-c"), config_path.into_os_string()], 2)
             } else {
-                vec![OsString::from("-P"), path_argument(&vm_root, &emulator)]
+                (
+                    vec![OsString::from("-P"), path_argument(&vm_root, &emulator)],
+                    2,
+                )
             }
+        }
+    };
+
+    let customized_arguments = if customization.command_template.trim().is_empty() {
+        let extra_arguments = parse_portable_arguments(&customization.extra_arguments)?
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>();
+        arguments.splice(extra_insert_index..extra_insert_index, extra_arguments);
+        Ok(arguments)
+    } else {
+        compile_launch_template(
+            customization.command_template.trim(),
+            &template_values,
+            &emulator.executable,
+        )
+    };
+    let arguments = match customized_arguments {
+        Ok(arguments) => arguments,
+        Err(error) => {
+            cleanup_after_launch(&cleanup_paths);
+            return Err(error);
         }
     };
 
@@ -1402,6 +1870,20 @@ fn is_generic_arcade_archive_emulator(name: &str) -> bool {
     ["FinalBurn Neo", "Flycast", "Supermodel"]
         .into_iter()
         .any(|candidate| name.eq_ignore_ascii_case(candidate))
+}
+
+fn altirra_media_switch(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("atr" | "atx" | "xfd" | "dcm" | "pro" | "atz") => "/disk",
+        Some("cas" | "wav") => "/tape",
+        Some("car" | "rom" | "bin" | "a52") => "/cart",
+        _ => "/run",
+    }
 }
 
 fn mame_arcade_launch_arguments(
@@ -2136,6 +2618,149 @@ del *.rom
     }
 
     #[test]
+    fn portable_launch_arguments_preserve_windows_paths_without_a_shell() {
+        assert_eq!(
+            parse_portable_arguments(
+                r#"--fullscreen "two words" C:\Games\ROMs\game.zip 'literal value' "" "\\server\ROM Share\game.zip" \\server\roms\game.zip"#
+            )
+            .unwrap(),
+            [
+                "--fullscreen",
+                "two words",
+                r"C:\Games\ROMs\game.zip",
+                "literal value",
+                "",
+                r"\\server\ROM Share\game.zip",
+                r"\\server\roms\game.zip",
+            ]
+        );
+        assert!(parse_portable_arguments("'unterminated").is_err());
+        assert!(validate_launch_template("%{unknown} %f").is_err());
+        validate_launch_template("--file=%f %% %{core}").unwrap();
+    }
+
+    #[test]
+    fn launch_template_replaces_argv_and_extra_arguments_augment_defaults() {
+        let temp = TempDir::new().unwrap();
+        let rom = temp.path().join("Game with spaces.rom");
+        fs::write(&rom, b"rom").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "native-id".to_owned(),
+            emulator_name: "Native Emulator".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Native(PathBuf::from("/bin/emulator")),
+            core_path: None,
+            recommended: true,
+        };
+
+        let augmented = build_rom_launch_plan_with_customization(
+            &rom,
+            "Example",
+            &option,
+            &crate::settings::ResolvedLaunchCustomization {
+                extra_arguments: "--fullscreen --label 'Living Room'".to_owned(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            augmented.arguments,
+            [
+                OsString::from("--fullscreen"),
+                OsString::from("--label"),
+                OsString::from("Living Room"),
+                rom.as_os_str().to_owned(),
+            ]
+        );
+
+        let replaced = build_rom_launch_plan_with_customization(
+            &rom,
+            "Example",
+            &option,
+            &crate::settings::ResolvedLaunchCustomization {
+                extra_arguments: "--ignored".to_owned(),
+                command_template: "--file %f '$(never-executed)'".to_owned(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            replaced.arguments,
+            [
+                OsString::from("--file"),
+                rom.as_os_str().to_owned(),
+                OsString::from("$(never-executed)"),
+            ]
+        );
+    }
+
+    #[test]
+    fn prepared_launch_profiles_preserve_exact_default_and_replacement_semantics() {
+        let temp = TempDir::new().unwrap();
+        let prepared = prepared(
+            temp.path(),
+            ExoCollection::Dos,
+            "eXoDOS/!dos/TEST/dosbox_linux.conf",
+        );
+        let shared = temp.path().join("emulators/dosbox/options_linux.conf");
+        fs::create_dir_all(shared.parent().unwrap()).unwrap();
+        fs::write(&shared, b"options").unwrap();
+        let choice = EmulatorChoice {
+            id: "dosbox-x".to_owned(),
+            name: "DOSBox-X".to_owned(),
+            executable: EmulatorExecutable::Native(PathBuf::from("/bin/dosbox-x")),
+        };
+
+        let kind = classify_prepared_install(&prepared).unwrap();
+        assert_eq!(
+            prepared_launch_template(&kind, &choice.name),
+            "-conf %{config} -conf %{shared_config}"
+        );
+        let augmented = build_plan_for_choice(
+            &prepared,
+            kind.clone(),
+            choice.clone(),
+            &crate::settings::ResolvedLaunchCustomization {
+                extra_arguments: "--fullscreen --label 'Living Room'".to_owned(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            augmented.arguments,
+            [
+                OsString::from("-conf"),
+                prepared.launch_config_path.as_os_str().to_owned(),
+                OsString::from("-conf"),
+                shared.as_os_str().to_owned(),
+                OsString::from("--fullscreen"),
+                OsString::from("--label"),
+                OsString::from("Living Room"),
+            ]
+        );
+
+        let replaced = build_plan_for_choice(
+            &prepared,
+            kind,
+            choice,
+            &crate::settings::ResolvedLaunchCustomization {
+                extra_arguments: "--ignored".to_owned(),
+                command_template: "%{config} '--safe=$(never-executed)'".to_owned(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            replaced.arguments,
+            [
+                prepared.launch_config_path.into_os_string(),
+                OsString::from("--safe=$(never-executed)"),
+            ]
+        );
+    }
+
+    #[test]
     fn classifies_all_win9x_launcher_families_exactly() {
         let temp = TempDir::new().unwrap();
         let cases = [
@@ -2514,7 +3139,13 @@ del *.rom
                 app_id: "com.dosbox_x.DOSBox-X".to_owned(),
             },
         };
-        let plan = build_plan_for_choice(&prepared, kind, choice).unwrap();
+        let plan = build_plan_for_choice(
+            &prepared,
+            kind,
+            choice,
+            &crate::settings::ResolvedLaunchCustomization::default(),
+        )
+        .unwrap();
         assert_eq!(plan.program, Path::new("/usr/bin/flatpak"));
         assert_eq!(plan.arguments[0], "run");
         assert!(

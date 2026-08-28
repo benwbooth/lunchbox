@@ -10,8 +10,8 @@ import Lunchbox
 ApplicationWindow {
     id: root
     visible: true
-    width: controllerProfileUiProbe ? 1920 : 1440
-    height: controllerProfileUiProbe ? 1200 : 900
+    width: controllerProfileUiProbe || launchProfileUiProbe ? 1920 : 1440
+    height: controllerProfileUiProbe || launchProfileUiProbe ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
@@ -74,6 +74,7 @@ ApplicationWindow {
     property bool launchProbeTriggered: false
     property bool launchProbeObservedRunning: false
     property bool launchProbeAwaitingActivity: false
+    property bool launchProfileProbeTriggered: false
     property int mediaBundleProbeStage: 0
     property string mediaPlaybackMessage: ""
     readonly property var artworkChoices: [
@@ -121,6 +122,7 @@ ApplicationWindow {
     readonly property bool exoLaunchProbe: Qt.application.arguments.indexOf("--exo-launch-probe") >= 0
     readonly property bool romLaunchProbe: Qt.application.arguments.indexOf("--rom-launch-probe") >= 0
     readonly property bool romLaunchUiProbe: Qt.application.arguments.indexOf("--rom-launch-ui-probe") >= 0
+    readonly property bool launchProfileUiProbe: Qt.application.arguments.indexOf("--launch-profile-ui-probe") >= 0
     readonly property bool arcadeLaunchProbe: Qt.application.arguments.indexOf("--arcade-launch-probe") >= 0
     readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
     readonly property bool emulatorManagerProbe: Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
@@ -135,6 +137,7 @@ ApplicationWindow {
     readonly property bool mediaRotationUiProbe: Qt.application.arguments.indexOf("--media-rotation-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
+    readonly property string screenshotOutput: root.argumentValue("--screenshot-output")
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -151,6 +154,19 @@ ApplicationWindow {
 
     function scheduleFilter() {
         filterDelay.restart()
+    }
+
+    function argumentValue(name) {
+        const applicationArguments = Qt.application.arguments
+        const prefix = name + "="
+        for (let index = 0; index < applicationArguments.length; ++index) {
+            const value = String(applicationArguments[index])
+            if (value === name && index + 1 < applicationArguments.length)
+                return String(applicationArguments[index + 1])
+            if (value.indexOf(prefix) === 0)
+                return value.substring(prefix.length)
+        }
+        return ""
     }
 
     function finishSettingsProbeWhenSaved() {
@@ -678,6 +694,16 @@ ApplicationWindow {
 
     Connections {
         target: gameDetails
+        function onLaunch_profile_revisionChanged() {
+            launchExtraArguments.text = gameDetails.launch_profile_extra_arguments
+            launchCommandTemplate.text = gameDetails.launch_profile_command_template
+            if (root.launchProfileUiProbe && gameDetails.launch_profile_open) {
+                launchProfileProbeScrollTimer.restart()
+                console.log("LUNCHBOX_LAUNCH_PROFILE_READY scope="
+                            + gameDetails.launch_profile_scope + " template="
+                            + gameDetails.launch_profile_default_template)
+            }
+        }
         function onActivity_revisionChanged() {
             library.refresh_activity()
             if (root.emulatorLaunchProbe && root.launchProbeAwaitingActivity
@@ -750,7 +776,11 @@ ApplicationWindow {
                 Qt.quit()
         }
         function onCan_launchChanged() {
-            if (root.emulatorLaunchProbe && gameDetails.can_launch
+            if (root.launchProfileUiProbe && gameDetails.can_launch
+                    && !root.launchProfileProbeTriggered) {
+                root.launchProfileProbeTriggered = true
+                gameDetails.open_launch_profile_editor()
+            } else if (root.emulatorLaunchProbe && gameDetails.can_launch
                     && !root.launchProbeTriggered) {
                 root.launchProbeTriggered = true
                 gameDetails.launch_game()
@@ -896,7 +926,8 @@ ApplicationWindow {
             else if (root.arcadeLaunchProbe || root.arcadeLaunchUiProbe)
                 root.openGame("local-file:arcade-launch-probe", 0,
                               "Pong", "Arcade", true, false)
-            else if (root.romLaunchProbe || root.romLaunchUiProbe)
+            else if (root.romLaunchProbe || root.romLaunchUiProbe
+                     || root.launchProfileUiProbe)
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)
             else if (root.activityUiProbe)
@@ -1003,6 +1034,39 @@ ApplicationWindow {
         onTriggered: detailScroll.contentItem.contentY = Math.max(
                          0, mediaCard.mapToItem(
                              detailScroll.contentItem, 0, 0).y - 12)
+    }
+
+    Timer {
+        id: launchProfileProbeScrollTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            detailScroll.contentItem.contentY = Math.max(
+                        0, launchProfileCard.mapToItem(
+                            detailScroll.contentItem, 0, 0).y - 8)
+            launchProfileScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: launchProfileScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0)
+                return
+            detailsPane.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SCREENSHOT_FAILED path="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_SCREENSHOT_READY path="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
     }
 
     Popup {
@@ -3701,6 +3765,263 @@ ApplicationWindow {
                                         border.color: root.line
                                     }
                                     contentItem: Text { text: parent.text; color: parent.enabled ? root.muted : "#526071"; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                }
+                            }
+
+                            Button {
+                                width: parent.width
+                                height: 32
+                                visible: gameDetails.prepared
+                                         || gameDetails.emulator_option_count > 0
+                                text: gameDetails.launch_profile_open
+                                      ? "HIDE LAUNCH COMMAND"
+                                      : "CUSTOMIZE LAUNCH COMMAND"
+                                enabled: !gameDetails.launch_busy
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                onClicked: {
+                                    if (gameDetails.launch_profile_open)
+                                        gameDetails.close_launch_profile_editor()
+                                    else
+                                        gameDetails.open_launch_profile_editor()
+                                }
+                                background: Rectangle {
+                                    radius: 7
+                                    color: parent.down ? "#273447" : "#182331"
+                                    border.color: gameDetails.launch_profile_open
+                                                  ? root.accentCool : root.line
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: gameDetails.launch_profile_open
+                                           ? root.accentCool : root.muted
+                                    font: parent.font
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+
+                            Rectangle {
+                                id: launchProfileCard
+                                width: parent.width
+                                height: launchProfileColumn.implicitHeight + 24
+                                visible: gameDetails.launch_profile_open
+                                radius: 9
+                                color: "#101a27"
+                                border.color: "#2a4357"
+
+                                Column {
+                                    id: launchProfileColumn
+                                    x: 12
+                                    y: 12
+                                    width: parent.width - 24
+                                    spacing: 9
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 8
+                                        Column {
+                                            width: parent.width - launchProfileClose.width - 8
+                                            spacing: 2
+                                            Text {
+                                                text: "LAUNCH COMMAND"
+                                                color: root.ink
+                                                font.pixelSize: 10
+                                                font.weight: Font.Bold
+                                                font.letterSpacing: 0.5
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                text: "Exact argv customization for "
+                                                      + gameDetails.emulator_name
+                                                color: root.muted
+                                                font.pixelSize: 8
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                        Button {
+                                            id: launchProfileClose
+                                            width: 28
+                                            height: 26
+                                            text: "×"
+                                            onClicked: gameDetails.close_launch_profile_editor()
+                                            background: Rectangle {
+                                                radius: 6
+                                                color: parent.down ? "#2b3747" : "#1b2735"
+                                                border.color: root.line
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: 4
+                                        Text {
+                                            text: "SAVE SCOPE"
+                                            color: "#7f8b9e"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                        }
+                                        ComboBox {
+                                            id: launchProfileScope
+                                            width: parent.width
+                                            height: 34
+                                            model: ["This game", "This platform", "All platforms"]
+                                            currentIndex: gameDetails.launch_profile_scope === "platform"
+                                                          ? 1
+                                                          : gameDetails.launch_profile_scope === "global"
+                                                            ? 2 : 0
+                                            onActivated: function(index) {
+                                                gameDetails.select_launch_profile_scope(
+                                                    index === 1 ? "platform"
+                                                                : index === 2 ? "global" : "game")
+                                            }
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: "#111923"
+                                                border.color: root.line
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        width: parent.width
+                                        height: defaultLaunchTemplate.implicitHeight + 20
+                                        radius: 7
+                                        color: "#0c141f"
+                                        border.color: "#223246"
+                                        Text {
+                                            id: defaultLaunchTemplate
+                                            x: 10
+                                            y: 10
+                                            width: parent.width - 20
+                                            text: "BUILT-IN  "
+                                                  + gameDetails.launch_profile_default_template
+                                            color: "#94a2b5"
+                                            font.family: "monospace"
+                                            font.pixelSize: 9
+                                            wrapMode: Text.WrapAnywhere
+                                        }
+                                    }
+
+                                    Text {
+                                        width: parent.width
+                                        text: gameDetails.launch_profile_inheritance
+                                        color: "#75c8ba"
+                                        font.pixelSize: 8
+                                        wrapMode: Text.WordWrap
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: 4
+                                        Text {
+                                            text: "EXTRA ARGUMENTS"
+                                            color: "#7f8b9e"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                        }
+                                        TextField {
+                                            id: launchExtraArguments
+                                            width: parent.width
+                                            height: 34
+                                            text: gameDetails.launch_profile_extra_arguments
+                                            placeholderText: "Example: --fullscreen --latency 1"
+                                            selectByMouse: true
+                                            font.family: "monospace"
+                                            font.pixelSize: 9
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: "#0b121b"
+                                                border.color: parent.activeFocus
+                                                              ? root.accentCool : root.line
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: 4
+                                        Text {
+                                            text: "COMMAND TEMPLATE (OPTIONAL)"
+                                            color: "#7f8b9e"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                        }
+                                        ScrollView {
+                                            width: parent.width
+                                            height: 74
+                                            clip: true
+                                            TextArea {
+                                                id: launchCommandTemplate
+                                                text: gameDetails.launch_profile_command_template
+                                                placeholderText: "Leave blank for the built-in template"
+                                                selectByMouse: true
+                                                wrapMode: TextEdit.WrapAnywhere
+                                                font.family: "monospace"
+                                                font.pixelSize: 9
+                                                color: root.ink
+                                                background: Rectangle {
+                                                    radius: 7
+                                                    color: "#0b121b"
+                                                    border.color: parent.activeFocus
+                                                                  ? root.accentCool : root.line
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        width: parent.width
+                                        text: "Use the placeholders shown by the built-in template; %f is the selected file and %% is a literal percent. Prepared PC games may expose %{config}, %{shared_config}, %{game_path}, %{game_id}, or %{vm_root}. Quotes only group arguments; Lunchbox never invokes a shell. A template replaces the built-in argv, while extra arguments augment it when the template is blank."
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        lineHeight: 1.2
+                                        wrapMode: Text.WordWrap
+                                    }
+
+                                    Text {
+                                        width: parent.width
+                                        visible: gameDetails.launch_profile_status.length > 0
+                                        text: gameDetails.launch_profile_status
+                                        color: gameDetails.launch_profile_status.indexOf("Could not") === 0
+                                               ? "#ef9999" : "#9bd7cc"
+                                        font.pixelSize: 8
+                                        wrapMode: Text.WordWrap
+                                    }
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 7
+                                        Button {
+                                            width: (parent.width - 7) * 0.62
+                                            height: 32
+                                            text: "SAVE PROFILE"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            onClicked: gameDetails.save_launch_profile(
+                                                           launchExtraArguments.text,
+                                                           launchCommandTemplate.text)
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: parent.down ? "#93601e" : "#b77a2c"
+                                                border.color: "#d99a48"
+                                            }
+                                        }
+                                        Button {
+                                            width: (parent.width - 7) * 0.38
+                                            height: 32
+                                            text: "CLEAR SCOPE"
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            onClicked: gameDetails.clear_launch_profile()
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: parent.down ? "#39252a" : "#271d25"
+                                                border.color: "#60404b"
+                                            }
+                                        }
+                                    }
                                 }
                             }
 

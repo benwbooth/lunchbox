@@ -138,6 +138,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Generic local-ROM RetroArch and standalone discovery/launch are native, with
   multi-file selection and exact per-game/platform stable-ID/core defaults.
   Linux Flatpak RetroArch plus real core/content loading is runtime-verified.
+- Exact game/platform/all-platform launch profiles are native for ordinary ROM
+  and prepared eXo plans. Their contextual editor exposes independently
+  inherited extra arguments and replacement templates; the bounded compiler
+  preserves native/Flatpak/Wine paths and never invokes a shell. Add a
+  searchable cross-emulator bulk-management table and complete Windows/macOS
+  runtime-host certification.
 - Standalone MAME set-name/ROM-path and Hypseus framefile/support/bundle
   profiles are native. Derived Arcade Laserdisc and Arcade Pinball labels map
   to the canonical Arcade emulator catalog without being collapsed in the UI.
