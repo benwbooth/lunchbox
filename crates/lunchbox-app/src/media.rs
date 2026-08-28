@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
@@ -288,7 +288,7 @@ pub struct SupplementalMedia {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GameMedia {
-    assets: HashMap<ArtworkKind, MediaAsset>,
+    assets: HashMap<ArtworkKind, Vec<MediaAsset>>,
 }
 
 impl GameMedia {
@@ -296,32 +296,72 @@ impl GameMedia {
         requested
             .fallbacks()
             .iter()
-            .find_map(|kind| self.assets.get(kind))
+            .find_map(|kind| self.assets.get(kind).and_then(|assets| assets.first()))
     }
 
     pub fn exact(&self, requested: ArtworkKind) -> Option<&MediaAsset> {
-        self.assets.get(&requested)
+        self.assets
+            .get(&requested)
+            .and_then(|assets| assets.first())
+    }
+
+    pub fn candidate_count(&self, requested: ArtworkKind) -> usize {
+        requested
+            .fallbacks()
+            .iter()
+            .filter_map(|kind| self.assets.get(kind))
+            .map(Vec::len)
+            .sum()
+    }
+
+    pub fn candidate(&self, requested: ArtworkKind, mut index: usize) -> Option<&MediaAsset> {
+        for kind in requested.fallbacks() {
+            let Some(assets) = self.assets.get(kind) else {
+                continue;
+            };
+            if index < assets.len() {
+                return assets.get(index);
+            }
+            index -= assets.len();
+        }
+        None
+    }
+
+    fn asset_count(&self) -> usize {
+        self.assets.values().map(Vec::len).sum()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.assets.values().all(Vec::is_empty)
     }
 
     fn insert(&mut self, kind: ArtworkKind, asset: MediaAsset) -> bool {
-        if self.assets.get(&kind).is_none_or(|existing| {
-            (
-                asset.source_rank,
-                asset.format_rank,
-                &asset.source,
-                &asset.path,
-            ) < (
-                existing.source_rank,
-                existing.format_rank,
-                &existing.source,
-                &existing.path,
-            )
-        }) {
-            self.assets.insert(kind, asset);
-            true
-        } else {
-            false
+        let assets = self.assets.entry(kind).or_default();
+        if let Some(existing) = assets
+            .iter_mut()
+            .find(|existing| existing.path == asset.path)
+        {
+            *existing = asset;
+            assets.sort_by(|left, right| {
+                (left.source_rank, left.format_rank, &left.source, &left.path).cmp(&(
+                    right.source_rank,
+                    right.format_rank,
+                    &right.source,
+                    &right.path,
+                ))
+            });
+            return false;
         }
+        assets.push(asset);
+        assets.sort_by(|left, right| {
+            (left.source_rank, left.format_rank, &left.source, &left.path).cmp(&(
+                right.source_rank,
+                right.format_rank,
+                &right.source,
+                &right.path,
+            ))
+        });
+        true
     }
 }
 
@@ -365,8 +405,8 @@ impl MediaIndex {
                 continue;
             };
             let media = scan_game_directory(&directory.path(), &mut index.skipped_entries);
-            if !media.assets.is_empty() {
-                index.asset_count += media.assets.len();
+            if !media.is_empty() {
+                index.asset_count += media.asset_count();
                 index.games.insert(database_id, media);
             }
         }
@@ -381,6 +421,22 @@ impl MediaIndex {
         self.games.get(&database_id)?.exact(kind)
     }
 
+    pub fn candidate_count(&self, database_id: i64, kind: ArtworkKind) -> usize {
+        self.games
+            .get(&database_id)
+            .map(|media| media.candidate_count(kind))
+            .unwrap_or_default()
+    }
+
+    pub fn candidate(
+        &self,
+        database_id: i64,
+        kind: ArtworkKind,
+        index: usize,
+    ) -> Option<&MediaAsset> {
+        self.games.get(&database_id)?.candidate(kind, index)
+    }
+
     pub fn insert_asset(
         &mut self,
         database_id: i64,
@@ -392,7 +448,6 @@ impl MediaIndex {
             return false;
         }
         let game_media = self.games.entry(database_id).or_default();
-        let added = !game_media.assets.contains_key(&kind);
         let inserted = game_media.insert(
             kind,
             MediaAsset {
@@ -402,7 +457,7 @@ impl MediaIndex {
                 format_rank: 0,
             },
         );
-        if inserted && added {
+        if inserted {
             self.asset_count = self.asset_count.saturating_add(1);
         }
         inserted
@@ -723,6 +778,7 @@ pub struct MediaFetchRequest {
     pub title: String,
     pub platform: String,
     pub requested_kind: ArtworkKind,
+    pub force: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -732,15 +788,18 @@ pub enum MediaFetchOutcome {
         requested_kind: ArtworkKind,
         fetched_kind: ArtworkKind,
         path: PathBuf,
+        force: bool,
     },
     Missing {
         database_id: i64,
         requested_kind: ArtworkKind,
+        force: bool,
     },
     Failed {
         database_id: i64,
         requested_kind: ArtworkKind,
         error: String,
+        force: bool,
     },
 }
 
@@ -875,10 +934,12 @@ fn fetch_media(
     request: MediaFetchRequest,
     worker_index: usize,
 ) -> MediaFetchOutcome {
-    if negative_cache_is_fresh(root, request.database_id, request.requested_kind) {
+    if !request.force && negative_cache_is_fresh(root, request.database_id, request.requested_kind)
+    {
         return MediaFetchOutcome::Missing {
             database_id: request.database_id,
             requested_kind: request.requested_kind,
+            force: request.force,
         };
     }
 
@@ -887,6 +948,7 @@ fn fetch_media(
         return MediaFetchOutcome::Missing {
             database_id: request.database_id,
             requested_kind: request.requested_kind,
+            force: request.force,
         };
     };
 
@@ -895,12 +957,13 @@ fn fetch_media(
             continue;
         };
         let output = media_output_path(root, request.database_id, *fetched_kind);
-        if output.is_file() {
+        if output.is_file() && !request.force {
             return MediaFetchOutcome::Found {
                 database_id: request.database_id,
                 requested_kind: request.requested_kind,
                 fetched_kind: *fetched_kind,
                 path: output,
+                force: false,
             };
         }
 
@@ -913,34 +976,39 @@ fn fetch_media(
                 percent_encode_path_segment(&candidate)
             );
             match download_png(agent, &url) {
-                Ok(Some(bytes)) => match write_download_atomically(&output, &bytes, worker_index) {
-                    Ok(()) => {
-                        let _ = fs::remove_file(negative_cache_path(
-                            root,
-                            request.database_id,
-                            request.requested_kind,
-                        ));
-                        return MediaFetchOutcome::Found {
-                            database_id: request.database_id,
-                            requested_kind: request.requested_kind,
-                            fetched_kind: *fetched_kind,
-                            path: output,
-                        };
+                Ok(Some(bytes)) => {
+                    match write_download_atomically(&output, &bytes, worker_index, request.force) {
+                        Ok(()) => {
+                            let _ = fs::remove_file(negative_cache_path(
+                                root,
+                                request.database_id,
+                                request.requested_kind,
+                            ));
+                            return MediaFetchOutcome::Found {
+                                database_id: request.database_id,
+                                requested_kind: request.requested_kind,
+                                fetched_kind: *fetched_kind,
+                                path: output,
+                                force: request.force,
+                            };
+                        }
+                        Err(error) => {
+                            return MediaFetchOutcome::Failed {
+                                database_id: request.database_id,
+                                requested_kind: request.requested_kind,
+                                error: error.to_string(),
+                                force: request.force,
+                            };
+                        }
                     }
-                    Err(error) => {
-                        return MediaFetchOutcome::Failed {
-                            database_id: request.database_id,
-                            requested_kind: request.requested_kind,
-                            error: error.to_string(),
-                        };
-                    }
-                },
+                }
                 Ok(None) => {}
                 Err(error) => {
                     return MediaFetchOutcome::Failed {
                         database_id: request.database_id,
                         requested_kind: request.requested_kind,
                         error: error.to_string(),
+                        force: request.force,
                     };
                 }
             }
@@ -951,6 +1019,7 @@ fn fetch_media(
     MediaFetchOutcome::Missing {
         database_id: request.database_id,
         requested_kind: request.requested_kind,
+        force: request.force,
     }
 }
 
@@ -992,7 +1061,12 @@ fn download_png(agent: &ureq::Agent, url: &str) -> Result<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
-fn write_download_atomically(path: &Path, bytes: &[u8], worker_index: usize) -> Result<()> {
+fn write_download_atomically(
+    path: &Path,
+    bytes: &[u8],
+    worker_index: usize,
+    replace_existing: bool,
+) -> Result<()> {
     let parent = path
         .parent()
         .context("artwork cache path has no parent directory")?;
@@ -1006,17 +1080,51 @@ fn write_download_atomically(path: &Path, bytes: &[u8], worker_index: usize) -> 
         ".{stem}.{}.{worker_index}.download",
         std::process::id()
     ));
-    fs::write(&temporary, bytes)
+    let mut file = fs::File::create(&temporary)
+        .with_context(|| format!("creating temporary artwork {}", temporary.display()))?;
+    file.write_all(bytes)
         .with_context(|| format!("writing temporary artwork {}", temporary.display()))?;
-    if path.is_file() {
+    file.sync_all()
+        .with_context(|| format!("syncing temporary artwork {}", temporary.display()))?;
+    drop(file);
+    if path.is_file() && !replace_existing {
         fs::remove_file(&temporary).ok();
         return Ok(());
     }
     match fs::rename(&temporary, path) {
         Ok(()) => Ok(()),
-        Err(_) if path.is_file() => {
+        Err(_) if path.is_file() && !replace_existing => {
             fs::remove_file(&temporary).ok();
             Ok(())
+        }
+        Err(rename_error) if path.is_file() => {
+            let backup = parent.join(format!(
+                ".{stem}.{}.{worker_index}.previous",
+                std::process::id()
+            ));
+            fs::remove_file(&backup).ok();
+            fs::rename(path, &backup).with_context(|| {
+                format!(
+                    "preparing to replace artwork {} after rename failed: {rename_error}",
+                    path.display()
+                )
+            })?;
+            match fs::rename(&temporary, path) {
+                Ok(()) => {
+                    fs::remove_file(&backup).ok();
+                    Ok(())
+                }
+                Err(error) => {
+                    let _ = fs::rename(&backup, path);
+                    Err(error).with_context(|| {
+                        format!(
+                            "publishing replacement artwork {} as {}",
+                            temporary.display(),
+                            path.display()
+                        )
+                    })
+                }
+            }
         }
         Err(error) => Err(error).with_context(|| {
             format!(
@@ -1193,7 +1301,22 @@ mod tests {
 
         let index = MediaIndex::scan(directory.path().to_owned());
         assert_eq!(index.games.len(), 1);
-        assert_eq!(index.asset_count, 2);
+        assert_eq!(index.asset_count, 3);
+        assert_eq!(index.candidate_count(1019, ArtworkKind::BoxFront), 3);
+        assert!(
+            index
+                .candidate(1019, ArtworkKind::BoxFront, 1)
+                .unwrap()
+                .path
+                .ends_with("steamgriddb/box-front.png")
+        );
+        assert!(
+            index
+                .candidate(1019, ArtworkKind::BoxFront, 2)
+                .unwrap()
+                .path
+                .ends_with("libretro/screenshot-gameplay.png")
+        );
         let cover = index.exact(1019, ArtworkKind::BoxFront).unwrap();
         assert_eq!(cover.source, "launchbox");
         assert!(cover.path.ends_with("launchbox/box-front.jpg"));
@@ -1303,17 +1426,24 @@ mod tests {
     }
 
     #[test]
-    fn inserting_downloaded_assets_updates_counts_without_double_counting_replacements() {
+    fn inserting_downloaded_assets_preserves_ordered_alternates_without_double_counting_paths() {
         let mut index = MediaIndex::default();
         assert!(index.insert_asset(42, ArtworkKind::BoxFront, "first.png".into(), "libretro"));
         assert_eq!(index.games.len(), 1);
         assert_eq!(index.asset_count, 1);
-        assert!(!index.insert_asset(42, ArtworkKind::BoxFront, "later.png".into(), "websearch"));
-        assert_eq!(index.asset_count, 1);
+        assert!(index.insert_asset(42, ArtworkKind::BoxFront, "later.png".into(), "websearch"));
+        assert_eq!(index.asset_count, 2);
         assert_eq!(
             index.exact(42, ArtworkKind::BoxFront).unwrap().path,
             PathBuf::from("first.png")
         );
+        assert_eq!(index.candidate_count(42, ArtworkKind::BoxFront), 2);
+        assert_eq!(
+            index.candidate(42, ArtworkKind::BoxFront, 1).unwrap().path,
+            PathBuf::from("later.png")
+        );
+        assert!(!index.insert_asset(42, ArtworkKind::BoxFront, "first.png".into(), "libretro"));
+        assert_eq!(index.asset_count, 2);
     }
 
     #[test]
@@ -1324,6 +1454,7 @@ mod tests {
             title: "Missing Game".to_owned(),
             platform: "Nintendo Entertainment System".to_owned(),
             requested_kind: ArtworkKind::BoxFront,
+            force: false,
         };
         write_negative_cache(directory.path(), &request, "test miss").unwrap();
         assert!(negative_cache_is_fresh(
@@ -1336,5 +1467,24 @@ mod tests {
             42,
             ArtworkKind::Screenshot
         ));
+    }
+
+    #[test]
+    fn explicit_refresh_replaces_only_the_owned_target_and_keeps_a_recovery_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("lb-42/libretro/box-front.png");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"old artwork").unwrap();
+
+        write_download_atomically(&path, b"new artwork", 0, true).unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), b"new artwork");
+        assert_eq!(
+            fs::read_dir(path.parent().unwrap())
+                .unwrap()
+                .filter_map(Result::ok)
+                .count(),
+            1
+        );
     }
 }

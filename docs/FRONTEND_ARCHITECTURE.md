@@ -48,6 +48,12 @@ The initial implementation enforces this shape:
   atomic rename. Provider misses are cached per stable LaunchBox ID and media
   type for seven days. `--offline` or `LUNCHBOX_OFFLINE=1` makes the same UI
   strictly cache-only.
+- The media index retains every valid candidate in deterministic media-type,
+  provider, format, and path order. The details hero can rotate those candidates
+  without rescanning the filesystem. Explicit refresh bypasses the miss cache
+  and replaces only the owned LibRetro target after write and sync; overwrite
+  fallback restores the prior file on publication failure and never removes
+  alternatives from other providers.
 - The writable state database is selected with `--state-database` or
   `LUNCHBOX_STATE_DATABASE`, otherwise an OS-native application-data directory
   is used. Its WAL setup and schema migration are serialized before concurrent
@@ -223,12 +229,19 @@ Use `--filter-ui-probe` to leave the native filter surface open for an
 unattended visual check against a real catalog.
 
 Use `--media-probe` to wait for the asynchronous media index, print
-`LUNCHBOX_MEDIA_READY_MS` with game and preferred-asset counts, and exit.
+`LUNCHBOX_MEDIA_READY_MS` with game and cached-candidate counts, and exit.
 `--artwork-ui-probe` filters to a deterministic set of real cached covers and
 leaves the native grid open for a virtual-display visual check.
 `--media-fetch-probe --media-directory EMPTY_PATH` performs the same path from
 an uncached visible delegate through the real LibRetro service, waits for Qt to
 index the downloaded asset, prints `LUNCHBOX_MEDIA_FETCH_READY_MS`, and exits.
+`--media-rotation-ui-probe` opens the preserved Super Mario Bros. record after
+the media index is ready, selects its second real cached hero candidate, and
+prints `LUNCHBOX_MEDIA_ROTATION_READY` with the count, index, and provider. The
+same open details surface exercises previous/next rotation and the explicit
+LibRetro refresh action; successful replacement prints
+`LUNCHBOX_MEDIA_REFRESH_READY` only after the refreshed file has re-entered the
+index.
 `--favorite-probe --state-database EMPTY_PATH` selects a real catalog game,
 persists it through the native Qt action, prints `LUNCHBOX_FAVORITE_READY_MS`,
 and exits only after the worker reports success. `--favorite-ui-probe` leaves
@@ -340,8 +353,9 @@ post-import-action-pending records.
 On the current Linux development host, the real preserved 303,560-game catalog
 loads on its worker in roughly 0.5–0.8 seconds in release mode, while a combined
 text plus Minerva filter completes in about 16 ms. The existing 8 GB media tree
-indexes 6,979 preferred assets for 6,677 games in 106 ms without delaying
-catalog readiness. A real empty-cache NES cover retrieval completed in 7.944
+currently contains 6,983 valid cached candidates for 6,679 games; the latest
+packaged release probe indexed them in 102 ms without delaying catalog
+readiness. A real empty-cache NES cover retrieval completed in 7.944
 seconds and atomically stored a validated 608,533-byte PNG. The latest three
 headless Xvfb shell-ready probes measured 273--276 ms; the 250-ms release target
 remains a performance gate rather than being reported as met by this run. A
@@ -367,8 +381,9 @@ durable transfer, progress, shared-torrent cancellation, and safe publication
 through the same details card. On-demand LibRetro retrieval and durable
 negative caching, generic local-ROM launch, multi-file selection, and exact
 per-game/platform emulator defaults are native.
-Playlists and smart collections, alternate media providers, media rotation and
-redownload, available-version-only emulator update reporting, specialized
+Cached artwork rotation and safe explicit LibRetro refresh are also native.
+Playlists and smart collections, the remaining alternate media providers,
+available-version-only emulator update reporting, specialized
 machine launch profiles, the remaining settings,
 archive-member identity workflows, broader manual-provider coverage, and the controller-first
 full-screen interface follow on the same shared models.

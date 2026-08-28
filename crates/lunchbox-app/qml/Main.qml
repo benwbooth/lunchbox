@@ -45,6 +45,8 @@ ApplicationWindow {
     property bool selectedBox3d: false
     property string selectedArtworkSource: ""
     property string selectedHeroArtworkType: ""
+    property int selectedHeroArtworkIndex: 0
+    property int selectedHeroArtworkCount: 0
     readonly property bool selectedFavorite: {
         library.favorite_revision
         return selectedGameId.length > 0 && library.is_favorite(selectedGameId)
@@ -63,6 +65,7 @@ ApplicationWindow {
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
     property bool box3dProbeOpened: false
+    property bool mediaRotationProbeOpened: false
     property int pendingEmulatorUninstallIndex: -1
     property string pendingEmulatorUninstallName: ""
     property int downloadPlanProbeBundleIndex: 0
@@ -125,6 +128,7 @@ ApplicationWindow {
     readonly property bool mediaBundleUiProbe: Qt.application.arguments.indexOf("--media-bundle-ui-probe") >= 0
     readonly property bool manualDownloadUiProbe: Qt.application.arguments.indexOf("--manual-download-ui-probe") >= 0
     readonly property bool box3dUiProbe: Qt.application.arguments.indexOf("--box-3d-ui-probe") >= 0
+    readonly property bool mediaRotationUiProbe: Qt.application.arguments.indexOf("--media-rotation-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
@@ -266,6 +270,7 @@ ApplicationWindow {
         selectedGameId = gameId
         selectedDatabaseId = databaseId
         selectedBox3d = false
+        selectedHeroArtworkIndex = 0
         library.request_artwork(databaseId, title, platform, library.artwork_type)
         library.request_artwork(databaseId, title, platform, "fanart")
         library.request_artwork(databaseId, title, platform, "box-front")
@@ -277,14 +282,19 @@ ApplicationWindow {
         selectedArtworkUrl = library.artwork_url(selectedDatabaseId,
                                                  library.artwork_type)
         selectedHeroArtworkType = "fanart"
-        selectedFanartUrl = library.exact_artwork_url(selectedDatabaseId, "fanart")
-        if (selectedFanartUrl.toString().length === 0) {
-            selectedHeroArtworkType = "screenshot"
-            selectedFanartUrl = library.exact_artwork_url(selectedDatabaseId, "screenshot")
-        }
-        selectedArtworkSource = selectedFanartUrl.toString().length > 0
-                                ? library.artwork_source(selectedDatabaseId,
-                                                         selectedHeroArtworkType)
+        selectedHeroArtworkCount = library.artwork_candidate_count(selectedDatabaseId,
+                                                                    selectedHeroArtworkType)
+        selectedHeroArtworkIndex = Math.max(0, Math.min(selectedHeroArtworkIndex,
+                                                        selectedHeroArtworkCount - 1))
+        selectedFanartUrl = selectedHeroArtworkCount > 0
+                          ? library.artwork_candidate_url(selectedDatabaseId,
+                                                          selectedHeroArtworkType,
+                                                          selectedHeroArtworkIndex)
+                          : ""
+        selectedArtworkSource = selectedHeroArtworkCount > 0
+                                ? library.artwork_candidate_source(selectedDatabaseId,
+                                                                   selectedHeroArtworkType,
+                                                                   selectedHeroArtworkIndex)
                                 : library.artwork_source(selectedDatabaseId,
                                                          library.artwork_type)
         selectedBoxFrontUrl = library.exact_artwork_url(selectedDatabaseId,
@@ -304,6 +314,35 @@ ApplicationWindow {
         console.log("LUNCHBOX_BOX3D_READY front=" + selectedBoxFrontUrl
                     + " back="
                     + (selectedBoxBackUrl.toString().length > 0))
+    }
+
+    function rotateSelectedHeroArtwork(offset) {
+        if (selectedHeroArtworkCount < 2)
+            return
+        selectedHeroArtworkIndex = (selectedHeroArtworkIndex + offset
+                                    + selectedHeroArtworkCount)
+                                   % selectedHeroArtworkCount
+        refreshSelectedArtwork()
+    }
+
+    function refreshHeroArtworkFromProvider() {
+        if (selectedDatabaseId <= 0 || !library.media_retrieval_enabled)
+            return
+        selectedFanartUrl = ""
+        selectedArtworkSource = ""
+        library.redownload_artwork(selectedDatabaseId, gameDetails.title,
+                                   gameDetails.platform, "fanart")
+    }
+
+    function activateMediaRotationProbeWhenReady() {
+        if (!mediaRotationUiProbe || selectedHeroArtworkCount < 2)
+            return
+        selectedHeroArtworkIndex = 1
+        refreshSelectedArtwork()
+        console.log("LUNCHBOX_MEDIA_ROTATION_READY count="
+                    + selectedHeroArtworkCount + " index="
+                    + selectedHeroArtworkIndex + " source="
+                    + selectedArtworkSource)
     }
 
     function artworkLabel(key) {
@@ -548,6 +587,12 @@ ApplicationWindow {
                 searchField.text = "A Nightmare on Elm Street"
                 library.apply_filter(searchField.text, "", "")
                 viewPopup.open()
+            } else if (root.mediaRotationUiProbe && !root.mediaRotationProbeOpened) {
+                root.mediaRotationProbeOpened = true
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
+                root.activateMediaRotationProbeWhenReady()
             } else if (root.box3dUiProbe && !root.box3dProbeOpened) {
                 root.box3dProbeOpened = true
                 root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
@@ -557,6 +602,7 @@ ApplicationWindow {
             } else if (root.selectedGameId.length > 0) {
                 root.refreshSelectedArtwork()
                 root.activateBox3dProbeWhenReady()
+                root.activateMediaRotationProbeWhenReady()
             }
         }
         function onArtwork_typeChanged() {
@@ -2412,6 +2458,8 @@ ApplicationWindow {
                     root.selectedArtworkUrl = ""
                     root.selectedFanartUrl = ""
                     root.selectedArtworkSource = ""
+                    root.selectedHeroArtworkIndex = 0
+                    root.selectedHeroArtworkCount = 0
                     gameDetails.close_panel()
                 }
                 ToolTip.visible: hovered
@@ -2598,6 +2646,66 @@ ApplicationWindow {
                             radius: 8
                             color: root.selectedBox3d ? root.accent : "#d5101620"
                             border.color: root.selectedBox3d ? root.accent : "#627087"
+                        }
+                    }
+                    Row {
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 9
+                        spacing: 5
+                        visible: !root.selectedBox3d
+                                 && root.selectedDatabaseId > 0
+                                 && (root.selectedHeroArtworkCount > 1
+                                     || library.media_retrieval_enabled)
+
+                        RoundButton {
+                            width: 30
+                            height: 30
+                            visible: root.selectedHeroArtworkCount > 1
+                            text: "‹"
+                            font.pixelSize: 20
+                            Accessible.name: "Previous artwork"
+                            onClicked: root.rotateSelectedHeroArtwork(-1)
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Previous cached artwork"
+                        }
+                        Rectangle {
+                            width: artworkPosition.implicitWidth + 16
+                            height: 30
+                            radius: 9
+                            visible: root.selectedHeroArtworkCount > 1
+                            color: "#d5101620"
+                            border.color: "#627087"
+                            Text {
+                                id: artworkPosition
+                                anchors.centerIn: parent
+                                text: (root.selectedHeroArtworkIndex + 1)
+                                      + " / " + root.selectedHeroArtworkCount
+                                color: "#d7deea"
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                            }
+                        }
+                        RoundButton {
+                            width: 30
+                            height: 30
+                            visible: root.selectedHeroArtworkCount > 1
+                            text: "›"
+                            font.pixelSize: 20
+                            Accessible.name: "Next artwork"
+                            onClicked: root.rotateSelectedHeroArtwork(1)
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Next cached artwork"
+                        }
+                        RoundButton {
+                            width: 30
+                            height: 30
+                            visible: library.media_retrieval_enabled
+                            text: "↻"
+                            Accessible.name: "Refresh artwork from LibRetro"
+                            onClicked: root.refreshHeroArtworkFromProvider()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Fetch a fresh LibRetro copy without deleting other artwork"
                         }
                     }
                 }

@@ -121,8 +121,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   progress/cancellation, validated atomic cache publication, and native cached
   manual/video bundle with an authorized EmuMovies API adapter, video
   acquisition, and soundtrack browsing.
-- Configurable media-source priority, image replacement, missing-media audit,
-  and background download queue.
+- Configurable media-source priority, whole-library missing-media audit, and a
+  background bulk download queue. Per-game candidate rotation and safe explicit
+  LibRetro replacement are native.
 - Extend the responsive game details and native video/fullscreen/manual/3D-box
   surface with related games, alternate versions, and soundtrack playback.
 

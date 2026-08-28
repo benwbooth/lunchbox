@@ -123,7 +123,39 @@ pub mod qobject {
         ) -> QString;
 
         #[qinvokable]
+        fn artwork_candidate_count(
+            self: &LibraryModel,
+            launchbox_db_id: i32,
+            artwork_type: QString,
+        ) -> i32;
+
+        #[qinvokable]
+        fn artwork_candidate_url(
+            self: &LibraryModel,
+            launchbox_db_id: i32,
+            artwork_type: QString,
+            index: i32,
+        ) -> QUrl;
+
+        #[qinvokable]
+        fn artwork_candidate_source(
+            self: &LibraryModel,
+            launchbox_db_id: i32,
+            artwork_type: QString,
+            index: i32,
+        ) -> QString;
+
+        #[qinvokable]
         fn request_artwork(
+            self: Pin<&mut LibraryModel>,
+            launchbox_db_id: i32,
+            title: QString,
+            platform: QString,
+            artwork_type: QString,
+        );
+
+        #[qinvokable]
+        fn redownload_artwork(
             self: Pin<&mut LibraryModel>,
             launchbox_db_id: i32,
             title: QString,
@@ -936,12 +968,67 @@ impl qobject::LibraryModel {
             .unwrap_or_default()
     }
 
+    pub fn artwork_candidate_count(&self, launchbox_db_id: i32, artwork_type: QString) -> i32 {
+        let kind =
+            ArtworkKind::parse(&artwork_type.to_string()).unwrap_or(self.rust().artwork_kind);
+        saturating_i32(
+            self.rust()
+                .media
+                .candidate_count(i64::from(launchbox_db_id), kind),
+        )
+    }
+
+    pub fn artwork_candidate_url(
+        &self,
+        launchbox_db_id: i32,
+        artwork_type: QString,
+        index: i32,
+    ) -> QUrl {
+        self.media_candidate(launchbox_db_id, &artwork_type.to_string(), index)
+            .map(media_asset_url)
+            .unwrap_or_default()
+    }
+
+    pub fn artwork_candidate_source(
+        &self,
+        launchbox_db_id: i32,
+        artwork_type: QString,
+        index: i32,
+    ) -> QString {
+        self.media_candidate(launchbox_db_id, &artwork_type.to_string(), index)
+            .map(|asset| qstring(&asset.source))
+            .unwrap_or_default()
+    }
+
     pub fn request_artwork(
         mut self: Pin<&mut Self>,
         launchbox_db_id: i32,
         title: QString,
         platform: QString,
         artwork_type: QString,
+    ) {
+        self.as_mut()
+            .queue_artwork_request(launchbox_db_id, title, platform, artwork_type, false);
+    }
+
+    pub fn redownload_artwork(
+        mut self: Pin<&mut Self>,
+        launchbox_db_id: i32,
+        title: QString,
+        platform: QString,
+        artwork_type: QString,
+    ) {
+        self.as_mut()
+            .queue_artwork_request(launchbox_db_id, title, platform, artwork_type, true);
+    }
+
+    fn queue_artwork_request(
+        mut self: Pin<&mut Self>,
+        launchbox_db_id: i32,
+        title: QString,
+        platform: QString,
+        artwork_type: QString,
+        force: bool,
     ) {
         if !*self.as_ref().media_retrieval_enabled()
             || *self.as_ref().media_loading()
@@ -959,12 +1046,13 @@ impl qobject::LibraryModel {
             return;
         }
         let database_id = i64::from(launchbox_db_id);
-        if self
-            .as_ref()
-            .rust()
-            .media
-            .selected(database_id, kind)
-            .is_some()
+        if !force
+            && self
+                .as_ref()
+                .rust()
+                .media
+                .selected(database_id, kind)
+                .is_some()
         {
             return;
         }
@@ -977,6 +1065,7 @@ impl qobject::LibraryModel {
             title,
             platform,
             requested_kind: kind,
+            force,
         };
         let queued = self
             .as_ref()
@@ -994,6 +1083,12 @@ impl qobject::LibraryModel {
                 let pending = self.as_ref().rust().media_requests.len();
                 self.as_mut()
                     .set_media_pending_count(saturating_i32(pending));
+                if force {
+                    self.as_mut().set_media_fetch_message(qstring(format!(
+                        "Refreshing {} artwork from LibRetro…",
+                        kind.key().replace('-', " ")
+                    )));
+                }
             }
             Err(error) => {
                 self.as_mut().set_media_fetch_message(qstring(format!(
@@ -1548,6 +1643,19 @@ impl qobject::LibraryModel {
         }
     }
 
+    fn media_candidate(
+        &self,
+        launchbox_db_id: i32,
+        artwork_type: &str,
+        index: i32,
+    ) -> Option<&MediaAsset> {
+        let index = usize::try_from(index).ok()?;
+        let kind = ArtworkKind::parse(artwork_type).unwrap_or(self.rust().artwork_kind);
+        self.rust()
+            .media
+            .candidate(i64::from(launchbox_db_id), kind, index)
+    }
+
     fn start_media_load(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().media_generation =
             self.as_ref().rust().media_generation.wrapping_add(1);
@@ -1652,6 +1760,7 @@ impl qobject::LibraryModel {
             | MediaFetchOutcome::Missing {
                 database_id,
                 requested_kind,
+                ..
             }
             | MediaFetchOutcome::Failed {
                 database_id,
@@ -1669,7 +1778,10 @@ impl qobject::LibraryModel {
 
         match outcome {
             MediaFetchOutcome::Found {
-                fetched_kind, path, ..
+                fetched_kind,
+                path,
+                force,
+                ..
             } => {
                 let inserted = Arc::make_mut(&mut self.as_mut().rust_mut().media).insert_asset(
                     database_id,
@@ -1677,7 +1789,7 @@ impl qobject::LibraryModel {
                     path,
                     "libretro",
                 );
-                if inserted {
+                if inserted || force {
                     let games = self.as_ref().rust().media.games.len();
                     let assets = self.as_ref().rust().media.asset_count;
                     self.as_mut().set_media_game_count(saturating_i32(games));
@@ -1687,7 +1799,8 @@ impl qobject::LibraryModel {
                     let revision = self.as_ref().media_revision().wrapping_add(1);
                     self.as_mut().set_media_revision(revision);
                     self.as_mut().set_media_fetch_message(qstring(format!(
-                        "Cached {} artwork from LibRetro.",
+                        "{} {} artwork from LibRetro.",
+                        if force { "Refreshed" } else { "Cached" },
                         fetched_kind.key().replace('-', " ")
                     )));
                     if *self.as_ref().media_fetch_probe() {
@@ -1698,21 +1811,38 @@ impl qobject::LibraryModel {
                             .map(|started| started.elapsed().as_millis())
                             .unwrap_or_default();
                         println!(
-                            "LUNCHBOX_MEDIA_FETCH_READY_MS={elapsed} database_id={database_id} kind={} assets={assets}",
+                            "LUNCHBOX_MEDIA_FETCH_READY_MS={elapsed} database_id={database_id} kind={} assets={assets} refreshed={force}",
+                            fetched_kind.key()
+                        );
+                    }
+                    if force {
+                        println!(
+                            "LUNCHBOX_MEDIA_REFRESH_READY database_id={database_id} kind={} assets={assets}",
                             fetched_kind.key()
                         );
                     }
                 }
             }
-            MediaFetchOutcome::Missing { .. } => {
+            MediaFetchOutcome::Missing { force, .. } => {
                 let missing = self.as_ref().media_missing_count().saturating_add(1);
                 self.as_mut().set_media_missing_count(missing);
+                if force {
+                    let revision = self.as_ref().media_revision().wrapping_add(1);
+                    self.as_mut().set_media_revision(revision);
+                    self.as_mut().set_media_fetch_message(qstring(
+                        "LibRetro has no replacement for this artwork; the cached copy was kept.",
+                    ));
+                }
             }
-            MediaFetchOutcome::Failed { error, .. } => {
+            MediaFetchOutcome::Failed { error, force, .. } => {
                 let errors = self.as_ref().media_error_count().saturating_add(1);
                 self.as_mut().set_media_error_count(errors);
                 self.as_mut()
                     .set_media_fetch_message(qstring(format!("Artwork retrieval paused: {error}")));
+                if force {
+                    let revision = self.as_ref().media_revision().wrapping_add(1);
+                    self.as_mut().set_media_revision(revision);
+                }
             }
         }
     }
