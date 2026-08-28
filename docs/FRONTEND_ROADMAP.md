@@ -112,7 +112,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   presets and resumable hash caches.
 - Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
-- Editable game and release metadata, tags, playlists, custom fields, and a
+- Extend the implemented stable-UUID game metadata overlay editor with release-
+  specific editing, tags, custom fields, playlist-specific presentation, and a
   richer session-history inspector beyond the implemented activity summary.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.

@@ -193,6 +193,135 @@ pub struct LibraryPreferences {
     pub grid_zoom: i32,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GameMetadata {
+    pub title: String,
+    pub description: String,
+    pub release_date: String,
+    pub developer: String,
+    pub publisher: String,
+    pub genre: String,
+    pub players: String,
+    pub rating: String,
+    pub esrb: String,
+    pub release_type: String,
+    pub notes: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GameMetadataOverride {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub release_date: Option<String>,
+    pub developer: Option<String>,
+    pub publisher: Option<String>,
+    pub genre: Option<String>,
+    pub players: Option<String>,
+    pub rating: Option<String>,
+    pub esrb: Option<String>,
+    pub release_type: Option<String>,
+    pub notes: Option<String>,
+}
+
+impl GameMetadataOverride {
+    pub fn from_effective(canonical: &GameMetadata, effective: &GameMetadata) -> Self {
+        Self {
+            title: changed(&canonical.title, &effective.title),
+            description: changed(&canonical.description, &effective.description),
+            release_date: changed(&canonical.release_date, &effective.release_date),
+            developer: changed(&canonical.developer, &effective.developer),
+            publisher: changed(&canonical.publisher, &effective.publisher),
+            genre: changed(&canonical.genre, &effective.genre),
+            players: changed(&canonical.players, &effective.players),
+            rating: changed(&canonical.rating, &effective.rating),
+            esrb: changed(&canonical.esrb, &effective.esrb),
+            release_type: changed(&canonical.release_type, &effective.release_type),
+            notes: changed(&canonical.notes, &effective.notes),
+        }
+    }
+
+    pub fn apply(&self, canonical: &GameMetadata) -> GameMetadata {
+        GameMetadata {
+            title: inherited(&self.title, &canonical.title),
+            description: inherited(&self.description, &canonical.description),
+            release_date: inherited(&self.release_date, &canonical.release_date),
+            developer: inherited(&self.developer, &canonical.developer),
+            publisher: inherited(&self.publisher, &canonical.publisher),
+            genre: inherited(&self.genre, &canonical.genre),
+            players: inherited(&self.players, &canonical.players),
+            rating: inherited(&self.rating, &canonical.rating),
+            esrb: inherited(&self.esrb, &canonical.esrb),
+            release_type: inherited(&self.release_type, &canonical.release_type),
+            notes: inherited(&self.notes, &canonical.notes),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.description.is_none()
+            && self.release_date.is_none()
+            && self.developer.is_none()
+            && self.publisher.is_none()
+            && self.genre.is_none()
+            && self.players.is_none()
+            && self.rating.is_none()
+            && self.esrb.is_none()
+            && self.release_type.is_none()
+            && self.notes.is_none()
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        validate_optional_metadata("title", &self.title, 500)?;
+        validate_optional_metadata("description", &self.description, 100_000)?;
+        validate_optional_metadata("release date", &self.release_date, 100)?;
+        validate_optional_metadata("developer", &self.developer, 1_000)?;
+        validate_optional_metadata("publisher", &self.publisher, 1_000)?;
+        validate_optional_metadata("genre", &self.genre, 1_000)?;
+        validate_optional_metadata("players", &self.players, 100)?;
+        validate_optional_metadata("rating", &self.rating, 20)?;
+        validate_optional_metadata("age rating", &self.esrb, 100)?;
+        validate_optional_metadata("release type", &self.release_type, 500)?;
+        validate_optional_metadata("notes", &self.notes, 100_000)?;
+        if self
+            .title
+            .as_deref()
+            .is_some_and(|title| title.trim().is_empty())
+        {
+            bail!("title cannot be empty");
+        }
+        if let Some(rating) = self.rating.as_deref()
+            && !rating.trim().is_empty()
+        {
+            let rating = rating
+                .trim()
+                .parse::<f32>()
+                .context("rating must be a number between 0 and 5")?;
+            if !(0.0..=5.0).contains(&rating) {
+                bail!("rating must be between 0 and 5");
+            }
+        }
+        Ok(())
+    }
+}
+
+fn changed(canonical: &str, effective: &str) -> Option<String> {
+    (canonical != effective).then(|| effective.to_owned())
+}
+
+fn inherited(value: &Option<String>, canonical: &str) -> String {
+    value.clone().unwrap_or_else(|| canonical.to_owned())
+}
+
+fn validate_optional_metadata(label: &str, value: &Option<String>, maximum: usize) -> Result<()> {
+    if value
+        .as_deref()
+        .is_some_and(|value| value.chars().count() > maximum)
+    {
+        bail!("{label} must be {maximum} characters or fewer");
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserCollection {
     pub id: String,
@@ -928,6 +1057,123 @@ impl SettingsStore {
                 preferences.hide_adult,
                 preferences.artwork_type,
                 preferences.grid_zoom,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn game_metadata_override(&self, game_uid: &str) -> Result<GameMetadataOverride> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to load metadata overrides");
+        }
+        Ok(self
+            .connection()?
+            .query_row(
+                "SELECT title, description, release_date, developer, publisher,
+                        genre, players, rating, esrb, release_type, notes
+                 FROM game_metadata_overrides WHERE game_uid=?1",
+                [game_uid],
+                metadata_override_from_row,
+            )
+            .optional()?
+            .unwrap_or_default())
+    }
+
+    pub fn all_game_metadata_overrides(&self) -> Result<HashMap<String, GameMetadataOverride>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT game_uid, title, description, release_date, developer, publisher,
+                    genre, players, rating, esrb, release_type, notes
+             FROM game_metadata_overrides ORDER BY game_uid",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                GameMetadataOverride {
+                    title: row.get(1)?,
+                    description: row.get(2)?,
+                    release_date: row.get(3)?,
+                    developer: row.get(4)?,
+                    publisher: row.get(5)?,
+                    genre: row.get(6)?,
+                    players: row.get(7)?,
+                    rating: row.get(8)?,
+                    esrb: row.get(9)?,
+                    release_type: row.get(10)?,
+                    notes: row.get(11)?,
+                },
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
+    }
+
+    pub fn save_game_metadata_override(
+        &self,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        canonical_title: &str,
+        platform: &str,
+        metadata: &GameMetadataOverride,
+    ) -> Result<()> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to save metadata overrides");
+        }
+        if canonical_title.trim().is_empty() || platform.trim().is_empty() {
+            bail!("canonical title and platform are required to save metadata overrides");
+        }
+        if launchbox_db_id < 0 {
+            bail!("LaunchBox database identity cannot be negative");
+        }
+        metadata.validate()?;
+        let connection = self.connection()?;
+        if metadata.is_empty() {
+            connection.execute(
+                "DELETE FROM game_metadata_overrides WHERE game_uid=?1",
+                [game_uid],
+            )?;
+            return Ok(());
+        }
+        connection.execute(
+            "INSERT INTO game_metadata_overrides (
+                 game_uid, launchbox_db_id, canonical_title, platform,
+                 title, description, release_date, developer, publisher,
+                 genre, players, rating, esrb, release_type, notes, updated_at
+             ) VALUES (
+                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+             )
+             ON CONFLICT(game_uid) DO UPDATE SET
+                 launchbox_db_id=excluded.launchbox_db_id,
+                 canonical_title=excluded.canonical_title,
+                 platform=excluded.platform,
+                 title=excluded.title,
+                 description=excluded.description,
+                 release_date=excluded.release_date,
+                 developer=excluded.developer,
+                 publisher=excluded.publisher,
+                 genre=excluded.genre,
+                 players=excluded.players,
+                 rating=excluded.rating,
+                 esrb=excluded.esrb,
+                 release_type=excluded.release_type,
+                 notes=excluded.notes,
+                 updated_at=excluded.updated_at",
+            params![
+                game_uid,
+                launchbox_db_id,
+                canonical_title,
+                platform,
+                metadata.title,
+                metadata.description,
+                metadata.release_date,
+                metadata.developer,
+                metadata.publisher,
+                metadata.genre,
+                metadata.players,
+                metadata.rating,
+                metadata.esrb,
+                metadata.release_type,
+                metadata.notes,
+                unix_timestamp(),
             ],
         )?;
         Ok(())
@@ -2602,6 +2848,32 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON local_rom_files(game_uid) WHERE game_uid IS NOT NULL;
          CREATE INDEX IF NOT EXISTS local_rom_files_visible
              ON local_rom_files(included, availability);
+         CREATE TABLE IF NOT EXISTS game_metadata_overrides (
+             game_uid TEXT PRIMARY KEY,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0 CHECK (launchbox_db_id >= 0),
+             canonical_title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             title TEXT,
+             description TEXT,
+             release_date TEXT,
+             developer TEXT,
+             publisher TEXT,
+             genre TEXT,
+             players TEXT,
+             rating TEXT,
+             esrb TEXT,
+             release_type TEXT,
+             notes TEXT,
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+             CHECK (
+                 title IS NOT NULL OR description IS NOT NULL OR release_date IS NOT NULL
+                 OR developer IS NOT NULL OR publisher IS NOT NULL OR genre IS NOT NULL
+                 OR players IS NOT NULL OR rating IS NOT NULL OR esrb IS NOT NULL
+                 OR release_type IS NOT NULL OR notes IS NOT NULL
+             )
+         );
+         CREATE INDEX IF NOT EXISTS game_metadata_overrides_updated
+             ON game_metadata_overrides(updated_at DESC, game_uid);
          CREATE TABLE IF NOT EXISTS favorite_games (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -3256,6 +3528,22 @@ fn play_activity_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlayActiv
     })
 }
 
+fn metadata_override_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameMetadataOverride> {
+    Ok(GameMetadataOverride {
+        title: row.get(0)?,
+        description: row.get(1)?,
+        release_date: row.get(2)?,
+        developer: row.get(3)?,
+        publisher: row.get(4)?,
+        genre: row.get(5)?,
+        players: row.get(6)?,
+        rating: row.get(7)?,
+        esrb: row.get(8)?,
+        release_type: row.get(9)?,
+        notes: row.get(10)?,
+    })
+}
+
 fn validate_collection_description(description: &str) -> Result<String> {
     let description = description.trim();
     if description.chars().count() > 1000 {
@@ -3647,6 +3935,124 @@ mod tests {
         };
         store.save_library_preferences(&expected).unwrap();
         assert_eq!(store.load_library_preferences().unwrap(), expected);
+    }
+
+    #[test]
+    fn metadata_overrides_preserve_canonical_identity_and_explicitly_clear_fields() {
+        let (_directory, store) = store();
+        let canonical = GameMetadata {
+            title: "Metroid".into(),
+            description: "Canonical description".into(),
+            rating: "4.5".into(),
+            ..GameMetadata::default()
+        };
+        let effective = GameMetadata {
+            title: "Metroid: Personal Edition".into(),
+            description: String::new(),
+            rating: "5".into(),
+            ..canonical.clone()
+        };
+        let metadata = GameMetadataOverride::from_effective(&canonical, &effective);
+        assert_eq!(metadata.description.as_deref(), Some(""));
+        store
+            .save_game_metadata_override(
+                "stable-metroid-uid",
+                42,
+                &canonical.title,
+                "Nintendo Entertainment System",
+                &metadata,
+            )
+            .unwrap();
+
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(
+            reopened
+                .game_metadata_override("stable-metroid-uid")
+                .unwrap()
+                .apply(&canonical),
+            effective
+        );
+        assert_eq!(
+            store
+                .all_game_metadata_overrides()
+                .unwrap()
+                .get("stable-metroid-uid"),
+            Some(&metadata)
+        );
+        let identity = Connection::open(store.path())
+            .unwrap()
+            .query_row(
+                "SELECT launchbox_db_id, canonical_title, platform
+                 FROM game_metadata_overrides WHERE game_uid=?1",
+                ["stable-metroid-uid"],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            identity,
+            (
+                42,
+                "Metroid".to_owned(),
+                "Nintendo Entertainment System".to_owned()
+            )
+        );
+
+        store
+            .save_game_metadata_override(
+                "stable-metroid-uid",
+                42,
+                &canonical.title,
+                "Nintendo Entertainment System",
+                &GameMetadataOverride::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            store.game_metadata_override("stable-metroid-uid").unwrap(),
+            GameMetadataOverride::default()
+        );
+    }
+
+    #[test]
+    fn metadata_overrides_validate_user_text_and_rating() {
+        let (_directory, store) = store();
+        let invalid_rating = GameMetadataOverride {
+            rating: Some("5.1".into()),
+            ..GameMetadataOverride::default()
+        };
+        assert!(
+            store
+                .save_game_metadata_override("game", 0, "Game", "Platform", &invalid_rating)
+                .is_err()
+        );
+        let invalid_title = GameMetadataOverride {
+            title: Some("x".repeat(501)),
+            ..GameMetadataOverride::default()
+        };
+        assert!(
+            store
+                .save_game_metadata_override("game", 0, "Game", "Platform", &invalid_title)
+                .is_err()
+        );
+        assert!(
+            store
+                .save_game_metadata_override(
+                    "",
+                    0,
+                    "Game",
+                    "Platform",
+                    &GameMetadataOverride {
+                        title: Some("Custom".into()),
+                        ..GameMetadataOverride::default()
+                    }
+                )
+                .is_err()
+        );
     }
 
     #[test]

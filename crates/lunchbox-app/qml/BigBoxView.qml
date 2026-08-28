@@ -655,6 +655,7 @@ Item {
                 required property int index
                 required property string gameId
                 required property string gameTitle
+                required property string gameCanonicalTitle
                 required property string gamePlatform
                 required property string gameStatus
                 required property bool gameLocal
@@ -670,15 +671,17 @@ Item {
                 height: shelf.height - 8
 
                 function requestArtwork() {
-                    view.library.request_artwork(gameDatabaseId, gameTitle,
+                    view.library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                                  gamePlatform, "box-front")
                 }
 
                 Component.onCompleted: requestArtwork()
                 onGameDatabaseIdChanged: requestArtwork()
+                onGameCanonicalTitleChanged: requestArtwork()
                 onArtworkRevisionChanged: requestArtwork()
 
                 Rectangle {
+                    id: coverCard
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: gameTile.current ? 10 : 18
@@ -697,8 +700,8 @@ Item {
                     Behavior on scale { NumberAnimation { duration: 90 } }
 
                     gradient: Gradient {
-                        GradientStop { position: 0; color: Qt.lighter(parent.color, 1.15) }
-                        GradientStop { position: 1; color: Qt.darker(parent.color, 1.6) }
+                        GradientStop { position: 0; color: Qt.lighter(coverCard.color, 1.15) }
+                        GradientStop { position: 1; color: Qt.darker(coverCard.color, 1.6) }
                     }
                     Image {
                         id: tileCover

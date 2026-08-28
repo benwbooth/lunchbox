@@ -48,6 +48,7 @@ pub struct Filter {
     pub collection_game_ids: Arc<HashSet<String>>,
     pub collection_game_order: Arc<std::collections::HashMap<String, usize>>,
     pub recent_game_order: Arc<std::collections::HashMap<String, i64>>,
+    pub display_titles: Arc<std::collections::HashMap<String, String>>,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -746,7 +747,12 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         .iter()
         .enumerate()
         .filter(|(_, game)| {
-            (search.is_empty() || game.search_key.contains(&search))
+            (search.is_empty()
+                || game.search_key.contains(&search)
+                || filter
+                    .display_titles
+                    .get(&game.id)
+                    .is_some_and(|title| title.to_lowercase().contains(&search)))
                 && (filter.platform.is_empty() || game.platform == filter.platform)
                 && (!filter.hide_non_retail || !game.non_retail)
                 && (!filter.hide_adult || !game.adult)
@@ -771,7 +777,9 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                 .recent_game_order
                 .get(&right_game.id)
                 .cmp(&filter.recent_game_order.get(&left_game.id))
-                .then_with(|| left_game.title.cmp(&right_game.title))
+                .then_with(|| {
+                    display_title(left_game, filter).cmp(display_title(right_game, filter))
+                })
                 .then_with(|| left_game.id.cmp(&right_game.id))
         });
     } else if filter.availability.starts_with("collection:") {
@@ -782,11 +790,30 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                 .collection_game_order
                 .get(&left_game.id)
                 .cmp(&filter.collection_game_order.get(&right_game.id))
-                .then_with(|| left_game.title.cmp(&right_game.title))
+                .then_with(|| {
+                    display_title(left_game, filter).cmp(display_title(right_game, filter))
+                })
+                .then_with(|| left_game.id.cmp(&right_game.id))
+        });
+    } else if !filter.display_titles.is_empty() {
+        indices.sort_by(|left, right| {
+            let left_game = &catalog.games[*left];
+            let right_game = &catalog.games[*right];
+            display_title(left_game, filter)
+                .to_lowercase()
+                .cmp(&display_title(right_game, filter).to_lowercase())
                 .then_with(|| left_game.id.cmp(&right_game.id))
         });
     }
     indices
+}
+
+fn display_title<'a>(game: &'a Game, filter: &'a Filter) -> &'a str {
+    filter
+        .display_titles
+        .get(&game.id)
+        .map(String::as_str)
+        .unwrap_or(&game.title)
 }
 
 #[cfg(test)]
@@ -864,6 +891,38 @@ mod tests {
             ),
             vec![1, 0]
         );
+    }
+
+    #[test]
+    fn display_title_overrides_are_searchable_and_sortable_without_replacing_identity() {
+        let catalog = fixture_catalog();
+        let display_titles = Arc::new(std::collections::HashMap::from([
+            ("metroid".to_owned(), "Zebes Adventure".to_owned()),
+            ("outrun".to_owned(), "Arcade Racer".to_owned()),
+        ]));
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    search: "zebes".into(),
+                    display_titles: Arc::clone(&display_titles),
+                    ..Filter::default()
+                }
+            ),
+            vec![0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    display_titles,
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+        assert_eq!(catalog.games[0].title, "Metroid");
+        assert_eq!(catalog.games[0].id, "metroid");
     }
 
     #[test]

@@ -83,6 +83,15 @@ Lunchbox-owned torrent after every selected file in that bundle has imported.
 The pause request is non-destructive, survives restart when deferred, and
 retries automatically when qBittorrent is temporarily unavailable.
 
+The details header also opens a native metadata editor for display title,
+description, release date, developer, publisher, genre, players, rating, age
+rating, release type, and personal notes. Edits are durable per stable game UUID
+in the writable profile database and immediately update desktop search, sorting,
+collections, details, and couch mode. The canonical title, platform, provider
+links, ROM identity, and file records remain read-only and continue to drive
+Minerva matching, artwork lookup, downloads, activity, and launching. Restoring
+catalog values removes the local overlay instead of rewriting source data.
+
 The Minerva Laserdisc Collection is handled as machine media instead of a
 single guessed file. Exact-title records from the pinned canonical LibRetro
 MAME data provide reviewed set-name evidence. The MAME source view selects the

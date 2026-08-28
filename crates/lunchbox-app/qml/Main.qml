@@ -13,12 +13,12 @@ ApplicationWindow {
     width: bigBoxUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
-           || variantUiProbe
+           || variantUiProbe || metadataUiProbe
            ? 1920 : 1440
     height: bigBoxUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
-            || variantUiProbe
+            || variantUiProbe || metadataUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -123,6 +123,7 @@ ApplicationWindow {
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
     readonly property bool bigBoxUiProbe: Qt.application.arguments.indexOf("--bigbox-ui-probe") >= 0
+    readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
     readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
     readonly property bool favoriteProbe: Qt.application.arguments.indexOf("--favorite-probe") >= 0
     readonly property bool favoriteUiProbe: Qt.application.arguments.indexOf("--favorite-ui-probe") >= 0
@@ -178,6 +179,8 @@ ApplicationWindow {
     readonly property string screenshotOutput: root.argumentValue("--screenshot-output")
     property bool variantProbeSwitched: false
     property string variantProbeExpectedId: ""
+    property int metadataProbeStage: 0
+    readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -467,15 +470,17 @@ ApplicationWindow {
     }
 
     function openGame(gameId, databaseId, title, platform, local, downloadable) {
+        const canonicalTitle = library.canonical_title_for_game(gameId)
+        const identityTitle = canonicalTitle.length > 0 ? canonicalTitle : title
         selectedGameId = gameId
         selectedDatabaseId = databaseId
         selectedBox3d = false
         selectedHeroArtworkIndex = 0
-        library.request_artwork(databaseId, title, platform, library.artwork_type)
-        library.request_artwork(databaseId, title, platform, "fanart")
-        library.request_artwork(databaseId, title, platform, "box-front")
+        library.request_artwork(databaseId, identityTitle, platform, library.artwork_type)
+        library.request_artwork(databaseId, identityTitle, platform, "fanart")
+        library.request_artwork(databaseId, identityTitle, platform, "box-front")
         refreshSelectedArtwork()
-        gameDetails.select_game(gameId, title, platform, local, downloadable)
+        gameDetails.select_game(gameId, identityTitle, platform, local, downloadable)
     }
 
     function openVariant(index) {
@@ -969,6 +974,13 @@ ApplicationWindow {
             if (library.ready) {
                 if (library.catalog_probe)
                     Qt.quit()
+                else if (root.metadataUiProbe) {
+                    console.warn("LUNCHBOX_METADATA_UI_STAGE catalog-ready")
+                    root.metadataProbeStage = -1
+                    searchField.text = root.metadataProbeTitle
+                    library.apply_filter(searchField.text,
+                                         "Nintendo Entertainment System", "")
+                }
                 else if (root.bigBoxUiProbe) {
                     root.selectedGameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
                     library.apply_filter("Super Mario Bros.",
@@ -1028,6 +1040,18 @@ ApplicationWindow {
         function onFilteringChanged() {
             if (library.filter_probe && library.ready && !library.filtering)
                 Qt.quit()
+            else if (root.metadataUiProbe && root.metadataProbeStage === -1
+                     && library.ready && !library.filtering) {
+                if (library.filtered_count !== 0) {
+                    console.error("LUNCHBOX_METADATA_UI_FAILED fresh override already visible")
+                    Qt.exit(2)
+                    return
+                }
+                root.metadataProbeStage = 0
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
+            }
             else if (root.bigBoxUiProbe && library.ready && !library.filtering
                      && !root.bigBoxActive)
                 root.enterBigBox()
@@ -1050,6 +1074,31 @@ ApplicationWindow {
                     if (root.screenshotOutput.length > 0)
                         collectionScreenshotTimer.restart()
                 }
+            }
+            else if (root.metadataUiProbe && root.metadataProbeStage === 3
+                     && library.ready && !library.filtering) {
+                if (library.filtered_count !== 1
+                        || gameDetails.title !== root.metadataProbeTitle
+                        || library.canonical_title_for_game(gameDetails.game_id)
+                           !== "Super Mario Bros.") {
+                    console.error("LUNCHBOX_METADATA_UI_FAILED overlay or canonical identity")
+                    Qt.exit(2)
+                    return
+                }
+                console.warn("LUNCHBOX_METADATA_UI_READY title="
+                             + gameDetails.title + " results="
+                             + library.filtered_count + " screenshot="
+                             + root.screenshotOutput)
+                Qt.quit()
+            }
+        }
+        function onMetadata_revisionChanged() {
+            if (root.metadataUiProbe && root.metadataProbeStage === 2
+                    && library.metadata_revision > 1) {
+                root.metadataProbeStage = 3
+                searchField.text = root.metadataProbeTitle
+                library.apply_filter(searchField.text,
+                                     "Nintendo Entertainment System", "")
             }
         }
         function onMedia_revisionChanged() {
@@ -1160,6 +1209,13 @@ ApplicationWindow {
                     && !gameDetails.loading
                     && gameDetails.title.length > 0)
                 bigBoxScreenshotTimer.restart()
+            if (root.metadataUiProbe && root.metadataProbeStage === 0
+                    && !gameDetails.loading && gameDetails.game_id.length > 0) {
+                console.warn("LUNCHBOX_METADATA_UI_STAGE details-ready title="
+                             + gameDetails.title)
+                root.metadataProbeStage = 1
+                metadataEditorOpenTimer.restart()
+            }
         }
         function onTitleChanged() {
             if (root.bigBoxUiProbe && root.bigBoxActive
@@ -1167,6 +1223,73 @@ ApplicationWindow {
                     && !gameDetails.loading
                     && gameDetails.title.length > 0)
                 bigBoxScreenshotTimer.restart()
+        }
+        function onMetadata_revisionChanged() {
+            library.refresh_metadata()
+            if (root.metadataUiProbe && root.metadataProbeStage === 1)
+                root.metadataProbeStage = 2
+        }
+        function onMetadata_openChanged() {
+            if (!gameDetails.metadata_open && metadataDialog.visible)
+                metadataDialog.close()
+        }
+    }
+
+    Timer {
+        id: metadataEditorOpenTimer
+        interval: 50
+        repeat: false
+        onTriggered: {
+            gameDetails.open_metadata_editor()
+            if (gameDetails.metadata_open)
+                metadataDialog.open()
+            gameDetails.metadata_title = root.metadataProbeTitle
+            gameDetails.metadata_description =
+                    "A local presentation override used to verify durable metadata editing while the canonical catalog identity remains untouched."
+            gameDetails.metadata_genre = "Platformer · Local favorite"
+            gameDetails.metadata_rating = "5.0"
+            gameDetails.metadata_notes =
+                    "Configured for the living-room collection. Minerva matching still uses Super Mario Bros."
+            if (!gameDetails.metadata_open) {
+                console.error("LUNCHBOX_METADATA_UI_FAILED editor did not open")
+                Qt.exit(2)
+                return
+            }
+            metadataScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: metadataScreenshotTimer
+        interval: 650
+        repeat: false
+        onTriggered: {
+            if (!root.metadataUiProbe)
+                return
+            if (!gameDetails.metadata_open) {
+                console.error("LUNCHBOX_METADATA_UI_FAILED editor closed before capture")
+                Qt.exit(2)
+                return
+            }
+            if (!metadataDialog.visible) {
+                console.error("LUNCHBOX_METADATA_UI_FAILED dialog is not visible")
+                Qt.exit(2)
+                return
+            }
+            console.warn("LUNCHBOX_METADATA_UI_STAGE editor-ready")
+            if (root.screenshotOutput.length === 0) {
+                gameDetails.save_metadata()
+                return
+            }
+            metadataDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_METADATA_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                gameDetails.save_metadata()
+            })
         }
     }
 
@@ -2599,6 +2722,40 @@ ApplicationWindow {
         }
     }
 
+    component MetadataField: ColumnLayout {
+        property string label: ""
+        property string value: ""
+        property string placeholder: ""
+        property var fieldValidator: null
+        signal edited(string value)
+        spacing: 5
+
+        Text {
+            Layout.fillWidth: true
+            text: parent.label.toUpperCase()
+            color: root.muted
+            font.pixelSize: 9
+            font.weight: Font.Bold
+            font.letterSpacing: 0.8
+        }
+        TextField {
+            Layout.fillWidth: true
+            text: parent.value
+            placeholderText: parent.placeholder
+            color: root.ink
+            placeholderTextColor: "#637085"
+            selectByMouse: true
+            validator: parent.fieldValidator
+            onTextEdited: parent.edited(text)
+            background: Rectangle {
+                implicitHeight: 40
+                radius: 8
+                color: "#101721"
+                border.color: parent.activeFocus ? root.accent : root.line
+            }
+        }
+    }
+
     component GameGrid: GridView {
         id: grid
         reuseItems: true
@@ -2619,6 +2776,7 @@ ApplicationWindow {
             required property int index
             required property string gameId
             required property string gameTitle
+            required property string gameCanonicalTitle
             required property string gamePlatform
             required property bool gameLocal
             required property bool gameDownloadable
@@ -2646,7 +2804,7 @@ ApplicationWindow {
                 return library.artwork_source(gameDatabaseId, library.artwork_type)
             }
             function requestVisibleArtwork() {
-                library.request_artwork(gameDatabaseId, gameTitle,
+                library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
             }
             function runFavoriteProbe() {
@@ -2681,6 +2839,7 @@ ApplicationWindow {
             }
             onGameDatabaseIdChanged: requestVisibleArtwork()
             onGameTitleChanged: requestVisibleArtwork()
+            onGameCanonicalTitleChanged: requestVisibleArtwork()
             onGamePlatformChanged: requestVisibleArtwork()
             onMediaRevisionChanged: requestVisibleArtwork()
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
@@ -2862,6 +3021,7 @@ ApplicationWindow {
             required property int index
             required property string gameId
             required property string gameTitle
+            required property string gameCanonicalTitle
             required property string gamePlatform
             required property string gameStatus
             required property bool gameLocal
@@ -2884,12 +3044,13 @@ ApplicationWindow {
                 return library.artwork_url(gameDatabaseId, library.artwork_type)
             }
             function requestVisibleArtwork() {
-                library.request_artwork(gameDatabaseId, gameTitle,
+                library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
             }
             Component.onCompleted: requestVisibleArtwork()
             onGameDatabaseIdChanged: requestVisibleArtwork()
             onGameTitleChanged: requestVisibleArtwork()
+            onGameCanonicalTitleChanged: requestVisibleArtwork()
             onGamePlatformChanged: requestVisibleArtwork()
             onMediaRevisionChanged: requestVisibleArtwork()
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
@@ -3552,7 +3713,7 @@ ApplicationWindow {
             }
             RoundButton {
                 id: detailFavoriteButton
-                anchors.right: detailCollectionsButton.left
+                anchors.right: detailMetadataButton.left
                 anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
                 width: 34
@@ -3566,6 +3727,29 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: root.selectedFavorite
                               ? "Remove from Favorites" : "Add to Favorites"
+            }
+            RoundButton {
+                id: detailMetadataButton
+                anchors.right: detailCollectionsButton.left
+                anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                width: 34
+                height: 34
+                text: "✎"
+                flat: true
+                enabled: root.selectedGameId.length > 0
+                         && !gameDetails.loading
+                         && !gameDetails.metadata_busy
+                font.pixelSize: 15
+                onClicked: {
+                    gameDetails.open_metadata_editor()
+                    if (gameDetails.metadata_open)
+                        metadataDialog.open()
+                }
+                ToolTip.visible: hovered
+                ToolTip.text: gameDetails.metadata_has_override
+                              ? "Edit local metadata override"
+                              : "Edit game metadata"
             }
             RoundButton {
                 id: detailCollectionsButton
@@ -11645,6 +11829,393 @@ ApplicationWindow {
                         }
                     }
                     Item { width: 1; height: 14 }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: metadataDialog
+        parent: Overlay.overlay
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(920, root.width - 56)
+        height: Math.min(720, root.height - 56)
+        modal: true
+        padding: 0
+        closePolicy: Popup.NoAutoClose
+        Shortcut {
+            sequence: "Esc"
+            enabled: metadataDialog.visible && !gameDetails.metadata_busy
+            onActivated: gameDetails.close_metadata_editor()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#0e141d"
+            border.color: "#354155"
+            border.width: 1
+        }
+
+        header: Rectangle {
+            implicitHeight: 108
+            color: root.panelRaised
+            radius: 16
+            border.color: root.line
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 16
+                color: parent.color
+            }
+            Column {
+                anchors.left: parent.left
+                anchors.right: closeMetadataDialogButton.left
+                anchors.leftMargin: 24
+                anchors.rightMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 5
+                Text {
+                    text: "EDIT GAME METADATA"
+                    color: root.accent
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.3
+                }
+                Text {
+                    width: parent.width
+                    text: gameDetails.metadata_title.length > 0
+                          ? gameDetails.metadata_title : gameDetails.title
+                    color: root.ink
+                    font.pixelSize: 22
+                    font.weight: Font.Bold
+                    elide: Text.ElideRight
+                }
+                Text {
+                    width: parent.width
+                    text: gameDetails.platform + "  ·  Stable identity and provider matching remain unchanged"
+                    color: root.muted
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+            }
+            RoundButton {
+                id: closeMetadataDialogButton
+                anchors.right: parent.right
+                anchors.rightMargin: 16
+                anchors.top: parent.top
+                anchors.topMargin: 14
+                width: 36
+                height: 36
+                text: "×"
+                flat: true
+                enabled: !gameDetails.metadata_busy
+                font.pixelSize: 20
+                onClicked: gameDetails.close_metadata_editor()
+                ToolTip.visible: hovered
+                ToolTip.text: "Cancel"
+            }
+        }
+
+        contentItem: ScrollView {
+            id: metadataScroll
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+            ColumnLayout {
+                width: metadataScroll.availableWidth
+                spacing: 18
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    Layout.rightMargin: 24
+                    Layout.topMargin: 22
+                    implicitHeight: metadataNotice.implicitHeight + 24
+                    radius: 10
+                    color: gameDetails.metadata_has_override ? "#25251e" : "#151d29"
+                    border.color: gameDetails.metadata_has_override ? "#765d32" : root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 10
+                        Rectangle {
+                            Layout.preferredWidth: 28
+                            Layout.preferredHeight: 28
+                            radius: 8
+                            color: gameDetails.metadata_has_override ? "#4a3821" : "#1b3040"
+                            Text {
+                                anchors.centerIn: parent
+                                text: gameDetails.metadata_has_override ? "✎" : "i"
+                                color: gameDetails.metadata_has_override ? root.accent : root.accentCool
+                                font.pixelSize: 13
+                                font.weight: Font.Bold
+                            }
+                        }
+                        Text {
+                            id: metadataNotice
+                            Layout.fillWidth: true
+                            text: gameDetails.metadata_message
+                            color: "#c3cad6"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                        BusyIndicator {
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            running: gameDetails.metadata_busy
+                            visible: running
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    Layout.rightMargin: 24
+                    spacing: 20
+                    enabled: !gameDetails.metadata_busy
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 5
+                        Layout.alignment: Qt.AlignTop
+                        spacing: 14
+
+                        MetadataField {
+                            id: metadataTitleField
+                            Layout.fillWidth: true
+                            label: "Display title"
+                            value: gameDetails.metadata_title
+                            placeholder: "Required"
+                            onEdited: function(value) { gameDetails.metadata_title = value }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            Text {
+                                Layout.fillWidth: true
+                                text: "DESCRIPTION"
+                                color: root.muted
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                            TextArea {
+                                id: metadataDescriptionField
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 188
+                                text: gameDetails.metadata_description
+                                placeholderText: "Overview, story, or catalog description"
+                                color: root.ink
+                                placeholderTextColor: "#637085"
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                onTextChanged: if (activeFocus)
+                                                   gameDetails.metadata_description = text
+                                background: Rectangle {
+                                    radius: 9
+                                    color: "#101721"
+                                    border.color: parent.activeFocus ? root.accent : root.line
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            Text {
+                                Layout.fillWidth: true
+                                text: "PERSONAL NOTES"
+                                color: root.muted
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                            TextArea {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 116
+                                text: gameDetails.metadata_notes
+                                placeholderText: "Anything useful for this local collection"
+                                color: root.ink
+                                placeholderTextColor: "#637085"
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                onTextChanged: if (activeFocus)
+                                                   gameDetails.metadata_notes = text
+                                background: Rectangle {
+                                    radius: 9
+                                    color: "#101721"
+                                    border.color: parent.activeFocus ? root.accent : root.line
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
+                        color: root.line
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 4
+                        Layout.alignment: Qt.AlignTop
+                        columns: 2
+                        columnSpacing: 12
+                        rowSpacing: 14
+
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Release date"
+                            value: gameDetails.metadata_release_date
+                            placeholder: "YYYY-MM-DD"
+                            onEdited: function(value) { gameDetails.metadata_release_date = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Rating"
+                            value: gameDetails.metadata_rating
+                            placeholder: "0 to 5"
+                            fieldValidator: DoubleValidator { bottom: 0; top: 5; decimals: 1 }
+                            onEdited: function(value) { gameDetails.metadata_rating = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Developer"
+                            value: gameDetails.metadata_developer
+                            placeholder: "Studio or creator"
+                            onEdited: function(value) { gameDetails.metadata_developer = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Publisher"
+                            value: gameDetails.metadata_publisher
+                            placeholder: "Publisher"
+                            onEdited: function(value) { gameDetails.metadata_publisher = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Genre"
+                            value: gameDetails.metadata_genre
+                            placeholder: "Action, Adventure…"
+                            onEdited: function(value) { gameDetails.metadata_genre = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Players"
+                            value: gameDetails.metadata_players
+                            placeholder: "1-4"
+                            onEdited: function(value) { gameDetails.metadata_players = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Age rating"
+                            value: gameDetails.metadata_esrb
+                            placeholder: "E, E10+, T…"
+                            onEdited: function(value) { gameDetails.metadata_esrb = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            label: "Release type"
+                            value: gameDetails.metadata_release_type
+                            placeholder: "Retail, Homebrew…"
+                            onEdited: function(value) { gameDetails.metadata_release_type = value }
+                        }
+
+                        Rectangle {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.topMargin: 4
+                            implicitHeight: identityColumn.implicitHeight + 24
+                            radius: 10
+                            color: "#111923"
+                            border.color: root.line
+                            ColumnLayout {
+                                id: identityColumn
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 5
+                                Text {
+                                    text: "CANONICAL IDENTITY"
+                                    color: root.accentCool
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.8
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: library.canonical_title_for_game(gameDetails.game_id)
+                                    color: root.ink
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: gameDetails.game_id
+                                    color: "#6f7d91"
+                                    font.pixelSize: 9
+                                    elide: Text.ElideMiddle
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Read-only · used for ROM matching, Minerva, artwork, and launch history"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Item { Layout.fillWidth: true; Layout.preferredHeight: 8 }
+            }
+        }
+
+        footer: Rectangle {
+            implicitHeight: 72
+            color: root.panel
+            radius: 16
+            border.color: root.line
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 16
+                color: parent.color
+            }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 22
+                spacing: 10
+                Button {
+                    text: "Restore catalog values"
+                    visible: gameDetails.metadata_has_override
+                    enabled: !gameDetails.metadata_busy
+                    flat: true
+                    onClicked: gameDetails.reset_metadata()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Remove every local override for this game"
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Cancel"
+                    enabled: !gameDetails.metadata_busy
+                    onClicked: gameDetails.close_metadata_editor()
+                }
+                Button {
+                    text: gameDetails.metadata_busy ? "Saving…" : "Save metadata"
+                    highlighted: true
+                    enabled: !gameDetails.metadata_busy
+                             && gameDetails.metadata_title.trim().length > 0
+                    onClicked: gameDetails.save_metadata()
                 }
             }
         }

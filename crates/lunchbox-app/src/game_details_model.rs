@@ -32,6 +32,22 @@ pub mod qobject {
         #[qproperty(QString, esrb)]
         #[qproperty(QString, release_type)]
         #[qproperty(QString, notes)]
+        #[qproperty(bool, metadata_open)]
+        #[qproperty(bool, metadata_busy)]
+        #[qproperty(bool, metadata_has_override)]
+        #[qproperty(QString, metadata_message)]
+        #[qproperty(QString, metadata_title)]
+        #[qproperty(QString, metadata_description)]
+        #[qproperty(QString, metadata_release_date)]
+        #[qproperty(QString, metadata_developer)]
+        #[qproperty(QString, metadata_publisher)]
+        #[qproperty(QString, metadata_genre)]
+        #[qproperty(QString, metadata_players)]
+        #[qproperty(QString, metadata_rating)]
+        #[qproperty(QString, metadata_esrb)]
+        #[qproperty(QString, metadata_release_type)]
+        #[qproperty(QString, metadata_notes)]
+        #[qproperty(i32, metadata_revision)]
         #[qproperty(i32, variant_count)]
         #[qproperty(i32, alternate_title_count)]
         #[qproperty(QString, message)]
@@ -113,6 +129,18 @@ pub mod qobject {
 
         #[qinvokable]
         fn close_panel(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn open_metadata_editor(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn close_metadata_editor(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn save_metadata(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn reset_metadata(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
         fn load_bundle_files(self: Pin<&mut GameDetailsModel>, index: i32);
@@ -281,6 +309,7 @@ use crate::game_details::{
     self, AlternateTitle, GameDetails, GameVariant, MinervaBundle, ReleasePreferences,
     TorrentFileCandidate,
 };
+use crate::settings::{GameMetadata, GameMetadataOverride, SettingsStore};
 
 pub struct GameDetailsModelRust {
     panel_open: bool,
@@ -305,6 +334,22 @@ pub struct GameDetailsModelRust {
     esrb: QString,
     release_type: QString,
     notes: QString,
+    metadata_open: bool,
+    metadata_busy: bool,
+    metadata_has_override: bool,
+    metadata_message: QString,
+    metadata_title: QString,
+    metadata_description: QString,
+    metadata_release_date: QString,
+    metadata_developer: QString,
+    metadata_publisher: QString,
+    metadata_genre: QString,
+    metadata_players: QString,
+    metadata_rating: QString,
+    metadata_esrb: QString,
+    metadata_release_type: QString,
+    metadata_notes: QString,
+    metadata_revision: i32,
     variant_count: i32,
     alternate_title_count: i32,
     message: QString,
@@ -372,6 +417,10 @@ pub struct GameDetailsModelRust {
     emulator_option_count: i32,
     selected_emulator_option: i32,
     detail_revision: i32,
+    canonical_title: String,
+    canonical_metadata: GameMetadata,
+    effective_metadata: GameMetadata,
+    metadata_generation: u64,
     bundles: Vec<MinervaBundle>,
     variants: Vec<GameVariant>,
     alternate_titles: Vec<AlternateTitle>,
@@ -418,6 +467,24 @@ impl Default for GameDetailsModelRust {
             esrb: QString::default(),
             release_type: QString::default(),
             notes: QString::default(),
+            metadata_open: false,
+            metadata_busy: false,
+            metadata_has_override: false,
+            metadata_message: QString::from(
+                "Edits are stored in your profile; catalog identity stays unchanged.",
+            ),
+            metadata_title: QString::default(),
+            metadata_description: QString::default(),
+            metadata_release_date: QString::default(),
+            metadata_developer: QString::default(),
+            metadata_publisher: QString::default(),
+            metadata_genre: QString::default(),
+            metadata_players: QString::default(),
+            metadata_rating: QString::default(),
+            metadata_esrb: QString::default(),
+            metadata_release_type: QString::default(),
+            metadata_notes: QString::default(),
+            metadata_revision: 0,
             variant_count: 0,
             alternate_title_count: 0,
             message: QString::from("Select a game to inspect it."),
@@ -485,6 +552,10 @@ impl Default for GameDetailsModelRust {
             emulator_option_count: 0,
             selected_emulator_option: -1,
             detail_revision: 0,
+            canonical_title: String::new(),
+            canonical_metadata: GameMetadata::default(),
+            effective_metadata: GameMetadata::default(),
+            metadata_generation: 0,
             bundles: Vec::new(),
             variants: Vec::new(),
             alternate_titles: Vec::new(),
@@ -674,6 +745,9 @@ impl qobject::GameDetailsModel {
         local: bool,
         downloadable: bool,
     ) {
+        if has_cli_flag("--metadata-ui-probe") {
+            println!("LUNCHBOX_METADATA_MODEL_SELECT id={}", game_id.to_string());
+        }
         let game_id_string = game_id.to_string();
         let title_string = title.to_string();
         let platform_string = platform.to_string();
@@ -683,6 +757,9 @@ impl qobject::GameDetailsModel {
             self.as_ref().rust().details_generation.wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
             self.as_ref().rust().torrent_generation.wrapping_add(1);
+        self.as_mut().rust_mut().metadata_generation =
+            self.as_ref().rust().metadata_generation.wrapping_add(1);
+        self.as_mut().rust_mut().canonical_title = title_string.clone();
         let generation = self.as_ref().rust().details_generation;
 
         self.as_mut().set_panel_open(true);
@@ -693,6 +770,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_platform(platform);
         self.as_mut().set_local(local);
         self.as_mut().set_downloadable(downloadable);
+        self.as_mut().set_metadata_open(false);
+        self.as_mut().set_metadata_busy(false);
         self.as_mut().clear_details();
         self.as_mut()
             .set_message(qstring("Loading game details and Minerva sources…"));
@@ -727,14 +806,228 @@ impl qobject::GameDetailsModel {
             self.as_ref().rust().details_generation.wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
             self.as_ref().rust().torrent_generation.wrapping_add(1);
+        self.as_mut().rust_mut().metadata_generation =
+            self.as_ref().rust().metadata_generation.wrapping_add(1);
         self.as_mut().set_loading(false);
         self.as_mut().set_torrent_loading(false);
         self.as_mut().set_prepare_busy(false);
         self.as_mut().set_launch_discovery_busy(false);
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_firmware_busy(false);
+        self.as_mut().set_metadata_open(false);
+        self.as_mut().set_metadata_busy(false);
         self.as_mut().rust_mut().pending_firmware_message = None;
         self.as_mut().set_panel_open(false);
+    }
+
+    pub fn open_metadata_editor(mut self: Pin<&mut Self>) {
+        if *self.as_ref().loading()
+            || *self.as_ref().metadata_busy()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        let metadata = self.as_ref().rust().effective_metadata.clone();
+        self.as_mut().set_metadata_title(qstring(&metadata.title));
+        self.as_mut()
+            .set_metadata_description(qstring(&metadata.description));
+        self.as_mut()
+            .set_metadata_release_date(qstring(&metadata.release_date));
+        self.as_mut()
+            .set_metadata_developer(qstring(&metadata.developer));
+        self.as_mut()
+            .set_metadata_publisher(qstring(&metadata.publisher));
+        self.as_mut().set_metadata_genre(qstring(&metadata.genre));
+        self.as_mut()
+            .set_metadata_players(qstring(&metadata.players));
+        self.as_mut().set_metadata_rating(qstring(&metadata.rating));
+        self.as_mut().set_metadata_esrb(qstring(&metadata.esrb));
+        self.as_mut()
+            .set_metadata_release_type(qstring(&metadata.release_type));
+        self.as_mut().set_metadata_notes(qstring(&metadata.notes));
+        self.as_mut().set_metadata_message(qstring(
+            "Only presentation metadata is edited. Stable game identity, platform, provider matches, and files are preserved.",
+        ));
+        self.as_mut().set_metadata_open(true);
+        if has_cli_flag("--metadata-ui-probe") {
+            println!("LUNCHBOX_METADATA_MODEL_OPEN");
+        }
+    }
+
+    pub fn close_metadata_editor(mut self: Pin<&mut Self>) {
+        if has_cli_flag("--metadata-ui-probe") {
+            println!(
+                "LUNCHBOX_METADATA_MODEL_CLOSE busy={}",
+                *self.as_ref().metadata_busy()
+            );
+        }
+        if !*self.as_ref().metadata_busy() {
+            self.as_mut().set_metadata_open(false);
+        }
+    }
+
+    pub fn save_metadata(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().metadata_open() || *self.as_ref().metadata_busy() {
+            return;
+        }
+        let effective = GameMetadata {
+            title: self.as_ref().metadata_title().to_string().trim().to_owned(),
+            description: self
+                .as_ref()
+                .metadata_description()
+                .to_string()
+                .trim()
+                .to_owned(),
+            release_date: self
+                .as_ref()
+                .metadata_release_date()
+                .to_string()
+                .trim()
+                .to_owned(),
+            developer: self
+                .as_ref()
+                .metadata_developer()
+                .to_string()
+                .trim()
+                .to_owned(),
+            publisher: self
+                .as_ref()
+                .metadata_publisher()
+                .to_string()
+                .trim()
+                .to_owned(),
+            genre: self.as_ref().metadata_genre().to_string().trim().to_owned(),
+            players: self
+                .as_ref()
+                .metadata_players()
+                .to_string()
+                .trim()
+                .to_owned(),
+            rating: self
+                .as_ref()
+                .metadata_rating()
+                .to_string()
+                .trim()
+                .to_owned(),
+            esrb: self.as_ref().metadata_esrb().to_string().trim().to_owned(),
+            release_type: self
+                .as_ref()
+                .metadata_release_type()
+                .to_string()
+                .trim()
+                .to_owned(),
+            notes: self.as_ref().metadata_notes().to_string().trim().to_owned(),
+        };
+        self.as_mut().start_metadata_save(effective);
+    }
+
+    pub fn reset_metadata(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().metadata_open() || *self.as_ref().metadata_busy() {
+            return;
+        }
+        let canonical = self.as_ref().rust().canonical_metadata.clone();
+        self.as_mut().start_metadata_save(canonical);
+    }
+
+    fn start_metadata_save(mut self: Pin<&mut Self>, effective: GameMetadata) {
+        let canonical = self.as_ref().rust().canonical_metadata.clone();
+        let metadata_override = GameMetadataOverride::from_effective(&canonical, &effective);
+        if let Err(error) = metadata_override.validate() {
+            self.as_mut()
+                .set_metadata_message(qstring(format!("Could not save metadata: {error}")));
+            return;
+        }
+        self.as_mut().rust_mut().metadata_generation =
+            self.as_ref().rust().metadata_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().metadata_generation;
+        let game_uid = self.as_ref().game_id().to_string();
+        let launchbox_db_id = self.as_ref().rust().database_id;
+        let canonical_title = self.as_ref().rust().canonical_title.clone();
+        let platform = self.as_ref().platform().to_string();
+        self.as_mut().set_metadata_busy(true);
+        self.as_mut()
+            .set_metadata_message(qstring("Saving local metadata…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let saved_override = metadata_override.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-metadata-save".into())
+            .spawn(move || {
+                let result = SettingsStore::open_default()
+                    .and_then(|store| {
+                        store.save_game_metadata_override(
+                            &game_uid,
+                            launchbox_db_id,
+                            &canonical_title,
+                            &platform,
+                            &metadata_override,
+                        )
+                    })
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_metadata_save(
+                        generation,
+                        effective,
+                        saved_override,
+                        result,
+                    );
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_metadata_busy(false);
+            self.as_mut()
+                .set_metadata_message(qstring(format!("Could not start metadata save: {error}")));
+        }
+    }
+
+    fn finish_metadata_save(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        effective: GameMetadata,
+        metadata_override: GameMetadataOverride,
+        result: Result<(), String>,
+    ) {
+        if generation != self.as_ref().rust().metadata_generation {
+            return;
+        }
+        self.as_mut().set_metadata_busy(false);
+        match result {
+            Ok(()) => {
+                let reset = metadata_override.is_empty();
+                self.as_mut().rust_mut().effective_metadata = effective.clone();
+                self.as_mut().set_title(qstring(&effective.title));
+                self.as_mut()
+                    .set_description(qstring(&effective.description));
+                self.as_mut()
+                    .set_release_date(qstring(format_release_date(&effective.release_date)));
+                self.as_mut().set_developer(qstring(&effective.developer));
+                self.as_mut().set_publisher(qstring(&effective.publisher));
+                self.as_mut().set_genre(qstring(&effective.genre));
+                self.as_mut().set_players(qstring(&effective.players));
+                self.as_mut().set_rating(qstring(&effective.rating));
+                self.as_mut().set_esrb(qstring(&effective.esrb));
+                self.as_mut()
+                    .set_release_type(qstring(&effective.release_type));
+                self.as_mut().set_notes(qstring(&effective.notes));
+                self.as_mut().set_metadata_has_override(!reset);
+                self.as_mut().set_metadata_message(qstring(if reset {
+                    "Restored canonical catalog metadata."
+                } else {
+                    "Saved local metadata without changing canonical identity."
+                }));
+                self.as_mut().set_message(qstring(if reset {
+                    "Canonical catalog metadata restored."
+                } else {
+                    "Local metadata saved. Downloads and matching still use canonical identity."
+                }));
+                self.as_mut().set_metadata_open(false);
+                let revision = self.as_ref().metadata_revision().wrapping_add(1);
+                self.as_mut().set_metadata_revision(revision);
+                self.as_mut().bump_revision();
+            }
+            Err(error) => self
+                .as_mut()
+                .set_metadata_message(qstring(format!("Could not save metadata: {error}"))),
+        }
     }
 
     fn clear_details(mut self: Pin<&mut Self>) {
@@ -847,6 +1140,7 @@ impl qobject::GameDetailsModel {
                 let prepared_install = details.prepared_install.clone();
                 let local_file_count = details.local_file_paths.len();
                 let local_file_paths = details.local_file_paths.clone();
+                self.as_mut().set_title(qstring(&details.title));
                 self.as_mut().set_description(qstring(&details.description));
                 self.as_mut()
                     .set_release_date(qstring(format_release_date(&details.release_date)));
@@ -859,6 +1153,15 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
                 self.as_mut().set_notes(qstring(&details.notes));
+                let has_override = !GameMetadataOverride::from_effective(
+                    &details.canonical_metadata,
+                    &details.effective_metadata,
+                )
+                .is_empty();
+                self.as_mut().set_metadata_has_override(has_override);
+                self.as_mut().rust_mut().canonical_title = details.canonical_metadata.title.clone();
+                self.as_mut().rust_mut().canonical_metadata = details.canonical_metadata.clone();
+                self.as_mut().rust_mut().effective_metadata = details.effective_metadata.clone();
                 let variant_count = details.variants.len();
                 self.as_mut().rust_mut().variants = details.variants.clone();
                 self.as_mut().set_variant_count(count_i32(variant_count));
@@ -1056,7 +1359,7 @@ impl qobject::GameDetailsModel {
         let game_id = self.as_ref().game_id().to_string();
         let completed_game_id = game_id.clone();
         let database_id = self.as_ref().rust().database_id;
-        let title = self.as_ref().title().to_string();
+        let title = self.as_ref().rust().canonical_title.clone();
         let platform = self.as_ref().platform().to_string();
         self.as_mut().set_manual_action_busy(true);
         self.as_mut()
@@ -1163,7 +1466,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut().apply_manual_transfer(Some(refresh.transfer));
                 if published {
                     let game_id = self.as_ref().game_id().clone();
-                    let title = self.as_ref().title().clone();
+                    let title = qstring(&self.as_ref().rust().canonical_title);
                     let platform = self.as_ref().platform().clone();
                     let local = *self.as_ref().local();
                     let downloadable = *self.as_ref().downloadable();
@@ -1307,7 +1610,7 @@ impl qobject::GameDetailsModel {
         }
         let previous = self.as_ref().completion_state().to_string();
         let game_id = self.as_ref().game_id().to_string();
-        let title = self.as_ref().title().to_string();
+        let title = self.as_ref().rust().canonical_title.clone();
         let platform = self.as_ref().platform().to_string();
         let database_id = self.as_ref().rust().database_id;
         let generation = self.as_ref().rust().details_generation;
@@ -1469,7 +1772,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().torrent_generation =
             self.as_ref().rust().torrent_generation.wrapping_add(1);
         let generation = self.as_ref().rust().torrent_generation;
-        let title = self.as_ref().title().to_string();
+        let title = self.as_ref().rust().canonical_title.clone();
         let alternate_titles = self.as_ref().rust().alternate_titles.clone();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_file_count(0);
@@ -1556,7 +1859,7 @@ impl qobject::GameDetailsModel {
         let game_id = self.as_ref().game_id().to_string();
         let completed_game_id = game_id.clone();
         let launchbox_db_id = self.as_ref().rust().database_id;
-        let title = self.as_ref().title().to_string();
+        let title = self.as_ref().rust().canonical_title.clone();
         let platform = self.as_ref().platform().to_string();
         self.as_mut().set_download_busy(true);
         let queue_message = match file.download_plan.as_ref() {
@@ -2610,7 +2913,7 @@ impl qobject::GameDetailsModel {
             self.as_ref().rust().launch_generation.wrapping_add(1);
         let generation = self.as_ref().rust().launch_generation;
         let game_id = self.as_ref().game_id().to_string();
-        let activity_title = self.as_ref().title().to_string();
+        let activity_title = self.as_ref().rust().canonical_title.clone();
         let activity_platform = self.as_ref().platform().to_string();
         let activity_database_id = self.as_ref().rust().database_id;
         let rom_probe = is_local_launch_probe();
@@ -3187,7 +3490,8 @@ impl qobject::GameDetailsModel {
                 if !file.version.is_empty() {
                     details.push(file.version.clone());
                 }
-                if !file.matched_title.is_empty() && file.matched_title != self.title().to_string()
+                if !file.matched_title.is_empty()
+                    && file.matched_title != self.rust().canonical_title
                 {
                     details.push(format!("matched as {}", file.matched_title));
                 }

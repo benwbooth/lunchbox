@@ -288,6 +288,18 @@ persists it through the native Qt action, prints `LUNCHBOX_FAVORITE_READY_MS`,
 and exits only after the worker reports success. `--favorite-ui-probe` leaves
 the same grid, star affordance, and details pane open for visual inspection.
 
+Game metadata edits are nullable local overlays keyed only by stable game UUID
+in the writable state database. The immutable catalog title and platform remain
+the inputs to provider lookup, acquisition, artwork, launch history, and ROM
+identity; only presentation, search, sorting, smart title rules, details, and
+couch-mode labels consume the effective overlay. Empty editable fields can be
+cleared explicitly, while saving values identical to the catalog removes those
+columns and restoring the catalog deletes the row. `--metadata-ui-probe
+--state-database EMPTY_PATH --screenshot-output ABSOLUTE_PATH` first proves the
+custom title is absent, edits the exact Super Mario Bros. UUID through the real
+native dialog, persists it off-thread, refreshes the library, proves the custom
+title is searchable, and asserts that the canonical title is still unchanged.
+
 `--collection-probe --state-database EMPTY_PATH` creates a named collection,
 adds a real catalog game by stable UUID, applies the native collection filter,
 and exits only after persistence succeeds. Reusing the state path verifies that

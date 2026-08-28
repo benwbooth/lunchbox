@@ -91,6 +91,7 @@ impl SmartCollectionRules {
         self.matches_with_title_needle(game, favorites, completion_states, &title_needle)
     }
 
+    #[cfg(test)]
     pub(crate) fn matches_with_title_needle(
         &self,
         game: &Game,
@@ -98,13 +99,31 @@ impl SmartCollectionRules {
         completion_states: &HashMap<String, String>,
         title_needle: &str,
     ) -> bool {
+        self.matches_with_display_title(
+            game,
+            favorites,
+            completion_states,
+            title_needle,
+            &game.title,
+        )
+    }
+
+    pub(crate) fn matches_with_display_title(
+        &self,
+        game: &Game,
+        favorites: &HashSet<String>,
+        completion_states: &HashMap<String, String>,
+        title_needle: &str,
+        display_title: &str,
+    ) -> bool {
+        let canonical_title = game
+            .search_key
+            .split_once('\n')
+            .map(|(title, _)| title)
+            .unwrap_or(&game.search_key);
         let title_matches = title_needle.is_empty()
-            || game
-                .search_key
-                .split_once('\n')
-                .map(|(title, _)| title)
-                .unwrap_or(&game.search_key)
-                .contains(title_needle);
+            || canonical_title.contains(title_needle)
+            || display_title.to_lowercase().contains(title_needle);
         let platform_matches = self.platform.is_empty() || game.platform == self.platform;
         let availability_matches = match self.availability.as_str() {
             "installed" => game.local,

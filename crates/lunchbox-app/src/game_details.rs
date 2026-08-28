@@ -42,6 +42,8 @@ pub struct GameDetails {
     pub esrb: String,
     pub release_type: String,
     pub notes: String,
+    pub canonical_metadata: crate::settings::GameMetadata,
+    pub effective_metadata: crate::settings::GameMetadata,
     pub alternate_titles: Vec<AlternateTitle>,
     pub variants: Vec<GameVariant>,
     pub local: bool,
@@ -147,6 +149,7 @@ pub fn load(
         load_local_only_details(&mut details, local_file_id, &state_path)?;
         load_prepared_state(&mut details)?;
         load_supplemental_media(&mut details)?;
+        apply_metadata_override(&mut details)?;
         return Ok(details);
     }
 
@@ -226,7 +229,58 @@ pub fn load(
     }
     load_prepared_state(&mut details)?;
     load_supplemental_media(&mut details)?;
+    apply_metadata_override(&mut details)?;
     Ok(details)
+}
+
+fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
+    let canonical = crate::settings::GameMetadata {
+        title: details.title.clone(),
+        description: details.description.clone(),
+        release_date: editable_release_date(&details.release_date),
+        developer: details.developer.clone(),
+        publisher: details.publisher.clone(),
+        genre: details.genre.clone(),
+        players: details.players.clone(),
+        rating: details.rating.clone(),
+        esrb: details.esrb.clone(),
+        release_type: details.release_type.clone(),
+        notes: details.notes.clone(),
+    };
+    let metadata_override = crate::settings::SettingsStore::open_default()?
+        .game_metadata_override(&details.id)
+        .context("loading local game metadata overrides")?;
+    let effective = metadata_override.apply(&canonical);
+    details.title.clone_from(&effective.title);
+    details.description.clone_from(&effective.description);
+    details.release_date.clone_from(&effective.release_date);
+    details.developer.clone_from(&effective.developer);
+    details.publisher.clone_from(&effective.publisher);
+    details.genre.clone_from(&effective.genre);
+    details.players.clone_from(&effective.players);
+    details.rating.clone_from(&effective.rating);
+    details.esrb.clone_from(&effective.esrb);
+    details.release_type.clone_from(&effective.release_type);
+    details.notes.clone_from(&effective.notes);
+    details.canonical_metadata = canonical;
+    details.effective_metadata = effective;
+    Ok(())
+}
+
+fn editable_release_date(value: &str) -> String {
+    let value = value.trim();
+    if value.len() >= 10
+        && value.as_bytes().get(4) == Some(&b'-')
+        && value.as_bytes().get(7) == Some(&b'-')
+        && value.as_bytes()[..10]
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+    {
+        value[..10].to_owned()
+    } else {
+        value.to_owned()
+    }
 }
 
 const MAX_GAME_VARIANTS: usize = 500;
@@ -1631,6 +1685,16 @@ mod tests {
             version: String::new(),
             download_plan: None,
         }
+    }
+
+    #[test]
+    fn metadata_editor_uses_a_portable_date_without_creating_a_timezone_override() {
+        assert_eq!(
+            editable_release_date("1985-09-13T00:00:00+00:00"),
+            "1985-09-13"
+        );
+        assert_eq!(editable_release_date("1994"), "1994");
+        assert_eq!(editable_release_date("September 1985"), "September 1985");
     }
 
     #[test]
