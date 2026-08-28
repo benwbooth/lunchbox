@@ -63,7 +63,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   discovery, optional SHA-1/MD5 identity verification, cancellable streaming
   progress, searchable/sortable review, bulk/per-file selection, idempotent
   persistence, lossless native paths, and immediate My Collection/Minerva
-  availability updates. ZIP members are reviewed and hashed independently;
+  availability updates. ZIP and 7z members are reviewed and hashed independently;
   multi-member archives select nothing automatically, while explicit member
   imports are digest-revalidated and materialized atomically with exact source
   provenance. Unmatched and ambiguous files remain local-only.

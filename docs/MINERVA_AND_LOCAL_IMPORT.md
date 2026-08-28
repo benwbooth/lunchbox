@@ -87,15 +87,17 @@ review. Titles and directory names are never fuzzy-accepted.
 A completed rescan marks disappeared paths as `missing`; it does not delete their history or user
 metadata. A changed file at the same path is relinked to its new content-addressed artifact.
 
-The desktop scanner handles ZIP members without extracting during review: it
-enumerates contained paths, rejects unsafe, encrypted, nested-archive, and
+The desktop scanner handles ZIP and 7z members without extracting during review:
+it enumerates contained paths, rejects unsafe, encrypted, nested-archive, and
 metadata entries, then streams every safe recognized ROM member through the same
-CRC32/MD5/SHA-1 pipeline. A sole member retains the original ZIP as its launch
-path. A ZIP with multiple recognized members exposes separate rows but selects
-none automatically, protecting multi-file arcade sets from accidental splitting.
-When the user explicitly selects members, Lunchbox reopens the archive, verifies
-the reviewed size and digests, atomically materializes each member under a
-SHA-256 content directory, and preserves lossless source-archive plus exact-member
-provenance in the state database. 7z/RAR member inspection remains separate work.
+CRC32/MD5/SHA-1 pipeline. A sole member retains the original archive as its launch
+path. An archive with multiple recognized members exposes separate rows but
+selects none automatically, protecting multi-file arcade sets from accidental
+splitting. When the user explicitly selects members, Lunchbox reopens the
+archive, verifies the reviewed size and digests, atomically materializes each
+member under a SHA-256 content directory, and preserves lossless source-archive
+plus exact-member provenance in the state database. 7z decoding is implemented
+in Rust and requires no host 7z executable. RAR member inspection remains
+separate work.
 The canonical `scan-local` data command still inventories archives as container
 artifacts rather than silently treating members as games.

@@ -189,14 +189,14 @@ and reapplies the current search and platform filters after ingestion.
 supported files off the GUI thread, streams progress, can be cancelled during
 large-file hashing, and presents a searchable, sortable review table. Unique
 SHA-1/MD5 matches are selected by default; filenames never establish identity.
-For ZIPs containing exactly one recognized ROM, the scanner streams that member
-without extracting it and hashes the emulated bytes, while retaining the original
-archive as the local launch path. The review row shows the container and member
-separately. ZIPs with multiple recognized ROMs expose one checksum-identified row
-per safe member but select none automatically, because an arcade set or another
-multi-file game must not be split by guesswork. Explicitly selected members are
-revalidated, materialized atomically into a content-addressed owned cache, and
-recorded with the exact source archive and member provenance.
+For ZIP or 7z archives containing exactly one recognized ROM, the scanner streams
+that member without extracting it and hashes the emulated bytes, while retaining
+the original archive as the local launch path. The review row shows the container
+and member separately. Archives with multiple recognized ROMs expose one
+checksum-identified row per safe member but select none automatically, because an
+arcade set or another multi-file game must not be split by guesswork. Explicitly
+selected members are revalidated, materialized atomically into a content-addressed
+owned cache, and recorded with the exact source archive and member provenance.
 Users can also include ambiguous or unmatched files, which remain visible as
 honest local-only entries in `My Collection` without suppressing an unrelated
 Minerva game. Imports and rescans are idempotent, retain missing-path history,

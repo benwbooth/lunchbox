@@ -632,7 +632,10 @@ impl qobject::LocalImportModel {
                     }
                     MatchState::InventoryOnly => {
                         if result.archive_member_count > 0 {
-                            "ZIP member checksums disabled · local inventory only".to_owned()
+                            format!(
+                                "{} member checksums disabled · local inventory only",
+                                local_import::archive_kind_label(&result.path)
+                            )
                         } else {
                             "Checksums disabled · local inventory only".to_owned()
                         }
