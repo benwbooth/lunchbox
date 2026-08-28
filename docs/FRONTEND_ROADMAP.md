@@ -45,6 +45,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   cooperative cancellation, atomic publication, reuse, and details-panel
   status/retry behavior are complete. Emulator launch remains separate
   emulator-management work.
+- MAME, Hypseus Singe, and Daphne views of Minerva's shared Laserdisc
+  Collection produce strict machine-layout plans. Canonical LibRetro MAME
+  records provide exact-title set names; plans require the complete ROM/CHD or
+  ROM/framefile/data/video/audio bundle, expose every member for review, select
+  only those torrent files, and ingest into launchable MAME or
+  Hypseus-compatible paths. Valid metadata has a bounded OS-native disk cache,
+  while one decoded file index is reused across the active source views.
 - Native qBittorrent settings and connection testing, operating-system
   credential storage, exact reviewed-file priority, optional whole-torrent
   mode, a restart-safe queue with pause/resume/cancel, and verified completed
@@ -85,9 +92,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
 - Complete game-level offer selection beyond the implemented exact-file,
-  whole-torrent, generic optical-set, and eXo archive-set paths: free-space
-  enforcement, arcade laserdisc layouts, and broader duplicate
-  avoidance. Extend the implemented primary-region choice into the legacy
+  whole-torrent, generic optical-set, eXo archive-set, and arcade-laserdisc
+  paths: free-space enforcement and broader duplicate avoidance. Extend the
+  implemented primary-region choice into the legacy
   arbitrary fallback-order editor when variant-rich catalog browsing lands.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe
   record/history cleanup, and durable post-import pause policy with explicit
@@ -125,7 +132,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   retain the legacy bounded direct-file contract.
 - Managed downloads, updates, version pinning, core management, BIOS checks,
   and command preview.
-- Dedicated Daphne acquisition, TeknoParrot, and non-eXo PC launch profiles.
+- Dedicated Daphne runtime, TeknoParrot, and non-eXo PC launch profiles.
 - Controller detection and mapping, pre-launch validation, process supervision,
   pause/resume, clean shutdown, and play-stat recording.
 

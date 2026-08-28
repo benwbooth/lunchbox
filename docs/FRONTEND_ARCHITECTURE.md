@@ -73,6 +73,10 @@ The initial implementation enforces this shape:
   match always wins. Persisted primary-region and latest/original-revision
   choices only order equally strong candidates. The native picker shows the
   parsed region and revision and visually identifies the resulting best match.
+- Bounded torrent bytes are retained in a validated, URL-keyed OS cache for 24
+  hours. The currently inspected torrent also has one decoded file index shared
+  by its source views, so a large multi-platform torrent is not downloaded or
+  expanded repeatedly. All fetch and decode work remains off the Qt thread.
 - Generic optical multi-disc matches become one versioned download plan. Disc,
   disk, CD, side, part, volume and card markers support numeric, alphabetic and
   common Roman forms; the planner chooses one runnable primary per disc and
@@ -92,6 +96,17 @@ The initial implementation enforces this shape:
   idempotently below `ROM/.lunchbox-pc-archives/INFO_HASH`, so shared dependencies
   can be reused by the later prepared-install pipeline without appearing as
   separate installed games; only the exact primary archive is recorded.
+- Minerva's Laserdisc Collection is planned by machine layout, not fuzzy title
+  score. Exact normalized game titles are joined to the pinned canonical
+  LibRetro MAME records to obtain reviewed set names. MAME plans require one
+  exact ROM ZIP plus its CHD. Hypseus plans require a package ROM, framefile,
+  data, video, and audio; Daphne's `vldp_dl` or `mpeg2` source shape is
+  normalized to the same validated Hypseus `vldp` contract and retains matching
+  RAM files. Incomplete groups fail closed. Persisted plans validate unique
+  torrent indices, unique safe target paths, and exact role cardinality before
+  queueing. qBittorrent selects only reviewed members. Ingestion preflights the
+  full set and stages the real launch layout; leave-in-place mode uses native
+  symlinks so qBittorrent remains the owner of large media files.
 - An installed eXo primary can be prepared from its exact native path on a named
   worker. The source archive set is fingerprinted and expanded below
   `ROM/.lunchbox-pc-cache/installs/COLLECTION/GAME_UID/SIGNATURE`; title metadata
@@ -213,6 +228,10 @@ cards for deterministic visual review against the preserved discovery catalog.
 record, inspects its live Minerva sources, and opens the exact multi-disc review
 dialog when a plan is found. This route verifies real provider filenames,
 aggregate size, playlist naming and dialog layout without starting a download.
+`--laserdisc-ui-probe` opens the preserved Arcade Laserdisc Dragon's Lair
+record, resolves the live MAME/Hypseus/Daphne source views, and opens the first
+strict machine-layout review dialog. It exercises the real canonical MAME
+set-name evidence and current Minerva torrent metadata without queueing data.
 `--exo-archive-ui-probe` opens the preserved MS-DOS Prince of Persia record and
 the live eXo related-archive review dialog. It verifies the canonical default
 game archive, same-name game data, Linux metadata, shared utilities, aggregate

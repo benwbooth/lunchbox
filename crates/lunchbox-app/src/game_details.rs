@@ -1,13 +1,19 @@
-use std::collections::HashSet;
-use std::io::Read;
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use directories::ProjectDirs;
 use lava_torrent::torrent::v1::Torrent;
 use rusqlite::OptionalExtension;
+use sha1::{Digest, Sha1};
 
+use crate::arcade_download::{
+    build_daphne_laserdisc_plans, build_hypseus_laserdisc_plans, build_mame_laserdisc_plans,
+};
 use crate::catalog;
 use crate::download_plan::{
     DownloadPlan, TorrentPlanFile, build_exo_plan, build_optical_plan, exo_primary_priority,
@@ -16,7 +22,10 @@ use crate::exo_install::PreparedInstall;
 
 const MAX_TORRENT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILE_CANDIDATES: usize = 100;
+const TORRENT_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 type TorrentCache = Mutex<Option<(String, Arc<Vec<u8>>)>>;
+type TorrentFileCache = Mutex<Option<(String, Arc<Vec<TorrentPlanFile>>)>>;
+type MameRomsetCache = Mutex<HashMap<(PathBuf, u64, u64, String), Vec<String>>>;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GameDetails {
@@ -361,14 +370,20 @@ fn resolve_minerva_bundles_from_path(
 }
 
 fn explicit_fallback_matches(platform_key: &str, provider_key: &str, collection: &str) -> bool {
+    let platform_key = match platform_key {
+        "arcade-laserdisc" | "arcade-pinball" => "arcade",
+        other => other,
+    };
     match platform_key {
         "atari-800" => provider_key == "atari" && collection == "TOSEC",
         "arcade" => {
-            collection == "MAME"
+            (collection.eq_ignore_ascii_case("MAME")
                 && matches!(
                     provider_key,
                     "roms-merged" | "roms-split" | "roms-non-merged"
-                )
+                ))
+                || (collection.eq_ignore_ascii_case("Laserdisc Collection")
+                    && matches!(provider_key, "mame" | "hypseus-singe" | "daphne"))
         }
         _ => false,
     }
@@ -379,15 +394,67 @@ pub fn load_torrent_files(
     game_title: &str,
     preferences: &ReleasePreferences,
 ) -> Result<Vec<TorrentFileCandidate>> {
-    let bytes = fetch_torrent(&bundle.torrent_url)?;
-    let torrent = Torrent::read_from_bytes(bytes.as_slice())
+    let plan_files = indexed_torrent_files(&bundle.torrent_url)?;
+    let files = plan_files
+        .iter()
+        .map(|file| TorrentFileCandidate {
+            index: file.index,
+            filename: file.filename.clone(),
+            byte_size: file.byte_size,
+            match_score: 0.0,
+            region: String::new(),
+            version: String::new(),
+            download_plan: None,
+        })
+        .collect::<Vec<_>>();
+
+    if bundle
+        .collection
+        .eq_ignore_ascii_case("Laserdisc Collection")
+    {
+        let romset_names = mame_romset_names(game_title)?;
+        let provider_key = catalog::normalize_platform_key(&bundle.provider_platform);
+        let plans = match provider_key.as_str() {
+            "mame" => build_mame_laserdisc_plans(&plan_files, game_title, &romset_names),
+            "hypseus-singe" => {
+                build_hypseus_laserdisc_plans(&plan_files, game_title, &romset_names)
+            }
+            "daphne" => build_daphne_laserdisc_plans(&plan_files, game_title, &romset_names),
+            _ => Vec::new(),
+        };
+        return Ok(machine_plan_candidates(plans, preferences));
+    }
+
+    rank_file_candidates(files, game_title, preferences)
+}
+
+fn indexed_torrent_files(url: &str) -> Result<Arc<Vec<TorrentPlanFile>>> {
+    static CACHE: OnceLock<TorrentFileCache> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cache.lock()
+        && let Some((cached_url, files)) = guard.as_ref()
+        && cached_url == url
+    {
+        return Ok(Arc::clone(files));
+    }
+
+    let bytes = fetch_torrent(url)?;
+    let files = Arc::new(torrent_plan_files_from_bytes(bytes.as_slice())?);
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((url.to_owned(), Arc::clone(&files)));
+    }
+    Ok(files)
+}
+
+fn torrent_plan_files_from_bytes(bytes: &[u8]) -> Result<Vec<TorrentPlanFile>> {
+    let torrent = Torrent::read_from_bytes(bytes)
         .map_err(|error| anyhow::anyhow!("could not parse Minerva torrent metadata: {error}"))?;
-    let files = if let Some(torrent_files) = torrent.files {
+    if let Some(torrent_files) = torrent.files {
         torrent_files
             .iter()
             .enumerate()
             .map(|(index, file)| {
-                Ok(TorrentFileCandidate {
+                Ok(TorrentPlanFile {
                     index,
                     filename: file
                         .path
@@ -397,27 +464,114 @@ pub fn load_torrent_files(
                         .join("/"),
                     byte_size: u64::try_from(file.length)
                         .context("torrent file has a negative byte length")?,
-                    match_score: 0.0,
-                    region: String::new(),
-                    version: String::new(),
-                    download_plan: None,
                 })
             })
-            .collect::<Result<Vec<_>>>()?
+            .collect::<Result<Vec<_>>>()
     } else {
-        vec![TorrentFileCandidate {
+        Ok(vec![TorrentPlanFile {
             index: 0,
             filename: torrent.name,
             byte_size: u64::try_from(torrent.length)
                 .context("torrent payload has a negative byte length")?,
-            match_score: 0.0,
-            region: String::new(),
-            version: String::new(),
-            download_plan: None,
-        }]
-    };
+        }])
+    }
+}
 
-    rank_file_candidates(files, game_title, preferences)
+fn mame_romset_names(game_title: &str) -> Result<Vec<String>> {
+    let Some(path) = catalog::requested_database_path() else {
+        return Ok(Vec::new());
+    };
+    static CACHE: OnceLock<MameRomsetCache> = OnceLock::new();
+    let canonical_path = path.canonicalize().unwrap_or(path);
+    let metadata = canonical_path.metadata().ok();
+    let length = metadata.as_ref().map_or(0, fs::Metadata::len);
+    let modified = metadata
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |duration| duration.as_secs());
+    let title_key = normalized_words(title_without_tags(game_title));
+    let key = (canonical_path.clone(), length, modified, title_key);
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock()
+        && let Some(names) = guard.get(&key)
+    {
+        return Ok(names.clone());
+    }
+
+    let connection = catalog::open_read_only(&canonical_path, "Lunchbox canonical database")?;
+    let names = mame_romset_names_from_connection(&connection, game_title)?;
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(key, names.clone());
+    }
+    Ok(names)
+}
+
+fn mame_romset_names_from_connection(
+    connection: &rusqlite::Connection,
+    game_title: &str,
+) -> Result<Vec<String>> {
+    let query = normalized_words(title_without_tags(game_title));
+    let mut statement = connection.prepare(
+        "SELECT r.title, r.file_name
+         FROM libretro_records r
+         JOIN libretro_databases d ON d.id=r.database_id
+         WHERE d.source_name='MAME'
+           AND r.title IS NOT NULL
+           AND r.file_name IS NOT NULL",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut names = BTreeSet::new();
+    for row in rows {
+        let (provider_title, file_name) = row?;
+        if normalized_words(title_without_tags(&provider_title)) != query {
+            continue;
+        }
+        let path = Path::new(&file_name);
+        if !path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+        {
+            continue;
+        }
+        if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str())
+            && !stem.is_empty()
+        {
+            names.insert(stem.to_ascii_lowercase());
+        }
+    }
+    Ok(names.into_iter().collect())
+}
+
+fn machine_plan_candidates(
+    plans: Vec<DownloadPlan>,
+    preferences: &ReleasePreferences,
+) -> Vec<TorrentFileCandidate> {
+    let mut candidates = plans
+        .into_iter()
+        .filter_map(|plan| {
+            let representative = plan.representative_member()?;
+            let (region, version) = release_labels(&representative.torrent_path);
+            Some(TorrentFileCandidate {
+                index: representative.index,
+                filename: representative.torrent_path.clone(),
+                byte_size: plan.total_bytes(),
+                match_score: 1.0,
+                region,
+                version,
+                download_plan: Some(plan),
+            })
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        release_preference_order(left, right, preferences)
+            .then_with(|| left.byte_size.cmp(&right.byte_size))
+            .then_with(|| left.filename.cmp(&right.filename))
+    });
+    candidates.truncate(MAX_FILE_CANDIDATES);
+    candidates
 }
 
 fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
@@ -429,6 +583,13 @@ fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
         && cached_url == url
     {
         return Ok(Arc::clone(bytes));
+    }
+    if let Some(bytes) = read_cached_torrent(url) {
+        let bytes = Arc::new(bytes);
+        if let Ok(mut guard) = cache.lock() {
+            *guard = Some((url.to_owned(), Arc::clone(&bytes)));
+        }
+        return Ok(bytes);
     }
 
     let encoded_url = url.replace(' ', "%20");
@@ -472,6 +633,11 @@ fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
                 if bytes.len() as u64 > MAX_TORRENT_BYTES {
                     bail!("Minerva torrent metadata exceeds the 64 MiB safety limit");
                 }
+                if Torrent::read_from_bytes(&bytes).is_ok()
+                    && let Some(path) = torrent_cache_path(url)
+                {
+                    let _ = write_torrent_cache_file(&path, &bytes);
+                }
                 let bytes = Arc::new(bytes);
                 if let Ok(mut guard) = cache.lock() {
                     *guard = Some((url.to_owned(), Arc::clone(&bytes)));
@@ -485,6 +651,92 @@ fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
         "could not fetch Minerva torrent metadata from {url}: {}",
         last_error.unwrap_or_else(|| "unknown network error".to_owned())
     ))
+}
+
+fn torrent_cache_path(url: &str) -> Option<PathBuf> {
+    ProjectDirs::from("com", "Lunchbox", "Lunchbox")
+        .map(|dirs| torrent_cache_path_in(dirs.cache_dir(), url))
+}
+
+fn torrent_cache_path_in(cache_root: &Path, url: &str) -> PathBuf {
+    let digest = Sha1::digest(url.as_bytes());
+    cache_root
+        .join("minerva-torrents")
+        .join(format!("{digest:x}.torrent"))
+}
+
+fn read_cached_torrent(url: &str) -> Option<Vec<u8>> {
+    read_torrent_cache_file(&torrent_cache_path(url)?)
+}
+
+fn read_torrent_cache_file(path: &Path) -> Option<Vec<u8>> {
+    let metadata = path.metadata().ok()?;
+    if metadata.len() == 0 || metadata.len() > MAX_TORRENT_BYTES {
+        return None;
+    }
+    let age = SystemTime::now()
+        .duration_since(metadata.modified().ok()?)
+        .unwrap_or_default();
+    if age > TORRENT_CACHE_MAX_AGE {
+        return None;
+    }
+    let bytes = fs::read(path).ok()?;
+    if bytes.len() as u64 != metadata.len() || Torrent::read_from_bytes(&bytes).is_err() {
+        return None;
+    }
+    Some(bytes)
+}
+
+fn write_torrent_cache_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path
+        .parent()
+        .context("Minerva torrent cache path has no parent")?;
+    fs::create_dir_all(parent)
+        .with_context(|| format!("creating Minerva torrent cache {}", parent.display()))?;
+    let temporary = parent.join(format!(
+        ".{}.{}.tmp",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("torrent"),
+        uuid::Uuid::new_v4()
+    ));
+    let result = (|| -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .with_context(|| format!("creating {}", temporary.display()))?;
+        file.write_all(bytes)
+            .with_context(|| format!("writing {}", temporary.display()))?;
+        file.sync_all()
+            .with_context(|| format!("syncing {}", temporary.display()))?;
+        drop(file);
+        match fs::rename(&temporary, path) {
+            Ok(()) => Ok(()),
+            Err(_) if path.is_file() => {
+                fs::remove_file(path)
+                    .with_context(|| format!("replacing stale cache {}", path.display()))?;
+                fs::rename(&temporary, path).with_context(|| {
+                    format!(
+                        "moving Minerva torrent cache {} to {}",
+                        temporary.display(),
+                        path.display()
+                    )
+                })
+            }
+            Err(error) => Err(error).with_context(|| {
+                format!(
+                    "moving Minerva torrent cache {} to {}",
+                    temporary.display(),
+                    path.display()
+                )
+            }),
+        }
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 pub(crate) fn torrent_bytes(bundle: &MinervaBundle) -> Result<Vec<u8>> {
@@ -1033,6 +1285,41 @@ mod tests {
     }
 
     #[test]
+    fn torrent_metadata_cache_is_validated_and_reusable() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = "https://example.test/a collection.torrent";
+        let path = torrent_cache_path_in(directory.path(), url);
+        assert_eq!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("torrent")
+        );
+        assert!(!path.to_string_lossy().contains("a collection"));
+
+        let bytes = Torrent {
+            announce: Some("https://tracker.example/announce".into()),
+            announce_list: None,
+            length: 4,
+            files: None,
+            name: "test.bin".into(),
+            piece_length: 16_384,
+            pieces: vec![vec![0xff; 20]],
+            extra_fields: None,
+            extra_info_fields: None,
+        }
+        .encode()
+        .unwrap();
+        Torrent::read_from_bytes(&bytes).unwrap();
+        let files = torrent_plan_files_from_bytes(&bytes).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].filename, "test.bin");
+        write_torrent_cache_file(&path, &bytes).unwrap();
+        assert_eq!(read_torrent_cache_file(&path).unwrap(), bytes);
+
+        fs::write(&path, b"not a torrent").unwrap();
+        assert!(read_torrent_cache_file(&path).is_none());
+    }
+
+    #[test]
     fn local_only_details_expose_the_real_file_without_inventing_identity() {
         let directory = tempfile::tempdir().unwrap();
         let rom = directory.path().join("Mystery Game.nes");
@@ -1138,6 +1425,86 @@ mod tests {
     }
 
     #[test]
+    fn arcade_laserdisc_source_views_share_one_exact_torrent() {
+        let database = tempfile::NamedTempFile::new().unwrap();
+        let connection = rusqlite::Connection::open(database.path()).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE minerva_torrents (
+                    id INTEGER PRIMARY KEY,
+                    torrent_file TEXT NOT NULL UNIQUE,
+                    torrent_url TEXT NOT NULL,
+                    collection TEXT,
+                    rom_count INTEGER DEFAULT 0,
+                    total_size INTEGER DEFAULT 0
+                );
+                CREATE TABLE minerva_torrent_platforms (
+                    torrent_id INTEGER NOT NULL REFERENCES minerva_torrents(id),
+                    minerva_platform TEXT NOT NULL,
+                    lunchbox_platform_id INTEGER,
+                    lunchbox_platform_name TEXT,
+                    rom_count INTEGER DEFAULT 0,
+                    PRIMARY KEY (torrent_id, minerva_platform)
+                );
+                INSERT INTO minerva_torrents VALUES
+                    (920, 'laserdisc.torrent', 'https://example.test/laserdisc.torrent',
+                     'Laserdisc Collection', 35275, 4815337787382);
+                INSERT INTO minerva_torrent_platforms VALUES
+                    (920, 'MAME', 15, 'Arcade', 52),
+                    (920, 'Hypseus Singe', NULL, NULL, 8681),
+                    (920, 'Daphne', NULL, NULL, 18300);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let bundles = resolve_minerva_bundles_from_path(
+            &GameDetails {
+                platform: "Arcade Laserdisc".into(),
+                ..GameDetails::default()
+            },
+            database.path(),
+        )
+        .unwrap();
+        assert_eq!(bundles.len(), 3);
+        assert!(bundles.iter().all(|bundle| bundle.torrent_id == 920));
+        assert_eq!(
+            bundles
+                .iter()
+                .map(|bundle| bundle.provider_platform.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["Daphne", "Hypseus Singe", "MAME"])
+        );
+    }
+
+    #[test]
+    fn canonical_mame_records_resolve_romsets_without_launchbox_metadata() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE libretro_databases (id INTEGER PRIMARY KEY, source_name TEXT);
+                 CREATE TABLE libretro_records (
+                    database_id INTEGER, title TEXT, file_name TEXT
+                 );
+                 INSERT INTO libretro_databases VALUES (1, 'MAME'), (2, 'MAME 2003');
+                 INSERT INTO libretro_records VALUES
+                    (1, 'Dragon''s Lair', 'dlair.zip'),
+                    (1, 'Dragon''s Lair (US Rev. F)', 'dlairf.zip'),
+                    (1, 'Dragon''s Lair 2: Time Warp (US v3.19)', 'dlair2.zip'),
+                    (2, 'Dragon''s Lair', 'old-dlair.zip'),
+                    (1, 'Space Ace', 'spaceace.zip');",
+            )
+            .unwrap();
+        assert_eq!(
+            mame_romset_names_from_connection(&connection, "Dragon's Lair").unwrap(),
+            vec!["dlair", "dlairf"]
+        );
+        assert_eq!(
+            mame_romset_names_from_connection(&connection, "Dragon's Lair II: Time Warp").unwrap(),
+            vec!["dlair2"]
+        );
+    }
+
+    #[test]
     #[ignore = "requires local discovery/Minerva databases and network access"]
     fn live_minerva_metadata_contains_ranked_game_candidate() {
         let discovery_path = catalog::requested_discovery_database_path()
@@ -1221,5 +1588,47 @@ mod tests {
         assert!(!primary_path.to_ascii_lowercase().contains("/!polish/"));
         assert!(!primary_path.to_ascii_lowercase().contains("/!spanish/"));
         assert!(plan.members.iter().any(|member| member.role == "metadata"));
+    }
+
+    #[test]
+    #[ignore = "requires local discovery/Minerva/canonical databases and network access"]
+    fn live_minerva_metadata_builds_dragons_lair_machine_layouts() {
+        let details = load(
+            "ffecdc12-bc0f-459c-a0b7-4ee856e14f9e",
+            "Dragon's Lair",
+            "Arcade Laserdisc",
+            false,
+            true,
+        )
+        .unwrap();
+        let laserdisc_bundles = details
+            .bundles
+            .iter()
+            .filter(|bundle| {
+                bundle
+                    .collection
+                    .eq_ignore_ascii_case("Laserdisc Collection")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(laserdisc_bundles.len(), 3);
+
+        let mut has_mame = false;
+        let mut has_hypseus = false;
+        let mut has_daphne = false;
+        for bundle in laserdisc_bundles {
+            let files =
+                load_torrent_files(bundle, &details.title, &preferences("USA", "latest")).unwrap();
+            for plan in files
+                .into_iter()
+                .filter_map(|candidate| candidate.download_plan)
+            {
+                has_mame |= plan.is_arcade_mame_layout();
+                has_hypseus |= plan.is_arcade_hypseus_layout();
+                has_daphne |= plan.is_arcade_daphne_layout();
+            }
+        }
+        assert!(has_mame);
+        assert!(has_hypseus);
+        assert!(has_daphne);
     }
 }

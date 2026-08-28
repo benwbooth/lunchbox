@@ -46,8 +46,10 @@ contents, where title matches are presented as review candidates rather than
 silently accepted identities. Persisted region and release-version preferences
 rank otherwise equal candidates; the picker still exposes the exact region,
 revision, filename, size, and match quality before download. A reviewed file
-can be sent to qBittorrent from that pane. Multi-disc optical matches collapse
-into one reviewable set that lists every required disc and CUE/CCD/MDS/GDI
+can be sent to qBittorrent from that pane. Valid torrent metadata is cached in
+the operating system cache directory for 24 hours, and the active torrent's
+decoded file index is shared between source views. Multi-disc optical matches
+collapse into one reviewable set that lists every required disc and CUE/CCD/MDS/GDI
 companion before download, preserves the source layout, and creates an M3U only
 after the full set imports safely. eXoDOS, eXoWin3x, and eXoWin9x matches likewise
 collapse into one reviewed archive set containing the exact game, required
@@ -63,6 +65,16 @@ post-import seeding choice: follow qBittorrent's existing rules, or pause the
 Lunchbox-owned torrent after every selected file in that bundle has imported.
 The pause request is non-destructive, survives restart when deferred, and
 retries automatically when qBittorrent is temporarily unavailable.
+
+The Minerva Laserdisc Collection is handled as machine media instead of a
+single guessed file. Exact-title records from the pinned canonical LibRetro
+MAME data provide reviewed set-name evidence. The MAME source view selects the
+matching ROM ZIP and CHD together; Hypseus and Daphne source views select a ROM,
+framefile, data, video, audio, and any compatible RAM files. Incomplete bundles
+are not offered. The review dialog exposes every exact torrent path and role,
+qBittorrent selects only those members, and ingestion materializes the complete
+MAME or Hypseus-compatible launch layout. Leave-in-place mode keeps the payload
+qBittorrent-owned and links that layout without copying multi-gigabyte media.
 
 Installed eXoDOS, eXoWin3x, and eXoWin9x archives expose a native `PC Install`
 card in game details. Preparation runs off the GUI thread, resolves the exact
@@ -97,8 +109,9 @@ validate their `vldp`/`singe` bundle, ROM directory, and support assets before
 building its native laserdisc argument vector. Known archive-oriented CLI
 emulators (FinalBurn Neo, Flycast, and Supermodel) retain the legacy direct-file
 contract. The MAME Flatpak path has been runtime-verified with MAME's ROM-free
-Pong driver. Daphne acquisition layouts and TeknoParrot remain explicit
-follow-on work.
+Pong driver. A dedicated Daphne runtime profile and TeknoParrot remain explicit
+follow-on work; Daphne-source media already normalizes to the validated
+Hypseus-compatible layout.
 
 Configure qBittorrent and both sides of its filesystem mapping in the native
 Settings dialog. Native paths are chosen with the operating system folder

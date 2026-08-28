@@ -600,19 +600,17 @@ impl qobject::GameDetailsModel {
         let title = self.as_ref().title().to_string();
         let platform = self.as_ref().platform().to_string();
         self.as_mut().set_download_busy(true);
-        self.as_mut().set_message(qstring(
-            if file
-                .download_plan
-                .as_ref()
-                .is_some_and(|plan| plan.is_optical_multidisc())
-            {
+        let queue_message = match file.download_plan.as_ref() {
+            Some(plan) if plan.is_optical_multidisc() => {
                 "Adding the reviewed multi-disc set to qBittorrent…"
-            } else if file.download_plan.is_some() {
-                "Adding the reviewed eXo archive set to qBittorrent…"
-            } else {
-                "Adding the reviewed file to qBittorrent…"
-            },
-        ));
+            }
+            Some(plan) if plan.is_arcade_machine_layout() => {
+                "Adding the reviewed arcade machine layout to qBittorrent…"
+            }
+            Some(_) => "Adding the reviewed eXo archive set to qBittorrent…",
+            None => "Adding the reviewed file to qBittorrent…",
+        };
+        self.as_mut().set_message(qstring(queue_message));
 
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
@@ -1389,8 +1387,10 @@ impl qobject::GameDetailsModel {
                             plan.display_name,
                             plan.disc_count()
                         ))
-                    } else {
+                    } else if plan.is_exo_archive_set() {
                         qstring(format!("{} — eXo archive set", plan.display_name))
+                    } else {
+                        qstring(format!("{} — machine layout", plan.display_name))
                     }
                 } else {
                     qstring(&file.filename)
@@ -1407,11 +1407,20 @@ impl qobject::GameDetailsModel {
                     details.push("BEST MATCH".to_owned());
                 }
                 if let Some(plan) = &file.download_plan {
-                    details.push(if plan.is_optical_multidisc() {
-                        "MULTI-DISC".to_owned()
-                    } else {
-                        "EXO ARCHIVE SET".to_owned()
-                    });
+                    details.push(
+                        if plan.is_optical_multidisc() {
+                            "MULTI-DISC"
+                        } else if plan.is_exo_archive_set() {
+                            "EXO ARCHIVE SET"
+                        } else if plan.is_arcade_mame_layout() {
+                            "MAME ROM + CHD"
+                        } else if plan.is_arcade_hypseus_layout() {
+                            "HYPSEUS BUNDLE"
+                        } else {
+                            "DAPHNE BUNDLE"
+                        }
+                        .to_owned(),
+                    );
                     details.push(format!("{} required files", plan.members.len()));
                 }
                 if !file.region.is_empty() {
@@ -1447,9 +1456,20 @@ impl qobject::GameDetailsModel {
                         game_details::format_bytes(plan.total_bytes()),
                         plan.playlist_filename
                     ))
-                } else {
+                } else if plan.is_exo_archive_set() {
                     qstring(format!(
                         "{} exact archives · {} total · shared dependencies retained for installation",
+                        plan.members.len(),
+                        game_details::format_bytes(plan.total_bytes())
+                    ))
+                } else if plan.is_arcade_mame_layout() {
+                    qstring(format!(
+                        "MAME ROM + CHD · {} total · staged in the exact set-name layout",
+                        game_details::format_bytes(plan.total_bytes())
+                    ))
+                } else {
+                    qstring(format!(
+                        "{} required machine files · {} total · stages a launchable ROM/framefile/media bundle",
                         plan.members.len(),
                         game_details::format_bytes(plan.total_bytes())
                     ))
@@ -1480,6 +1500,26 @@ impl qobject::GameDetailsModel {
                                     "metadata" => "Launch metadata".to_owned(),
                                     "utilities" => "Shared utilities".to_owned(),
                                     _ => "Required archive".to_owned(),
+                                }
+                            } else if plan.is_arcade_machine_layout() {
+                                match member.role.as_str() {
+                                    "mame-rom" => "MAME ROM set".to_owned(),
+                                    "mame-chd" => "Laserdisc CHD".to_owned(),
+                                    role if role.ends_with("-rom") => "Machine ROM".to_owned(),
+                                    role if role.ends_with("-framefile") => {
+                                        "Launch framefile".to_owned()
+                                    }
+                                    role if role.ends_with("-data") => "Frame data".to_owned(),
+                                    role if role.ends_with("-video") => {
+                                        "Laserdisc video".to_owned()
+                                    }
+                                    role if role.ends_with("-audio") => {
+                                        "Laserdisc audio".to_owned()
+                                    }
+                                    role if role.ends_with("-ram") => {
+                                        "Machine RAM image".to_owned()
+                                    }
+                                    _ => "Required machine file".to_owned(),
                                 }
                             } else if member.playlist_entry {
                                 format!("Disc {}", member.disc_index.unwrap_or_default())

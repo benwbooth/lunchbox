@@ -61,6 +61,7 @@ fn ingest_download_plan(
     plan: &DownloadPlan,
 ) -> Result<PathBuf> {
     plan.validate()?;
+    let requires_staged_layout = plan.is_arcade_machine_layout();
     let source_root = plan_source_root(job, plan)?;
     let target_root = if plan.is_optical_multidisc() {
         job.local_target_path
@@ -85,16 +86,22 @@ fn ingest_download_plan(
                     source.display()
                 );
             }
-            let installed = if settings.file_link_mode == "leave_in_place" {
-                source.clone()
-            } else {
-                target_root.join(relative_path(&member.target_relative_path))
-            };
+            let installed =
+                if settings.file_link_mode == "leave_in_place" && !requires_staged_layout {
+                    source.clone()
+                } else {
+                    target_root.join(relative_path(&member.target_relative_path))
+                };
             Ok((member, source, installed))
         })
         .collect::<Result<Vec<_>>>()?;
 
-    if settings.file_link_mode != "leave_in_place" {
+    if settings.file_link_mode != "leave_in_place" || requires_staged_layout {
+        let install_mode = if settings.file_link_mode == "leave_in_place" {
+            "symlink"
+        } else {
+            settings.file_link_mode.as_str()
+        };
         for (_, source, target) in &planned_files {
             if target.exists() && !files_equal(source, target)? {
                 bail!(
@@ -110,7 +117,7 @@ fn ingest_download_plan(
             fs::create_dir_all(parent)
                 .with_context(|| format!("creating ROM directory {}", parent.display()))?;
             if !target.exists() {
-                install_file(&settings.file_link_mode, source, target)?;
+                install_file(install_mode, source, target)?;
             }
         }
     }
@@ -290,6 +297,9 @@ fn create_file_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
 }
 
 fn files_equal(left: &Path, right: &Path) -> Result<bool> {
+    if fs::symlink_metadata(right)?.file_type().is_symlink() {
+        return Ok(left.canonicalize()? == right.canonicalize()?);
+    }
     let left_metadata = left.metadata()?;
     let right_metadata = right.metadata()?;
     if !left_metadata.is_file()
@@ -318,6 +328,7 @@ fn file_sha1(path: &Path) -> Result<[u8; 20]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arcade_download::build_mame_laserdisc_plans;
     use crate::download_plan::{TorrentPlanFile, build_exo_plan, build_optical_plan};
     use crate::settings::NewDownloadJob;
 
@@ -374,6 +385,67 @@ mod tests {
 
         assert!(ingest_completed(&settings, &store, &job).is_err());
         assert_eq!(fs::read(&job.local_target_path).unwrap(), b"existing");
+    }
+
+    #[test]
+    fn mame_machine_plan_stages_rom_and_chd_before_recording_install() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let files = vec![
+            TorrentPlanFile {
+                index: 1,
+                filename: "Minerva_Myrient/Laserdisc Collection/MAME/ROMs/dlair.zip".into(),
+                byte_size: 3,
+            },
+            TorrentPlanFile {
+                index: 2,
+                filename: "Minerva_Myrient/Laserdisc Collection/MAME/CHD/dlair/dlair.chd".into(),
+                byte_size: 3,
+            },
+        ];
+        let plan = build_mame_laserdisc_plans(&files, "Dragon's Lair", &["dlair".into()])
+            .pop()
+            .unwrap();
+        let source_root = directory.path().join("downloads");
+        for (path, contents) in [
+            (&files[0].filename, b"rom".as_slice()),
+            (&files[1].filename, b"chd".as_slice()),
+        ] {
+            let source = source_root.join(path);
+            fs::create_dir_all(source.parent().unwrap()).unwrap();
+            fs::write(source, contents).unwrap();
+        }
+        let target = directory.path().join("roms/Arcade/MAME/roms/dlair.zip");
+        let mut job = job(directory.path());
+        job.game_id = "dragons-lair".into();
+        job.title = "Dragon's Lair".into();
+        job.platform = "Arcade".into();
+        job.torrent_file_index = Some(1);
+        job.torrent_file_path = files[0].filename.clone();
+        job.local_download_path = source_root.join(&files[0].filename);
+        job.local_target_path = target.clone();
+        job.download_plan = serde_json::to_string(&plan).unwrap();
+        let settings = AppSettings {
+            file_link_mode: "copy".into(),
+            ..AppSettings::default()
+        };
+
+        let installed = ingest_completed(&settings, &store, &job).unwrap();
+        assert_eq!(installed, target);
+        assert_eq!(fs::read(&installed).unwrap(), b"rom");
+        assert_eq!(
+            fs::read(
+                directory
+                    .path()
+                    .join("roms/Arcade/MAME/roms/dlair/dlair.chd")
+            )
+            .unwrap(),
+            b"chd"
+        );
+        assert_eq!(
+            ingest_completed(&settings, &store, &job).unwrap(),
+            installed
+        );
     }
 
     fn optical_job(root: &Path) -> (DownloadJob, DownloadPlan) {

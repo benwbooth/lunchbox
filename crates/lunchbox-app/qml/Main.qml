@@ -90,6 +90,7 @@ ApplicationWindow {
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
+    readonly property bool laserdiscUiProbe: Qt.application.arguments.indexOf("--laserdisc-ui-probe") >= 0
     readonly property bool exoPrepareProbe: Qt.application.arguments.indexOf("--exo-prepare-probe") >= 0
     readonly property bool exoPrepareUiProbe: Qt.application.arguments.indexOf("--exo-prepare-ui-probe") >= 0
     readonly property bool exoLaunchProbe: Qt.application.arguments.indexOf("--exo-launch-probe") >= 0
@@ -98,7 +99,7 @@ ApplicationWindow {
     readonly property bool arcadeLaunchProbe: Qt.application.arguments.indexOf("--arcade-launch-probe") >= 0
     readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
-    readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe
+    readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -454,6 +455,16 @@ ApplicationWindow {
                 gameDetails.load_bundle_files(0)
             if (root.downloadPlanUiProbe && gameDetails.bundle_count > 0
                     && gameDetails.selected_bundle < 0) {
+                if (root.laserdiscUiProbe) {
+                    for (let i = 0; i < gameDetails.bundle_count; ++i) {
+                        if (gameDetails.bundle_title_at(i).indexOf(
+                                    "Laserdisc Collection · MAME") === 0) {
+                            root.downloadPlanProbeBundleIndex = i
+                            gameDetails.load_bundle_files(i)
+                            return
+                        }
+                    }
+                }
                 root.downloadPlanProbeBundleIndex = 0
                 gameDetails.load_bundle_files(0)
             }
@@ -473,6 +484,15 @@ ApplicationWindow {
                     ++root.downloadPlanProbeBundleIndex
                     gameDetails.load_bundle_files(root.downloadPlanProbeBundleIndex)
                 }
+            }
+        }
+        function onTorrent_loadingChanged() {
+            if (root.downloadPlanUiProbe && !gameDetails.torrent_loading
+                    && gameDetails.selected_bundle >= 0
+                    && gameDetails.file_count === 0
+                    && root.downloadPlanProbeBundleIndex + 1 < gameDetails.bundle_count) {
+                ++root.downloadPlanProbeBundleIndex
+                gameDetails.load_bundle_files(root.downloadPlanProbeBundleIndex)
             }
         }
         function onPreparableChanged() {
@@ -578,6 +598,9 @@ ApplicationWindow {
             else if (root.exoArchiveUiProbe)
                 root.openGame("0faf424e-bb45-4d5f-b88d-771936a35f8a", 14329,
                               "Prince of Persia", "MS-DOS", false, true)
+            else if (root.laserdiscUiProbe)
+                root.openGame("ffecdc12-bc0f-459c-a0b7-4ee856e14f9e", 33536,
+                              "Dragon's Lair", "Arcade Laserdisc", false, true)
             else if (root.exoPrepareProbe || root.exoPrepareUiProbe
                      || root.exoLaunchProbe)
                 root.openGame("exo-prepare-probe", 0,
@@ -2932,10 +2955,14 @@ ApplicationWindow {
 
     Dialog {
         id: downloadPlanDialog
+        readonly property string planKind: root.pendingDownloadPlanIndex >= 0
+                                           ? gameDetails.file_plan_kind_at(root.pendingDownloadPlanIndex)
+                                           : ""
         modal: true
         anchors.centerIn: parent
         width: Math.min(760, root.width - 48)
-        height: Math.min(620, root.height - 48)
+        height: Math.min(planKind === "arcade_mame_laserdisc" ? 430 : 620,
+                         root.height - 48)
         padding: 20
         closePolicy: Popup.CloseOnEscape
         onClosed: root.pendingDownloadPlanIndex = -1
@@ -2956,9 +2983,11 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 3
                 Text {
-                    text: root.pendingDownloadPlanIndex >= 0
-                          && gameDetails.file_plan_kind_at(root.pendingDownloadPlanIndex) === "optical_multidisc"
-                          ? "REVIEW MULTI-DISC DOWNLOAD" : "REVIEW RELATED DOWNLOAD"
+                    text: downloadPlanDialog.planKind === "optical_multidisc"
+                          ? "REVIEW MULTI-DISC DOWNLOAD"
+                          : downloadPlanDialog.planKind.indexOf("arcade_") === 0
+                            ? "REVIEW ARCADE MACHINE DOWNLOAD"
+                            : "REVIEW RELATED DOWNLOAD"
                     color: root.ink
                     font.pixelSize: 17
                     font.weight: Font.Bold
@@ -2978,10 +3007,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: appSettings.download_entire_torrent
                       ? "Whole-torrent mode is enabled. Lunchbox will download the complete source bundle; switch it off in Settings to select only the required set below."
-                      : root.pendingDownloadPlanIndex >= 0
-                        && gameDetails.file_plan_kind_at(root.pendingDownloadPlanIndex) === "optical_multidisc"
+                      : downloadPlanDialog.planKind === "optical_multidisc"
                         ? "Lunchbox will select every required disc and companion file as one queue item, preserve their relative layout, and publish the M3U playlist only after the complete set is safely imported."
-                        : "Lunchbox will select the exact eXo game, metadata, game-data, and utility archives available for this title as one queue item. Shared dependencies are retained in a per-source cache for later prepared installation."
+                        : downloadPlanDialog.planKind === "arcade_mame_laserdisc"
+                          ? "Lunchbox will select the exact MAME ROM set and laserdisc CHD listed below. After both arrive, it stages the native set-name layout and then marks the game installed."
+                          : downloadPlanDialog.planKind.indexOf("arcade_") === 0
+                          ? "Lunchbox will select only the exact ROM, framefile, machine data, video, and audio members listed below. After every member arrives, it stages the native MAME or Hypseus-compatible layout and then marks the game installed."
+                          : "Lunchbox will select the exact eXo game, metadata, game-data, and utility archives available for this title as one queue item. Shared dependencies are retained in a per-source cache for later prepared installation."
                 color: appSettings.download_entire_torrent ? root.accent : root.muted
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
@@ -3034,7 +3066,9 @@ ApplicationWindow {
                 }
                 Button {
                     text: appSettings.download_entire_torrent
-                          ? "Download whole torrent" : "Download set"
+                          ? "Download whole torrent"
+                          : downloadPlanDialog.planKind.indexOf("arcade_") === 0
+                            ? "Download layout" : "Download set"
                     highlighted: true
                     enabled: root.pendingDownloadPlanIndex >= 0
                              && !gameDetails.download_busy

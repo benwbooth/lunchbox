@@ -593,6 +593,16 @@ fn planned_local_target_path(
             .join(safe_path_component(&plan.display_name))
             .join(&plan.playlist_filename));
     }
+    if let Some(plan) = download_plan
+        && plan.is_arcade_machine_layout()
+    {
+        let representative = plan
+            .representative_member()
+            .context("arcade machine plan representative is missing")?;
+        return Ok(rom_directory.join(safe_path_component(platform)).join(
+            safe_torrent_relative_path(&representative.target_relative_path)?,
+        ));
+    }
     if let Some(plan) = download_plan {
         let representative = plan
             .representative_member()
@@ -834,7 +844,8 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
-    use crate::download_plan::{DownloadPlan, DownloadPlanMember};
+    use crate::arcade_download::build_mame_laserdisc_plans;
+    use crate::download_plan::{DownloadPlan, DownloadPlanMember, TorrentPlanFile};
 
     struct MockResponse {
         body: &'static str,
@@ -1228,6 +1239,36 @@ mod tests {
             PathBuf::from(
                 "/roms/.lunchbox-pc-archives/abc123/eXo/eXoDOS/Prince of Persia (1990).zip"
             )
+        );
+    }
+
+    #[test]
+    fn arcade_machine_plan_targets_the_platform_launch_layout() {
+        let files = vec![
+            TorrentPlanFile {
+                index: 1,
+                filename: "Laserdisc Collection/MAME/ROMs/dlair.zip".into(),
+                byte_size: 10,
+            },
+            TorrentPlanFile {
+                index: 2,
+                filename: "Laserdisc Collection/MAME/CHD/dlair/dlair.chd".into(),
+                byte_size: 20,
+            },
+        ];
+        let plan = build_mame_laserdisc_plans(&files, "Dragon's Lair", &["dlair".into()])
+            .pop()
+            .unwrap();
+        assert_eq!(
+            planned_local_target_path(
+                Path::new("/roms"),
+                "Arcade Laserdisc",
+                "unused",
+                OsStr::new("dlair.zip"),
+                Some(&plan),
+            )
+            .unwrap(),
+            PathBuf::from("/roms/Arcade Laserdisc/MAME/roms/dlair.zip")
         );
     }
 

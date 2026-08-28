@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 const PLAN_VERSION: u32 = 1;
 const OPTICAL_PLAN_KIND: &str = "optical_multidisc";
 const EXO_PLAN_KIND: &str = "exo_archive_set";
+pub(crate) const ARCADE_MAME_PLAN_KIND: &str = "arcade_mame_laserdisc";
+pub(crate) const ARCADE_HYPSEUS_PLAN_KIND: &str = "arcade_hypseus_bundle";
+pub(crate) const ARCADE_DAPHNE_PLAN_KIND: &str = "arcade_daphne_bundle";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TorrentPlanFile {
@@ -42,7 +45,14 @@ impl DownloadPlan {
         if self.version != PLAN_VERSION {
             bail!("unsupported download plan version {}", self.version);
         }
-        if !matches!(self.kind.as_str(), OPTICAL_PLAN_KIND | EXO_PLAN_KIND) {
+        if !matches!(
+            self.kind.as_str(),
+            OPTICAL_PLAN_KIND
+                | EXO_PLAN_KIND
+                | ARCADE_MAME_PLAN_KIND
+                | ARCADE_HYPSEUS_PLAN_KIND
+                | ARCADE_DAPHNE_PLAN_KIND
+        ) {
             bail!("unsupported download plan kind {}", self.kind);
         }
         if self.display_name.trim().is_empty() {
@@ -57,8 +67,8 @@ impl DownloadPlan {
         {
             bail!("download plan playlist path is not a safe .m3u filename");
         }
-        if self.kind == EXO_PLAN_KIND && !self.playlist_filename.is_empty() {
-            bail!("eXo archive plan must not contain a playlist filename");
+        if self.kind != OPTICAL_PLAN_KIND && !self.playlist_filename.is_empty() {
+            bail!("non-optical download plan must not contain a playlist filename");
         }
         if self.members.is_empty() {
             bail!("download plan has no members");
@@ -96,7 +106,7 @@ impl DownloadPlan {
             if !representative_is_disc {
                 bail!("download plan representative is not a playlist entry");
             }
-        } else {
+        } else if self.kind == EXO_PLAN_KIND {
             if self.members.len() < 2 {
                 bail!("eXo archive plan must contain a primary and metadata archive");
             }
@@ -136,6 +146,122 @@ impl DownloadPlan {
             {
                 bail!("eXo archive plan contains optical-disc metadata");
             }
+        } else {
+            self.validate_arcade_machine_layout()?;
+        }
+        Ok(())
+    }
+
+    fn validate_arcade_machine_layout(&self) -> Result<()> {
+        if self
+            .members
+            .iter()
+            .any(|member| member.playlist_entry || member.disc_index.is_some())
+        {
+            bail!("arcade machine plan contains optical-disc metadata");
+        }
+        let representative = self
+            .representative_member()
+            .ok_or_else(|| anyhow::anyhow!("arcade machine plan representative is missing"))?;
+        let mut role_counts = BTreeMap::new();
+        for member in &self.members {
+            *role_counts.entry(member.role.as_str()).or_insert(0_usize) += 1;
+        }
+
+        match self.kind.as_str() {
+            ARCADE_MAME_PLAN_KIND => {
+                if self.members.len() != 2
+                    || role_counts.get("mame-rom") != Some(&1)
+                    || role_counts.get("mame-chd") != Some(&1)
+                    || representative.role != "mame-rom"
+                {
+                    bail!("MAME laserdisc plan must contain one ROM and one CHD");
+                }
+                if !path_has_extension(&representative.target_relative_path, "zip")
+                    || !representative
+                        .target_relative_path
+                        .starts_with("MAME/roms/")
+                    || !self.members.iter().any(|member| {
+                        member.role == "mame-chd"
+                            && member.target_relative_path.starts_with("MAME/roms/")
+                            && path_has_extension(&member.target_relative_path, "chd")
+                    })
+                {
+                    bail!("MAME laserdisc plan has invalid ROM or CHD targets");
+                }
+            }
+            ARCADE_HYPSEUS_PLAN_KIND | ARCADE_DAPHNE_PLAN_KIND => {
+                let prefix = if self.kind == ARCADE_HYPSEUS_PLAN_KIND {
+                    "hypseus"
+                } else {
+                    "daphne"
+                };
+                let target_prefix = if self.kind == ARCADE_HYPSEUS_PLAN_KIND {
+                    "Laserdisc Collection/Hypseus Singe/"
+                } else {
+                    "Laserdisc Collection/Hypseus Singe/Daphne/"
+                };
+                for required in ["rom", "framefile", "data", "video", "audio"] {
+                    let role = format!("{prefix}-{required}");
+                    if !role_counts.contains_key(role.as_str()) {
+                        bail!("{} plan is missing its {required} asset", self.kind);
+                    }
+                }
+                if role_counts.get(format!("{prefix}-rom").as_str()) != Some(&1)
+                    || role_counts.get(format!("{prefix}-framefile").as_str()) != Some(&1)
+                {
+                    bail!("{} plan must contain one ROM and one framefile", self.kind);
+                }
+                let expected_frame_role = format!("{prefix}-framefile");
+                if representative.role != expected_frame_role
+                    || !path_has_extension(&representative.target_relative_path, "txt")
+                {
+                    bail!("{} representative is not its framefile", self.kind);
+                }
+                if !self.members.iter().any(|member| {
+                    member.role == format!("{prefix}-rom")
+                        && path_has_extension(&member.target_relative_path, "zip")
+                }) {
+                    bail!("{} plan has no ROM ZIP", self.kind);
+                }
+                if self.members.iter().any(|member| {
+                    !matches!(
+                        member.role.strip_prefix(prefix),
+                        Some("-rom" | "-framefile" | "-data" | "-video" | "-audio" | "-ram")
+                    )
+                }) {
+                    bail!("{} plan contains an unsupported member role", self.kind);
+                }
+                for member in &self.members {
+                    if !member.target_relative_path.starts_with(target_prefix) {
+                        bail!(
+                            "{} plan contains a target outside its machine layout",
+                            self.kind
+                        );
+                    }
+                    let valid_extension = match member.role.strip_prefix(prefix) {
+                        Some("-rom") => path_has_extension(&member.target_relative_path, "zip"),
+                        Some("-framefile") => {
+                            path_has_extension(&member.target_relative_path, "txt")
+                        }
+                        Some("-data") => path_has_extension(&member.target_relative_path, "dat"),
+                        Some("-video") => path_has_extension(&member.target_relative_path, "m2v"),
+                        Some("-audio") => path_has_any_extension(
+                            &member.target_relative_path,
+                            &["ogg", "wav", "mp3", "flac"],
+                        ),
+                        Some("-ram") => path_has_extension(&member.target_relative_path, "gz"),
+                        _ => false,
+                    };
+                    if !valid_extension {
+                        bail!(
+                            "{} plan contains a member with an invalid extension",
+                            self.kind
+                        );
+                    }
+                }
+            }
+            _ => bail!("unsupported arcade machine plan kind {}", self.kind),
         }
         Ok(())
     }
@@ -146,6 +272,24 @@ impl DownloadPlan {
 
     pub fn is_exo_archive_set(&self) -> bool {
         self.kind == EXO_PLAN_KIND
+    }
+
+    pub fn is_arcade_mame_layout(&self) -> bool {
+        self.kind == ARCADE_MAME_PLAN_KIND
+    }
+
+    pub fn is_arcade_hypseus_layout(&self) -> bool {
+        self.kind == ARCADE_HYPSEUS_PLAN_KIND
+    }
+
+    pub fn is_arcade_daphne_layout(&self) -> bool {
+        self.kind == ARCADE_DAPHNE_PLAN_KIND
+    }
+
+    pub fn is_arcade_machine_layout(&self) -> bool {
+        self.is_arcade_mame_layout()
+            || self.is_arcade_hypseus_layout()
+            || self.is_arcade_daphne_layout()
     }
 
     pub fn representative_member(&self) -> Option<&DownloadPlanMember> {
@@ -661,6 +805,18 @@ fn file_extension(path: &str) -> Option<String> {
         .extension()
         .and_then(|extension| extension.to_str())
         .map(str::to_ascii_lowercase)
+}
+
+fn path_has_extension(path: &str, expected: &str) -> bool {
+    file_extension(path).is_some_and(|extension| extension.eq_ignore_ascii_case(expected))
+}
+
+fn path_has_any_extension(path: &str, expected: &[&str]) -> bool {
+    file_extension(path).is_some_and(|extension| {
+        expected
+            .iter()
+            .any(|expected| extension.eq_ignore_ascii_case(expected))
+    })
 }
 
 fn path_stem(path: &str) -> Option<String> {
