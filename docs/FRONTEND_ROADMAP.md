@@ -80,6 +80,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   preserved manual order, confirmed bulk visible-result changes, composable
   automatic rules, portable exact-ID import/export, asynchronous persistence
   with rollback, and restart recovery.
+- Native local Library Audit with one prepared catalog index, cancellable
+  off-thread scans, exact healthy/changed/duplicate/new/missing/unreadable/root-
+  offline states, review-first filtering and sorting, and confirmed stale-row
+  cleanup. Availability is synchronized only for roots that completed a full
+  scan; cleanup cannot delete files and offline roots are never treated as
+  missing.
 - Stable-UUID play activity with durable per-launch sessions, exactly-once
   elapsed-time finalization, count/time/last-played statistics, editable
   completion state, and a live Recently Played view.
@@ -96,9 +102,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 ## Collection management
 
 - Extend the implemented folder chooser, platform assignment, scan preview,
-  progress, cancellation, exact/ambiguous reporting, and idempotent rescans
-  with named extension presets, resumable hash caches, duplicate/change audits,
-  and a missing-file management view.
+  progress, cancellation, exact/ambiguous reporting, idempotent rescans, exact
+  duplicate/change audit, and missing-file management view with named extension
+  presets and resumable hash caches.
 - Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
 - Editable game and release metadata, tags, playlists, custom fields, and a

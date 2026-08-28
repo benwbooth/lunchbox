@@ -307,8 +307,55 @@ fn load_match_index(discovery_path: &Path) -> Result<MatchIndex> {
     })
 }
 
+pub(crate) struct PreparedScanner {
+    index: MatchIndex,
+}
+
+impl PreparedScanner {
+    pub(crate) fn new(discovery_path: &Path) -> Result<Self> {
+        Ok(Self {
+            index: load_match_index(discovery_path)?,
+        })
+    }
+
+    pub(crate) fn scan(
+        &self,
+        root: &Path,
+        platform_hint: &str,
+        checksums_enabled: bool,
+        cancelled: &AtomicBool,
+        progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
+    ) -> Result<ScanOutput> {
+        scan_directory_with_index(
+            &self.index,
+            root,
+            platform_hint,
+            checksums_enabled,
+            cancelled,
+            progress,
+        )
+    }
+}
+
 pub fn scan_directory(
     discovery_path: &Path,
+    root: &Path,
+    platform_hint: &str,
+    checksums_enabled: bool,
+    cancelled: &AtomicBool,
+    progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
+) -> Result<ScanOutput> {
+    PreparedScanner::new(discovery_path)?.scan(
+        root,
+        platform_hint,
+        checksums_enabled,
+        cancelled,
+        progress,
+    )
+}
+
+fn scan_directory_with_index(
+    index: &MatchIndex,
     root: &Path,
     platform_hint: &str,
     checksums_enabled: bool,
@@ -321,7 +368,6 @@ pub fn scan_directory(
     if !root.is_dir() {
         bail!("ROM import path is not a directory: {}", root.display());
     }
-    let index = load_match_index(discovery_path)?;
     let mut paths = Vec::new();
     let mut walk_errors = 0usize;
     for entry in WalkDir::new(&root).follow_links(false).into_iter() {
@@ -380,9 +426,9 @@ pub fn scan_directory(
             .unwrap_or_default();
         let archive_inspection = if matches!(extension.as_str(), "zip" | "7z" | "rar") {
             let inspection = match extension.as_str() {
-                "zip" => inspect_zip(path, &index, checksums_enabled, cancelled),
-                "7z" => inspect_seven_zip(path, &index, checksums_enabled, cancelled),
-                "rar" => inspect_rar(path, &index, checksums_enabled, cancelled),
+                "zip" => inspect_zip(path, index, checksums_enabled, cancelled),
+                "7z" => inspect_seven_zip(path, index, checksums_enabled, cancelled),
+                "rar" => inspect_rar(path, index, checksums_enabled, cancelled),
                 _ => unreachable!("archive extensions are exhaustively matched"),
             };
             match inspection {
@@ -467,7 +513,7 @@ pub fn scan_directory(
             let (match_state, mut match_method) = if let Some(error) = source.error {
                 (MatchState::Error(error), "read error".to_owned())
             } else if let Some(digests) = &source.digests {
-                match_digest(&index, &digests.sha1, &digests.md5, platform_hint)
+                match_digest(index, &digests.sha1, &digests.md5, platform_hint)
             } else {
                 (MatchState::InventoryOnly, "not checked".to_owned())
             };

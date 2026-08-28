@@ -16,6 +16,8 @@ mod igdb;
 pub mod igdb_model;
 mod ingest;
 pub mod launch_profile_manager_model;
+mod library_audit;
+pub mod library_audit_model;
 pub mod library_model;
 mod local_import;
 pub mod local_import_model;
@@ -52,6 +54,19 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--library-audit-fixture") {
+        return match library_audit::library_audit_fixture_probe() {
+            Ok(evidence) => {
+                println!("LUNCHBOX_LIBRARY_AUDIT_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_LIBRARY_AUDIT_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--archive-import-probe") {
         return match local_import::archive_import_probe() {
             Ok(evidence) => {

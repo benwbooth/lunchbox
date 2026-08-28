@@ -226,6 +226,15 @@ The initial implementation enforces this shape:
   view is virtualized; filtering and selection operate on compact Rust indices.
   Imported paths retain native bytes (`unix_bytes`, `windows_utf16le`, or
   `utf8`) instead of using a display string as identity.
+- Library maintenance runs on the same bounded scanner contract but prepares
+  the catalog match index once for the entire audit. Each root either completes
+  atomically for availability purposes or is reported as offline; a partial or
+  failed scan can never manufacture missing records. Persisted SHA-1, then MD5,
+  then size/time evidence classifies changes, while exact current SHA-1 groups
+  identify duplicates without merging them. The CXX-Qt model owns compact
+  filter indices and selection state. Confirmed cleanup accepts stable UUIDs
+  only and its SQL predicate can remove only included rows already marked
+  `missing`; filesystem paths are not part of the mutation API.
 
 ## Performance budgets
 
@@ -318,6 +327,17 @@ reviewed stable identity and manual provenance restore from exact path/member,
 size, MD5, and SHA-1 evidence. `--manual-match-ui-probe` opens the real resolver,
 performs its asynchronous canonical/alternate-title search, and optionally
 captures the populated review surface with `--screenshot-output`.
+
+`--library-audit-fixture --audit-fixture-root EMPTY_PATH --state-database
+EMPTY_PATH` creates a marker-guarded deterministic collection and succeeds only
+when the real scanner reports one healthy, one missing, one changed, two exact
+duplicates, and one untracked ROM. `--library-audit-ui-probe` opens that state
+through the production CXX-Qt model and can capture the complete maintenance
+surface. `--library-audit-cleanup-ui-probe` additionally selects the missing
+row, invokes the production cleanup action, re-audits, and succeeds only when
+that row is gone and all other states remain. The service tests verify byte-for-
+byte that cleanup leaves every existing fixture ROM untouched and that an
+offline root never becomes missing or removable.
 
 `--download-ui-probe` leaves the persistent native Downloads drawer open.
 `--settings-ui-probe` leaves the native settings dialog open, including the

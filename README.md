@@ -209,6 +209,15 @@ path bytes alongside display paths.
 RAR support is pure Rust; encrypted and multi-volume archives are rejected with
 an actionable review error rather than invoking a host utility or guessing.
 
+`Library Audit` rescans every configured root on a worker with one shared
+catalog match index, then separates exact healthy files, changed content,
+duplicate SHA-1 content, new untracked ROMs, missing records, unreadable files,
+and offline roots. A disconnected root is never converted into missing records.
+The review is searchable, sortable, and virtualized; Lunchbox never merges,
+relinks, or deletes content automatically. The only cleanup action requires an
+explicit selection and confirmation, and removes only already-missing SQLite
+records—not ROMs, archives, saves, downloads, or emulator data.
+
 The equivalent catalog environment variables are
 `LUNCHBOX_GAMES_DATABASE`, `LUNCHBOX_MINERVA_DATABASE`, and
 `LUNCHBOX_USER_DATABASE`. `--state-database` or

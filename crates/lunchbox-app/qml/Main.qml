@@ -12,10 +12,12 @@ ApplicationWindow {
     visible: true
     width: controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
-           || collectionUiProbe || smartCollectionUiProbe ? 1920 : 1440
+           || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+           ? 1920 : 1440
     height: controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
-            || collectionUiProbe || smartCollectionUiProbe ? 1200 : 900
+            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+            ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
@@ -68,6 +70,8 @@ ApplicationWindow {
     property bool favoriteProbeTriggered: false
     property bool closeAfterFavoriteSave: false
     property int collectionProbeStage: 0
+    property int libraryAuditProbeStage: 0
+    property bool libraryAuditProbeArmed: false
     property bool collectionProbeArmed: false
     property bool downloadHistoryTriggered: false
     property bool settingsSeedingTriggered: false
@@ -120,6 +124,9 @@ ApplicationWindow {
     readonly property bool collectionUiProbe: Qt.application.arguments.indexOf("--collection-ui-probe") >= 0
     readonly property bool smartCollectionProbe: Qt.application.arguments.indexOf("--smart-collection-probe") >= 0
     readonly property bool smartCollectionUiProbe: Qt.application.arguments.indexOf("--smart-collection-ui-probe") >= 0
+    readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
+    readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
+                                                  || libraryAuditCleanupUiProbe
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
@@ -536,6 +543,25 @@ ApplicationWindow {
         importDialogLoader.item.open()
     }
 
+    function reviewAuditRoot(index) {
+        const rootUrl = libraryAudit.entry_root_url_at(index)
+        libraryAuditDialog.close()
+        root.openImportDialog()
+        localImport.choose_directory(rootUrl)
+    }
+
+    function auditStatusColor(status) {
+        if (status === "healthy")
+            return root.accentCool
+        if (status === "missing" || status === "unavailable")
+            return "#ff7a88"
+        if (status === "changed" || status === "unreadable")
+            return root.accent
+        if (status === "duplicate")
+            return "#bb9cff"
+        return "#69b7ff"
+    }
+
     function openFindArtwork(artworkType) {
         if (selectedDatabaseId <= 0)
             return
@@ -745,6 +771,10 @@ ApplicationWindow {
         id: localImport
     }
 
+    LibraryAuditModel {
+        id: libraryAudit
+    }
+
     SteamGridDbModel {
         id: steamGridDb
     }
@@ -890,6 +920,13 @@ ApplicationWindow {
                     Qt.quit()
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
+                else if (root.libraryAuditUiProbe) {
+                    if (!root.libraryAuditProbeArmed) {
+                        root.libraryAuditProbeArmed = true
+                        libraryAuditDialog.open()
+                        libraryAudit.start_audit()
+                    }
+                }
                 else if (root.smartCollectionProbe || root.smartCollectionUiProbe) {
                     const index = root.collectionIndexByName("Ready from Minerva")
                     if (index >= 0) {
@@ -1323,6 +1360,108 @@ ApplicationWindow {
         function onMatch_candidate_countChanged() {
             if (root.manualMatchUiProbe && localImport.match_candidate_count > 0)
                 manualMatchScreenshotTimer.restart()
+        }
+    }
+
+    Connections {
+        target: libraryAudit
+        function onCollection_revisionChanged() {
+            if (libraryAudit.collection_revision > 0)
+                library.reload()
+        }
+        function onAuditingChanged() {
+            if (!root.libraryAuditUiProbe || libraryAudit.auditing
+                    || libraryAudit.busy)
+                return
+            if (root.libraryAuditCleanupUiProbe
+                    && root.libraryAuditProbeStage === 1) {
+                const cleanupValid = libraryAudit.total_entry_count === 5
+                                     && libraryAudit.missing_count === 0
+                                     && libraryAudit.changed_count === 1
+                                     && libraryAudit.duplicate_count === 2
+                                     && libraryAudit.untracked_count === 1
+                if (!cleanupValid) {
+                    console.error("LUNCHBOX_LIBRARY_AUDIT_CLEANUP_UI_FAILED entries="
+                                  + libraryAudit.total_entry_count + " missing="
+                                  + libraryAudit.missing_count + " changed="
+                                  + libraryAudit.changed_count + " duplicates="
+                                  + libraryAudit.duplicate_count + " new="
+                                  + libraryAudit.untracked_count)
+                    Qt.exit(2)
+                    return
+                }
+                libraryAudit.apply_filter("", "issues", "status")
+                libraryAuditScreenshotTimer.restart()
+                return
+            }
+            const valid = libraryAudit.healthy_count === 1
+                          && libraryAudit.missing_count === 1
+                          && libraryAudit.changed_count === 1
+                          && libraryAudit.duplicate_count === 2
+                          && libraryAudit.untracked_count === 1
+                          && libraryAudit.unavailable_count === 0
+                          && libraryAudit.unreadable_count === 0
+            if (!valid) {
+                console.error("LUNCHBOX_LIBRARY_AUDIT_UI_FAILED healthy="
+                              + libraryAudit.healthy_count + " missing="
+                              + libraryAudit.missing_count + " changed="
+                              + libraryAudit.changed_count + " duplicates="
+                              + libraryAudit.duplicate_count + " new="
+                              + libraryAudit.untracked_count + " offline="
+                              + libraryAudit.unavailable_count + " unreadable="
+                              + libraryAudit.unreadable_count)
+                Qt.exit(2)
+                return
+            }
+            if (root.libraryAuditCleanupUiProbe) {
+                libraryAudit.apply_filter("", "missing", "status")
+                libraryAudit.select_visible_missing(true)
+                if (libraryAudit.selected_missing_count !== 1) {
+                    console.error("LUNCHBOX_LIBRARY_AUDIT_CLEANUP_UI_FAILED selected="
+                                  + libraryAudit.selected_missing_count)
+                    Qt.exit(2)
+                    return
+                }
+                root.libraryAuditProbeStage = 1
+                libraryAudit.remove_selected_missing()
+                return
+            }
+            libraryAuditScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: libraryAuditScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0) {
+                Qt.quit()
+                return
+            }
+            libraryAuditDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_LIBRARY_AUDIT_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_LIBRARY_AUDIT_UI_READY entries="
+                            + libraryAudit.total_entry_count + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.libraryAuditUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_LIBRARY_AUDIT_UI_FAILED timeout message="
+                          + libraryAudit.message)
+            Qt.exit(2)
         }
     }
 
@@ -2147,6 +2286,36 @@ ApplicationWindow {
         }
     }
 
+    component AuditMetric: Rectangle {
+        id: metric
+        required property string label
+        required property int value
+        required property color tone
+        implicitHeight: 68
+        radius: 10
+        color: "#151d29"
+        border.color: Qt.rgba(metric.tone.r, metric.tone.g, metric.tone.b, 0.38)
+        Column {
+            anchors.left: parent.left
+            anchors.leftMargin: 15
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 1
+            Text {
+                text: metric.value.toLocaleString(Qt.locale(), "f", 0)
+                color: metric.tone
+                font.pixelSize: 20
+                font.weight: Font.Bold
+            }
+            Text {
+                text: metric.label.toUpperCase()
+                color: root.muted
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 0.8
+            }
+        }
+    }
+
     component FilterToggle: Rectangle {
         id: filterToggle
         required property string label
@@ -2790,6 +2959,16 @@ ApplicationWindow {
                 label: "Import ROMs"
                 glyph: "+"
                 onClicked: root.openImportDialog()
+            }
+            NavButton {
+                label: "Library Audit"
+                glyph: "✓"
+                count: libraryAudit.total_entry_count > 0
+                       ? libraryAudit.issue_count.toString() : ""
+                onClicked: {
+                    libraryAuditDialog.open()
+                    libraryAudit.start_audit()
+                }
             }
         }
 
@@ -6113,6 +6292,472 @@ ApplicationWindow {
                   + (root.bulkCollectionMember ? "to ‘" : "from ‘")
                   + root.bulkCollectionName
                   + "’? This uses the exact identities in the current search, platform, and availability view."
+            color: root.ink
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    Timer {
+        id: libraryAuditFilterDelay
+        interval: 120
+        repeat: false
+        onTriggered: libraryAudit.apply_filter(
+                         libraryAuditSearch.text,
+                         libraryAuditStatus.currentValue,
+                         libraryAuditSort.currentValue)
+    }
+
+    Dialog {
+        id: libraryAuditDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(1220, root.width - 54)
+        height: Math.min(840, root.height - 54)
+        padding: 18
+        closePolicy: Popup.CloseOnEscape
+        onClosed: {
+            if (libraryAudit.auditing)
+                libraryAudit.cancel_audit()
+        }
+        background: Rectangle {
+            radius: 15
+            color: "#111822"
+            border.color: root.line
+        }
+        header: Rectangle {
+            width: parent.width
+            height: 72
+            radius: 15
+            color: root.panelRaised
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 18
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Text {
+                        text: "LIBRARY AUDIT"
+                        color: root.ink
+                        font.pixelSize: 20
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    Text {
+                        text: "Exact content verification · review-first maintenance · no automatic deletion"
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                }
+                HeaderButton {
+                    text: "×"
+                    implicitWidth: 38
+                    leftPadding: 0
+                    rightPadding: 0
+                    onClicked: libraryAuditDialog.close()
+                }
+            }
+        }
+        contentItem: ColumnLayout {
+            spacing: 13
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 9
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Healthy"
+                    value: libraryAudit.healthy_count
+                    tone: root.accentCool
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Missing"
+                    value: libraryAudit.missing_count
+                    tone: "#ff7a88"
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Changed"
+                    value: libraryAudit.changed_count + libraryAudit.unreadable_count
+                    tone: root.accent
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Duplicates"
+                    value: libraryAudit.duplicate_count
+                    tone: "#bb9cff"
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "New"
+                    value: libraryAudit.untracked_count
+                    tone: "#69b7ff"
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Roots offline"
+                    value: libraryAudit.unavailable_count
+                    tone: "#ff7a88"
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 9
+                TextField {
+                    id: libraryAuditSearch
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 260
+                    placeholderText: "Search title, platform, path, or issue"
+                    selectByMouse: true
+                    onTextEdited: libraryAuditFilterDelay.restart()
+                }
+                ComboBox {
+                    id: libraryAuditStatus
+                    Layout.preferredWidth: 170
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        { label: "Issues", value: "issues" },
+                        { label: "All records", value: "all" },
+                        { label: "Missing", value: "missing" },
+                        { label: "Changed", value: "changed" },
+                        { label: "Duplicates", value: "duplicate" },
+                        { label: "New files", value: "untracked" },
+                        { label: "Unreadable", value: "unreadable" },
+                        { label: "Roots offline", value: "unavailable" },
+                        { label: "Healthy", value: "healthy" }
+                    ]
+                    onActivated: libraryAuditFilterDelay.restart()
+                }
+                ComboBox {
+                    id: libraryAuditSort
+                    Layout.preferredWidth: 150
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        { label: "Issue priority", value: "status" },
+                        { label: "Title", value: "title" },
+                        { label: "Path", value: "path" },
+                        { label: "Collection root", value: "root" }
+                    ]
+                    onActivated: libraryAuditFilterDelay.restart()
+                }
+                HeaderButton {
+                    text: libraryAudit.auditing ? "Cancel" : "Run audit"
+                    active: !libraryAudit.auditing
+                    enabled: !libraryAudit.removing
+                    onClicked: {
+                        if (libraryAudit.auditing)
+                            libraryAudit.cancel_audit()
+                        else
+                            libraryAudit.start_audit()
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 11
+                color: "#0d141e"
+                border.color: root.line
+
+                ListView {
+                    id: libraryAuditList
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    clip: true
+                    focus: true
+                    model: libraryAudit.entry_count
+                    boundsBehavior: Flickable.StopAtBounds
+                    keyNavigationEnabled: true
+                    highlightMoveDuration: 90
+                    highlight: Rectangle {
+                        radius: 9
+                        color: "#202938"
+                        border.color: root.line
+                    }
+                    ScrollBar.vertical: ScrollBar {}
+                    Keys.onSpacePressed: {
+                        if (currentIndex >= 0)
+                            libraryAudit.toggle_missing_selected(currentIndex)
+                    }
+                    Keys.onReturnPressed: {
+                        if (currentIndex >= 0)
+                            root.reviewAuditRoot(currentIndex)
+                    }
+                    delegate: Rectangle {
+                        id: auditRow
+                        required property int index
+                        width: ListView.view.width
+                        height: 92
+                        color: rowHover.hovered ? "#182230" : "transparent"
+                        border.color: "#202a39"
+                        property string rowStatus: {
+                            libraryAudit.revision
+                            return libraryAudit.entry_status_at(auditRow.index)
+                        }
+                        property bool rowRemovable: {
+                            libraryAudit.revision
+                            return libraryAudit.entry_removable_at(auditRow.index)
+                        }
+                        property bool rowSelected: {
+                            libraryAudit.revision
+                            return libraryAudit.entry_selected_at(auditRow.index)
+                        }
+
+                        HoverHandler { id: rowHover }
+                        TapHandler {
+                            onTapped: {
+                                libraryAuditList.currentIndex = auditRow.index
+                                if (auditRow.rowRemovable)
+                                    libraryAudit.toggle_missing_selected(auditRow.index)
+                            }
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 12
+                            spacing: 12
+
+                            Rectangle {
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
+                                radius: 6
+                                visible: auditRow.rowRemovable
+                                color: auditRow.rowSelected ? root.accent : "#151d29"
+                                border.color: auditRow.rowSelected ? root.accent : root.line
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "✓"
+                                    visible: auditRow.rowSelected
+                                    color: "#17120b"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Bold
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 104
+                                Layout.preferredHeight: 27
+                                radius: 13
+                                color: Qt.rgba(root.auditStatusColor(auditRow.rowStatus).r,
+                                               root.auditStatusColor(auditRow.rowStatus).g,
+                                               root.auditStatusColor(auditRow.rowStatus).b, 0.13)
+                                border.color: root.auditStatusColor(auditRow.rowStatus)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: libraryAudit.entry_status_label_at(auditRow.index)
+                                    color: root.auditStatusColor(auditRow.rowStatus)
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.5
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: libraryAudit.entry_title_at(auditRow.index)
+                                        color: root.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: libraryAudit.entry_platform_at(auditRow.index)
+                                        color: root.muted
+                                        font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: {
+                                        const member = libraryAudit.entry_archive_member_at(
+                                                           auditRow.index)
+                                        return libraryAudit.entry_path_at(auditRow.index)
+                                               + (member.length > 0 ? "  ›  " + member : "")
+                                    }
+                                    color: "#718096"
+                                    font.pixelSize: 9
+                                    elide: Text.ElideMiddle
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: libraryAudit.entry_detail_at(auditRow.index)
+                                    color: root.auditStatusColor(auditRow.rowStatus)
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            HeaderButton {
+                                text: "Open"
+                                implicitWidth: 66
+                                onClicked: Qt.openUrlExternally(
+                                               libraryAudit.entry_file_url_at(auditRow.index))
+                            }
+                            HeaderButton {
+                                text: "Review root"
+                                implicitWidth: 96
+                                onClicked: root.reviewAuditRoot(auditRow.index)
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    anchors.centerIn: parent
+                    width: Math.min(520, parent.width - 80)
+                    spacing: 10
+                    visible: !libraryAudit.busy && libraryAudit.entry_count === 0
+                    Text {
+                        width: parent.width
+                        text: libraryAudit.total_entry_count === 0
+                              ? "NO LOCAL ROM RECORDS"
+                              : "NO RECORDS MATCH THIS VIEW"
+                        color: root.ink
+                        font.pixelSize: 16
+                        font.weight: Font.Bold
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Text {
+                        width: parent.width
+                        text: libraryAudit.total_entry_count === 0
+                              ? "Import a ROM folder first. Lunchbox will retain exact paths and hashes for future audits."
+                              : "Change the search or status filter to inspect other records."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+
+                Rectangle {
+                    id: libraryAuditProgressTrack
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 4
+                    visible: libraryAudit.auditing
+                    color: "#1a2330"
+                    Rectangle {
+                        id: libraryAuditProgressThumb
+                        height: parent.height
+                        width: libraryAudit.root_total_files > 0
+                               ? parent.width * Math.min(
+                                     1, libraryAudit.root_scanned_files
+                                        / libraryAudit.root_total_files)
+                               : parent.width * 0.28
+                        color: root.accent
+                        SequentialAnimation on x {
+                            running: libraryAudit.auditing
+                                     && libraryAudit.root_total_files === 0
+                            loops: Animation.Infinite
+                            NumberAnimation {
+                                from: 0
+                                to: Math.max(0, libraryAuditProgressTrack.width
+                                               - libraryAuditProgressThumb.width)
+                                duration: 900
+                                easing.type: Easing.InOutQuad
+                            }
+                            NumberAnimation {
+                                from: Math.max(0, libraryAuditProgressTrack.width
+                                                 - libraryAuditProgressThumb.width)
+                                to: 0
+                                duration: 900
+                                easing.type: Easing.InOutQuad
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                Text {
+                    Layout.fillWidth: true
+                    text: libraryAudit.message
+                    color: libraryAudit.busy ? root.accent : root.muted
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+                Text {
+                    visible: libraryAudit.auditing && libraryAudit.current_file.length > 0
+                    text: libraryAudit.current_file
+                    color: "#718096"
+                    font.pixelSize: 9
+                    elide: Text.ElideMiddle
+                    Layout.maximumWidth: 330
+                }
+            }
+        }
+        footer: Rectangle {
+            width: parent.width
+            height: 68
+            radius: 15
+            color: root.panelRaised
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 9
+                HeaderButton {
+                    text: "Select missing"
+                    enabled: libraryAudit.missing_count > 0 && !libraryAudit.busy
+                    onClicked: libraryAudit.select_visible_missing(true)
+                }
+                HeaderButton {
+                    text: "Clear selection"
+                    enabled: libraryAudit.selected_missing_count > 0
+                             && !libraryAudit.busy
+                    onClicked: libraryAudit.select_visible_missing(false)
+                }
+                HeaderButton {
+                    text: libraryAudit.selected_missing_count > 0
+                          ? "Remove " + libraryAudit.selected_missing_count + " stale"
+                          : "Remove stale"
+                    active: libraryAudit.selected_missing_count > 0
+                    enabled: libraryAudit.selected_missing_count > 0
+                             && !libraryAudit.busy
+                    onClicked: removeMissingAuditRecordsDialog.open()
+                }
+            }
+            HeaderButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Close"
+                onClicked: libraryAuditDialog.close()
+            }
+        }
+    }
+
+    Dialog {
+        id: removeMissingAuditRecordsDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(520, root.width - 48)
+        title: "Remove stale library records?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: libraryAudit.remove_selected_missing()
+        contentItem: Text {
+            text: "Remove " + libraryAudit.selected_missing_count
+                  + (libraryAudit.selected_missing_count === 1
+                     ? " missing record" : " missing records")
+                  + " from Lunchbox state? No ROM, archive, save, or downloaded file will be deleted. Offline collection roots are never eligible for this action."
             color: root.ink
             font.pixelSize: 12
             wrapMode: Text.WordWrap
