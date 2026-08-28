@@ -105,9 +105,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   real fullscreen, and returns to the complete desktop management surface
   without duplicating state. Its off-thread cross-platform input service has
   hotplug state, analog hysteresis, hold-repeat, paging, semantic action routing,
-  focus restoration, and controller-family button hints. Linux backend startup
-  and deterministic real-QML routing are exercised; attached-controller Linux,
-  Windows, and macOS release-host certification remains.
+  focus restoration, and controller-family button hints. Couch-native Details
+  and Game Menu overlays expose exact metadata, activity, launch/download state,
+  favorite mutation, and explicit desktop handoff without losing selection.
+  Linux backend startup and deterministic real-QML routing through both overlays
+  are exercised; attached-controller Linux, Windows, and macOS release-host
+  certification remains.
 - Native management of Libretro's complete official Slang and GLSL shader packs
   with cross-platform target discovery, verified cache reuse, safe extraction,
   explicit unmanaged-pack replacement, and transactional multi-target rollback.
@@ -210,9 +213,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend the implemented native Qt Quick Couch Mode browse/play presentation,
   which already shares the Rust models and services rather than creating a
   second database or duplicated backend.
-- Theme packages, platform/game wheels, details and game menus, attract mode,
-  startup/shutdown/pause screens, screensaver, background music, sound packs,
-  marquee monitor support, parental lock, and couch-safe settings.
+- Theme packages, platform/game wheels, richer release/media management inside
+  the implemented Details and Game Menu overlays, attract mode, startup/shutdown/
+  pause screens, screensaver, background music, sound packs, marquee monitor
+  support, parental lock, and couch-safe settings.
 - Extend the implemented keyboard/direct-gamepad navigation into every future
   Couch Mode surface. Certify attached-controller input, hotplug, and focus
   restoration on Linux, Windows, and macOS release hosts.

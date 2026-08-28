@@ -25,8 +25,11 @@ waiting for database loading.
 The header's Couch Mode control opens a fullscreen, keyboard-and-gamepad
 living-room presentation over those same models. It preserves the exact
 selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent
-views, and routes Play, favorite changes, download options, and desktop details
-through the existing native services. A native Rust input worker handles
+views, and routes Play, favorite changes, and download options through the
+existing native services. Couch-native Details and Game Menu overlays keep
+browsing on the television while exposing full metadata, activity, launch and
+download state, favorite changes, and an explicit handoff to the complete
+desktop tools without losing the exact game. A native Rust input worker handles
 hotplugging, analog dead zones, deliberate hold-repeat, paging, and Xbox,
 PlayStation, Nintendo, or generic button labels without blocking Qt. Escape or
 the controller's east face button returns to desktop mode.

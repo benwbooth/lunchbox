@@ -12,6 +12,9 @@ Item {
     property int navigationZone: 2
     property int categoryIndex: 0
     property int actionIndex: 0
+    property bool overlayOpen: false
+    property string overlayMode: "details"
+    property int menuActionIndex: 0
     property string preferredGameId: ""
     property string currentFilterKey: ""
     property string selectedGameId: ""
@@ -155,10 +158,115 @@ Item {
         }
     }
 
+    function openOverlay(mode) {
+        overlayMode = mode === "menu" ? "menu" : "details"
+        overlayOpen = true
+        menuActionIndex = 0
+        detailsScroller.contentY = 0
+        forceActiveFocus()
+    }
+
+    function closeOverlay() {
+        overlayOpen = false
+        if (active)
+            forceActiveFocus()
+    }
+
+    function captureOverlay(path, callback) {
+        couchOverlay.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
+    }
+
+    function menuActionLabel(index) {
+        if (index === 0)
+            return primaryAction
+        if (index === 1)
+            return favorite ? "REMOVE FAVORITE" : "ADD FAVORITE"
+        if (index === 2)
+            return "DESKTOP DETAILS"
+        return "RETURN TO BROWSING"
+    }
+
+    function menuActionDescription(index) {
+        if (index === 0) {
+            if (details.can_launch)
+                return "Launch with the selected emulator and exact local file."
+            if (selectedDownloadable)
+                return "Review exact Minerva files and download options."
+            if (selectedLocal)
+                return "Choose an installed emulator and finish play setup."
+            return "Open the complete management view for this catalog record."
+        }
+        if (index === 1)
+            return favorite ? "Remove this exact game from Favorites."
+                            : "Keep this exact game in Favorites."
+        if (index === 2)
+            return "Open releases, media, firmware, launch profiles, and metadata tools."
+        return "Close this menu without changing the selected game."
+    }
+
+    function activateMenuAction(index) {
+        if (index === 0) {
+            closeOverlay()
+            activateAction(0)
+        } else if (index === 1) {
+            if (!favoriteBusy && selectedGameId.length > 0)
+                library.set_favorite(selectedGameId, !favorite)
+        } else if (index === 2) {
+            closeOverlay()
+            requestDetails()
+        } else {
+            closeOverlay()
+        }
+    }
+
     function handleNavigation(action) {
         if (!active)
             return false
         forceActiveFocus()
+        if (overlayOpen) {
+            if (action === "back") {
+                closeOverlay()
+            } else if (action === "details" || action === "page_left"
+                       || action === "left") {
+                overlayMode = "details"
+                detailsScroller.contentY = 0
+            } else if (action === "menu" || action === "page_right"
+                       || action === "right") {
+                overlayMode = "menu"
+            } else if (action === "up") {
+                if (overlayMode === "menu")
+                    menuActionIndex = Math.max(0, menuActionIndex - 1)
+                else
+                    detailsScroller.contentY = Math.max(0,
+                                                        detailsScroller.contentY - 90)
+            } else if (action === "down") {
+                if (overlayMode === "menu")
+                    menuActionIndex = Math.min(3, menuActionIndex + 1)
+                else
+                    detailsScroller.contentY = Math.min(
+                                Math.max(0, detailsScroller.contentHeight
+                                         - detailsScroller.height),
+                                detailsScroller.contentY + 90)
+            } else if (action === "home") {
+                if (overlayMode === "menu")
+                    menuActionIndex = 0
+                else
+                    detailsScroller.contentY = 0
+            } else if (action === "favorite") {
+                if (!favoriteBusy && selectedGameId.length > 0)
+                    library.set_favorite(selectedGameId, !favorite)
+            } else if (action === "accept") {
+                if (overlayMode === "menu")
+                    activateMenuAction(menuActionIndex)
+                else
+                    overlayMode = "menu"
+            } else {
+                return false
+            }
+            return true
+        }
         if (action === "back") {
             exitRequested()
         } else if (action === "up") {
@@ -200,9 +308,9 @@ Item {
             if (!favoriteBusy && selectedGameId.length > 0)
                 library.set_favorite(selectedGameId, !favorite)
         } else if (action === "details") {
-            requestDetails()
+            openOverlay("details")
         } else if (action === "menu") {
-            navigationZone = 0
+            openOverlay("menu")
         } else if (action === "cycle_zone") {
             navigationZone = (navigationZone + 1) % 3
         } else {
@@ -213,6 +321,7 @@ Item {
 
     onActiveChanged: {
         if (active) {
+            overlayOpen = false
             forceActiveFocus()
             syncCategory()
             const preferredRow = library.row_for_game(preferredGameId)
@@ -223,7 +332,8 @@ Item {
             if (shelf.currentIndex >= 0)
                 shelf.positionViewAtIndex(shelf.currentIndex, ListView.Center)
             selectionDelay.restart()
-        }
+        } else
+            overlayOpen = false
     }
 
     onCurrentFilterKeyChanged: syncCategory()
@@ -268,6 +378,8 @@ Item {
             action = "favorite"
         } else if (event.key === Qt.Key_D) {
             action = "details"
+        } else if (event.key === Qt.Key_M) {
+            action = "menu"
         } else if (event.key === Qt.Key_Tab) {
             action = "cycle_zone"
         }
@@ -896,6 +1008,575 @@ Item {
         }
     }
 
+    Rectangle {
+        id: couchOverlay
+        anchors.fill: parent
+        z: 50
+        visible: view.overlayOpen
+        color: "#e8070a0f"
+
+        Rectangle {
+            id: overlayPanel
+            anchors.centerIn: parent
+            width: Math.min(1180, parent.width - 120)
+            height: Math.min(790, parent.height - 110)
+            radius: 24
+            color: "#f5121822"
+            border.color: "#6b778595"
+            border.width: 1
+            clip: true
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 350
+                color: "#b90c1119"
+
+                Rectangle {
+                    id: overlayCover
+                    anchors.top: parent.top
+                    anchors.topMargin: 42
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 220
+                    height: 304
+                    radius: 16
+                    color: view.accentFor(view.selectedTitle)
+                    border.color: "#8cffffff"
+                    clip: true
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: Qt.lighter(overlayCover.color, 1.18)
+                        }
+                        GradientStop {
+                            position: 1
+                            color: Qt.darker(overlayCover.color, 1.62)
+                        }
+                    }
+                    Image {
+                        id: overlayCoverImage
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        source: view.coverUrl
+                        asynchronous: true
+                        cache: true
+                        mipmap: true
+                        autoTransform: true
+                        fillMode: Image.PreserveAspectFit
+                        sourceSize.width: 440
+                        sourceSize.height: 608
+                        opacity: status === Image.Ready ? 1 : 0
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        visible: overlayCoverImage.status !== Image.Ready
+                        text: view.selectedTitle.length > 0
+                              ? view.selectedTitle.charAt(0).toUpperCase() : "L"
+                        color: "#ddffffff"
+                        font.pixelSize: 82
+                        font.weight: Font.Black
+                    }
+                }
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: overlayCover.bottom
+                    anchors.topMargin: 28
+                    anchors.margins: 34
+                    spacing: 10
+
+                    Text {
+                        width: parent.width
+                        text: view.selectedTitle
+                        color: view.ink
+                        font.pixelSize: 27
+                        font.weight: Font.Black
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        width: parent.width
+                        text: view.selectedPlatform.toUpperCase()
+                        color: view.muted
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.1
+                        elide: Text.ElideRight
+                    }
+                    Rectangle {
+                        width: overlayStateText.implicitWidth + 20
+                        height: 28
+                        radius: 9
+                        color: view.selectedLocal ? "#351f554d"
+                               : view.selectedDownloadable ? "#3f583a22" : "#38232c38"
+                        border.color: view.selectedLocal ? view.accentCool
+                                      : view.selectedDownloadable ? view.accent : "#596574"
+                        Text {
+                            id: overlayStateText
+                            anchors.centerIn: parent
+                            text: view.details.can_launch ? "READY TO PLAY"
+                                  : view.selectedLocal ? "SETUP REQUIRED"
+                                  : view.selectedDownloadable ? "MINERVA AVAILABLE"
+                                    : "CATALOG RECORD"
+                            color: view.details.can_launch || view.selectedLocal
+                                   ? view.accentCool
+                                   : view.selectedDownloadable ? view.accent : view.muted
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        visible: view.details.emulator_name.length > 0
+                        text: view.details.emulator_name
+                        color: view.muted
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            Item {
+                id: overlayContent
+                anchors.left: parent.left
+                anchors.leftMargin: 350
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+
+                Row {
+                    id: overlayHeader
+                    anchors.left: parent.left
+                    anchors.leftMargin: 38
+                    anchors.right: parent.right
+                    anchors.rightMargin: 30
+                    anchors.top: parent.top
+                    anchors.topMargin: 30
+                    height: 44
+                    spacing: 14
+
+                    Text {
+                        width: Math.max(0, parent.width - overlayClose.width - parent.spacing)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: view.overlayMode === "details"
+                              ? "GAME DETAILS" : "GAME MENU"
+                        color: view.ink
+                        font.pixelSize: 18
+                        font.weight: Font.Black
+                        font.letterSpacing: 1.2
+                    }
+                    Rectangle {
+                        id: overlayClose
+                        width: 42
+                        height: 42
+                        radius: 12
+                        color: overlayCloseHover.hovered ? "#54313b49" : "#2e222b37"
+                        border.color: overlayCloseHover.hovered ? view.accent : "#596574"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "×"
+                            color: view.ink
+                            font.pixelSize: 22
+                        }
+                        HoverHandler { id: overlayCloseHover }
+                        TapHandler { onTapped: view.closeOverlay() }
+                    }
+                }
+
+                Row {
+                    id: overlayTabs
+                    anchors.left: parent.left
+                    anchors.leftMargin: 38
+                    anchors.top: overlayHeader.bottom
+                    anchors.topMargin: 12
+                    spacing: 10
+
+                    Repeater {
+                        model: ["DETAILS", "GAME MENU"]
+                        delegate: Rectangle {
+                            id: overlayTab
+                            required property int index
+                            required property string modelData
+                            property bool selected: view.overlayMode
+                                                    === (index === 0 ? "details" : "menu")
+                            width: tabText.implicitWidth + 28
+                            height: 38
+                            radius: 11
+                            color: selected ? "#3d4b362b" : "#29222a34"
+                            border.color: selected ? view.accent : "#4c596675"
+                            Text {
+                                id: tabText
+                                anchors.centerIn: parent
+                                text: overlayTab.modelData
+                                color: overlayTab.selected ? view.ink : view.muted
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                            TapHandler {
+                                onTapped: {
+                                    view.overlayMode = overlayTab.index === 0
+                                                       ? "details" : "menu"
+                                    if (view.overlayMode === "details")
+                                        detailsScroller.contentY = 0
+                                    view.forceActiveFocus()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    id: overlayBody
+                    anchors.left: parent.left
+                    anchors.leftMargin: 38
+                    anchors.right: parent.right
+                    anchors.rightMargin: 38
+                    anchors.top: overlayTabs.bottom
+                    anchors.topMargin: 22
+                    anchors.bottom: overlayHelp.top
+                    anchors.bottomMargin: 18
+
+                    Flickable {
+                        id: detailsScroller
+                        anchors.fill: parent
+                        visible: view.overlayMode === "details"
+                        clip: true
+                        contentWidth: width
+                        contentHeight: detailsContent.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        Column {
+                            id: detailsContent
+                            width: detailsScroller.width - 12
+                            spacing: 18
+
+                            Text {
+                                width: parent.width
+                                text: view.details.loading
+                                      ? "Loading the exact game record…"
+                                      : view.details.description.length > 0
+                                        ? view.details.description
+                                        : "No description is available for this exact release."
+                                color: "#dde2e9"
+                                font.pixelSize: 15
+                                lineHeight: 1.35
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Grid {
+                                width: parent.width
+                                columns: 2
+                                columnSpacing: 12
+                                rowSpacing: 12
+
+                                Repeater {
+                                    model: [
+                                        { label: "RELEASED", value: view.details.release_date },
+                                        { label: "GENRE", value: view.details.genre },
+                                        { label: "DEVELOPER", value: view.details.developer },
+                                        { label: "PUBLISHER", value: view.details.publisher },
+                                        { label: "PLAYERS", value: view.details.players },
+                                        { label: "RATING", value: view.details.rating.length > 0
+                                                                  ? "★ " + view.details.rating : "" },
+                                        { label: "AGE RATING", value: view.details.esrb },
+                                        { label: "RELEASE TYPE", value: view.details.release_type }
+                                    ]
+                                    delegate: Rectangle {
+                                        id: factCard
+                                        required property var modelData
+                                        visible: String(modelData.value).length > 0
+                                        width: (detailsContent.width - 12) / 2
+                                        height: visible ? 66 : 0
+                                        radius: 12
+                                        color: "#66202935"
+                                        border.color: "#48546370"
+                                        Column {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: 5
+                                            Text {
+                                                text: factCard.modelData.label
+                                                color: view.muted
+                                                font.pixelSize: 8
+                                                font.weight: Font.Bold
+                                                font.letterSpacing: 1
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                text: factCard.modelData.value
+                                                color: view.ink
+                                                font.pixelSize: 12
+                                                font.weight: Font.DemiBold
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                width: parent.width
+                                height: activityContent.implicitHeight + 28
+                                radius: 14
+                                color: "#66202935"
+                                border.color: "#48546370"
+                                Column {
+                                    id: activityContent
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 14
+                                    spacing: 9
+                                    Text {
+                                        text: "YOUR ACTIVITY"
+                                        color: view.accent
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 1
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: view.details.activity_visible
+                                              ? view.details.play_count + " launches  ·  "
+                                                + view.details.play_time + "  ·  "
+                                                + view.details.completion_state.split("-").join(" ").toUpperCase()
+                                              : "No play activity has been recorded for this game."
+                                        color: view.ink
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Text {
+                                        visible: view.details.last_played.length > 0
+                                        text: "Last played " + view.details.last_played
+                                        color: view.muted
+                                        font.pixelSize: 11
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                width: parent.width
+                                visible: view.details.notes.length > 0
+                                height: visible ? notesContent.implicitHeight + 28 : 0
+                                radius: 14
+                                color: "#66202935"
+                                border.color: "#48546370"
+                                Column {
+                                    id: notesContent
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 14
+                                    spacing: 8
+                                    Text {
+                                        text: "NOTES"
+                                        color: view.accent
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 1
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: view.details.notes
+                                        color: view.ink
+                                        font.pixelSize: 12
+                                        lineHeight: 1.25
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+
+                            Flow {
+                                width: parent.width
+                                visible: view.details.tag_count > 0
+                                height: visible ? childrenRect.height : 0
+                                spacing: 8
+                                Repeater {
+                                    model: view.details.tag_count
+                                    delegate: Rectangle {
+                                        id: overlayTag
+                                        required property int index
+                                        width: overlayTagText.implicitWidth + 20
+                                        height: 28
+                                        radius: 9
+                                        color: "#3136473e"
+                                        border.color: view.accentCool
+                                        Text {
+                                            id: overlayTagText
+                                            anchors.centerIn: parent
+                                            text: view.details.tag_at(overlayTag.index).toUpperCase()
+                                            color: view.accentCool
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.6
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: view.details.firmware_rule_count > 0
+                                         || view.details.launch_status.length > 0
+                                text: [view.details.launch_status,
+                                       view.details.firmware_summary]
+                                      .filter(value => value.length > 0).join("\n")
+                                color: view.details.can_launch ? view.accentCool : view.muted
+                                font.pixelSize: 11
+                                lineHeight: 1.3
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.right: parent.right
+                            width: 3
+                            radius: 2
+                            visible: detailsScroller.contentHeight > detailsScroller.height
+                            height: visible ? Math.max(36, detailsScroller.height
+                                                      * detailsScroller.height
+                                                      / detailsScroller.contentHeight) : 0
+                            y: visible ? detailsScroller.contentY
+                                         * (detailsScroller.height - height)
+                                         / Math.max(1, detailsScroller.contentHeight
+                                                    - detailsScroller.height) : 0
+                            color: view.accent
+                        }
+                    }
+
+                    Column {
+                        id: gameMenu
+                        anchors.fill: parent
+                        visible: view.overlayMode === "menu"
+                        spacing: 12
+
+                        Text {
+                            width: parent.width
+                            text: "Choose what to do with this exact release. Download and management actions hand off to the complete desktop tools without losing selection."
+                            color: view.muted
+                            font.pixelSize: 13
+                            lineHeight: 1.3
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Repeater {
+                            model: 4
+                            delegate: Rectangle {
+                                id: menuAction
+                                required property int index
+                                property bool selected: view.menuActionIndex === index
+                                width: gameMenu.width
+                                height: 88
+                                radius: 14
+                                color: selected ? "#5946382c" : menuHover.hovered
+                                       ? "#43303a47" : "#65202935"
+                                border.color: selected ? view.accent : "#48546370"
+                                border.width: selected ? 2 : 1
+                                scale: selected ? 1.012 : 1
+                                Behavior on scale { NumberAnimation { duration: 90 } }
+
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: menuGlyph.left
+                                    anchors.rightMargin: 20
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.leftMargin: 20
+                                    spacing: 7
+                                    Text {
+                                        width: parent.width
+                                        text: view.menuActionLabel(menuAction.index)
+                                        color: menuAction.index === 0 ? view.accent : view.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: view.menuActionDescription(menuAction.index)
+                                        color: view.muted
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Text {
+                                    id: menuGlyph
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 20
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: menuAction.index === 0 ? "▶"
+                                          : menuAction.index === 1
+                                            ? (view.favorite ? "★" : "☆")
+                                          : menuAction.index === 2 ? "↗" : "×"
+                                    color: menuAction.selected ? view.accent : view.muted
+                                    font.pixelSize: menuAction.index === 1 ? 24 : 18
+                                    font.weight: Font.Bold
+                                }
+                                HoverHandler { id: menuHover }
+                                TapHandler {
+                                    onTapped: {
+                                        view.menuActionIndex = menuAction.index
+                                        view.activateMenuAction(menuAction.index)
+                                        view.forceActiveFocus()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row {
+                    id: overlayHelp
+                    anchors.left: parent.left
+                    anchors.leftMargin: 38
+                    anchors.right: parent.right
+                    anchors.rightMargin: 38
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 24
+                    height: 24
+                    spacing: 20
+
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("page_left") + " / "
+                                + view.gamepad.button_label("page_right") + "  SWITCH PANEL"
+                              : "← →  SWITCH PANEL"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("accept") + "  SELECT"
+                              : "ENTER  SELECT"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    Item { width: Math.max(0, parent.width - 480); height: 1 }
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("back") + "  CLOSE"
+                              : "ESC  CLOSE"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                }
+            }
+        }
+    }
+
     Timer {
         id: selectionDelay
         interval: 120
@@ -911,8 +1592,22 @@ Item {
         interval: 40
         repeat: false
         onTriggered: {
-            if (view.active && shelf.count > 0)
+            if (!view.active)
+                return
+            if (shelf.count > 0) {
+                if (shelf.currentIndex < 0) {
+                    const preferredRow = view.library.row_for_game(
+                                               view.preferredGameId)
+                    shelf.currentIndex = preferredRow >= 0
+                                       && preferredRow < shelf.count
+                                       ? preferredRow : 0
+                    shelf.positionViewAtIndex(shelf.currentIndex,
+                                              ListView.Center)
+                }
                 view.loadCurrentGame()
+            } else if (view.library.filtered_count > 0) {
+                selectionRetry.restart()
+            }
         }
     }
 

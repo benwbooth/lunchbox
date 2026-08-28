@@ -523,7 +523,12 @@ identity, filtered-row lookup, and backend readiness agree. Pass
 Couch Mode control enters true fullscreen and Escape restores the desktop
 window. Its hidden shelf is inert: selection and details loading begin only
 after Couch Mode becomes active, so constructing or filtering the desktop
-cannot silently replace the user's current game.
+cannot silently replace the user's current game. Couch Mode owns only transient
+overlay state: Details and Game Menu consume the same `GameDetailsModel`, stable
+UUID, favorite persistence, launch, and download/setup handoff used by desktop
+mode. Details is scrollable without a mouse. Game Menu provides the real dynamic
+primary action, favorite toggle, explicit Desktop Details handoff, and Return to
+Browsing; closing or switching panels never changes the selected release.
 
 `GamepadInput` is a CXX-Qt Rust service backed by GilRs. It owns a named worker
 thread, performs blocking device reads there rather than on the GUI thread,
@@ -542,12 +547,16 @@ the inactive QML view ignores its actions.
 `--couch-gamepad-ui-probe --screenshot-output PATH` uses the guarded native test
 seam to inject the same semantic actions that the worker publishes. Against the
 real 303,560-game catalog it proves right movement, exact stable-UUID restoration
-after left movement, action/shelf focus movement, controller-aware presentation,
-and the final 1920x1200 capture. The ordinary Couch Mode probe separately starts
-the real GilRs backend and waits for it to report ready. No controller was
-attached to the current Linux host, so attached-device input and hotplug remain
-explicit Linux, Windows, and macOS release-host gates rather than inferred from
-the deterministic routing probe.
+after left movement, action/shelf focus movement, opening Game Menu, traversing
+all four actions, returning without identity loss, opening Details, and switching
+between panels before the final 1920x1200 Details capture. Pass
+`--couch-gamepad-menu-screenshot-output PATH` instead to stop on and capture the
+verified Game Menu. Xvfb runs set `QT_QPA_PLATFORM=xcb` so Qt cannot escape to an
+ambient Wayland session. The ordinary Couch Mode probe separately starts the
+real GilRs backend and waits for it to report ready. No controller was attached
+to the current Linux host, so attached-device input and hotplug remain explicit
+Linux, Windows, and macOS release-host gates rather than inferred from the
+deterministic routing probe.
 
 `--firmware-probe` opens an imported Coleco ADAM identity, runs normal emulator
 discovery, prints the exact resolved rule counts and runtime path, and exits
