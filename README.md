@@ -155,7 +155,14 @@ unique per game, and invalid edits publish nothing. The canonical title,
 platform, provider links, ROM identity, and file records remain read-only and
 continue to drive Minerva matching, artwork lookup, downloads, activity, and
 launching. Restoring catalog values removes only the metadata overlay and keeps
-the user's tags and custom fields.
+the user's tags and custom fields. Populated catalog facts are also first-class:
+the desktop details surface shows the community rating count and metadata-source
+provenance, plus Video, Wikipedia, and exact Steam-app actions when the record
+contains them. These links open through Qt's system-browser route only after
+Rust accepts a bounded public HTTP(S) URL; credentials, local hosts, IP literals,
+non-web schemes, malformed values, and invented fallbacks are rejected. Couch
+Mode keeps the rating count and source visible while leaving browser navigation
+to the desktop details handoff.
 
 The Minerva Laserdisc Collection is handled as machine media instead of a
 single guessed file. Exact-title records from the pinned canonical LibRetro

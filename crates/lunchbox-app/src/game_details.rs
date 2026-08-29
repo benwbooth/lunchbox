@@ -10,6 +10,7 @@ use directories::ProjectDirs;
 use lava_torrent::torrent::v1::Torrent;
 use rusqlite::OptionalExtension;
 use sha1::{Digest, Sha1};
+use url::{Host, Url};
 
 use crate::arcade_download::{
     build_daphne_laserdisc_plans, build_hypseus_laserdisc_plans, build_mame_laserdisc_plans,
@@ -39,9 +40,14 @@ pub struct GameDetails {
     pub genre: String,
     pub players: String,
     pub rating: String,
+    pub rating_count: i64,
     pub esrb: String,
     pub release_type: String,
     pub cooperative: String,
+    pub catalog_video_url: String,
+    pub wikipedia_url: String,
+    pub steam_app_id: i64,
+    pub metadata_source: String,
     pub notes: String,
     pub tags: Vec<String>,
     pub custom_fields: Vec<crate::settings::GameCustomField>,
@@ -173,6 +179,9 @@ pub fn load(
                         coalesce(g.release_type, ''), coalesce(g.notes, ''),
                         CASE WHEN g.cooperative=1 THEN 'yes'
                              WHEN g.cooperative=0 THEN 'no' ELSE 'unknown' END,
+                        coalesce(g.rating_count, 0), coalesce(g.video_url, ''),
+                        coalesce(g.wikipedia_url, ''), coalesce(g.steam_app_id, 0),
+                        coalesce(g.metadata_source, ''),
                         coalesce(g.launchbox_db_id, 0)
                  FROM games g WHERE g.id=?1",
                 [id],
@@ -190,6 +199,11 @@ pub fn load(
                         row.get::<_, String>(9)?,
                         row.get::<_, String>(10)?,
                         row.get::<_, i64>(11)?,
+                        row.get::<_, String>(12)?,
+                        row.get::<_, String>(13)?,
+                        row.get::<_, i64>(14)?,
+                        row.get::<_, String>(15)?,
+                        row.get::<_, i64>(16)?,
                     ))
                 },
             )
@@ -207,7 +221,12 @@ pub fn load(
             details.release_type = row.8;
             details.notes = row.9;
             details.cooperative = row.10;
-            details.database_id = row.11;
+            details.rating_count = row.11.max(0);
+            details.catalog_video_url = validated_catalog_web_url(&row.12);
+            details.wikipedia_url = validated_catalog_web_url(&row.13);
+            details.steam_app_id = row.14.max(0);
+            details.metadata_source = row.15;
+            details.database_id = row.16;
             details.alternate_titles = load_alternate_titles_from_connection(
                 &connection,
                 details.database_id,
@@ -243,6 +262,29 @@ pub fn load(
     load_supplemental_media(&mut details)?;
     apply_metadata_override(&mut details)?;
     Ok(details)
+}
+
+fn validated_catalog_web_url(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 4096 {
+        return String::new();
+    }
+    let Ok(url) = Url::parse(value) else {
+        return String::new();
+    };
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return String::new();
+    }
+    let Some(Host::Domain(host)) = url.host() else {
+        return String::new();
+    };
+    if host.eq_ignore_ascii_case("localhost") || host.to_ascii_lowercase().ends_with(".localhost") {
+        return String::new();
+    }
+    url.to_string()
 }
 
 fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
@@ -1720,6 +1762,25 @@ mod tests {
         );
         assert_eq!(editable_release_date("1994"), "1994");
         assert_eq!(editable_release_date("September 1985"), "September 1985");
+    }
+
+    #[test]
+    fn catalog_links_accept_only_bounded_public_web_urls() {
+        assert_eq!(
+            validated_catalog_web_url("https://en.wikipedia.org/wiki/Super_Mario_Bros."),
+            "https://en.wikipedia.org/wiki/Super_Mario_Bros."
+        );
+        assert_eq!(
+            validated_catalog_web_url("http://www.youtube.com/watch?v=cWOkHQXw0JQ"),
+            "http://www.youtube.com/watch?v=cWOkHQXw0JQ"
+        );
+        assert!(validated_catalog_web_url("file:///tmp/game.html").is_empty());
+        assert!(validated_catalog_web_url("https://user:secret@example.com/watch").is_empty());
+        assert!(validated_catalog_web_url("http://127.0.0.1/private").is_empty());
+        assert!(validated_catalog_web_url("https://[::1]/private").is_empty());
+        assert!(validated_catalog_web_url("https://localhost/private").is_empty());
+        assert!(validated_catalog_web_url("not a URL").is_empty());
+        assert!(validated_catalog_web_url(&"x".repeat(4097)).is_empty());
     }
 
     #[test]

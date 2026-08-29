@@ -2165,9 +2165,13 @@ Item {
                                                                : view.details.cooperative === "no"
                                                                  ? "Not supported" : "" },
                                         { label: "RATING", value: view.details.rating.length > 0
-                                                                  ? "★ " + view.details.rating : "" },
+                                                                  ? "★ " + view.details.rating
+                                                                    + (view.details.rating_count > 0
+                                                                       ? " · " + view.details.rating_count.toLocaleString(Qt.locale(), "f", 0)
+                                                                         + " ratings" : "") : "" },
                                         { label: "AGE RATING", value: view.details.esrb },
-                                        { label: "RELEASE TYPE", value: view.details.release_type }
+                                        { label: "RELEASE TYPE", value: view.details.release_type },
+                                        { label: "METADATA", value: view.details.metadata_source }
                                     ]
                                     delegate: Rectangle {
                                         id: factCard

@@ -29,9 +29,14 @@ pub mod qobject {
         #[qproperty(QString, genre)]
         #[qproperty(QString, players)]
         #[qproperty(QString, rating)]
+        #[qproperty(i32, rating_count)]
         #[qproperty(QString, esrb)]
         #[qproperty(QString, release_type)]
         #[qproperty(QString, cooperative)]
+        #[qproperty(QUrl, catalog_video_url)]
+        #[qproperty(QUrl, wikipedia_url)]
+        #[qproperty(QUrl, steam_store_url)]
+        #[qproperty(QString, metadata_source)]
         #[qproperty(QString, notes)]
         #[qproperty(bool, metadata_open)]
         #[qproperty(bool, metadata_busy)]
@@ -394,9 +399,14 @@ pub struct GameDetailsModelRust {
     genre: QString,
     players: QString,
     rating: QString,
+    rating_count: i32,
     esrb: QString,
     release_type: QString,
     cooperative: QString,
+    catalog_video_url: QUrl,
+    wikipedia_url: QUrl,
+    steam_store_url: QUrl,
+    metadata_source: QString,
     notes: QString,
     metadata_open: bool,
     metadata_busy: bool,
@@ -542,9 +552,14 @@ impl Default for GameDetailsModelRust {
             genre: QString::default(),
             players: QString::default(),
             rating: QString::default(),
+            rating_count: 0,
             esrb: QString::default(),
             release_type: QString::default(),
             cooperative: QString::from("unknown"),
+            catalog_video_url: QUrl::default(),
+            wikipedia_url: QUrl::default(),
+            steam_store_url: QUrl::default(),
+            metadata_source: QString::default(),
             notes: QString::default(),
             metadata_open: false,
             metadata_busy: false,
@@ -710,6 +725,37 @@ fn validate_launch_profile_template(
 
 fn local_file_url(path: &std::path::Path) -> QUrl {
     QUrl::from_local_file(&qstring(path.to_string_lossy()))
+}
+
+fn catalog_url(value: &str) -> QUrl {
+    if value.is_empty() {
+        QUrl::default()
+    } else {
+        QUrl::from(value)
+    }
+}
+
+fn steam_store_url(app_id: i64) -> QUrl {
+    let value = steam_store_url_string(app_id);
+    if value.is_empty() {
+        QUrl::default()
+    } else {
+        QUrl::from(value.as_str())
+    }
+}
+
+fn steam_store_url_string(app_id: i64) -> String {
+    (app_id > 0)
+        .then(|| format!("https://store.steampowered.com/app/{app_id}"))
+        .unwrap_or_default()
+}
+
+fn metadata_source_label(source: &str) -> &str {
+    match source.trim() {
+        "launchbox" => "LaunchBox",
+        "libretro" => "Libretro",
+        source => source,
+    }
 }
 
 fn count_i32(value: usize) -> i32 {
@@ -1499,9 +1545,14 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_genre(QString::default());
         self.as_mut().set_players(QString::default());
         self.as_mut().set_rating(QString::default());
+        self.as_mut().set_rating_count(0);
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
         self.as_mut().set_cooperative(qstring("unknown"));
+        self.as_mut().set_catalog_video_url(QUrl::default());
+        self.as_mut().set_wikipedia_url(QUrl::default());
+        self.as_mut().set_steam_store_url(QUrl::default());
+        self.as_mut().set_metadata_source(QString::default());
         self.as_mut().set_notes(QString::default());
         self.as_mut().set_metadata_tags(QString::default());
         self.as_mut().rust_mut().current_tags.clear();
@@ -1628,10 +1679,20 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_genre(qstring(&details.genre));
                 self.as_mut().set_players(qstring(&details.players));
                 self.as_mut().set_rating(qstring(&details.rating));
+                self.as_mut()
+                    .set_rating_count(i32::try_from(details.rating_count).unwrap_or(i32::MAX));
                 self.as_mut().set_esrb(qstring(&details.esrb));
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
                 self.as_mut().set_cooperative(qstring(&details.cooperative));
+                self.as_mut()
+                    .set_catalog_video_url(catalog_url(&details.catalog_video_url));
+                self.as_mut()
+                    .set_wikipedia_url(catalog_url(&details.wikipedia_url));
+                self.as_mut()
+                    .set_steam_store_url(steam_store_url(details.steam_app_id));
+                self.as_mut()
+                    .set_metadata_source(qstring(metadata_source_label(&details.metadata_source)));
                 self.as_mut().set_notes(qstring(&details.notes));
                 let tag_count = details.tags.len();
                 self.as_mut().rust_mut().current_tags = details.tags.clone();
@@ -4222,7 +4283,7 @@ mod tests {
     use super::{
         LaunchProfileTarget, format_last_played, format_play_time, format_release_date,
         format_session_duration, metadata_save_messages, session_outcome_label,
-        validate_launch_profile_template,
+        steam_store_url_string, validate_launch_profile_template,
     };
 
     #[test]
@@ -4284,5 +4345,15 @@ mod tests {
             metadata_save_messages(true, true, 0, 1).1,
             "Canonical catalog metadata restored. Local custom fields were kept."
         );
+    }
+
+    #[test]
+    fn steam_store_links_require_an_exact_positive_app_id() {
+        assert_eq!(
+            steam_store_url_string(620),
+            "https://store.steampowered.com/app/620"
+        );
+        assert!(steam_store_url_string(0).is_empty());
+        assert!(steam_store_url_string(-1).is_empty());
     }
 }

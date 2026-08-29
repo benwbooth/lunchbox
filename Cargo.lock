@@ -1645,6 +1645,7 @@ dependencies = [
  "tar",
  "tempfile",
  "ureq",
+ "url",
  "uuid",
  "walkdir",
  "zip",

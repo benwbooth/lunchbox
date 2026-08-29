@@ -115,6 +115,7 @@ ApplicationWindow {
     property bool launchProfileProbeTriggered: false
     property int mediaBundleProbeStage: 0
     property string mediaPlaybackMessage: ""
+    property string catalogLinkMessage: ""
     readonly property var artworkChoices: [
         { key: "box-front", label: "Box front" },
         { key: "box-back", label: "Box back" },
@@ -268,6 +269,16 @@ ApplicationWindow {
 
     function scheduleFilter() {
         filterDelay.restart()
+    }
+
+    function openCatalogLink(label, destination) {
+        if (destination.toString().length === 0)
+            return
+        if (Qt.openUrlExternally(destination)) {
+            catalogLinkMessage = ""
+        } else {
+            catalogLinkMessage = "Could not open " + label + " with the system browser."
+        }
     }
 
     function argumentValue(name) {
@@ -1627,6 +1638,22 @@ ApplicationWindow {
                     Qt.exit(2)
                     return
                 }
+                if (gameDetails.rating_count !== 1150
+                        || gameDetails.catalog_video_url.toString()
+                           !== "https://www.youtube.com/watch?v=cWOkHQXw0JQ"
+                        || gameDetails.wikipedia_url.toString()
+                           !== "https://en.wikipedia.org/wiki/Super_Mario_Bros."
+                        || gameDetails.steam_store_url.toString().length !== 0
+                        || gameDetails.metadata_source !== "LaunchBox") {
+                    console.error("LUNCHBOX_METADATA_UI_FAILED catalog facts votes="
+                                  + gameDetails.rating_count + " video="
+                                  + gameDetails.catalog_video_url + " wiki="
+                                  + gameDetails.wikipedia_url + " steam="
+                                  + gameDetails.steam_store_url + " source="
+                                  + gameDetails.metadata_source)
+                    Qt.exit(2)
+                    return
+                }
                 console.warn("LUNCHBOX_METADATA_UI_STAGE details-ready title="
                              + gameDetails.title)
                 root.metadataProbeStage = 1
@@ -1677,6 +1704,12 @@ ApplicationWindow {
                 return
             if (gameDetails.title !== root.metadataProbeTitle
                     || gameDetails.cooperative !== "yes"
+                    || gameDetails.rating_count !== 1150
+                    || gameDetails.catalog_video_url.toString()
+                       !== "https://www.youtube.com/watch?v=cWOkHQXw0JQ"
+                    || gameDetails.wikipedia_url.toString()
+                       !== "https://en.wikipedia.org/wiki/Super_Mario_Bros."
+                    || gameDetails.metadata_source !== "LaunchBox"
                     || gameDetails.custom_field_count !== 2
                     || gameDetails.custom_field_name_at(0) !== "Cabinet"
                     || gameDetails.custom_field_value_at(1)
@@ -1795,6 +1828,9 @@ ApplicationWindow {
                 Qt.exit(2)
                 return
             }
+            metadataDetailsScroll.contentItem.contentY = Math.max(
+                        0, metadataDetailsScroll.contentItem.contentHeight
+                           - metadataDetailsScroll.contentItem.height)
             metadataScreenshotTimer.restart()
         }
     }
@@ -1806,6 +1842,9 @@ ApplicationWindow {
         onTriggered: {
             if (!root.metadataUiProbe)
                 return
+            metadataDetailsScroll.contentItem.contentY = Math.max(
+                        0, metadataDetailsScroll.contentItem.contentHeight
+                           - metadataDetailsScroll.contentItem.height)
             if (!gameDetails.metadata_open) {
                 console.error("LUNCHBOX_METADATA_UI_FAILED editor closed before capture")
                 Qt.exit(2)
@@ -4140,6 +4179,34 @@ ApplicationWindow {
             font: control.font
             verticalAlignment: Text.AlignVCenter
             horizontalAlignment: Text.AlignHCenter
+        }
+    }
+
+    component CatalogLinkButton: Button {
+        id: catalogLink
+        required property url destination
+        implicitHeight: 32
+        implicitWidth: Math.max(92, contentItem.implicitWidth + 28)
+        leftPadding: 14
+        rightPadding: 14
+        visible: destination.toString().length > 0
+        enabled: visible
+        font.pixelSize: 9
+        font.weight: Font.Bold
+        onClicked: root.openCatalogLink(text, destination)
+        Accessible.name: "Open " + text + " in the system browser"
+        background: Rectangle {
+            radius: 8
+            color: catalogLink.down ? "#29384a"
+                                    : catalogLink.hovered ? "#202e3d" : "#172331"
+            border.color: catalogLink.hovered ? root.accentCool : "#30445a"
+        }
+        contentItem: Text {
+            text: catalogLink.text
+            color: catalogLink.hovered ? root.accentCool : root.ink
+            font: catalogLink.font
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
     }
 
@@ -6652,11 +6719,74 @@ ApplicationWindow {
                         Text { visible: gameDetails.cooperative !== "unknown"; text: "CO-OP"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.cooperative !== "unknown"; text: gameDetails.cooperative === "yes" ? "Supported" : "Not supported"; color: gameDetails.cooperative === "yes" ? root.accentCool : root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.rating.length > 0; text: "RATING"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.rating.length > 0; text: gameDetails.rating + " / 5"; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.rating.length > 0; text: gameDetails.rating + " / 5" + (gameDetails.rating_count > 0 ? "  ·  " + gameDetails.rating_count.toLocaleString(Qt.locale(), "f", 0) + " ratings" : ""); color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.esrb.length > 0; text: "RATED"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.release_type.length > 0; text: "TYPE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                    }
+
+                    Column {
+                        width: parent.width
+                        visible: !gameDetails.loading
+                                 && (gameDetails.metadata_source.length > 0
+                                     || gameDetails.catalog_video_url.toString().length > 0
+                                     || gameDetails.wikipedia_url.toString().length > 0
+                                     || gameDetails.steam_store_url.toString().length > 0)
+                        spacing: 8
+
+                        RowLayout {
+                            width: parent.width
+                            spacing: 8
+                            Text {
+                                text: "CATALOG SOURCES"
+                                color: "#687488"
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.9
+                            }
+                            Rectangle {
+                                visible: gameDetails.metadata_source.length > 0
+                                Layout.preferredWidth: sourceText.implicitWidth + 14
+                                Layout.preferredHeight: 19
+                                radius: 9
+                                color: "#152433"
+                                border.color: "#29445b"
+                                Text {
+                                    id: sourceText
+                                    anchors.centerIn: parent
+                                    text: gameDetails.metadata_source
+                                    color: root.accentCool
+                                    font.pixelSize: 8
+                                    font.weight: Font.DemiBold
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        Row {
+                            spacing: 8
+                            CatalogLinkButton {
+                                text: "WATCH VIDEO"
+                                destination: gameDetails.catalog_video_url
+                            }
+                            CatalogLinkButton {
+                                text: "WIKIPEDIA"
+                                destination: gameDetails.wikipedia_url
+                            }
+                            CatalogLinkButton {
+                                text: "STEAM STORE"
+                                destination: gameDetails.steam_store_url
+                            }
+                        }
+                        Text {
+                            width: parent.width
+                            visible: root.catalogLinkMessage.length > 0
+                            text: root.catalogLinkMessage
+                            color: "#f3a49c"
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
                     }
 
                     Column {
@@ -17173,6 +17303,40 @@ ApplicationWindow {
                                     color: "#6f7d91"
                                     font.pixelSize: 9
                                     elide: Text.ElideMiddle
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: gameDetails.metadata_source.length > 0
+                                             || gameDetails.rating_count > 0
+                                    text: (gameDetails.metadata_source.length > 0
+                                           ? "Metadata source · " + gameDetails.metadata_source : "")
+                                          + (gameDetails.rating_count > 0
+                                             ? (gameDetails.metadata_source.length > 0 ? "  ·  " : "")
+                                               + gameDetails.rating_count.toLocaleString(Qt.locale(), "f", 0)
+                                               + " community ratings" : "")
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    elide: Text.ElideRight
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    visible: gameDetails.catalog_video_url.toString().length > 0
+                                             || gameDetails.wikipedia_url.toString().length > 0
+                                             || gameDetails.steam_store_url.toString().length > 0
+                                    spacing: 8
+                                    CatalogLinkButton {
+                                        text: "WATCH VIDEO"
+                                        destination: gameDetails.catalog_video_url
+                                    }
+                                    CatalogLinkButton {
+                                        text: "WIKIPEDIA"
+                                        destination: gameDetails.wikipedia_url
+                                    }
+                                    CatalogLinkButton {
+                                        text: "STEAM STORE"
+                                        destination: gameDetails.steam_store_url
+                                    }
+                                    Item { Layout.fillWidth: true }
                                 }
                                 Text {
                                     Layout.fillWidth: true

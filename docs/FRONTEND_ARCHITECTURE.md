@@ -376,15 +376,30 @@ to the same stable UUID, limited to 32 entries, preserve explicit order, require
 case-insensitively unique non-empty names, and expose both names and values to
 text search without entering provider matching or ROM identity.
 
+Community vote counts and catalog provenance remain immutable source facts, not
+profile overrides. The current discovery database has rating counts for 174,463
+records, catalog video links for 75,647, Wikipedia links for 45,150, exact Steam
+app IDs for 22,853, and a source label for all 303,560 records. Rust publishes
+only populated values. Catalog URLs are length-bounded and parsed before crossing
+the Qt bridge; only credential-free public HTTP(S) hosts are accepted, while
+localhost names, IP literals, file URLs, malformed values, and synthesized links
+are rejected. A Steam Store URL is derived only from a positive exact app ID.
+Desktop Game Details and the metadata editor open those actions through Qt's
+system browser. Couch Mode exposes the vote count and provenance without moving
+the living-room UI into an external browser.
+
 `--metadata-ui-probe --state-database EMPTY_PATH --screenshot-output
 ABSOLUTE_PATH` first proves the custom title is absent, edits the exact Super
 Mario Bros. UUID through the real native dialog, adds and reorders two custom
 fields, persists the complete profile off-thread, refreshes the library, proves
 both title and custom-field-value search, captures the editor, and asserts that
 the catalog's exact no-co-op value becomes a durable local yes-co-op value while
-the canonical title is still unchanged. A second process using
+the canonical title is still unchanged. The same probe asserts the real record's
+1,150-vote count, LaunchBox source, exact Video and Wikipedia URLs, and absent
+Steam ID before it captures the source card. A second process using
 `--metadata-restored-ui-probe` and the same state path must rediscover the exact
-title, co-op value, field order, names, and values before it exits successfully.
+title, co-op value, field order, names, values, and catalog source facts before
+it exits successfully.
 
 User tags are normalized, stable-UUID records in the same writable state
 database. Metadata, tags, and custom fields validate before one transaction, so
