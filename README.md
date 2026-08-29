@@ -268,6 +268,12 @@ and reapplies the current search and platform filters after ingestion.
 supported files off the GUI thread, streams progress, can be cancelled during
 large-file hashing, and presents a searchable, sortable review table. Unique
 SHA-1/MD5 matches are selected by default; filenames never establish identity.
+Named scan profiles make repeat imports one action: each durably restores its
+lossless native root, exact platform hint, normalized extension scope, and
+checksum policy. Editing a loaded scope clearly switches to a one-time scan;
+removing the profile never removes ROMs or library records. Extension-scoped
+rescans affect missing status only inside that scope, so scanning `.nes` cannot
+make an existing `.sfc` collection disappear.
 Completed regular-file and archive-member hashes are retained in per-user state,
 including results completed before cancellation. A later scan reuses them only
 when the lossless native path, stable filesystem identity, size, and operating-

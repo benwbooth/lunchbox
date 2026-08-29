@@ -61,6 +61,13 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--import-profile-ui-probe")
+        && let Err(error) = local_import::seed_import_profile_ui_probe()
+    {
+        eprintln!("LUNCHBOX_IMPORT_PROFILE_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
     if std::env::args().any(|argument| argument == "--hash-cache-ui-probe")
         && let Err(error) = local_import::seed_hash_cache_ui_probe()
     {

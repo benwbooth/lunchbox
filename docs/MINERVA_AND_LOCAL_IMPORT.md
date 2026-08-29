@@ -64,6 +64,14 @@ exact match. Duplicate persisted keys fail closed instead of restoring an
 ambiguous decision. The preview supports text/status filters, sorting, bulk or
 per-row selection, live progress, and cancellation.
 
+Frequently scanned roots can be saved as named profiles. Each profile preserves
+the lossless native root path, exact platform hint, normalized extension scope,
+and exact-checksum policy in the writable state database. Selecting a profile
+restores all four values; changing platform, extensions, or checksum policy
+visibly turns it into a one-time scan until the user saves it. Names are unique
+case-insensitively, updates are idempotent, and removing a profile never removes
+ROMs or collection records.
+
 The desktop scanner persists completed CRC32/MD5/SHA-1 work in `state.db`,
 including files completed before cancellation. Reuse is deliberately narrower
 than content identity: it requires the same lossless native path, stable
@@ -73,6 +81,16 @@ reported for another scan. Unchanged warm hits cause no cache writes; a complete
 walk transactionally removes disappeared paths, while a cancelled walk retains
 them so work can resume. The Qt review surface reports both reused and newly read
 container counts.
+
+The optional desktop extension scope accepts portable comma-, semicolon-, or
+whitespace-separated values such as `.nes, .fds, .zip`. Values are normalized,
+sorted, deduplicated, and validated before scanning. Custom portable extensions
+are allowed. A scoped completed rescan can mark missing only the existing
+collection records whose source or archive container is in that scope; other
+extensions remain present. Including `.zip` with member extensions inspects the
+container while returning only matching members, but the full safe member count
+is retained so a filtered view cannot make a multi-file archive appear to be a
+safe single-file game.
 
 `scan-local` recursively inventories regular files without following symbolic links. An optional
 comma-separated extension filter limits the scan. Every included file is read once while CRC32,

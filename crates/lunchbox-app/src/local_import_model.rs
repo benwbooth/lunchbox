@@ -15,6 +15,7 @@ pub mod qobject {
         #[qproperty(bool, scanning)]
         #[qproperty(bool, importing)]
         #[qproperty(bool, matching)]
+        #[qproperty(bool, profile_busy)]
         #[qproperty(QString, directory)]
         #[qproperty(QString, message)]
         #[qproperty(QString, match_message)]
@@ -33,6 +34,9 @@ pub mod qobject {
         #[qproperty(i32, result_count)]
         #[qproperty(i32, selected_count)]
         #[qproperty(i32, platform_count)]
+        #[qproperty(i32, profile_count)]
+        #[qproperty(i32, profile_revision)]
+        #[qproperty(i32, active_profile_index)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, match_revision)]
         #[qproperty(i32, match_candidate_count)]
@@ -46,7 +50,30 @@ pub mod qobject {
         fn choose_directory(self: Pin<&mut LocalImportModel>, url: QUrl);
 
         #[qinvokable]
-        fn start_scan(self: Pin<&mut LocalImportModel>, platform: QString, checksums_enabled: bool);
+        fn apply_profile(self: Pin<&mut LocalImportModel>, index: i32) -> bool;
+
+        #[qinvokable]
+        fn clear_active_profile(self: Pin<&mut LocalImportModel>);
+
+        #[qinvokable]
+        fn save_profile(
+            self: Pin<&mut LocalImportModel>,
+            name: QString,
+            platform: QString,
+            extensions: QString,
+            checksums_enabled: bool,
+        );
+
+        #[qinvokable]
+        fn delete_profile(self: Pin<&mut LocalImportModel>, index: i32);
+
+        #[qinvokable]
+        fn start_scan(
+            self: Pin<&mut LocalImportModel>,
+            platform: QString,
+            extensions: QString,
+            checksums_enabled: bool,
+        );
 
         #[qinvokable]
         fn cancel_scan(self: Pin<&mut LocalImportModel>);
@@ -98,6 +125,24 @@ pub mod qobject {
         fn platform_name_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn profile_name_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn profile_directory_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn profile_platform_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn profile_extensions_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn profile_checksums_at(self: &LocalImportModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn profile_detail_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn result_file_name_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -139,7 +184,7 @@ use cxx_qt_lib::{QString, QUrl};
 
 use crate::catalog;
 use crate::local_import::{
-    self, ManualMatchCandidate, MatchState, ScanOutput, ScanProgress, ScanResult,
+    self, ManualMatchCandidate, MatchState, RomImportProfile, ScanOutput, ScanProgress, ScanResult,
 };
 
 pub struct LocalImportModelRust {
@@ -148,6 +193,7 @@ pub struct LocalImportModelRust {
     scanning: bool,
     importing: bool,
     matching: bool,
+    profile_busy: bool,
     directory: QString,
     message: QString,
     match_message: QString,
@@ -166,11 +212,16 @@ pub struct LocalImportModelRust {
     result_count: i32,
     selected_count: i32,
     platform_count: i32,
+    profile_count: i32,
+    profile_revision: i32,
+    active_profile_index: i32,
     revision: i32,
     match_revision: i32,
     match_candidate_count: i32,
     collection_revision: i32,
     platforms: Vec<String>,
+    profiles: Vec<RomImportProfile>,
+    profile_root_override: Option<PathBuf>,
     output: Option<ScanOutput>,
     visible_indices: Vec<usize>,
     cancel: Option<Arc<AtomicBool>>,
@@ -191,6 +242,7 @@ impl Default for LocalImportModelRust {
             scanning: false,
             importing: false,
             matching: false,
+            profile_busy: false,
             directory,
             message: QString::from("Choose a ROM folder to scan your existing collection."),
             match_message: QString::from(
@@ -211,11 +263,16 @@ impl Default for LocalImportModelRust {
             result_count: 0,
             selected_count: 0,
             platform_count: 0,
+            profile_count: 0,
+            profile_revision: 0,
+            active_profile_index: -1,
             revision: 0,
             match_revision: 0,
             match_candidate_count: 0,
             collection_revision: 0,
             platforms: Vec::new(),
+            profiles: Vec::new(),
+            profile_root_override: None,
             output: None,
             visible_indices: Vec::new(),
             cancel: None,
@@ -229,6 +286,10 @@ impl Default for LocalImportModelRust {
 
 fn qstring(value: impl AsRef<str>) -> QString {
     QString::from(value.as_ref())
+}
+
+fn import_profile_probe() -> bool {
+    std::env::args().any(|argument| argument == "--import-profile-ui-probe")
 }
 
 fn saturating_i32(value: usize) -> i32 {
@@ -246,15 +307,32 @@ impl qobject::LocalImportModel {
             ));
             return;
         };
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_message(qstring(format!(
+                    "Could not locate Lunchbox state for ROM import: {error}"
+                )));
+                return;
+            }
+        };
         self.as_mut().set_busy(true);
+        if import_profile_probe() {
+            println!("LUNCHBOX_IMPORT_PROFILE_MODEL initializing");
+        }
         self.as_mut()
             .set_message(qstring("Loading import platforms…"));
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-import-platforms".into())
             .spawn(move || {
-                let result = local_import::load_platform_names(&discovery_path)
-                    .map_err(|error| error.to_string());
+                let result = (|| -> anyhow::Result<(Vec<String>, Vec<RomImportProfile>)> {
+                    Ok((
+                        local_import::load_platform_names(&discovery_path)?,
+                        local_import::load_import_profiles(&state_path)?,
+                    ))
+                })()
+                .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_initialize(result);
                 });
@@ -267,21 +345,39 @@ impl qobject::LocalImportModel {
         }
     }
 
-    fn finish_initialize(mut self: Pin<&mut Self>, result: Result<Vec<String>, String>) {
+    fn finish_initialize(
+        mut self: Pin<&mut Self>,
+        result: Result<(Vec<String>, Vec<RomImportProfile>), String>,
+    ) {
         self.as_mut().set_busy(false);
         match result {
-            Ok(platforms) => {
+            Ok((platforms, profiles)) => {
                 let count = platforms.len();
+                let profile_count = profiles.len();
                 self.as_mut().rust_mut().platforms = platforms;
+                self.as_mut().rust_mut().profiles = profiles;
                 self.as_mut().set_platform_count(saturating_i32(count));
+                self.as_mut()
+                    .set_profile_count(saturating_i32(profile_count));
+                self.as_mut().bump_profile_revision();
                 self.as_mut().set_initialized(true);
+                if import_profile_probe() {
+                    println!(
+                        "LUNCHBOX_IMPORT_PROFILE_MODEL ready platforms={} profiles={}",
+                        count, profile_count
+                    );
+                }
                 self.as_mut().set_message(qstring(
                     "Choose a ROM folder. Exact matches use SHA-1 and MD5; filenames are never accepted as identity.",
                 ));
             }
-            Err(error) => self
-                .as_mut()
-                .set_message(qstring(format!("Could not load import platforms: {error}"))),
+            Err(error) => {
+                if import_profile_probe() {
+                    eprintln!("LUNCHBOX_IMPORT_PROFILE_MODEL failed error={error}");
+                }
+                self.as_mut()
+                    .set_message(qstring(format!("Could not load import platforms: {error}")));
+            }
         }
     }
 
@@ -291,14 +387,224 @@ impl qobject::LocalImportModel {
                 .set_message(qstring("Choose a local filesystem directory."));
             return;
         };
+        self.as_mut().rust_mut().profile_root_override = None;
+        self.as_mut().set_active_profile_index(-1);
         self.as_mut().set_directory(path);
     }
 
-    pub fn start_scan(mut self: Pin<&mut Self>, platform: QString, checksums_enabled: bool) {
-        if *self.as_ref().busy() {
+    pub fn apply_profile(mut self: Pin<&mut Self>, index: i32) -> bool {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() {
+            return false;
+        }
+        let Some(index) = usize::try_from(index).ok() else {
+            return false;
+        };
+        let Some(profile) = self.as_ref().rust().profiles.get(index).cloned() else {
+            return false;
+        };
+        self.as_mut().rust_mut().profile_root_override = Some(profile.root.clone());
+        self.as_mut()
+            .set_directory(qstring(profile.root.to_string_lossy()));
+        self.as_mut()
+            .set_active_profile_index(saturating_i32(index));
+        self.as_mut().set_message(qstring(format!(
+            "Loaded scan profile ‘{}’: {}.",
+            profile.name,
+            profile_scope_detail(&profile)
+        )));
+        if import_profile_probe() {
+            println!(
+                "LUNCHBOX_IMPORT_PROFILE_UI_READY name={:?} scope={:?} directory={:?}",
+                profile.name,
+                profile_scope_detail(&profile),
+                profile.root,
+            );
+        }
+        true
+    }
+
+    pub fn clear_active_profile(mut self: Pin<&mut Self>) {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() {
             return;
         }
-        let root = PathBuf::from(self.as_ref().directory().to_string());
+        if *self.as_ref().active_profile_index() >= 0 {
+            self.as_mut().set_active_profile_index(-1);
+            self.as_mut().set_message(qstring(
+                "Using a one-time scan scope. Save it as a profile if you want to reuse it.",
+            ));
+        }
+    }
+
+    pub fn save_profile(
+        mut self: Pin<&mut Self>,
+        name: QString,
+        platform: QString,
+        extensions: QString,
+        checksums_enabled: bool,
+    ) {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() {
+            return;
+        }
+        let root = self
+            .as_ref()
+            .rust()
+            .profile_root_override
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(self.as_ref().directory().to_string()));
+        let name = name.to_string();
+        let platform = platform.to_string();
+        let extensions = extensions.to_string();
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_message(qstring(format!(
+                    "Could not locate Lunchbox state for scan profiles: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().set_profile_busy(true);
+        self.as_mut()
+            .set_message(qstring("Saving reusable ROM scan profile…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-import-profile-save".into())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<(Vec<RomImportProfile>, String, String)> {
+                    let saved = local_import::save_import_profile(
+                        &state_path,
+                        &name,
+                        &root,
+                        &platform,
+                        &extensions,
+                        checksums_enabled,
+                    )?;
+                    let profiles = local_import::load_import_profiles(&state_path)?;
+                    Ok((profiles, saved.id, saved.name))
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_profile_save(result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_profile_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start scan-profile save: {error}"
+            )));
+        }
+    }
+
+    fn finish_profile_save(
+        mut self: Pin<&mut Self>,
+        result: Result<(Vec<RomImportProfile>, String, String), String>,
+    ) {
+        self.as_mut().set_profile_busy(false);
+        match result {
+            Ok((profiles, saved_id, saved_name)) => {
+                let selected = profiles
+                    .iter()
+                    .position(|profile| profile.id == saved_id)
+                    .map(saturating_i32)
+                    .unwrap_or(-1);
+                let count = profiles.len();
+                self.as_mut().rust_mut().profiles = profiles;
+                self.as_mut().set_profile_count(saturating_i32(count));
+                self.as_mut().set_active_profile_index(selected);
+                self.as_mut().bump_profile_revision();
+                self.as_mut().set_message(qstring(format!(
+                    "Saved scan profile ‘{saved_name}’. Apply it whenever this collection needs another import."
+                )));
+            }
+            Err(error) => self
+                .as_mut()
+                .set_message(qstring(format!("Could not save scan profile: {error}"))),
+        }
+    }
+
+    pub fn delete_profile(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() {
+            return;
+        }
+        let profile = usize::try_from(index)
+            .ok()
+            .and_then(|index| self.as_ref().rust().profiles.get(index).cloned());
+        let Some(profile) = profile else {
+            self.as_mut()
+                .set_message(qstring("Choose a saved scan profile to remove."));
+            return;
+        };
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_message(qstring(format!(
+                    "Could not locate Lunchbox state for scan profiles: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().set_profile_busy(true);
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-import-profile-delete".into())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<(Vec<RomImportProfile>, String)> {
+                    local_import::delete_import_profile(&state_path, &profile.id)?;
+                    Ok((
+                        local_import::load_import_profiles(&state_path)?,
+                        profile.name,
+                    ))
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_profile_delete(result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_profile_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start scan-profile removal: {error}"
+            )));
+        }
+    }
+
+    fn finish_profile_delete(
+        mut self: Pin<&mut Self>,
+        result: Result<(Vec<RomImportProfile>, String), String>,
+    ) {
+        self.as_mut().set_profile_busy(false);
+        match result {
+            Ok((profiles, removed_name)) => {
+                let count = profiles.len();
+                self.as_mut().rust_mut().profiles = profiles;
+                self.as_mut().set_profile_count(saturating_i32(count));
+                self.as_mut().set_active_profile_index(-1);
+                self.as_mut().bump_profile_revision();
+                self.as_mut().set_message(qstring(format!(
+                    "Removed scan profile ‘{removed_name}’. No ROMs or collection records were changed."
+                )));
+            }
+            Err(error) => self
+                .as_mut()
+                .set_message(qstring(format!("Could not remove scan profile: {error}"))),
+        }
+    }
+
+    pub fn start_scan(
+        mut self: Pin<&mut Self>,
+        platform: QString,
+        extensions: QString,
+        checksums_enabled: bool,
+    ) {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() {
+            return;
+        }
+        let root = self
+            .as_ref()
+            .rust()
+            .profile_root_override
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(self.as_ref().directory().to_string()));
         if root.as_os_str().is_empty() {
             self.as_mut()
                 .set_message(qstring("Choose a ROM directory before scanning."));
@@ -319,6 +625,15 @@ impl qobject::LocalImportModel {
                 return;
             }
         };
+        let extension_filter =
+            match local_import::normalize_extension_filter(&extensions.to_string()) {
+                Ok(extensions) => extensions,
+                Err(error) => {
+                    self.as_mut()
+                        .set_message(qstring(format!("Invalid ROM extension filter: {error}")));
+                    return;
+                }
+            };
 
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
@@ -354,11 +669,12 @@ impl qobject::LocalImportModel {
             .name("lunchbox-rom-scan".into())
             .spawn(move || {
                 let result = (|| -> anyhow::Result<ScanOutput> {
-                    let mut output = local_import::scan_directory_cached(
+                    let mut output = local_import::scan_directory_cached_with_extensions(
                         &discovery_path,
                         &state_path,
                         &root,
                         &platform,
+                        &extension_filter,
                         checksums_enabled,
                         &cancel,
                         progress,
@@ -870,6 +1186,47 @@ impl qobject::LocalImportModel {
             .unwrap_or_default()
     }
 
+    pub fn profile_name_at(&self, index: i32) -> QString {
+        self.profile_at(index)
+            .map(|profile| qstring(&profile.name))
+            .unwrap_or_default()
+    }
+
+    pub fn profile_directory_at(&self, index: i32) -> QString {
+        self.profile_at(index)
+            .map(|profile| qstring(profile.root.to_string_lossy()))
+            .unwrap_or_default()
+    }
+
+    pub fn profile_platform_at(&self, index: i32) -> QString {
+        self.profile_at(index)
+            .map(|profile| qstring(&profile.platform_hint))
+            .unwrap_or_default()
+    }
+
+    pub fn profile_extensions_at(&self, index: i32) -> QString {
+        self.profile_at(index)
+            .map(|profile| qstring(local_import::format_extension_filter(&profile.extensions)))
+            .unwrap_or_default()
+    }
+
+    pub fn profile_checksums_at(&self, index: i32) -> bool {
+        self.profile_at(index)
+            .is_some_and(|profile| profile.checksums_enabled)
+    }
+
+    pub fn profile_detail_at(&self, index: i32) -> QString {
+        self.profile_at(index)
+            .map(|profile| qstring(profile_scope_detail(profile)))
+            .unwrap_or_default()
+    }
+
+    fn profile_at(&self, index: i32) -> Option<&RomImportProfile> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().profiles.get(index))
+    }
+
     pub fn result_file_name_at(&self, index: i32) -> QString {
         self.result_at(index)
             .map(|result| qstring(&result.file_name))
@@ -1051,6 +1408,30 @@ impl qobject::LocalImportModel {
         let revision = self.as_ref().match_revision().wrapping_add(1);
         self.as_mut().set_match_revision(revision);
     }
+
+    fn bump_profile_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().profile_revision().wrapping_add(1);
+        self.as_mut().set_profile_revision(revision);
+    }
+}
+
+fn profile_scope_detail(profile: &RomImportProfile) -> String {
+    let platform = if profile.platform_hint.is_empty() {
+        "auto-detect platform".to_owned()
+    } else {
+        profile.platform_hint.clone()
+    };
+    let extensions = if profile.extensions.is_empty() {
+        "all supported extensions".to_owned()
+    } else {
+        local_import::format_extension_filter(&profile.extensions)
+    };
+    let checksums = if profile.checksums_enabled {
+        "exact checksums"
+    } else {
+        "inventory only"
+    };
+    format!("{platform} · {extensions} · {checksums}")
 }
 
 fn matched_title(result: &ScanResult) -> &str {

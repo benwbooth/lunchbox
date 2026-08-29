@@ -80,7 +80,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   discovery, optional SHA-1/MD5 identity verification, cancellable streaming
   progress, searchable/sortable review, bulk/per-file selection, idempotent
   persistence, lossless native paths, and immediate My Collection/Minerva
-  availability updates. ZIP and 7z members are reviewed and hashed independently;
+  availability updates. Named scan profiles preserve an exact native root,
+  platform, normalized extension scope, and checksum policy across restart;
+  scoped rescans never mark out-of-scope records missing. ZIP, 7z, and RAR
+  members are reviewed and hashed independently;
   multi-member archives select nothing automatically, while explicit member
   imports are digest-revalidated and materialized atomically with exact source
   provenance. Unmatched and ambiguous files remain local-only unless the user
@@ -146,7 +149,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend the implemented folder chooser, platform assignment, scan preview,
   progress, cancellation, exact/ambiguous reporting, idempotent rescans,
   resumable native-metadata-validated hash cache, exact duplicate/change audit,
-  and missing-file management view with named extension presets.
+  named extension-scoped scan profiles, and missing-file management view with
+  cross-root scheduling and richer scan history.
 - Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
 - Durable per-game tags are native: stable IDs, case-insensitive normalization,

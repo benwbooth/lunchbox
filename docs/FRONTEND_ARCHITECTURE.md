@@ -245,14 +245,23 @@ The initial implementation enforces this shape:
   atomic cancellation token is checked between every read chunk. The review
   view is virtualized; filtering and selection operate on compact Rust indices.
   Imported paths retain native bytes (`unix_bytes`, `windows_utf16le`, or
-  `utf8`) instead of using a display string as identity.
+  `utf8`) instead of using a display string as identity. Reusable profiles are
+  stored by stable ID in the writable state database and preserve those same
+  native root bytes plus an exact platform hint, canonical sorted extension
+  set, and checksum policy. Profile reads and writes stay on named workers.
+  Editing loaded controls detaches them into a visible one-time scope rather
+  than silently changing the saved profile.
   Successfully read CRC32/MD5/SHA-1 records are committed incrementally to the
   writable state database, so a cancelled scan resumes from every completed
   regular file or archive. Reuse requires the same lossless path, stable native
   filesystem identity, container size, and OS modification/change metadata;
   malformed cache rows and changed-during-read files fail closed. Warm hits do
   not write SQLite. A successful complete walk prunes disappeared paths in one
-  transaction, while cancellation deliberately skips pruning.
+  transaction, while cancellation deliberately skips pruning. An explicit
+  extension scope limits both loose files and archive members. Archive
+  containers are still inspected safely, all recognized members contribute to
+  the physical-member count, and only in-scope collection records can become
+  missing after a scoped rescan.
 - Library maintenance runs on the same bounded scanner contract but prepares
   the catalog match index once for the entire audit. Each root either completes
   atomically for availability purposes or is reported as offline; a partial or
@@ -398,6 +407,11 @@ idempotent scan-to-collection integration test.
 the real scanner before Qt starts, then requires the ordinary model-driven scan
 to report at least one reused file and zero content reads before exiting.
 Repeating it against the same paths is idempotent.
+`--import-profile-ui-probe` creates one deterministic named profile through the
+production store, loads it through the ordinary CXX-Qt model, and exits only
+after QML observes its name, exact platform, canonical extension scope, checksum
+policy, active index, and native directory. Reusing the same state path proves
+idempotent seeding and restart loading.
 `--archive-import-probe --games-database PATH --import-directory PATH` succeeds
 only when a ZIP, 7z, or RAR archive with one safe recognized ROM member receives an
 exact SHA-1/MD5 catalog identity. `--archive-import-ui-probe` follows the same

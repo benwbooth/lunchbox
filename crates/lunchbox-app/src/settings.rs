@@ -3403,6 +3403,23 @@ fn migrate(connection: &Connection) -> Result<()> {
              checksums_enabled INTEGER NOT NULL CHECK (checksums_enabled IN (0, 1)),
              last_scanned_at INTEGER NOT NULL
          );
+         CREATE TABLE IF NOT EXISTS rom_import_profiles (
+             id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 64),
+             name TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (
+                 length(trim(name)) BETWEEN 1 AND 80
+             ),
+             path_display TEXT NOT NULL CHECK (length(path_display) BETWEEN 1 AND 8192),
+             path_bytes BLOB NOT NULL CHECK (length(path_bytes) BETWEEN 1 AND 32768),
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             platform_hint TEXT NOT NULL CHECK (length(platform_hint) <= 512),
+             extensions_json TEXT NOT NULL CHECK (length(extensions_json) <= 8192),
+             checksums_enabled INTEGER NOT NULL CHECK (checksums_enabled IN (0, 1)),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+         );
+         CREATE INDEX IF NOT EXISTS rom_import_profiles_updated
+             ON rom_import_profiles(updated_at DESC, name COLLATE NOCASE);
          CREATE TABLE IF NOT EXISTS local_rom_files (
              id TEXT PRIMARY KEY,
              root_id TEXT NOT NULL REFERENCES local_collection_roots(id) ON DELETE CASCADE,

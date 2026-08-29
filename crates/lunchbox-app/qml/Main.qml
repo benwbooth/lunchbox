@@ -138,10 +138,12 @@ ApplicationWindow {
     readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
     readonly property bool manualMatchUiProbe: Qt.application.arguments.indexOf("--manual-match-ui-probe") >= 0
     readonly property bool hashCacheUiProbe: Qt.application.arguments.indexOf("--hash-cache-ui-probe") >= 0
+    readonly property bool importProfileUiProbe: Qt.application.arguments.indexOf("--import-profile-ui-probe") >= 0
     readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
                                           || archiveImportUiProbe
                                           || manualMatchUiProbe
                                           || hashCacheUiProbe
+                                          || importProfileUiProbe
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
@@ -229,6 +231,7 @@ ApplicationWindow {
     property int metadataProbeStage: 0
     property int tagsProbeStage: 0
     property bool activityHistoryProbeOpened: false
+    property bool importProfileProbeStarted: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
 
     palette.window: "#0c1119"
@@ -703,6 +706,29 @@ ApplicationWindow {
     function openImportDialog() {
         importDialogLoader.active = true
         importDialogLoader.item.open()
+    }
+
+    function startImportProfileProbe() {
+        if (!root.importProfileUiProbe || root.importProfileProbeStarted
+                || !localImport.initialized || localImport.directory.length === 0)
+            return
+        root.importProfileProbeStarted = true
+        if (localImport.profile_count !== 1
+                || localImport.profile_name_at(0) !== "Nintendo cartridge shelf"
+                || localImport.profile_platform_at(0)
+                   !== "Nintendo Entertainment System"
+                || localImport.profile_extensions_at(0) !== ".fds, .nes, .zip"
+                || !localImport.profile_checksums_at(0)
+                || !localImport.apply_profile(0)) {
+            console.error("LUNCHBOX_IMPORT_PROFILE_UI_FAILED loaded count="
+                          + localImport.profile_count + " name="
+                          + localImport.profile_name_at(0) + " platform="
+                          + localImport.profile_platform_at(0) + " extensions="
+                          + localImport.profile_extensions_at(0))
+            Qt.exit(2)
+            return
+        }
+        importProfileFinishTimer.restart()
     }
 
     function reviewAuditRoot(index) {
@@ -2673,9 +2699,13 @@ ApplicationWindow {
         function onInitializedChanged() {
             if (localImport.initialized && root.importUiProbe
                     && localImport.directory.length > 0) {
+                if (root.importProfileUiProbe) {
+                    root.startImportProfileProbe()
+                    return
+                }
                 if (root.hashCacheUiProbe)
                     root.hashCacheScanStarted = true
-                localImport.start_scan("", true)
+                localImport.start_scan("", "", true)
             }
         }
         function onResult_countChanged() {
@@ -2883,13 +2913,68 @@ ApplicationWindow {
 
     Timer {
         interval: 50
+        running: root.importProfileUiProbe && !root.importProfileProbeStarted
+        repeat: true
+        onTriggered: root.startImportProfileProbe()
+    }
+
+    Timer {
+        id: importProfileFinishTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            if (localImport.active_profile_index !== 0
+                    || localImport.directory.length === 0) {
+                console.error("LUNCHBOX_IMPORT_PROFILE_UI_FAILED active="
+                              + localImport.active_profile_index + " directory="
+                              + localImport.directory)
+                Qt.exit(2)
+                return
+            }
+            const finish = function() {
+                console.log("LUNCHBOX_IMPORT_PROFILE_UI_READY name="
+                            + localImport.profile_name_at(0) + " scope="
+                            + localImport.profile_detail_at(0) + " directory="
+                            + localImport.directory)
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                finish()
+                return
+            }
+            importDialogLoader.item.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_IMPORT_PROFILE_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                finish()
+            })
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.importProfileUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_IMPORT_PROFILE_UI_FAILED timeout initialized="
+                          + localImport.initialized + " count="
+                          + localImport.profile_count + " message=" + localImport.message)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
+        interval: 50
         running: root.hashCacheUiProbe && !root.hashCacheScanStarted
         repeat: true
         onTriggered: {
             if (!localImport.initialized || localImport.directory.length === 0)
                 return
             root.hashCacheScanStarted = true
-            localImport.start_scan("", true)
+            localImport.start_scan("", "", true)
         }
     }
 
@@ -10480,6 +10565,27 @@ ApplicationWindow {
             padding: 0
             closePolicy: Popup.CloseOnEscape
 
+            function syncProfileControls(profileIndex) {
+                if (profileIndex < 0 || profileIndex >= localImport.profile_count)
+                    return
+                importProfile.currentIndex = profileIndex + 1
+                const profilePlatform = localImport.profile_platform_at(profileIndex)
+                importPlatform.currentIndex = 0
+                for (let index = 1; index < importPlatform.model.length; ++index) {
+                    if (importPlatform.model[index] === profilePlatform) {
+                        importPlatform.currentIndex = index
+                        break
+                    }
+                }
+                importExtensions.text = localImport.profile_extensions_at(profileIndex)
+                importChecksums.checked = localImport.profile_checksums_at(profileIndex)
+            }
+
+            function loadProfile(profileIndex) {
+                if (localImport.apply_profile(profileIndex))
+                    syncProfileControls(profileIndex)
+            }
+
             Timer {
                 id: importFilterDelay
                 interval: 75
@@ -10496,6 +10602,14 @@ ApplicationWindow {
                 function onResult_countChanged() {
                     if (localImport.result_count > 0)
                         importFilterDelay.restart()
+                }
+                function onProfile_revisionChanged() {
+                    importProfile.currentIndex = localImport.active_profile_index >= 0
+                                               ? localImport.active_profile_index + 1 : 0
+                }
+                function onActive_profile_indexChanged() {
+                    if (localImport.active_profile_index >= 0)
+                        importDialog.syncProfileControls(localImport.active_profile_index)
                 }
             }
 
@@ -10546,56 +10660,164 @@ ApplicationWindow {
                 anchors.margins: 20
                 spacing: 10
 
-                RowLayout {
-                Layout.fillWidth: true
-                spacing: 9
-                TextField {
+                Rectangle {
                     Layout.fillWidth: true
-                    text: localImport.directory
-                    readOnly: true
-                    placeholderText: "Choose a folder containing ROMs"
-                }
-                Button {
-                    text: "Choose…"
-                    enabled: !localImport.busy
-                    onClicked: importDirectoryDialog.open()
-                }
-                ComboBox {
-                    id: importPlatform
-                    Layout.preferredWidth: 245
-                    model: {
-                        const values = ["Auto-detect platform"]
-                        const revision = localImport.platform_count
-                        for (let index = 0; index < revision; ++index)
-                            values.push(localImport.platform_name_at(index))
-                        return values
+                    Layout.preferredHeight: 66
+                    radius: 9
+                    color: "#121c29"
+                    border.color: importProfile.currentIndex > 0 ? "#29556a" : root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 11
+                        spacing: 9
+                        Rectangle {
+                            Layout.preferredWidth: 34
+                            Layout.preferredHeight: 34
+                            radius: 8
+                            color: "#173042"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "↻"
+                                color: root.accentCool
+                                font.pixelSize: 17
+                                font.weight: Font.Bold
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.preferredWidth: 255
+                            spacing: 3
+                            Text {
+                                text: "SCAN PROFILE"
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                            ComboBox {
+                                id: importProfile
+                                Layout.fillWidth: true
+                                enabled: !localImport.busy && !localImport.profile_busy
+                                model: {
+                                    const values = ["One-time scan"]
+                                    const revision = localImport.profile_revision
+                                    for (let index = 0; index < localImport.profile_count; ++index)
+                                        values.push(localImport.profile_name_at(index))
+                                    return values
+                                }
+                                onActivated: {
+                                    if (currentIndex <= 0) {
+                                        localImport.clear_active_profile()
+                                        return
+                                    }
+                                    importDialog.loadProfile(currentIndex - 1)
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: importProfile.currentIndex > 0
+                                  ? localImport.profile_detail_at(importProfile.currentIndex - 1)
+                                  : "Choose a folder and scope below, or save them for repeat imports."
+                            color: importProfile.currentIndex > 0 ? "#9cc9e6" : root.muted
+                            font.pixelSize: 10
+                            elide: Text.ElideMiddle
+                        }
+                        BusyIndicator {
+                            visible: localImport.profile_busy
+                            running: visible
+                            Layout.preferredWidth: 24
+                            Layout.preferredHeight: 24
+                        }
+                        Button {
+                            text: "Save current…"
+                            enabled: !localImport.busy && !localImport.profile_busy
+                                     && localImport.directory.length > 0
+                            onClicked: {
+                                importProfileName.text = importProfile.currentIndex > 0
+                                        ? localImport.profile_name_at(importProfile.currentIndex - 1)
+                                        : (importPlatform.currentIndex > 0
+                                           ? importPlatform.currentText + " ROMs" : "My ROM collection")
+                                importProfileSaveDialog.open()
+                                importProfileName.forceActiveFocus()
+                                importProfileName.selectAll()
+                            }
+                        }
+                        Button {
+                            text: "Remove"
+                            visible: importProfile.currentIndex > 0
+                            enabled: !localImport.busy && !localImport.profile_busy
+                            onClicked: importProfileDeleteDialog.open()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Remove this scan profile; ROMs are never deleted"
+                        }
                     }
                 }
-                CheckBox {
-                    id: importChecksums
-                    text: "Exact checksums"
-                    checked: true
-                    enabled: !localImport.busy
-                    ToolTip.visible: hovered
-                    ToolTip.text: checked
-                                      ? "Use SHA-1 and MD5 to prove catalog identity"
-                                      : "Inventory files without assigning catalog identity"
-                }
-                HeaderButton {
-                    text: localImport.scanning ? "Scanning…" : "Scan"
-                    active: true
-                    enabled: !localImport.busy && localImport.directory.length > 0
-                    onClicked: localImport.start_scan(
-                                   importPlatform.currentIndex === 0
-                                       ? ""
-                                       : localImport.platform_name_at(importPlatform.currentIndex - 1),
-                                   importChecksums.checked)
-                }
-                Button {
-                    text: "Cancel"
-                    visible: localImport.scanning
-                    onClicked: localImport.cancel_scan()
-                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 9
+                    TextField {
+                        Layout.fillWidth: true
+                        text: localImport.directory
+                        readOnly: true
+                        placeholderText: "Choose a folder containing ROMs"
+                    }
+                    Button {
+                        text: "Choose…"
+                        enabled: !localImport.busy && !localImport.profile_busy
+                        onClicked: importDirectoryDialog.open()
+                    }
+                    ComboBox {
+                        id: importPlatform
+                        Layout.preferredWidth: 205
+                        model: {
+                            const values = ["Auto-detect platform"]
+                            const revision = localImport.platform_count
+                            for (let index = 0; index < revision; ++index)
+                                values.push(localImport.platform_name_at(index))
+                            return values
+                        }
+                        onActivated: localImport.clear_active_profile()
+                    }
+                    TextField {
+                        id: importExtensions
+                        Layout.preferredWidth: 150
+                        placeholderText: "All extensions"
+                        enabled: !localImport.busy && !localImport.profile_busy
+                        selectByMouse: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Optional comma-separated scope, for example .nes, .fds, .zip"
+                        Accessible.name: "ROM extension scope"
+                        onTextEdited: localImport.clear_active_profile()
+                    }
+                    CheckBox {
+                        id: importChecksums
+                        text: "Exact checksums"
+                        checked: true
+                        enabled: !localImport.busy && !localImport.profile_busy
+                        ToolTip.visible: hovered
+                        ToolTip.text: checked
+                                          ? "Use SHA-1 and MD5 to prove catalog identity"
+                                          : "Inventory files without assigning catalog identity"
+                        onClicked: localImport.clear_active_profile()
+                    }
+                    HeaderButton {
+                        text: localImport.scanning ? "Scanning…" : "Scan"
+                        active: true
+                        enabled: !localImport.busy && !localImport.profile_busy
+                                 && localImport.directory.length > 0
+                        onClicked: localImport.start_scan(
+                                       importPlatform.currentIndex === 0
+                                           ? ""
+                                           : localImport.platform_name_at(importPlatform.currentIndex - 1),
+                                       importExtensions.text,
+                                       importChecksums.checked)
+                    }
+                    Button {
+                        text: "Cancel"
+                        visible: localImport.scanning
+                        onClicked: localImport.cancel_scan()
+                    }
                 }
 
                 Rectangle {
@@ -10914,6 +11136,102 @@ ApplicationWindow {
                 }
                 }
             }
+            }
+
+            Dialog {
+                id: importProfileSaveDialog
+                parent: Overlay.overlay
+                modal: true
+                anchors.centerIn: parent
+                width: Math.min(520, root.width - 64)
+                title: importProfile.currentIndex > 0
+                       ? "Update ROM scan profile" : "Save ROM scan profile"
+                standardButtons: Dialog.Cancel | Dialog.Save
+                closePolicy: Popup.CloseOnEscape
+                onAccepted: localImport.save_profile(
+                                importProfileName.text,
+                                importPlatform.currentIndex === 0
+                                    ? ""
+                                    : localImport.platform_name_at(importPlatform.currentIndex - 1),
+                                importExtensions.text,
+                                importChecksums.checked)
+                contentItem: ColumnLayout {
+                    spacing: 10
+                    Text {
+                        Layout.fillWidth: true
+                        text: "A profile remembers this folder, platform scope, extension list, and checksum policy. It never contains ROM data."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    TextField {
+                        id: importProfileName
+                        Layout.fillWidth: true
+                        placeholderText: "Profile name"
+                        maximumLength: 80
+                        onAccepted: {
+                            if (text.trim().length > 0)
+                                importProfileSaveDialog.accept()
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 72
+                        radius: 8
+                        color: "#111824"
+                        border.color: root.line
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 11
+                            spacing: 5
+                            Text {
+                                width: parent.width
+                                text: localImport.directory
+                                color: root.ink
+                                font.pixelSize: 10
+                                elide: Text.ElideMiddle
+                            }
+                            Text {
+                                width: parent.width
+                                text: (importPlatform.currentIndex === 0
+                                       ? "Auto-detect platform" : importPlatform.currentText)
+                                      + "  ·  "
+                                      + (importExtensions.text.trim().length > 0
+                                         ? importExtensions.text : "All supported extensions")
+                                      + "  ·  "
+                                      + (importChecksums.checked
+                                         ? "Exact checksums" : "Inventory only")
+                                color: root.accentCool
+                                font.pixelSize: 9
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+            }
+
+            Dialog {
+                id: importProfileDeleteDialog
+                parent: Overlay.overlay
+                modal: true
+                anchors.centerIn: parent
+                width: Math.min(470, root.width - 64)
+                title: "Remove scan profile?"
+                standardButtons: Dialog.Cancel | Dialog.Ok
+                closePolicy: Popup.CloseOnEscape
+                onAccepted: {
+                    if (importProfile.currentIndex > 0)
+                        localImport.delete_profile(importProfile.currentIndex - 1)
+                }
+                contentItem: Text {
+                    text: importProfile.currentIndex > 0
+                          ? "Remove ‘" + localImport.profile_name_at(importProfile.currentIndex - 1)
+                            + "’? Its folder, ROMs, and imported collection records will not be changed."
+                          : "Choose a saved profile to remove."
+                    color: root.ink
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
             }
         }
     }

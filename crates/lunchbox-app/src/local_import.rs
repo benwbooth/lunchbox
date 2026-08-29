@@ -98,12 +98,62 @@ pub struct ScanProgress {
 pub struct ScanOutput {
     pub root: PathBuf,
     pub platform_hint: String,
+    pub extension_filter: Vec<String>,
     pub checksums_enabled: bool,
     pub results: Vec<ScanResult>,
     pub walk_errors: usize,
     pub cancelled: bool,
     pub cache_reused_files: usize,
     pub content_read_files: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RomImportProfile {
+    pub id: String,
+    pub name: String,
+    pub root: PathBuf,
+    pub platform_hint: String,
+    pub extensions: Vec<String>,
+    pub checksums_enabled: bool,
+    pub updated_at: i64,
+}
+
+pub fn normalize_extension_filter(input: &str) -> Result<Vec<String>> {
+    let mut extensions = input
+        .split(|character: char| character == ',' || character == ';' || character.is_whitespace())
+        .filter_map(|value| {
+            let value = value
+                .trim()
+                .trim_start_matches("*.")
+                .trim_start_matches('.');
+            (!value.is_empty()).then(|| value.to_ascii_lowercase())
+        })
+        .collect::<Vec<_>>();
+    if extensions.len() > 128 {
+        bail!("a ROM scan profile can contain at most 128 extensions");
+    }
+    for extension in &extensions {
+        if extension.len() > 24
+            || !extension
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'+'))
+        {
+            bail!(
+                "ROM extension {extension:?} must contain 1-24 portable letters, numbers, _, -, or +"
+            );
+        }
+    }
+    extensions.sort_unstable();
+    extensions.dedup();
+    Ok(extensions)
+}
+
+pub fn format_extension_filter(extensions: &[String]) -> String {
+    extensions
+        .iter()
+        .map(|extension| format!(".{extension}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Clone, Debug)]
@@ -171,7 +221,7 @@ impl HashCache {
         &mut self,
         path: &Path,
         metadata: &fs::Metadata,
-        index: &MatchIndex,
+        recognized_extensions: &HashSet<String>,
         archive: bool,
     ) -> Result<Option<Vec<PreparedScanSource>>> {
         let encoded = encode_path(path);
@@ -223,7 +273,7 @@ impl HashCache {
                 && sources.iter().all(|source| {
                     source.archive_member_count == member_count
                         && !source.archive_member.is_empty()
-                        && recognized_archive_member(&source.archive_member, index)
+                        && recognized_archive_member(&source.archive_member, recognized_extensions)
                             .is_some_and(|(_, extension)| extension == source.identity_extension)
                         && source.digests.as_ref().is_some_and(valid_digests)
                 })
@@ -396,6 +446,137 @@ pub fn load_platform_names(discovery_path: &Path) -> Result<Vec<String>> {
         connection.prepare("SELECT name FROM platforms ORDER BY name COLLATE NOCASE")?;
     let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn load_import_profiles(state_path: &Path) -> Result<Vec<RomImportProfile>> {
+    let store = SettingsStore::at(state_path)?;
+    let connection = store.connection()?;
+    let mut statement = connection.prepare(
+        "SELECT id, name, path_display, path_bytes, path_encoding,
+                platform_hint, extensions_json, checksums_enabled, updated_at
+         FROM rom_import_profiles
+         ORDER BY name COLLATE NOCASE, id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        let display = row.get::<_, String>(2)?;
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            decode_path(row.get(3)?, &row.get::<_, String>(4)?, display),
+            row.get::<_, String>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, bool>(7)?,
+            row.get::<_, i64>(8)?,
+        ))
+    })?;
+    let mut profiles = Vec::new();
+    for row in rows {
+        let (id, name, root, platform_hint, extensions_json, checksums_enabled, updated_at) = row?;
+        let raw_extensions = serde_json::from_str::<Vec<String>>(&extensions_json)
+            .with_context(|| format!("decoding ROM scan profile {name:?}"))?;
+        let extensions = normalize_extension_filter(&raw_extensions.join(","))?;
+        if extensions != raw_extensions {
+            bail!("ROM scan profile {name:?} has a non-canonical extension list");
+        }
+        validate_import_profile(&name, &root, &platform_hint, &extensions)?;
+        profiles.push(RomImportProfile {
+            id,
+            name,
+            root,
+            platform_hint,
+            extensions,
+            checksums_enabled,
+            updated_at,
+        });
+    }
+    Ok(profiles)
+}
+
+pub fn save_import_profile(
+    state_path: &Path,
+    name: &str,
+    root: &Path,
+    platform_hint: &str,
+    extensions_input: &str,
+    checksums_enabled: bool,
+) -> Result<RomImportProfile> {
+    let name = name.trim();
+    let platform_hint = platform_hint.trim();
+    let extensions = normalize_extension_filter(extensions_input)?;
+    validate_import_profile(name, root, platform_hint, &extensions)?;
+    let normalized_name = name.to_lowercase();
+    let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, normalized_name.as_bytes()).to_string();
+    let encoded = encode_path(root);
+    let updated_at = settings::unix_timestamp();
+    let extensions_json = serde_json::to_string(&extensions)?;
+    let store = SettingsStore::at(state_path)?;
+    store.connection()?.execute(
+        "INSERT INTO rom_import_profiles (
+             id, name, path_display, path_bytes, path_encoding,
+             platform_hint, extensions_json, checksums_enabled, updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(name) DO UPDATE SET
+             name=excluded.name, path_display=excluded.path_display,
+             path_bytes=excluded.path_bytes,
+             path_encoding=excluded.path_encoding, platform_hint=excluded.platform_hint,
+             extensions_json=excluded.extensions_json,
+             checksums_enabled=excluded.checksums_enabled,
+             updated_at=excluded.updated_at",
+        params![
+            id,
+            name,
+            encoded.display,
+            encoded.bytes,
+            encoded.encoding,
+            platform_hint,
+            extensions_json,
+            checksums_enabled,
+            updated_at,
+        ],
+    )?;
+    load_import_profiles(state_path)?
+        .into_iter()
+        .find(|profile| profile.id == id)
+        .context("saved ROM scan profile was not readable")
+}
+
+pub fn delete_import_profile(state_path: &Path, id: &str) -> Result<()> {
+    if Uuid::parse_str(id).is_err() {
+        bail!("a valid stable ROM scan profile ID is required");
+    }
+    let store = SettingsStore::at(state_path)?;
+    let removed = store
+        .connection()?
+        .execute("DELETE FROM rom_import_profiles WHERE id=?1", [id])?;
+    if removed != 1 {
+        bail!("the selected ROM scan profile no longer exists");
+    }
+    Ok(())
+}
+
+fn validate_import_profile(
+    name: &str,
+    root: &Path,
+    platform_hint: &str,
+    extensions: &[String],
+) -> Result<()> {
+    if name.is_empty() || name.chars().count() > 80 || name.contains('\0') {
+        bail!("a ROM scan profile name must contain 1-80 safe characters");
+    }
+    if root.as_os_str().is_empty() || !root.is_absolute() {
+        bail!("a ROM scan profile requires an absolute local folder");
+    }
+    if platform_hint.chars().count() > 512 || platform_hint.contains('\0') {
+        bail!("a ROM scan profile platform must contain at most 512 safe characters");
+    }
+    let encoded = encode_path(root);
+    if encoded.display.is_empty() || encoded.display.len() > 8192 || encoded.bytes.len() > 32768 {
+        bail!("the ROM scan profile folder path is too long to store safely");
+    }
+    if serde_json::to_string(extensions)?.len() > 8192 {
+        bail!("the ROM scan profile extension list is too large");
+    }
+    Ok(())
 }
 
 pub fn search_manual_match_candidates(
@@ -580,6 +761,7 @@ impl PreparedScanner {
             &self.index,
             root,
             platform_hint,
+            &[],
             checksums_enabled,
             cancelled,
             progress,
@@ -601,6 +783,30 @@ impl PreparedScanner {
             &self.index,
             root,
             platform_hint,
+            &[],
+            checksums_enabled,
+            cancelled,
+            progress,
+            Some(store.connection()?),
+        )
+    }
+
+    pub(crate) fn scan_cached_with_extensions(
+        &self,
+        state_path: &Path,
+        root: &Path,
+        platform_hint: &str,
+        extension_filter: &[String],
+        checksums_enabled: bool,
+        cancelled: &AtomicBool,
+        progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
+    ) -> Result<ScanOutput> {
+        let store = SettingsStore::at(state_path)?;
+        scan_directory_with_index(
+            &self.index,
+            root,
+            platform_hint,
+            extension_filter,
             checksums_enabled,
             cancelled,
             progress,
@@ -639,6 +845,27 @@ pub fn scan_directory_cached(
         state_path,
         root,
         platform_hint,
+        checksums_enabled,
+        cancelled,
+        progress,
+    )
+}
+
+pub fn scan_directory_cached_with_extensions(
+    discovery_path: &Path,
+    state_path: &Path,
+    root: &Path,
+    platform_hint: &str,
+    extension_filter: &[String],
+    checksums_enabled: bool,
+    cancelled: &AtomicBool,
+    progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
+) -> Result<ScanOutput> {
+    PreparedScanner::new(discovery_path)?.scan_cached_with_extensions(
+        state_path,
+        root,
+        platform_hint,
+        extension_filter,
         checksums_enabled,
         cancelled,
         progress,
@@ -686,10 +913,38 @@ pub(crate) fn seed_hash_cache_ui_probe() -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn seed_import_profile_ui_probe() -> Result<()> {
+    let state_path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
+        .context(
+            "the import-profile UI probe requires an explicit --state-database or LUNCHBOX_STATE_DATABASE",
+        )?;
+    let root = catalog::requested_path("--import-directory", "LUNCHBOX_IMPORT_DIRECTORY")
+        .context(
+            "the import-profile UI probe requires an explicit --import-directory or LUNCHBOX_IMPORT_DIRECTORY",
+        )?;
+    let profile = save_import_profile(
+        &state_path,
+        "Nintendo cartridge shelf",
+        &root,
+        "Nintendo Entertainment System",
+        ".fds, .nes, .zip",
+        true,
+    )?;
+    println!(
+        "LUNCHBOX_IMPORT_PROFILE_SEEDED id={} name={:?} root={:?} extensions={}",
+        profile.id,
+        profile.name,
+        profile.root,
+        format_extension_filter(&profile.extensions),
+    );
+    Ok(())
+}
+
 fn scan_directory_with_index(
     index: &MatchIndex,
     root: &Path,
     platform_hint: &str,
+    extension_filter: &[String],
     checksums_enabled: bool,
     cancelled: &AtomicBool,
     progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
@@ -704,6 +959,22 @@ fn scan_directory_with_index(
     let mut hash_cache = checksums_enabled
         .then(|| cache_connection.map(|connection| HashCache::new(connection, &root)))
         .flatten();
+    let extension_filter = extension_filter.iter().cloned().collect::<HashSet<_>>();
+    let recognized_extensions = index
+        .extensions
+        .union(&extension_filter)
+        .cloned()
+        .collect::<HashSet<_>>();
+    let mut archive_member_extensions = extension_filter
+        .iter()
+        .filter(|extension| !ARCHIVE_EXTENSIONS.contains(&extension.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    archive_member_extensions.sort_unstable();
+    let archive_member_filter = archive_member_extensions
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
     let mut paths = Vec::new();
     let mut walk_errors = 0usize;
     for entry in WalkDir::new(&root).follow_links(false).into_iter() {
@@ -725,11 +996,15 @@ fn scan_directory_with_index(
             .extension()
             .and_then(|value| value.to_str())
             .map(str::to_ascii_lowercase);
-        if extension
-            .as_ref()
-            .is_some_and(|extension| index.extensions.contains(extension))
+        if let Some(extension) = extension
+            && recognized_extensions.contains(&extension)
         {
-            paths.push(entry.into_path());
+            if let Some(cache) = hash_cache.as_mut() {
+                cache.mark_seen(entry.path());
+            }
+            if extension_filter.is_empty() || extension_filter.contains(&extension) {
+                paths.push(entry.into_path());
+            }
         }
     }
     paths.sort();
@@ -749,9 +1024,6 @@ fn scan_directory_with_index(
             .file_name()
             .map(|value| value.to_string_lossy().into_owned())
             .unwrap_or_default();
-        if let Some(cache) = hash_cache.as_mut() {
-            cache.mark_seen(path);
-        }
         let metadata = match path.metadata() {
             Ok(metadata) => metadata,
             Err(error) => {
@@ -775,7 +1047,9 @@ fn scan_directory_with_index(
         let archive = matches!(extension.as_str(), "zip" | "7z" | "rar");
         let cached_sources = if checksums_enabled {
             match hash_cache.as_mut() {
-                Some(cache) => cache.load_sources(path, &metadata, index, archive)?,
+                Some(cache) => {
+                    cache.load_sources(path, &metadata, &recognized_extensions, archive)?
+                }
                 None => None,
             }
         } else {
@@ -791,9 +1065,11 @@ fn scan_directory_with_index(
             None
         } else {
             let inspection = match extension.as_str() {
-                "zip" => inspect_zip(path, index, checksums_enabled, cancelled),
-                "7z" => inspect_seven_zip(path, index, checksums_enabled, cancelled),
-                "rar" => inspect_rar(path, index, checksums_enabled, cancelled),
+                "zip" => inspect_zip(path, &recognized_extensions, checksums_enabled, cancelled),
+                "7z" => {
+                    inspect_seven_zip(path, &recognized_extensions, checksums_enabled, cancelled)
+                }
+                "rar" => inspect_rar(path, &recognized_extensions, checksums_enabled, cancelled),
                 _ => unreachable!("archive extensions are exhaustively matched"),
             };
             match inspection {
@@ -818,7 +1094,7 @@ fn scan_directory_with_index(
             .ok()
             .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
             .and_then(|value| i64::try_from(value.as_nanos()).ok());
-        let sources = if let Some(sources) = cached_sources {
+        let mut sources = if let Some(sources) = cached_sources {
             sources
         } else {
             match archive_inspection {
@@ -912,6 +1188,24 @@ fn scan_directory_with_index(
                 cache.save_sources(path, &metadata, &sources)?;
             }
         }
+        if archive && !archive_member_filter.is_empty() {
+            sources.retain(|source| archive_member_filter.contains(&source.identity_extension));
+            if sources.is_empty() {
+                sources.push(PreparedScanSource {
+                    identity_file_name: file_name.clone(),
+                    identity_file_size: metadata.len(),
+                    identity_extension: extension.clone(),
+                    archive_member: String::new(),
+                    archive_member_count: 0,
+                    digests: None,
+                    error: Some(format!(
+                        "{} contains no members matching this scan profile ({})",
+                        archive_kind_label(path),
+                        format_extension_filter(&archive_member_extensions)
+                    )),
+                });
+            }
+        }
         for source in sources {
             let inferred_platform = if platform_hint.is_empty() {
                 index
@@ -988,6 +1282,11 @@ fn scan_directory_with_index(
     Ok(ScanOutput {
         root,
         platform_hint: platform_hint.to_owned(),
+        extension_filter: {
+            let mut values = extension_filter.into_iter().collect::<Vec<_>>();
+            values.sort_unstable();
+            values
+        },
         checksums_enabled,
         results,
         walk_errors,
@@ -1392,7 +1691,10 @@ fn normalize_archive_member_name(name: &str) -> Option<String> {
     Some(components.join("/"))
 }
 
-fn recognized_archive_member(name: &str, index: &MatchIndex) -> Option<(String, String)> {
+fn recognized_archive_member(
+    name: &str,
+    recognized_extensions: &HashSet<String>,
+) -> Option<(String, String)> {
     let member_name = normalize_archive_member_name(name)?;
     let mut components = member_name.split('/');
     if components
@@ -1409,7 +1711,7 @@ fn recognized_archive_member(name: &str, index: &MatchIndex) -> Option<(String, 
     let extension = extension.to_ascii_lowercase();
     if extension.is_empty()
         || ARCHIVE_EXTENSIONS.contains(&extension.as_str())
-        || !index.extensions.contains(&extension)
+        || !recognized_extensions.contains(&extension)
     {
         return None;
     }
@@ -1418,7 +1720,7 @@ fn recognized_archive_member(name: &str, index: &MatchIndex) -> Option<(String, 
 
 fn inspect_zip(
     path: &Path,
-    index: &MatchIndex,
+    recognized_extensions: &HashSet<String>,
     checksums_enabled: bool,
     cancelled: &AtomicBool,
 ) -> Result<Option<ArchiveInspection>> {
@@ -1441,7 +1743,9 @@ fn inspect_zip(
         {
             continue;
         }
-        let Some((member_name, extension)) = recognized_archive_member(entry.name(), index) else {
+        let Some((member_name, extension)) =
+            recognized_archive_member(entry.name(), recognized_extensions)
+        else {
             continue;
         };
         if !names.insert(member_name.clone()) {
@@ -1494,7 +1798,7 @@ fn inspect_zip(
 
 fn inspect_seven_zip(
     path: &Path,
-    index: &MatchIndex,
+    recognized_extensions: &HashSet<String>,
     checksums_enabled: bool,
     cancelled: &AtomicBool,
 ) -> Result<Option<ArchiveInspection>> {
@@ -1509,7 +1813,9 @@ fn inspect_seven_zip(
         if entry.is_directory() || entry.is_anti_item {
             continue;
         }
-        let Some((member_name, extension)) = recognized_archive_member(entry.name(), index) else {
+        let Some((member_name, extension)) =
+            recognized_archive_member(entry.name(), recognized_extensions)
+        else {
             continue;
         };
         if member_indices.contains_key(&member_name) {
@@ -1661,7 +1967,7 @@ fn rar_member_is_symlink(member: &rars::ArchiveMember) -> bool {
 
 fn inspect_rar(
     path: &Path,
-    index: &MatchIndex,
+    recognized_extensions: &HashSet<String>,
     checksums_enabled: bool,
     cancelled: &AtomicBool,
 ) -> Result<Option<ArchiveInspection>> {
@@ -1690,7 +1996,9 @@ fn inspect_rar(
         let Ok(raw_name) = std::str::from_utf8(member.meta.name_bytes()) else {
             continue;
         };
-        let Some((member_name, extension)) = recognized_archive_member(raw_name, index) else {
+        let Some((member_name, extension)) =
+            recognized_archive_member(raw_name, recognized_extensions)
+        else {
             continue;
         };
         if !names.insert(member_name.clone()) {
@@ -2367,10 +2675,7 @@ fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
             now,
         ],
     )?;
-    transaction.execute(
-        "UPDATE local_rom_files SET availability='missing' WHERE root_id=?1",
-        [&root_id],
-    )?;
+    mark_scanned_scope_missing(&transaction, &root_id, &output.extension_filter)?;
 
     let mut imported = 0usize;
     for (result, persisted_path) in output.results.iter().zip(persisted_paths) {
@@ -2468,6 +2773,60 @@ fn commit_scan_to(state_path: &Path, output: &ScanOutput) -> Result<usize> {
     }
     transaction.commit()?;
     Ok(imported)
+}
+
+fn mark_scanned_scope_missing(
+    transaction: &rusqlite::Transaction<'_>,
+    root_id: &str,
+    extension_filter: &[String],
+) -> Result<()> {
+    if extension_filter.is_empty() {
+        transaction.execute(
+            "UPDATE local_rom_files SET availability='missing' WHERE root_id=?1",
+            [root_id],
+        )?;
+        return Ok(());
+    }
+    let extensions = extension_filter.iter().collect::<HashSet<_>>();
+    let affected = {
+        let mut statement = transaction.prepare(
+            "SELECT id, path_display, path_bytes, path_encoding,
+                    source_archive_path_display, source_archive_path_bytes,
+                    source_archive_path_encoding
+             FROM local_rom_files WHERE root_id=?1",
+        )?;
+        let rows = statement.query_map([root_id], |row| {
+            let path_display = row.get::<_, String>(1)?;
+            let source_display = row.get::<_, String>(4)?;
+            let path = if source_display.is_empty() {
+                decode_path(row.get(2)?, &row.get::<_, String>(3)?, path_display)
+            } else {
+                decode_path(row.get(5)?, &row.get::<_, String>(6)?, source_display)
+            };
+            Ok((row.get::<_, String>(0)?, path))
+        })?;
+        rows.filter_map(|row| match row {
+            Ok((id, path))
+                if path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .map(str::to_ascii_lowercase)
+                    .is_some_and(|extension| extensions.contains(&extension)) =>
+            {
+                Some(Ok(id))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for id in affected {
+        transaction.execute(
+            "UPDATE local_rom_files SET availability='missing' WHERE id=?1",
+            [id],
+        )?;
+    }
+    Ok(())
 }
 
 pub(crate) struct EncodedPath {
@@ -2602,6 +2961,195 @@ mod tests {
                 .unwrap();
         }
         archive.finish().unwrap();
+    }
+
+    #[test]
+    fn extension_filters_are_portable_normalized_and_bounded() {
+        assert_eq!(
+            normalize_extension_filter(" *.NES, .zip;nes  Custom-1 ").unwrap(),
+            vec!["custom-1", "nes", "zip"]
+        );
+        assert_eq!(
+            format_extension_filter(&["nes".into(), "zip".into()]),
+            ".nes, .zip"
+        );
+        assert!(normalize_extension_filter("bad/path").is_err());
+        assert!(normalize_extension_filter(&"x,".repeat(129)).is_err());
+    }
+
+    #[test]
+    fn named_import_profiles_round_trip_update_and_delete_exact_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("state.db");
+        let root = directory.path().join("ROM Library");
+        fs::create_dir(&root).unwrap();
+
+        let saved = save_import_profile(
+            &state,
+            "Nintendo shelf",
+            &root,
+            "Nintendo Entertainment System",
+            "zip, .nes, NES",
+            true,
+        )
+        .unwrap();
+        assert_eq!(saved.extensions, vec!["nes", "zip"]);
+        let restarted = load_import_profiles(&state).unwrap();
+        assert_eq!(restarted, vec![saved.clone()]);
+
+        let updated =
+            save_import_profile(&state, "NINTENDO SHELF", &root, "", "fds, nes", false).unwrap();
+        assert_eq!(updated.id, saved.id);
+        assert_eq!(updated.name, "NINTENDO SHELF");
+        assert_eq!(updated.extensions, vec!["fds", "nes"]);
+        assert!(!updated.checksums_enabled);
+        assert_eq!(load_import_profiles(&state).unwrap(), vec![updated.clone()]);
+
+        delete_import_profile(&state, &updated.id).unwrap();
+        assert!(load_import_profiles(&state).unwrap().is_empty());
+        assert!(delete_import_profile(&state, &updated.id).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn named_import_profiles_preserve_non_utf8_root_bytes() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("state.db");
+        let root = directory.path().join(std::ffi::OsString::from_vec(vec![
+            b'r', b'o', b'm', b's', 0xff,
+        ]));
+        fs::create_dir(&root).unwrap();
+
+        let saved = save_import_profile(
+            &state,
+            "Native path",
+            &root,
+            "Nintendo Entertainment System",
+            "nes",
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(saved.root, root);
+        assert_eq!(load_import_profiles(&state).unwrap()[0].root, root);
+    }
+
+    #[test]
+    fn extension_scopes_include_custom_files_and_only_requested_archive_members() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let root = directory.path().join("roms");
+        fs::create_dir(&root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        fs::write(root.join("Loose.nes"), b"exact-rom").unwrap();
+        fs::write(root.join("Ignored.sfc"), b"ignored").unwrap();
+        fs::write(root.join("Homebrew.custom-1"), b"homebrew").unwrap();
+        zip_fixture(
+            &root.join("Mixed.zip"),
+            &[("Disc.nes", b"exact-rom"), ("Disc.sfc", b"ignored")],
+        );
+        let extensions = normalize_extension_filter("custom-1, nes, zip").unwrap();
+        let state = directory.path().join("state.db");
+        let output = scan_directory_cached_with_extensions(
+            &discovery,
+            &state,
+            &root,
+            "",
+            &extensions,
+            false,
+            &AtomicBool::new(false),
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+
+        assert_eq!(output.extension_filter, extensions);
+        assert_eq!(output.results.len(), 3);
+        assert!(
+            output
+                .results
+                .iter()
+                .any(|result| result.file_name == "Loose.nes")
+        );
+        assert!(
+            output
+                .results
+                .iter()
+                .any(|result| result.file_name == "Homebrew.custom-1")
+        );
+        let archive = output
+            .results
+            .iter()
+            .find(|result| result.file_name == "Mixed.zip")
+            .unwrap();
+        assert_eq!(archive.archive_member, "Disc.nes");
+        assert_eq!(archive.archive_member_count, 2);
+        assert!(!archive.selected);
+        assert!(!output.results.iter().any(|result| {
+            result.file_name == "Ignored.sfc" || result.archive_member == "Disc.sfc"
+        }));
+    }
+
+    #[test]
+    fn scoped_rescan_does_not_mark_other_extensions_missing() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let state = directory.path().join("state.db");
+        let root = directory.path().join("roms");
+        fs::create_dir(&root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        fs::write(root.join("Game.nes"), b"exact-rom").unwrap();
+        fs::write(root.join("Game.sfc"), b"other").unwrap();
+        SettingsStore::at(&state).unwrap();
+        let mut initial = scan_directory(
+            &discovery,
+            &root,
+            "",
+            false,
+            &AtomicBool::new(false),
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        initial
+            .results
+            .iter_mut()
+            .for_each(|result| result.selected = true);
+        assert_eq!(commit_scan_to(&state, &initial).unwrap(), 2);
+
+        fs::remove_file(root.join("Game.nes")).unwrap();
+        fs::remove_file(root.join("Game.sfc")).unwrap();
+        let scoped = scan_directory_cached_with_extensions(
+            &discovery,
+            &state,
+            &root,
+            "",
+            &["nes".into()],
+            false,
+            &AtomicBool::new(false),
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert!(scoped.results.is_empty());
+        assert_eq!(commit_scan_to(&state, &scoped).unwrap(), 0);
+
+        let connection = Connection::open(state).unwrap();
+        let statuses = connection
+            .prepare("SELECT file_name, availability FROM local_rom_files ORDER BY file_name")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            statuses,
+            vec![
+                ("Game.nes".into(), "missing".into()),
+                ("Game.sfc".into(), "present".into()),
+            ]
+        );
     }
 
     fn rar_fixture(path: &Path, members: &[(&str, &[u8])]) {
