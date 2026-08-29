@@ -610,12 +610,78 @@ fn list_local_controllers(warnings: &mut Vec<String>) -> Vec<ControllerDevice> {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        warnings.push(format!(
-            "Native controller inventory for {} is not implemented yet.",
-            std::env::consts::OS
-        ));
-        Vec::new()
+        list_gilrs_controllers(warnings)
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn list_gilrs_controllers(warnings: &mut Vec<String>) -> Vec<ControllerDevice> {
+    let gilrs = match gilrs::GilrsBuilder::new()
+        .with_force_feedback(false)
+        .build()
+    {
+        Ok(gilrs) => gilrs,
+        Err(error) => {
+            warnings.push(format!(
+                "Could not initialize native gamepad discovery on {}: {error}",
+                std::env::consts::OS
+            ));
+            return Vec::new();
+        }
+    };
+
+    // GilRs exposes a portable SDL-style UUID, but that UUID identifies a
+    // controller model rather than a physical instance. Keep the name in the
+    // identity and add an ordinal only when identical devices are connected.
+    let mut occurrences = HashMap::<String, usize>::new();
+    let mut devices = gilrs
+        .gamepads()
+        .filter_map(|(_, gamepad)| {
+            let name = gamepad.name().trim();
+            if name.is_empty() || is_likely_non_game_controller(name) {
+                return None;
+            }
+            let uuid_hex = hex::encode(gamepad.uuid());
+            let vendor_id = gamepad.vendor_id().map(|value| format!("{value:04x}"));
+            let product_id = gamepad.product_id().map(|value| format!("{value:04x}"));
+            let base_identity = portable_controller_identity(&uuid_hex, gamepad.os_name());
+            let base_id =
+                stable_controller_id(vendor_id.as_deref(), product_id.as_deref(), &base_identity);
+            let occurrence = occurrences.entry(base_id.clone()).or_default();
+            *occurrence += 1;
+            let stable_id = if *occurrence == 1 {
+                base_id
+            } else {
+                format!("{base_id}-instance-{occurrence}")
+            };
+            let slug = slugify_id(name);
+            Some(ControllerDevice {
+                stable_id,
+                name: name.to_owned(),
+                // The synthetic URI deliberately avoids leaking or assuming a
+                // host-specific device path. It is never passed to a backend
+                // that expects a native path on non-Linux hosts.
+                device_path: PathBuf::from(format!("gilrs://{uuid_hex}/{slug}")),
+                event_paths: Vec::new(),
+                vendor_id,
+                product_id,
+                version: None,
+                bus_type: None,
+                physical_path: None,
+                // GilRs documents its UUID as a model identifier, so do not
+                // present it as a unique physical-device ID in the UI.
+                unique_id: None,
+                is_virtual: name.to_ascii_lowercase().contains("virtual"),
+            })
+        })
+        .collect::<Vec<_>>();
+    devices.sort_by(|left, right| left.stable_id.cmp(&right.stable_id));
+    devices
+}
+
+#[cfg(not(target_os = "linux"))]
+fn portable_controller_identity(uuid_hex: &str, os_name: &str) -> String {
+    format!("gilrs-{uuid_hex}-{}", slugify_id(os_name))
 }
 
 #[cfg(target_os = "linux")]
@@ -821,10 +887,12 @@ fn inputplumber_inventory(
         return (
             ControllerProviderStatus {
                 provider: "native".to_owned(),
-                message: Some(format!(
-                    "Controller remapping for {} is not implemented yet.",
-                    std::env::consts::OS
-                )),
+                available: true,
+                service_accessible: true,
+                message: Some(
+                    "Native gamepad discovery is available; launch-time remapping requires the Linux InputPlumber adapter."
+                        .to_owned(),
+                ),
                 ..ControllerProviderStatus::default()
             },
             0,

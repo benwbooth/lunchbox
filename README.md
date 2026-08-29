@@ -72,6 +72,12 @@ hotplugging, analog dead zones, deliberate hold-repeat, paging, and Xbox,
 PlayStation, Nintendo, or generic button labels without blocking Qt. Escape or
 the controller's east face button returns to desktop mode.
 
+Settings inventory uses the same cross-platform GilRs backend on Windows and
+macOS, with path-agnostic controller identities that do not assume Linux
+device nodes. Launch-time remapping is shown as an available control only when
+the Linux InputPlumber provider can enumerate managed devices; direct gamepad
+navigation remains available independently on every supported desktop.
+
 Game Details includes a durable Release Profile for sort title, series, region,
 play mode, version, and release status. These local presentation values are
 searchable and available as exact list columns, filters, and sorts; Series also

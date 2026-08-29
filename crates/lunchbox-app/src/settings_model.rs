@@ -43,6 +43,7 @@ pub mod qobject {
         #[qproperty(bool, shader_requires_confirmation)]
         #[qproperty(i32, shader_revision)]
         #[qproperty(bool, controller_enabled)]
+        #[qproperty(bool, controller_remapping_available)]
         #[qproperty(QString, controller_output_target)]
         #[qproperty(bool, controller_busy)]
         #[qproperty(i32, controller_revision)]
@@ -315,6 +316,7 @@ pub struct SettingsModelRust {
     shader_generation: u64,
     shader_cancel: Option<Arc<AtomicBool>>,
     controller_enabled: bool,
+    controller_remapping_available: bool,
     controller_output_target: QString,
     controller_busy: bool,
     controller_revision: i32,
@@ -378,6 +380,7 @@ impl Default for SettingsModelRust {
             shader_generation: 0,
             shader_cancel: None,
             controller_enabled: false,
+            controller_remapping_available: false,
             controller_output_target: QString::from("xb360"),
             controller_busy: false,
             controller_revision: 0,
@@ -998,6 +1001,9 @@ impl qobject::SettingsModel {
 
     fn finish_controller_refresh(mut self: Pin<&mut Self>, inventory: ControllerInventory) {
         let status = controller_inventory_status(&inventory);
+        let remapping_available = inventory.provider.provider == "inputplumber"
+            && inventory.provider.available
+            && inventory.provider.service_accessible;
         if std::env::args().any(|argument| argument == "--controller-ui-probe") {
             println!(
                 "LUNCHBOX_CONTROLLER_UI_READY controllers={} managed={} targets={} status={status:?}",
@@ -1007,6 +1013,8 @@ impl qobject::SettingsModel {
             );
         }
         self.as_mut().rust_mut().controller_inventory = Some(inventory);
+        self.as_mut()
+            .set_controller_remapping_available(remapping_available);
         self.as_mut().set_controller_busy(false);
         self.as_mut().set_controller_status(qstring(status));
         self.as_mut().bump_controller_revision();
@@ -1973,22 +1981,27 @@ impl qobject::SettingsModel {
 
 fn controller_inventory_status(inventory: &ControllerInventory) -> String {
     let provider = &inventory.provider;
-    let mut status = if provider.available && provider.service_accessible {
-        let raw_version = provider.version.as_deref().unwrap_or("unknown version");
-        let version = raw_version
-            .strip_prefix("inputplumber ")
-            .or_else(|| raw_version.strip_prefix("InputPlumber "))
-            .unwrap_or(raw_version);
-        format!(
-            "InputPlumber {version} · {} connected game controllers · {} managed devices · {} virtual targets",
-            inventory.controllers.len(),
-            inventory.managed_device_count,
-            inventory.supported_targets.len()
-        )
-    } else {
-        provider.message.clone().unwrap_or_else(|| {
+    let mut status = match provider.provider.as_str() {
+        "inputplumber" if provider.available && provider.service_accessible => {
+            let raw_version = provider.version.as_deref().unwrap_or("unknown version");
+            let version = raw_version
+                .strip_prefix("inputplumber ")
+                .or_else(|| raw_version.strip_prefix("InputPlumber "))
+                .unwrap_or(raw_version);
+            format!(
+                "InputPlumber {version} · {} connected game controllers · {} managed devices · {} virtual targets",
+                inventory.controllers.len(),
+                inventory.managed_device_count,
+                inventory.supported_targets.len()
+            )
+        }
+        "native" => format!(
+            "Native gamepad discovery · {} connected game controllers · launch-time remapping requires the Linux InputPlumber adapter.",
+            inventory.controllers.len()
+        ),
+        _ => provider.message.clone().unwrap_or_else(|| {
             "Native controller remapping is not available on this computer.".to_owned()
-        })
+        }),
     };
     if !inventory.warnings.is_empty() {
         status.push_str(" · ");

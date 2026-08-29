@@ -279,11 +279,14 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   outcomes. Firmware/BIOS validation before game launch is also native.
 - Dedicated Daphne runtime, TeknoParrot, and non-eXo PC launch profiles.
 - Finish the native controller slice with attached-hardware InputPlumber
-  mutation/restore certification, Windows and macOS host adapters, pre-launch
-  validation presentation, pause/resume integration, and controller-first
-  focus. Linux inventory, durable per-player action/profile/target/order state,
-  the visual custom-profile designer, pre-spawn activation, RAII restoration,
-  process supervision, and play-stat recording are native.
+  mutation/restore certification, Windows and macOS launch-remapping adapters,
+  pre-launch validation presentation, pause/resume integration, and
+  controller-first focus. Cross-platform GilRs gamepad inventory now feeds the
+  settings surface with stable path-agnostic identities; Linux InputPlumber
+  remains the explicit launch-remapping provider. Durable per-player
+  action/profile/target/order state, the visual custom-profile designer,
+  pre-spawn activation, RAII restoration, process supervision, and play-stat
+  recording are native.
 
 ## Couch Mode
 

@@ -4507,6 +4507,45 @@ ApplicationWindow {
     }
 
     Timer {
+        id: controllerUiScreenshotTimer
+        interval: 1200
+        running: root.controllerUiProbe && settingsDialog.visible
+                 && !appSettings.controller_busy
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0) {
+                console.log("LUNCHBOX_CONTROLLER_UI_READY controllers="
+                            + appSettings.controller_count())
+                Qt.quit()
+                return
+            }
+            settingsDialog.contentItem.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_CONTROLLER_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_CONTROLLER_UI_READY controllers="
+                            + appSettings.controller_count() + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 15000
+        running: root.controllerUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_CONTROLLER_UI_FAILED timeout status="
+                          + appSettings.controller_status)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
         interval: 900
         running: root.controllerProfileUiProbe && appSettings.initialized
         repeat: false
@@ -16171,6 +16210,7 @@ ApplicationWindow {
                             checked: appSettings.controller_enabled
                             enabled: !appSettings.busy
                                      && !appSettings.controller_busy
+                                     && appSettings.controller_remapping_available
                             onToggled: appSettings.set_controller_mapping_enabled(checked)
                             Accessible.name: "Enable controller mapping at game launch"
                         }
@@ -16226,6 +16266,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             enabled: appSettings.controller_enabled
                                      && !appSettings.controller_busy
+                                     && appSettings.controller_remapping_available
                             model: {
                                 appSettings.controller_revision
                                 return Math.max(0, appSettings.controller_target_count() - 1)
@@ -16403,6 +16444,7 @@ ApplicationWindow {
                                             }
                                             enabled: appSettings.controller_enabled
                                                      && !appSettings.controller_busy
+                                                     && appSettings.controller_remapping_available
                                             onActivated: appSettings.choose_controller_action(
                                                              controllerRow.index, currentValue)
                                             Accessible.name: "Controller action for player "
@@ -16438,6 +16480,7 @@ ApplicationWindow {
                                             enabled: appSettings.controller_enabled
                                                      && controllerAction.currentValue === "remap"
                                                      && !appSettings.controller_busy
+                                                     && appSettings.controller_remapping_available
                                             onActivated: appSettings.choose_controller_profile(
                                                              controllerRow.index,
                                                              appSettings.controller_profile_id_at(
@@ -16475,6 +16518,7 @@ ApplicationWindow {
                                             enabled: appSettings.controller_enabled
                                                      && controllerAction.currentValue === "remap"
                                                      && !appSettings.controller_busy
+                                                     && appSettings.controller_remapping_available
                                             onActivated: appSettings.choose_controller_target(
                                                              controllerRow.index,
                                                              appSettings.controller_target_id_at(

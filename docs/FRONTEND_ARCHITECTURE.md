@@ -566,14 +566,20 @@ explicit cross-host repair.
 The
 `--controller-probe` route performs a non-Qt real-host inventory and prints the
 native controller, InputPlumber service, managed-device, target, and warning
-counts. `--controller-ui-probe --state-database EMPTY_PATH` opens the same
-asynchronous inventory in the Qt settings dialog, scrolls to its polished
-player-order/remap surface, and prints readiness only after the real provider
-result has crossed the CXX-Qt bridge. On Linux, saved mappings are activated
-immediately before emulator spawn and an RAII launch session restores captured
-InputPlumber intercept, profile, target, and device-order state after normal
-exit, launch failure, or process-supervision error. Applying those mutations
-still requires a release gate with attached InputPlumber-managed hardware.
+counts. Linux inventory reads the native joystick metadata; Windows and macOS
+use the same GilRs backend as Couch Mode and expose synthetic `gilrs://` source
+identifiers instead of assuming `/dev` or drive-letter paths.
+`--controller-ui-probe --state-database EMPTY_PATH` opens the same asynchronous inventory in the Qt
+settings dialog, scrolls to its polished player-order/remap surface, and prints
+readiness only after the real provider result has crossed the CXX-Qt bridge.
+Launch-time mapping controls are enabled only when the Linux InputPlumber
+provider is available and its managed-device inventory is reachable. On Linux,
+saved mappings are activated immediately before emulator spawn and an RAII
+launch session restores captured InputPlumber intercept, profile, target, and
+device-order state after normal exit, launch failure, or process-supervision
+error. Applying those mutations still requires a release gate with attached
+InputPlumber-managed hardware; Windows and macOS launch-remapping adapters
+remain planned.
 The adjacent Rust-backed profile designer exposes the legacy Xbox,
 PlayStation, and generic controller diagrams without adding a web view. It
 stores only explicit target-to-source differences, validates the complete
