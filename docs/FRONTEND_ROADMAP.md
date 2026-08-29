@@ -292,9 +292,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   or scripts. Exact selection survives restart and verified ownership receipts
   guard updates and removal.
 - The controller-first manual/smart Collections picker is native, virtualized,
-  and restart-safe by exact stable ID. Continue with richer game-wheel layouts,
-  richer release/media management inside the implemented Details and Game Menu
-  overlays, startup/shutdown/pause screens, background music, sound packs,
+  and restart-safe by exact stable ID. The Couch Game Menu now includes a
+  virtualized exact release picker with regional/version ordering, current/
+  installed/Minerva/catalog-only state, cached-media context, and stable-ID
+  routing. Continue with richer game-wheel layouts, deeper media acquisition
+  controls inside the implemented Details and Game Menu overlays,
+  startup/shutdown/pause screens, background music, sound packs,
   marquee monitor support, parental lock, and richer couch-safe settings.
 - Extend the implemented keyboard/direct-gamepad navigation into every future
   Couch Mode surface. Certify attached-controller input, hotplug, and focus

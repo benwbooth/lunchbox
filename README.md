@@ -48,7 +48,11 @@ services. Couch-native Details and
 Game Menu overlays keep
 browsing on the television while exposing full metadata, activity, launch and
 download state, favorite changes, and an explicit handoff to the complete
-desktop tools without losing the exact game. Attract Mode can be started from
+desktop tools without losing the exact game. When a catalog title has multiple
+regional or versioned records, the Game Menu opens an exact release picker with
+current/installed/Minerva availability and cached-media context; choosing a row
+routes the selected stable UUID through the same details and launch services.
+Attract Mode can be started from
 Game Menu or automatically after a configurable idle delay; it rotates through
 the current shelf rather than a second catalog, retains exact game identity,
 supports immediate directional browsing, and returns to browsing with Back.

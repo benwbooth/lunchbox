@@ -754,9 +754,19 @@ cannot silently replace the user's current game. Couch Mode owns only transient
 overlay state: Details and Game Menu consume the same `GameDetailsModel`, stable
 UUID, favorite persistence, launch, and download/setup handoff used by desktop
 mode. Details is scrollable without a mouse. Game Menu provides the real dynamic
-primary action, favorite toggle, explicit Desktop Details handoff, Attract Mode
-entry, and Return to Browsing; closing or switching panels never changes the
-selected release.
+primary action, favorite toggle, explicit Desktop Details handoff, an exact
+regional/version release-and-media picker when alternate records exist, Attract
+Mode entry, and Return to Browsing; closing or switching panels never changes the
+selected release. The release picker is virtualized, highlights the current
+record, exposes current/installed/Minerva/catalog-only state plus cached-media
+context, and routes a chosen row by its exact stable UUID without leaving Couch
+Mode.
+
+`--couch-variant-ui-probe --screenshot-output PATH` opens that release picker for
+the real Super Mario Bros. release family, captures its 1920x1200 surface, and
+chooses a non-current regional record. It exits only after the Couch shelf and
+the shared details model both report the target stable UUID and loading has
+settled.
 
 `--install-management-ui-probe --state-database EMPTY_PATH
 --install-management-fixture-root EMPTY_DIRECTORY --screenshot-output PATH`
@@ -848,7 +858,7 @@ the inactive QML view ignores its actions.
 seam to inject the same semantic actions that the worker publishes. Against the
 real 303,560-game catalog it proves right movement, exact stable-UUID restoration
 after left movement, action/shelf focus movement, opening Game Menu, traversing
-all five actions including Attract Mode, returning without identity loss,
+all six actions including the release picker and Attract Mode, returning without identity loss,
 opening Details, and switching between panels before the final 1920x1200
 Details capture. Pass
 `--couch-gamepad-menu-screenshot-output PATH` instead to stop on and capture the

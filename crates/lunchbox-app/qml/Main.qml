@@ -73,6 +73,9 @@ ApplicationWindow {
     property int couchCollectionProbeStage: 0
     property int couchCollectionProbeTargetIndex: -1
     property bool couchCollectionProbeSnapshotLogged: false
+    property int couchVariantProbeStage: 0
+    property string couchVariantProbeTargetId: ""
+    property string couchVariantProbeOriginalId: ""
     property int couchAttractProbeStage: 0
     property string couchAttractProbeMovedGameId: ""
     property string selectedGameId: ""
@@ -203,12 +206,14 @@ ApplicationWindow {
     readonly property bool couchCollectionRestoreUiProbe: Qt.application.arguments.indexOf("--couch-collection-restored-ui-probe") >= 0
     readonly property bool couchCollectionUiProbe: couchCollectionRestoreUiProbe
                                                     || Qt.application.arguments.indexOf("--couch-collection-ui-probe") >= 0
+    readonly property bool couchVariantUiProbe: Qt.application.arguments.indexOf("--couch-variant-ui-probe") >= 0
     readonly property bool couchAttractRestoreUiProbe: Qt.application.arguments.indexOf("--couch-attract-restored-ui-probe") >= 0
     readonly property bool couchAttractUiProbe: couchAttractRestoreUiProbe
                                                  || Qt.application.arguments.indexOf("--couch-attract-ui-probe") >= 0
     readonly property bool couchThemeUiProbe: Qt.application.arguments.indexOf("--couch-theme-ui-probe") >= 0
     readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
                                              || couchCollectionUiProbe
+                                             || couchVariantUiProbe
                                              || couchAttractUiProbe
                                              || couchThemeUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
@@ -390,7 +395,7 @@ ApplicationWindow {
     }
 
     function advanceCouchGamepadMenuProbe() {
-        root.couchGamepadProbeStage = 13
+        root.couchGamepadProbeStage = 16
         gamepadInput.probe_navigation_action("left")
         couchGamepadProbeTimer.restart()
     }
@@ -1659,6 +1664,13 @@ ApplicationWindow {
                         } else {
                             root.prepareCouchCollectionProbe()
                         }
+                    } else if (root.couchVariantUiProbe) {
+                        root.couchVariantProbeStage = 0
+                        root.couchVariantProbeOriginalId =
+                                "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                        root.selectedGameId = root.couchVariantProbeOriginalId
+                        library.apply_filter("Super Mario Bros.",
+                                             "Nintendo Entertainment System", "")
                     } else if (root.couchAttractUiProbe) {
                         if (root.couchAttractRestoreUiProbe) {
                             if (!library.couch_attract_enabled
@@ -2321,6 +2333,7 @@ ApplicationWindow {
         onTriggered: {
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
                     && !root.couchCollectionUiProbe
+                    && !root.couchVariantUiProbe
                     && !root.couchAttractUiProbe && !root.couchThemeUiProbe
                     && !gamepadInput.ready) {
                 couchModeScreenshotTimer.restart()
@@ -2328,6 +2341,7 @@ ApplicationWindow {
             }
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
                     && !root.couchCollectionUiProbe
+                    && !root.couchVariantUiProbe
                     && !root.couchAttractUiProbe && !root.couchThemeUiProbe
                     && !gamepadInput.available) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED gamepad="
@@ -2426,6 +2440,27 @@ ApplicationWindow {
                 couchCollectionProbeTimer.restart()
                 return
             }
+            if (root.couchVariantUiProbe) {
+                if (root.couchVariantProbeStage !== 0
+                        && root.couchVariantProbeStage !== 4)
+                    return
+                if (couchModeView.selectedGameId
+                        !== root.couchVariantProbeOriginalId
+                        || gameDetails.game_id
+                           !== root.couchVariantProbeOriginalId
+                        || gameDetails.variant_count < 2) {
+                    console.error("LUNCHBOX_COUCH_VARIANT_UI_FAILED initial state game="
+                                  + couchModeView.selectedGameId + " detail="
+                                  + gameDetails.game_id + " variants="
+                                  + gameDetails.variant_count)
+                    Qt.exit(2)
+                    return
+                }
+                couchModeView.openOverlay("menu")
+                root.couchVariantProbeStage = 1
+                couchVariantProbeTimer.restart()
+                return
+            }
             if (couchModeView.selectedGameId
                     !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
                     || gameDetails.game_id !== couchModeView.selectedGameId
@@ -2484,7 +2519,7 @@ ApplicationWindow {
                 return
             }
             if (root.couchGamepadUiProbe
-                    && root.couchGamepadProbeStage < 13)
+                    && root.couchGamepadProbeStage < 16)
                 return
             root.couchModeProbeCaptured = true
             if (root.couchProbeScreenshotOutput.length === 0) {
@@ -2603,25 +2638,55 @@ ApplicationWindow {
                 couchGamepadProbeTimer.restart()
             } else if (root.couchGamepadProbeStage === 8) {
                 if (couchModeView.menuActionIndex !== 3) {
-                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED menu attract index="
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED menu releases index="
                                   + couchModeView.menuActionIndex)
                     Qt.exit(2)
                     return
                 }
                 root.couchGamepadProbeStage = 9
-                gamepadInput.probe_navigation_action("down")
+                gamepadInput.probe_navigation_action("accept")
                 couchGamepadProbeTimer.restart()
             } else if (root.couchGamepadProbeStage === 9) {
+                if (!couchModeView.variantWheelOpen) {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED releases wheel open")
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 10
+                gamepadInput.probe_navigation_action("back")
+                couchGamepadProbeTimer.restart()
+            } else if (root.couchGamepadProbeStage === 10) {
+                if (!couchModeView.overlayOpen
+                        || couchModeView.overlayMode !== "menu"
+                        || couchModeView.menuActionIndex !== 3) {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED releases wheel close")
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 11
+                gamepadInput.probe_navigation_action("down")
+                couchGamepadProbeTimer.restart()
+            } else if (root.couchGamepadProbeStage === 11) {
                 if (couchModeView.menuActionIndex !== 4) {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED menu attract index="
+                                  + couchModeView.menuActionIndex)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 12
+                gamepadInput.probe_navigation_action("down")
+                couchGamepadProbeTimer.restart()
+            } else if (root.couchGamepadProbeStage === 12) {
+                if (couchModeView.menuActionIndex !== 5) {
                     console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED menu close index="
                                   + couchModeView.menuActionIndex)
                     Qt.exit(2)
                     return
                 }
-                root.couchGamepadProbeStage = 10
+                root.couchGamepadProbeStage = 13
                 gamepadInput.probe_navigation_action("accept")
                 couchGamepadProbeTimer.restart()
-            } else if (root.couchGamepadProbeStage === 10) {
+            } else if (root.couchGamepadProbeStage === 13) {
                 if (couchModeView.overlayOpen
                         || couchModeView.selectedGameId
                            !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
@@ -2630,10 +2695,10 @@ ApplicationWindow {
                     Qt.exit(2)
                     return
                 }
-                root.couchGamepadProbeStage = 11
+                root.couchGamepadProbeStage = 14
                 gamepadInput.probe_navigation_action("details")
                 couchGamepadProbeTimer.restart()
-            } else if (root.couchGamepadProbeStage === 11) {
+            } else if (root.couchGamepadProbeStage === 14) {
                 if (!couchModeView.overlayOpen
                         || couchModeView.overlayMode !== "details") {
                     console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED details open mode="
@@ -2641,10 +2706,10 @@ ApplicationWindow {
                     Qt.exit(2)
                     return
                 }
-                root.couchGamepadProbeStage = 12
+                root.couchGamepadProbeStage = 15
                 gamepadInput.probe_navigation_action("right")
                 couchGamepadProbeTimer.restart()
-            } else if (root.couchGamepadProbeStage === 12) {
+            } else if (root.couchGamepadProbeStage === 15) {
                 if (couchModeView.overlayMode !== "menu") {
                     console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED panel right mode="
                                   + couchModeView.overlayMode)
@@ -2655,9 +2720,9 @@ ApplicationWindow {
                     root.advanceCouchGamepadMenuProbe()
                     return
                 }
-                root.couchGamepadProbeStage = 13
+                root.couchGamepadProbeStage = 16
                 couchModeScreenshotTimer.restart()
-            } else if (root.couchGamepadProbeStage === 13) {
+            } else if (root.couchGamepadProbeStage === 16) {
                 if (!couchModeView.overlayOpen
                         || couchModeView.overlayMode !== "details"
                         || couchModeView.selectedGameId
@@ -2962,6 +3027,98 @@ ApplicationWindow {
     }
 
     Timer {
+        id: couchVariantProbeTimer
+        interval: 320
+        repeat: false
+        onTriggered: {
+            if (!root.couchVariantUiProbe)
+                return
+            if (root.couchVariantProbeStage === 1) {
+                if (!couchModeView.overlayOpen
+                        || couchModeView.overlayMode !== "menu"
+                        || couchModeView.menuActionIndex !== 0) {
+                    console.error("LUNCHBOX_COUCH_VARIANT_UI_FAILED menu open")
+                    Qt.exit(2)
+                    return
+                }
+                couchModeView.handleNavigation("down")
+                couchModeView.handleNavigation("down")
+                couchModeView.handleNavigation("down")
+                if (couchModeView.menuActionIndex !== 3) {
+                    console.error("LUNCHBOX_COUCH_VARIANT_UI_FAILED releases action index="
+                                  + couchModeView.menuActionIndex)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchVariantProbeStage = 2
+                couchModeView.handleNavigation("accept")
+                restart()
+            } else if (root.couchVariantProbeStage === 2) {
+                if (!couchModeView.variantWheelOpen
+                        || couchModeView.variantWheelIndex < 0
+                        || couchModeView.variantWheelIndex
+                           >= gameDetails.variant_count) {
+                    console.error("LUNCHBOX_COUCH_VARIANT_UI_FAILED wheel open index="
+                                  + couchModeView.variantWheelIndex + " count="
+                                  + gameDetails.variant_count)
+                    Qt.exit(2)
+                    return
+                }
+                let target = -1
+                for (let index = 0; index < gameDetails.variant_count; ++index) {
+                    if (!gameDetails.variant_is_current_at(index)) {
+                        target = index
+                        break
+                    }
+                }
+                if (target < 0 || !couchModeView.focusVariant(target)) {
+                    console.error("LUNCHBOX_COUCH_VARIANT_UI_FAILED no target variant")
+                    Qt.exit(2)
+                    return
+                }
+                root.couchVariantProbeTargetId =
+                        gameDetails.variant_game_id_at(target)
+                if (root.screenshotOutput.length === 0) {
+                    root.couchVariantProbeStage = 3
+                    couchModeView.handleNavigation("accept")
+                    restart()
+                    return
+                }
+                couchModeView.captureVariantWheel(root.screenshotOutput,
+                                                   function(saved) {
+                    if (!saved) {
+                        console.error("LUNCHBOX_COUCH_VARIANT_UI_FAILED screenshot="
+                                      + root.screenshotOutput)
+                        Qt.exit(2)
+                        return
+                    }
+                    root.couchVariantProbeStage = 3
+                    couchModeView.handleNavigation("accept")
+                    couchVariantProbeTimer.restart()
+                })
+            } else if (root.couchVariantProbeStage === 3) {
+                if (couchModeView.variantWheelOpen
+                        || couchModeView.selectedGameId
+                           !== root.couchVariantProbeTargetId
+                        || gameDetails.game_id
+                           !== root.couchVariantProbeTargetId
+                        || gameDetails.loading) {
+                    restart()
+                    return
+                }
+                root.couchVariantProbeStage = 4
+                console.warn("LUNCHBOX_COUCH_VARIANT_UI_READY original="
+                             + root.couchVariantProbeOriginalId + " target="
+                             + root.couchVariantProbeTargetId + " variants="
+                             + gameDetails.variant_count + " screenshot="
+                             + root.screenshotOutput)
+                root.couchModeProbeCaptured = true
+                Qt.exit(0)
+            }
+        }
+    }
+
+    Timer {
         id: couchAttractProbeTimer
         interval: 320
         repeat: false
@@ -3047,7 +3204,8 @@ ApplicationWindow {
                 couchModeView.handleNavigation("down")
                 couchModeView.handleNavigation("down")
                 couchModeView.handleNavigation("down")
-                if (couchModeView.menuActionIndex !== 3) {
+                couchModeView.handleNavigation("down")
+                if (couchModeView.menuActionIndex !== 4) {
                     console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED manual menu index="
                                   + couchModeView.menuActionIndex)
                     Qt.exit(2)
@@ -6834,6 +6992,11 @@ ApplicationWindow {
         onPlatformRequested: platform => root.selectCouchPlatform(platform)
         onCollectionRequested: function(collectionId, collectionName) {
             root.selectCollection(collectionId, collectionName)
+        }
+        onVariantRequested: function(gameId, databaseId, title, platform,
+                                     local, downloadable) {
+            root.openGame(gameId, databaseId, title, platform,
+                          local, downloadable)
         }
         onGameSelected: function(gameId, databaseId, title, platform,
                                  local, downloadable) {

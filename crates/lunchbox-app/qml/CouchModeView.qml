@@ -16,6 +16,8 @@ Item {
     property int platformWheelIndex: 0
     property bool collectionWheelOpen: false
     property int collectionWheelIndex: 0
+    property bool variantWheelOpen: false
+    property int variantWheelIndex: 0
     property bool attractOpen: false
     property bool attractProbeEnabled: false
     property string attractReason: "manual"
@@ -44,7 +46,7 @@ Item {
     readonly property color danger: library.couch_theme_danger
     readonly property int cardRadius: library.couch_theme_card_radius
     readonly property real heroScrimOpacity: library.couch_theme_hero_scrim_percent / 100.0
-    readonly property int menuActionCount: 5
+    readonly property int menuActionCount: 6
     readonly property var categories: [
         { label: "ALL GAMES", key: "" },
         { label: "PLATFORMS", key: "platform" },
@@ -104,6 +106,8 @@ Item {
     signal filterRequested(string key)
     signal platformRequested(string platform)
     signal collectionRequested(string collectionId, string collectionName)
+    signal variantRequested(string gameId, int databaseId, string title,
+                            string platform, bool local, bool downloadable)
     signal gameSelected(string gameId, int databaseId, string title,
                         string platform, bool local, bool downloadable)
     signal detailsRequested(string gameId, int databaseId, string title,
@@ -148,6 +152,7 @@ Item {
         overlayOpen = false
         platformWheelOpen = false
         collectionWheelOpen = false
+        variantWheelOpen = false
         attractReason = reason === "idle" ? "idle" : "manual"
         navigationZone = 2
         if (shelf.currentIndex < 0)
@@ -246,6 +251,7 @@ Item {
             return
         overlayOpen = false
         collectionWheelOpen = false
+        variantWheelOpen = false
         attractOpen = false
         platformWheelIndex = platformIndexForName(currentPlatformName)
         platformWheel.currentIndex = platformWheelIndex
@@ -301,6 +307,7 @@ Item {
     function openCollectionWheel() {
         overlayOpen = false
         platformWheelOpen = false
+        variantWheelOpen = false
         attractOpen = false
         const selectedIndex = collectionIndexForId(currentCollectionId)
         collectionWheelIndex = selectedIndex >= 0 ? selectedIndex : 0
@@ -329,6 +336,94 @@ Item {
         collectionWheelOpen = false
         if (active)
             forceActiveFocus()
+    }
+
+    function currentVariantIndex() {
+        for (let index = 0; index < view.details.variant_count; ++index) {
+            if (view.details.variant_is_current_at(index))
+                return index
+        }
+        return 0
+    }
+
+    function openVariantWheel() {
+        if (view.details.loading || view.details.variant_count < 2)
+            return false
+        overlayOpen = false
+        platformWheelOpen = false
+        collectionWheelOpen = false
+        attractOpen = false
+        variantWheelIndex = currentVariantIndex()
+        variantWheel.currentIndex = variantWheelIndex
+        variantWheel.positionViewAtIndex(variantWheelIndex, ListView.Center)
+        variantWheelOpen = true
+        forceActiveFocus()
+        return true
+    }
+
+    function closeVariantWheel() {
+        variantWheelOpen = false
+        if (active) {
+            overlayMode = "menu"
+            overlayOpen = true
+            menuActionIndex = 3
+            forceActiveFocus()
+        }
+    }
+
+    function moveVariantWheel(delta) {
+        if (view.details.variant_count <= 0)
+            return
+        variantWheelIndex = Math.max(0, Math.min(view.details.variant_count - 1,
+                                                  variantWheelIndex + delta))
+        variantWheel.currentIndex = variantWheelIndex
+        variantWheel.positionViewAtIndex(variantWheelIndex, ListView.Center)
+    }
+
+    function focusVariant(index) {
+        if (index < 0 || index >= view.details.variant_count)
+            return false
+        variantWheelIndex = index
+        variantWheel.currentIndex = index
+        variantWheel.positionViewAtIndex(index, ListView.Center)
+        return true
+    }
+
+    function chooseVariant(index) {
+        if (index < 0 || index >= view.details.variant_count
+                || view.details.variant_is_current_at(index))
+            return false
+        const gameId = view.details.variant_game_id_at(index)
+        const databaseId = view.details.variant_database_id_at(index)
+        const title = view.details.variant_title_at(index)
+        const platform = view.selectedPlatform
+        const local = view.details.variant_is_local_at(index)
+        const downloadable = view.details.variant_is_downloadable_at(index)
+        if (gameId.length === 0 || title.length === 0)
+            return false
+        variantWheelOpen = false
+        navigationZone = 2
+        selectedGameId = gameId
+        selectedDatabaseId = databaseId
+        selectedTitle = title
+        selectedLocal = local
+        selectedDownloadable = downloadable
+        loadedGameId = ""
+        library.request_artwork(databaseId, title, platform, "box-front")
+        library.request_artwork(databaseId, title, platform, "fanart")
+        variantRequested(gameId, databaseId, title, platform, local, downloadable)
+        focusGameById(gameId)
+        forceActiveFocus()
+        return true
+    }
+
+    function focusGameById(gameId) {
+        const row = library.row_for_game(gameId)
+        if (row < 0 || row >= shelf.count)
+            return false
+        shelf.currentIndex = row
+        shelf.positionViewAtIndex(row, ListView.Center)
+        return true
     }
 
     function moveCollectionWheel(delta) {
@@ -412,6 +507,7 @@ Item {
         attractOpen = false
         platformWheelOpen = false
         collectionWheelOpen = false
+        variantWheelOpen = false
         overlayMode = mode === "menu" ? "menu" : "details"
         overlayOpen = true
         menuActionIndex = 0
@@ -449,6 +545,12 @@ Item {
         })
     }
 
+    function captureVariantWheel(path, callback) {
+        variantWheelOverlay.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
+    }
+
     function captureAttract(path, callback) {
         attractOverlay.grabToImage(function(result) {
             callback(result.saveToFile(path))
@@ -463,6 +565,8 @@ Item {
         if (index === 2)
             return "DESKTOP DETAILS"
         if (index === 3)
+            return "RELEASES & MEDIA"
+        if (index === 4)
             return "START ATTRACT MODE"
         return "RETURN TO BROWSING"
     }
@@ -483,8 +587,26 @@ Item {
         if (index === 2)
             return "Open releases, media, firmware, launch profiles, and metadata tools."
         if (index === 3)
+            return "Browse exact regional and version releases before choosing one."
+        if (index === 4)
             return "Let Couch Mode rotate through games on the current shelf."
         return "Close this menu without changing the selected game."
+    }
+
+    function menuActionEnabled(index) {
+        return index !== 3 || (!view.details.loading && view.details.variant_count > 1)
+    }
+
+    function nextMenuAction(start, delta) {
+        let index = start
+        for (let step = 0; step < menuActionCount; ++step) {
+            index = Math.max(0, Math.min(menuActionCount - 1, index + delta))
+            if (menuActionEnabled(index))
+                return index
+            if (index === 0 || index === menuActionCount - 1)
+                break
+        }
+        return start
     }
 
     function activateMenuAction(index) {
@@ -498,6 +620,8 @@ Item {
             closeOverlay()
             requestDetails()
         } else if (index === 3) {
+            openVariantWheel()
+        } else if (index === 4) {
             closeOverlay()
             startAttractMode("manual")
         } else {
@@ -563,6 +687,28 @@ Item {
             }
             return true
         }
+        if (variantWheelOpen) {
+            if (action === "back") {
+                closeVariantWheel()
+            } else if (action === "up" || action === "left") {
+                moveVariantWheel(-1)
+            } else if (action === "down" || action === "right") {
+                moveVariantWheel(1)
+            } else if (action === "page_left") {
+                moveVariantWheel(-5)
+            } else if (action === "page_right") {
+                moveVariantWheel(5)
+            } else if (action === "home") {
+                variantWheelIndex = 0
+                variantWheel.currentIndex = 0
+                variantWheel.positionViewAtBeginning()
+            } else if (action === "accept") {
+                chooseVariant(variantWheelIndex)
+            } else {
+                return false
+            }
+            return true
+        }
         if (collectionWheelOpen) {
             if (action === "back") {
                 closeCollectionWheel()
@@ -598,14 +744,13 @@ Item {
                 overlayMode = "menu"
             } else if (action === "up") {
                 if (overlayMode === "menu")
-                    menuActionIndex = Math.max(0, menuActionIndex - 1)
+                    menuActionIndex = nextMenuAction(menuActionIndex, -1)
                 else
                     detailsScroller.contentY = Math.max(0,
                                                         detailsScroller.contentY - 90)
             } else if (action === "down") {
                 if (overlayMode === "menu")
-                    menuActionIndex = Math.min(menuActionCount - 1,
-                                               menuActionIndex + 1)
+                    menuActionIndex = nextMenuAction(menuActionIndex, 1)
                 else
                     detailsScroller.contentY = Math.min(
                                 Math.max(0, detailsScroller.contentHeight
@@ -686,6 +831,7 @@ Item {
             overlayOpen = false
             platformWheelOpen = false
             collectionWheelOpen = false
+            variantWheelOpen = false
             attractOpen = false
             forceActiveFocus()
             syncCategory()
@@ -701,6 +847,7 @@ Item {
             overlayOpen = false
             platformWheelOpen = false
             collectionWheelOpen = false
+            variantWheelOpen = false
             attractOpen = false
         }
     }
@@ -753,6 +900,10 @@ Item {
                 collectionWheel.currentIndex = collectionWheelIndex
                 if (collectionWheel.currentIndex >= 0)
                     collectionWheel.positionViewAtEnd()
+            } else if (variantWheelOpen) {
+                variantWheelIndex = Math.max(0, view.details.variant_count - 1)
+                variantWheel.currentIndex = variantWheelIndex
+                variantWheel.positionViewAtEnd()
             } else {
                 navigationZone = 2
                 shelf.currentIndex = shelf.count - 1
@@ -2333,6 +2484,332 @@ Item {
     }
 
     Rectangle {
+        id: variantWheelOverlay
+        anchors.fill: parent
+        z: 47
+        visible: view.variantWheelOpen
+        color: view.withAlpha(view.background, 0.94)
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: view.withAlpha(view.background, 0.97) }
+                GradientStop { position: 0.55; color: view.withAlpha(view.panel, 0.9) }
+                GradientStop { position: 1; color: view.withAlpha(view.background, 0.78) }
+            }
+        }
+
+        Rectangle {
+            id: variantWheelPanel
+            anchors.centerIn: parent
+            width: Math.min(1020, parent.width - 180)
+            height: Math.min(860, parent.height - 120)
+            radius: Math.min(32, view.cardRadius + 10)
+            color: view.withAlpha(view.panel, 0.98)
+            border.color: view.withAlpha(view.muted, 0.58)
+            border.width: 1
+            clip: true
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 132
+                color: view.withAlpha(view.panelRaised, 0.87)
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 42
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 5
+
+                    Text {
+                        text: "CHOOSE A RELEASE"
+                        color: view.ink
+                        font.pixelSize: 24
+                        font.weight: Font.Black
+                        font.letterSpacing: 1.3
+                    }
+                    Text {
+                        text: view.details.variant_count + " exact catalog releases · region and version preferences"
+                        color: view.muted
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 0.35
+                    }
+                    Text {
+                        text: view.details.media_visible
+                              ? "Cached video or manual media is available for this record."
+                              : "Media and acquisition state stay attached to each exact release."
+                        color: view.details.media_visible ? view.accentCool : view.muted
+                        font.pixelSize: 10
+                        font.weight: Font.Medium
+                    }
+                }
+
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 32
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 44
+                    height: 44
+                    radius: 13
+                    color: variantCloseHover.hovered
+                           ? view.withAlpha(view.panelRaised, 0.9)
+                           : view.withAlpha(view.panel, 0.72)
+                    border.color: variantCloseHover.hovered
+                                  ? view.accent : view.withAlpha(view.muted, 0.55)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        color: view.ink
+                        font.pixelSize: 23
+                    }
+                    HoverHandler { id: variantCloseHover }
+                    TapHandler { onTapped: view.closeVariantWheel() }
+                }
+            }
+
+            ListView {
+                id: variantWheel
+                anchors.left: parent.left
+                anchors.leftMargin: 34
+                anchors.right: parent.right
+                anchors.rightMargin: 34
+                anchors.top: parent.top
+                anchors.topMargin: 142
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 82
+                model: view.details.variant_count
+                clip: true
+                reuseItems: true
+                cacheBuffer: height
+                spacing: 7
+                boundsBehavior: Flickable.StopAtBounds
+                snapMode: ListView.SnapToItem
+                preferredHighlightBegin: height * 0.5 - 53
+                preferredHighlightEnd: height * 0.5 + 53
+                highlightRangeMode: ListView.StrictlyEnforceRange
+                highlightMoveDuration: 120
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0)
+                        view.variantWheelIndex = currentIndex
+                }
+
+                delegate: Item {
+                    id: variantRow
+                    required property int index
+                    property int revision: view.details.detail_revision
+                    property string releaseTitle: {
+                        revision
+                        return view.details.variant_title_at(index)
+                    }
+                    property string releaseLabel: {
+                        revision
+                        return view.details.variant_label_at(index)
+                    }
+                    property string releaseStatus: {
+                        revision
+                        const value = view.details.variant_status_at(index)
+                        return value.length > 0 ? value : "CATALOG"
+                    }
+                    property bool current: {
+                        revision
+                        return view.details.variant_is_current_at(index)
+                    }
+                    property bool local: {
+                        revision
+                        return view.details.variant_is_local_at(index)
+                    }
+                    property bool downloadable: {
+                        revision
+                        return view.details.variant_is_downloadable_at(index)
+                    }
+                    property bool selected: variantWheel.currentIndex === index
+                    property int distance: Math.abs(index - variantWheel.currentIndex)
+                    width: variantWheel.width
+                    height: selected ? 112 : 88
+                    opacity: selected ? 1 : distance <= 2 ? 0.76 : 0.45
+                    scale: selected ? 1 : 0.975
+                    Accessible.name: releaseLabel + ", " + releaseStatus
+                    Behavior on height { NumberAnimation { duration: 110 } }
+                    Behavior on opacity { NumberAnimation { duration: 110 } }
+                    Behavior on scale { NumberAnimation { duration: 110 } }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.leftMargin: variantRow.selected ? 0 : 16
+                        anchors.rightMargin: variantRow.selected ? 0 : 16
+                        radius: 16
+                        color: variantRow.selected
+                               ? view.withAlpha(view.panelRaised, 0.92)
+                               : variantHover.hovered
+                                 ? view.withAlpha(view.panelRaised, 0.56)
+                                 : "transparent"
+                        border.color: variantRow.selected ? view.accent : "transparent"
+                        border.width: variantRow.selected ? 2 : 0
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: variantRow.selected ? 62 : 50
+                            height: width
+                            radius: 16
+                            color: view.accentFor(variantRow.releaseTitle)
+                            border.color: view.withAlpha(view.ink, 0.51)
+                            Text {
+                                anchors.centerIn: parent
+                                text: variantRow.current ? "✓" : "◇"
+                                color: view.withAlpha(view.ink, 0.97)
+                                font.pixelSize: variantRow.selected ? 25 : 20
+                                font.weight: Font.Black
+                            }
+                        }
+
+                        Column {
+                            anchors.left: parent.left
+                            anchors.leftMargin: variantRow.selected ? 98 : 84
+                            anchors.right: variantStatusColumn.left
+                            anchors.rightMargin: 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 5
+
+                            Row {
+                                spacing: 10
+                                Text {
+                                    text: variantRow.releaseLabel
+                                    color: view.ink
+                                    font.pixelSize: variantRow.selected ? 19 : 15
+                                    font.weight: variantRow.selected
+                                                 ? Font.Black : Font.DemiBold
+                                    elide: Text.ElideRight
+                                    width: Math.min(implicitWidth,
+                                                    variantWheel.width * 0.48)
+                                }
+                                Text {
+                                    visible: variantRow.current
+                                    text: "CURRENT"
+                                    color: view.accentCool
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: variantRow.releaseTitle
+                                color: view.muted
+                                font.pixelSize: 10
+                                maximumLineCount: variantRow.selected ? 2 : 1
+                                elide: Text.ElideRight
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        Column {
+                            id: variantStatusColumn
+                            anchors.right: parent.right
+                            anchors.rightMargin: 22
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 5
+
+                            Rectangle {
+                                anchors.right: parent.right
+                                width: variantStatusText.implicitWidth + 16
+                                height: 22
+                                radius: 7
+                                color: variantRow.releaseStatus === "CURRENT"
+                                       ? view.withAlpha(view.accentCool, 0.2)
+                                       : variantRow.releaseStatus === "INSTALLED"
+                                         ? view.withAlpha(view.accentCool, 0.14)
+                                         : variantRow.releaseStatus === "MINERVA"
+                                           ? view.withAlpha(view.accent, 0.2)
+                                           : view.withAlpha(view.muted, 0.14)
+                                border.color: variantRow.releaseStatus === "CURRENT"
+                                              ? view.accentCool
+                                              : variantRow.releaseStatus === "MINERVA"
+                                                ? view.accent : view.withAlpha(view.muted, 0.5)
+                                Text {
+                                    id: variantStatusText
+                                    anchors.centerIn: parent
+                                    text: variantRow.releaseStatus
+                                    color: variantRow.releaseStatus === "CURRENT"
+                                           || variantRow.releaseStatus === "INSTALLED"
+                                           ? view.accentCool
+                                           : variantRow.releaseStatus === "MINERVA"
+                                             ? view.accent : view.muted
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.55
+                                }
+                            }
+                            Text {
+                                anchors.right: parent.right
+                                text: variantRow.local ? "INSTALLED"
+                                      : variantRow.downloadable ? "DOWNLOADABLE"
+                                                                : "CATALOG ONLY"
+                                color: variantRow.local ? view.accentCool
+                                      : variantRow.downloadable ? view.accent : view.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.7
+                            }
+                        }
+
+                        HoverHandler { id: variantHover }
+                        TapHandler {
+                            enabled: !variantRow.current && !view.details.loading
+                            onTapped: view.chooseVariant(variantRow.index)
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 72
+                color: view.withAlpha(view.background, 0.86)
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 28
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? "D-PAD / STICK  BROWSE" : "↑ ↓  BROWSE"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("accept") + "  SELECT"
+                              : "ENTER  SELECT"
+                        color: view.accent
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("back") + "  CANCEL"
+                              : "ESC  CANCEL"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
         id: couchOverlay
         anchors.fill: parent
         z: 50
@@ -2826,8 +3303,10 @@ Item {
                                 border.color: selected ? view.accent
                                                        : view.withAlpha(view.muted, 0.35)
                                 border.width: selected ? 2 : 1
+                                opacity: view.menuActionEnabled(menuAction.index) ? 1 : 0.46
                                 scale: selected ? 1.012 : 1
                                 Behavior on scale { NumberAnimation { duration: 90 } }
+                                Behavior on opacity { NumberAnimation { duration: 110 } }
 
                                 Column {
                                     anchors.left: parent.left
@@ -2862,13 +3341,15 @@ Item {
                                           : menuAction.index === 1
                                             ? (view.favorite ? "★" : "☆")
                                           : menuAction.index === 2 ? "↗"
-                                          : menuAction.index === 3 ? "◈" : "×"
+                                          : menuAction.index === 3 ? "◈"
+                                          : menuAction.index === 4 ? "◌" : "×"
                                     color: menuAction.selected ? view.accent : view.muted
                                     font.pixelSize: menuAction.index === 1 ? 24 : 18
                                     font.weight: Font.Bold
                                 }
                                 HoverHandler { id: menuHover }
                                 TapHandler {
+                                    enabled: view.menuActionEnabled(menuAction.index)
                                     onTapped: {
                                         view.menuActionIndex = menuAction.index
                                         view.activateMenuAction(menuAction.index)
