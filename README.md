@@ -399,7 +399,12 @@ and two-pane manager provide navigation, editing, reorder controls, and bounded
 portable JSON import/export. Import uses only exact Lunchbox UUIDs or unique
 positive LaunchBox database IDs, never display-title matching. Collection views
 remain composable with search and platform navigation, and writes run off the
-GUI thread with visible failure rollback.
+GUI thread with visible failure rollback. Selecting a collection also opens a
+responsive overview computed on the catalog worker: the full shelf and current
+visible counts, unique platforms, installed and Minerva-ready games, favorites,
+played and completed games, and accumulated play time appear beside direct
+Edit, Export, and Manage actions. Stale member IDs are ignored rather than
+matched by title.
 
 Play activity is stored by the same stable game UUID. Lunchbox starts a durable
 session only after an emulator process exists, records play count and last-played

@@ -116,6 +116,19 @@ pub mod qobject {
         #[qproperty(i32, favorite_revision)]
         #[qproperty(i32, collection_count)]
         #[qproperty(i32, collection_revision)]
+        #[qproperty(QString, active_collection_id)]
+        #[qproperty(QString, active_collection_kind)]
+        #[qproperty(QString, active_collection_description)]
+        #[qproperty(QString, active_collection_rule_summary)]
+        #[qproperty(i32, active_collection_total_count)]
+        #[qproperty(i32, active_collection_visible_count)]
+        #[qproperty(i32, active_collection_platform_count)]
+        #[qproperty(i32, active_collection_installed_count)]
+        #[qproperty(i32, active_collection_downloadable_count)]
+        #[qproperty(i32, active_collection_favorite_count)]
+        #[qproperty(i32, active_collection_played_count)]
+        #[qproperty(i32, active_collection_completed_count)]
+        #[qproperty(i64, active_collection_play_seconds)]
         #[qproperty(i32, activity_revision)]
         #[qproperty(i32, media_revision)]
         #[qproperty(i32, metadata_revision)]
@@ -629,6 +642,35 @@ struct CollectionMembership {
     position: Option<usize>,
 }
 
+#[derive(Clone, Debug)]
+struct CollectionSummarySeed {
+    id: String,
+    kind: String,
+    description: String,
+    rule_summary: String,
+    members: Arc<Vec<String>>,
+    game_index_by_id: Arc<HashMap<String, usize>>,
+    favorite_game_ids: Arc<HashSet<String>>,
+    play_activity: Arc<HashMap<String, PlayActivity>>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct ActiveCollectionSummary {
+    id: String,
+    kind: String,
+    description: String,
+    rule_summary: String,
+    total_count: usize,
+    visible_count: usize,
+    platform_count: usize,
+    installed_count: usize,
+    downloadable_count: usize,
+    favorite_count: usize,
+    played_count: usize,
+    completed_count: usize,
+    play_seconds: i64,
+}
+
 const DISPLAY_ROLE: i32 = 0;
 const USER_ROLE: i32 = 0x0100;
 const GAME_ID_ROLE: i32 = USER_ROLE + 1;
@@ -780,6 +822,19 @@ pub struct LibraryModelRust {
     favorite_revision: i32,
     collection_count: i32,
     collection_revision: i32,
+    active_collection_id: QString,
+    active_collection_kind: QString,
+    active_collection_description: QString,
+    active_collection_rule_summary: QString,
+    active_collection_total_count: i32,
+    active_collection_visible_count: i32,
+    active_collection_platform_count: i32,
+    active_collection_installed_count: i32,
+    active_collection_downloadable_count: i32,
+    active_collection_favorite_count: i32,
+    active_collection_played_count: i32,
+    active_collection_completed_count: i32,
+    active_collection_play_seconds: i64,
     activity_revision: i32,
     media_revision: i32,
     metadata_revision: i32,
@@ -810,6 +865,7 @@ pub struct LibraryModelRust {
     collection_members: Arc<HashMap<String, Arc<HashSet<String>>>>,
     collection_order: Arc<HashMap<String, Arc<Vec<String>>>>,
     completion_states: Arc<HashMap<String, String>>,
+    play_activity: Arc<HashMap<String, PlayActivity>>,
     metadata_titles: Arc<HashMap<String, String>>,
     metadata_cooperative: Arc<HashMap<String, String>>,
     metadata_overrides: Arc<HashMap<String, GameMetadataOverride>>,
@@ -951,6 +1007,19 @@ impl Default for LibraryModelRust {
             favorite_revision: 0,
             collection_count: 0,
             collection_revision: 0,
+            active_collection_id: QString::default(),
+            active_collection_kind: QString::default(),
+            active_collection_description: QString::default(),
+            active_collection_rule_summary: QString::default(),
+            active_collection_total_count: 0,
+            active_collection_visible_count: 0,
+            active_collection_platform_count: 0,
+            active_collection_installed_count: 0,
+            active_collection_downloadable_count: 0,
+            active_collection_favorite_count: 0,
+            active_collection_played_count: 0,
+            active_collection_completed_count: 0,
+            active_collection_play_seconds: 0,
             activity_revision: 0,
             media_revision: 0,
             metadata_revision: 0,
@@ -981,6 +1050,7 @@ impl Default for LibraryModelRust {
             collection_members: Arc::new(HashMap::new()),
             collection_order: Arc::new(HashMap::new()),
             completion_states: Arc::new(HashMap::new()),
+            play_activity: Arc::new(HashMap::new()),
             metadata_titles: Arc::new(HashMap::new()),
             metadata_cooperative: Arc::new(HashMap::new()),
             metadata_overrides: Arc::new(HashMap::new()),
@@ -1046,6 +1116,46 @@ fn custom_field_search_values(
             (game_uid, values)
         })
         .collect()
+}
+
+fn build_active_collection_summary(
+    catalog: &Catalog,
+    seed: CollectionSummarySeed,
+    visible_count: usize,
+) -> ActiveCollectionSummary {
+    let mut summary = ActiveCollectionSummary {
+        id: seed.id,
+        kind: seed.kind,
+        description: seed.description,
+        rule_summary: seed.rule_summary,
+        visible_count,
+        ..ActiveCollectionSummary::default()
+    };
+    let mut platforms = HashSet::new();
+
+    for game_uid in seed.members.iter() {
+        let Some(game) = seed
+            .game_index_by_id
+            .get(game_uid)
+            .and_then(|index| catalog.games.get(*index))
+        else {
+            continue;
+        };
+        summary.total_count += 1;
+        platforms.insert(game.platform.as_str());
+        summary.installed_count += usize::from(game.local);
+        summary.downloadable_count += usize::from(game.downloadable && !game.local);
+        summary.favorite_count += usize::from(seed.favorite_game_ids.contains(game_uid));
+        if let Some(activity) = seed.play_activity.get(game_uid) {
+            summary.played_count += usize::from(activity.play_count > 0);
+            summary.completed_count += usize::from(activity.completion_state == "completed");
+            summary.play_seconds = summary
+                .play_seconds
+                .saturating_add(activity.total_play_time_seconds.max(0));
+        }
+    }
+    summary.platform_count = platforms.len();
+    summary
 }
 
 fn saturating_i32(value: usize) -> i32 {
@@ -1321,8 +1431,12 @@ impl qobject::LibraryModel {
                     .map(|activity| (activity.game_uid.clone(), activity.last_played_at))
                     .collect::<HashMap<_, _>>();
                 let completion_states = activity
+                    .iter()
+                    .map(|activity| (activity.game_uid.clone(), activity.completion_state.clone()))
+                    .collect::<HashMap<_, _>>();
+                let play_activity = activity
                     .into_iter()
-                    .map(|activity| (activity.game_uid, activity.completion_state))
+                    .map(|activity| (activity.game_uid.clone(), activity))
                     .collect::<HashMap<_, _>>();
                 let recent_count = self
                     .as_ref()
@@ -1334,6 +1448,7 @@ impl qobject::LibraryModel {
                     .count();
                 self.as_mut().rust_mut().recent_game_order = Arc::new(recent_game_order);
                 self.as_mut().rust_mut().completion_states = Arc::new(completion_states);
+                self.as_mut().rust_mut().play_activity = Arc::new(play_activity);
                 self.as_mut().set_recent_count(saturating_i32(recent_count));
                 let has_smart_collections = self
                     .as_ref()
@@ -1375,6 +1490,7 @@ impl qobject::LibraryModel {
         self.as_mut().set_ready(false);
         self.as_mut().set_filtering(false);
         self.as_mut().set_loading(true);
+        self.as_mut().apply_active_collection_summary(None);
         self.as_mut()
             .set_status_message(qstring("Loading the catalog…"));
 
@@ -1611,21 +1727,30 @@ impl qobject::LibraryModel {
                     Err(error) => (Vec::new(), HashMap::new(), Some(error)),
                 };
                 let collection_count = collections.len();
-                let (recent_game_order, completion_states, activity_warning) = match activity {
-                    Ok(activity) => {
-                        let recent = activity
-                            .iter()
-                            .filter(|activity| activity.play_count > 0)
-                            .map(|activity| (activity.game_uid.clone(), activity.last_played_at))
-                            .collect::<HashMap<_, _>>();
-                        let completion = activity
-                            .into_iter()
-                            .map(|activity| (activity.game_uid, activity.completion_state))
-                            .collect::<HashMap<_, _>>();
-                        (recent, completion, None)
-                    }
-                    Err(error) => (HashMap::new(), HashMap::new(), Some(error)),
-                };
+                let (recent_game_order, completion_states, play_activity, activity_warning) =
+                    match activity {
+                        Ok(activity) => {
+                            let recent = activity
+                                .iter()
+                                .filter(|activity| activity.play_count > 0)
+                                .map(|activity| {
+                                    (activity.game_uid.clone(), activity.last_played_at)
+                                })
+                                .collect::<HashMap<_, _>>();
+                            let completion = activity
+                                .iter()
+                                .map(|activity| {
+                                    (activity.game_uid.clone(), activity.completion_state.clone())
+                                })
+                                .collect::<HashMap<_, _>>();
+                            let by_game = activity
+                                .into_iter()
+                                .map(|activity| (activity.game_uid.clone(), activity))
+                                .collect::<HashMap<_, _>>();
+                            (recent, completion, by_game, None)
+                        }
+                        Err(error) => (HashMap::new(), HashMap::new(), HashMap::new(), Some(error)),
+                    };
                 let (metadata_overrides, metadata_titles, metadata_cooperative, metadata_warning) =
                     match metadata {
                         Ok(metadata) => {
@@ -1701,6 +1826,7 @@ impl qobject::LibraryModel {
                     rust.favorite_game_ids = Arc::new(favorite_game_ids);
                     rust.recent_game_order = Arc::new(recent_game_order);
                     rust.completion_states = Arc::new(completion_states);
+                    rust.play_activity = Arc::new(play_activity);
                     rust.metadata_titles = metadata_titles;
                     rust.metadata_cooperative = metadata_cooperative;
                     rust.metadata_overrides = metadata_overrides;
@@ -1902,6 +2028,30 @@ impl qobject::LibraryModel {
         self.as_mut().apply_filter(search, platform, availability);
     }
 
+    fn active_collection_summary_seed(&self, availability: &str) -> Option<CollectionSummarySeed> {
+        let collection_id = availability.strip_prefix("collection:")?;
+        let collection = self
+            .rust()
+            .collections
+            .iter()
+            .find(|collection| collection.id == collection_id)?;
+        let members = self.rust().collection_order.get(collection_id)?.clone();
+        Some(CollectionSummarySeed {
+            id: collection.id.clone(),
+            kind: collection.kind.clone(),
+            description: collection.description.clone(),
+            rule_summary: collection
+                .rules
+                .as_ref()
+                .map(SmartCollectionRules::summary)
+                .unwrap_or_default(),
+            members,
+            game_index_by_id: Arc::clone(&self.rust().game_index_by_id),
+            favorite_game_ids: Arc::clone(&self.rust().favorite_game_ids),
+            play_activity: Arc::clone(&self.rust().play_activity),
+        })
+    }
+
     pub fn apply_filter(
         mut self: Pin<&mut Self>,
         search: QString,
@@ -1916,6 +2066,16 @@ impl qobject::LibraryModel {
             platform.to_string(),
             availability.to_string(),
         );
+        let summary_seed = self
+            .as_ref()
+            .active_collection_summary_seed(&filter.availability);
+        let next_collection_id = summary_seed
+            .as_ref()
+            .map(|seed| seed.id.as_str())
+            .unwrap_or_default();
+        if self.as_ref().active_collection_id().to_string() != next_collection_id {
+            self.as_mut().apply_active_collection_summary(None);
+        }
         self.as_mut().rust_mut().current_search = search.to_string();
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);
@@ -1931,8 +2091,10 @@ impl qobject::LibraryModel {
             .name("lunchbox-catalog-filter".into())
             .spawn(move || {
                 let indices = catalog::filter_indices(&catalog, &filter);
+                let summary = summary_seed
+                    .map(|seed| build_active_collection_summary(&catalog, seed, indices.len()));
                 if let Err(error) = qt_thread.queue(move |mut model| {
-                    model.as_mut().finish_filter(generation, indices);
+                    model.as_mut().finish_filter(generation, indices, summary);
                 }) {
                     eprintln!("Could not publish the filtered catalog to Qt: {error:?}");
                 }
@@ -2778,8 +2940,8 @@ impl qobject::LibraryModel {
         if updates_smart_collection {
             self.as_mut().rebuild_smart_collections();
             self.as_mut().bump_collection_revision();
-            self.as_mut().refresh_active_collection_filter();
         }
+        self.as_mut().refresh_active_collection_filter();
     }
 
     fn finish_favorite_save(
@@ -4014,7 +4176,12 @@ impl qobject::LibraryModel {
         }
     }
 
-    fn finish_filter(mut self: Pin<&mut Self>, generation: u64, indices: Vec<usize>) {
+    fn finish_filter(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        indices: Vec<usize>,
+        summary: Option<ActiveCollectionSummary>,
+    ) {
         if generation != self.as_ref().rust().filter_generation {
             return;
         }
@@ -4023,6 +4190,7 @@ impl qobject::LibraryModel {
         self.as_mut().rust_mut().filtered_indices = indices;
         self.as_mut().end_reset_model();
         self.as_mut().set_filtered_count(saturating_i32(count));
+        self.as_mut().apply_active_collection_summary(summary);
         self.as_mut().set_filtering(false);
         let filter_ms = self
             .as_ref()
@@ -4031,6 +4199,38 @@ impl qobject::LibraryModel {
             .map(|started| started.elapsed().as_millis())
             .unwrap_or_default();
         println!("LUNCHBOX_FILTER_READY_MS={filter_ms} results={count}");
+    }
+
+    fn apply_active_collection_summary(
+        mut self: Pin<&mut Self>,
+        summary: Option<ActiveCollectionSummary>,
+    ) {
+        let summary = summary.unwrap_or_default();
+        self.as_mut().set_active_collection_id(qstring(summary.id));
+        self.as_mut()
+            .set_active_collection_kind(qstring(summary.kind));
+        self.as_mut()
+            .set_active_collection_description(qstring(summary.description));
+        self.as_mut()
+            .set_active_collection_rule_summary(qstring(summary.rule_summary));
+        self.as_mut()
+            .set_active_collection_total_count(saturating_i32(summary.total_count));
+        self.as_mut()
+            .set_active_collection_visible_count(saturating_i32(summary.visible_count));
+        self.as_mut()
+            .set_active_collection_platform_count(saturating_i32(summary.platform_count));
+        self.as_mut()
+            .set_active_collection_installed_count(saturating_i32(summary.installed_count));
+        self.as_mut()
+            .set_active_collection_downloadable_count(saturating_i32(summary.downloadable_count));
+        self.as_mut()
+            .set_active_collection_favorite_count(saturating_i32(summary.favorite_count));
+        self.as_mut()
+            .set_active_collection_played_count(saturating_i32(summary.played_count));
+        self.as_mut()
+            .set_active_collection_completed_count(saturating_i32(summary.completed_count));
+        self.as_mut()
+            .set_active_collection_play_seconds(summary.play_seconds);
     }
 
     fn finish_list_facet(
@@ -4756,4 +4956,127 @@ fn filtered_platform(model: &qobject::LibraryModel, index: i32) -> Option<&catal
 
 fn media_asset_url(asset: &MediaAsset) -> QUrl {
     QUrl::from_local_file(&qstring(asset.path.to_string_lossy()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn game(id: &str, platform: &str, local: bool, downloadable: bool) -> catalog::Game {
+        catalog::Game {
+            id: id.to_owned(),
+            launchbox_db_id: 1,
+            title: id.to_owned(),
+            platform: platform.to_owned(),
+            status: String::new(),
+            local,
+            downloadable,
+            non_retail: false,
+            adult: false,
+            cooperative: String::new(),
+            search_key: format!("{id}\n{platform}"),
+        }
+    }
+
+    fn activity(game_uid: &str, play_count: i64, seconds: i64, completion: &str) -> PlayActivity {
+        PlayActivity {
+            game_uid: game_uid.to_owned(),
+            launchbox_db_id: 1,
+            title: game_uid.to_owned(),
+            platform: String::new(),
+            play_count,
+            total_play_time_seconds: seconds,
+            last_played_at: 100,
+            first_played_at: 50,
+            completion_state: completion.to_owned(),
+        }
+    }
+
+    #[test]
+    fn collection_summary_reports_exact_resolved_members() {
+        let catalog = Catalog {
+            games: vec![
+                game("installed", "Arcade", true, true),
+                game("ready", "Console", false, true),
+            ],
+            ..Catalog::default()
+        };
+        let seed = CollectionSummarySeed {
+            id: "shelf".to_owned(),
+            kind: "manual".to_owned(),
+            description: "Two exact games".to_owned(),
+            rule_summary: String::new(),
+            members: Arc::new(vec![
+                "installed".to_owned(),
+                "ready".to_owned(),
+                "stale-id".to_owned(),
+            ]),
+            game_index_by_id: Arc::new(HashMap::from([
+                ("installed".to_owned(), 0),
+                ("ready".to_owned(), 1),
+            ])),
+            favorite_game_ids: Arc::new(HashSet::from(["ready".to_owned()])),
+            play_activity: Arc::new(HashMap::from([
+                (
+                    "installed".to_owned(),
+                    activity("installed", 2, 3_661, "completed"),
+                ),
+                ("ready".to_owned(), activity("ready", 0, -50, "not_started")),
+            ])),
+        };
+
+        assert_eq!(
+            build_active_collection_summary(&catalog, seed, 1),
+            ActiveCollectionSummary {
+                id: "shelf".to_owned(),
+                kind: "manual".to_owned(),
+                description: "Two exact games".to_owned(),
+                rule_summary: String::new(),
+                total_count: 2,
+                visible_count: 1,
+                platform_count: 2,
+                installed_count: 1,
+                downloadable_count: 1,
+                favorite_count: 1,
+                played_count: 1,
+                completed_count: 1,
+                play_seconds: 3_661,
+            }
+        );
+    }
+
+    #[test]
+    fn collection_summary_saturates_accumulated_play_time() {
+        let catalog = Catalog {
+            games: vec![
+                game("one", "Arcade", false, false),
+                game("two", "Arcade", false, false),
+            ],
+            ..Catalog::default()
+        };
+        let seed = CollectionSummarySeed {
+            id: "long-running".to_owned(),
+            kind: "smart".to_owned(),
+            description: String::new(),
+            rule_summary: "Played games".to_owned(),
+            members: Arc::new(vec!["one".to_owned(), "two".to_owned()]),
+            game_index_by_id: Arc::new(HashMap::from([
+                ("one".to_owned(), 0),
+                ("two".to_owned(), 1),
+            ])),
+            favorite_game_ids: Arc::new(HashSet::new()),
+            play_activity: Arc::new(HashMap::from([
+                (
+                    "one".to_owned(),
+                    activity("one", 1, i64::MAX, "in_progress"),
+                ),
+                ("two".to_owned(), activity("two", 1, 60, "completed")),
+            ])),
+        };
+
+        let summary = build_active_collection_summary(&catalog, seed, 2);
+        assert_eq!(summary.play_seconds, i64::MAX);
+        assert_eq!(summary.played_count, 2);
+        assert_eq!(summary.completed_count, 1);
+    }
 }

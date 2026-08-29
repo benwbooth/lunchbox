@@ -117,7 +117,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   automatic rules, portable exact-ID import/export, asynchronous persistence
   with rollback, and restart recovery. Couch Mode has a controller-first
   virtualized collection picker with live counts and rules, exact-ID routing,
-  cold-start restoration, and safe deletion/stale-ID fallback.
+  cold-start restoration, and safe deletion/stale-ID fallback. The desktop
+  collection overview reports exact full-shelf and visible totals, platforms,
+  installed and Minerva-ready games, favorites, activity, completion, and play
+  time from the catalog worker, with direct Edit, Export, and Manage actions.
 - Native local Library Audit with one prepared catalog index, cancellable
   off-thread scans, exact healthy/changed/duplicate/new/missing/unreadable/root-
   offline states, review-first filtering and sorting, and confirmed stale-row
@@ -197,11 +200,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   case-insensitively unique names, keyboard/pointer reordering, details-pane
   presentation, name/value search, and cold-start recovery all preserve the
   exact stable game UUID.
-- Extend the implemented stable-UUID game metadata overlay editor with playlist-
-  specific presentation.
+- Extend the implemented stable-UUID game metadata overlay editor and collection
+  overview with playlist-entry-specific presentation overrides.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
-- Fast metadata bulk editing and collection-wide comparison/reporting tools.
+- Extend the native collection-wide summary with bulk metadata editing and
+  cross-collection comparison/reporting tools.
 
 ## Download-first experience
 

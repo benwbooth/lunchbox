@@ -108,6 +108,9 @@ ApplicationWindow {
     property bool libraryAuditProbeArmed: false
     property bool mediaAuditProbeArmed: false
     property bool collectionProbeArmed: false
+    property bool collectionSummaryProbeCaptured: false
+    property bool smartCollectionSummaryProbeArmed: false
+    property bool smartCollectionSummaryProbeCaptured: false
     property bool libraryViewProbeArmed: false
     property int listFilterProbeStage: 0
     property string listFilterProbeValue: ""
@@ -229,9 +232,13 @@ ApplicationWindow {
     readonly property bool favoriteProbe: Qt.application.arguments.indexOf("--favorite-probe") >= 0
     readonly property bool favoriteUiProbe: Qt.application.arguments.indexOf("--favorite-ui-probe") >= 0
     readonly property bool collectionProbe: Qt.application.arguments.indexOf("--collection-probe") >= 0
-    readonly property bool collectionUiProbe: Qt.application.arguments.indexOf("--collection-ui-probe") >= 0
+    readonly property bool collectionSummaryUiProbe: Qt.application.arguments.indexOf("--collection-summary-ui-probe") >= 0
+    readonly property bool collectionUiProbe: collectionSummaryUiProbe
+                                                || Qt.application.arguments.indexOf("--collection-ui-probe") >= 0
     readonly property bool smartCollectionProbe: Qt.application.arguments.indexOf("--smart-collection-probe") >= 0
-    readonly property bool smartCollectionUiProbe: Qt.application.arguments.indexOf("--smart-collection-ui-probe") >= 0
+    readonly property bool smartCollectionSummaryUiProbe: Qt.application.arguments.indexOf("--smart-collection-summary-ui-probe") >= 0
+    readonly property bool smartCollectionUiProbe: smartCollectionSummaryUiProbe
+                                                     || Qt.application.arguments.indexOf("--smart-collection-ui-probe") >= 0
     readonly property bool libraryViewRestoreUiProbe: Qt.application.arguments.indexOf("--library-view-restored-ui-probe") >= 0
     readonly property bool libraryViewUiProbe: libraryViewRestoreUiProbe
                                                 || Qt.application.arguments.indexOf("--library-view-ui-probe") >= 0
@@ -659,6 +666,12 @@ ApplicationWindow {
                     + library.collection_game_count_at(index))
         if (root.smartCollectionProbe) {
             Qt.quit()
+        } else if (root.smartCollectionSummaryUiProbe) {
+            if (!root.smartCollectionSummaryProbeArmed) {
+                root.smartCollectionSummaryProbeArmed = true
+                root.selectCollection(library.collection_id_at(index),
+                                      library.collection_name_at(index))
+            }
         } else {
             root.openEditCollectionDialog(index)
             if (root.screenshotOutput.length > 0)
@@ -928,6 +941,24 @@ ApplicationWindow {
             return hours + ":" + String(minutes).padStart(2, "0")
                     + ":" + String(seconds).padStart(2, "0")
         return minutes + ":" + String(seconds).padStart(2, "0")
+    }
+
+    function formatCollectionPlayTime(seconds) {
+        const safeSeconds = Math.max(0, Number(seconds))
+        if (safeSeconds < 60)
+            return safeSeconds > 0 ? "<1m" : "—"
+        const totalMinutes = Math.floor(safeSeconds / 60)
+        if (totalMinutes < 60)
+            return totalMinutes + "m"
+        const hours = Math.floor(totalMinutes / 60)
+        const minutes = totalMinutes % 60
+        return minutes > 0 ? root.formatCount(hours) + "h "
+                             + minutes + "m"
+                           : root.formatCount(hours) + "h"
+    }
+
+    function formatCount(value) {
+        return Number(value).toLocaleString(Qt.locale(), "f", 0)
     }
 
     function openImportDialog() {
@@ -1849,6 +1880,35 @@ ApplicationWindow {
                      && library.ready && !library.filtering
                      && searchField.text.length > 0)
                 root.favoriteProbeArmed = true
+            else if (root.smartCollectionSummaryUiProbe
+                     && root.smartCollectionSummaryProbeArmed
+                     && !root.smartCollectionSummaryProbeCaptured
+                     && library.ready && !library.filtering) {
+                const index = root.collectionIndexByName("Ready from Minerva")
+                const valid = index >= 0
+                        && root.selectedCollectionId === library.collection_id_at(index)
+                        && library.active_collection_id === root.selectedCollectionId
+                        && library.active_collection_kind === "smart"
+                        && library.active_collection_rule_summary.length > 0
+                        && library.active_collection_total_count
+                           === library.collection_game_count_at(index)
+                        && library.active_collection_total_count
+                           === library.downloadable_game_count
+                        && library.active_collection_platform_count > 0
+                if (!valid) {
+                    console.error("LUNCHBOX_SMART_COLLECTION_SUMMARY_UI_FAILED id="
+                                  + library.active_collection_id + " selected="
+                                  + root.selectedCollectionId + " kind="
+                                  + library.active_collection_kind + " total="
+                                  + library.active_collection_total_count + " expected="
+                                  + library.downloadable_game_count + " platforms="
+                                  + library.active_collection_platform_count + " rules="
+                                  + library.active_collection_rule_summary)
+                    Qt.exit(2)
+                    return
+                }
+                smartCollectionSummaryScreenshotTimer.restart()
+            }
             else if ((root.collectionProbe || root.collectionUiProbe)
                      && root.collectionProbeStage === 2
                      && library.ready && !library.filtering)
@@ -1859,6 +1919,8 @@ ApplicationWindow {
                 root.collectionProbeStage = 5
                 if (root.collectionProbe)
                     Qt.quit()
+                else if (root.collectionSummaryUiProbe)
+                    collectionSummaryScreenshotTimer.restart()
                 else {
                     manageCollectionsDialog.open()
                     if (root.screenshotOutput.length > 0)
@@ -3395,6 +3457,71 @@ ApplicationWindow {
     }
 
     Timer {
+        id: collectionSummaryScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            const valid = root.selectedCollectionId.length > 0
+                    && library.active_collection_id === root.selectedCollectionId
+                    && library.active_collection_kind === "manual"
+                    && library.active_collection_total_count === 1
+                    && library.active_collection_visible_count === 1
+                    && library.active_collection_platform_count === 1
+                    && library.filtered_count === 1
+            if (!valid) {
+                console.error("LUNCHBOX_COLLECTION_SUMMARY_UI_FAILED id="
+                              + library.active_collection_id + " selected="
+                              + root.selectedCollectionId + " kind="
+                              + library.active_collection_kind + " total="
+                              + library.active_collection_total_count + " visible="
+                              + library.active_collection_visible_count + " platforms="
+                              + library.active_collection_platform_count + " results="
+                              + library.filtered_count)
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                root.collectionSummaryProbeCaptured = true
+                console.log("LUNCHBOX_COLLECTION_SUMMARY_UI_READY id="
+                            + library.active_collection_id + " games="
+                            + library.active_collection_total_count + " platforms="
+                            + library.active_collection_platform_count)
+                Qt.quit()
+                return
+            }
+            content.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_COLLECTION_SUMMARY_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                root.collectionSummaryProbeCaptured = true
+                console.log("LUNCHBOX_COLLECTION_SUMMARY_UI_READY id="
+                            + library.active_collection_id + " games="
+                            + library.active_collection_total_count + " platforms="
+                            + library.active_collection_platform_count + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 15000
+        running: root.collectionSummaryUiProbe
+                 && !root.collectionSummaryProbeCaptured
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_COLLECTION_SUMMARY_UI_FAILED timeout stage="
+                          + root.collectionProbeStage + " id="
+                          + library.active_collection_id + " message="
+                          + library.collection_message)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
         id: smartCollectionScreenshotTimer
         interval: 500
         repeat: false
@@ -3951,6 +4078,56 @@ ApplicationWindow {
             if (mediaAudit.entry_count > 0)
                 mediaAudit.toggle_selected(0)
             mediaAuditScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: smartCollectionSummaryScreenshotTimer
+        interval: 600
+        repeat: false
+        onTriggered: {
+            if (!root.smartCollectionSummaryUiProbe
+                    || root.smartCollectionSummaryProbeCaptured)
+                return
+            if (root.screenshotOutput.length === 0) {
+                root.smartCollectionSummaryProbeCaptured = true
+                console.log("LUNCHBOX_SMART_COLLECTION_SUMMARY_UI_READY games="
+                            + library.active_collection_total_count + " shown="
+                            + library.active_collection_visible_count + " platforms="
+                            + library.active_collection_platform_count)
+                Qt.quit()
+                return
+            }
+            content.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SMART_COLLECTION_SUMMARY_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                root.smartCollectionSummaryProbeCaptured = true
+                console.log("LUNCHBOX_SMART_COLLECTION_SUMMARY_UI_READY games="
+                            + library.active_collection_total_count + " shown="
+                            + library.active_collection_visible_count + " platforms="
+                            + library.active_collection_platform_count + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 20000
+        running: root.smartCollectionSummaryUiProbe
+                 && !root.smartCollectionSummaryProbeCaptured
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_SMART_COLLECTION_SUMMARY_UI_FAILED timeout armed="
+                          + root.smartCollectionSummaryProbeArmed + " id="
+                          + library.active_collection_id + " total="
+                          + library.active_collection_total_count + " message="
+                          + library.collection_message)
+            Qt.exit(2)
         }
     }
 
@@ -6292,6 +6469,45 @@ ApplicationWindow {
         }
     }
 
+    component CollectionMetric: Rectangle {
+        id: collectionMetric
+        required property string label
+        required property string value
+        property color tone: root.ink
+        width: 112
+        height: 56
+        radius: 9
+        color: "#151d29"
+        border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.28)
+        Accessible.name: label + ": " + value
+        Column {
+            anchors.left: parent.left
+            anchors.leftMargin: 13
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 1
+            Text {
+                width: parent.width
+                text: collectionMetric.value
+                color: collectionMetric.tone
+                font.pixelSize: 17
+                font.weight: Font.Bold
+                font.features: { "tnum": 1 }
+                elide: Text.ElideRight
+            }
+            Text {
+                width: parent.width
+                text: collectionMetric.label.toUpperCase()
+                color: root.muted
+                font.pixelSize: 8
+                font.weight: Font.Bold
+                font.letterSpacing: 0.75
+                elide: Text.ElideRight
+            }
+        }
+    }
+
     component AuditMetric: Rectangle {
         id: metric
         required property string label
@@ -7684,7 +7900,9 @@ ApplicationWindow {
                         elide: Text.ElideRight
                     }
                     Text {
-                        text: library.filtering ? "Updating results…" : library.filtered_count + " games"
+                        text: library.filtering ? "Updating results…"
+                              : library.filtered_count === 1 ? "1 game"
+                              : root.formatCount(library.filtered_count) + " games"
                         color: root.muted
                         font.pixelSize: 12
                     }
@@ -7735,6 +7953,191 @@ ApplicationWindow {
                         leftPadding: 0
                         rightPadding: 0
                         onClicked: library.choose_view_mode("list")
+                    }
+                }
+            }
+
+            Rectangle {
+                id: collectionOverview
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 137 : 0
+                visible: root.selectedCollectionId.length > 0
+                         && library.active_collection_id
+                            === root.selectedCollectionId
+                radius: 12
+                color: "#101720"
+                border.color: library.active_collection_kind === "smart"
+                              ? Qt.rgba(root.accentCool.r, root.accentCool.g,
+                                        root.accentCool.b, 0.42)
+                              : Qt.rgba(root.accent.r, root.accent.g,
+                                        root.accent.b, 0.35)
+                clip: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 9
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 9
+                        Rectangle {
+                            Layout.preferredWidth: collectionTypeText.implicitWidth + 18
+                            Layout.preferredHeight: 25
+                            radius: 7
+                            color: library.active_collection_kind === "smart"
+                                   ? "#17302f" : "#33291e"
+                            border.color: library.active_collection_kind === "smart"
+                                          ? "#285a56" : "#59442d"
+                            Text {
+                                id: collectionTypeText
+                                anchors.centerIn: parent
+                                text: library.active_collection_kind === "smart"
+                                      ? "SMART SHELF" : "PLAYLIST"
+                                color: library.active_collection_kind === "smart"
+                                       ? root.accentCool : root.accent
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            text: {
+                                const description = library.active_collection_description
+                                const rules = library.active_collection_rule_summary
+                                if (description.length > 0 && rules.length > 0)
+                                    return description + "  ·  " + rules
+                                if (description.length > 0)
+                                    return description
+                                if (rules.length > 0)
+                                    return rules
+                                return library.active_collection_kind === "smart"
+                                       ? "Membership follows this shelf's saved rules."
+                                       : "A hand-curated playlist with exact game identities."
+                            }
+                            color: root.muted
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                            Accessible.name: text
+                        }
+                        HeaderButton {
+                            text: "Edit"
+                            visible: content.width >= 720
+                            enabled: !library.collection_busy
+                            implicitHeight: 32
+                            leftPadding: 12
+                            rightPadding: 12
+                            onClicked: {
+                                const index = root.collectionIndex(
+                                                root.selectedCollectionId)
+                                if (index >= 0)
+                                    root.openEditCollectionDialog(index)
+                            }
+                        }
+                        HeaderButton {
+                            text: "Export"
+                            visible: content.width >= 820
+                            enabled: !library.collection_busy
+                            implicitHeight: 32
+                            leftPadding: 12
+                            rightPadding: 12
+                            onClicked: {
+                                collectionExportDialog.collectionId =
+                                        root.selectedCollectionId
+                                collectionExportDialog.collectionName =
+                                        root.selectedCollectionName
+                                collectionExportDialog.open()
+                            }
+                        }
+                        HeaderButton {
+                            text: "Manage"
+                            enabled: !library.collection_busy
+                            implicitHeight: 32
+                            leftPadding: 12
+                            rightPadding: 12
+                            onClicked: {
+                                const index = root.collectionIndex(
+                                                root.selectedCollectionId)
+                                if (index >= 0)
+                                    managedCollectionList.currentIndex = index
+                                manageCollectionsDialog.open()
+                            }
+                        }
+                    }
+
+                    Flickable {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 59
+                        contentWidth: collectionMetricRow.width
+                        contentHeight: height
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.horizontal: ScrollBar {
+                            policy: collectionMetricRow.width > parent.width
+                                    ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                        }
+                        Row {
+                            id: collectionMetricRow
+                            height: parent.height
+                            spacing: 7
+                            CollectionMetric {
+                                label: "Games"
+                                value: root.formatCount(
+                                           library.active_collection_total_count)
+                                tone: root.accent
+                            }
+                            CollectionMetric {
+                                visible: library.active_collection_visible_count
+                                         !== library.active_collection_total_count
+                                width: visible ? 112 : 0
+                                label: "Shown"
+                                value: root.formatCount(
+                                           library.active_collection_visible_count)
+                                tone: root.accentCool
+                            }
+                            CollectionMetric {
+                                label: "Platforms"
+                                value: root.formatCount(
+                                           library.active_collection_platform_count)
+                            }
+                            CollectionMetric {
+                                label: "Installed"
+                                value: root.formatCount(
+                                           library.active_collection_installed_count)
+                                tone: root.accentCool
+                            }
+                            CollectionMetric {
+                                label: "Minerva ready"
+                                value: root.formatCount(
+                                           library.active_collection_downloadable_count)
+                                tone: root.accent
+                            }
+                            CollectionMetric {
+                                label: "Favorites"
+                                value: root.formatCount(
+                                           library.active_collection_favorite_count)
+                            }
+                            CollectionMetric {
+                                label: "Played"
+                                value: root.formatCount(
+                                           library.active_collection_played_count)
+                            }
+                            CollectionMetric {
+                                label: "Completed"
+                                value: root.formatCount(
+                                           library.active_collection_completed_count)
+                                tone: root.accentCool
+                            }
+                            CollectionMetric {
+                                width: 126
+                                label: "Play time"
+                                value: root.formatCollectionPlayTime(
+                                           library.active_collection_play_seconds)
+                                tone: root.accent
+                            }
+                        }
                     }
                 }
             }

@@ -463,6 +463,19 @@ its count from the real catalog, and exits only after the Qt bridge observes the
 expected result. `--smart-collection-ui-probe` opens the same durable rules in
 the native editor and can capture it with `--screenshot-output`.
 
+The desktop collection overview is published with the generation-guarded
+catalog result rather than scanned on the Qt thread. Its seed contains the exact
+collection ID, ordered member IDs or smart-rule result, favorites, and durable
+play activity. The worker resolves stable IDs through the catalog index, ignores
+stale IDs, and reports full-shelf and visible counts, unique platforms,
+installed and Minerva-ready games, favorites, played/completed games, and
+saturating accumulated play time. `--collection-summary-ui-probe
+--state-database EMPTY_PATH --screenshot-output ABSOLUTE_PATH` creates and
+selects an exact one-game manual playlist; rerunning with the same state path
+proves cold restoration. `--smart-collection-summary-ui-probe` validates and
+captures the same surface against the real 281,400-member Minerva shelf, keeping
+the large summary and filter off the GUI thread.
+
 `--import-ui-probe --import-directory PATH` opens the local-import surface and
 starts a real checksum scan. It exists for deterministic virtual-display visual
 checks; it uses the same model, worker, database, and QML as an interactive
@@ -977,7 +990,7 @@ fixture server in `crates/lunchbox-app/examples/igdb_fixture.rs`. The credential
 and endpoint environment variables exist only to make unattended verification
 independent of a live account; interactive credentials remain in the keyring.
 
-Richer playlist presentation, the remaining alternate media providers,
+Playlist-entry-specific presentation, the remaining alternate media providers,
 specialized machine launch profiles, the remaining settings, broader
 manual-provider coverage, multidisc/patch archive management, and the
 controller-first full-screen interface follow on the same shared models.
