@@ -191,6 +191,9 @@ pub struct LibraryPreferences {
     pub hide_adult: bool,
     pub artwork_type: String,
     pub grid_zoom: i32,
+    pub view_mode: String,
+    pub sort_field: String,
+    pub sort_descending: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -620,6 +623,9 @@ impl Default for LibraryPreferences {
             hide_adult: false,
             artwork_type: "box-front".to_owned(),
             grid_zoom: 100,
+            view_mode: "grid".to_owned(),
+            sort_field: "default".to_owned(),
+            sort_descending: false,
         }
     }
 }
@@ -631,6 +637,15 @@ impl LibraryPreferences {
         }
         if !(50..=200).contains(&self.grid_zoom) {
             bail!("grid zoom must be between 50 and 200 percent");
+        }
+        if !matches!(self.view_mode.as_str(), "grid" | "list") {
+            bail!("unsupported library view mode {}", self.view_mode);
+        }
+        if !matches!(
+            self.sort_field.as_str(),
+            "default" | "title" | "platform" | "availability"
+        ) {
+            bail!("unsupported library sort field {}", self.sort_field);
         }
         Ok(())
     }
@@ -1256,7 +1271,8 @@ impl SettingsStore {
         let connection = self.connection()?;
         let preferences = connection
             .query_row(
-                "SELECT hide_non_retail, hide_adult, artwork_type, grid_zoom
+                "SELECT hide_non_retail, hide_adult, artwork_type, grid_zoom,
+                        view_mode, sort_field, sort_descending
                  FROM library_preferences WHERE id=1",
                 [],
                 |row| {
@@ -1265,6 +1281,9 @@ impl SettingsStore {
                         hide_adult: row.get(1)?,
                         artwork_type: row.get(2)?,
                         grid_zoom: row.get(3)?,
+                        view_mode: row.get(4)?,
+                        sort_field: row.get(5)?,
+                        sort_descending: row.get(6)?,
                     })
                 },
             )
@@ -1279,18 +1298,25 @@ impl SettingsStore {
         let connection = self.connection()?;
         connection.execute(
             "INSERT INTO library_preferences (
-                 id, hide_non_retail, hide_adult, artwork_type, grid_zoom
-             ) VALUES (1, ?1, ?2, ?3, ?4)
+                 id, hide_non_retail, hide_adult, artwork_type, grid_zoom,
+                 view_mode, sort_field, sort_descending
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(id) DO UPDATE SET
                  hide_non_retail=excluded.hide_non_retail,
                  hide_adult=excluded.hide_adult,
                  artwork_type=excluded.artwork_type,
-                 grid_zoom=excluded.grid_zoom",
+                 grid_zoom=excluded.grid_zoom,
+                 view_mode=excluded.view_mode,
+                 sort_field=excluded.sort_field,
+                 sort_descending=excluded.sort_descending",
             params![
                 preferences.hide_non_retail,
                 preferences.hide_adult,
                 preferences.artwork_type,
                 preferences.grid_zoom,
+                preferences.view_mode,
+                preferences.sort_field,
+                preferences.sort_descending,
             ],
         )?;
         Ok(())
@@ -3599,7 +3625,12 @@ fn migrate(connection: &Connection) -> Result<()> {
                      'title-screen', 'fanart', 'clear-logo'
                  )
              ),
-             grid_zoom INTEGER NOT NULL DEFAULT 100 CHECK (grid_zoom BETWEEN 50 AND 200)
+             grid_zoom INTEGER NOT NULL DEFAULT 100 CHECK (grid_zoom BETWEEN 50 AND 200),
+             view_mode TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list')),
+             sort_field TEXT NOT NULL DEFAULT 'default' CHECK (
+                 sort_field IN ('default', 'title', 'platform', 'availability')
+             ),
+             sort_descending INTEGER NOT NULL DEFAULT 0 CHECK (sort_descending IN (0, 1))
          );
          CREATE TABLE IF NOT EXISTS sidebar_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
@@ -4261,6 +4292,24 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "library_preferences", "grid_zoom")? {
         connection.execute(
             "ALTER TABLE library_preferences ADD COLUMN grid_zoom INTEGER NOT NULL DEFAULT 100",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "library_preferences", "view_mode")? {
+        connection.execute(
+            "ALTER TABLE library_preferences ADD COLUMN view_mode TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list'))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "library_preferences", "sort_field")? {
+        connection.execute(
+            "ALTER TABLE library_preferences ADD COLUMN sort_field TEXT NOT NULL DEFAULT 'default' CHECK (sort_field IN ('default', 'title', 'platform', 'availability'))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "library_preferences", "sort_descending")? {
+        connection.execute(
+            "ALTER TABLE library_preferences ADD COLUMN sort_descending INTEGER NOT NULL DEFAULT 0 CHECK (sort_descending IN (0, 1))",
             [],
         )?;
     }
@@ -5442,9 +5491,20 @@ mod tests {
             hide_adult: true,
             artwork_type: "screenshot".into(),
             grid_zoom: 135,
+            view_mode: "list".into(),
+            sort_field: "platform".into(),
+            sort_descending: true,
         };
         store.save_library_preferences(&expected).unwrap();
-        assert_eq!(store.load_library_preferences().unwrap(), expected);
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(reopened.load_library_preferences().unwrap(), expected);
+
+        let mut invalid = expected.clone();
+        invalid.view_mode = "cards".into();
+        assert!(store.save_library_preferences(&invalid).is_err());
+        invalid.view_mode = "grid".into();
+        invalid.sort_field = "fuzzy".into();
+        assert!(store.save_library_preferences(&invalid).is_err());
     }
 
     #[test]

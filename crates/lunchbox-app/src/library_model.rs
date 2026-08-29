@@ -34,6 +34,9 @@ pub mod qobject {
         #[qproperty(bool, hide_adult)]
         #[qproperty(QString, artwork_type)]
         #[qproperty(i32, grid_zoom)]
+        #[qproperty(QString, view_mode)]
+        #[qproperty(QString, sort_field)]
+        #[qproperty(bool, sort_descending)]
         #[qproperty(QString, media_directory)]
         #[qproperty(bool, media_loading)]
         #[qproperty(bool, media_retrieval_enabled)]
@@ -152,6 +155,16 @@ pub mod qobject {
             self: Pin<&mut LibraryModel>,
             artwork_type: QString,
             grid_zoom: i32,
+        );
+
+        #[qinvokable]
+        fn choose_view_mode(self: Pin<&mut LibraryModel>, view_mode: QString);
+
+        #[qinvokable]
+        fn set_sort_preferences(
+            self: Pin<&mut LibraryModel>,
+            sort_field: QString,
+            descending: bool,
         );
 
         #[qinvokable]
@@ -572,6 +585,9 @@ pub struct LibraryModelRust {
     hide_adult: bool,
     artwork_type: QString,
     grid_zoom: i32,
+    view_mode: QString,
+    sort_field: QString,
+    sort_descending: bool,
     media_directory: QString,
     media_loading: bool,
     media_retrieval_enabled: bool,
@@ -706,6 +722,9 @@ impl Default for LibraryModelRust {
             hide_adult: preferences.hide_adult,
             artwork_type: qstring(&preferences.artwork_type),
             grid_zoom: preferences.grid_zoom,
+            view_mode: qstring(&preferences.view_mode),
+            sort_field: qstring(&preferences.sort_field),
+            sort_descending: preferences.sort_descending,
             media_directory: QString::default(),
             media_loading: false,
             media_retrieval_enabled: crate::media::media_retrieval_enabled(),
@@ -1319,6 +1338,11 @@ impl qobject::LibraryModel {
                         self.as_mut()
                             .set_artwork_type(qstring(&preferences.artwork_type));
                         self.as_mut().set_grid_zoom(preferences.grid_zoom);
+                        self.as_mut().set_view_mode(qstring(&preferences.view_mode));
+                        self.as_mut()
+                            .set_sort_field(qstring(&preferences.sort_field));
+                        self.as_mut()
+                            .set_sort_descending(preferences.sort_descending);
                         self.as_mut().rust_mut().artwork_kind = artwork_kind;
                         None
                     }
@@ -1468,6 +1492,8 @@ impl qobject::LibraryModel {
                         display_titles: Arc::clone(&metadata_titles),
                         game_tags: Arc::clone(&game_tags),
                         game_custom_fields: Arc::clone(&game_custom_fields),
+                        sort_field: self.as_ref().sort_field().to_string(),
+                        sort_descending: *self.as_ref().sort_descending(),
                         ..Filter::default()
                     },
                 );
@@ -1696,6 +1722,8 @@ impl qobject::LibraryModel {
             display_titles: Arc::clone(&self.as_ref().rust().metadata_titles),
             game_tags: Arc::clone(&self.as_ref().rust().game_tags),
             game_custom_fields: Arc::clone(&self.as_ref().rust().game_custom_fields),
+            sort_field: self.as_ref().sort_field().to_string(),
+            sort_descending: *self.as_ref().sort_descending(),
         };
         self.as_mut().rust_mut().current_search = search.to_string();
         self.as_mut().set_current_platform(platform);
@@ -1736,6 +1764,9 @@ impl qobject::LibraryModel {
             hide_adult,
             artwork_type: self.as_ref().artwork_type().to_string(),
             grid_zoom: *self.as_ref().grid_zoom(),
+            view_mode: self.as_ref().view_mode().to_string(),
+            sort_field: self.as_ref().sort_field().to_string(),
+            sort_descending: *self.as_ref().sort_descending(),
         };
         if let Err(error) = SettingsStore::open_default()
             .and_then(|store| store.save_library_preferences(&preferences))
@@ -1773,6 +1804,9 @@ impl qobject::LibraryModel {
             hide_adult: *self.as_ref().hide_adult(),
             artwork_type,
             grid_zoom,
+            view_mode: self.as_ref().view_mode().to_string(),
+            sort_field: self.as_ref().sort_field().to_string(),
+            sort_descending: *self.as_ref().sort_descending(),
         };
         if let Err(error) = SettingsStore::open_default()
             .and_then(|store| store.save_library_preferences(&preferences))
@@ -1780,6 +1814,78 @@ impl qobject::LibraryModel {
             self.as_mut().set_status_message(qstring(format!(
                 "View updated, but the preference could not be saved: {error}"
             )));
+        }
+    }
+
+    pub fn choose_view_mode(mut self: Pin<&mut Self>, view_mode: QString) {
+        let view_mode = view_mode.to_string();
+        if !matches!(view_mode.as_str(), "grid" | "list") {
+            self.as_mut().set_status_message(qstring(format!(
+                "Could not apply view mode: unsupported mode {view_mode}"
+            )));
+            return;
+        }
+        if self.as_ref().view_mode().to_string() == view_mode {
+            return;
+        }
+        self.as_mut().set_view_mode(qstring(&view_mode));
+        let preferences = LibraryPreferences {
+            hide_non_retail: *self.as_ref().hide_non_retail(),
+            hide_adult: *self.as_ref().hide_adult(),
+            artwork_type: self.as_ref().artwork_type().to_string(),
+            grid_zoom: *self.as_ref().grid_zoom(),
+            view_mode,
+            sort_field: self.as_ref().sort_field().to_string(),
+            sort_descending: *self.as_ref().sort_descending(),
+        };
+        if let Err(error) = SettingsStore::open_default()
+            .and_then(|store| store.save_library_preferences(&preferences))
+        {
+            self.as_mut().set_status_message(qstring(format!(
+                "View mode changed, but the preference could not be saved: {error}"
+            )));
+        }
+    }
+
+    pub fn set_sort_preferences(mut self: Pin<&mut Self>, sort_field: QString, descending: bool) {
+        let sort_field = sort_field.to_string();
+        if !matches!(
+            sort_field.as_str(),
+            "default" | "title" | "platform" | "availability"
+        ) {
+            self.as_mut().set_status_message(qstring(format!(
+                "Could not sort the library: unsupported field {sort_field}"
+            )));
+            return;
+        }
+        if self.as_ref().sort_field().to_string() == sort_field
+            && *self.as_ref().sort_descending() == descending
+        {
+            return;
+        }
+        self.as_mut().set_sort_field(qstring(&sort_field));
+        self.as_mut().set_sort_descending(descending);
+        let preferences = LibraryPreferences {
+            hide_non_retail: *self.as_ref().hide_non_retail(),
+            hide_adult: *self.as_ref().hide_adult(),
+            artwork_type: self.as_ref().artwork_type().to_string(),
+            grid_zoom: *self.as_ref().grid_zoom(),
+            view_mode: self.as_ref().view_mode().to_string(),
+            sort_field,
+            sort_descending: descending,
+        };
+        if let Err(error) = SettingsStore::open_default()
+            .and_then(|store| store.save_library_preferences(&preferences))
+        {
+            self.as_mut().set_status_message(qstring(format!(
+                "Sort changed, but the preference could not be saved: {error}"
+            )));
+        }
+        if *self.as_ref().ready() && !*self.as_ref().loading() {
+            let search = qstring(&self.as_ref().rust().current_search);
+            let platform = self.as_ref().current_platform().clone();
+            let availability = self.as_ref().availability_filter().clone();
+            self.as_mut().apply_filter(search, platform, availability);
         }
     }
 

@@ -643,6 +643,17 @@ installed `org.mamedev.MAME` Flatpak with the exact collection/runtime ROM path
 list and MAME's ROM-free `pong` driver, then exited successfully;
 `--arcade-launch-ui-probe` leaves that state open for review.
 
+`--library-view-ui-probe --state-database EMPTY_PATH --screenshot-output PATH`
+loads the complete discovery catalog, switches to the native compact list, and
+selects descending platform order through the same CXX-Qt invokables used by
+the View popup and sortable header. It exits only after the worker publishes at
+least 250,000 retail-filtered rows, the first virtualized delegate exposes a
+real platform, and the rendered view has been captured. Starting a new process
+with the same state database and `--library-view-restored-ui-probe` proves that
+the presentation, sort field, and direction survive a cold start. The current
+303,560-record fixture yielded 280,466 visible rows; sorting is performed before
+the model reset on the catalog worker rather than in QML or per delegate.
+
 `--retroarch-shader-ui-probe --shader-target EMPTY_PATH --screenshot-output
 PATH` opens Settings against an isolated target, runs the real Rust installation
 worker, and exits only after both packs report `Managed`. Supplying

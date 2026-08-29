@@ -14,7 +14,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 ## Completed foundation
 
 - Native Qt 6 Quick window compiled into the executable.
-- Rust `QAbstractListModel` with virtualized grid and list presentations.
+- Rust `QAbstractListModel` with virtualized grid and a compact native data-list
+  presentation. The selected presentation and deterministic library/title/
+  platform/availability order survive restart; sorting stays in the catalog
+  worker, applies identically to both presentations, and preserves explicit
+  collection and recent-play order when Library order is selected. The list
+  has a sticky sortable Title/Platform/State header and keyboard-accessible
+  rows rather than rendering card-shaped browser components.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.

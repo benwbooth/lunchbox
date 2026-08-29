@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -54,6 +56,8 @@ pub struct Filter {
     pub display_titles: Arc<std::collections::HashMap<String, String>>,
     pub game_tags: Arc<HashMap<String, Vec<String>>>,
     pub game_custom_fields: Arc<HashMap<String, Vec<String>>>,
+    pub sort_field: String,
+    pub sort_descending: bool,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -925,51 +929,87 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         })
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
-    if filter.availability == "recent" {
-        indices.sort_by(|left, right| {
-            let left_game = &catalog.games[*left];
-            let right_game = &catalog.games[*right];
-            filter
-                .recent_game_order
-                .get(&right_game.id)
-                .cmp(&filter.recent_game_order.get(&left_game.id))
-                .then_with(|| {
-                    display_title(left_game, filter).cmp(display_title(right_game, filter))
-                })
-                .then_with(|| left_game.id.cmp(&right_game.id))
-        });
-    } else if filter.availability.starts_with("collection:") {
-        indices.sort_by(|left, right| {
-            let left_game = &catalog.games[*left];
-            let right_game = &catalog.games[*right];
-            filter
-                .collection_game_order
-                .get(&left_game.id)
-                .cmp(&filter.collection_game_order.get(&right_game.id))
-                .then_with(|| {
-                    display_title(left_game, filter).cmp(display_title(right_game, filter))
-                })
-                .then_with(|| left_game.id.cmp(&right_game.id))
-        });
-    } else if !filter.display_titles.is_empty() {
-        indices.sort_by(|left, right| {
-            let left_game = &catalog.games[*left];
-            let right_game = &catalog.games[*right];
-            display_title(left_game, filter)
-                .to_lowercase()
-                .cmp(&display_title(right_game, filter).to_lowercase())
-                .then_with(|| left_game.id.cmp(&right_game.id))
-        });
-    }
+    indices.sort_by(|left, right| {
+        let ordering = compare_games(catalog, filter, *left, *right);
+        if filter.sort_descending {
+            ordering.reverse()
+        } else {
+            ordering
+        }
+    });
     indices
 }
 
-fn display_title<'a>(game: &'a Game, filter: &'a Filter) -> &'a str {
-    filter
-        .display_titles
-        .get(&game.id)
-        .map(String::as_str)
-        .unwrap_or(&game.title)
+fn compare_games(catalog: &Catalog, filter: &Filter, left: usize, right: usize) -> Ordering {
+    let left_game = &catalog.games[left];
+    let right_game = &catalog.games[right];
+    let identity_tie_break = || left_game.id.cmp(&right_game.id);
+    match filter.sort_field.as_str() {
+        "title" => title_sort_key(left_game, filter)
+            .cmp(&title_sort_key(right_game, filter))
+            .then_with(identity_tie_break),
+        "platform" => platform_sort_key(left_game)
+            .cmp(platform_sort_key(right_game))
+            .then_with(|| {
+                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+            })
+            .then_with(identity_tie_break),
+        "availability" => availability_rank(left_game)
+            .cmp(&availability_rank(right_game))
+            .then_with(|| {
+                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+            })
+            .then_with(identity_tie_break),
+        _ if filter.availability == "recent" => filter
+            .recent_game_order
+            .get(&right_game.id)
+            .cmp(&filter.recent_game_order.get(&left_game.id))
+            .then_with(|| {
+                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+            })
+            .then_with(identity_tie_break),
+        _ if filter.availability.starts_with("collection:") => filter
+            .collection_game_order
+            .get(&left_game.id)
+            .cmp(&filter.collection_game_order.get(&right_game.id))
+            .then_with(|| {
+                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+            })
+            .then_with(identity_tie_break),
+        _ => title_sort_key(left_game, filter)
+            .cmp(&title_sort_key(right_game, filter))
+            .then_with(identity_tie_break),
+    }
+}
+
+fn title_sort_key<'a>(game: &'a Game, filter: &'a Filter) -> Cow<'a, str> {
+    if let Some(title) = filter.display_titles.get(&game.id) {
+        Cow::Owned(title.to_lowercase())
+    } else {
+        Cow::Borrowed(
+            game.search_key
+                .split_once('\n')
+                .map(|(title, _)| title)
+                .unwrap_or(&game.search_key),
+        )
+    }
+}
+
+fn platform_sort_key(game: &Game) -> &str {
+    game.search_key
+        .split_once('\n')
+        .map(|(_, platform)| platform)
+        .unwrap_or_default()
+}
+
+fn availability_rank(game: &Game) -> u8 {
+    if game.local {
+        0
+    } else if game.downloadable {
+        1
+    } else {
+        2
+    }
 }
 
 #[cfg(test)]
@@ -1098,6 +1138,42 @@ mod tests {
         );
         assert_eq!(catalog.games[0].title, "Metroid");
         assert_eq!(catalog.games[0].id, "metroid");
+    }
+
+    #[test]
+    fn explicit_library_sorting_is_deterministic_and_composes_with_filters() {
+        let catalog = fixture_catalog();
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "platform".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "availability".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![0, 1]
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "availability".into(),
+                    sort_descending: true,
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
     }
 
     #[test]

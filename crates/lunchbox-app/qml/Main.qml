@@ -18,6 +18,7 @@ ApplicationWindow {
            || downloadRecoveryUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
+           || libraryViewUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
@@ -27,6 +28,7 @@ ApplicationWindow {
             || downloadRecoveryUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
+            || libraryViewUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -58,7 +60,7 @@ ApplicationWindow {
     property string pendingRecoveryJobTitle: ""
     property int pendingThemeRemovalIndex: -1
     property int pendingDownloadPlanIndex: -1
-    property bool gridMode: true
+    readonly property bool gridMode: library.view_mode !== "list"
     property bool couchModeActive: false
     property int couchModePreviousVisibility: Window.Windowed
     property bool couchModeProbeCaptured: false
@@ -96,6 +98,7 @@ ApplicationWindow {
     property bool libraryAuditProbeArmed: false
     property bool mediaAuditProbeArmed: false
     property bool collectionProbeArmed: false
+    property bool libraryViewProbeArmed: false
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
     property bool manualTorrentProbeTriggered: false
@@ -127,6 +130,12 @@ ApplicationWindow {
         { key: "title-screen", label: "Title screen" },
         { key: "fanart", label: "Fan art" },
         { key: "clear-logo", label: "Clear logo" }
+    ]
+    readonly property var sortChoices: [
+        { key: "default", label: "Library order" },
+        { key: "title", label: "Title" },
+        { key: "platform", label: "Platform" },
+        { key: "availability", label: "Availability" }
     ]
     readonly property var completionChoices: [
         { key: "not_started", label: "Not started" },
@@ -176,6 +185,9 @@ ApplicationWindow {
     readonly property bool collectionUiProbe: Qt.application.arguments.indexOf("--collection-ui-probe") >= 0
     readonly property bool smartCollectionProbe: Qt.application.arguments.indexOf("--smart-collection-probe") >= 0
     readonly property bool smartCollectionUiProbe: Qt.application.arguments.indexOf("--smart-collection-ui-probe") >= 0
+    readonly property bool libraryViewRestoreUiProbe: Qt.application.arguments.indexOf("--library-view-restored-ui-probe") >= 0
+    readonly property bool libraryViewUiProbe: libraryViewRestoreUiProbe
+                                                || Qt.application.arguments.indexOf("--library-view-ui-probe") >= 0
     readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
@@ -578,6 +590,26 @@ ApplicationWindow {
         if (library.tag_filter.length > 0)
             heading += "  ·  " + library.tag_filter
         return heading
+    }
+
+    function sortIndex(sortField) {
+        for (let index = 0; index < sortChoices.length; ++index) {
+            if (sortChoices[index].key === sortField)
+                return index
+        }
+        return 0
+    }
+
+    function requestLibrarySort(sortField) {
+        const descending = library.sort_field === sortField
+                           ? !library.sort_descending : false
+        library.set_sort_preferences(sortField, descending)
+    }
+
+    function sortIndicator(sortField) {
+        if (library.sort_field !== sortField)
+            return ""
+        return library.sort_descending ? "  ↓" : "  ↑"
     }
 
     function libraryTagIndex(name) {
@@ -3602,6 +3634,62 @@ ApplicationWindow {
     }
 
     Timer {
+        id: libraryViewProbeTimer
+        interval: 80
+        running: root.libraryViewUiProbe
+        repeat: true
+        onTriggered: {
+            if (!library.ready || library.filtering || !gameViewLoader.item)
+                return
+            if (!root.libraryViewRestoreUiProbe && !root.libraryViewProbeArmed) {
+                root.libraryViewProbeArmed = true
+                library.choose_view_mode("list")
+                library.set_sort_preferences("platform", true)
+                return
+            }
+            if (library.view_mode !== "list"
+                    || library.sort_field !== "platform"
+                    || !library.sort_descending
+                    || library.filtered_count < 250000) {
+                console.error("LUNCHBOX_LIBRARY_VIEW_UI_FAILED mode="
+                              + library.view_mode + " sort=" + library.sort_field
+                              + " descending=" + library.sort_descending
+                              + " games=" + library.filtered_count)
+                Qt.exit(2)
+                return
+            }
+            const firstRow = gameViewLoader.item.itemAtIndex(0)
+            if (!firstRow || firstRow.gamePlatform.length === 0)
+                return
+            stop()
+            const report = function(screenshot) {
+                console.log("LUNCHBOX_LIBRARY_VIEW_UI_READY restored="
+                            + root.libraryViewRestoreUiProbe + " mode="
+                            + library.view_mode + " sort=" + library.sort_field
+                            + " descending=" + library.sort_descending
+                            + " first_platform=" + firstRow.gamePlatform
+                            + " games=" + library.filtered_count
+                            + (screenshot.length > 0
+                               ? " screenshot=" + screenshot : ""))
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                report("")
+                return
+            }
+            content.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_LIBRARY_VIEW_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                report(root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
         id: sidebarProbeSetupTimer
         interval: 100
         running: root.sidebarUiProbe
@@ -4155,6 +4243,7 @@ ApplicationWindow {
         onOpened: {
             artworkCombo.currentIndex = root.artworkIndex(library.artwork_type)
             zoomSlider.value = library.grid_zoom
+            sortCombo.currentIndex = root.sortIndex(library.sort_field)
         }
 
         background: Rectangle {
@@ -4173,6 +4262,77 @@ ApplicationWindow {
                 font.pixelSize: 11
                 font.weight: Font.Bold
                 font.letterSpacing: 1
+            }
+            Text {
+                text: "PRESENTATION"
+                color: "#687488"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+            Row {
+                width: parent.width
+                spacing: 7
+                HeaderButton {
+                    width: (parent.width - 7) / 2
+                    text: "▦  Grid"
+                    active: library.view_mode === "grid"
+                    onClicked: library.choose_view_mode("grid")
+                }
+                HeaderButton {
+                    width: (parent.width - 7) / 2
+                    text: "☷  List"
+                    active: library.view_mode === "list"
+                    onClicked: library.choose_view_mode("list")
+                }
+            }
+            Text {
+                text: "ORDER"
+                color: "#687488"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+            Row {
+                width: parent.width
+                spacing: 8
+                ComboBox {
+                    id: sortCombo
+                    width: parent.width - sortDirectionButton.width - 8
+                    height: 40
+                    model: root.sortChoices
+                    textRole: "label"
+                    currentIndex: root.sortIndex(library.sort_field)
+                    onActivated: library.set_sort_preferences(
+                                     root.sortChoices[index].key,
+                                     root.sortChoices[index].key === library.sort_field
+                                     ? library.sort_descending : false)
+                }
+                HeaderButton {
+                    id: sortDirectionButton
+                    width: 92
+                    text: library.sort_descending ? "↓  Desc" : "↑  Asc"
+                    active: library.sort_descending
+                    onClicked: library.set_sort_preferences(
+                                   library.sort_field,
+                                   !library.sort_descending)
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Reverse the current order"
+                }
+            }
+            Text {
+                width: parent.width
+                text: library.sort_field === "default"
+                      ? "Library order preserves curated collections and newest-first recent play; direction can reverse it."
+                      : "This order applies to both grid and list views."
+                color: root.muted
+                font.pixelSize: 9
+                wrapMode: Text.WordWrap
+            }
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: root.line
             }
             Text {
                 text: "ARTWORK"
@@ -4814,10 +4974,111 @@ ApplicationWindow {
         reuseItems: true
         clip: true
         cacheBuffer: height
-        spacing: 6
+        spacing: 0
         model: library
         boundsBehavior: Flickable.StopAtBounds
+        headerPositioning: ListView.OverlayHeader
+        property real platformColumnX: Math.max(210, Math.round(width * 0.50))
+        property real stateColumnX: Math.max(platformColumnX + 100, width - 190)
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+        header: Rectangle {
+            width: list.width - 8
+            height: 46
+            z: 3
+            color: "#171f2b"
+            border.color: root.line
+
+            Button {
+                x: 54
+                width: list.platformColumnX - x - 8
+                height: parent.height
+                text: "TITLE" + root.sortIndicator("title")
+                flat: true
+                onClicked: root.requestLibrarySort("title")
+                Accessible.name: "Sort games by title"
+                contentItem: Text {
+                    text: parent.text
+                    color: library.sort_field === "title" ? root.accent : root.muted
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.0
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+                background: Rectangle {
+                    color: parent.hovered ? "#222c3a" : "transparent"
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 2
+                        visible: library.sort_field === "title"
+                        color: root.accent
+                    }
+                }
+            }
+            Button {
+                x: list.platformColumnX
+                width: list.stateColumnX - x - 8
+                height: parent.height
+                text: "PLATFORM" + root.sortIndicator("platform")
+                flat: true
+                onClicked: root.requestLibrarySort("platform")
+                Accessible.name: "Sort games by platform"
+                contentItem: Text {
+                    text: parent.text
+                    color: library.sort_field === "platform" ? root.accent : root.muted
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.0
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+                background: Rectangle {
+                    color: parent.hovered ? "#222c3a" : "transparent"
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 2
+                        visible: library.sort_field === "platform"
+                        color: root.accent
+                    }
+                }
+            }
+            Button {
+                x: list.stateColumnX
+                width: parent.width - x - 42
+                height: parent.height
+                text: "STATE" + root.sortIndicator("availability")
+                flat: true
+                onClicked: root.requestLibrarySort("availability")
+                Accessible.name: "Sort games by availability"
+                contentItem: Text {
+                    text: parent.text
+                    color: library.sort_field === "availability" ? root.accent : root.muted
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.0
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
+                }
+                background: Rectangle {
+                    color: parent.hovered ? "#222c3a" : "transparent"
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 2
+                        visible: library.sort_field === "availability"
+                        color: root.accent
+                    }
+                }
+            }
+        }
+
         delegate: Rectangle {
             id: row
             required property int index
@@ -4857,12 +5118,15 @@ ApplicationWindow {
             onMediaRevisionChanged: requestVisibleArtwork()
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
             width: list.width - 8
-            height: 62
-            radius: 9
+            height: 54
+            radius: 0
             activeFocusOnTab: true
-            color: row.activeFocus ? "#263142" : rowHover.hovered ? "#202a39" : root.panelRaised
-            border.color: row.activeFocus || root.selectedGameId === row.gameId ? root.accent : rowHover.hovered ? "#3a485d" : root.line
-            border.width: row.activeFocus || root.selectedGameId === row.gameId ? 2 : 1
+            color: row.activeFocus ? "#263142"
+                   : rowHover.hovered ? "#202a39"
+                   : index % 2 === 0 ? "#141b25" : "#111821"
+            border.color: row.activeFocus || root.selectedGameId === row.gameId
+                          ? root.accent : root.line
+            border.width: row.activeFocus || root.selectedGameId === row.gameId ? 2 : 0
             HoverHandler { id: rowHover }
             TapHandler {
                 onTapped: {
@@ -4886,11 +5150,11 @@ ApplicationWindow {
             }
             Rectangle {
                 id: listArtwork
-                width: 38
-                height: 38
+                width: 34
+                height: 34
                 radius: 8
                 anchors.left: parent.left
-                anchors.leftMargin: 12
+                anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 color: root.accentFor(row.gameTitle)
                 clip: true
@@ -4916,33 +5180,29 @@ ApplicationWindow {
                     visible: listImage.status !== Image.Ready
                 }
             }
-            Column {
-                anchors.left: parent.left
-                anchors.leftMargin: 62
-                anchors.right: listFavorite.left
-                anchors.rightMargin: 20
+            Text {
+                x: 54
+                width: list.platformColumnX - x - 10
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
-                Text {
-                    width: parent.width
-                    text: row.gameTitle
-                    color: root.ink
-                    font.pixelSize: 14
-                    font.weight: Font.DemiBold
-                    elide: Text.ElideRight
-                }
-                Text {
-                    width: parent.width
-                    text: row.gamePlatform.length > 0 ? row.gamePlatform : "Unassigned platform"
-                    color: root.muted
-                    font.pixelSize: 11
-                    elide: Text.ElideRight
-                }
+                text: row.gameTitle
+                color: root.ink
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Text {
+                x: list.platformColumnX
+                width: list.stateColumnX - x - 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: row.gamePlatform.length > 0 ? row.gamePlatform : "Unassigned platform"
+                color: root.muted
+                font.pixelSize: 11
+                elide: Text.ElideRight
             }
             RoundButton {
                 id: listFavorite
-                anchors.right: stateLabel.left
-                anchors.rightMargin: 10
+                anchors.right: parent.right
+                anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 width: 32
                 height: 32
@@ -4956,14 +5216,23 @@ ApplicationWindow {
             }
             Text {
                 id: stateLabel
-                anchors.right: parent.right
-                anchors.rightMargin: 18
+                x: list.stateColumnX
+                width: listFavorite.x - x - 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.gameLocal ? "INSTALLED" : row.gameDownloadable ? "AVAILABLE" : row.gameStatus.toUpperCase()
                 color: row.gameLocal ? root.accentCool : row.gameDownloadable ? root.accent : root.muted
                 font.pixelSize: 10
                 font.weight: Font.Bold
                 font.letterSpacing: 0.8
+                horizontalAlignment: Text.AlignRight
+            }
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                visible: row.border.width === 0
+                color: root.line
             }
         }
     }
@@ -5559,7 +5828,7 @@ ApplicationWindow {
                         implicitWidth: 41
                         leftPadding: 0
                         rightPadding: 0
-                        onClicked: root.gridMode = true
+                        onClicked: library.choose_view_mode("grid")
                     }
                     HeaderButton {
                         text: "☷"
@@ -5567,7 +5836,7 @@ ApplicationWindow {
                         implicitWidth: 41
                         leftPadding: 0
                         rightPadding: 0
-                        onClicked: root.gridMode = false
+                        onClicked: library.choose_view_mode("list")
                     }
                 }
             }
