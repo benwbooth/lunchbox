@@ -18,7 +18,7 @@ ApplicationWindow {
            || downloadRecoveryUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
-           || libraryViewUiProbe
+           || libraryViewUiProbe || listFilterUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
@@ -28,7 +28,7 @@ ApplicationWindow {
             || downloadRecoveryUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
-            || libraryViewUiProbe
+            || libraryViewUiProbe || listFilterUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -99,6 +99,9 @@ ApplicationWindow {
     property bool mediaAuditProbeArmed: false
     property bool collectionProbeArmed: false
     property bool libraryViewProbeArmed: false
+    property int listFilterProbeStage: 0
+    property string listFilterProbeValue: ""
+    property int listFilterProbeExpectedCount: 0
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
     property bool manualTorrentProbeTriggered: false
@@ -163,6 +166,7 @@ ApplicationWindow {
                                                + (library.tag_filter.length > 0 ? 1 : 0)
                                                + (library.hide_non_retail ? 1 : 0)
                                                + (library.hide_adult ? 1 : 0)
+                                               + library.list_filter_active_count
     readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
     readonly property bool manualMatchUiProbe: Qt.application.arguments.indexOf("--manual-match-ui-probe") >= 0
     readonly property bool hashCacheUiProbe: Qt.application.arguments.indexOf("--hash-cache-ui-probe") >= 0
@@ -203,6 +207,7 @@ ApplicationWindow {
     readonly property bool libraryViewRestoreUiProbe: Qt.application.arguments.indexOf("--library-view-restored-ui-probe") >= 0
     readonly property bool libraryViewUiProbe: libraryViewRestoreUiProbe
                                                 || Qt.application.arguments.indexOf("--library-view-ui-probe") >= 0
+    readonly property bool listFilterUiProbe: Qt.application.arguments.indexOf("--list-filter-ui-probe") >= 0
     readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
@@ -3744,6 +3749,96 @@ ApplicationWindow {
     }
 
     Timer {
+        id: listFilterProbeTimer
+        interval: 80
+        running: root.listFilterUiProbe
+        repeat: true
+        property int settledCycles: 0
+        onTriggered: {
+            if (!library.ready || library.filtering || !gameViewLoader.item)
+                return
+            settledCycles += 1
+            if (root.listFilterProbeStage === 0) {
+                library.choose_view_mode("list")
+                listFilterDialog.openForColumn("publisher")
+                root.listFilterProbeStage = 1
+                return
+            }
+            if (root.listFilterProbeStage === 1) {
+                if (library.list_filter_loading
+                        || library.list_filter_value_count === 0)
+                    return
+                let chosenIndex = -1
+                for (let index = 0;
+                     index < library.list_filter_value_count; ++index) {
+                    if (library.list_filter_value_at(index) !== "—") {
+                        chosenIndex = index
+                        break
+                    }
+                }
+                if (chosenIndex < 0) {
+                    console.error("LUNCHBOX_LIST_FILTER_UI_FAILED no_value")
+                    Qt.exit(2)
+                    return
+                }
+                root.listFilterProbeValue = library.list_filter_value_at(chosenIndex)
+                root.listFilterProbeExpectedCount =
+                        library.list_filter_value_game_count_at(chosenIndex)
+                library.select_no_list_filter_values()
+                library.set_list_filter_value_selected(
+                            root.listFilterProbeValue, true)
+                library.apply_list_column_filter()
+                root.listFilterProbeStage = 2
+                return
+            }
+            if (root.listFilterProbeStage === 2) {
+                if (library.filtered_count !== root.listFilterProbeExpectedCount
+                        || library.list_filter_active_count !== 1
+                        || !library.list_column_filter_active("publisher")) {
+                    if (settledCycles > 180) {
+                        console.error("LUNCHBOX_LIST_FILTER_UI_FAILED value="
+                                      + root.listFilterProbeValue + " expected="
+                                      + root.listFilterProbeExpectedCount + " actual="
+                                      + library.filtered_count + " active="
+                                      + library.list_filter_active_count)
+                        Qt.exit(2)
+                    }
+                    return
+                }
+                root.listFilterProbeStage = 3
+                return
+            }
+            if (root.listFilterProbeStage !== 3
+                    || library.list_filter_loading
+                    || !listFilterDialog.opened)
+                return
+            stop()
+            const report = function(screenshot) {
+                console.warn("LUNCHBOX_LIST_FILTER_UI_READY column=publisher value="
+                            + root.listFilterProbeValue + " games="
+                            + library.filtered_count + " facets="
+                            + library.list_filter_total_distinct
+                            + (screenshot.length > 0
+                               ? " screenshot=" + screenshot : ""))
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                report("")
+                return
+            }
+            listFilterDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_LIST_FILTER_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                report(root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
         id: sidebarProbeSetupTimer
         interval: 100
         running: root.sidebarUiProbe
@@ -4189,6 +4284,7 @@ ApplicationWindow {
                     onClicked: {
                         library.set_content_filters(false, false)
                         library.select_tag_filter("")
+                        library.clear_all_list_column_filters()
                         root.selectLibrary("")
                     }
                 }
@@ -4270,6 +4366,44 @@ ApplicationWindow {
                     library.set_content_filters(library.hide_non_retail, !checked)
                     root.scheduleFilter()
                 }
+            }
+            Rectangle {
+                width: parent.width
+                height: 1
+                visible: library.list_filter_active_count > 0
+                color: root.line
+            }
+            Text {
+                width: parent.width
+                visible: library.list_filter_active_count > 0
+                topPadding: 7
+                text: "EXACT COLUMN FILTERS  ·  "
+                      + library.list_filter_active_count
+                color: "#687488"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+            Text {
+                width: parent.width
+                visible: library.list_filter_active_count > 0
+                text: {
+                    library.list_filter_revision
+                    return library.list_column_filter_summary()
+                }
+                color: root.ink
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
+            }
+            Button {
+                width: parent.width
+                height: 34
+                visible: library.list_filter_active_count > 0
+                text: "Clear exact column filters"
+                flat: true
+                onClicked: library.clear_all_list_column_filters()
             }
             Text {
                 width: parent.width
@@ -4842,6 +4976,282 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: listFilterDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(620, root.width - 80)
+        height: Math.min(720, root.height - 80)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+        readonly property string columnLabel:
+            root.listColumnDefinition(library.list_filter_column).label
+
+        function openForColumn(column) {
+            facetSearchField.text = ""
+            library.begin_list_column_filter(column)
+            open()
+            facetSearchField.forceActiveFocus()
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#101722"
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            implicitHeight: 100
+            color: "transparent"
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 24
+                anchors.top: parent.top
+                anchors.topMargin: 18
+                text: "Filter by " + listFilterDialog.columnLabel
+                color: root.ink
+                font.pixelSize: 22
+                font.weight: Font.Bold
+            }
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 24
+                anchors.right: parent.right
+                anchors.rightMargin: 24
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 14
+                text: "Choose exact values. Column filters combine with search, platform, tags, and availability."
+                color: root.muted
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: root.line
+            }
+        }
+
+        contentItem: Item {
+            Column {
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                Rectangle {
+                    width: parent.width
+                    height: 54
+                    radius: 11
+                    color: "#182130"
+                    border.color: root.line
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: {
+                            library.list_filter_revision
+                            return library.list_filter_draft_summary()
+                        }
+                        color: root.ink
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                        width: parent.width - filterSelectionActions.width - 36
+                    }
+                    Row {
+                        id: filterSelectionActions
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Button {
+                            text: "All"
+                            flat: true
+                            onClicked: library.select_all_list_filter_values()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Include every value and clear this column filter"
+                        }
+                        Button {
+                            text: "None"
+                            flat: true
+                            onClicked: library.select_no_list_filter_values()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Exclude every game for this column"
+                        }
+                    }
+                }
+
+                TextField {
+                    id: facetSearchField
+                    width: parent.width
+                    height: 42
+                    placeholderText: "Search " + listFilterDialog.columnLabel.toLowerCase()
+                    selectByMouse: true
+                    onTextEdited: facetSearchTimer.restart()
+                    leftPadding: 14
+                    rightPadding: 42
+                    background: Rectangle {
+                        radius: 10
+                        color: "#151e2a"
+                        border.color: facetSearchField.activeFocus
+                                      ? root.accent : root.line
+                    }
+                    BusyIndicator {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 9
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24
+                        height: 24
+                        running: library.list_filter_loading
+                        visible: running
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    height: 20
+                    Text {
+                        text: library.list_filter_loading
+                              ? "Scanning the current library…"
+                              : library.list_filter_total_distinct + " matching values"
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                    Item { width: parent.width - 280; height: 1 }
+                    Text {
+                        visible: !library.list_filter_loading
+                                 && library.list_filter_total_distinct
+                                    > library.list_filter_value_count
+                        text: "Showing first " + library.list_filter_value_count
+                        color: root.accent
+                        font.pixelSize: 10
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: parent.height - 152
+                    radius: 12
+                    color: root.panel
+                    border.color: root.line
+
+                    ListView {
+                        id: facetValuesList
+                        anchors.fill: parent
+                        anchors.margins: 6
+                        clip: true
+                        spacing: 2
+                        model: library.list_filter_value_count
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                        delegate: ItemDelegate {
+                            id: facetValueDelegate
+                            required property int index
+                            readonly property string facetValue: {
+                                library.list_filter_revision
+                                return library.list_filter_value_at(index)
+                            }
+                            readonly property bool facetSelected: {
+                                library.list_filter_revision
+                                return library.list_filter_value_selected_at(index)
+                            }
+                            width: facetValuesList.width
+                            height: 44
+                            leftPadding: 9
+                            rightPadding: 12
+                            onClicked: library.set_list_filter_value_selected(
+                                           facetValue, !facetSelected)
+                            background: Rectangle {
+                                radius: 8
+                                color: facetValueDelegate.hovered ? "#202b3a"
+                                       : facetValueDelegate.facetSelected
+                                         ? "#1d2c36" : "transparent"
+                            }
+                            contentItem: RowLayout {
+                                spacing: 10
+                                CheckBox {
+                                    checked: facetValueDelegate.facetSelected
+                                    onClicked: library.set_list_filter_value_selected(
+                                                   facetValueDelegate.facetValue,
+                                                   !facetValueDelegate.facetSelected)
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: facetValueDelegate.facetValue
+                                    color: root.ink
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: library.list_filter_value_game_count_at(
+                                              facetValueDelegate.index).toLocaleString()
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        visible: !library.list_filter_loading
+                                 && library.list_filter_value_count === 0
+                        text: facetSearchField.text.length > 0
+                              ? "No exact values match this search."
+                              : "No values are available in the current library."
+                        color: root.muted
+                        font.pixelSize: 12
+                    }
+                }
+            }
+        }
+
+        footer: Rectangle {
+            implicitHeight: 72
+            color: "transparent"
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 1
+                color: root.line
+            }
+            HeaderButton {
+                anchors.right: applyListFilterButton.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 100
+                text: "Cancel"
+                onClicked: listFilterDialog.close()
+            }
+            HeaderButton {
+                id: applyListFilterButton
+                anchors.right: parent.right
+                anchors.rightMargin: 20
+                anchors.verticalCenter: parent.verticalCenter
+                width: 130
+                text: "Apply filter"
+                active: true
+                onClicked: {
+                    library.apply_list_column_filter()
+                    listFilterDialog.close()
+                }
+            }
+        }
+
+        Timer {
+            id: facetSearchTimer
+            interval: 140
+            repeat: false
+            onTriggered: library.search_list_column_filter(facetSearchField.text)
+        }
+    }
+
     component HeaderButton: Button {
         id: control
         property bool active: false
@@ -5394,38 +5804,83 @@ ApplicationWindow {
 
             Repeater {
                 model: list.activeColumnKeys
-                delegate: Button {
+                delegate: Item {
+                    id: headerColumn
                     required property int index
                     required property string modelData
+                    readonly property bool columnFiltered: {
+                        library.list_filter_revision
+                        return library.list_column_filter_active(modelData)
+                    }
                     x: list.columnX(index)
                     width: list.columnWidth(modelData) - 8
                     height: parent.height
-                    text: root.listColumnDefinition(modelData).label.toUpperCase()
-                          + root.sortIndicator(modelData)
-                    flat: true
-                    onClicked: root.requestLibrarySort(modelData)
-                    Accessible.name: "Sort games by "
-                                     + root.listColumnDefinition(modelData).label
-                    contentItem: Text {
-                        text: parent.text
-                        color: library.sort_field === parent.modelData
-                               ? root.accent : root.muted
-                        font.pixelSize: 9
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1.0
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                    }
-                    background: Rectangle {
-                        color: parent.hovered ? "#222c3a" : "transparent"
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            height: 2
-                            visible: library.sort_field === parent.parent.modelData
-                            color: root.accent
+                    Button {
+                        id: columnSortButton
+                        anchors.left: parent.left
+                        anchors.right: columnFilterButton.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        text: root.listColumnDefinition(headerColumn.modelData).label.toUpperCase()
+                              + root.sortIndicator(headerColumn.modelData)
+                        flat: true
+                        onClicked: root.requestLibrarySort(headerColumn.modelData)
+                        Accessible.name: "Sort games by "
+                                         + root.listColumnDefinition(
+                                             headerColumn.modelData).label
+                        contentItem: Text {
+                            text: parent.text
+                            color: library.sort_field === headerColumn.modelData
+                                   ? root.accent : root.muted
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.0
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
                         }
+                        background: Rectangle {
+                            color: parent.hovered ? "#222c3a" : "transparent"
+                        }
+                    }
+                    Button {
+                        id: columnFilterButton
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 32
+                        text: headerColumn.columnFiltered ? "●" : "⌄"
+                        flat: true
+                        onClicked: listFilterDialog.openForColumn(headerColumn.modelData)
+                        Accessible.name: "Filter games by "
+                                         + root.listColumnDefinition(headerColumn.modelData).label
+                        ToolTip.visible: hovered
+                        ToolTip.text: headerColumn.columnFiltered
+                                      ? "Edit active exact-value filter"
+                                      : "Filter by exact values"
+                        contentItem: Text {
+                            text: parent.text
+                            color: headerColumn.columnFiltered
+                                   ? root.accentCool : root.muted
+                            font.pixelSize: headerColumn.columnFiltered ? 9 : 14
+                            font.weight: Font.Bold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 7
+                            color: parent.hovered ? "#293546"
+                                   : headerColumn.columnFiltered
+                                     ? "#20343a" : "transparent"
+                        }
+                    }
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 2
+                        visible: library.sort_field === headerColumn.modelData
+                                 || headerColumn.columnFiltered
+                        color: headerColumn.columnFiltered ? root.accentCool : root.accent
                     }
                 }
             }

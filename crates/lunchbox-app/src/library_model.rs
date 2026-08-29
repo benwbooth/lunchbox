@@ -38,6 +38,12 @@ pub mod qobject {
         #[qproperty(QString, sort_field)]
         #[qproperty(bool, sort_descending)]
         #[qproperty(QString, list_columns)]
+        #[qproperty(i32, list_filter_active_count)]
+        #[qproperty(QString, list_filter_column)]
+        #[qproperty(bool, list_filter_loading)]
+        #[qproperty(i32, list_filter_value_count)]
+        #[qproperty(i32, list_filter_total_distinct)]
+        #[qproperty(i32, list_filter_revision)]
         #[qproperty(QString, media_directory)]
         #[qproperty(bool, media_loading)]
         #[qproperty(bool, media_retrieval_enabled)]
@@ -170,6 +176,49 @@ pub mod qobject {
 
         #[qinvokable]
         fn configure_list_columns(self: Pin<&mut LibraryModel>, columns: QString);
+
+        #[qinvokable]
+        fn begin_list_column_filter(self: Pin<&mut LibraryModel>, column: QString);
+
+        #[qinvokable]
+        fn search_list_column_filter(self: Pin<&mut LibraryModel>, query: QString);
+
+        #[qinvokable]
+        fn set_list_filter_value_selected(
+            self: Pin<&mut LibraryModel>,
+            value: QString,
+            selected: bool,
+        );
+
+        #[qinvokable]
+        fn select_all_list_filter_values(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn select_no_list_filter_values(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn apply_list_column_filter(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn clear_all_list_column_filters(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn list_column_filter_active(self: &LibraryModel, column: QString) -> bool;
+
+        #[qinvokable]
+        fn list_filter_value_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn list_filter_value_game_count_at(self: &LibraryModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn list_filter_value_selected_at(self: &LibraryModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn list_filter_draft_summary(self: &LibraryModel) -> QString;
+
+        #[qinvokable]
+        fn list_column_filter_summary(self: &LibraryModel) -> QString;
 
         #[qinvokable]
         fn artwork_url(self: &LibraryModel, launchbox_db_id: i32, artwork_type: QString) -> QUrl;
@@ -621,6 +670,12 @@ pub struct LibraryModelRust {
     sort_field: QString,
     sort_descending: bool,
     list_columns: QString,
+    list_filter_active_count: i32,
+    list_filter_column: QString,
+    list_filter_loading: bool,
+    list_filter_value_count: i32,
+    list_filter_total_distinct: i32,
+    list_filter_revision: i32,
     media_directory: QString,
     media_loading: bool,
     media_retrieval_enabled: bool,
@@ -720,6 +775,11 @@ pub struct LibraryModelRust {
     metadata_titles: Arc<HashMap<String, String>>,
     metadata_cooperative: Arc<HashMap<String, String>>,
     metadata_overrides: Arc<HashMap<String, GameMetadataOverride>>,
+    list_column_filters:
+        Arc<HashMap<crate::list_view::ListColumn, crate::list_view::ListColumnFilter>>,
+    list_filter_values: Vec<catalog::ListFacetValue>,
+    list_filter_draft: crate::list_view::ListColumnFilter,
+    list_filter_generation: u64,
     tags: Arc<Vec<UserTag>>,
     game_tags: Arc<HashMap<String, Vec<String>>>,
     game_custom_fields: Arc<HashMap<String, Vec<String>>>,
@@ -760,6 +820,12 @@ impl Default for LibraryModelRust {
             sort_field: qstring(&preferences.sort_field),
             sort_descending: preferences.sort_descending,
             list_columns: qstring(&preferences.list_columns),
+            list_filter_active_count: 0,
+            list_filter_column: QString::default(),
+            list_filter_loading: false,
+            list_filter_value_count: 0,
+            list_filter_total_distinct: 0,
+            list_filter_revision: 0,
             media_directory: QString::default(),
             media_loading: false,
             media_retrieval_enabled: crate::media::media_retrieval_enabled(),
@@ -870,6 +936,10 @@ impl Default for LibraryModelRust {
             metadata_titles: Arc::new(HashMap::new()),
             metadata_cooperative: Arc::new(HashMap::new()),
             metadata_overrides: Arc::new(HashMap::new()),
+            list_column_filters: Arc::new(HashMap::new()),
+            list_filter_values: Vec::new(),
+            list_filter_draft: crate::list_view::ListColumnFilter::all(),
+            list_filter_generation: 0,
             tags: Arc::new(Vec::new()),
             game_tags: Arc::new(HashMap::new()),
             game_custom_fields: Arc::new(HashMap::new()),
@@ -1536,6 +1606,7 @@ impl qobject::LibraryModel {
                         game_tags: Arc::clone(&game_tags),
                         game_custom_fields: Arc::clone(&game_custom_fields),
                         metadata_overrides: Arc::clone(&metadata_overrides),
+                        list_column_filters: Arc::clone(&self.as_ref().rust().list_column_filters),
                         sort_field: self.as_ref().sort_field().to_string(),
                         sort_descending: *self.as_ref().sort_descending(),
                         ..Filter::default()
@@ -1725,25 +1796,10 @@ impl qobject::LibraryModel {
         }
     }
 
-    pub fn apply_filter(
-        mut self: Pin<&mut Self>,
-        search: QString,
-        platform: QString,
-        availability: QString,
-    ) {
-        if !*self.as_ref().ready() || *self.as_ref().loading() {
-            return;
-        }
-        let availability_text = availability.to_string();
-        let collection_order = availability_text
+    fn filter_snapshot(&self, search: String, platform: String, availability: String) -> Filter {
+        let collection_order = availability
             .strip_prefix("collection:")
-            .and_then(|collection_id| {
-                self.as_ref()
-                    .rust()
-                    .collection_order
-                    .get(collection_id)
-                    .cloned()
-            })
+            .and_then(|collection_id| self.rust().collection_order.get(collection_id).cloned())
             .unwrap_or_else(|| Arc::new(Vec::new()));
         let collection_game_ids = Arc::new(collection_order.iter().cloned().collect());
         let collection_game_order = Arc::new(
@@ -1753,24 +1809,51 @@ impl qobject::LibraryModel {
                 .map(|(index, game_uid)| (game_uid.clone(), index))
                 .collect(),
         );
-        let filter = Filter {
-            search: search.to_string(),
-            platform: platform.to_string(),
-            availability: availability_text,
-            tag: self.as_ref().tag_filter().to_string(),
-            hide_non_retail: *self.as_ref().hide_non_retail(),
-            hide_adult: *self.as_ref().hide_adult(),
-            favorite_game_ids: Arc::clone(&self.as_ref().rust().favorite_game_ids),
+        Filter {
+            search,
+            platform,
+            availability,
+            tag: self.tag_filter().to_string(),
+            hide_non_retail: *self.hide_non_retail(),
+            hide_adult: *self.hide_adult(),
+            favorite_game_ids: Arc::clone(&self.rust().favorite_game_ids),
             collection_game_ids,
             collection_game_order,
-            recent_game_order: Arc::clone(&self.as_ref().rust().recent_game_order),
-            display_titles: Arc::clone(&self.as_ref().rust().metadata_titles),
-            game_tags: Arc::clone(&self.as_ref().rust().game_tags),
-            game_custom_fields: Arc::clone(&self.as_ref().rust().game_custom_fields),
-            metadata_overrides: Arc::clone(&self.as_ref().rust().metadata_overrides),
-            sort_field: self.as_ref().sort_field().to_string(),
-            sort_descending: *self.as_ref().sort_descending(),
-        };
+            recent_game_order: Arc::clone(&self.rust().recent_game_order),
+            display_titles: Arc::clone(&self.rust().metadata_titles),
+            game_tags: Arc::clone(&self.rust().game_tags),
+            game_custom_fields: Arc::clone(&self.rust().game_custom_fields),
+            metadata_overrides: Arc::clone(&self.rust().metadata_overrides),
+            list_column_filters: Arc::clone(&self.rust().list_column_filters),
+            sort_field: self.sort_field().to_string(),
+            sort_descending: *self.sort_descending(),
+        }
+    }
+
+    fn refilter_current_library(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().ready() || *self.as_ref().loading() {
+            return;
+        }
+        let search = qstring(&self.as_ref().rust().current_search);
+        let platform = self.as_ref().current_platform().clone();
+        let availability = self.as_ref().availability_filter().clone();
+        self.as_mut().apply_filter(search, platform, availability);
+    }
+
+    pub fn apply_filter(
+        mut self: Pin<&mut Self>,
+        search: QString,
+        platform: QString,
+        availability: QString,
+    ) {
+        if !*self.as_ref().ready() || *self.as_ref().loading() {
+            return;
+        }
+        let filter = self.as_ref().filter_snapshot(
+            search.to_string(),
+            platform.to_string(),
+            availability.to_string(),
+        );
         self.as_mut().rust_mut().current_search = search.to_string();
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);
@@ -1975,6 +2058,187 @@ impl qobject::LibraryModel {
                 "List columns changed, but the preference could not be saved: {error}"
             )));
         }
+    }
+
+    pub fn begin_list_column_filter(mut self: Pin<&mut Self>, column: QString) {
+        let column = column.to_string();
+        let Some(parsed) = crate::list_view::ListColumn::parse(&column) else {
+            self.as_mut().set_status_message(qstring(format!(
+                "Could not filter the list: unsupported column {column}"
+            )));
+            return;
+        };
+        let draft = self
+            .as_ref()
+            .rust()
+            .list_column_filters
+            .get(&parsed)
+            .cloned()
+            .unwrap_or_else(crate::list_view::ListColumnFilter::all);
+        {
+            let mut this = self.as_mut();
+            let mut rust = this.as_mut().rust_mut();
+            rust.list_filter_draft = draft;
+            rust.list_filter_values.clear();
+        }
+        self.as_mut().set_list_filter_column(qstring(parsed.key()));
+        self.as_mut().set_list_filter_value_count(0);
+        self.as_mut().set_list_filter_total_distinct(0);
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
+        self.as_mut().search_list_column_filter(QString::default());
+    }
+
+    pub fn search_list_column_filter(mut self: Pin<&mut Self>, query: QString) {
+        if !*self.as_ref().ready() || *self.as_ref().loading() {
+            return;
+        }
+        let Some(column) =
+            crate::list_view::ListColumn::parse(&self.as_ref().list_filter_column().to_string())
+        else {
+            return;
+        };
+        self.as_mut().rust_mut().list_filter_generation =
+            self.as_ref().rust().list_filter_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().list_filter_generation;
+        self.as_mut().set_list_filter_loading(true);
+        let catalog = Arc::clone(&self.as_ref().rust().catalog);
+        let filter = self.as_ref().filter_snapshot(
+            self.as_ref().rust().current_search.clone(),
+            self.as_ref().current_platform().to_string(),
+            self.as_ref().availability_filter().to_string(),
+        );
+        let query = query.to_string();
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-list-facet".into())
+            .spawn(move || {
+                let result = catalog::list_facet_values(
+                    &catalog,
+                    &filter,
+                    column,
+                    &query,
+                    crate::list_view::LIST_FACET_LIMIT,
+                );
+                if let Err(error) = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_list_facet(generation, result);
+                }) {
+                    eprintln!("Could not publish list filter values to Qt: {error:?}");
+                }
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_list_filter_loading(false);
+            self.as_mut().set_status_message(qstring(format!(
+                "Could not start list filter values: {error}"
+            )));
+        }
+    }
+
+    pub fn set_list_filter_value_selected(
+        mut self: Pin<&mut Self>,
+        value: QString,
+        selected: bool,
+    ) {
+        if self.as_ref().list_filter_column().is_empty() {
+            return;
+        }
+        self.as_mut()
+            .rust_mut()
+            .list_filter_draft
+            .set_selected(value.to_string(), selected);
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
+    }
+
+    pub fn select_all_list_filter_values(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().list_filter_draft = crate::list_view::ListColumnFilter::all();
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
+    }
+
+    pub fn select_no_list_filter_values(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().list_filter_draft = crate::list_view::ListColumnFilter::none();
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
+    }
+
+    pub fn apply_list_column_filter(mut self: Pin<&mut Self>) {
+        let Some(column) =
+            crate::list_view::ListColumn::parse(&self.as_ref().list_filter_column().to_string())
+        else {
+            return;
+        };
+        let draft = self.as_ref().rust().list_filter_draft.clone();
+        let mut filters = (*self.as_ref().rust().list_column_filters).clone();
+        if draft.is_effective() {
+            filters.insert(column, draft);
+        } else {
+            filters.remove(&column);
+        }
+        self.as_mut().rust_mut().list_column_filters = Arc::new(filters);
+        let count = self.as_ref().rust().list_column_filters.len();
+        self.as_mut()
+            .set_list_filter_active_count(saturating_i32(count));
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
+        self.as_mut().refilter_current_library();
+    }
+
+    pub fn clear_all_list_column_filters(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().list_column_filters.is_empty() {
+            return;
+        }
+        self.as_mut().rust_mut().list_column_filters = Arc::new(HashMap::new());
+        self.as_mut().set_list_filter_active_count(0);
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
+        self.as_mut().refilter_current_library();
+    }
+
+    pub fn list_column_filter_active(&self, column: QString) -> bool {
+        crate::list_view::ListColumn::parse(&column.to_string())
+            .is_some_and(|column| self.rust().list_column_filters.contains_key(&column))
+    }
+
+    pub fn list_filter_value_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().list_filter_values.get(index))
+            .map(|value| qstring(&value.value))
+            .unwrap_or_default()
+    }
+
+    pub fn list_filter_value_game_count_at(&self, index: i32) -> i32 {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().list_filter_values.get(index))
+            .map(|value| saturating_i32(value.game_count))
+            .unwrap_or_default()
+    }
+
+    pub fn list_filter_value_selected_at(&self, index: i32) -> bool {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().list_filter_values.get(index))
+            .is_some_and(|value| self.rust().list_filter_draft.selected(&value.value))
+    }
+
+    pub fn list_filter_draft_summary(&self) -> QString {
+        qstring(self.rust().list_filter_draft.summary())
+    }
+
+    pub fn list_column_filter_summary(&self) -> QString {
+        let summaries = crate::list_view::LIST_COLUMN_KEYS
+            .into_iter()
+            .filter_map(crate::list_view::ListColumn::parse)
+            .filter_map(|column| {
+                self.rust()
+                    .list_column_filters
+                    .get(&column)
+                    .map(|selection| format!("{}: {}", column.label(), selection.summary()))
+            })
+            .collect::<Vec<_>>();
+        qstring(summaries.join("  ·  "))
     }
 
     pub fn artwork_url(&self, launchbox_db_id: i32, artwork_type: QString) -> QUrl {
@@ -3507,6 +3771,25 @@ impl qobject::LibraryModel {
             .map(|started| started.elapsed().as_millis())
             .unwrap_or_default();
         println!("LUNCHBOX_FILTER_READY_MS={filter_ms} results={count}");
+    }
+
+    fn finish_list_facet(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: catalog::ListFacetResult,
+    ) {
+        if generation != self.as_ref().rust().list_filter_generation {
+            return;
+        }
+        let count = result.values.len();
+        self.as_mut().rust_mut().list_filter_values = result.values;
+        self.as_mut()
+            .set_list_filter_value_count(saturating_i32(count));
+        self.as_mut()
+            .set_list_filter_total_distinct(saturating_i32(result.total_distinct));
+        self.as_mut().set_list_filter_loading(false);
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
     }
 
     pub fn platform_name_at(&self, index: i32) -> QString {

@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result, bail};
 
@@ -28,6 +28,8 @@ pub(crate) const LIST_COLUMN_KEYS: [&str; 17] = [
     "region",
     "notes",
 ];
+
+pub(crate) const LIST_FACET_LIMIT: usize = 300;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ListColumn {
@@ -93,6 +95,108 @@ impl ListColumn {
             Self::Series => "series",
             Self::Region => "region",
             Self::Notes => "notes",
+        }
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Title => "Title",
+            Self::Platform => "Platform",
+            Self::Availability => "Availability",
+            Self::Developer => "Developer",
+            Self::Publisher => "Publisher",
+            Self::Year => "Year",
+            Self::ReleaseDate => "Release date",
+            Self::Genre => "Genre",
+            Self::Players => "Players",
+            Self::Rating => "Rating",
+            Self::Esrb => "ESRB",
+            Self::Cooperative => "Co-op",
+            Self::Variants => "Variants",
+            Self::ReleaseType => "Type",
+            Self::Series => "Series",
+            Self::Region => "Region",
+            Self::Notes => "Notes",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ListColumnFilterMode {
+    Include,
+    Exclude,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ListColumnFilter {
+    pub mode: ListColumnFilterMode,
+    pub values: HashSet<String>,
+}
+
+impl ListColumnFilter {
+    pub(crate) fn all() -> Self {
+        Self {
+            mode: ListColumnFilterMode::Exclude,
+            values: HashSet::new(),
+        }
+    }
+
+    pub(crate) fn none() -> Self {
+        Self {
+            mode: ListColumnFilterMode::Include,
+            values: HashSet::new(),
+        }
+    }
+
+    pub(crate) fn is_effective(&self) -> bool {
+        self.mode == ListColumnFilterMode::Include || !self.values.is_empty()
+    }
+
+    pub(crate) fn matches(&self, value: &str) -> bool {
+        match self.mode {
+            ListColumnFilterMode::Include => self.values.contains(value),
+            ListColumnFilterMode::Exclude => !self.values.contains(value),
+        }
+    }
+
+    pub(crate) fn selected(&self, value: &str) -> bool {
+        self.matches(value)
+    }
+
+    pub(crate) fn set_selected(&mut self, value: String, selected: bool) {
+        match (self.mode, selected) {
+            (ListColumnFilterMode::Include, true) | (ListColumnFilterMode::Exclude, false) => {
+                self.values.insert(value);
+            }
+            (ListColumnFilterMode::Include, false) | (ListColumnFilterMode::Exclude, true) => {
+                self.values.remove(&value);
+            }
+        }
+    }
+
+    pub(crate) fn summary(&self) -> String {
+        if self.mode == ListColumnFilterMode::Include && self.values.is_empty() {
+            return "No values".to_owned();
+        }
+        if self.mode == ListColumnFilterMode::Exclude && self.values.is_empty() {
+            return "All values".to_owned();
+        }
+        let mut values = self.values.iter().cloned().collect::<Vec<_>>();
+        values.sort_by(|left, right| {
+            left.to_lowercase()
+                .cmp(&right.to_lowercase())
+                .then_with(|| left.cmp(right))
+        });
+        let first = values.first().map(String::as_str).unwrap_or_default();
+        let remainder = values.len().saturating_sub(1);
+        let values = if remainder == 0 {
+            first.to_owned()
+        } else {
+            format!("{first} +{remainder}")
+        };
+        match self.mode {
+            ListColumnFilterMode::Include => values,
+            ListColumnFilterMode::Exclude => format!("All except {values}"),
         }
     }
 }
@@ -300,7 +404,9 @@ impl ListMetadata {
                 .effective_text(index, game, column, overrides)
                 .unwrap_or("—")
                 .to_owned(),
-            ListColumn::Platform => game.platform.clone(),
+            ListColumn::Platform => nonempty(&game.platform)
+                .unwrap_or("Unassigned platform")
+                .to_owned(),
             ListColumn::Availability => {
                 if game.local {
                     "Installed".to_owned()
@@ -339,6 +445,16 @@ impl ListMetadata {
                 .map(|value| truncate_cell(value, 120))
                 .unwrap_or_else(|| "—".to_owned()),
         }
+    }
+
+    pub(crate) fn filter_value(
+        &self,
+        index: usize,
+        game: &Game,
+        column: ListColumn,
+        overrides: &HashMap<String, GameMetadataOverride>,
+    ) -> String {
+        self.display_value(index, game, column, overrides)
     }
 
     pub(crate) fn sort_key(
@@ -594,6 +710,26 @@ mod tests {
         assert!(parse_list_columns("").is_err());
         assert!(parse_list_columns("title,title").is_err());
         assert!(parse_list_columns("title,command").is_err());
+    }
+
+    #[test]
+    fn adaptive_exact_selection_preserves_all_and_none_without_large_sets() {
+        let mut selection = ListColumnFilter::all();
+        assert!(!selection.is_effective());
+        assert!(selection.selected("Nintendo"));
+        selection.set_selected("Nintendo".to_owned(), false);
+        assert!(selection.is_effective());
+        assert!(!selection.selected("Nintendo"));
+        assert!(selection.selected("Sega"));
+        selection.set_selected("Nintendo".to_owned(), true);
+        assert!(!selection.is_effective());
+
+        let mut selection = ListColumnFilter::none();
+        assert!(selection.is_effective());
+        assert!(!selection.selected("Nintendo"));
+        selection.set_selected("Nintendo".to_owned(), true);
+        assert!(selection.selected("Nintendo"));
+        assert!(!selection.selected("Sega"));
     }
 
     #[test]

@@ -21,6 +21,11 @@ The initial implementation enforces this shape:
   filtered row on the catalog worker, sorts those temporary keys, then drops
   them before publishing; the comparator does not allocate or repeatedly hash
   metadata overrides.
+- Exact-value list filters use compact adaptive include/exclude sets, so Select
+  All and Select None remain constant-space even for 303,560 titles. Facet
+  scans and counts run on generation-guarded Rust workers, ignore their own
+  column while honoring every other active filter, and publish at most 300
+  searchable values to Qt at once.
 - SQLite opens read-only on a named worker thread after the window is created.
 - Search, platform, and availability filtering run on worker threads. A
   generation number discards stale results when the user types quickly.
@@ -663,6 +668,16 @@ Region, and Notes from the legacy data-list plus native Availability. The
 current 303,560-record fixture yields 280,466 visible rows after the default
 non-retail filter; sorting is performed before the model reset on the catalog
 worker rather than in QML or per delegate.
+
+`--list-filter-ui-probe --state-database EMPTY_PATH --screenshot-output PATH`
+opens the real Publisher facet over all 280,466 retail-filtered rows, selects
+one exact publisher through the same adaptive multi-select controls used by the
+header, and waits for the catalog worker to publish the facet's exact game
+count. The captured native dialog exposes bounded search, full-catalog counts,
+All/None actions, and active selection state. Column filters combine with AND,
+compose with search/platform/tag/availability/content filters, and deliberately
+remain session-only like the legacy implementation; column order and sort
+continue to persist independently.
 
 `--retroarch-shader-ui-probe --shader-target EMPTY_PATH --screenshot-output
 PATH` opens Settings against an isolated target, runs the real Rust installation

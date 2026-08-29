@@ -9,7 +9,9 @@ use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use rusqlite::{Connection, OpenFlags};
 
-use crate::list_view::{ListColumn, ListMetadata, ListMetadataBuilder, MetadataInput};
+use crate::list_view::{
+    ListColumn, ListColumnFilter, ListMetadata, ListMetadataBuilder, MetadataInput,
+};
 use crate::settings::GameMetadataOverride;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,8 +63,21 @@ pub struct Filter {
     pub game_tags: Arc<HashMap<String, Vec<String>>>,
     pub game_custom_fields: Arc<HashMap<String, Vec<String>>>,
     pub metadata_overrides: Arc<HashMap<String, GameMetadataOverride>>,
+    pub list_column_filters: Arc<HashMap<ListColumn, ListColumnFilter>>,
     pub sort_field: String,
     pub sort_descending: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ListFacetValue {
+    pub value: String,
+    pub game_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ListFacetResult {
+    pub values: Vec<ListFacetValue>,
+    pub total_distinct: usize,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -968,41 +983,8 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         .games
         .iter()
         .enumerate()
-        .filter(|(_, game)| {
-            (search.is_empty()
-                || game.search_key.contains(&search)
-                || filter
-                    .display_titles
-                    .get(&game.id)
-                    .is_some_and(|title| title.to_lowercase().contains(&search))
-                || filter.game_tags.get(&game.id).is_some_and(|tags| {
-                    tags.iter().any(|tag| tag.to_lowercase().contains(&search))
-                })
-                || filter
-                    .game_custom_fields
-                    .get(&game.id)
-                    .is_some_and(|fields| {
-                        fields
-                            .iter()
-                            .any(|field| field.to_lowercase().contains(&search))
-                    }))
-                && (filter.platform.is_empty() || game.platform == filter.platform)
-                && (selected_tag.is_empty()
-                    || filter.game_tags.get(&game.id).is_some_and(|tags| {
-                        tags.iter().any(|tag| tag.to_lowercase() == selected_tag)
-                    }))
-                && (!filter.hide_non_retail || !game.non_retail)
-                && (!filter.hide_adult || !game.adult)
-                && match filter.availability.as_str() {
-                    "local" => game.local,
-                    "downloadable" => game.downloadable && !game.local,
-                    "favorites" => filter.favorite_game_ids.contains(&game.id),
-                    "recent" => filter.recent_game_order.contains_key(&game.id),
-                    availability if availability.starts_with("collection:") => {
-                        filter.collection_game_ids.contains(&game.id)
-                    }
-                    _ => true,
-                }
+        .filter(|(index, _)| {
+            game_matches_filter(catalog, filter, *index, None, &search, &selected_tag)
         })
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
@@ -1045,6 +1027,112 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         }
     });
     indices
+}
+
+pub(crate) fn list_facet_values(
+    catalog: &Catalog,
+    filter: &Filter,
+    column: ListColumn,
+    query: &str,
+    limit: usize,
+) -> ListFacetResult {
+    let query = query.trim().to_lowercase();
+    let search = filter.search.trim().to_lowercase();
+    let selected_tag = filter.tag.trim().to_lowercase();
+    let mut counts = HashMap::<String, usize>::new();
+    for index in 0..catalog.games.len() {
+        if !game_matches_filter(catalog, filter, index, Some(column), &search, &selected_tag) {
+            continue;
+        }
+        let value = catalog.list_metadata.filter_value(
+            index,
+            &catalog.games[index],
+            column,
+            &filter.metadata_overrides,
+        );
+        if !query.is_empty() && !value.to_lowercase().contains(&query) {
+            continue;
+        }
+        let count = counts.entry(value).or_default();
+        *count = count.saturating_add(1);
+    }
+    let total_distinct = counts.len();
+    let mut values = counts
+        .into_iter()
+        .map(|(value, game_count)| ListFacetValue { value, game_count })
+        .collect::<Vec<_>>();
+    values.sort_by(|left, right| {
+        left.value
+            .to_lowercase()
+            .cmp(&right.value.to_lowercase())
+            .then_with(|| left.value.cmp(&right.value))
+    });
+    values.truncate(limit);
+    ListFacetResult {
+        values,
+        total_distinct,
+    }
+}
+
+fn game_matches_filter(
+    catalog: &Catalog,
+    filter: &Filter,
+    index: usize,
+    ignored_list_column: Option<ListColumn>,
+    search: &str,
+    selected_tag: &str,
+) -> bool {
+    let Some(game) = catalog.games.get(index) else {
+        return false;
+    };
+    (search.is_empty()
+        || game.search_key.contains(&search)
+        || filter
+            .display_titles
+            .get(&game.id)
+            .is_some_and(|title| title.to_lowercase().contains(&search))
+        || filter
+            .game_tags
+            .get(&game.id)
+            .is_some_and(|tags| tags.iter().any(|tag| tag.to_lowercase().contains(&search)))
+        || filter
+            .game_custom_fields
+            .get(&game.id)
+            .is_some_and(|fields| {
+                fields
+                    .iter()
+                    .any(|field| field.to_lowercase().contains(&search))
+            }))
+        && (filter.platform.is_empty() || game.platform == filter.platform)
+        && (selected_tag.is_empty()
+            || filter
+                .game_tags
+                .get(&game.id)
+                .is_some_and(|tags| tags.iter().any(|tag| tag.to_lowercase() == selected_tag)))
+        && (!filter.hide_non_retail || !game.non_retail)
+        && (!filter.hide_adult || !game.adult)
+        && match filter.availability.as_str() {
+            "local" => game.local,
+            "downloadable" => game.downloadable && !game.local,
+            "favorites" => filter.favorite_game_ids.contains(&game.id),
+            "recent" => filter.recent_game_order.contains_key(&game.id),
+            availability if availability.starts_with("collection:") => {
+                filter.collection_game_ids.contains(&game.id)
+            }
+            _ => true,
+        }
+        && filter
+            .list_column_filters
+            .iter()
+            .all(|(column, selection)| {
+                ignored_list_column == Some(*column)
+                    || selection.matches(&catalog.list_metadata.filter_value(
+                        index,
+                        game,
+                        *column,
+                        &filter.metadata_overrides,
+                    ))
+            })
 }
 
 fn compare_games(catalog: &Catalog, filter: &Filter, left: usize, right: usize) -> Ordering {
@@ -1181,6 +1269,49 @@ mod tests {
             ),
             vec![1, 0]
         );
+    }
+
+    #[test]
+    fn exact_column_filters_compose_and_facets_ignore_their_own_selection() {
+        let catalog = fixture_catalog();
+        let platform_filter = ListColumnFilter {
+            mode: crate::list_view::ListColumnFilterMode::Include,
+            values: HashSet::from(["Arcade".to_owned()]),
+        };
+        let filter = Filter {
+            list_column_filters: Arc::new(HashMap::from([(ListColumn::Platform, platform_filter)])),
+            ..Filter::default()
+        };
+        assert_eq!(filter_indices(&catalog, &filter), vec![1]);
+
+        let facets = list_facet_values(&catalog, &filter, ListColumn::Platform, "", 10);
+        assert_eq!(facets.total_distinct, 2);
+        assert_eq!(
+            facets
+                .values
+                .iter()
+                .map(|facet| (facet.value.as_str(), facet.game_count))
+                .collect::<Vec<_>>(),
+            vec![("Arcade", 1), ("Nintendo Entertainment System", 1)]
+        );
+
+        let filtered_facets =
+            list_facet_values(&catalog, &filter, ListColumn::Platform, "nintendo", 10);
+        assert_eq!(filtered_facets.total_distinct, 1);
+        assert_eq!(filtered_facets.values[0].game_count, 1);
+    }
+
+    #[test]
+    fn select_none_is_an_explicit_empty_result() {
+        let catalog = fixture_catalog();
+        let filter = Filter {
+            list_column_filters: Arc::new(HashMap::from([(
+                ListColumn::Availability,
+                ListColumnFilter::none(),
+            )])),
+            ..Filter::default()
+        };
+        assert!(filter_indices(&catalog, &filter).is_empty());
     }
 
     #[test]

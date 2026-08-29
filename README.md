@@ -28,6 +28,12 @@ it between 180 and 400 pixels, or double-click the edge to restore the default.
 The query and width survive restart in the native state database; filtering is
 in memory and persistence is coalesced off the Qt thread.
 
+Switch to List view for a compact, configurable 17-column library. Headers sort
+the full catalog and open searchable exact-value filters with game counts,
+multi-select All/None controls, and clear active-state indicators. These filters
+compose with platform, installed/downloadable, tag, content, and text search;
+all scans and result publication run on generation-guarded Rust workers.
+
 The header's Couch Mode control opens a fullscreen, keyboard-and-gamepad
 living-room presentation over those same models. It preserves the exact
 selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent

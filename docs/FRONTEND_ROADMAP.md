@@ -22,7 +22,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   has a sticky sortable header, keyboard-accessible rows, a polished column
   manager, and all 16 legacy fields plus native Availability. Metadata uses an
   interned columnar store and one-key-per-row worker sorts rather than expanding
-  every game object or repeatedly lowercasing values in the comparator.
+  every game object or repeatedly lowercasing values in the comparator. Every
+  column also has a searchable exact-value multi-select with live counts,
+  visible active-state affordances, All/None controls, and compact adaptive
+  include/exclude state; facet scans and filtering stay on generation-guarded
+  Rust workers and compose with the rest of the library filter stack.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.
