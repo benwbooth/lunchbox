@@ -211,6 +211,16 @@ Pong driver. A dedicated Daphne runtime profile and TeknoParrot remain explicit
 follow-on work; Daphne-source media already normalizes to the validated
 Hypseus-compatible layout.
 
+Game Details also keeps file management separate from launching. `Open Folder`
+uses Qt's native URL handling on Linux, macOS, and Windows. New acquisitions
+record every installed plan member with its lossless native path, file type,
+size, SHA-256, and whether Lunchbox created it. Uninstall verifies the complete
+last-reference deletion set before touching the filesystem, refuses changed
+files, retains shared files, and never deletes imported, pre-existing, or
+leave-in-place content. Installations created before ownership receipts can
+only be removed from the library. Prepared eXo removal is confined to the exact
+per-game cache boundary and leaves shared bootstrap data intact.
+
 Each detected runtime also exposes a native launch-command editor. Exact game,
 platform, and all-platform profiles inherit independently for extra arguments
 and replacement templates, and apply to ordinary ROMs as well as prepared eXo
@@ -273,7 +283,8 @@ instances whose Web UI authentication bypass is intentionally enabled.
 On completion, Lunchbox verifies and materializes the reviewed file using the
 selected symbolic-link, hard-link, reflink, copy, or leave-in-place policy. It
 never overwrites different existing content, and only records the exact game as
-installed after the destination exists. That installed state immediately keeps
+installed after the destination exists and its full ownership receipt set has
+been committed. That installed state immediately keeps
 the game out of the active Minerva/not-installed view; the catalog refreshes
 and reapplies the current search and platform filters after ingestion.
 

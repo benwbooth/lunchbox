@@ -936,6 +936,15 @@ pub struct DownloadJob {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstalledFileReceipt {
+    pub path: PathBuf,
+    pub file_kind: String,
+    pub file_size: u64,
+    pub sha256: String,
+    pub created_by_lunchbox: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DownloadJobEvent {
     pub id: i64,
     pub job_id: String,
@@ -3209,9 +3218,29 @@ impl SettingsStore {
         )?)
     }
 
-    pub fn record_installed(&self, job: &DownloadJob, path: &Path) -> Result<()> {
-        let connection = self.connection()?;
-        connection.execute(
+    pub fn record_installed(
+        &self,
+        job: &DownloadJob,
+        path: &Path,
+        files: &[InstalledFileReceipt],
+    ) -> Result<()> {
+        if files.is_empty() || !files.iter().any(|file| file.path == path) {
+            bail!("an installed game requires a receipt for its primary file");
+        }
+        for file in files {
+            if !matches!(file.file_kind.as_str(), "regular" | "symlink")
+                || file.sha256.len() != 64
+                || !file.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                bail!(
+                    "installed file receipt is invalid for {}",
+                    file.path.display()
+                );
+            }
+        }
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
             "INSERT INTO installed_games (
                  game_uid, launchbox_db_id, title, platform, file_path,
                  file_size, import_source, installed_at
@@ -3235,6 +3264,94 @@ impl SettingsStore {
                 unix_timestamp(),
             ],
         )?;
+        // Re-recording an exact game replaces its complete file set. Keeping a
+        // stale membership here could later make uninstall act on a path that
+        // no longer belongs to the current installation.
+        transaction.execute(
+            "DELETE FROM installed_game_files WHERE game_uid=?1",
+            [&job.game_id],
+        )?;
+        for file in files {
+            let encoded = crate::local_import::encode_path(&file.path);
+            if encoded.bytes.is_empty() || encoded.bytes.len() > 32_768 {
+                bail!("installed file path is outside the supported native-path limit");
+            }
+            let existing = transaction
+                .query_row(
+                    "SELECT file_kind, file_size, sha256, created_by_lunchbox
+                     FROM installed_file_receipts
+                     WHERE path_encoding=?1 AND path_bytes=?2",
+                    params![encoded.encoding, &encoded.bytes],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, bool>(3)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            if let Some((kind, size, sha256, owned)) = existing.as_ref()
+                && *owned
+                && (kind != &file.file_kind
+                    || i64_to_u64(*size) != file.file_size
+                    || !sha256.eq_ignore_ascii_case(&file.sha256))
+            {
+                bail!(
+                    "Lunchbox's ownership receipt no longer matches {}",
+                    file.path.display()
+                );
+            }
+            let owned = file.created_by_lunchbox
+                || existing.as_ref().is_some_and(|(_, _, _, owned)| *owned);
+            transaction.execute(
+                "INSERT INTO installed_file_receipts (
+                     path_encoding, path_bytes, path_display, file_kind,
+                     file_size, sha256, created_by_lunchbox, recorded_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(path_encoding, path_bytes) DO UPDATE SET
+                     path_display=excluded.path_display,
+                     file_kind=excluded.file_kind,
+                     file_size=excluded.file_size,
+                     sha256=excluded.sha256,
+                     created_by_lunchbox=excluded.created_by_lunchbox,
+                     recorded_at=excluded.recorded_at",
+                params![
+                    encoded.encoding,
+                    &encoded.bytes,
+                    encoded.display,
+                    file.file_kind,
+                    u64_to_i64(file.file_size),
+                    file.sha256.to_ascii_lowercase(),
+                    owned,
+                    unix_timestamp(),
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO installed_game_files (
+                     game_uid, path_encoding, path_bytes, is_primary
+                 ) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(game_uid, path_encoding, path_bytes) DO UPDATE SET
+                     is_primary=max(installed_game_files.is_primary, excluded.is_primary)",
+                params![
+                    job.game_id,
+                    encoded.encoding,
+                    &encoded.bytes,
+                    file.path == path
+                ],
+            )?;
+        }
+        transaction.execute(
+            "DELETE FROM installed_file_receipts
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM installed_game_files f
+                 WHERE f.path_encoding=installed_file_receipts.path_encoding
+                   AND f.path_bytes=installed_file_receipts.path_bytes
+             )",
+            [],
+        )?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -3585,6 +3702,31 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS installed_games_launchbox_id
              ON installed_games(launchbox_db_id) WHERE launchbox_db_id > 0;
+         CREATE TABLE IF NOT EXISTS installed_file_receipts (
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             path_bytes BLOB NOT NULL CHECK (length(path_bytes) BETWEEN 1 AND 32768),
+             path_display TEXT NOT NULL CHECK (length(path_display) BETWEEN 1 AND 8192),
+             file_kind TEXT NOT NULL CHECK (file_kind IN ('regular', 'symlink')),
+             file_size INTEGER NOT NULL CHECK (file_size >= 0),
+             sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+             created_by_lunchbox INTEGER NOT NULL CHECK (created_by_lunchbox IN (0, 1)),
+             recorded_at INTEGER NOT NULL CHECK (recorded_at >= 0),
+             PRIMARY KEY (path_encoding, path_bytes)
+         );
+         CREATE TABLE IF NOT EXISTS installed_game_files (
+             game_uid TEXT NOT NULL REFERENCES installed_games(game_uid) ON DELETE CASCADE,
+             path_encoding TEXT NOT NULL,
+             path_bytes BLOB NOT NULL,
+             is_primary INTEGER NOT NULL CHECK (is_primary IN (0, 1)),
+             PRIMARY KEY (game_uid, path_encoding, path_bytes),
+             FOREIGN KEY (path_encoding, path_bytes)
+                 REFERENCES installed_file_receipts(path_encoding, path_bytes)
+                 ON DELETE RESTRICT
+         );
+         CREATE INDEX IF NOT EXISTS installed_game_files_path
+             ON installed_game_files(path_encoding, path_bytes, game_uid);
          CREATE TABLE IF NOT EXISTS local_collection_roots (
              id TEXT PRIMARY KEY,
              path_display TEXT NOT NULL,
@@ -5192,7 +5334,10 @@ mod tests {
         );
         assert_eq!(store.jobs().unwrap(), vec![job.clone()]);
 
-        store.record_installed(&job, &installed).unwrap();
+        let installed_receipt = crate::ingest::installed_file_receipt(&installed, true).unwrap();
+        store
+            .record_installed(&job, &installed, &[installed_receipt])
+            .unwrap();
         let import_source: String = store
             .connection()
             .unwrap()

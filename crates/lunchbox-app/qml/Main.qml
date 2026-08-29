@@ -14,6 +14,7 @@ ApplicationWindow {
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || mediaAuditUiProbe
+           || installManagementUiProbe
            || downloadRecoveryUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
@@ -22,6 +23,7 @@ ApplicationWindow {
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || mediaAuditUiProbe
+            || installManagementUiProbe
             || downloadRecoveryUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
@@ -97,6 +99,7 @@ ApplicationWindow {
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
     property bool manualTorrentProbeTriggered: false
+    property int installManagementProbeStage: 0
     property bool hashCacheScanStarted: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
@@ -179,6 +182,9 @@ ApplicationWindow {
     readonly property bool mediaAuditUiProbe: Qt.application.arguments.indexOf("--media-audit-ui-probe") >= 0
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool manualTorrentUiProbe: Qt.application.arguments.indexOf("--manual-torrent-ui-probe") >= 0
+    readonly property bool installManagementRestoreUiProbe: Qt.application.arguments.indexOf("--install-management-restored-ui-probe") >= 0
+    readonly property bool installManagementUiProbe: installManagementRestoreUiProbe
+                                                       || Qt.application.arguments.indexOf("--install-management-ui-probe") >= 0
     readonly property bool sidebarRestoreUiProbe: Qt.application.arguments.indexOf("--sidebar-restored-ui-probe") >= 0
     readonly property bool sidebarUiProbe: library.sidebar_probe
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
@@ -1264,6 +1270,15 @@ ApplicationWindow {
             if (library.ready) {
                 if (library.catalog_probe)
                     Qt.quit()
+                else if (root.installManagementUiProbe
+                         && root.installManagementProbeStage === 0) {
+                    root.installManagementProbeStage = 0
+                    root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                                  "Super Mario Bros.",
+                                  "Nintendo Entertainment System",
+                                  !root.installManagementRestoreUiProbe,
+                                  root.installManagementRestoreUiProbe)
+                }
                 else if (root.manualTorrentUiProbe) {
                     root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
                                   "Super Mario Bros.",
@@ -1612,6 +1627,39 @@ ApplicationWindow {
     Connections {
         target: gameDetails
         function onLoadingChanged() {
+            if (root.installManagementUiProbe
+                    && root.installManagementProbeStage === 0
+                    && !gameDetails.loading
+                    && gameDetails.game_id.length > 0) {
+                if (root.installManagementRestoreUiProbe) {
+                    if (gameDetails.managed_install_present
+                            || gameDetails.local_file_count !== 0) {
+                        console.error("LUNCHBOX_INSTALL_MANAGEMENT_RESTORED_FAILED managed="
+                                      + gameDetails.managed_install_present
+                                      + " files=" + gameDetails.local_file_count)
+                        Qt.exit(2)
+                        return
+                    }
+                    console.log("LUNCHBOX_INSTALL_MANAGEMENT_RESTORED_READY")
+                    Qt.quit()
+                    return
+                }
+                if (!gameDetails.managed_install_present
+                        || !gameDetails.managed_install_can_delete
+                        || gameDetails.managed_install_owned_count !== 1
+                        || gameDetails.local_file_count !== 1) {
+                    console.error("LUNCHBOX_INSTALL_MANAGEMENT_UI_FAILED managed="
+                                  + gameDetails.managed_install_present
+                                  + " delete=" + gameDetails.managed_install_can_delete
+                                  + " owned=" + gameDetails.managed_install_owned_count
+                                  + " files=" + gameDetails.local_file_count
+                                  + " message=" + gameDetails.install_management_message)
+                    Qt.exit(2)
+                    return
+                }
+                root.installManagementProbeStage = 1
+                installManagementScrollTimer.restart()
+            }
             if (root.manualTorrentUiProbe
                     && !root.manualTorrentProbeTriggered
                     && !gameDetails.loading
@@ -2524,6 +2572,15 @@ ApplicationWindow {
 
     Connections {
         target: gameDetails
+        function onInstallation_revisionChanged() {
+            library.reload()
+            if (root.installManagementUiProbe
+                    && !root.installManagementRestoreUiProbe
+                    && root.installManagementProbeStage === 2) {
+                root.installManagementProbeStage = 3
+                installManagementCompletionTimer.restart()
+            }
+        }
         function onLaunch_profile_revisionChanged() {
             launchExtraArguments.text = gameDetails.launch_profile_extra_arguments
             launchCommandTemplate.text = gameDetails.launch_profile_command_template
@@ -3645,6 +3702,90 @@ ApplicationWindow {
         onTriggered: detailScroll.contentItem.contentY = Math.max(
                          0, fileCandidateHeading.mapToItem(
                              detailScroll.contentItem, 0, 0).y - 12)
+    }
+
+    Timer {
+        id: installManagementScrollTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            detailScroll.contentItem.contentY = Math.max(
+                        0, installationFilesCard.mapToItem(
+                            detailScroll.contentItem, 0, 0).y - 12)
+            installManagementScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: installManagementScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0) {
+                installRemovalDialog.open()
+                installManagementActionTimer.restart()
+                return
+            }
+            detailsPane.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_INSTALL_MANAGEMENT_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                installRemovalDialog.open()
+                installManagementActionTimer.restart()
+            })
+        }
+    }
+
+    Timer {
+        id: installManagementActionTimer
+        interval: 300
+        repeat: false
+        onTriggered: {
+            if (!installRemovalDialog.visible) {
+                restart()
+                return
+            }
+            root.installManagementProbeStage = 2
+            installRemovalDialog.accept()
+        }
+    }
+
+    Timer {
+        id: installManagementCompletionTimer
+        interval: 300
+        repeat: false
+        onTriggered: {
+            if (gameDetails.install_management_busy
+                    || gameDetails.managed_install_present
+                    || gameDetails.local_file_count !== 0) {
+                console.error("LUNCHBOX_INSTALL_MANAGEMENT_UI_FAILED completion managed="
+                              + gameDetails.managed_install_present
+                              + " files=" + gameDetails.local_file_count
+                              + " busy=" + gameDetails.install_management_busy
+                              + " message=" + gameDetails.install_management_message)
+                Qt.exit(2)
+                return
+            }
+            console.log("LUNCHBOX_INSTALL_MANAGEMENT_UI_READY message="
+                        + gameDetails.install_management_message
+                        + " screenshot=" + root.screenshotOutput)
+            Qt.quit()
+        }
+    }
+
+    Timer {
+        interval: 20000
+        running: root.installManagementUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_INSTALL_MANAGEMENT_UI_FAILED timeout stage="
+                          + root.installManagementProbeStage
+                          + " message=" + gameDetails.install_management_message)
+            Qt.exit(2)
+        }
     }
 
     Timer {
@@ -7768,6 +7909,136 @@ ApplicationWindow {
                     }
 
                     Rectangle {
+                        id: installationFilesCard
+                        visible: !gameDetails.loading
+                                 && gameDetails.local_file_count > 0
+                        width: parent.width
+                        height: installationFilesColumn.implicitHeight + 28
+                        radius: 11
+                        color: "#171f2b"
+                        border.color: gameDetails.managed_install_present
+                                      ? "#4d4650" : root.line
+
+                        Column {
+                            id: installationFilesColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            spacing: 9
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    width: parent.width - installationState.width - 8
+                                    text: "GAME FILES"
+                                    color: root.ink
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1.1
+                                }
+                                Rectangle {
+                                    id: installationState
+                                    width: installationStateText.implicitWidth + 14
+                                    height: 22
+                                    radius: 7
+                                    color: gameDetails.managed_install_present
+                                           ? "#342a31" : "#202b3a"
+                                    border.color: gameDetails.managed_install_present
+                                                  ? "#745868" : root.line
+                                    Text {
+                                        id: installationStateText
+                                        anchors.centerIn: parent
+                                        text: gameDetails.managed_install_present
+                                              ? "MANAGED" : "IMPORTED"
+                                        color: gameDetails.managed_install_present
+                                               ? "#e8b7cf" : root.muted
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.7
+                                    }
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                text: gameDetails.local_file_label_at(
+                                          Math.max(0, gameDetails.selected_local_file))
+                                color: "#c3ccd8"
+                                font.pixelSize: 10
+                                elide: Text.ElideMiddle
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: gameDetails.install_management_message.length > 0
+                                text: gameDetails.install_management_message
+                                color: gameDetails.install_management_message.indexOf(
+                                           "Could not") === 0 ? "#ef9b92" : root.muted
+                                font.pixelSize: 9
+                                lineHeight: 1.25
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Button {
+                                    width: gameDetails.managed_install_present
+                                           ? (parent.width - 8) / 2 : parent.width
+                                    height: 34
+                                    text: "OPEN FOLDER"
+                                    enabled: gameDetails.selected_local_directory_url.toString().length > 0
+                                             && !gameDetails.install_management_busy
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    onClicked: Qt.openUrlExternally(
+                                                   gameDetails.selected_local_directory_url)
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: parent.down ? "#293748" : "#202b3a"
+                                        border.color: parent.enabled ? "#53647a" : root.line
+                                    }
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: parent.enabled ? "#c7d1df" : root.muted
+                                        font: parent.font
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                                Button {
+                                    width: (parent.width - 8) / 2
+                                    height: 34
+                                    visible: gameDetails.managed_install_present
+                                    text: gameDetails.install_management_busy ? "VERIFYING…"
+                                          : gameDetails.managed_install_can_delete
+                                            ? "UNINSTALL" : "REMOVE FROM LIBRARY"
+                                    enabled: !gameDetails.install_management_busy
+                                             && !gameDetails.launch_busy
+                                             && !gameDetails.game_running
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: installRemovalDialog.open()
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: parent.down ? "#55313a" : "#39252d"
+                                        border.color: parent.enabled ? "#8b5668" : root.line
+                                    }
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: parent.enabled ? "#f1bdc9" : root.muted
+                                        font: parent.font
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
                         visible: !gameDetails.loading
                                  && (gameDetails.preparable || gameDetails.prepared
                                      || gameDetails.prepare_busy)
@@ -8130,6 +8401,40 @@ ApplicationWindow {
 
                     Item { width: 1; height: 10 }
                 }
+            }
+        }
+    }
+
+    Dialog {
+        id: installRemovalDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(560, root.width - 48)
+        title: gameDetails.managed_install_can_delete
+               ? "Uninstall this game?" : "Remove from the library?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: gameDetails.uninstall_managed_installation(
+                        gameDetails.managed_install_can_delete)
+        contentItem: Column {
+            spacing: 10
+            Text {
+                width: parent.width
+                text: gameDetails.managed_install_can_delete
+                      ? "Lunchbox will verify every ownership receipt before deleting anything. Changed files are refused, shared files stay, and imported or leave-in-place files are never deleted."
+                      : "This removes only Lunchbox’s library association. Every game file stays exactly where it is."
+                color: root.ink
+                font.pixelSize: 12
+                lineHeight: 1.3
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                visible: gameDetails.install_management_message.length > 0
+                text: gameDetails.install_management_message
+                color: root.muted
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
             }
         }
     }

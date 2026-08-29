@@ -225,6 +225,109 @@ pub fn cached_install(store: &SettingsStore, game_uid: &str) -> Result<Option<Pr
     }))
 }
 
+pub(crate) fn remove_cached_install(
+    store: &SettingsStore,
+    settings: &AppSettings,
+    game_uid: &str,
+) -> Result<bool> {
+    let connection = store.connection()?;
+    let row = connection
+        .query_row(
+            "SELECT collection, install_root
+             FROM prepared_game_installs WHERE game_uid=?1",
+            [game_uid],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?;
+    let Some((collection, install_root)) = row else {
+        return Ok(false);
+    };
+    let collection = parse_collection(&collection)?;
+    let install_root = PathBuf::from(install_root);
+    let expected_parent = settings
+        .rom_directory
+        .join(".lunchbox-pc-cache")
+        .join("installs")
+        .join(collection.slug())
+        .join(cache_game_key(game_uid));
+    if settings.rom_directory.as_os_str().is_empty()
+        || !settings.rom_directory.is_absolute()
+        || install_root.parent() != Some(expected_parent.as_path())
+        || install_root
+            .file_name()
+            .is_none_or(|name| name.is_empty() || name == "." || name == "..")
+    {
+        bail!(
+            "refusing to remove prepared cache outside its exact game boundary: {}",
+            install_root.display()
+        );
+    }
+
+    match fs::symlink_metadata(&install_root) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                bail!(
+                    "refusing to remove prepared cache with an unexpected file type: {}",
+                    install_root.display()
+                );
+            }
+            let canonical_parent = expected_parent.canonicalize().with_context(|| {
+                format!(
+                    "resolving prepared-cache boundary {}",
+                    expected_parent.display()
+                )
+            })?;
+            let canonical_install = install_root
+                .canonicalize()
+                .with_context(|| format!("resolving prepared cache {}", install_root.display()))?;
+            if canonical_install.parent() != Some(canonical_parent.as_path()) {
+                bail!(
+                    "refusing to remove prepared cache that escapes its game boundary: {}",
+                    install_root.display()
+                );
+            }
+            fs::remove_dir_all(&install_root).with_context(|| {
+                format!("removing prepared game cache {}", install_root.display())
+            })?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("inspecting prepared cache {}", install_root.display()));
+        }
+    }
+
+    let removed = connection.execute(
+        "DELETE FROM prepared_game_installs
+         WHERE game_uid=?1 AND collection=?2 AND install_root=?3",
+        params![
+            game_uid,
+            collection.slug(),
+            install_root.display().to_string()
+        ],
+    )?;
+    if removed != 1 {
+        bail!("the prepared-cache record changed during removal");
+    }
+    match fs::remove_dir(&expected_parent) {
+        Ok(()) => {}
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::DirectoryNotEmpty | std::io::ErrorKind::NotFound
+            ) => {}
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "pruning prepared-cache game directory {}",
+                    expected_parent.display()
+                )
+            });
+        }
+    }
+    Ok(true)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_install<F>(
     settings: &AppSettings,
@@ -1354,6 +1457,31 @@ mod tests {
         assert!(second.reused);
         assert_eq!(second.install_root, first.install_root);
         assert_eq!(cached_install(&store, "game-uid").unwrap().unwrap(), second);
+        let outside = directory.path().join("outside-cache");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("keep.txt"), b"keep").unwrap();
+        store
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE prepared_game_installs SET install_root=?2 WHERE game_uid=?1",
+                params!["game-uid", outside.display().to_string()],
+            )
+            .unwrap();
+        assert!(remove_cached_install(&store, &settings, "game-uid").is_err());
+        assert_eq!(fs::read(outside.join("keep.txt")).unwrap(), b"keep");
+        store
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE prepared_game_installs SET install_root=?2 WHERE game_uid=?1",
+                params!["game-uid", first.install_root.display().to_string()],
+            )
+            .unwrap();
+        assert!(remove_cached_install(&store, &settings, "game-uid").unwrap());
+        assert!(!first.install_root.exists());
+        assert!(cached_install(&store, "game-uid").unwrap().is_none());
+        assert!(!remove_cached_install(&store, &settings, "game-uid").unwrap());
     }
 
     #[test]

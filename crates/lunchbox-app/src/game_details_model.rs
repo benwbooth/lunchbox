@@ -128,6 +128,14 @@ pub mod qobject {
         #[qproperty(i32, selected_bundle)]
         #[qproperty(i32, local_file_count)]
         #[qproperty(i32, selected_local_file)]
+        #[qproperty(QUrl, selected_local_directory_url)]
+        #[qproperty(bool, install_management_busy)]
+        #[qproperty(bool, managed_install_present)]
+        #[qproperty(bool, managed_install_can_delete)]
+        #[qproperty(i32, managed_install_owned_count)]
+        #[qproperty(i32, managed_install_shared_count)]
+        #[qproperty(QString, install_management_message)]
+        #[qproperty(i32, installation_revision)]
         #[qproperty(i32, emulator_option_count)]
         #[qproperty(i32, selected_emulator_option)]
         #[qproperty(i32, detail_revision)]
@@ -228,6 +236,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn select_local_file(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
+        fn uninstall_managed_installation(
+            self: Pin<&mut GameDetailsModel>,
+            delete_owned_files: bool,
+        );
 
         #[qinvokable]
         fn select_emulator_option(self: Pin<&mut GameDetailsModel>, index: i32);
@@ -498,6 +512,14 @@ pub struct GameDetailsModelRust {
     selected_bundle: i32,
     local_file_count: i32,
     selected_local_file: i32,
+    selected_local_directory_url: QUrl,
+    install_management_busy: bool,
+    managed_install_present: bool,
+    managed_install_can_delete: bool,
+    managed_install_owned_count: i32,
+    managed_install_shared_count: i32,
+    install_management_message: QString,
+    installation_revision: i32,
     emulator_option_count: i32,
     selected_emulator_option: i32,
     detail_revision: i32,
@@ -653,6 +675,14 @@ impl Default for GameDetailsModelRust {
             selected_bundle: -1,
             local_file_count: 0,
             selected_local_file: -1,
+            selected_local_directory_url: QUrl::default(),
+            install_management_busy: false,
+            managed_install_present: false,
+            managed_install_can_delete: false,
+            managed_install_owned_count: 0,
+            managed_install_shared_count: 0,
+            install_management_message: QString::default(),
+            installation_revision: 0,
             emulator_option_count: 0,
             selected_emulator_option: -1,
             detail_revision: 0,
@@ -725,6 +755,10 @@ fn validate_launch_profile_template(
 
 fn local_file_url(path: &std::path::Path) -> QUrl {
     QUrl::from_local_file(&qstring(path.to_string_lossy()))
+}
+
+fn local_directory_url(path: &std::path::Path) -> QUrl {
+    path.parent().map(local_file_url).unwrap_or_default()
 }
 
 fn catalog_url(value: &str) -> QUrl {
@@ -1630,6 +1664,15 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_selected_bundle(-1);
         self.as_mut().set_local_file_count(0);
         self.as_mut().set_selected_local_file(-1);
+        self.as_mut()
+            .set_selected_local_directory_url(QUrl::default());
+        self.as_mut().set_install_management_busy(false);
+        self.as_mut().set_managed_install_present(false);
+        self.as_mut().set_managed_install_can_delete(false);
+        self.as_mut().set_managed_install_owned_count(0);
+        self.as_mut().set_managed_install_shared_count(0);
+        self.as_mut()
+            .set_install_management_message(QString::default());
         self.as_mut().set_emulator_option_count(0);
         self.as_mut().set_selected_emulator_option(-1);
         self.as_mut().bump_revision();
@@ -1670,6 +1713,7 @@ impl qobject::GameDetailsModel {
                 let prepared_install = details.prepared_install.clone();
                 let local_file_count = details.local_file_paths.len();
                 let local_file_paths = details.local_file_paths.clone();
+                let managed_installation = details.managed_installation.clone();
                 self.as_mut().set_title(qstring(&details.title));
                 self.as_mut().set_description(qstring(&details.description));
                 self.as_mut()
@@ -1734,11 +1778,68 @@ impl qobject::GameDetailsModel {
                 self.as_mut().apply_play_activity(activity, details.local);
                 self.as_mut().apply_play_sessions(sessions);
                 self.as_mut().rust_mut().local_file_path = details.local_file_path;
+                let selected_local_directory_url = local_file_paths
+                    .first()
+                    .map(|path| local_directory_url(path))
+                    .unwrap_or_default();
                 self.as_mut().rust_mut().local_file_paths = local_file_paths;
                 self.as_mut()
                     .set_local_file_count(count_i32(local_file_count));
                 self.as_mut()
                     .set_selected_local_file(if local_file_count == 0 { -1 } else { 0 });
+                self.as_mut()
+                    .set_selected_local_directory_url(selected_local_directory_url);
+                if let Some(managed) = managed_installation {
+                    self.as_mut().set_managed_install_present(true);
+                    self.as_mut()
+                        .set_managed_install_can_delete(managed.owned_file_count > 0);
+                    self.as_mut()
+                        .set_managed_install_owned_count(count_i32(managed.owned_file_count));
+                    self.as_mut()
+                        .set_managed_install_shared_count(count_i32(managed.shared_file_count));
+                    let message = if managed.receipt_count == 0 {
+                        "This predates ownership receipts. Removing it will keep every file."
+                            .to_owned()
+                    } else if managed.owned_file_count == 0 {
+                        "Lunchbox does not own these files. Removing it will keep every file."
+                            .to_owned()
+                    } else if managed.shared_file_count > 0 {
+                        format!(
+                            "{} verified file{} can be removed; {} shared file{} will stay.",
+                            managed.deletable_file_count,
+                            if managed.deletable_file_count == 1 {
+                                ""
+                            } else {
+                                "s"
+                            },
+                            managed.shared_file_count,
+                            if managed.shared_file_count == 1 {
+                                ""
+                            } else {
+                                "s"
+                            }
+                        )
+                    } else {
+                        format!(
+                            "{} Lunchbox-owned file{} will be verified before removal.",
+                            managed.owned_file_count,
+                            if managed.owned_file_count == 1 {
+                                ""
+                            } else {
+                                "s"
+                            }
+                        )
+                    };
+                    self.as_mut()
+                        .set_install_management_message(qstring(message));
+                } else {
+                    self.as_mut().set_managed_install_present(false);
+                    self.as_mut().set_managed_install_can_delete(false);
+                    self.as_mut().set_managed_install_owned_count(0);
+                    self.as_mut().set_managed_install_shared_count(0);
+                    self.as_mut()
+                        .set_install_management_message(QString::default());
+                }
                 self.as_mut().rust_mut().prepared_install = prepared_install;
                 self.as_mut().set_preparable(preparable);
                 self.as_mut().set_prepared(prepared);
@@ -2767,9 +2868,148 @@ impl qobject::GameDetailsModel {
         };
         self.as_mut()
             .set_selected_local_file(i32::try_from(index).unwrap_or(i32::MAX));
+        self.as_mut()
+            .set_selected_local_directory_url(local_directory_url(&path));
         self.as_mut().rust_mut().local_file_path = path;
         self.as_mut().invalidate_launch_state();
         self.as_mut().refresh_emulators();
+    }
+
+    pub fn uninstall_managed_installation(mut self: Pin<&mut Self>, delete_owned_files: bool) {
+        if *self.as_ref().install_management_busy()
+            || !*self.as_ref().managed_install_present()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        let game_id = self.as_ref().game_id().to_string();
+        let generation = self.as_ref().rust().details_generation;
+        let delete_owned_files = delete_owned_files && *self.as_ref().managed_install_can_delete();
+        self.as_mut().set_install_management_busy(true);
+        self.as_mut()
+            .set_install_management_message(qstring(if delete_owned_files {
+                "Verifying every Lunchbox-owned file before removal…"
+            } else {
+                "Removing the library association while preserving files…"
+            }));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-install-removal".into())
+            .spawn(move || {
+                let result = (|| {
+                    let store = SettingsStore::open_default()?;
+                    crate::ingest::uninstall_managed_installation(
+                        &store,
+                        &game_id,
+                        delete_owned_files,
+                    )
+                })()
+                .map_err(|error: anyhow::Error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_install_removal(generation, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_install_management_busy(false);
+            self.as_mut()
+                .set_install_management_message(qstring(format!(
+                    "Could not start install-removal worker: {error}"
+                )));
+        }
+    }
+
+    fn finish_install_removal(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<crate::ingest::ManagedInstallationResult, String>,
+    ) {
+        if generation != self.as_ref().rust().details_generation {
+            return;
+        }
+        self.as_mut().set_install_management_busy(false);
+        match result {
+            Ok(result) => {
+                if result.prepared_cache_removed {
+                    self.as_mut().rust_mut().prepared_install = None;
+                    self.as_mut().set_prepared(false);
+                    self.as_mut().set_prepared_summary(QString::default());
+                }
+                let remaining = result.remaining_local_paths;
+                let remaining_count = remaining.len();
+                let selected_directory = remaining
+                    .first()
+                    .map(|path| local_directory_url(path))
+                    .unwrap_or_default();
+                self.as_mut().rust_mut().local_file_path =
+                    remaining.first().cloned().unwrap_or_default();
+                self.as_mut().rust_mut().local_file_paths = remaining;
+                self.as_mut()
+                    .set_local_file_count(count_i32(remaining_count));
+                self.as_mut()
+                    .set_selected_local_file(if remaining_count == 0 { -1 } else { 0 });
+                self.as_mut()
+                    .set_selected_local_directory_url(selected_directory);
+                self.as_mut().set_local(remaining_count > 0);
+                self.as_mut().set_managed_install_present(false);
+                self.as_mut().set_managed_install_can_delete(false);
+                self.as_mut().set_managed_install_owned_count(0);
+                self.as_mut().set_managed_install_shared_count(0);
+                self.as_mut().set_can_launch(false);
+                let message = if result.removed_file_count == 0 {
+                    format!(
+                        "Removed from the library. {} file{} retained.",
+                        result.retained_file_count,
+                        if result.retained_file_count == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    )
+                } else if result.retained_file_count == 0 {
+                    format!(
+                        "Uninstalled {} verified file{}.",
+                        result.removed_file_count,
+                        if result.removed_file_count == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    )
+                } else {
+                    format!(
+                        "Uninstalled {} verified file{}; retained {} shared or user-owned file{}.",
+                        result.removed_file_count,
+                        if result.removed_file_count == 1 {
+                            ""
+                        } else {
+                            "s"
+                        },
+                        result.retained_file_count,
+                        if result.retained_file_count == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    )
+                };
+                self.as_mut()
+                    .set_install_management_message(qstring(message));
+                self.as_mut()
+                    .set_message(qstring("Library installation removed."));
+                let revision = self.as_ref().installation_revision().wrapping_add(1);
+                self.as_mut().set_installation_revision(revision);
+                self.as_mut().bump_revision();
+                if remaining_count > 0 {
+                    self.as_mut().refresh_emulators();
+                }
+            }
+            Err(error) => {
+                self.as_mut()
+                    .set_install_management_message(qstring(format!(
+                        "Could not remove this installation: {error}"
+                    )));
+            }
+        }
     }
 
     pub fn select_emulator_option(mut self: Pin<&mut Self>, index: i32) {

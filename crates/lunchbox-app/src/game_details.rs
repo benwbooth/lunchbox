@@ -60,6 +60,7 @@ pub struct GameDetails {
     pub database_id: i64,
     pub local_file_path: PathBuf,
     pub local_file_paths: Vec<PathBuf>,
+    pub managed_installation: Option<crate::ingest::ManagedInstallationSummary>,
     pub prepared_install: Option<PreparedInstall>,
     pub activity: Option<crate::settings::PlayActivity>,
     pub sessions: Vec<crate::settings::PlaySession>,
@@ -706,6 +707,8 @@ fn load_prepared_state(details: &mut GameDetails) -> Result<()> {
     }
     let store = crate::settings::SettingsStore::open_default()?;
     load_native_game_files(details, &store)?;
+    details.managed_installation =
+        crate::ingest::inspect_managed_installation(&store, &details.id)?;
     details.prepared_install = crate::exo_install::cached_install(&store, &details.id)?;
     Ok(())
 }
@@ -721,15 +724,41 @@ fn load_native_game_files(
     }
 
     let mut installed = connection.prepare(
-        "SELECT file_path FROM installed_games
-         WHERE game_uid=?1 OR (?2 > 0 AND launchbox_db_id=?2)
-         ORDER BY installed_at DESC, file_path",
+        "SELECT r.path_display, r.path_bytes, r.path_encoding
+         FROM installed_games g
+         JOIN installed_game_files f ON f.game_uid=g.game_uid AND f.is_primary=1
+         JOIN installed_file_receipts r
+           ON r.path_encoding=f.path_encoding AND r.path_bytes=f.path_bytes
+         WHERE g.game_uid=?1 OR (?2 > 0 AND g.launchbox_db_id=?2)
+         ORDER BY g.installed_at DESC, r.path_display",
     )?;
     let rows = installed.query_map(rusqlite::params![details.id, details.database_id], |row| {
-        row.get::<_, String>(0).map(PathBuf::from)
+        Ok(crate::local_import::decode_path(
+            row.get::<_, Vec<u8>>(1)?,
+            &row.get::<_, String>(2)?,
+            row.get::<_, String>(0)?,
+        ))
     })?;
     paths.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
     drop(installed);
+
+    // State created before ownership receipts retained only a display path.
+    // Keep it launchable, but never infer deletion authority from that row.
+    let mut legacy_installed = connection.prepare(
+        "SELECT g.file_path
+         FROM installed_games g
+         WHERE (g.game_uid=?1 OR (?2 > 0 AND g.launchbox_db_id=?2))
+           AND NOT EXISTS (
+               SELECT 1 FROM installed_game_files f WHERE f.game_uid=g.game_uid
+           )
+         ORDER BY g.installed_at DESC, g.file_path",
+    )?;
+    let rows = legacy_installed
+        .query_map(rusqlite::params![details.id, details.database_id], |row| {
+            row.get::<_, String>(0).map(PathBuf::from)
+        })?;
+    paths.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+    drop(legacy_installed);
 
     let mut imported = connection.prepare(
         "SELECT path_display, path_bytes, path_encoding
@@ -1781,6 +1810,50 @@ mod tests {
         assert!(validated_catalog_web_url("https://localhost/private").is_empty());
         assert!(validated_catalog_web_url("not a URL").is_empty());
         assert!(validated_catalog_web_url(&"x".repeat(4097)).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_primary_file_loading_preserves_native_non_utf8_path_bytes() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::settings::SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let path = directory
+            .path()
+            .join(OsString::from_vec(b"managed-\xff.rom".to_vec()));
+        fs::write(&path, b"native path fixture").unwrap();
+        let job = crate::settings::DownloadJob::queued(crate::settings::NewDownloadJob {
+            game_id: "native-path-game".into(),
+            launchbox_db_id: 0,
+            title: "Native Path".into(),
+            platform: "Test".into(),
+            source_kind: "minerva".into(),
+            torrent_url: "https://example.invalid/native-path.torrent".into(),
+            torrent_file_index: Some(0),
+            torrent_file_path: "native.rom".into(),
+            info_hash: "2".repeat(40),
+            client_save_path: "/downloads/lunchbox".into(),
+            local_download_path: directory.path().join("download/native.rom"),
+            local_target_path: path.clone(),
+            download_plan: String::new(),
+        });
+        let receipt = crate::ingest::installed_file_receipt(&path, true).unwrap();
+        store.record_installed(&job, &path, &[receipt]).unwrap();
+        let mut details = GameDetails {
+            id: job.game_id,
+            local: true,
+            ..GameDetails::default()
+        };
+
+        load_native_game_files(&mut details, &store).unwrap();
+
+        assert_eq!(details.local_file_path, path);
+        assert_eq!(
+            details.local_file_paths,
+            vec![details.local_file_path.clone()]
+        );
     }
 
     #[test]

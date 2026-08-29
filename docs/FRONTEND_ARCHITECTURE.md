@@ -121,6 +121,20 @@ The initial implementation enforces this shape:
   size-weighted progress. Import preflights every source and conflicting target,
   preserves the common relative layout, and publishes the M3U and installed-game
   record last. Retries are idempotent and never overwrite different content.
+- Completed acquisitions persist a normalized installed-game row plus one
+  lossless native-path membership for every materialized plan member and
+  generated playlist. A separate receipt stores the exact file type, length,
+  SHA-256 identity, and whether Lunchbox created the path. Receipts are shared
+  across games by exact encoded path, so uninstall deletes an owned file only
+  at its last reference. The entire last-reference deletion set is rehashed
+  before any file changes; a modified path refuses the operation. Missing paths
+  are accepted as an idempotent retry, while imported, pre-existing, and
+  leave-in-place paths are association-only. Empty-directory pruning cannot
+  cross the configured ROM root. Prepared eXo cleanup additionally requires an
+  exact immediate child of the stable game cache boundary and preserves shared
+  bootstrap assets. Game Details exposes the result as a distinct Game Files
+  card and uses `QUrl::fromLocalFile` plus Qt's native URL handler for Open
+  Folder, with no platform shell or path rewriting.
 - eXoDOS, eXoWin3x, and year-bucketed eXoWin9x matches become versioned related-
   archive plans. The planner reproduces the legacy exact layouts for the primary
   game, DOS `Content/GameData`, collection metadata, and shared DOS/Win9x
@@ -654,6 +668,15 @@ mode. Details is scrollable without a mouse. Game Menu provides the real dynamic
 primary action, favorite toggle, explicit Desktop Details handoff, Attract Mode
 entry, and Return to Browsing; closing or switching panels never changes the
 selected release.
+
+`--install-management-ui-probe --state-database EMPTY_PATH
+--install-management-fixture-root EMPTY_DIRECTORY --screenshot-output PATH`
+idempotently seeds one exact owned file for the real Super Mario Bros. catalog
+record, captures the native Game Files card, accepts the real confirmation,
+and exits only after the receipt, file, and local state have been removed.
+Starting a new process with the same state database and
+`--install-management-restored-ui-probe` proves that the removal survives a
+cold catalog load. The fixture refuses to replace unexpected existing bytes.
 
 The Couch Mode `Platforms` shelf opens a virtualized picker over the same 191
 platform rows already owned by `LibraryModel`; it does not copy or reload the
