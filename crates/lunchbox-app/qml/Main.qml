@@ -97,6 +97,7 @@ ApplicationWindow {
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
     property bool manualTorrentProbeTriggered: false
+    property bool hashCacheScanStarted: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
     property bool settingsMediaPriorityTriggered: false
@@ -136,9 +137,11 @@ ApplicationWindow {
                                                + (library.hide_adult ? 1 : 0)
     readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
     readonly property bool manualMatchUiProbe: Qt.application.arguments.indexOf("--manual-match-ui-probe") >= 0
+    readonly property bool hashCacheUiProbe: Qt.application.arguments.indexOf("--hash-cache-ui-probe") >= 0
     readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
                                           || archiveImportUiProbe
                                           || manualMatchUiProbe
+                                          || hashCacheUiProbe
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
@@ -2669,10 +2672,25 @@ ApplicationWindow {
         }
         function onInitializedChanged() {
             if (localImport.initialized && root.importUiProbe
-                    && localImport.directory.length > 0)
+                    && localImport.directory.length > 0) {
+                if (root.hashCacheUiProbe)
+                    root.hashCacheScanStarted = true
                 localImport.start_scan("", true)
+            }
         }
         function onResult_countChanged() {
+            if (root.hashCacheUiProbe && localImport.result_count > 0) {
+                if (localImport.cache_reused_files <= 0
+                        || localImport.content_read_files !== 0) {
+                    console.error("LUNCHBOX_HASH_CACHE_UI_FAILED reused="
+                                  + localImport.cache_reused_files + " read="
+                                  + localImport.content_read_files + " results="
+                                  + localImport.result_count)
+                    Qt.exit(2)
+                    return
+                }
+                hashCacheFinishTimer.restart()
+            }
             if (root.archiveImportUiProbe && localImport.result_count > 0)
                 archiveImportScreenshotTimer.restart()
             if (root.manualMatchUiProbe && localImport.result_count > 0) {
@@ -2859,6 +2877,44 @@ ApplicationWindow {
         onTriggered: {
             console.error("LUNCHBOX_MEDIA_AUDIT_UI_FAILED timeout phase="
                           + mediaAudit.phase + " message=" + mediaAudit.message)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
+        interval: 50
+        running: root.hashCacheUiProbe && !root.hashCacheScanStarted
+        repeat: true
+        onTriggered: {
+            if (!localImport.initialized || localImport.directory.length === 0)
+                return
+            root.hashCacheScanStarted = true
+            localImport.start_scan("", true)
+        }
+    }
+
+    Timer {
+        id: hashCacheFinishTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            console.log("LUNCHBOX_HASH_CACHE_UI_READY reused="
+                        + localImport.cache_reused_files + " read="
+                        + localImport.content_read_files + " results="
+                        + localImport.result_count)
+            Qt.quit()
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.hashCacheUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_HASH_CACHE_UI_FAILED timeout message="
+                          + localImport.message + " reused="
+                          + localImport.cache_reused_files + " read="
+                          + localImport.content_read_files)
             Qt.exit(2)
         }
     }
@@ -10593,14 +10649,27 @@ ApplicationWindow {
                             }
                         }
                     }
-                    Text {
+                    ColumnLayout {
                         visible: localImport.total_files > 0
-                        text: localImport.matched_count + " exact  ·  "
-                              + localImport.reviewed_count + " reviewed  ·  "
-                              + localImport.unmatched_count + " other"
-                        color: root.accentCool
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
+                        spacing: 2
+                        Text {
+                            text: localImport.matched_count + " exact  ·  "
+                                  + localImport.reviewed_count + " reviewed  ·  "
+                                  + localImport.unmatched_count + " other"
+                            color: root.accentCool
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            visible: importChecksums.checked
+                            text: "HASH CACHE  " + localImport.cache_reused_files
+                                  + " reused  ·  " + localImport.content_read_files
+                                  + " read"
+                            color: root.muted
+                            font.pixelSize: 8
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.5
+                        }
                     }
                 }
                 }

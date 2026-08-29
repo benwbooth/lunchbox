@@ -25,6 +25,8 @@ pub mod qobject {
         #[qproperty(QString, current_file)]
         #[qproperty(i32, total_files)]
         #[qproperty(i32, scanned_files)]
+        #[qproperty(i32, cache_reused_files)]
+        #[qproperty(i32, content_read_files)]
         #[qproperty(i32, matched_count)]
         #[qproperty(i32, reviewed_count)]
         #[qproperty(i32, unmatched_count)]
@@ -156,6 +158,8 @@ pub struct LocalImportModelRust {
     current_file: QString,
     total_files: i32,
     scanned_files: i32,
+    cache_reused_files: i32,
+    content_read_files: i32,
     matched_count: i32,
     reviewed_count: i32,
     unmatched_count: i32,
@@ -199,6 +203,8 @@ impl Default for LocalImportModelRust {
             current_file: QString::default(),
             total_files: 0,
             scanned_files: 0,
+            cache_reused_files: 0,
+            content_read_files: 0,
             matched_count: 0,
             reviewed_count: 0,
             unmatched_count: 0,
@@ -324,6 +330,8 @@ impl qobject::LocalImportModel {
         self.as_mut().set_scanning(true);
         self.as_mut().set_total_files(0);
         self.as_mut().set_scanned_files(0);
+        self.as_mut().set_cache_reused_files(0);
+        self.as_mut().set_content_read_files(0);
         self.as_mut().set_matched_count(0);
         self.as_mut().set_reviewed_count(0);
         self.as_mut().set_unmatched_count(0);
@@ -346,8 +354,9 @@ impl qobject::LocalImportModel {
             .name("lunchbox-rom-scan".into())
             .spawn(move || {
                 let result = (|| -> anyhow::Result<ScanOutput> {
-                    let mut output = local_import::scan_directory(
+                    let mut output = local_import::scan_directory_cached(
                         &discovery_path,
+                        &state_path,
                         &root,
                         &platform,
                         checksums_enabled,
@@ -380,11 +389,18 @@ impl qobject::LocalImportModel {
         self.as_mut()
             .set_scanned_files(saturating_i32(progress.scanned_files));
         self.as_mut()
+            .set_cache_reused_files(saturating_i32(progress.cache_reused_files));
+        self.as_mut()
+            .set_content_read_files(saturating_i32(progress.content_read_files));
+        self.as_mut()
             .set_current_file(qstring(progress.current_file));
         if progress.total_files > 0 {
             self.as_mut().set_message(qstring(format!(
-                "Verifying ROM {} of {}…",
-                progress.scanned_files, progress.total_files
+                "Verifying ROM {} of {}…  {} cached · {} read",
+                progress.scanned_files,
+                progress.total_files,
+                progress.cache_reused_files,
+                progress.content_read_files,
             )));
         }
     }
@@ -416,10 +432,21 @@ impl qobject::LocalImportModel {
                     .count();
                 let cancelled = output.cancelled;
                 let walk_errors = output.walk_errors;
+                let cache_reused_files = output.cache_reused_files;
+                let content_read_files = output.content_read_files;
+                let checksum_summary = output.checksums_enabled.then(|| {
+                    format!(
+                        " Reused hashes for {cache_reused_files} unchanged files; read {content_read_files} new or changed files."
+                    )
+                });
                 self.as_mut().rust_mut().visible_indices = (0..total).collect();
                 self.as_mut().rust_mut().output = Some(output);
                 self.as_mut().set_total_files(saturating_i32(total));
                 self.as_mut().set_scanned_files(saturating_i32(total));
+                self.as_mut()
+                    .set_cache_reused_files(saturating_i32(cache_reused_files));
+                self.as_mut()
+                    .set_content_read_files(saturating_i32(content_read_files));
                 self.as_mut().set_matched_count(saturating_i32(matched));
                 self.as_mut().set_reviewed_count(saturating_i32(reviewed));
                 self.as_mut().set_unmatched_count(saturating_i32(
@@ -429,7 +456,7 @@ impl qobject::LocalImportModel {
                 self.as_mut().set_selected_count(saturating_i32(selected));
                 self.as_mut().set_current_file(QString::default());
                 self.as_mut().bump_revision();
-                self.as_mut().set_message(qstring(if cancelled {
+                let mut message = if cancelled {
                     format!(
                         "Scan cancelled after {total} files; completed results remain available for review."
                     )
@@ -442,7 +469,11 @@ impl qobject::LocalImportModel {
                         "Scanned {total} ROMs: {matched} exact, {reviewed} reviewed, and {} unmatched or ambiguous.",
                         total.saturating_sub(matched).saturating_sub(reviewed)
                     )
-                }));
+                };
+                if let Some(summary) = checksum_summary {
+                    message.push_str(&summary);
+                }
+                self.as_mut().set_message(qstring(message));
             }
             Err(error) => self
                 .as_mut()

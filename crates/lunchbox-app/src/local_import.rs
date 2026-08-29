@@ -90,6 +90,8 @@ pub struct ScanProgress {
     pub total_files: usize,
     pub scanned_files: usize,
     pub current_file: String,
+    pub cache_reused_files: usize,
+    pub content_read_files: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -100,6 +102,8 @@ pub struct ScanOutput {
     pub results: Vec<ScanResult>,
     pub walk_errors: usize,
     pub cancelled: bool,
+    pub cache_reused_files: usize,
+    pub content_read_files: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -138,6 +142,252 @@ struct PreparedScanSource {
     archive_member_count: usize,
     digests: Option<Digests>,
     error: Option<String>,
+}
+
+struct HashCache {
+    connection: Connection,
+    root_id: String,
+    seen_paths: HashSet<(String, Vec<u8>)>,
+}
+
+impl HashCache {
+    fn new(connection: Connection, root: &Path) -> Self {
+        let encoded_root = encode_path(root);
+        let root_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, &encoded_root.bytes).to_string();
+        Self {
+            connection,
+            root_id,
+            seen_paths: HashSet::new(),
+        }
+    }
+
+    fn mark_seen(&mut self, path: &Path) {
+        let encoded = encode_path(path);
+        self.seen_paths
+            .insert((encoded.encoding.to_owned(), encoded.bytes));
+    }
+
+    fn load_sources(
+        &mut self,
+        path: &Path,
+        metadata: &fs::Metadata,
+        index: &MatchIndex,
+        archive: bool,
+    ) -> Result<Option<Vec<PreparedScanSource>>> {
+        let encoded = encode_path(path);
+        self.seen_paths
+            .insert((encoded.encoding.to_owned(), encoded.bytes.clone()));
+        let fingerprint = metadata_fingerprint(metadata);
+        let mut statement = self.connection.prepare(
+            "SELECT archive_member, archive_member_count, member_size,
+                    member_extension, crc32, md5, sha1
+             FROM local_rom_hash_cache
+             WHERE root_id=?1 AND path_encoding=?2 AND path_bytes=?3
+               AND container_size=?4 AND metadata_fingerprint=?5
+             ORDER BY archive_member",
+        )?;
+        let rows = statement.query_map(
+            params![
+                self.root_id,
+                encoded.encoding,
+                encoded.bytes,
+                i64::try_from(metadata.len()).unwrap_or(i64::MAX),
+                fingerprint,
+            ],
+            |row| {
+                Ok(PreparedScanSource {
+                    identity_file_name: row.get(0)?,
+                    archive_member: row.get(0)?,
+                    archive_member_count: row.get::<_, usize>(1)?,
+                    identity_file_size: row.get::<_, u64>(2)?,
+                    identity_extension: row.get(3)?,
+                    digests: Some(Digests {
+                        crc32: row.get(4)?,
+                        md5: row.get(5)?,
+                        sha1: row.get(6)?,
+                    }),
+                    error: None,
+                })
+            },
+        )?;
+        let mut sources = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(statement);
+        if sources.is_empty() {
+            return Ok(None);
+        }
+
+        let valid = if archive {
+            let member_count = sources[0].archive_member_count;
+            member_count > 0
+                && member_count == sources.len()
+                && sources.iter().all(|source| {
+                    source.archive_member_count == member_count
+                        && !source.archive_member.is_empty()
+                        && recognized_archive_member(&source.archive_member, index)
+                            .is_some_and(|(_, extension)| extension == source.identity_extension)
+                        && source.digests.as_ref().is_some_and(valid_digests)
+                })
+        } else {
+            sources.len() == 1
+                && sources[0].archive_member.is_empty()
+                && sources[0].archive_member_count == 0
+                && sources[0].identity_file_size == metadata.len()
+                && sources[0].digests.as_ref().is_some_and(valid_digests)
+        };
+        if !valid {
+            return Ok(None);
+        }
+        if !archive {
+            sources[0].identity_file_name = path
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_default();
+        }
+        Ok(Some(sources))
+    }
+
+    fn save_sources(
+        &mut self,
+        path: &Path,
+        metadata: &fs::Metadata,
+        sources: &[PreparedScanSource],
+    ) -> Result<()> {
+        if sources.is_empty()
+            || sources
+                .iter()
+                .any(|source| source.error.is_some() || source.digests.is_none())
+        {
+            return Ok(());
+        }
+        let encoded = encode_path(path);
+        self.seen_paths
+            .insert((encoded.encoding.to_owned(), encoded.bytes.clone()));
+        let fingerprint = metadata_fingerprint(metadata);
+        let container_size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
+        let now = settings::unix_timestamp();
+        let transaction = self.connection.transaction()?;
+        transaction.execute(
+            "DELETE FROM local_rom_hash_cache
+             WHERE root_id=?1 AND path_encoding=?2 AND path_bytes=?3",
+            params![self.root_id, encoded.encoding, encoded.bytes],
+        )?;
+        for source in sources {
+            let digests = source
+                .digests
+                .as_ref()
+                .context("cacheable ROM source lost its content digests")?;
+            transaction.execute(
+                "INSERT INTO local_rom_hash_cache (
+                     root_id, path_display, path_bytes, path_encoding,
+                     container_size, metadata_fingerprint, archive_member,
+                     archive_member_count, member_size, member_extension,
+                     crc32, md5, sha1, updated_at
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                     ?11, ?12, ?13, ?14
+                 )",
+                params![
+                    self.root_id,
+                    encoded.display,
+                    encoded.bytes,
+                    encoded.encoding,
+                    container_size,
+                    fingerprint,
+                    source.archive_member,
+                    i64::try_from(source.archive_member_count).unwrap_or(i64::MAX),
+                    i64::try_from(source.identity_file_size).unwrap_or(i64::MAX),
+                    source.identity_extension,
+                    digests.crc32,
+                    digests.md5,
+                    digests.sha1,
+                    now,
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        let cached_paths = {
+            let mut statement = self.connection.prepare(
+                "SELECT DISTINCT path_encoding, path_bytes
+                 FROM local_rom_hash_cache WHERE root_id=?1",
+            )?;
+            let rows = statement.query_map(params![self.root_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let stale_paths = cached_paths
+            .into_iter()
+            .filter(|path| !self.seen_paths.contains(path))
+            .collect::<Vec<_>>();
+        if stale_paths.is_empty() {
+            return Ok(());
+        }
+        let transaction = self.connection.transaction()?;
+        for (encoding, bytes) in stale_paths {
+            transaction.execute(
+                "DELETE FROM local_rom_hash_cache
+                 WHERE root_id=?1 AND path_encoding=?2 AND path_bytes=?3",
+                params![self.root_id, encoding, bytes],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+}
+
+fn valid_digests(digests: &Digests) -> bool {
+    valid_hex_digest(&digests.crc32, 8)
+        && valid_hex_digest(&digests.md5, 32)
+        && valid_hex_digest(&digests.sha1, 40)
+}
+
+fn valid_hex_digest(value: &str, length: usize) -> bool {
+    value.len() == length && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+#[cfg(unix)]
+fn metadata_fingerprint(metadata: &fs::Metadata) -> String {
+    use std::os::unix::fs::MetadataExt;
+
+    format!(
+        "unix-v1:{}:{}:{}:{}:{}:{}:{}",
+        metadata.dev(),
+        metadata.ino(),
+        metadata.len(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.ctime(),
+        metadata.ctime_nsec(),
+    )
+}
+
+#[cfg(windows)]
+fn metadata_fingerprint(metadata: &fs::Metadata) -> String {
+    use std::os::windows::fs::MetadataExt;
+
+    format!(
+        "windows-v1:{:?}:{:?}:{}:{}:{}",
+        metadata.volume_serial_number(),
+        metadata.file_index(),
+        metadata.file_size(),
+        metadata.creation_time(),
+        metadata.last_write_time(),
+    )
+}
+
+#[cfg(not(any(unix, windows)))]
+fn metadata_fingerprint(metadata: &fs::Metadata) -> String {
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    format!("portable-v1:{}:{modified}", metadata.len())
 }
 
 pub fn load_platform_names(discovery_path: &Path) -> Result<Vec<String>> {
@@ -333,6 +583,28 @@ impl PreparedScanner {
             checksums_enabled,
             cancelled,
             progress,
+            None,
+        )
+    }
+
+    pub(crate) fn scan_cached(
+        &self,
+        state_path: &Path,
+        root: &Path,
+        platform_hint: &str,
+        checksums_enabled: bool,
+        cancelled: &AtomicBool,
+        progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
+    ) -> Result<ScanOutput> {
+        let store = SettingsStore::at(state_path)?;
+        scan_directory_with_index(
+            &self.index,
+            root,
+            platform_hint,
+            checksums_enabled,
+            cancelled,
+            progress,
+            Some(store.connection()?),
         )
     }
 }
@@ -354,6 +626,66 @@ pub fn scan_directory(
     )
 }
 
+pub fn scan_directory_cached(
+    discovery_path: &Path,
+    state_path: &Path,
+    root: &Path,
+    platform_hint: &str,
+    checksums_enabled: bool,
+    cancelled: &AtomicBool,
+    progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
+) -> Result<ScanOutput> {
+    PreparedScanner::new(discovery_path)?.scan_cached(
+        state_path,
+        root,
+        platform_hint,
+        checksums_enabled,
+        cancelled,
+        progress,
+    )
+}
+
+pub(crate) fn seed_hash_cache_ui_probe() -> Result<()> {
+    let discovery_path = catalog::requested_path("--games-database", "LUNCHBOX_GAMES_DATABASE")
+        .context(
+            "the hash-cache UI probe requires an explicit --games-database or LUNCHBOX_GAMES_DATABASE",
+        )?;
+    let state_path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
+        .context(
+            "the hash-cache UI probe requires an explicit --state-database or LUNCHBOX_STATE_DATABASE",
+        )?;
+    let root = catalog::requested_path("--import-directory", "LUNCHBOX_IMPORT_DIRECTORY")
+        .context(
+            "the hash-cache UI probe requires an explicit --import-directory or LUNCHBOX_IMPORT_DIRECTORY",
+        )?;
+    let output = scan_directory_cached(
+        &discovery_path,
+        &state_path,
+        &root,
+        "",
+        true,
+        &AtomicBool::new(false),
+        Arc::new(|_| {}),
+    )?;
+    if output.cancelled || output.results.is_empty() {
+        bail!(
+            "the hash-cache seed must complete with at least one readable ROM result; cancelled={} results={}",
+            output.cancelled,
+            output.results.len()
+        );
+    }
+    if output.cache_reused_files + output.content_read_files == 0 {
+        bail!("the hash-cache seed did not inspect any cacheable ROM files");
+    }
+    println!(
+        "LUNCHBOX_HASH_CACHE_SEEDED results={} reused={} read={}",
+        output.results.len(),
+        output.cache_reused_files,
+        output.content_read_files
+    );
+    Ok(())
+}
+
 fn scan_directory_with_index(
     index: &MatchIndex,
     root: &Path,
@@ -361,6 +693,7 @@ fn scan_directory_with_index(
     checksums_enabled: bool,
     cancelled: &AtomicBool,
     progress: Arc<dyn Fn(ScanProgress) + Send + Sync>,
+    cache_connection: Option<Connection>,
 ) -> Result<ScanOutput> {
     let root = root
         .canonicalize()
@@ -368,6 +701,9 @@ fn scan_directory_with_index(
     if !root.is_dir() {
         bail!("ROM import path is not a directory: {}", root.display());
     }
+    let mut hash_cache = checksums_enabled
+        .then(|| cache_connection.map(|connection| HashCache::new(connection, &root)))
+        .flatten();
     let mut paths = Vec::new();
     let mut walk_errors = 0usize;
     for entry in WalkDir::new(&root).follow_links(false).into_iter() {
@@ -403,6 +739,8 @@ fn scan_directory_with_index(
     });
 
     let mut results = Vec::with_capacity(paths.len());
+    let mut cache_reused_files = 0usize;
+    let mut content_read_files = 0usize;
     for (position, path) in paths.iter().enumerate() {
         if cancelled.load(Ordering::Relaxed) {
             break;
@@ -411,11 +749,21 @@ fn scan_directory_with_index(
             .file_name()
             .map(|value| value.to_string_lossy().into_owned())
             .unwrap_or_default();
+        if let Some(cache) = hash_cache.as_mut() {
+            cache.mark_seen(path);
+        }
         let metadata = match path.metadata() {
             Ok(metadata) => metadata,
             Err(error) => {
                 results.push(error_result(&root, path, error.to_string()));
-                report_progress(&progress, paths.len(), position, file_name);
+                report_progress_with_cache(
+                    &progress,
+                    paths.len(),
+                    position,
+                    file_name,
+                    cache_reused_files,
+                    content_read_files,
+                );
                 continue;
             }
         };
@@ -424,7 +772,24 @@ fn scan_directory_with_index(
             .and_then(|value| value.to_str())
             .map(str::to_ascii_lowercase)
             .unwrap_or_default();
-        let archive_inspection = if matches!(extension.as_str(), "zip" | "7z" | "rar") {
+        let archive = matches!(extension.as_str(), "zip" | "7z" | "rar");
+        let cached_sources = if checksums_enabled {
+            match hash_cache.as_mut() {
+                Some(cache) => cache.load_sources(path, &metadata, index, archive)?,
+                None => None,
+            }
+        } else {
+            None
+        };
+        let cache_hit = cached_sources.is_some();
+        if cache_hit {
+            cache_reused_files = cache_reused_files.saturating_add(1);
+        } else if checksums_enabled {
+            content_read_files = content_read_files.saturating_add(1);
+        }
+        let archive_inspection = if cache_hit || !archive {
+            None
+        } else {
             let inspection = match extension.as_str() {
                 "zip" => inspect_zip(path, index, checksums_enabled, cancelled),
                 "7z" => inspect_seven_zip(path, index, checksums_enabled, cancelled),
@@ -436,71 +801,117 @@ fn scan_directory_with_index(
                 Ok(None) => break,
                 Err(error) => {
                     results.push(error_result(&root, path, error.to_string()));
-                    report_progress(&progress, paths.len(), position, file_name);
+                    report_progress_with_cache(
+                        &progress,
+                        paths.len(),
+                        position,
+                        file_name,
+                        cache_reused_files,
+                        content_read_files,
+                    );
                     continue;
                 }
             }
-        } else {
-            None
         };
         let modified_unix_ns = metadata
             .modified()
             .ok()
             .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
             .and_then(|value| i64::try_from(value.as_nanos()).ok());
-        let sources = match archive_inspection {
-            Some(ArchiveInspection::Empty) => vec![PreparedScanSource {
-                identity_file_name: file_name.clone(),
-                identity_file_size: metadata.len(),
-                identity_extension: extension.clone(),
-                archive_member: String::new(),
-                archive_member_count: 0,
-                digests: None,
-                error: Some(format!(
-                    "{} contains no recognized ROM members",
-                    archive_kind_label(path)
-                )),
-            }],
-            Some(ArchiveInspection::Members(members)) => {
-                let member_count = members.len();
-                members
-                    .into_iter()
-                    .map(|member| PreparedScanSource {
-                        identity_file_name: member.member_name.clone(),
-                        identity_file_size: member.size,
-                        identity_extension: member.extension,
-                        archive_member: member.member_name,
-                        archive_member_count: member_count,
-                        digests: member.digests,
-                        error: member.error,
-                    })
-                    .collect()
-            }
-            None => {
-                let digests = if checksums_enabled {
-                    match hash_file(path, cancelled) {
-                        Ok(Some(digests)) => Some(digests),
-                        Ok(None) => break,
-                        Err(error) => {
-                            results.push(error_result(&root, path, error.to_string()));
-                            report_progress(&progress, paths.len(), position, file_name);
-                            continue;
-                        }
-                    }
-                } else {
-                    None
-                };
-                vec![PreparedScanSource {
+        let sources = if let Some(sources) = cached_sources {
+            sources
+        } else {
+            match archive_inspection {
+                Some(ArchiveInspection::Empty) => vec![PreparedScanSource {
                     identity_file_name: file_name.clone(),
                     identity_file_size: metadata.len(),
                     identity_extension: extension.clone(),
                     archive_member: String::new(),
                     archive_member_count: 0,
-                    digests,
-                    error: None,
-                }]
+                    digests: None,
+                    error: Some(format!(
+                        "{} contains no recognized ROM members",
+                        archive_kind_label(path)
+                    )),
+                }],
+                Some(ArchiveInspection::Members(members)) => {
+                    let member_count = members.len();
+                    members
+                        .into_iter()
+                        .map(|member| PreparedScanSource {
+                            identity_file_name: member.member_name.clone(),
+                            identity_file_size: member.size,
+                            identity_extension: member.extension,
+                            archive_member: member.member_name,
+                            archive_member_count: member_count,
+                            digests: member.digests,
+                            error: member.error,
+                        })
+                        .collect()
+                }
+                None => {
+                    let digests = if checksums_enabled {
+                        match hash_file(path, cancelled) {
+                            Ok(Some(digests)) => Some(digests),
+                            Ok(None) => break,
+                            Err(error) => {
+                                results.push(error_result(&root, path, error.to_string()));
+                                report_progress_with_cache(
+                                    &progress,
+                                    paths.len(),
+                                    position,
+                                    file_name,
+                                    cache_reused_files,
+                                    content_read_files,
+                                );
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    vec![PreparedScanSource {
+                        identity_file_name: file_name.clone(),
+                        identity_file_size: metadata.len(),
+                        identity_extension: extension.clone(),
+                        archive_member: String::new(),
+                        archive_member_count: 0,
+                        digests,
+                        error: None,
+                    }]
+                }
             }
         };
+        if checksums_enabled && !cache_hit {
+            if sources
+                .iter()
+                .all(|source| source.error.is_none() && source.digests.is_some())
+            {
+                let unchanged = path.metadata().is_ok_and(|current| {
+                    current.len() == metadata.len()
+                        && metadata_fingerprint(&current) == metadata_fingerprint(&metadata)
+                });
+                if !unchanged {
+                    results.push(error_result(
+                        &root,
+                        path,
+                        "ROM changed while it was being read; scan it again".to_owned(),
+                    ));
+                    report_progress_with_cache(
+                        &progress,
+                        paths.len(),
+                        position,
+                        file_name,
+                        cache_reused_files,
+                        content_read_files,
+                    );
+                    continue;
+                }
+            }
+            if let Some(cache) = hash_cache.as_mut() {
+                cache.save_sources(path, &metadata, &sources)?;
+            }
+        }
         for source in sources {
             let inferred_platform = if platform_hint.is_empty() {
                 index
@@ -558,8 +969,20 @@ fn scan_directory_with_index(
             });
         }
         if position % 8 == 0 || position + 1 == paths.len() {
-            report_progress(&progress, paths.len(), position, file_name);
+            report_progress_with_cache(
+                &progress,
+                paths.len(),
+                position,
+                file_name,
+                cache_reused_files,
+                content_read_files,
+            );
         }
+    }
+
+    let scan_cancelled = cancelled.load(Ordering::Relaxed);
+    if !scan_cancelled && let Some(cache) = hash_cache.as_mut() {
+        cache.finish()?;
     }
 
     Ok(ScanOutput {
@@ -568,7 +991,9 @@ fn scan_directory_with_index(
         checksums_enabled,
         results,
         walk_errors,
-        cancelled: cancelled.load(Ordering::Relaxed),
+        cancelled: scan_cancelled,
+        cache_reused_files,
+        content_read_files,
     })
 }
 
@@ -906,16 +1331,20 @@ pub(crate) fn manual_match_probe() -> Result<String> {
     ))
 }
 
-fn report_progress(
+fn report_progress_with_cache(
     progress: &Arc<dyn Fn(ScanProgress) + Send + Sync>,
     total_files: usize,
     position: usize,
     current_file: String,
+    cache_reused_files: usize,
+    content_read_files: usize,
 ) {
     progress(ScanProgress {
         total_files,
         scanned_files: position.saturating_add(1),
         current_file,
+        cache_reused_files,
+        content_read_files,
     });
 }
 
@@ -2331,6 +2760,175 @@ mod tests {
                 "ZIP member SHA-1 + MD5".to_owned(),
             )
         );
+    }
+
+    #[test]
+    fn resumable_hash_cache_reuses_regular_and_archive_content_and_prunes_removed_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let state = directory.path().join("state.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        let regular_path = rom_root.join("Exact Game.nes");
+        let archive_path = rom_root.join("Exact Archive.zip");
+        fs::write(&regular_path, b"exact-rom").unwrap();
+        zip_fixture(&archive_path, &[("Exact Archive.nes", b"exact-rom")]);
+
+        let cancel = AtomicBool::new(false);
+        let first = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            true,
+            &cancel,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert_eq!(first.cache_reused_files, 0);
+        assert_eq!(first.content_read_files, 2);
+        assert_eq!(first.results.len(), 2);
+        assert!(
+            first
+                .results
+                .iter()
+                .all(|result| matches!(result.match_state, MatchState::Exact(_)))
+        );
+
+        let repeated = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            true,
+            &cancel,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert_eq!(repeated.cache_reused_files, 2);
+        assert_eq!(repeated.content_read_files, 0);
+        assert_eq!(repeated.results.len(), 2);
+        assert_eq!(repeated.results[0].sha1, first.results[0].sha1);
+        assert_eq!(repeated.results[1].sha1, first.results[1].sha1);
+
+        let inventory_only = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            false,
+            &cancel,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert_eq!(inventory_only.cache_reused_files, 0);
+        assert_eq!(inventory_only.content_read_files, 0);
+        let after_inventory = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            true,
+            &cancel,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert_eq!(after_inventory.cache_reused_files, 2);
+        assert_eq!(after_inventory.content_read_files, 0);
+
+        fs::remove_file(&regular_path).unwrap();
+        fs::write(&regular_path, b"other-rom").unwrap();
+        let changed = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            true,
+            &cancel,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert_eq!(changed.cache_reused_files, 1);
+        assert_eq!(changed.content_read_files, 1);
+        let changed_regular = changed
+            .results
+            .iter()
+            .find(|result| result.path == regular_path)
+            .unwrap();
+        assert_eq!(changed_regular.match_state, MatchState::Unmatched);
+
+        fs::remove_file(&archive_path).unwrap();
+        let pruned = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            true,
+            &cancel,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert_eq!(pruned.cache_reused_files, 1);
+        assert_eq!(pruned.content_read_files, 0);
+        let connection = Connection::open(state).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM local_rom_hash_cache", [], |row| {
+                    row.get::<_, usize>(0)
+                })
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn cancelled_hash_scan_reuses_every_completed_file_on_resume() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let state = directory.path().join("state.db");
+        let rom_root = directory.path().join("roms");
+        fs::create_dir(&rom_root).unwrap();
+        discovery_fixture(&discovery, b"exact-rom");
+        fs::write(rom_root.join("A.nes"), b"exact-rom").unwrap();
+        fs::write(rom_root.join("B.nes"), b"another-rom").unwrap();
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        let callback_cancel = Arc::clone(&cancel);
+        let interrupted = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            true,
+            cancel.as_ref(),
+            Arc::new(move |progress| {
+                if progress.scanned_files == 1 {
+                    callback_cancel.store(true, Ordering::Relaxed);
+                }
+            }),
+        )
+        .unwrap();
+        assert!(interrupted.cancelled);
+        assert_eq!(interrupted.results.len(), 1);
+        assert_eq!(interrupted.cache_reused_files, 0);
+        assert_eq!(interrupted.content_read_files, 1);
+
+        let resumed_cancel = AtomicBool::new(false);
+        let resumed = scan_directory_cached(
+            &discovery,
+            &state,
+            &rom_root,
+            "",
+            true,
+            &resumed_cancel,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert!(!resumed.cancelled);
+        assert_eq!(resumed.results.len(), 2);
+        assert_eq!(resumed.cache_reused_files, 1);
+        assert_eq!(resumed.content_read_files, 1);
     }
 
     #[test]

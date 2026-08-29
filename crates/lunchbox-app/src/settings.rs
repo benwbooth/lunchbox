@@ -3451,6 +3451,27 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON local_rom_files(game_uid) WHERE game_uid IS NOT NULL;
          CREATE INDEX IF NOT EXISTS local_rom_files_visible
              ON local_rom_files(included, availability);
+         CREATE TABLE IF NOT EXISTS local_rom_hash_cache (
+             root_id TEXT NOT NULL,
+             path_display TEXT NOT NULL,
+             path_bytes BLOB NOT NULL,
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             container_size INTEGER NOT NULL CHECK (container_size >= 0),
+             metadata_fingerprint TEXT NOT NULL,
+             archive_member TEXT NOT NULL DEFAULT '',
+             archive_member_count INTEGER NOT NULL CHECK (archive_member_count >= 0),
+             member_size INTEGER NOT NULL CHECK (member_size >= 0),
+             member_extension TEXT NOT NULL,
+             crc32 TEXT NOT NULL CHECK (length(crc32) = 8),
+             md5 TEXT NOT NULL CHECK (length(md5) = 32),
+             sha1 TEXT NOT NULL CHECK (length(sha1) = 40),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+             PRIMARY KEY (root_id, path_encoding, path_bytes, archive_member)
+         );
+         CREATE INDEX IF NOT EXISTS local_rom_hash_cache_root
+             ON local_rom_hash_cache(root_id);
          CREATE TABLE IF NOT EXISTS game_metadata_overrides (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0 CHECK (launchbox_db_id >= 0),

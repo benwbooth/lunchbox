@@ -246,6 +246,13 @@ The initial implementation enforces this shape:
   view is virtualized; filtering and selection operate on compact Rust indices.
   Imported paths retain native bytes (`unix_bytes`, `windows_utf16le`, or
   `utf8`) instead of using a display string as identity.
+  Successfully read CRC32/MD5/SHA-1 records are committed incrementally to the
+  writable state database, so a cancelled scan resumes from every completed
+  regular file or archive. Reuse requires the same lossless path, stable native
+  filesystem identity, container size, and OS modification/change metadata;
+  malformed cache rows and changed-during-read files fail closed. Warm hits do
+  not write SQLite. A successful complete walk prunes disappeared paths in one
+  transaction, while cancellation deliberately skips pruning.
 - Library maintenance runs on the same bounded scanner contract but prepares
   the catalog match index once for the entire audit. Each root either completes
   atomically for availability purposes or is reported as offline; a partial or
@@ -386,6 +393,11 @@ checks; it uses the same model, worker, database, and QML as an interactive
 folder selection. Adding `--import-commit-probe` selects the readable results
 and commits them to the chosen `--state-database`, enabling a fully unattended,
 idempotent scan-to-collection integration test.
+`--hash-cache-ui-probe` additionally requires explicit `--games-database`,
+`--state-database`, and `--import-directory` paths. It seeds the cache through
+the real scanner before Qt starts, then requires the ordinary model-driven scan
+to report at least one reused file and zero content reads before exiting.
+Repeating it against the same paths is idempotent.
 `--archive-import-probe --games-database PATH --import-directory PATH` succeeds
 only when a ZIP, 7z, or RAR archive with one safe recognized ROM member receives an
 exact SHA-1/MD5 catalog identity. `--archive-import-ui-probe` follows the same

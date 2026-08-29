@@ -144,9 +144,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 ## Collection management
 
 - Extend the implemented folder chooser, platform assignment, scan preview,
-  progress, cancellation, exact/ambiguous reporting, idempotent rescans, exact
-  duplicate/change audit, and missing-file management view with named extension
-  presets and resumable hash caches.
+  progress, cancellation, exact/ambiguous reporting, idempotent rescans,
+  resumable native-metadata-validated hash cache, exact duplicate/change audit,
+  and missing-file management view with named extension presets.
 - Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
 - Durable per-game tags are native: stable IDs, case-insensitive normalization,

@@ -268,6 +268,12 @@ and reapplies the current search and platform filters after ingestion.
 supported files off the GUI thread, streams progress, can be cancelled during
 large-file hashing, and presents a searchable, sortable review table. Unique
 SHA-1/MD5 matches are selected by default; filenames never establish identity.
+Completed regular-file and archive-member hashes are retained in per-user state,
+including results completed before cancellation. A later scan reuses them only
+when the lossless native path, stable filesystem identity, size, and operating-
+system change metadata still agree; new, replaced, or changed files are read
+again. The review surface reports cached versus read containers, and a complete
+scan prunes records for paths no longer present without writing unchanged hits.
 For ZIP, 7z, or RAR archives containing exactly one recognized ROM, the scanner
 streams that member without extracting it and hashes the emulated bytes, while
 retaining the original archive as the local launch path. The review row shows the

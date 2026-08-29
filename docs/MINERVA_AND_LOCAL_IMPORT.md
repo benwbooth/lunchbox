@@ -64,6 +64,16 @@ exact match. Duplicate persisted keys fail closed instead of restoring an
 ambiguous decision. The preview supports text/status filters, sorting, bulk or
 per-row selection, live progress, and cancellation.
 
+The desktop scanner persists completed CRC32/MD5/SHA-1 work in `state.db`,
+including files completed before cancellation. Reuse is deliberately narrower
+than content identity: it requires the same lossless native path, stable
+filesystem identity, size, and OS modification/change metadata. New, replaced,
+or changed containers are read again and a file that changes during hashing is
+reported for another scan. Unchanged warm hits cause no cache writes; a complete
+walk transactionally removes disappeared paths, while a cancelled walk retains
+them so work can resume. The Qt review surface reports both reused and newly read
+container counts.
+
 `scan-local` recursively inventories regular files without following symbolic links. An optional
 comma-separated extension filter limits the scan. Every included file is read once while CRC32,
 MD5, SHA-1, and SHA-256 are calculated together.
