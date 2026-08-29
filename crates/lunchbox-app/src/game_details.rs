@@ -43,6 +43,12 @@ pub struct GameDetails {
     pub rating_count: i64,
     pub esrb: String,
     pub release_type: String,
+    pub sort_title: String,
+    pub series: String,
+    pub region: String,
+    pub play_mode: String,
+    pub version: String,
+    pub release_status: String,
     pub cooperative: String,
     pub catalog_video_url: String,
     pub wikipedia_url: String,
@@ -177,7 +183,15 @@ pub fn load(
                         coalesce(g.genre, ''), coalesce(g.players, ''),
                         CASE WHEN g.rating IS NULL THEN '' ELSE printf('%.1f', g.rating) END,
                         coalesce(g.esrb, ''),
-                        coalesce(g.release_type, ''), coalesce(g.notes, ''),
+                        coalesce(g.release_type, ''), coalesce(g.sort_title, ''),
+                        coalesce(g.series, ''), coalesce(g.region, ''),
+                        coalesce(g.play_mode, ''), coalesce(g.version, ''),
+                        CASE
+                            WHEN lower(trim(coalesce(g.status, ''))) IN
+                                 ('', 'canonical', 'deprecated', 'merged') THEN ''
+                            ELSE trim(g.status)
+                        END,
+                        coalesce(g.notes, ''),
                         CASE WHEN g.cooperative=1 THEN 'yes'
                              WHEN g.cooperative=0 THEN 'no' ELSE 'unknown' END,
                         coalesce(g.rating_count, 0), coalesce(g.video_url, ''),
@@ -199,12 +213,18 @@ pub fn load(
                         row.get::<_, String>(8)?,
                         row.get::<_, String>(9)?,
                         row.get::<_, String>(10)?,
-                        row.get::<_, i64>(11)?,
+                        row.get::<_, String>(11)?,
                         row.get::<_, String>(12)?,
                         row.get::<_, String>(13)?,
-                        row.get::<_, i64>(14)?,
+                        row.get::<_, String>(14)?,
                         row.get::<_, String>(15)?,
-                        row.get::<_, i64>(16)?,
+                        row.get::<_, String>(16)?,
+                        row.get::<_, i64>(17)?,
+                        row.get::<_, String>(18)?,
+                        row.get::<_, String>(19)?,
+                        row.get::<_, i64>(20)?,
+                        row.get::<_, String>(21)?,
+                        row.get::<_, i64>(22)?,
                     ))
                 },
             )
@@ -220,14 +240,20 @@ pub fn load(
             details.rating = row.6;
             details.esrb = row.7;
             details.release_type = row.8;
-            details.notes = row.9;
-            details.cooperative = row.10;
-            details.rating_count = row.11.max(0);
-            details.catalog_video_url = validated_catalog_web_url(&row.12);
-            details.wikipedia_url = validated_catalog_web_url(&row.13);
-            details.steam_app_id = row.14.max(0);
-            details.metadata_source = row.15;
-            details.database_id = row.16;
+            details.sort_title = row.9;
+            details.series = row.10;
+            details.region = row.11;
+            details.play_mode = row.12;
+            details.version = row.13;
+            details.release_status = row.14;
+            details.notes = row.15;
+            details.cooperative = row.16;
+            details.rating_count = row.17.max(0);
+            details.catalog_video_url = validated_catalog_web_url(&row.18);
+            details.wikipedia_url = validated_catalog_web_url(&row.19);
+            details.steam_app_id = row.20.max(0);
+            details.metadata_source = row.21;
+            details.database_id = row.22;
             details.alternate_titles = load_alternate_titles_from_connection(
                 &connection,
                 details.database_id,
@@ -291,6 +317,7 @@ fn validated_catalog_web_url(value: &str) -> String {
 fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
     let canonical = crate::settings::GameMetadata {
         title: details.title.clone(),
+        sort_title: details.sort_title.clone(),
         description: details.description.clone(),
         release_date: editable_release_date(&details.release_date),
         developer: details.developer.clone(),
@@ -300,6 +327,11 @@ fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
         rating: details.rating.clone(),
         esrb: details.esrb.clone(),
         release_type: details.release_type.clone(),
+        series: details.series.clone(),
+        region: details.region.clone(),
+        play_mode: details.play_mode.clone(),
+        version: details.version.clone(),
+        release_status: details.release_status.clone(),
         cooperative: if details.cooperative.is_empty() {
             "unknown".to_owned()
         } else {
@@ -319,6 +351,7 @@ fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
         .context("loading local game custom fields")?;
     let effective = metadata_override.apply(&canonical);
     details.title.clone_from(&effective.title);
+    details.sort_title.clone_from(&effective.sort_title);
     details.description.clone_from(&effective.description);
     details.release_date.clone_from(&effective.release_date);
     details.developer.clone_from(&effective.developer);
@@ -328,6 +361,11 @@ fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
     details.rating.clone_from(&effective.rating);
     details.esrb.clone_from(&effective.esrb);
     details.release_type.clone_from(&effective.release_type);
+    details.series.clone_from(&effective.series);
+    details.region.clone_from(&effective.region);
+    details.play_mode.clone_from(&effective.play_mode);
+    details.version.clone_from(&effective.version);
+    details.release_status.clone_from(&effective.release_status);
     details.cooperative.clone_from(&effective.cooperative);
     details.notes.clone_from(&effective.notes);
     details.canonical_metadata = canonical;

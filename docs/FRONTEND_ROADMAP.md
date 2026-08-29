@@ -20,7 +20,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   worker, applies identically to both presentations, and preserves explicit
   collection and recent-play order when Library order is selected. The list
   has a sticky sortable header, keyboard-accessible rows, a polished column
-  manager, and all 16 legacy fields plus native Availability. Metadata uses an
+  manager, and all 19 legacy fields plus native Availability. Metadata uses an
   interned columnar store and one-key-per-row worker sorts rather than expanding
   every game object or repeatedly lowercasing values in the comparator. Every
   column also has a searchable exact-value multi-select with live counts,
@@ -43,7 +43,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   covered games that are not installed and composes with platform selection.
 - Responsive game selection and details with real catalog metadata, exact-name
   Minerva bundle resolution, bounded off-thread torrent inspection, and
-  explicitly review-only title candidates. Candidate ranking strips catalog
+  explicitly review-only title candidates. A durable Release Profile covers
+  sort title, series, region, play mode, version,
+  and release status. These values are searchable, sortable, available as list
+  columns and exact filters, and visible in desktop and Couch Mode without
+  changing canonical identity. Desktop details can browse an exact series with
+  one action. Candidate ranking strips catalog
   region/version tags before title comparison, normalizes common Roman-numeral
   sequels, then applies persisted region and latest/original-revision
   preferences only between equally strong title matches. The complete legacy
@@ -184,8 +189,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   case-insensitively unique names, keyboard/pointer reordering, details-pane
   presentation, name/value search, and cold-start recovery all preserve the
   exact stable game UUID.
-- Extend the implemented stable-UUID game metadata overlay editor with release-
-  specific editing and playlist-specific presentation.
+- Extend the implemented stable-UUID game metadata overlay editor with playlist-
+  specific presentation.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
 - Fast metadata bulk editing and collection-wide comparison/reporting tools.

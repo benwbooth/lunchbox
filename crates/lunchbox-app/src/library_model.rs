@@ -206,6 +206,13 @@ pub mod qobject {
         fn apply_list_column_filter(self: Pin<&mut LibraryModel>);
 
         #[qinvokable]
+        fn apply_exact_list_column_filter(
+            self: Pin<&mut LibraryModel>,
+            column: QString,
+            value: QString,
+        );
+
+        #[qinvokable]
         fn clear_all_list_column_filters(self: Pin<&mut LibraryModel>);
 
         #[qinvokable]
@@ -645,8 +652,11 @@ const GAME_RELEASE_TYPE_ROLE: i32 = USER_ROLE + 19;
 const GAME_SERIES_ROLE: i32 = USER_ROLE + 20;
 const GAME_REGION_ROLE: i32 = USER_ROLE + 21;
 const GAME_NOTES_ROLE: i32 = USER_ROLE + 22;
+const GAME_PLAY_MODE_ROLE: i32 = USER_ROLE + 23;
+const GAME_VERSION_ROLE: i32 = USER_ROLE + 24;
+const GAME_RELEASE_STATUS_ROLE: i32 = USER_ROLE + 25;
 
-const ROLES: [(i32, &str); 22] = [
+const ROLES: [(i32, &str); 25] = [
     (GAME_ID_ROLE, "gameId"),
     (GAME_TITLE_ROLE, "gameTitle"),
     (GAME_PLATFORM_ROLE, "gamePlatform"),
@@ -669,6 +679,9 @@ const ROLES: [(i32, &str); 22] = [
     (GAME_SERIES_ROLE, "gameSeries"),
     (GAME_REGION_ROLE, "gameRegion"),
     (GAME_NOTES_ROLE, "gameNotes"),
+    (GAME_PLAY_MODE_ROLE, "gamePlayMode"),
+    (GAME_VERSION_ROLE, "gameVersion"),
+    (GAME_RELEASE_STATUS_ROLE, "gameReleaseStatus"),
 ];
 
 pub struct LibraryModelRust {
@@ -2210,6 +2223,37 @@ impl qobject::LibraryModel {
         } else {
             filters.remove(&column);
         }
+        self.as_mut().rust_mut().list_column_filters = Arc::new(filters);
+        let count = self.as_ref().rust().list_column_filters.len();
+        self.as_mut()
+            .set_list_filter_active_count(saturating_i32(count));
+        let revision = self.as_ref().list_filter_revision().wrapping_add(1);
+        self.as_mut().set_list_filter_revision(revision);
+        self.as_mut().refilter_current_library();
+    }
+
+    pub fn apply_exact_list_column_filter(
+        mut self: Pin<&mut Self>,
+        column: QString,
+        value: QString,
+    ) {
+        let column = column.to_string();
+        let value = value.to_string().trim().to_owned();
+        let Some(column) = crate::list_view::ListColumn::parse(&column) else {
+            self.as_mut().set_status_message(qstring(format!(
+                "Could not apply exact filter: unsupported column {column}"
+            )));
+            return;
+        };
+        if value.is_empty() || value.chars().count() > 1_000 || value.contains('\0') {
+            self.as_mut()
+                .set_status_message(qstring("Could not apply exact filter: invalid value"));
+            return;
+        }
+        let mut selection = crate::list_view::ListColumnFilter::none();
+        selection.set_selected(value, true);
+        let mut filters = (*self.as_ref().rust().list_column_filters).clone();
+        filters.insert(column, selection);
         self.as_mut().rust_mut().list_column_filters = Arc::new(filters);
         let count = self.as_ref().rust().list_column_filters.len();
         self.as_mut()
@@ -4649,6 +4693,9 @@ impl qobject::LibraryModel {
             GAME_SERIES_ROLE => list_value(crate::list_view::ListColumn::Series),
             GAME_REGION_ROLE => list_value(crate::list_view::ListColumn::Region),
             GAME_NOTES_ROLE => list_value(crate::list_view::ListColumn::Notes),
+            GAME_PLAY_MODE_ROLE => list_value(crate::list_view::ListColumn::PlayMode),
+            GAME_VERSION_ROLE => list_value(crate::list_view::ListColumn::Version),
+            GAME_RELEASE_STATUS_ROLE => list_value(crate::list_view::ListColumn::ReleaseStatus),
             _ => QVariant::default(),
         }
     }

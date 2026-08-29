@@ -377,14 +377,24 @@ fn load_discovery_catalog(
     let release_year = optional_game_column(&discovery, "release_year")?;
     let players = optional_game_column(&discovery, "players")?;
     let rating = optional_game_column(&discovery, "rating")?;
+    let sort_title = optional_game_column(&discovery, "sort_title")?;
     let series = optional_game_column(&discovery, "series")?;
     let region = optional_game_column(&discovery, "region")?;
+    let play_mode = optional_game_column(&discovery, "play_mode")?;
+    let version = optional_game_column(&discovery, "version")?;
     let notes = optional_game_column(&discovery, "notes")?;
     let query = format!(
         "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
                 coalesce(g.launchbox_db_id, 0), {release_type}, {esrb}, {genre},
                 {cooperative}, {developer}, {publisher}, {release_date},
-                {release_year}, {players}, {rating}, {series}, {region}, {notes}
+                {release_year}, {players}, {rating}, {sort_title}, {series}, {region},
+                {play_mode}, {version},
+                CASE
+                    WHEN lower(trim(coalesce(g.status, ''))) IN
+                         ('', 'canonical', 'deprecated', 'merged') THEN NULL
+                    ELSE trim(g.status)
+                END,
+                {notes}
          FROM games g
          JOIN platforms p ON p.id = g.platform_id
          ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id"
@@ -402,15 +412,19 @@ fn load_discovery_catalog(
             row.get::<_, Option<String>>(7)?,
             row.get::<_, Option<i64>>(8)?,
             MetadataInput {
+                sort_title: row.get(15)?,
                 developer: row.get(9)?,
                 publisher: row.get(10)?,
                 release_date: row.get(11)?,
                 release_year: row.get(12)?,
                 players: row.get(13)?,
                 rating: row.get(14)?,
-                series: row.get(15)?,
-                region: row.get(16)?,
-                notes: row.get(17)?,
+                series: row.get(16)?,
+                region: row.get(17)?,
+                play_mode: row.get(18)?,
+                version: row.get(19)?,
+                release_status: row.get(20)?,
+                notes: row.get(21)?,
                 genre: row.get(7)?,
                 esrb: row.get(6)?,
                 release_type: row.get(5)?,
@@ -633,8 +647,11 @@ fn optional_game_column(connection: &Connection, column: &str) -> Result<&'stati
             "release_year" => "g.release_year",
             "players" => "g.players",
             "rating" => "g.rating",
+            "sort_title" => "g.sort_title",
             "series" => "g.series",
             "region" => "g.region",
+            "play_mode" => "g.play_mode",
+            "version" => "g.version",
             "notes" => "g.notes",
             _ => unreachable!("optional game columns are fixed by the caller"),
         })
@@ -1091,6 +1108,9 @@ fn game_matches_filter(
             .display_titles
             .get(&game.id)
             .is_some_and(|title| title.to_lowercase().contains(&search))
+        || catalog
+            .list_metadata
+            .matches_search(index, game, &filter.metadata_overrides, &search)
         || filter
             .game_tags
             .get(&game.id)

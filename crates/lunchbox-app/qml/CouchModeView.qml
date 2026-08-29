@@ -2171,6 +2171,11 @@ Item {
                                                                          + " ratings" : "") : "" },
                                         { label: "AGE RATING", value: view.details.esrb },
                                         { label: "RELEASE TYPE", value: view.details.release_type },
+                                        { label: "SERIES", value: view.details.series },
+                                        { label: "REGION", value: view.details.region },
+                                        { label: "VERSION", value: view.details.version },
+                                        { label: "PLAY MODE", value: view.details.play_mode },
+                                        { label: "RELEASE STATUS", value: view.details.release_status },
                                         { label: "METADATA", value: view.details.metadata_source }
                                     ]
                                     delegate: Rectangle {

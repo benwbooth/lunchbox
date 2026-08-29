@@ -400,6 +400,17 @@ to the same stable UUID, limited to 32 entries, preserve explicit order, require
 case-insensitively unique non-empty names, and expose both names and values to
 text search without entering provider matching or ROM identity.
 
+The Release Profile is part of that same overlay and carries the legacy sort
+title, series, region, play mode, version, and release-status fields. An explicit
+sort title controls only requested title ordering; clearing it falls back to the
+effective display title instead of resurrecting a catalog sort value. The other
+fields participate in text search, deterministic list sorting, configurable
+columns, and exact-value filters. Desktop details expose an exact **Browse this
+series** action, while desktop and Couch Mode suppress empty facts. Release
+status deliberately excludes internal catalog lifecycle values such as
+`canonical`, `deprecated`, and `merged`. None of these values merge records,
+provide a fuzzy identity signal, or change provider and ROM matching.
+
 Community vote counts and catalog provenance remain immutable source facts, not
 profile overrides. The current discovery database has rating counts for 174,463
 records, catalog video links for 75,647, Wikipedia links for 45,150, exact Steam
@@ -416,14 +427,16 @@ the living-room UI into an external browser.
 ABSOLUTE_PATH` first proves the custom title is absent, edits the exact Super
 Mario Bros. UUID through the real native dialog, adds and reorders two custom
 fields, persists the complete profile off-thread, refreshes the library, proves
-both title and custom-field-value search, captures the editor, and asserts that
+title, custom-field-value, and exact-series filtering, captures the editor, and
+asserts that sort title, series, region, play mode, version, and release status
+round-trip alongside the existing fields. It also asserts that
 the catalog's exact no-co-op value becomes a durable local yes-co-op value while
 the canonical title is still unchanged. The same probe asserts the real record's
 1,150-vote count, LaunchBox source, exact Video and Wikipedia URLs, and absent
 Steam ID before it captures the source card. A second process using
 `--metadata-restored-ui-probe` and the same state path must rediscover the exact
-title, co-op value, field order, names, values, and catalog source facts before
-it exits successfully.
+title, Release Profile, co-op value, field order, names, values, and catalog
+source facts before it exits successfully.
 
 User tags are normalized, stable-UUID records in the same writable state
 database. Metadata, tags, and custom fields validate before one transaction, so

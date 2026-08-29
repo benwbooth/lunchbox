@@ -160,6 +160,9 @@ ApplicationWindow {
         { key: "release-type", label: "Type", width: 130 },
         { key: "series", label: "Series", width: 180 },
         { key: "region", label: "Region", width: 140 },
+        { key: "play-mode", label: "Play mode", width: 150 },
+        { key: "version", label: "Version", width: 130 },
+        { key: "release-status", label: "Release status", width: 150 },
         { key: "notes", label: "Notes", width: 340 }
     ]
     readonly property var sortChoices: [{ key: "default", label: "Library order" }]
@@ -1744,6 +1747,12 @@ ApplicationWindow {
                      && library.ready && !library.filtering) {
                 if (library.filtered_count !== 1
                         || gameDetails.title !== root.metadataProbeTitle
+                        || gameDetails.sort_title !== "Mario Living Room"
+                        || gameDetails.series !== "Super Mario"
+                        || gameDetails.region !== "North America"
+                        || gameDetails.play_mode !== "Single player · 2-player alternating"
+                        || gameDetails.version !== "Rev 1"
+                        || gameDetails.release_status !== "Released"
                         || gameDetails.cooperative !== "yes"
                         || gameDetails.custom_field_count !== 2
                         || library.canonical_title_for_game(gameDetails.game_id)
@@ -1766,6 +1775,20 @@ ApplicationWindow {
                         || library.canonical_title_for_game(gameDetails.game_id)
                            !== "Super Mario Bros.") {
                     console.error("LUNCHBOX_METADATA_UI_FAILED custom field search or identity")
+                    Qt.exit(2)
+                    return
+                }
+                root.metadataProbeStage = 5
+                library.apply_exact_list_column_filter("series", "Super Mario")
+            }
+            else if (root.metadataUiProbe && root.metadataProbeStage === 5
+                     && library.ready && !library.filtering) {
+                if (library.filtered_count !== 1
+                        || library.list_filter_active_count !== 1
+                        || !library.list_column_filter_active("series")) {
+                    console.error("LUNCHBOX_METADATA_UI_FAILED exact series filter results="
+                                  + library.filtered_count + " filters="
+                                  + library.list_filter_active_count)
                     Qt.exit(2)
                     return
                 }
@@ -2020,6 +2043,12 @@ ApplicationWindow {
             if (!root.metadataRestoreUiProbe || root.metadataProbeStage !== 11)
                 return
             if (gameDetails.title !== root.metadataProbeTitle
+                    || gameDetails.sort_title !== "Mario Living Room"
+                    || gameDetails.series !== "Super Mario"
+                    || gameDetails.region !== "North America"
+                    || gameDetails.play_mode !== "Single player · 2-player alternating"
+                    || gameDetails.version !== "Rev 1"
+                    || gameDetails.release_status !== "Released"
                     || gameDetails.cooperative !== "yes"
                     || gameDetails.rating_count !== 1150
                     || gameDetails.catalog_video_url.toString()
@@ -2125,6 +2154,12 @@ ApplicationWindow {
                     "A local presentation override used to verify durable metadata editing while the canonical catalog identity remains untouched."
             gameDetails.metadata_genre = "Platformer · Local favorite"
             gameDetails.metadata_rating = "5.0"
+            gameDetails.metadata_sort_title = "Mario Living Room"
+            gameDetails.metadata_series = "Super Mario"
+            gameDetails.metadata_region = "North America"
+            gameDetails.metadata_play_mode = "Single player · 2-player alternating"
+            gameDetails.metadata_version = "Rev 1"
+            gameDetails.metadata_release_status = "Released"
             gameDetails.metadata_cooperative = "yes"
             gameDetails.metadata_notes =
                     "Configured for the living-room collection. Minerva matching still uses Super Mario Bros."
@@ -6320,6 +6355,9 @@ ApplicationWindow {
             required property string gameReleaseType
             required property string gameSeries
             required property string gameRegion
+            required property string gamePlayMode
+            required property string gameVersion
+            required property string gameReleaseStatus
             required property string gameNotes
             property int mediaRevision: library.media_revision
             property int favoriteRevision: library.favorite_revision
@@ -6361,6 +6399,9 @@ ApplicationWindow {
                 case "release-type": return gameReleaseType
                 case "series": return gameSeries
                 case "region": return gameRegion
+                case "play-mode": return gamePlayMode
+                case "version": return gameVersion
+                case "release-status": return gameReleaseStatus
                 case "notes": return gameNotes
                 default: return "—"
                 }
@@ -8381,6 +8422,40 @@ ApplicationWindow {
                         Text { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.release_type.length > 0; text: "TYPE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.series.length > 0; text: "SERIES"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Button {
+                            visible: gameDetails.series.length > 0
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 28
+                            text: gameDetails.series + "  ›"
+                            flat: true
+                            Accessible.name: "Browse the exact " + gameDetails.series + " series"
+                            onClicked: {
+                                library.apply_exact_list_column_filter("series", gameDetails.series)
+                                gameDetails.close_panel()
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: parent.hovered ? root.accent : root.accentCool
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: 6
+                                color: parent.hovered ? "#1c2938" : "transparent"
+                                border.color: parent.activeFocus ? root.accentCool : "transparent"
+                            }
+                        }
+                        Text { visible: gameDetails.region.length > 0; text: "REGION"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.region.length > 0; text: gameDetails.region; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.version.length > 0; text: "VERSION"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.version.length > 0; text: gameDetails.version; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.play_mode.length > 0; text: "PLAY MODE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.play_mode.length > 0; text: gameDetails.play_mode; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.release_status.length > 0; text: "STATUS"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.release_status.length > 0; text: gameDetails.release_status; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                     }
 
                     Column {
@@ -19262,6 +19337,54 @@ ApplicationWindow {
                             value: gameDetails.metadata_release_type
                             placeholder: "Retail, Homebrew…"
                             onEdited: function(value) { gameDetails.metadata_release_type = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            label: "Sort title"
+                            value: gameDetails.metadata_sort_title
+                            placeholder: "Optional library ordering title"
+                            onEdited: function(value) { gameDetails.metadata_sort_title = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            Layout.rightMargin: 24
+                            label: "Series"
+                            value: gameDetails.metadata_series
+                            placeholder: "Exact series name"
+                            onEdited: function(value) { gameDetails.metadata_series = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            label: "Region"
+                            value: gameDetails.metadata_region
+                            placeholder: "North America, Japan…"
+                            onEdited: function(value) { gameDetails.metadata_region = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            Layout.rightMargin: 24
+                            label: "Version"
+                            value: gameDetails.metadata_version
+                            placeholder: "Rev 1, v1.2…"
+                            onEdited: function(value) { gameDetails.metadata_version = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            label: "Play mode"
+                            value: gameDetails.metadata_play_mode
+                            placeholder: "Single player, multiplayer…"
+                            onEdited: function(value) { gameDetails.metadata_play_mode = value }
+                        }
+                        MetadataField {
+                            Layout.fillWidth: true
+                            Layout.rightMargin: 24
+                            label: "Release status"
+                            value: gameDetails.metadata_release_status
+                            placeholder: "Released, prototype…"
+                            onEdited: function(value) { gameDetails.metadata_release_status = value }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true

@@ -9,7 +9,7 @@ use crate::settings::GameMetadataOverride;
 pub(crate) const DEFAULT_LIST_COLUMNS: [&str; 5] =
     ["title", "platform", "availability", "developer", "year"];
 
-pub(crate) const LIST_COLUMN_KEYS: [&str; 17] = [
+pub(crate) const LIST_COLUMN_KEYS: [&str; 20] = [
     "title",
     "platform",
     "availability",
@@ -26,6 +26,9 @@ pub(crate) const LIST_COLUMN_KEYS: [&str; 17] = [
     "release-type",
     "series",
     "region",
+    "play-mode",
+    "version",
+    "release-status",
     "notes",
 ];
 
@@ -49,6 +52,9 @@ pub(crate) enum ListColumn {
     ReleaseType,
     Series,
     Region,
+    PlayMode,
+    Version,
+    ReleaseStatus,
     Notes,
 }
 
@@ -71,6 +77,9 @@ impl ListColumn {
             "release-type" => Self::ReleaseType,
             "series" => Self::Series,
             "region" => Self::Region,
+            "play-mode" => Self::PlayMode,
+            "version" => Self::Version,
+            "release-status" => Self::ReleaseStatus,
             "notes" => Self::Notes,
             _ => return None,
         })
@@ -94,6 +103,9 @@ impl ListColumn {
             Self::ReleaseType => "release-type",
             Self::Series => "series",
             Self::Region => "region",
+            Self::PlayMode => "play-mode",
+            Self::Version => "version",
+            Self::ReleaseStatus => "release-status",
             Self::Notes => "notes",
         }
     }
@@ -116,6 +128,9 @@ impl ListColumn {
             Self::ReleaseType => "Type",
             Self::Series => "Series",
             Self::Region => "Region",
+            Self::PlayMode => "Play mode",
+            Self::Version => "Version",
+            Self::ReleaseStatus => "Release status",
             Self::Notes => "Notes",
         }
     }
@@ -230,6 +245,7 @@ pub(crate) fn default_list_columns() -> String {
 
 #[derive(Clone, Copy, Debug)]
 struct MetadataRow {
+    sort_title: u32,
     developer: u32,
     publisher: u32,
     release_date: u32,
@@ -239,6 +255,9 @@ struct MetadataRow {
     release_type: u32,
     series: u32,
     region: u32,
+    play_mode: u32,
+    version: u32,
+    release_status: u32,
     notes: u32,
     release_year: i32,
     rating_tenths: i16,
@@ -248,6 +267,7 @@ struct MetadataRow {
 impl Default for MetadataRow {
     fn default() -> Self {
         Self {
+            sort_title: 0,
             developer: 0,
             publisher: 0,
             release_date: 0,
@@ -257,6 +277,9 @@ impl Default for MetadataRow {
             release_type: 0,
             series: 0,
             region: 0,
+            play_mode: 0,
+            version: 0,
+            release_status: 0,
             notes: 0,
             release_year: 0,
             rating_tenths: i16::MIN,
@@ -267,6 +290,7 @@ impl Default for MetadataRow {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct MetadataInput {
+    pub sort_title: Option<String>,
     pub developer: Option<String>,
     pub publisher: Option<String>,
     pub release_date: Option<String>,
@@ -277,6 +301,9 @@ pub(crate) struct MetadataInput {
     pub release_type: Option<String>,
     pub series: Option<String>,
     pub region: Option<String>,
+    pub play_mode: Option<String>,
+    pub version: Option<String>,
+    pub release_status: Option<String>,
     pub notes: Option<String>,
     pub release_year: Option<i32>,
 }
@@ -334,6 +361,7 @@ impl ListMetadataBuilder {
 
     pub(crate) fn push(&mut self, input: MetadataInput) -> Result<()> {
         let row = MetadataRow {
+            sort_title: self.intern(input.sort_title)?,
             developer: self.intern(input.developer)?,
             publisher: self.intern(input.publisher)?,
             release_date: self.intern(input.release_date)?,
@@ -343,6 +371,9 @@ impl ListMetadataBuilder {
             release_type: self.intern(input.release_type)?,
             series: self.intern(input.series)?,
             region: self.intern(input.region)?,
+            play_mode: self.intern(input.play_mode)?,
+            version: self.intern(input.version)?,
+            release_status: self.intern(input.release_status)?,
             notes: self.intern(input.notes)?,
             release_year: input.release_year.unwrap_or_default(),
             rating_tenths: input
@@ -457,6 +488,29 @@ impl ListMetadata {
         self.display_value(index, game, column, overrides)
     }
 
+    pub(crate) fn matches_search(
+        &self,
+        index: usize,
+        game: &Game,
+        overrides: &HashMap<String, GameMetadataOverride>,
+        search: &str,
+    ) -> bool {
+        self.effective_sort_title(index, game, overrides)
+            .is_some_and(|value| value.to_lowercase().contains(search))
+            || [
+                ListColumn::Series,
+                ListColumn::Region,
+                ListColumn::PlayMode,
+                ListColumn::Version,
+                ListColumn::ReleaseStatus,
+            ]
+            .into_iter()
+            .any(|column| {
+                self.effective_text(index, game, column, overrides)
+                    .is_some_and(|value| value.to_lowercase().contains(search))
+            })
+    }
+
     pub(crate) fn sort_key(
         &self,
         index: usize,
@@ -465,6 +519,10 @@ impl ListMetadata {
         overrides: &HashMap<String, GameMetadataOverride>,
     ) -> ListSortKey {
         match column {
+            ListColumn::Title => ListSortKey::Text(
+                self.effective_sort_title(index, game, overrides)
+                    .map(str::to_lowercase),
+            ),
             ListColumn::Availability => {
                 ListSortKey::Integer(Some(i64::from(availability_rank(game))))
             }
@@ -505,6 +563,11 @@ impl ListMetadata {
             ListColumn::Players => metadata.players.as_deref(),
             ListColumn::Esrb => metadata.esrb.as_deref(),
             ListColumn::ReleaseType => metadata.release_type.as_deref(),
+            ListColumn::Series => metadata.series.as_deref(),
+            ListColumn::Region => metadata.region.as_deref(),
+            ListColumn::PlayMode => metadata.play_mode.as_deref(),
+            ListColumn::Version => metadata.version.as_deref(),
+            ListColumn::ReleaseStatus => metadata.release_status.as_deref(),
             ListColumn::Notes => metadata.notes.as_deref(),
             _ => None,
         });
@@ -528,10 +591,38 @@ impl ListMetadata {
             ListColumn::ReleaseType => row.release_type,
             ListColumn::Series => row.series,
             ListColumn::Region => row.region,
+            ListColumn::PlayMode => row.play_mode,
+            ListColumn::Version => row.version,
+            ListColumn::ReleaseStatus => row.release_status,
             ListColumn::Notes => row.notes,
             _ => return None,
         };
         self.text(text_index)
+    }
+
+    fn effective_sort_title<'a>(
+        &'a self,
+        index: usize,
+        game: &'a Game,
+        overrides: &'a HashMap<String, GameMetadataOverride>,
+    ) -> Option<&'a str> {
+        if let Some(metadata) = overrides.get(&game.id) {
+            if let Some(sort_title) = metadata.sort_title.as_deref() {
+                return nonempty(sort_title)
+                    .or_else(|| metadata.title.as_deref().and_then(nonempty))
+                    .or_else(|| nonempty(&game.title));
+            }
+        }
+        self.rows
+            .get(index)
+            .and_then(|row| self.text(row.sort_title))
+            .or_else(|| {
+                overrides
+                    .get(&game.id)
+                    .and_then(|metadata| metadata.title.as_deref())
+                    .and_then(nonempty)
+            })
+            .or_else(|| nonempty(&game.title))
     }
 
     fn effective_year(
@@ -737,6 +828,7 @@ mod tests {
         let mut builder = ListMetadataBuilder::with_capacity(1);
         builder
             .push(MetadataInput {
+                sort_title: Some("Metroid".into()),
                 developer: Some("Nintendo".into()),
                 publisher: None,
                 release_date: Some("1985-09-13".into()),
@@ -745,10 +837,14 @@ mod tests {
                 rating: Some(4.45),
                 esrb: None,
                 release_type: None,
-                series: None,
-                region: None,
+                series: Some("Metroid".into()),
+                region: Some("North America".into()),
+                play_mode: Some("Single player".into()),
+                version: Some("Rev 1".into()),
+                release_status: Some("Released".into()),
                 notes: None,
                 release_year: Some(1985),
+                ..MetadataInput::default()
             })
             .unwrap();
         let metadata = builder.finish();
@@ -760,6 +856,8 @@ mod tests {
                 release_date: Some("1986-01-01".into()),
                 rating: Some("5".into()),
                 cooperative: Some("yes".into()),
+                series: Some("Chozo Saga".into()),
+                version: Some("Rev 2".into()),
                 ..GameMetadataOverride::default()
             },
         )]);
@@ -779,6 +877,59 @@ mod tests {
             metadata.display_value(0, &game, ListColumn::Cooperative, &overrides),
             "Yes"
         );
+        assert_eq!(
+            metadata.display_value(0, &game, ListColumn::Series, &overrides),
+            "Chozo Saga"
+        );
+        assert_eq!(
+            metadata.display_value(0, &game, ListColumn::Region, &overrides),
+            "North America"
+        );
+        assert_eq!(
+            metadata.display_value(0, &game, ListColumn::Version, &overrides),
+            "Rev 2"
+        );
+        assert!(metadata.matches_search(0, &game, &overrides, "chozo"));
+        assert_eq!(game.id, "game");
+    }
+
+    #[test]
+    fn explicit_sort_title_can_be_replaced_or_cleared_without_changing_identity() {
+        let mut builder = ListMetadataBuilder::with_capacity(1);
+        builder
+            .push(MetadataInput {
+                sort_title: Some("Canonical ordering".into()),
+                ..MetadataInput::default()
+            })
+            .unwrap();
+        let metadata = builder.finish();
+        let mut game = game("game");
+        game.title = "The Canonical Title".into();
+
+        let replaced = HashMap::from([(
+            game.id.clone(),
+            GameMetadataOverride {
+                sort_title: Some("Personal ordering".into()),
+                ..GameMetadataOverride::default()
+            },
+        )]);
+        assert!(matches!(
+            metadata.sort_key(0, &game, ListColumn::Title, &replaced),
+            ListSortKey::Text(Some(value)) if value == "personal ordering"
+        ));
+
+        let cleared = HashMap::from([(
+            game.id.clone(),
+            GameMetadataOverride {
+                sort_title: Some(String::new()),
+                title: Some("Display Override".into()),
+                ..GameMetadataOverride::default()
+            },
+        )]);
+        assert!(matches!(
+            metadata.sort_key(0, &game, ListColumn::Title, &cleared),
+            ListSortKey::Text(Some(value)) if value == "display override"
+        ));
         assert_eq!(game.id, "game");
     }
 }

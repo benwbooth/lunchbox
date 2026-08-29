@@ -28,7 +28,7 @@ it between 180 and 400 pixels, or double-click the edge to restore the default.
 The query and width survive restart in the native state database; filtering is
 in memory and persistence is coalesced off the Qt thread.
 
-Switch to List view for a compact, configurable 17-column library. Headers sort
+Switch to List view for a compact, configurable 20-column library. Headers sort
 the full catalog and open searchable exact-value filters with game counts,
 multi-select All/None controls, and clear active-state indicators. These filters
 compose with platform, installed/downloadable, tag, content, and text search;
@@ -59,6 +59,13 @@ other executable content. The complete authoring and safety contract is in
 hotplugging, analog dead zones, deliberate hold-repeat, paging, and Xbox,
 PlayStation, Nintendo, or generic button labels without blocking Qt. Escape or
 the controller's east face button returns to desktop mode.
+
+Game Details includes a durable Release Profile for sort title, series, region,
+play mode, version, and release status. These local presentation values are
+searchable and available as exact list columns, filters, and sorts; Series also
+has a one-click exact browse action. They appear in desktop and Couch Mode while
+the stable game UUID, canonical title, provider matching, downloads, artwork,
+and ROM identity remain unchanged.
 
 Settings can install or refresh the complete official RetroArch Slang and GLSL
 shader collections. The Rust service discovers native RetroArch locations on

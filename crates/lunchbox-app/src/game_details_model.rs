@@ -32,6 +32,12 @@ pub mod qobject {
         #[qproperty(i32, rating_count)]
         #[qproperty(QString, esrb)]
         #[qproperty(QString, release_type)]
+        #[qproperty(QString, sort_title)]
+        #[qproperty(QString, series)]
+        #[qproperty(QString, region)]
+        #[qproperty(QString, play_mode)]
+        #[qproperty(QString, version)]
+        #[qproperty(QString, release_status)]
         #[qproperty(QString, cooperative)]
         #[qproperty(QUrl, catalog_video_url)]
         #[qproperty(QUrl, wikipedia_url)]
@@ -52,6 +58,12 @@ pub mod qobject {
         #[qproperty(QString, metadata_rating)]
         #[qproperty(QString, metadata_esrb)]
         #[qproperty(QString, metadata_release_type)]
+        #[qproperty(QString, metadata_sort_title)]
+        #[qproperty(QString, metadata_series)]
+        #[qproperty(QString, metadata_region)]
+        #[qproperty(QString, metadata_play_mode)]
+        #[qproperty(QString, metadata_version)]
+        #[qproperty(QString, metadata_release_status)]
         #[qproperty(QString, metadata_cooperative)]
         #[qproperty(QString, metadata_notes)]
         #[qproperty(QString, metadata_tags)]
@@ -416,6 +428,12 @@ pub struct GameDetailsModelRust {
     rating_count: i32,
     esrb: QString,
     release_type: QString,
+    sort_title: QString,
+    series: QString,
+    region: QString,
+    play_mode: QString,
+    version: QString,
+    release_status: QString,
     cooperative: QString,
     catalog_video_url: QUrl,
     wikipedia_url: QUrl,
@@ -436,6 +454,12 @@ pub struct GameDetailsModelRust {
     metadata_rating: QString,
     metadata_esrb: QString,
     metadata_release_type: QString,
+    metadata_sort_title: QString,
+    metadata_series: QString,
+    metadata_region: QString,
+    metadata_play_mode: QString,
+    metadata_version: QString,
+    metadata_release_status: QString,
     metadata_cooperative: QString,
     metadata_notes: QString,
     metadata_tags: QString,
@@ -577,6 +601,12 @@ impl Default for GameDetailsModelRust {
             rating_count: 0,
             esrb: QString::default(),
             release_type: QString::default(),
+            sort_title: QString::default(),
+            series: QString::default(),
+            region: QString::default(),
+            play_mode: QString::default(),
+            version: QString::default(),
+            release_status: QString::default(),
             cooperative: QString::from("unknown"),
             catalog_video_url: QUrl::default(),
             wikipedia_url: QUrl::default(),
@@ -599,6 +629,12 @@ impl Default for GameDetailsModelRust {
             metadata_rating: QString::default(),
             metadata_esrb: QString::default(),
             metadata_release_type: QString::default(),
+            metadata_sort_title: QString::default(),
+            metadata_series: QString::default(),
+            metadata_region: QString::default(),
+            metadata_play_mode: QString::default(),
+            metadata_version: QString::default(),
+            metadata_release_status: QString::default(),
             metadata_cooperative: QString::from("unknown"),
             metadata_notes: QString::default(),
             metadata_tags: QString::default(),
@@ -1126,6 +1162,16 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_metadata_release_type(qstring(&metadata.release_type));
         self.as_mut()
+            .set_metadata_sort_title(qstring(&metadata.sort_title));
+        self.as_mut().set_metadata_series(qstring(&metadata.series));
+        self.as_mut().set_metadata_region(qstring(&metadata.region));
+        self.as_mut()
+            .set_metadata_play_mode(qstring(&metadata.play_mode));
+        self.as_mut()
+            .set_metadata_version(qstring(&metadata.version));
+        self.as_mut()
+            .set_metadata_release_status(qstring(&metadata.release_status));
+        self.as_mut()
             .set_metadata_cooperative(qstring(&metadata.cooperative));
         self.as_mut().set_metadata_notes(qstring(&metadata.notes));
         let tags = self.as_ref().rust().current_tags.join(", ");
@@ -1209,6 +1255,42 @@ impl qobject::GameDetailsModel {
             release_type: self
                 .as_ref()
                 .metadata_release_type()
+                .to_string()
+                .trim()
+                .to_owned(),
+            sort_title: self
+                .as_ref()
+                .metadata_sort_title()
+                .to_string()
+                .trim()
+                .to_owned(),
+            series: self
+                .as_ref()
+                .metadata_series()
+                .to_string()
+                .trim()
+                .to_owned(),
+            region: self
+                .as_ref()
+                .metadata_region()
+                .to_string()
+                .trim()
+                .to_owned(),
+            play_mode: self
+                .as_ref()
+                .metadata_play_mode()
+                .to_string()
+                .trim()
+                .to_owned(),
+            version: self
+                .as_ref()
+                .metadata_version()
+                .to_string()
+                .trim()
+                .to_owned(),
+            release_status: self
+                .as_ref()
+                .metadata_release_status()
                 .to_string()
                 .trim()
                 .to_owned(),
@@ -1360,6 +1442,13 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_esrb(qstring(&effective.esrb));
                 self.as_mut()
                     .set_release_type(qstring(&effective.release_type));
+                self.as_mut().set_sort_title(qstring(&effective.sort_title));
+                self.as_mut().set_series(qstring(&effective.series));
+                self.as_mut().set_region(qstring(&effective.region));
+                self.as_mut().set_play_mode(qstring(&effective.play_mode));
+                self.as_mut().set_version(qstring(&effective.version));
+                self.as_mut()
+                    .set_release_status(qstring(&effective.release_status));
                 self.as_mut()
                     .set_cooperative(qstring(&effective.cooperative));
                 self.as_mut().set_notes(qstring(&effective.notes));
@@ -1582,6 +1671,12 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_rating_count(0);
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
+        self.as_mut().set_sort_title(QString::default());
+        self.as_mut().set_series(QString::default());
+        self.as_mut().set_region(QString::default());
+        self.as_mut().set_play_mode(QString::default());
+        self.as_mut().set_version(QString::default());
+        self.as_mut().set_release_status(QString::default());
         self.as_mut().set_cooperative(qstring("unknown"));
         self.as_mut().set_catalog_video_url(QUrl::default());
         self.as_mut().set_wikipedia_url(QUrl::default());
@@ -1728,6 +1823,13 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_esrb(qstring(&details.esrb));
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
+                self.as_mut().set_sort_title(qstring(&details.sort_title));
+                self.as_mut().set_series(qstring(&details.series));
+                self.as_mut().set_region(qstring(&details.region));
+                self.as_mut().set_play_mode(qstring(&details.play_mode));
+                self.as_mut().set_version(qstring(&details.version));
+                self.as_mut()
+                    .set_release_status(qstring(&details.release_status));
                 self.as_mut().set_cooperative(qstring(&details.cooperative));
                 self.as_mut()
                     .set_catalog_video_url(catalog_url(&details.catalog_video_url));
