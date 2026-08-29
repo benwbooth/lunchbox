@@ -305,8 +305,11 @@ Play activity is stored by the same stable game UUID. Lunchbox starts a durable
 session only after an emulator process exists, records play count and last-played
 immediately, then adds measured elapsed time exactly once when that process
 exits. The details pane shows plays, time, recency, and editable completion state;
-Recently Played stays composable with search and platform navigation. Unfinished
-rows remain auditable after interruption instead of guessing play time.
+its bounded session-history dialog shows newest-first launch timestamps, exact
+emulator, duration, and completed/interrupted/failed/in-progress outcome filters
+without loading an unbounded model on the Qt thread. Recently Played stays
+composable with search and platform navigation. Unfinished rows remain auditable
+after interruption instead of guessing play time.
 
 Cached gameplay videos and manuals now appear in a native `Game Media` card.
 Rust accepts only canonicalized, non-empty files inside the configured media

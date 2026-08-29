@@ -78,6 +78,8 @@ pub mod qobject {
         #[qproperty(QString, last_played)]
         #[qproperty(QString, completion_state)]
         #[qproperty(i32, activity_revision)]
+        #[qproperty(i32, session_count)]
+        #[qproperty(i32, session_history_revision)]
         #[qproperty(bool, local)]
         #[qproperty(bool, downloadable)]
         #[qproperty(bool, preparable)]
@@ -147,6 +149,24 @@ pub mod qobject {
 
         #[qinvokable]
         fn tag_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn session_started_epoch_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn session_emulator_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn session_duration_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn session_outcome_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn session_outcome_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn report_session_history_probe(self: &GameDetailsModel);
 
         #[qinvokable]
         fn load_bundle_files(self: Pin<&mut GameDetailsModel>, index: i32);
@@ -315,7 +335,7 @@ use crate::game_details::{
     self, AlternateTitle, GameDetails, GameVariant, MinervaBundle, ReleasePreferences,
     TorrentFileCandidate,
 };
-use crate::settings::{GameMetadata, GameMetadataOverride, SettingsStore};
+use crate::settings::{GameMetadata, GameMetadataOverride, PlaySession, SettingsStore};
 
 pub struct GameDetailsModelRust {
     panel_open: bool,
@@ -386,6 +406,8 @@ pub struct GameDetailsModelRust {
     last_played: QString,
     completion_state: QString,
     activity_revision: i32,
+    session_count: i32,
+    session_history_revision: i32,
     local: bool,
     downloadable: bool,
     preparable: bool,
@@ -431,6 +453,7 @@ pub struct GameDetailsModelRust {
     effective_metadata: GameMetadata,
     metadata_generation: u64,
     current_tags: Vec<String>,
+    sessions: Vec<PlaySession>,
     bundles: Vec<MinervaBundle>,
     variants: Vec<GameVariant>,
     alternate_titles: Vec<AlternateTitle>,
@@ -525,6 +548,8 @@ impl Default for GameDetailsModelRust {
             last_played: QString::from("Never"),
             completion_state: QString::from("not_started"),
             activity_revision: 0,
+            session_count: 0,
+            session_history_revision: 0,
             local: false,
             downloadable: false,
             preparable: false,
@@ -570,6 +595,7 @@ impl Default for GameDetailsModelRust {
             effective_metadata: GameMetadata::default(),
             metadata_generation: 0,
             current_tags: Vec::new(),
+            sessions: Vec::new(),
             bundles: Vec::new(),
             variants: Vec::new(),
             alternate_titles: Vec::new(),
@@ -713,6 +739,35 @@ fn format_last_played(timestamp: i64) -> String {
         3_600..=86_399 => format!("{} hr ago", elapsed / 3_600),
         86_400..=172_799 => "Yesterday".to_owned(),
         _ => format!("{} days ago", elapsed / 86_400),
+    }
+}
+
+fn format_session_duration(seconds: i64, outcome: &str) -> String {
+    if outcome == "running" {
+        return "In progress".to_owned();
+    }
+    let seconds = u64::try_from(seconds).unwrap_or_default();
+    if seconds < 60 {
+        return "Under 1 min".to_owned();
+    }
+    let hours = seconds / 3_600;
+    let minutes = (seconds % 3_600) / 60;
+    if hours == 0 {
+        format!("{minutes} min")
+    } else if minutes == 0 {
+        format!("{hours} hr")
+    } else {
+        format!("{hours} hr {minutes} min")
+    }
+}
+
+fn session_outcome_label(outcome: &str) -> &'static str {
+    match outcome {
+        "completed" => "Completed",
+        "failed" => "Failed",
+        "terminated" => "Interrupted",
+        "running" => "In progress",
+        _ => "Unknown",
     }
 }
 
@@ -1118,6 +1173,62 @@ impl qobject::GameDetailsModel {
             .unwrap_or_default()
     }
 
+    pub fn session_started_epoch_at(&self, index: i32) -> QString {
+        self.session(index)
+            .map(|session| qstring(session.started_at.to_string()))
+            .unwrap_or_default()
+    }
+
+    pub fn session_emulator_at(&self, index: i32) -> QString {
+        self.session(index)
+            .map(|session| qstring(&session.emulator))
+            .unwrap_or_default()
+    }
+
+    pub fn session_duration_at(&self, index: i32) -> QString {
+        self.session(index)
+            .map(|session| {
+                qstring(format_session_duration(
+                    session.duration_seconds,
+                    &session.outcome,
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn session_outcome_at(&self, index: i32) -> QString {
+        self.session(index)
+            .map(|session| qstring(&session.outcome))
+            .unwrap_or_default()
+    }
+
+    pub fn session_outcome_label_at(&self, index: i32) -> QString {
+        self.session(index)
+            .map(|session| qstring(session_outcome_label(&session.outcome)))
+            .unwrap_or_default()
+    }
+
+    pub fn report_session_history_probe(&self) {
+        if has_cli_flag("--activity-history-ui-probe") {
+            println!(
+                "LUNCHBOX_ACTIVITY_HISTORY_UI_READY sessions={} outcomes={}",
+                self.rust().sessions.len(),
+                self.rust()
+                    .sessions
+                    .iter()
+                    .map(|session| session.outcome.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+        }
+    }
+
+    fn session(&self, index: i32) -> Option<&PlaySession> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().sessions.get(index))
+    }
+
     fn clear_details(mut self: Pin<&mut Self>) {
         self.as_mut().set_description(QString::default());
         self.as_mut().set_release_date(QString::default());
@@ -1162,6 +1273,10 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_play_time(qstring("Never played"));
         self.as_mut().set_last_played(qstring("Never"));
         self.as_mut().set_completion_state(qstring("not_started"));
+        self.as_mut().rust_mut().sessions.clear();
+        self.as_mut().set_session_count(0);
+        let session_revision = self.as_ref().session_history_revision().wrapping_add(1);
+        self.as_mut().set_session_history_revision(session_revision);
         self.as_mut().set_preparable(false);
         self.as_mut().set_prepared(false);
         self.as_mut().set_preparation_phase(QString::default());
@@ -1210,6 +1325,7 @@ impl qobject::GameDetailsModel {
         match loaded {
             Ok(details) => {
                 let activity = details.activity.clone();
+                let sessions = details.sessions.clone();
                 let supplemental_media = details.supplemental_media.clone();
                 let video_media_key = details.video_media_key.clone();
                 let video_progress = details.video_progress.clone();
@@ -1277,6 +1393,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_local(details.local);
                 self.as_mut().set_downloadable(details.downloadable);
                 self.as_mut().apply_play_activity(activity, details.local);
+                self.as_mut().apply_play_sessions(sessions);
                 self.as_mut().rust_mut().local_file_path = details.local_file_path;
                 self.as_mut().rust_mut().local_file_paths = local_file_paths;
                 self.as_mut()
@@ -1304,9 +1421,13 @@ impl qobject::GameDetailsModel {
                     self.as_mut().refresh_emulators();
                 }
             }
-            Err(error) => self
-                .as_mut()
-                .set_message(qstring(format!("Could not load game details: {error}"))),
+            Err(error) => {
+                if has_cli_flag("--activity-history-ui-probe") {
+                    eprintln!("LUNCHBOX_ACTIVITY_HISTORY_MODEL_FAILED error={error}");
+                }
+                self.as_mut()
+                    .set_message(qstring(format!("Could not load game details: {error}")));
+            }
         }
     }
 
@@ -1334,6 +1455,25 @@ impl qobject::GameDetailsModel {
             self.as_mut().set_last_played(qstring("Never"));
             self.as_mut().set_completion_state(qstring("not_started"));
         }
+    }
+
+    fn apply_play_sessions(mut self: Pin<&mut Self>, sessions: Vec<PlaySession>) {
+        let count = sessions.len();
+        if has_cli_flag("--activity-history-ui-probe") {
+            println!(
+                "LUNCHBOX_ACTIVITY_HISTORY_MODEL_READY sessions={} outcomes={}",
+                count,
+                sessions
+                    .iter()
+                    .map(|session| session.outcome.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+        }
+        self.as_mut().rust_mut().sessions = sessions;
+        self.as_mut().set_session_count(count_i32(count));
+        let revision = self.as_ref().session_history_revision().wrapping_add(1);
+        self.as_mut().set_session_history_revision(revision);
     }
 
     fn apply_supplemental_media(
@@ -1787,7 +1927,12 @@ impl qobject::GameDetailsModel {
             .name("lunchbox-play-activity-load".into())
             .spawn(move || {
                 let result = crate::settings::SettingsStore::open_default()
-                    .and_then(|store| store.play_activity(&game_id))
+                    .and_then(|store| {
+                        Ok((
+                            store.play_activity(&game_id)?,
+                            store.play_sessions(&game_id, 200)?,
+                        ))
+                    })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_play_activity_reload(
@@ -1812,7 +1957,7 @@ impl qobject::GameDetailsModel {
         details_generation: u64,
         completed_game_id: String,
         notify_library: bool,
-        result: Result<Option<crate::settings::PlayActivity>, String>,
+        result: Result<(Option<crate::settings::PlayActivity>, Vec<PlaySession>), String>,
     ) {
         if generation != self.as_ref().rust().activity_load_generation
             || details_generation != self.as_ref().rust().details_generation
@@ -1821,7 +1966,7 @@ impl qobject::GameDetailsModel {
             return;
         }
         match result {
-            Ok(activity) => {
+            Ok((activity, sessions)) => {
                 if is_emulator_launch_probe()
                     && let Some(activity) = activity.as_ref()
                 {
@@ -1839,6 +1984,7 @@ impl qobject::GameDetailsModel {
                 }
                 let local = *self.as_ref().local();
                 self.as_mut().apply_play_activity(activity, local);
+                self.as_mut().apply_play_sessions(sessions);
                 if notify_library {
                     let revision = self.as_ref().activity_revision().wrapping_add(1);
                     self.as_mut().set_activity_revision(revision);
@@ -3787,7 +3933,8 @@ fn queue_download(
 mod tests {
     use super::{
         LaunchProfileTarget, format_last_played, format_play_time, format_release_date,
-        metadata_save_messages, validate_launch_profile_template,
+        format_session_duration, metadata_save_messages, session_outcome_label,
+        validate_launch_profile_template,
     };
 
     #[test]
@@ -3799,6 +3946,12 @@ mod tests {
         assert_eq!(format_play_time(3_600, 1), "1 hr");
         assert_eq!(format_play_time(3_900, 1), "1 hr 5 min");
         assert_eq!(format_last_played(0), "Never");
+        assert_eq!(format_session_duration(0, "running"), "In progress");
+        assert_eq!(format_session_duration(30, "failed"), "Under 1 min");
+        assert_eq!(format_session_duration(845, "terminated"), "14 min");
+        assert_eq!(format_session_duration(3_723, "completed"), "1 hr 2 min");
+        assert_eq!(session_outcome_label("terminated"), "Interrupted");
+        assert_eq!(session_outcome_label("failed"), "Failed");
         assert_eq!(
             format_release_date("1985-09-13T00:00:00+00:00"),
             "Sep 13, 1985"

@@ -54,6 +54,7 @@ pub struct GameDetails {
     pub local_file_paths: Vec<PathBuf>,
     pub prepared_install: Option<PreparedInstall>,
     pub activity: Option<crate::settings::PlayActivity>,
+    pub sessions: Vec<crate::settings::PlaySession>,
     pub supplemental_media: crate::media::SupplementalMedia,
     pub video_media_key: String,
     pub video_progress: Option<crate::settings::MediaPlaybackProgress>,
@@ -141,9 +142,13 @@ pub fn load(
         downloadable,
         ..GameDetails::default()
     };
-    details.activity = crate::settings::SettingsStore::open_default()?
+    let settings_store = crate::settings::SettingsStore::open_default()?;
+    details.activity = settings_store
         .play_activity(id)
         .context("loading play activity")?;
+    details.sessions = settings_store
+        .play_sessions(id, 200)
+        .context("loading play-session history")?;
 
     if let Some(local_file_id) = id.strip_prefix("local-file:") {
         let state_path = crate::settings::state_database_path()?;

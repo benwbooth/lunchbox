@@ -504,6 +504,15 @@ its focused editor, and uses the same absolute screenshot argument to capture
 the virtualized manager body before exiting.
 `--activity-ui-probe` opens that persisted identity in the native Recently
 Played view with its statistics and completion picker visible.
+`--activity-history-ui-probe --state-database EMPTY_PATH` refuses the default
+profile, idempotently seeds four exact Super Mario Bros. sessions into the
+isolated SQLite state, and opens the real Game Details model against the full
+discovery catalog. It verifies newest-first completed/interrupted/failed order,
+the failed-only filter, aggregate play count, and bounded native accessors.
+Adding `--screenshot-output ABSOLUTE_PATH` captures the 920-by-760 dialog after
+Qt renders its localized timestamps, emulator names, durations, badges, filter
+counts, and virtualized rows, then prints
+`LUNCHBOX_ACTIVITY_HISTORY_UI_READY` and exits.
 `--media-bundle-probe --media-directory PATH --state-database EMPTY_PATH`
 opens the preserved Super Mario Bros. identity, discovers its exact cached
 video and manual below the configured media root, waits for Qt Multimedia to

@@ -58,6 +58,13 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--activity-history-ui-probe")
+        && let Err(error) = settings::seed_activity_history_probe()
+    {
+        eprintln!("LUNCHBOX_ACTIVITY_HISTORY_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
     if std::env::args().any(|argument| argument == "--library-audit-fixture") {
         return match library_audit::library_audit_fixture_probe() {
             Ok(evidence) => {

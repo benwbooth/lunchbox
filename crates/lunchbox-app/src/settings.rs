@@ -491,6 +491,20 @@ pub struct PlaySessionStart {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlaySession {
+    pub id: String,
+    pub game_uid: String,
+    pub launchbox_db_id: i64,
+    pub title: String,
+    pub platform: String,
+    pub emulator: String,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+    pub duration_seconds: i64,
+    pub outcome: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MediaPlaybackProgress {
     pub game_uid: String,
     pub media_key: String,
@@ -1493,6 +1507,39 @@ impl SettingsStore {
              ORDER BY game_uid",
         )?;
         let rows = statement.query_map([], play_activity_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn play_sessions(&self, game_uid: &str, limit: usize) -> Result<Vec<PlaySession>> {
+        if game_uid.trim().is_empty() {
+            bail!("a stable game identity is required to load play sessions");
+        }
+        if !(1..=500).contains(&limit) {
+            bail!("play-session history limit must be between 1 and 500");
+        }
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, game_uid, launchbox_db_id, title, platform, emulator,
+                    started_at, ended_at, duration_seconds, outcome
+             FROM play_sessions
+             WHERE game_uid=?1
+             ORDER BY started_at DESC, id DESC
+             LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![game_uid, limit as i64], |row| {
+            Ok(PlaySession {
+                id: row.get(0)?,
+                game_uid: row.get(1)?,
+                launchbox_db_id: row.get(2)?,
+                title: row.get(3)?,
+                platform: row.get(4)?,
+                emulator: row.get(5)?,
+                started_at: row.get(6)?,
+                ended_at: row.get(7)?,
+                duration_seconds: row.get(8)?,
+                outcome: row.get(9)?,
+            })
+        })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
@@ -2950,6 +2997,107 @@ pub fn state_database_path() -> Result<PathBuf> {
     ProjectDirs::from("com", "Lunchbox", "Lunchbox")
         .map(|dirs| dirs.data_local_dir().join("state.db"))
         .context("could not determine the operating system application data directory")
+}
+
+pub(crate) fn seed_activity_history_probe() -> Result<()> {
+    let path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
+        .filter(|path| !path.as_os_str().is_empty())
+        .context(
+            "the activity-history UI probe requires an explicit --state-database or LUNCHBOX_STATE_DATABASE",
+        )?;
+    seed_activity_history_probe_at(&path)
+}
+
+fn seed_activity_history_probe_at(path: &Path) -> Result<()> {
+    const GAME_UID: &str = "9697a5eb-e0b4-4f24-8d43-672701414ee7";
+    const TITLE: &str = "Super Mario Bros.";
+    const PLATFORM: &str = "Nintendo Entertainment System";
+    const DATABASE_ID: i64 = 140;
+
+    let now = unix_timestamp();
+    let rows = [
+        (
+            "activity-history-probe-completed-recent",
+            now.saturating_sub(20 * 60 + 3_723),
+            3_723,
+            "completed",
+            "RetroArch · Mesen",
+        ),
+        (
+            "activity-history-probe-terminated",
+            now.saturating_sub(2 * 86_400 + 845),
+            845,
+            "terminated",
+            "Mesen",
+        ),
+        (
+            "activity-history-probe-failed",
+            now.saturating_sub(5 * 86_400 + 124),
+            124,
+            "failed",
+            "RetroArch · Nestopia UE",
+        ),
+        (
+            "activity-history-probe-completed-oldest",
+            now.saturating_sub(10 * 86_400 + 7_200),
+            7_200,
+            "completed",
+            "RetroArch · Mesen",
+        ),
+    ];
+    let store = SettingsStore::at(path)?;
+    let mut connection = store.connection()?;
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO game_activity (
+             game_uid, launchbox_db_id, title, platform, play_count,
+             total_play_time_seconds, last_played_at, first_played_at,
+             completion_state
+         ) VALUES (?1, ?2, ?3, ?4, 4, 11892, ?5, ?6, 'in_progress')
+         ON CONFLICT(game_uid) DO UPDATE SET
+             launchbox_db_id=excluded.launchbox_db_id,
+             title=excluded.title,
+             platform=excluded.platform,
+             play_count=excluded.play_count,
+             total_play_time_seconds=excluded.total_play_time_seconds,
+             last_played_at=excluded.last_played_at,
+             first_played_at=excluded.first_played_at,
+             completion_state=excluded.completion_state",
+        params![GAME_UID, DATABASE_ID, TITLE, PLATFORM, rows[0].1, rows[3].1,],
+    )?;
+    for (id, started_at, duration_seconds, outcome, emulator) in rows.iter().copied() {
+        let ended_at = started_at.saturating_add(duration_seconds);
+        transaction.execute(
+            "INSERT INTO play_sessions (
+                 id, game_uid, launchbox_db_id, title, platform, emulator,
+                 started_at, ended_at, duration_seconds, outcome
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET
+                 game_uid=excluded.game_uid,
+                 launchbox_db_id=excluded.launchbox_db_id,
+                 title=excluded.title,
+                 platform=excluded.platform,
+                 emulator=excluded.emulator,
+                 started_at=excluded.started_at,
+                 ended_at=excluded.ended_at,
+                 duration_seconds=excluded.duration_seconds,
+                 outcome=excluded.outcome",
+            params![
+                id,
+                GAME_UID,
+                DATABASE_ID,
+                TITLE,
+                PLATFORM,
+                emulator,
+                started_at,
+                ended_at,
+                duration_seconds,
+                outcome,
+            ],
+        )?;
+    }
+    transaction.commit()?;
+    Ok(())
 }
 
 pub fn load_password() -> Result<Option<String>> {
@@ -5322,6 +5470,18 @@ mod tests {
         assert!(activity.last_played_at >= activity.first_played_at);
         assert_eq!(store.all_play_activity().unwrap(), vec![activity]);
 
+        let sessions = store.play_sessions("game-1", 200).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, session.session_id);
+        assert_eq!(sessions[0].game_uid, "game-1");
+        assert_eq!(sessions[0].emulator, "RetroArch · fceumm");
+        assert_eq!(sessions[0].duration_seconds, 93);
+        assert_eq!(sessions[0].outcome, "completed");
+        assert!(sessions[0].ended_at.is_some());
+        assert!(store.play_sessions("", 200).is_err());
+        assert!(store.play_sessions("game-1", 0).is_err());
+        assert!(store.play_sessions("game-1", 501).is_err());
+
         assert!(
             store
                 .set_completion_state(
@@ -5338,6 +5498,44 @@ mod tests {
                 .finish_play_session(&session.session_id, 0, "unknown")
                 .is_err()
         );
+    }
+
+    #[test]
+    fn activity_history_probe_is_bounded_ordered_and_idempotent() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        seed_activity_history_probe_at(&path).unwrap();
+        seed_activity_history_probe_at(&path).unwrap();
+
+        let store = SettingsStore::at(path).unwrap();
+        let sessions = store
+            .play_sessions("9697a5eb-e0b4-4f24-8d43-672701414ee7", 200)
+            .unwrap();
+        assert_eq!(sessions.len(), 4);
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| session.outcome.as_str())
+                .collect::<Vec<_>>(),
+            vec!["completed", "terminated", "failed", "completed"]
+        );
+        assert!(
+            sessions
+                .windows(2)
+                .all(|pair| pair[0].started_at > pair[1].started_at)
+        );
+        assert_eq!(
+            store
+                .play_sessions("9697a5eb-e0b4-4f24-8d43-672701414ee7", 2)
+                .unwrap(),
+            sessions[..2]
+        );
+        let activity = store
+            .play_activity("9697a5eb-e0b4-4f24-8d43-672701414ee7")
+            .unwrap()
+            .unwrap();
+        assert_eq!(activity.play_count, 4);
+        assert_eq!(activity.total_play_time_seconds, 11_892);
     }
 
     #[test]

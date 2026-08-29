@@ -94,7 +94,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   missing.
 - Stable-UUID play activity with durable per-launch sessions, exactly-once
   elapsed-time finalization, count/time/last-played statistics, editable
-  completion state, and a live Recently Played view.
+  completion state, and a live Recently Played view. Game Details also exposes
+  a bounded newest-first session inspector with localized timestamps, exact
+  emulator identity, duration, outcome badges, keyboard-accessible outcome
+  filters, an empty state, and a virtualized list that refreshes after launch.
 - Linux Nix package plus host-neutral Rust path handling for Linux, macOS, and
   Windows.
 - Native Emulator Manager with host-scoped exact package identities, off-thread
@@ -139,8 +142,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   atomic metadata/tag saves, clickable details chips, exact library filtering,
   text search, and exact smart-collection rules all share the same indexed state.
 - Extend the implemented stable-UUID game metadata overlay editor with release-
-  specific editing, custom fields, playlist-specific presentation, and a richer
-  session-history inspector beyond the implemented activity summary.
+  specific editing, custom fields, and playlist-specific presentation.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
 - Fast metadata bulk editing, collection audits, and whole-profile backup/restore.

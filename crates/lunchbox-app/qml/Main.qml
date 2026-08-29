@@ -14,13 +14,13 @@ ApplicationWindow {
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
-           || manualTorrentUiProbe || sidebarUiProbe
+           || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
-            || manualTorrentUiProbe || sidebarUiProbe
+            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -195,6 +195,7 @@ ApplicationWindow {
     readonly property bool firmwareProbe: Qt.application.arguments.indexOf("--firmware-probe") >= 0
     readonly property bool firmwareUiProbe: Qt.application.arguments.indexOf("--firmware-ui-probe") >= 0
     readonly property bool activityUiProbe: Qt.application.arguments.indexOf("--activity-ui-probe") >= 0
+    readonly property bool activityHistoryUiProbe: Qt.application.arguments.indexOf("--activity-history-ui-probe") >= 0
     readonly property bool mediaBundleProbe: Qt.application.arguments.indexOf("--media-bundle-probe") >= 0
     readonly property bool mediaBundleUiProbe: Qt.application.arguments.indexOf("--media-bundle-ui-probe") >= 0
     readonly property bool manualDownloadUiProbe: Qt.application.arguments.indexOf("--manual-download-ui-probe") >= 0
@@ -211,6 +212,7 @@ ApplicationWindow {
     property string variantProbeExpectedId: ""
     property int metadataProbeStage: 0
     property int tagsProbeStage: 0
+    property bool activityHistoryProbeOpened: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
 
     palette.window: "#0c1119"
@@ -1511,6 +1513,11 @@ ApplicationWindow {
                 root.metadataProbeStage = 1
                 metadataEditorOpenTimer.restart()
             }
+            if (root.activityHistoryUiProbe
+                    && !root.activityHistoryProbeOpened
+                    && !gameDetails.loading
+                    && gameDetails.game_id.length > 0)
+                activityHistoryOpenTimer.restart()
         }
         function onTitleChanged() {
             if (root.couchModeUiProbe && root.couchModeActive
@@ -2789,6 +2796,10 @@ ApplicationWindow {
                      || root.launchProfileUiProbe)
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)
+            else if (root.activityHistoryUiProbe)
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
             else if (root.activityUiProbe)
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)
@@ -5554,6 +5565,42 @@ ApplicationWindow {
                                         border.color: completionPicker.activeFocus
                                                       ? root.accent : root.line
                                     }
+                                }
+                            }
+
+                            Button {
+                                id: sessionHistoryButton
+                                width: parent.width
+                                height: 38
+                                enabled: gameDetails.session_count > 0
+                                text: gameDetails.session_count > 0
+                                      ? "VIEW " + gameDetails.session_count
+                                        + (gameDetails.session_count === 1
+                                           ? " SESSION" : " SESSIONS")
+                                      : "NO SESSION RECORDS"
+                                Accessible.name: enabled
+                                                 ? "View play-session history"
+                                                 : "No play-session history"
+                                onClicked: {
+                                    activityHistoryDialog.outcomeFilter = "all"
+                                    activityHistoryDialog.open()
+                                }
+                                contentItem: Text {
+                                    text: sessionHistoryButton.text
+                                    color: sessionHistoryButton.enabled
+                                           ? root.accentCool : root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.8
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 8
+                                    color: sessionHistoryButton.down
+                                           ? "#233446" : "#101721"
+                                    border.color: sessionHistoryButton.activeFocus
+                                                  ? root.accentCool : root.line
                                 }
                             }
                         }
@@ -13982,6 +14029,420 @@ ApplicationWindow {
                         }
                     }
                     Item { width: 1; height: 14 }
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: activityHistoryOpenTimer
+        interval: 80
+        repeat: false
+        onTriggered: {
+            if (!root.activityHistoryUiProbe || root.activityHistoryProbeOpened)
+                return
+            if (gameDetails.session_count !== 4
+                    || gameDetails.play_count !== 4
+                    || gameDetails.session_outcome_at(0) !== "completed"
+                    || gameDetails.session_outcome_at(1) !== "terminated"
+                    || gameDetails.session_outcome_at(2) !== "failed"
+                    || gameDetails.session_outcome_at(3) !== "completed") {
+                console.warn("LUNCHBOX_ACTIVITY_HISTORY_UI_FAILED history count="
+                              + gameDetails.session_count + " plays="
+                              + gameDetails.play_count + " outcomes="
+                              + gameDetails.session_outcome_at(0) + ","
+                              + gameDetails.session_outcome_at(1) + ","
+                              + gameDetails.session_outcome_at(2) + ","
+                              + gameDetails.session_outcome_at(3))
+                Qt.exit(2)
+                return
+            }
+            activityHistoryDialog.outcomeFilter = "failed"
+            if (activityHistoryDialog.filteredRows.length !== 1
+                    || activityHistoryDialog.filteredRows[0] !== 2) {
+                console.warn("LUNCHBOX_ACTIVITY_HISTORY_UI_FAILED filter rows="
+                              + activityHistoryDialog.filteredRows)
+                Qt.exit(2)
+                return
+            }
+            activityHistoryDialog.outcomeFilter = "all"
+            root.activityHistoryProbeOpened = true
+            activityHistoryDialog.open()
+            activityHistoryScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: activityHistoryScreenshotTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            if (root.screenshotOutput.length === 0) {
+                gameDetails.report_session_history_probe()
+                Qt.quit()
+                return
+            }
+            activityHistoryDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.warn("LUNCHBOX_ACTIVITY_HISTORY_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                gameDetails.report_session_history_probe()
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 12000
+        running: root.activityHistoryUiProbe
+        repeat: false
+        onTriggered: {
+            console.warn("LUNCHBOX_ACTIVITY_HISTORY_UI_FAILED timeout game="
+                          + gameDetails.game_id + " message=" + gameDetails.message)
+            Qt.exit(2)
+        }
+    }
+
+    Dialog {
+        id: activityHistoryDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(parent.width - 80, 920)
+        height: Math.min(parent.height - 100, 760)
+        padding: 0
+        property string outcomeFilter: "all"
+        readonly property int historyRevision: gameDetails.session_history_revision
+        readonly property var filteredRows: {
+            const revision = historyRevision
+            const rows = []
+            for (let index = 0; index < gameDetails.session_count; ++index) {
+                const outcome = gameDetails.session_outcome_at(index)
+                if (outcomeFilter === "all" || outcome === outcomeFilter)
+                    rows.push(index)
+            }
+            return rows
+        }
+
+        function filterCount(filter) {
+            historyRevision
+            if (filter === "all")
+                return gameDetails.session_count
+            let count = 0
+            for (let index = 0; index < gameDetails.session_count; ++index) {
+                if (gameDetails.session_outcome_at(index) === filter)
+                    ++count
+            }
+            return count
+        }
+
+        function outcomeColor(outcome) {
+            if (outcome === "completed")
+                return root.accentCool
+            if (outcome === "failed")
+                return "#ff8b8b"
+            if (outcome === "terminated")
+                return root.accent
+            return "#8ab4f8"
+        }
+
+        function sessionTimestamp(epochText) {
+            const epoch = Number(epochText)
+            if (!isFinite(epoch) || epoch <= 0)
+                return "Unknown time"
+            return new Date(epoch * 1000).toLocaleString(
+                        Qt.locale(), Locale.ShortFormat)
+        }
+
+        onOpened: historyCloseButton.forceActiveFocus()
+
+        background: Rectangle {
+            radius: 18
+            color: "#101721"
+            border.color: "#3a465a"
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 116
+                color: "#151f2c"
+                radius: 18
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 18
+                    color: parent.color
+                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 24
+                    anchors.rightMargin: 24
+                    spacing: 18
+                    Rectangle {
+                        Layout.preferredWidth: 58
+                        Layout.preferredHeight: 58
+                        radius: 14
+                        color: "#202d3d"
+                        border.color: root.accentCool
+                        Text {
+                            anchors.centerIn: parent
+                            text: "▶"
+                            color: root.accentCool
+                            font.pixelSize: 22
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Text {
+                            Layout.fillWidth: true
+                            text: "PLAY SESSION HISTORY"
+                            color: root.accentCool
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.3
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: gameDetails.title
+                            color: root.ink
+                            font.pixelSize: 24
+                            font.weight: Font.Bold
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: gameDetails.platform + " · "
+                                  + gameDetails.session_count + " recorded "
+                                  + (gameDetails.session_count === 1
+                                     ? "session" : "sessions")
+                            color: root.muted
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Column {
+                        spacing: 2
+                        Text {
+                            anchors.right: parent.right
+                            text: gameDetails.play_time
+                            color: root.ink
+                            font.pixelSize: 19
+                            font.weight: Font.Bold
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            text: "TOTAL PLAY TIME"
+                            color: root.muted
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 68
+                color: "#101721"
+                border.color: root.line
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 24
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    Repeater {
+                        model: [
+                            { "key": "all", "label": "All" },
+                            { "key": "completed", "label": "Completed" },
+                            { "key": "terminated", "label": "Interrupted" },
+                            { "key": "failed", "label": "Failed" },
+                            { "key": "running", "label": "In progress" }
+                        ]
+                        delegate: Button {
+                            id: historyFilterButton
+                            required property var modelData
+                            height: 34
+                            width: historyFilterLabel.implicitWidth + 28
+                            checkable: true
+                            checked: activityHistoryDialog.outcomeFilter
+                                     === modelData.key
+                            text: modelData.label + "  "
+                                  + activityHistoryDialog.filterCount(modelData.key)
+                            Accessible.name: "Show " + modelData.label
+                                             + " play sessions"
+                            onClicked: activityHistoryDialog.outcomeFilter = modelData.key
+                            contentItem: Text {
+                                id: historyFilterLabel
+                                text: historyFilterButton.text
+                                color: historyFilterButton.checked
+                                       ? "#102229" : root.muted
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: 9
+                                color: historyFilterButton.checked
+                                       ? root.accentCool : "#182230"
+                                border.color: historyFilterButton.activeFocus
+                                              ? root.ink : root.line
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                ListView {
+                    id: sessionHistoryList
+                    anchors.fill: parent
+                    anchors.leftMargin: 24
+                    anchors.rightMargin: 24
+                    anchors.topMargin: 12
+                    anchors.bottomMargin: 12
+                    clip: true
+                    spacing: 8
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: activityHistoryDialog.filteredRows
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    delegate: Rectangle {
+                        id: sessionHistoryRow
+                        required property int modelData
+                        readonly property int sourceIndex: modelData
+                        readonly property string outcome:
+                            gameDetails.session_outcome_at(sourceIndex)
+                        width: ListView.view.width
+                        height: 82
+                        radius: 11
+                        color: "#171f2b"
+                        border.color: "#303b4d"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 14
+                            Rectangle {
+                                Layout.preferredWidth: 8
+                                Layout.preferredHeight: 48
+                                radius: 4
+                                color: activityHistoryDialog.outcomeColor(
+                                           sessionHistoryRow.outcome)
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 5
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: activityHistoryDialog.sessionTimestamp(
+                                              gameDetails.session_started_epoch_at(
+                                                  sessionHistoryRow.sourceIndex))
+                                    color: root.ink
+                                    font.pixelSize: 13
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: gameDetails.session_emulator_at(
+                                              sessionHistoryRow.sourceIndex)
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            Text {
+                                Layout.preferredWidth: 110
+                                text: gameDetails.session_duration_at(
+                                          sessionHistoryRow.sourceIndex)
+                                color: root.ink
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                                font.features: { "tnum": 1 }
+                                horizontalAlignment: Text.AlignRight
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 110
+                                Layout.preferredHeight: 28
+                                radius: 8
+                                color: Qt.alpha(
+                                           activityHistoryDialog.outcomeColor(
+                                               sessionHistoryRow.outcome), 0.14)
+                                border.color: activityHistoryDialog.outcomeColor(
+                                                  sessionHistoryRow.outcome)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: gameDetails.session_outcome_label_at(
+                                              sessionHistoryRow.sourceIndex).toUpperCase()
+                                    color: activityHistoryDialog.outcomeColor(
+                                               sessionHistoryRow.outcome)
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.7
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 8
+                    visible: activityHistoryDialog.filteredRows.length === 0
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "No sessions in this view"
+                        color: root.ink
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Choose another outcome filter to see recorded play."
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 62
+                color: "#0e141d"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 24
+                    anchors.rightMargin: 24
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Newest first · exact emulator launch records"
+                        color: "#657186"
+                        font.pixelSize: 9
+                    }
+                    Button {
+                        id: historyCloseButton
+                        text: "Close"
+                        Accessible.name: "Close play-session history"
+                        onClicked: activityHistoryDialog.close()
+                    }
                 }
             }
         }
