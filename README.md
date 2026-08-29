@@ -31,8 +31,11 @@ in memory and persistence is coalesced off the Qt thread.
 The header's Couch Mode control opens a fullscreen, keyboard-and-gamepad
 living-room presentation over those same models. It preserves the exact
 selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent
-views, and routes Play, favorite changes, and download options through the
-existing native services. Couch-native Details and Game Menu overlays keep
+views, plus an exact 191-platform picker with live game counts. The current
+shelf and exact platform survive restart. Keyboard, controller, and pointer
+input share the same picker behavior, and Play, favorite changes, and download
+options route through the existing native services. Couch-native Details and
+Game Menu overlays keep
 browsing on the television while exposing full metadata, activity, launch and
 download state, favorite changes, and an explicit handoff to the complete
 desktop tools without losing the exact game. A native Rust input worker handles

@@ -114,6 +114,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   focus restoration, and controller-family button hints. Couch-native Details
   and Game Menu overlays expose exact metadata, activity, launch/download state,
   favorite mutation, and explicit desktop handoff without losing selection.
+  Its virtualized platform picker browses every catalog platform with live game
+  counts, applies exact platform identity, and durably restores the selected
+  shelf and platform without blocking Qt.
   Linux backend startup and deterministic real-QML routing through both overlays
   are exercised; attached-controller Linux, Windows, and macOS release-host
   certification remains.
@@ -220,7 +223,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend the implemented native Qt Quick Couch Mode browse/play presentation,
   which already shares the Rust models and services rather than creating a
   second database or duplicated backend.
-- Theme packages, platform/game wheels, richer release/media management inside
+- Theme packages, richer game wheels, richer release/media management inside
   the implemented Details and Game Menu overlays, attract mode, startup/shutdown/
   pause screens, screensaver, background music, sound packs, marquee monitor
   support, parental lock, and couch-safe settings.

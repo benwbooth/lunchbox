@@ -58,6 +58,9 @@ pub mod qobject {
         #[qproperty(i32, filtered_platform_count)]
         #[qproperty(i32, sidebar_width)]
         #[qproperty(bool, sidebar_state_saving)]
+        #[qproperty(QString, couch_shelf)]
+        #[qproperty(QString, couch_platform)]
+        #[qproperty(bool, couch_state_saving)]
         #[qproperty(i32, local_file_count)]
         #[qproperty(i32, local_game_count)]
         #[qproperty(i32, offer_count)]
@@ -350,6 +353,13 @@ pub mod qobject {
         fn save_sidebar_state(self: Pin<&mut LibraryModel>, query: QString, width: i32);
 
         #[qinvokable]
+        fn save_couch_state(
+            self: Pin<&mut LibraryModel>,
+            shelf: QString,
+            platform: QString,
+        ) -> bool;
+
+        #[qinvokable]
         fn shell_ready(self: Pin<&mut LibraryModel>);
     }
 
@@ -396,8 +406,8 @@ use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
 use crate::settings::{
-    GameMetadataOverride, LibraryPreferences, PlayActivity, SettingsStore, SidebarPreferences,
-    UserCollection, UserCollections, UserTag, UserTags,
+    CouchModePreferences, GameMetadataOverride, LibraryPreferences, PlayActivity, SettingsStore,
+    SidebarPreferences, UserCollection, UserCollections, UserTag, UserTags,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -406,6 +416,7 @@ type CatalogLoadResult = Result<
         Catalog,
         Result<LibraryPreferences, String>,
         Result<SidebarPreferences, String>,
+        Result<CouchModePreferences, String>,
         Result<HashSet<String>, String>,
         Result<UserCollections, String>,
         Result<Vec<PlayActivity>, String>,
@@ -501,6 +512,9 @@ pub struct LibraryModelRust {
     filtered_platform_count: i32,
     sidebar_width: i32,
     sidebar_state_saving: bool,
+    couch_shelf: QString,
+    couch_platform: QString,
+    couch_state_saving: bool,
     local_file_count: i32,
     local_game_count: i32,
     offer_count: i32,
@@ -558,6 +572,8 @@ pub struct LibraryModelRust {
     collection_started: Option<std::time::Instant>,
     sidebar_save_generation: u64,
     sidebar_save_pending: bool,
+    couch_save_generation: u64,
+    couch_save_pending: bool,
 }
 
 impl Default for LibraryModelRust {
@@ -609,6 +625,9 @@ impl Default for LibraryModelRust {
             filtered_platform_count: 0,
             sidebar_width: SidebarPreferences::default().width,
             sidebar_state_saving: false,
+            couch_shelf: qstring(&CouchModePreferences::default().shelf),
+            couch_platform: QString::default(),
+            couch_state_saving: false,
             local_file_count: 0,
             local_game_count: 0,
             offer_count: 0,
@@ -666,6 +685,8 @@ impl Default for LibraryModelRust {
             collection_started: None,
             sidebar_save_generation: 0,
             sidebar_save_pending: false,
+            couch_save_generation: 0,
+            couch_save_pending: false,
         }
     }
 }
@@ -998,6 +1019,7 @@ impl qobject::LibraryModel {
                         let (
                             preferences,
                             sidebar_preferences,
+                            couch_preferences,
                             favorites,
                             collections,
                             activity,
@@ -1010,6 +1032,9 @@ impl qobject::LibraryModel {
                                     .map_err(|error| error.to_string()),
                                 store
                                     .load_sidebar_preferences()
+                                    .map_err(|error| error.to_string()),
+                                store
+                                    .load_couch_mode_preferences()
                                     .map_err(|error| error.to_string()),
                                 store.favorite_game_ids().map_err(|error| error.to_string()),
                                 store.user_collections().map_err(|error| error.to_string()),
@@ -1028,6 +1053,7 @@ impl qobject::LibraryModel {
                                     Err(error.clone()),
                                     Err(error.clone()),
                                     Err(error.clone()),
+                                    Err(error.clone()),
                                     Err(error),
                                 )
                             }
@@ -1036,6 +1062,7 @@ impl qobject::LibraryModel {
                             catalog,
                             preferences,
                             sidebar_preferences,
+                            couch_preferences,
                             favorites,
                             collections,
                             activity,
@@ -1065,6 +1092,7 @@ impl qobject::LibraryModel {
                 catalog,
                 preferences,
                 sidebar_preferences,
+                couch_preferences,
                 favorites,
                 collections,
                 activity,
@@ -1092,6 +1120,29 @@ impl qobject::LibraryModel {
                             .set_platform_search(qstring(&preferences.platform_search));
                         self.as_mut().set_sidebar_width(preferences.width);
                         None
+                    }
+                    Err(error) => Some(error),
+                };
+                let couch_warning = match couch_preferences {
+                    Ok(preferences) => {
+                        if preferences.shelf == "platform"
+                            && !catalog
+                                .platforms
+                                .iter()
+                                .any(|platform| platform.name == preferences.platform)
+                        {
+                            self.as_mut().set_couch_shelf(qstring("all"));
+                            self.as_mut().set_couch_platform(QString::default());
+                            Some(format!(
+                                "saved platform {} is no longer present in the catalog",
+                                preferences.platform
+                            ))
+                        } else {
+                            self.as_mut().set_couch_shelf(qstring(&preferences.shelf));
+                            self.as_mut()
+                                .set_couch_platform(qstring(&preferences.platform));
+                            None
+                        }
                     }
                     Err(error) => Some(error),
                 };
@@ -1306,6 +1357,9 @@ impl qobject::LibraryModel {
                 }
                 if let Some(warning) = sidebar_warning {
                     status.push_str(&format!(" — sidebar preferences unavailable: {warning}"));
+                }
+                if let Some(warning) = couch_warning {
+                    status.push_str(&format!(" — Couch Mode preferences unavailable: {warning}"));
                 }
                 if let Some(warning) = favorite_warning {
                     status.push_str(&format!(" — favorites unavailable: {warning}"));
@@ -3109,6 +3163,86 @@ impl qobject::LibraryModel {
             self.as_mut().start_sidebar_save();
         } else {
             self.as_mut().set_sidebar_state_saving(false);
+        }
+    }
+
+    pub fn save_couch_state(mut self: Pin<&mut Self>, shelf: QString, platform: QString) -> bool {
+        let preferences = CouchModePreferences {
+            shelf: shelf.to_string(),
+            platform: platform.to_string(),
+        };
+        if let Err(error) = preferences.validate() {
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode navigation was not saved: {error}"
+            )));
+            return false;
+        }
+        if preferences.shelf == "platform"
+            && !self
+                .as_ref()
+                .rust()
+                .catalog
+                .platforms
+                .iter()
+                .any(|candidate| candidate.name == preferences.platform)
+        {
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode navigation was not saved: platform {} is not in the catalog",
+                preferences.platform
+            )));
+            return false;
+        }
+
+        self.as_mut().set_couch_shelf(qstring(&preferences.shelf));
+        self.as_mut()
+            .set_couch_platform(qstring(&preferences.platform));
+        self.as_mut().rust_mut().couch_save_generation =
+            self.as_ref().rust().couch_save_generation.wrapping_add(1);
+        if !self.as_ref().rust().couch_save_pending {
+            self.as_mut().start_couch_save();
+        }
+        true
+    }
+
+    fn start_couch_save(mut self: Pin<&mut Self>) {
+        let generation = self.as_ref().rust().couch_save_generation;
+        let preferences = CouchModePreferences {
+            shelf: self.as_ref().couch_shelf().to_string(),
+            platform: self.as_ref().couch_platform().to_string(),
+        };
+        self.as_mut().rust_mut().couch_save_pending = true;
+        self.as_mut().set_couch_state_saving(true);
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-couch-state-save".into())
+            .spawn(move || {
+                let result = SettingsStore::open_default()
+                    .and_then(|store| store.save_couch_mode_preferences(&preferences))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_couch_save(generation, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().rust_mut().couch_save_pending = false;
+            self.as_mut().set_couch_state_saving(false);
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode navigation changed, but its state could not be saved: {error}"
+            )));
+        }
+    }
+
+    fn finish_couch_save(mut self: Pin<&mut Self>, generation: u64, result: Result<(), String>) {
+        self.as_mut().rust_mut().couch_save_pending = false;
+        if let Err(error) = result {
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode navigation changed, but its state could not be saved: {error}"
+            )));
+        }
+        if generation != self.as_ref().rust().couch_save_generation {
+            self.as_mut().start_couch_save();
+        } else {
+            self.as_mut().set_couch_state_saving(false);
         }
     }
 

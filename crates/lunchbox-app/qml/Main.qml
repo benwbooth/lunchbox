@@ -55,6 +55,8 @@ ApplicationWindow {
     property bool couchModeProbeCaptured: false
     property int couchGamepadProbeStage: 0
     property string couchGamepadProbeMovedGameId: ""
+    property int couchPlatformProbeStage: 0
+    property int couchPlatformProbeTargetIndex: -1
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
@@ -130,7 +132,10 @@ ApplicationWindow {
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
     readonly property bool couchGamepadUiProbe: Qt.application.arguments.indexOf("--couch-gamepad-ui-probe") >= 0
-    readonly property bool couchModeUiProbe: couchGamepadUiProbe
+    readonly property bool couchPlatformRestoreUiProbe: Qt.application.arguments.indexOf("--couch-platform-restored-ui-probe") >= 0
+    readonly property bool couchPlatformUiProbe: couchPlatformRestoreUiProbe
+                                                  || Qt.application.arguments.indexOf("--couch-platform-ui-probe") >= 0
+    readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
     readonly property bool tagsUiProbe: Qt.application.arguments.indexOf("--tags-ui-probe") >= 0
@@ -271,6 +276,8 @@ ApplicationWindow {
         if (couchModeActive)
             return
         couchModePreviousVisibility = root.visibility
+        if (!couchModeUiProbe && library.ready)
+            restoreCouchNavigation()
         gamepadInput.initialize()
         couchModeActive = true
         if (!couchModeUiProbe)
@@ -300,11 +307,29 @@ ApplicationWindow {
             gameViewLoader.item.forceActiveFocus()
     }
 
+    function restoreCouchNavigation() {
+        if (library.couch_shelf === "platform"
+                && library.couch_platform.length > 0)
+            root.selectCouchPlatform(library.couch_platform)
+        else
+            root.selectLibrary(library.couch_shelf === "all"
+                               ? "" : library.couch_shelf)
+    }
+
     function selectLibrary(availabilityKey) {
         selectedPlatform = ""
         selectedCollectionId = ""
         selectedCollectionName = ""
         availability = availabilityKey
+        scheduleFilter()
+    }
+
+    function selectCouchPlatform(platformName) {
+        selectedPlatform = platformName
+        selectedCollectionId = ""
+        selectedCollectionName = ""
+        availability = ""
+        searchField.text = ""
         scheduleFilter()
     }
 
@@ -1170,9 +1195,25 @@ ApplicationWindow {
                                          "Nintendo Entertainment System", "")
                 }
                 else if (root.couchModeUiProbe) {
-                    root.selectedGameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
-                    library.apply_filter("Super Mario Bros.",
-                                         "Nintendo Entertainment System", "")
+                    if (root.couchPlatformRestoreUiProbe) {
+                        if (library.couch_shelf !== "platform"
+                                || library.couch_platform
+                                   !== "Super Nintendo Entertainment System") {
+                            console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED restored state shelf="
+                                          + library.couch_shelf + " platform="
+                                          + library.couch_platform)
+                            Qt.exit(2)
+                            return
+                        }
+                        root.couchPlatformProbeStage = 50
+                        root.selectedGameId = ""
+                        root.selectedPlatform = library.couch_platform
+                        library.apply_filter("", library.couch_platform, "")
+                    } else {
+                        root.selectedGameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                        library.apply_filter("Super Mario Bros.",
+                                             "Nintendo Entertainment System", "")
+                    }
                 }
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
@@ -1217,7 +1258,10 @@ ApplicationWindow {
                     root.selectLibrary("recent")
                 }
                 else {
-                    root.scheduleFilter()
+                    if (root.couchModeActive)
+                        root.restoreCouchNavigation()
+                    else
+                        root.scheduleFilter()
                     if (root.filterUiProbe)
                         filterPopup.open()
                     else if (root.downloadUiProbe || root.downloadHistoryProbe)
@@ -1594,11 +1638,13 @@ ApplicationWindow {
         interval: 650
         repeat: false
         onTriggered: {
-            if (!root.couchGamepadUiProbe && !gamepadInput.ready) {
+            if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
+                    && !gamepadInput.ready) {
                 couchModeScreenshotTimer.restart()
                 return
             }
-            if (!root.couchGamepadUiProbe && !gamepadInput.available) {
+            if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
+                    && !gamepadInput.available) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED gamepad="
                               + gamepadInput.status_message)
                 Qt.exit(2)
@@ -1609,6 +1655,30 @@ ApplicationWindow {
                     || gameDetails.title.length === 0) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED empty live selection")
                 Qt.exit(2)
+                return
+            }
+            if (root.couchPlatformUiProbe) {
+                const target = "Super Nintendo Entertainment System"
+                root.couchPlatformProbeTargetIndex =
+                        couchModeView.platformIndexForName(target)
+                if (library.platform_name_at(root.couchPlatformProbeTargetIndex)
+                        !== target) {
+                    console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED missing target")
+                    Qt.exit(2)
+                    return
+                }
+                if (!root.couchPlatformRestoreUiProbe
+                        && couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED initial focus")
+                    Qt.exit(2)
+                    return
+                }
+                couchModeView.openPlatformWheel()
+                couchModeView.focusPlatform(target)
+                if (!root.couchPlatformRestoreUiProbe)
+                    root.couchPlatformProbeStage = 1
+                couchPlatformProbeTimer.restart()
                 return
             }
             if (couchModeView.selectedGameId
@@ -1811,6 +1881,140 @@ ApplicationWindow {
                     return
                 }
                 couchModeScreenshotTimer.restart()
+            }
+        }
+    }
+
+    Timer {
+        id: couchPlatformProbeTimer
+        interval: 280
+        repeat: false
+
+        function finishRestoredProbe() {
+            if (library.couch_state_saving || library.filtering) {
+                restart()
+                return
+            }
+            if (!couchModeView.platformWheelOpen
+                    || couchModeView.platformWheelIndex
+                       !== root.couchPlatformProbeTargetIndex
+                    || library.couch_shelf !== "platform"
+                    || library.couch_platform
+                       !== "Super Nintendo Entertainment System"
+                    || library.current_platform
+                       !== "Super Nintendo Entertainment System"
+                    || library.filtered_count <= 0) {
+                console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED restore routing shelf="
+                              + library.couch_shelf + " platform="
+                              + library.couch_platform + " filter="
+                              + library.current_platform + " games="
+                              + library.filtered_count)
+                Qt.exit(2)
+                return
+            }
+            root.couchModeProbeCaptured = true
+            if (root.screenshotOutput.length === 0) {
+                console.warn("LUNCHBOX_COUCH_PLATFORM_UI_READY restored=true platform="
+                             + library.current_platform + " games="
+                             + library.filtered_count)
+                Qt.exit(0)
+                return
+            }
+            couchModeView.capturePlatformWheel(root.screenshotOutput,
+                                               function(saved) {
+                if (!saved) {
+                    console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.warn("LUNCHBOX_COUCH_PLATFORM_UI_READY restored=true platform="
+                             + library.current_platform + " games="
+                             + library.filtered_count + " screenshot="
+                             + root.screenshotOutput)
+                Qt.exit(0)
+            })
+        }
+
+        onTriggered: {
+            if (!root.couchPlatformUiProbe)
+                return
+            if (root.couchPlatformProbeStage === 50) {
+                finishRestoredProbe()
+            } else if (root.couchPlatformProbeStage === 1) {
+                if (!couchModeView.platformWheelOpen
+                        || couchModeView.platformWheelIndex
+                           !== root.couchPlatformProbeTargetIndex) {
+                    console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED wheel focus")
+                    Qt.exit(2)
+                    return
+                }
+                root.couchPlatformProbeStage = 2
+                couchModeView.handleNavigation("left")
+                restart()
+            } else if (root.couchPlatformProbeStage === 2) {
+                if (couchModeView.platformWheelIndex
+                        !== root.couchPlatformProbeTargetIndex - 1) {
+                    console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED previous platform")
+                    Qt.exit(2)
+                    return
+                }
+                root.couchPlatformProbeStage = 3
+                couchModeView.handleNavigation("right")
+                restart()
+            } else if (root.couchPlatformProbeStage === 3) {
+                if (couchModeView.platformWheelIndex
+                        !== root.couchPlatformProbeTargetIndex) {
+                    console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED next platform")
+                    Qt.exit(2)
+                    return
+                }
+                if (root.screenshotOutput.length === 0) {
+                    root.couchPlatformProbeStage = 4
+                    couchModeView.handleNavigation("accept")
+                    restart()
+                    return
+                }
+                couchModeView.capturePlatformWheel(root.screenshotOutput,
+                                                   function(saved) {
+                    if (!saved) {
+                        console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED screenshot="
+                                      + root.screenshotOutput)
+                        Qt.exit(2)
+                        return
+                    }
+                    root.couchPlatformProbeStage = 4
+                    couchModeView.handleNavigation("accept")
+                    couchPlatformProbeTimer.restart()
+                })
+            } else if (root.couchPlatformProbeStage === 4) {
+                if (library.filtering || library.couch_state_saving) {
+                    restart()
+                    return
+                }
+                if (couchModeView.platformWheelOpen
+                        || root.selectedPlatform
+                           !== "Super Nintendo Entertainment System"
+                        || library.current_platform
+                           !== "Super Nintendo Entertainment System"
+                        || library.couch_shelf !== "platform"
+                        || library.couch_platform
+                           !== "Super Nintendo Entertainment System"
+                        || library.filtered_count <= 0) {
+                    console.error("LUNCHBOX_COUCH_PLATFORM_UI_FAILED selection routing shelf="
+                                  + library.couch_shelf + " platform="
+                                  + library.couch_platform + " filter="
+                                  + library.current_platform + " games="
+                                  + library.filtered_count)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchModeProbeCaptured = true
+                console.warn("LUNCHBOX_COUCH_PLATFORM_UI_READY restored=false platform="
+                             + library.current_platform + " games="
+                             + library.filtered_count + " screenshot="
+                             + root.screenshotOutput)
+                Qt.exit(0)
             }
         }
     }
@@ -3804,8 +4008,10 @@ ApplicationWindow {
         gamepad: gamepadInput
         preferredGameId: root.selectedGameId
         currentFilterKey: root.availability
+        currentPlatformName: root.selectedPlatform
         onExitRequested: root.exitCouchMode()
         onFilterRequested: key => root.selectLibrary(key)
+        onPlatformRequested: platform => root.selectCouchPlatform(platform)
         onGameSelected: function(gameId, databaseId, title, platform,
                                  local, downloadable) {
             root.openGame(gameId, databaseId, title, platform,

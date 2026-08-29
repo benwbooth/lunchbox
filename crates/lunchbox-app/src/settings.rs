@@ -199,6 +199,12 @@ pub struct SidebarPreferences {
     pub width: i32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CouchModePreferences {
+    pub shelf: String,
+    pub platform: String,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GameMetadata {
     pub title: String,
@@ -566,6 +572,39 @@ impl SidebarPreferences {
         }
         if !(180..=400).contains(&self.width) {
             bail!("sidebar width must be between 180 and 400 pixels");
+        }
+        Ok(())
+    }
+}
+
+impl Default for CouchModePreferences {
+    fn default() -> Self {
+        Self {
+            shelf: "all".to_owned(),
+            platform: String::new(),
+        }
+    }
+}
+
+impl CouchModePreferences {
+    pub fn validate(&self) -> Result<()> {
+        if !matches!(
+            self.shelf.as_str(),
+            "all" | "local" | "downloadable" | "favorites" | "recent" | "platform"
+        ) {
+            bail!("unsupported Couch Mode shelf {}", self.shelf);
+        }
+        if self.platform.chars().count() > 200 {
+            bail!("Couch Mode platform must be at most 200 characters");
+        }
+        if self.platform.contains('\0') {
+            bail!("Couch Mode platform cannot contain a null character");
+        }
+        if self.shelf == "platform" && self.platform.trim().is_empty() {
+            bail!("a platform is required for the Couch Mode platform shelf");
+        }
+        if self.shelf != "platform" && !self.platform.is_empty() {
+            bail!("Couch Mode platform must be empty outside the platform shelf");
         }
         Ok(())
     }
@@ -1172,6 +1211,38 @@ impl SettingsStore {
                  platform_search=excluded.platform_search,
                  width=excluded.width",
             params![preferences.platform_search, preferences.width],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_couch_mode_preferences(&self) -> Result<CouchModePreferences> {
+        let preferences = self
+            .connection()?
+            .query_row(
+                "SELECT shelf, platform FROM couch_mode_preferences WHERE id=1",
+                [],
+                |row| {
+                    Ok(CouchModePreferences {
+                        shelf: row.get(0)?,
+                        platform: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?
+            .unwrap_or_default();
+        preferences.validate()?;
+        Ok(preferences)
+    }
+
+    pub fn save_couch_mode_preferences(&self, preferences: &CouchModePreferences) -> Result<()> {
+        preferences.validate()?;
+        self.connection()?.execute(
+            "INSERT INTO couch_mode_preferences (id, shelf, platform)
+             VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET
+                 shelf=excluded.shelf,
+                 platform=excluded.platform",
+            params![preferences.shelf, preferences.platform],
         )?;
         Ok(())
     }
@@ -2979,6 +3050,17 @@ fn migrate(connection: &Connection) -> Result<()> {
              platform_search TEXT NOT NULL DEFAULT '' CHECK (length(platform_search) <= 80),
              width INTEGER NOT NULL DEFAULT 254 CHECK (width BETWEEN 180 AND 400)
          );
+         CREATE TABLE IF NOT EXISTS couch_mode_preferences (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             shelf TEXT NOT NULL DEFAULT 'all' CHECK (
+                 shelf IN ('all', 'local', 'downloadable', 'favorites', 'recent', 'platform')
+             ),
+             platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
+             CHECK (
+                 (shelf = 'platform' AND length(trim(platform)) > 0)
+                 OR (shelf != 'platform' AND platform = '')
+             )
+         );
          CREATE TABLE IF NOT EXISTS download_jobs (
              id TEXT PRIMARY KEY,
              game_id TEXT NOT NULL,
@@ -4491,6 +4573,40 @@ mod tests {
                 })
                 .is_err()
         );
+    }
+
+    #[test]
+    fn couch_mode_shelf_defaults_safely_and_preserves_an_exact_platform() {
+        let (_directory, store) = store();
+        assert_eq!(
+            store.load_couch_mode_preferences().unwrap(),
+            CouchModePreferences::default()
+        );
+
+        let expected = CouchModePreferences {
+            shelf: "platform".into(),
+            platform: "Super Nintendo Entertainment System".into(),
+        };
+        store.save_couch_mode_preferences(&expected).unwrap();
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(reopened.load_couch_mode_preferences().unwrap(), expected);
+
+        for invalid in [
+            CouchModePreferences {
+                shelf: "platform".into(),
+                platform: String::new(),
+            },
+            CouchModePreferences {
+                shelf: "recent".into(),
+                platform: "Nintendo 64".into(),
+            },
+            CouchModePreferences {
+                shelf: "unknown".into(),
+                platform: String::new(),
+            },
+        ] {
+            assert!(store.save_couch_mode_preferences(&invalid).is_err());
+        }
     }
 
     #[test]

@@ -12,11 +12,14 @@ Item {
     property int navigationZone: 2
     property int categoryIndex: 0
     property int actionIndex: 0
+    property bool platformWheelOpen: false
+    property int platformWheelIndex: 0
     property bool overlayOpen: false
     property string overlayMode: "details"
     property int menuActionIndex: 0
     property string preferredGameId: ""
     property string currentFilterKey: ""
+    property string currentPlatformName: ""
     property string selectedGameId: ""
     property string loadedGameId: ""
     property int selectedDatabaseId: 0
@@ -31,6 +34,7 @@ Item {
     readonly property color accentCool: "#64d8c8"
     readonly property var categories: [
         { label: "ALL GAMES", key: "" },
+        { label: "PLATFORMS", key: "platform" },
         { label: "MY COLLECTION", key: "local" },
         { label: "MINERVA", key: "downloadable" },
         { label: "FAVORITES", key: "favorites" },
@@ -66,6 +70,7 @@ Item {
 
     signal exitRequested()
     signal filterRequested(string key)
+    signal platformRequested(string platform)
     signal gameSelected(string gameId, int databaseId, string title,
                         string platform, bool local, bool downloadable)
     signal detailsRequested(string gameId, int databaseId, string title,
@@ -92,11 +97,27 @@ Item {
 
     function chooseCategory(index) {
         categoryIndex = Math.max(0, Math.min(categories.length - 1, index))
+        if (categories[categoryIndex].key === "platform") {
+            openPlatformWheel()
+            return
+        }
+        const shelfKey = categories[categoryIndex].key.length > 0
+                         ? categories[categoryIndex].key : "all"
+        library.save_couch_state(shelfKey, "")
         filterRequested(categories[categoryIndex].key)
         shelf.currentIndex = 0
     }
 
     function syncCategory() {
+        if (currentPlatformName.length > 0) {
+            for (let platformIndex = 0; platformIndex < categories.length;
+                    ++platformIndex) {
+                if (categories[platformIndex].key === "platform") {
+                    categoryIndex = platformIndex
+                    return
+                }
+            }
+        }
         for (let index = 0; index < categories.length; ++index) {
             if (categories[index].key === currentFilterKey) {
                 categoryIndex = index
@@ -104,6 +125,62 @@ Item {
             }
         }
         categoryIndex = 0
+    }
+
+    function platformIndexForName(name) {
+        if (!name || name.length === 0)
+            return 0
+        for (let index = 0; index < library.platform_count; ++index) {
+            if (library.platform_name_at(index) === name)
+                return index
+        }
+        return 0
+    }
+
+    function openPlatformWheel() {
+        if (library.platform_count <= 0)
+            return
+        overlayOpen = false
+        platformWheelIndex = platformIndexForName(currentPlatformName)
+        platformWheel.currentIndex = platformWheelIndex
+        platformWheel.positionViewAtIndex(platformWheelIndex, ListView.Center)
+        platformWheelOpen = true
+        forceActiveFocus()
+    }
+
+    function focusPlatform(name) {
+        if (!platformWheelOpen)
+            openPlatformWheel()
+        platformWheelIndex = platformIndexForName(name)
+        platformWheel.currentIndex = platformWheelIndex
+        platformWheel.positionViewAtIndex(platformWheelIndex, ListView.Center)
+    }
+
+    function closePlatformWheel() {
+        platformWheelOpen = false
+        if (active)
+            forceActiveFocus()
+    }
+
+    function movePlatformWheel(delta) {
+        if (library.platform_count <= 0)
+            return
+        platformWheelIndex = Math.max(0, Math.min(library.platform_count - 1,
+                                                  platformWheelIndex + delta))
+        platformWheel.currentIndex = platformWheelIndex
+        platformWheel.positionViewAtIndex(platformWheelIndex, ListView.Center)
+    }
+
+    function choosePlatform(index) {
+        const platform = library.platform_name_at(index)
+        if (platform.length === 0
+                || !library.save_couch_state("platform", platform))
+            return
+        platformWheelIndex = index
+        platformWheelOpen = false
+        navigationZone = 2
+        platformRequested(platform)
+        forceActiveFocus()
     }
 
     function captureCurrentGame() {
@@ -178,6 +255,12 @@ Item {
         })
     }
 
+    function capturePlatformWheel(path, callback) {
+        platformWheelOverlay.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
+    }
+
     function menuActionLabel(index) {
         if (index === 0)
             return primaryAction
@@ -225,6 +308,28 @@ Item {
         if (!active)
             return false
         forceActiveFocus()
+        if (platformWheelOpen) {
+            if (action === "back") {
+                closePlatformWheel()
+            } else if (action === "up" || action === "left") {
+                movePlatformWheel(-1)
+            } else if (action === "down" || action === "right") {
+                movePlatformWheel(1)
+            } else if (action === "page_left") {
+                movePlatformWheel(-5)
+            } else if (action === "page_right") {
+                movePlatformWheel(5)
+            } else if (action === "home") {
+                platformWheelIndex = 0
+                platformWheel.currentIndex = 0
+                platformWheel.positionViewAtBeginning()
+            } else if (action === "accept") {
+                choosePlatform(platformWheelIndex)
+            } else {
+                return false
+            }
+            return true
+        }
         if (overlayOpen) {
             if (action === "back") {
                 closeOverlay()
@@ -322,6 +427,7 @@ Item {
     onActiveChanged: {
         if (active) {
             overlayOpen = false
+            platformWheelOpen = false
             forceActiveFocus()
             syncCategory()
             const preferredRow = library.row_for_game(preferredGameId)
@@ -332,11 +438,14 @@ Item {
             if (shelf.currentIndex >= 0)
                 shelf.positionViewAtIndex(shelf.currentIndex, ListView.Center)
             selectionDelay.restart()
-        } else
+        } else {
             overlayOpen = false
+            platformWheelOpen = false
+        }
     }
 
     onCurrentFilterKeyChanged: syncCategory()
+    onCurrentPlatformNameChanged: syncCategory()
 
     onMediaRevisionChanged: {
         if (selectedDatabaseId > 0) {
@@ -368,8 +477,14 @@ Item {
         } else if (event.key === Qt.Key_Home) {
             action = "home"
         } else if (event.key === Qt.Key_End) {
-            navigationZone = 2
-            shelf.currentIndex = shelf.count - 1
+            if (platformWheelOpen) {
+                platformWheelIndex = Math.max(0, library.platform_count - 1)
+                platformWheel.currentIndex = platformWheelIndex
+                platformWheel.positionViewAtEnd()
+            } else {
+                navigationZone = 2
+                shelf.currentIndex = shelf.count - 1
+            }
             event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                    || event.key === Qt.Key_Space) {
@@ -1005,6 +1120,251 @@ Item {
             font.pixelSize: 9
             font.weight: Font.Bold
             font.letterSpacing: 0.8
+        }
+    }
+
+    Rectangle {
+        id: platformWheelOverlay
+        anchors.fill: parent
+        z: 45
+        visible: view.platformWheelOpen
+        color: "#ec070a0f"
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "#f60a0e15" }
+                GradientStop { position: 0.55; color: "#e20a0e15" }
+                GradientStop { position: 1; color: "#c20a0e15" }
+            }
+        }
+
+        Rectangle {
+            id: platformWheelPanel
+            anchors.centerIn: parent
+            width: Math.min(880, parent.width - 180)
+            height: Math.min(860, parent.height - 120)
+            radius: 26
+            color: "#f7131923"
+            border.color: "#71808f9f"
+            border.width: 1
+            clip: true
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 118
+                color: "#d918202c"
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 42
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 5
+
+                    Text {
+                        text: "CHOOSE A PLATFORM"
+                        color: view.ink
+                        font.pixelSize: 24
+                        font.weight: Font.Black
+                        font.letterSpacing: 1.3
+                    }
+                    Text {
+                        text: view.library.platform_count + " platforms · exact catalog filtering"
+                        color: view.muted
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 0.4
+                    }
+                }
+
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 32
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 44
+                    height: 44
+                    radius: 13
+                    color: platformCloseHover.hovered ? "#54313b49" : "#30232c38"
+                    border.color: platformCloseHover.hovered ? view.accent : "#596574"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        color: view.ink
+                        font.pixelSize: 23
+                    }
+                    HoverHandler { id: platformCloseHover }
+                    TapHandler { onTapped: view.closePlatformWheel() }
+                }
+            }
+
+            ListView {
+                id: platformWheel
+                anchors.left: parent.left
+                anchors.leftMargin: 34
+                anchors.right: parent.right
+                anchors.rightMargin: 34
+                anchors.top: parent.top
+                anchors.topMargin: 128
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 82
+                model: view.library.platform_count
+                clip: true
+                reuseItems: true
+                cacheBuffer: height
+                spacing: 6
+                boundsBehavior: Flickable.StopAtBounds
+                snapMode: ListView.SnapToItem
+                preferredHighlightBegin: height * 0.5 - 42
+                preferredHighlightEnd: height * 0.5 + 42
+                highlightRangeMode: ListView.StrictlyEnforceRange
+                highlightMoveDuration: 120
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0)
+                        view.platformWheelIndex = currentIndex
+                }
+
+                delegate: Item {
+                    id: platformRow
+                    required property int index
+                    property string platformName: view.library.platform_name_at(index)
+                    property int gameCount: view.library.platform_game_count_at(index)
+                    property bool selected: platformWheel.currentIndex === index
+                    property int distance: Math.abs(index - platformWheel.currentIndex)
+                    width: platformWheel.width
+                    height: selected ? 84 : 70
+                    opacity: selected ? 1 : distance <= 2 ? 0.74 : 0.42
+                    scale: selected ? 1 : 0.975
+                    Behavior on height { NumberAnimation { duration: 110 } }
+                    Behavior on opacity { NumberAnimation { duration: 110 } }
+                    Behavior on scale { NumberAnimation { duration: 110 } }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.leftMargin: platformRow.selected ? 0 : 16
+                        anchors.rightMargin: platformRow.selected ? 0 : 16
+                        radius: 16
+                        color: platformRow.selected ? "#e6333c49"
+                              : platformHover.hovered ? "#55303a47" : "transparent"
+                        border.color: platformRow.selected ? view.accent : "transparent"
+                        border.width: platformRow.selected ? 2 : 0
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: platformRow.selected ? 52 : 44
+                            height: width
+                            radius: 14
+                            color: view.accentFor(platformRow.platformName)
+                            border.color: "#82ffffff"
+                            Text {
+                                anchors.centerIn: parent
+                                text: platformRow.platformName.length > 0
+                                      ? platformRow.platformName.charAt(0).toUpperCase() : "?"
+                                color: "#f8ffffff"
+                                font.pixelSize: platformRow.selected ? 23 : 19
+                                font.weight: Font.Black
+                            }
+                        }
+
+                        Column {
+                            anchors.left: parent.left
+                            anchors.leftMargin: platformRow.selected ? 88 : 78
+                            anchors.right: countColumn.left
+                            anchors.rightMargin: 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+
+                            Text {
+                                width: parent.width
+                                text: platformRow.platformName
+                                color: view.ink
+                                font.pixelSize: platformRow.selected ? 19 : 15
+                                font.weight: platformRow.selected ? Font.Black : Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                visible: platformRow.platformName === view.currentPlatformName
+                                text: "CURRENT SHELF"
+                                color: view.accentCool
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1
+                            }
+                        }
+
+                        Column {
+                            id: countColumn
+                            anchors.right: parent.right
+                            anchors.rightMargin: 22
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+                            Text {
+                                anchors.right: parent.right
+                                text: platformRow.gameCount.toLocaleString(Qt.locale(), "f", 0)
+                                color: platformRow.selected ? view.accent : view.ink
+                                font.pixelSize: platformRow.selected ? 18 : 14
+                                font.weight: Font.Black
+                            }
+                            Text {
+                                anchors.right: parent.right
+                                text: platformRow.gameCount === 1 ? "GAME" : "GAMES"
+                                color: view.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1
+                            }
+                        }
+
+                        HoverHandler { id: platformHover }
+                        TapHandler {
+                            onTapped: view.choosePlatform(platformRow.index)
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 72
+                color: "#dc101620"
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 28
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? "D-PAD / STICK  BROWSE" : "↑ ↓  BROWSE"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("accept") + "  SELECT"
+                              : "ENTER  SELECT"
+                        color: view.accent
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("back") + "  CANCEL"
+                              : "ESC  CANCEL"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                }
+            }
         }
     }
 

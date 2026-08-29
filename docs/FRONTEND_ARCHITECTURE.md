@@ -561,6 +561,18 @@ mode. Details is scrollable without a mouse. Game Menu provides the real dynamic
 primary action, favorite toggle, explicit Desktop Details handoff, and Return to
 Browsing; closing or switching panels never changes the selected release.
 
+The Couch Mode `Platforms` shelf opens a virtualized picker over the same 191
+platform rows already owned by `LibraryModel`; it does not copy or reload the
+catalog. Each row exposes the exact catalog name and live game count. Selecting
+a row applies the ordinary exact platform filter, while a coalesced Rust worker
+persists the shelf plus platform to the writable state database. Invalid or
+stale saved combinations fall back safely to All Games. The fresh
+`--couch-platform-ui-probe` and cold-start
+`--couch-platform-restored-ui-probe` exercise keyboard/controller-equivalent
+movement, exact SNES selection, a 6,008-row real-catalog result, persistence,
+and the restored 1920x1200 picker capture. Xvfb capture uses
+`QT_QPA_PLATFORM=xcb` to keep the test on the isolated display.
+
 `GamepadInput` is a CXX-Qt Rust service backed by GilRs. It owns a named worker
 thread, performs blocking device reads there rather than on the GUI thread,
 publishes hotplug snapshots through the Qt event queue, and disables unused
