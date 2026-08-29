@@ -551,6 +551,10 @@ fn release_identity(title: &str) -> Option<ReleaseIdentity> {
     })
 }
 
+pub(crate) fn catalog_release_base(title: &str) -> Option<String> {
+    release_identity(title).map(|identity| identity.base)
+}
+
 fn is_catalog_release_tag(tag: &str) -> bool {
     canonical_region_tag(tag).is_some()
         || is_version_tag(tag)

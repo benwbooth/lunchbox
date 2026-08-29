@@ -194,6 +194,7 @@ pub struct LibraryPreferences {
     pub view_mode: String,
     pub sort_field: String,
     pub sort_descending: bool,
+    pub list_columns: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -626,6 +627,7 @@ impl Default for LibraryPreferences {
             view_mode: "grid".to_owned(),
             sort_field: "default".to_owned(),
             sort_descending: false,
+            list_columns: crate::list_view::default_list_columns(),
         }
     }
 }
@@ -643,10 +645,28 @@ impl LibraryPreferences {
         }
         if !matches!(
             self.sort_field.as_str(),
-            "default" | "title" | "platform" | "availability"
+            "default"
+                | "title"
+                | "platform"
+                | "availability"
+                | "developer"
+                | "publisher"
+                | "year"
+                | "release-date"
+                | "genre"
+                | "players"
+                | "rating"
+                | "esrb"
+                | "cooperative"
+                | "variants"
+                | "release-type"
+                | "series"
+                | "region"
+                | "notes"
         ) {
             bail!("unsupported library sort field {}", self.sort_field);
         }
+        crate::list_view::parse_list_columns(&self.list_columns)?;
         Ok(())
     }
 }
@@ -1272,7 +1292,7 @@ impl SettingsStore {
         let preferences = connection
             .query_row(
                 "SELECT hide_non_retail, hide_adult, artwork_type, grid_zoom,
-                        view_mode, sort_field, sort_descending
+                        view_mode, sort_field, sort_descending, list_columns
                  FROM library_preferences WHERE id=1",
                 [],
                 |row| {
@@ -1284,6 +1304,7 @@ impl SettingsStore {
                         view_mode: row.get(4)?,
                         sort_field: row.get(5)?,
                         sort_descending: row.get(6)?,
+                        list_columns: row.get(7)?,
                     })
                 },
             )
@@ -1299,8 +1320,8 @@ impl SettingsStore {
         connection.execute(
             "INSERT INTO library_preferences (
                  id, hide_non_retail, hide_adult, artwork_type, grid_zoom,
-                 view_mode, sort_field, sort_descending
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 view_mode, sort_field, sort_descending, list_columns
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET
                  hide_non_retail=excluded.hide_non_retail,
                  hide_adult=excluded.hide_adult,
@@ -1308,7 +1329,8 @@ impl SettingsStore {
                  grid_zoom=excluded.grid_zoom,
                  view_mode=excluded.view_mode,
                  sort_field=excluded.sort_field,
-                 sort_descending=excluded.sort_descending",
+                 sort_descending=excluded.sort_descending,
+                 list_columns=excluded.list_columns",
             params![
                 preferences.hide_non_retail,
                 preferences.hide_adult,
@@ -1317,6 +1339,7 @@ impl SettingsStore {
                 preferences.view_mode,
                 preferences.sort_field,
                 preferences.sort_descending,
+                preferences.list_columns,
             ],
         )?;
         Ok(())
@@ -3628,9 +3651,15 @@ fn migrate(connection: &Connection) -> Result<()> {
              grid_zoom INTEGER NOT NULL DEFAULT 100 CHECK (grid_zoom BETWEEN 50 AND 200),
              view_mode TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list')),
              sort_field TEXT NOT NULL DEFAULT 'default' CHECK (
-                 sort_field IN ('default', 'title', 'platform', 'availability')
+                 sort_field IN (
+                     'default', 'title', 'platform', 'availability', 'developer',
+                     'publisher', 'year', 'release-date', 'genre', 'players',
+                     'rating', 'esrb', 'cooperative', 'variants', 'release-type',
+                     'series', 'region', 'notes'
+                 )
              ),
-             sort_descending INTEGER NOT NULL DEFAULT 0 CHECK (sort_descending IN (0, 1))
+             sort_descending INTEGER NOT NULL DEFAULT 0 CHECK (sort_descending IN (0, 1)),
+             list_columns TEXT NOT NULL DEFAULT 'title,platform,availability,developer,year'
          );
          CREATE TABLE IF NOT EXISTS sidebar_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
@@ -4313,6 +4342,15 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !column_exists(connection, "library_preferences", "list_columns")? {
+        connection.execute(
+            "ALTER TABLE library_preferences ADD COLUMN list_columns TEXT NOT NULL DEFAULT 'title,platform,availability,developer,year'",
+            [],
+        )?;
+    }
+    if !library_preferences_schema_is_current(connection)? {
+        migrate_library_preferences_schema(connection)?;
+    }
     if !column_exists(connection, "couch_mode_preferences", "attract_enabled")? {
         connection.execute(
             "ALTER TABLE couch_mode_preferences ADD COLUMN attract_enabled INTEGER NOT NULL DEFAULT 0 CHECK (attract_enabled IN (0, 1))",
@@ -4401,6 +4439,56 @@ fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<b
         }
     }
     Ok(false)
+}
+
+fn library_preferences_schema_is_current(connection: &Connection) -> Result<bool> {
+    let schema = connection.query_row(
+        "SELECT sql FROM sqlite_schema WHERE type='table' AND name='library_preferences'",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    Ok(schema.contains("'release-date'") && schema.contains("'notes'"))
+}
+
+fn migrate_library_preferences_schema(connection: &Connection) -> Result<()> {
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(
+        "DROP TABLE IF EXISTS library_preferences_v2;
+         CREATE TABLE library_preferences_v2 (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             hide_non_retail INTEGER NOT NULL CHECK (hide_non_retail IN (0, 1)),
+             hide_adult INTEGER NOT NULL CHECK (hide_adult IN (0, 1)),
+             artwork_type TEXT NOT NULL DEFAULT 'box-front' CHECK (
+                 artwork_type IN (
+                     'box-front', 'box-back', 'box-3d', 'screenshot',
+                     'title-screen', 'fanart', 'clear-logo'
+                 )
+             ),
+             grid_zoom INTEGER NOT NULL DEFAULT 100 CHECK (grid_zoom BETWEEN 50 AND 200),
+             view_mode TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list')),
+             sort_field TEXT NOT NULL DEFAULT 'default' CHECK (
+                 sort_field IN (
+                     'default', 'title', 'platform', 'availability', 'developer',
+                     'publisher', 'year', 'release-date', 'genre', 'players',
+                     'rating', 'esrb', 'cooperative', 'variants', 'release-type',
+                     'series', 'region', 'notes'
+                 )
+             ),
+             sort_descending INTEGER NOT NULL DEFAULT 0 CHECK (sort_descending IN (0, 1)),
+             list_columns TEXT NOT NULL DEFAULT 'title,platform,availability,developer,year'
+         );
+         INSERT INTO library_preferences_v2 (
+             id, hide_non_retail, hide_adult, artwork_type, grid_zoom,
+             view_mode, sort_field, sort_descending, list_columns
+         )
+         SELECT id, hide_non_retail, hide_adult, artwork_type, grid_zoom,
+                view_mode, sort_field, sort_descending, list_columns
+         FROM library_preferences;
+         DROP TABLE library_preferences;
+         ALTER TABLE library_preferences_v2 RENAME TO library_preferences;",
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn local_rom_match_state_allows_reviewed(connection: &Connection) -> Result<bool> {
@@ -5494,6 +5582,7 @@ mod tests {
             view_mode: "list".into(),
             sort_field: "platform".into(),
             sort_descending: true,
+            list_columns: "publisher,title,rating".into(),
         };
         store.save_library_preferences(&expected).unwrap();
         let reopened = SettingsStore::at(store.path()).unwrap();
@@ -5505,6 +5594,63 @@ mod tests {
         invalid.view_mode = "grid".into();
         invalid.sort_field = "fuzzy".into();
         assert!(store.save_library_preferences(&invalid).is_err());
+        invalid.sort_field = "default".into();
+        invalid.list_columns = "title,title".into();
+        assert!(store.save_library_preferences(&invalid).is_err());
+        invalid.list_columns = "title,unknown".into();
+        assert!(store.save_library_preferences(&invalid).is_err());
+        invalid.list_columns.clear();
+        assert!(store.save_library_preferences(&invalid).is_err());
+    }
+
+    #[test]
+    fn legacy_library_preferences_gain_metadata_columns_without_losing_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("legacy-state.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE library_preferences (
+                     id INTEGER PRIMARY KEY CHECK (id=1),
+                     hide_non_retail INTEGER NOT NULL CHECK (hide_non_retail IN (0, 1)),
+                     hide_adult INTEGER NOT NULL CHECK (hide_adult IN (0, 1)),
+                     artwork_type TEXT NOT NULL DEFAULT 'box-front',
+                     grid_zoom INTEGER NOT NULL DEFAULT 100,
+                     view_mode TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list')),
+                     sort_field TEXT NOT NULL DEFAULT 'default' CHECK (
+                         sort_field IN ('default', 'title', 'platform', 'availability')
+                     ),
+                     sort_descending INTEGER NOT NULL DEFAULT 0 CHECK (sort_descending IN (0, 1))
+                 );
+                 INSERT INTO library_preferences (
+                     id, hide_non_retail, hide_adult, artwork_type, grid_zoom,
+                     view_mode, sort_field, sort_descending
+                 ) VALUES (1, 0, 1, 'screenshot', 145, 'list', 'platform', 1);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = SettingsStore::at(&path).unwrap();
+        let mut preferences = store.load_library_preferences().unwrap();
+        assert_eq!(
+            preferences,
+            LibraryPreferences {
+                hide_non_retail: false,
+                hide_adult: true,
+                artwork_type: "screenshot".into(),
+                grid_zoom: 145,
+                view_mode: "list".into(),
+                sort_field: "platform".into(),
+                sort_descending: true,
+                list_columns: crate::list_view::default_list_columns(),
+            }
+        );
+
+        preferences.sort_field = "publisher".into();
+        preferences.sort_descending = false;
+        preferences.list_columns = "publisher,title,rating".into();
+        store.save_library_preferences(&preferences).unwrap();
+        assert_eq!(store.load_library_preferences().unwrap(), preferences);
     }
 
     #[test]

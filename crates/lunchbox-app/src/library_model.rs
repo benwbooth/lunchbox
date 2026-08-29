@@ -37,6 +37,7 @@ pub mod qobject {
         #[qproperty(QString, view_mode)]
         #[qproperty(QString, sort_field)]
         #[qproperty(bool, sort_descending)]
+        #[qproperty(QString, list_columns)]
         #[qproperty(QString, media_directory)]
         #[qproperty(bool, media_loading)]
         #[qproperty(bool, media_retrieval_enabled)]
@@ -166,6 +167,9 @@ pub mod qobject {
             sort_field: QString,
             descending: bool,
         );
+
+        #[qinvokable]
+        fn configure_list_columns(self: Pin<&mut LibraryModel>, columns: QString);
 
         #[qinvokable]
         fn artwork_url(self: &LibraryModel, launchbox_db_id: i32, artwork_type: QString) -> QUrl;
@@ -560,8 +564,22 @@ const GAME_LOCAL_ROLE: i32 = USER_ROLE + 5;
 const GAME_DOWNLOADABLE_ROLE: i32 = USER_ROLE + 6;
 const GAME_DATABASE_ID_ROLE: i32 = USER_ROLE + 7;
 const GAME_CANONICAL_TITLE_ROLE: i32 = USER_ROLE + 8;
+const GAME_DEVELOPER_ROLE: i32 = USER_ROLE + 9;
+const GAME_PUBLISHER_ROLE: i32 = USER_ROLE + 10;
+const GAME_YEAR_ROLE: i32 = USER_ROLE + 11;
+const GAME_RELEASE_DATE_ROLE: i32 = USER_ROLE + 12;
+const GAME_GENRE_ROLE: i32 = USER_ROLE + 13;
+const GAME_PLAYERS_ROLE: i32 = USER_ROLE + 14;
+const GAME_RATING_ROLE: i32 = USER_ROLE + 15;
+const GAME_ESRB_ROLE: i32 = USER_ROLE + 16;
+const GAME_COOPERATIVE_ROLE: i32 = USER_ROLE + 17;
+const GAME_VARIANTS_ROLE: i32 = USER_ROLE + 18;
+const GAME_RELEASE_TYPE_ROLE: i32 = USER_ROLE + 19;
+const GAME_SERIES_ROLE: i32 = USER_ROLE + 20;
+const GAME_REGION_ROLE: i32 = USER_ROLE + 21;
+const GAME_NOTES_ROLE: i32 = USER_ROLE + 22;
 
-const ROLES: [(i32, &str); 8] = [
+const ROLES: [(i32, &str); 22] = [
     (GAME_ID_ROLE, "gameId"),
     (GAME_TITLE_ROLE, "gameTitle"),
     (GAME_PLATFORM_ROLE, "gamePlatform"),
@@ -570,6 +588,20 @@ const ROLES: [(i32, &str); 8] = [
     (GAME_DOWNLOADABLE_ROLE, "gameDownloadable"),
     (GAME_DATABASE_ID_ROLE, "gameDatabaseId"),
     (GAME_CANONICAL_TITLE_ROLE, "gameCanonicalTitle"),
+    (GAME_DEVELOPER_ROLE, "gameDeveloper"),
+    (GAME_PUBLISHER_ROLE, "gamePublisher"),
+    (GAME_YEAR_ROLE, "gameYear"),
+    (GAME_RELEASE_DATE_ROLE, "gameReleaseDate"),
+    (GAME_GENRE_ROLE, "gameGenre"),
+    (GAME_PLAYERS_ROLE, "gamePlayers"),
+    (GAME_RATING_ROLE, "gameRating"),
+    (GAME_ESRB_ROLE, "gameEsrb"),
+    (GAME_COOPERATIVE_ROLE, "gameCooperative"),
+    (GAME_VARIANTS_ROLE, "gameVariants"),
+    (GAME_RELEASE_TYPE_ROLE, "gameReleaseType"),
+    (GAME_SERIES_ROLE, "gameSeries"),
+    (GAME_REGION_ROLE, "gameRegion"),
+    (GAME_NOTES_ROLE, "gameNotes"),
 ];
 
 pub struct LibraryModelRust {
@@ -588,6 +620,7 @@ pub struct LibraryModelRust {
     view_mode: QString,
     sort_field: QString,
     sort_descending: bool,
+    list_columns: QString,
     media_directory: QString,
     media_loading: bool,
     media_retrieval_enabled: bool,
@@ -686,6 +719,7 @@ pub struct LibraryModelRust {
     completion_states: Arc<HashMap<String, String>>,
     metadata_titles: Arc<HashMap<String, String>>,
     metadata_cooperative: Arc<HashMap<String, String>>,
+    metadata_overrides: Arc<HashMap<String, GameMetadataOverride>>,
     tags: Arc<Vec<UserTag>>,
     game_tags: Arc<HashMap<String, Vec<String>>>,
     game_custom_fields: Arc<HashMap<String, Vec<String>>>,
@@ -725,6 +759,7 @@ impl Default for LibraryModelRust {
             view_mode: qstring(&preferences.view_mode),
             sort_field: qstring(&preferences.sort_field),
             sort_descending: preferences.sort_descending,
+            list_columns: qstring(&preferences.list_columns),
             media_directory: QString::default(),
             media_loading: false,
             media_retrieval_enabled: crate::media::media_retrieval_enabled(),
@@ -834,6 +869,7 @@ impl Default for LibraryModelRust {
             completion_states: Arc::new(HashMap::new()),
             metadata_titles: Arc::new(HashMap::new()),
             metadata_cooperative: Arc::new(HashMap::new()),
+            metadata_overrides: Arc::new(HashMap::new()),
             tags: Arc::new(Vec::new()),
             game_tags: Arc::new(HashMap::new()),
             game_custom_fields: Arc::new(HashMap::new()),
@@ -1022,15 +1058,16 @@ impl qobject::LibraryModel {
                         let custom_fields = store.all_game_custom_fields()?;
                         let mut titles = HashMap::new();
                         let mut cooperative = HashMap::new();
-                        for (game_uid, metadata) in metadata {
-                            if let Some(title) = metadata.title {
-                                titles.insert(game_uid.clone(), title);
+                        for (game_uid, values) in &metadata {
+                            if let Some(title) = &values.title {
+                                titles.insert(game_uid.clone(), title.clone());
                             }
-                            if let Some(value) = metadata.cooperative {
-                                cooperative.insert(game_uid, value);
+                            if let Some(value) = &values.cooperative {
+                                cooperative.insert(game_uid.clone(), value.clone());
                             }
                         }
                         Ok((
+                            metadata,
                             titles,
                             cooperative,
                             tags,
@@ -1054,6 +1091,7 @@ impl qobject::LibraryModel {
         generation: u64,
         result: Result<
             (
+                HashMap<String, GameMetadataOverride>,
                 HashMap<String, String>,
                 HashMap<String, String>,
                 UserTags,
@@ -1066,8 +1104,9 @@ impl qobject::LibraryModel {
             return;
         }
         match result {
-            Ok((metadata_titles, metadata_cooperative, tags, custom_fields)) => {
+            Ok((metadata, metadata_titles, metadata_cooperative, tags, custom_fields)) => {
                 self.as_mut().begin_reset_model();
+                self.as_mut().rust_mut().metadata_overrides = Arc::new(metadata);
                 self.as_mut().rust_mut().metadata_titles = Arc::new(metadata_titles);
                 self.as_mut().rust_mut().metadata_cooperative = Arc::new(metadata_cooperative);
                 self.as_mut().rust_mut().game_tags = Arc::new(tags.game_tags);
@@ -1343,6 +1382,8 @@ impl qobject::LibraryModel {
                             .set_sort_field(qstring(&preferences.sort_field));
                         self.as_mut()
                             .set_sort_descending(preferences.sort_descending);
+                        self.as_mut()
+                            .set_list_columns(qstring(&preferences.list_columns));
                         self.as_mut().rust_mut().artwork_kind = artwork_kind;
                         None
                     }
@@ -1453,22 +1494,23 @@ impl qobject::LibraryModel {
                     }
                     Err(error) => (HashMap::new(), HashMap::new(), Some(error)),
                 };
-                let (metadata_titles, metadata_cooperative, metadata_warning) = match metadata {
-                    Ok(metadata) => {
-                        let mut titles = HashMap::new();
-                        let mut cooperative = HashMap::new();
-                        for (game_uid, metadata) in metadata {
-                            if let Some(title) = metadata.title {
-                                titles.insert(game_uid.clone(), title);
+                let (metadata_overrides, metadata_titles, metadata_cooperative, metadata_warning) =
+                    match metadata {
+                        Ok(metadata) => {
+                            let mut titles = HashMap::new();
+                            let mut cooperative = HashMap::new();
+                            for (game_uid, values) in &metadata {
+                                if let Some(title) = &values.title {
+                                    titles.insert(game_uid.clone(), title.clone());
+                                }
+                                if let Some(value) = &values.cooperative {
+                                    cooperative.insert(game_uid.clone(), value.clone());
+                                }
                             }
-                            if let Some(value) = metadata.cooperative {
-                                cooperative.insert(game_uid, value);
-                            }
+                            (metadata, titles, cooperative, None)
                         }
-                        (titles, cooperative, None)
-                    }
-                    Err(error) => (HashMap::new(), HashMap::new(), Some(error)),
-                };
+                        Err(error) => (HashMap::new(), HashMap::new(), HashMap::new(), Some(error)),
+                    };
                 let (tags, game_tags, tag_warning) = match tags {
                     Ok(tags) => (tags.tags, tags.game_tags, None),
                     Err(error) => (Vec::new(), HashMap::new(), Some(error)),
@@ -1484,6 +1526,7 @@ impl qobject::LibraryModel {
                     .count();
                 let metadata_titles = Arc::new(metadata_titles);
                 let metadata_cooperative = Arc::new(metadata_cooperative);
+                let metadata_overrides = Arc::new(metadata_overrides);
                 let game_tags = Arc::new(game_tags);
                 let game_custom_fields = Arc::new(game_custom_fields);
                 let indices = catalog::filter_indices(
@@ -1492,6 +1535,7 @@ impl qobject::LibraryModel {
                         display_titles: Arc::clone(&metadata_titles),
                         game_tags: Arc::clone(&game_tags),
                         game_custom_fields: Arc::clone(&game_custom_fields),
+                        metadata_overrides: Arc::clone(&metadata_overrides),
                         sort_field: self.as_ref().sort_field().to_string(),
                         sort_descending: *self.as_ref().sort_descending(),
                         ..Filter::default()
@@ -1526,6 +1570,7 @@ impl qobject::LibraryModel {
                     rust.completion_states = Arc::new(completion_states);
                     rust.metadata_titles = metadata_titles;
                     rust.metadata_cooperative = metadata_cooperative;
+                    rust.metadata_overrides = metadata_overrides;
                     rust.tags = Arc::new(tags);
                     rust.game_tags = game_tags;
                     rust.game_custom_fields = game_custom_fields;
@@ -1722,6 +1767,7 @@ impl qobject::LibraryModel {
             display_titles: Arc::clone(&self.as_ref().rust().metadata_titles),
             game_tags: Arc::clone(&self.as_ref().rust().game_tags),
             game_custom_fields: Arc::clone(&self.as_ref().rust().game_custom_fields),
+            metadata_overrides: Arc::clone(&self.as_ref().rust().metadata_overrides),
             sort_field: self.as_ref().sort_field().to_string(),
             sort_descending: *self.as_ref().sort_descending(),
         };
@@ -1740,9 +1786,11 @@ impl qobject::LibraryModel {
             .name("lunchbox-catalog-filter".into())
             .spawn(move || {
                 let indices = catalog::filter_indices(&catalog, &filter);
-                let _ = qt_thread.queue(move |mut model| {
+                if let Err(error) = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_filter(generation, indices);
-                });
+                }) {
+                    eprintln!("Could not publish the filtered catalog to Qt: {error:?}");
+                }
             });
         if let Err(error) = spawn_result {
             self.as_mut().set_filtering(false);
@@ -1767,6 +1815,7 @@ impl qobject::LibraryModel {
             view_mode: self.as_ref().view_mode().to_string(),
             sort_field: self.as_ref().sort_field().to_string(),
             sort_descending: *self.as_ref().sort_descending(),
+            list_columns: self.as_ref().list_columns().to_string(),
         };
         if let Err(error) = SettingsStore::open_default()
             .and_then(|store| store.save_library_preferences(&preferences))
@@ -1807,6 +1856,7 @@ impl qobject::LibraryModel {
             view_mode: self.as_ref().view_mode().to_string(),
             sort_field: self.as_ref().sort_field().to_string(),
             sort_descending: *self.as_ref().sort_descending(),
+            list_columns: self.as_ref().list_columns().to_string(),
         };
         if let Err(error) = SettingsStore::open_default()
             .and_then(|store| store.save_library_preferences(&preferences))
@@ -1837,6 +1887,7 @@ impl qobject::LibraryModel {
             view_mode,
             sort_field: self.as_ref().sort_field().to_string(),
             sort_descending: *self.as_ref().sort_descending(),
+            list_columns: self.as_ref().list_columns().to_string(),
         };
         if let Err(error) = SettingsStore::open_default()
             .and_then(|store| store.save_library_preferences(&preferences))
@@ -1849,10 +1900,7 @@ impl qobject::LibraryModel {
 
     pub fn set_sort_preferences(mut self: Pin<&mut Self>, sort_field: QString, descending: bool) {
         let sort_field = sort_field.to_string();
-        if !matches!(
-            sort_field.as_str(),
-            "default" | "title" | "platform" | "availability"
-        ) {
+        if sort_field != "default" && crate::list_view::ListColumn::parse(&sort_field).is_none() {
             self.as_mut().set_status_message(qstring(format!(
                 "Could not sort the library: unsupported field {sort_field}"
             )));
@@ -1873,6 +1921,7 @@ impl qobject::LibraryModel {
             view_mode: self.as_ref().view_mode().to_string(),
             sort_field,
             sort_descending: descending,
+            list_columns: self.as_ref().list_columns().to_string(),
         };
         if let Err(error) = SettingsStore::open_default()
             .and_then(|store| store.save_library_preferences(&preferences))
@@ -1886,6 +1935,45 @@ impl qobject::LibraryModel {
             let platform = self.as_ref().current_platform().clone();
             let availability = self.as_ref().availability_filter().clone();
             self.as_mut().apply_filter(search, platform, availability);
+        }
+    }
+
+    pub fn configure_list_columns(mut self: Pin<&mut Self>, columns: QString) {
+        let columns = columns.to_string();
+        let parsed = match crate::list_view::parse_list_columns(&columns) {
+            Ok(columns) => columns,
+            Err(error) => {
+                self.as_mut().set_status_message(qstring(format!(
+                    "Could not configure list columns: {error}"
+                )));
+                return;
+            }
+        };
+        let columns = parsed
+            .into_iter()
+            .map(crate::list_view::ListColumn::key)
+            .collect::<Vec<_>>()
+            .join(",");
+        if self.as_ref().list_columns().to_string() == columns {
+            return;
+        }
+        self.as_mut().set_list_columns(qstring(&columns));
+        let preferences = LibraryPreferences {
+            hide_non_retail: *self.as_ref().hide_non_retail(),
+            hide_adult: *self.as_ref().hide_adult(),
+            artwork_type: self.as_ref().artwork_type().to_string(),
+            grid_zoom: *self.as_ref().grid_zoom(),
+            view_mode: self.as_ref().view_mode().to_string(),
+            sort_field: self.as_ref().sort_field().to_string(),
+            sort_descending: *self.as_ref().sort_descending(),
+            list_columns: columns,
+        };
+        if let Err(error) = SettingsStore::open_default()
+            .and_then(|store| store.save_library_preferences(&preferences))
+        {
+            self.as_mut().set_status_message(qstring(format!(
+                "List columns changed, but the preference could not be saved: {error}"
+            )));
         }
     }
 
@@ -4038,12 +4126,23 @@ impl qobject::LibraryModel {
         if !index.is_valid() || index.column() != 0 {
             return QVariant::default();
         }
-        let Some(game) = usize::try_from(index.row())
+        let Some(source_index) = usize::try_from(index.row())
             .ok()
             .and_then(|row| self.rust().filtered_indices.get(row))
-            .and_then(|index| self.rust().catalog.games.get(*index))
+            .copied()
         else {
             return QVariant::default();
+        };
+        let Some(game) = self.rust().catalog.games.get(source_index) else {
+            return QVariant::default();
+        };
+        let list_value = |column| {
+            QVariant::from(&qstring(self.rust().catalog.list_metadata.display_value(
+                source_index,
+                game,
+                column,
+                &self.rust().metadata_overrides,
+            )))
         };
 
         match role {
@@ -4062,6 +4161,20 @@ impl qobject::LibraryModel {
                 QVariant::from(&i32::try_from(game.launchbox_db_id).unwrap_or_default())
             }
             GAME_CANONICAL_TITLE_ROLE => QVariant::from(&qstring(&game.title)),
+            GAME_DEVELOPER_ROLE => list_value(crate::list_view::ListColumn::Developer),
+            GAME_PUBLISHER_ROLE => list_value(crate::list_view::ListColumn::Publisher),
+            GAME_YEAR_ROLE => list_value(crate::list_view::ListColumn::Year),
+            GAME_RELEASE_DATE_ROLE => list_value(crate::list_view::ListColumn::ReleaseDate),
+            GAME_GENRE_ROLE => list_value(crate::list_view::ListColumn::Genre),
+            GAME_PLAYERS_ROLE => list_value(crate::list_view::ListColumn::Players),
+            GAME_RATING_ROLE => list_value(crate::list_view::ListColumn::Rating),
+            GAME_ESRB_ROLE => list_value(crate::list_view::ListColumn::Esrb),
+            GAME_COOPERATIVE_ROLE => list_value(crate::list_view::ListColumn::Cooperative),
+            GAME_VARIANTS_ROLE => list_value(crate::list_view::ListColumn::Variants),
+            GAME_RELEASE_TYPE_ROLE => list_value(crate::list_view::ListColumn::ReleaseType),
+            GAME_SERIES_ROLE => list_value(crate::list_view::ListColumn::Series),
+            GAME_REGION_ROLE => list_value(crate::list_view::ListColumn::Region),
+            GAME_NOTES_ROLE => list_value(crate::list_view::ListColumn::Notes),
             _ => QVariant::default(),
         }
     }

@@ -15,12 +15,14 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Native Qt 6 Quick window compiled into the executable.
 - Rust `QAbstractListModel` with virtualized grid and a compact native data-list
-  presentation. The selected presentation and deterministic library/title/
-  platform/availability order survive restart; sorting stays in the catalog
+  presentation. The selected presentation, visible column order, and every
+  deterministic metadata sort survive restart; sorting stays in the catalog
   worker, applies identically to both presentations, and preserves explicit
   collection and recent-play order when Library order is selected. The list
-  has a sticky sortable Title/Platform/State header and keyboard-accessible
-  rows rather than rendering card-shaped browser components.
+  has a sticky sortable header, keyboard-accessible rows, a polished column
+  manager, and all 16 legacy fields plus native Availability. Metadata uses an
+  interned columnar store and one-key-per-row worker sorts rather than expanding
+  every game object or repeatedly lowercasing values in the comparator.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.

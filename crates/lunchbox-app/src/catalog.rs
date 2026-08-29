@@ -9,6 +9,9 @@ use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use rusqlite::{Connection, OpenFlags};
 
+use crate::list_view::{ListColumn, ListMetadata, ListMetadataBuilder, MetadataInput};
+use crate::settings::GameMetadataOverride;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Game {
     pub id: String,
@@ -35,6 +38,7 @@ pub struct Platform {
 pub struct Catalog {
     pub games: Vec<Game>,
     pub platforms: Vec<Platform>,
+    pub(crate) list_metadata: ListMetadata,
     pub local_file_count: usize,
     pub offer_count: usize,
     pub emulator_count: usize,
@@ -56,6 +60,7 @@ pub struct Filter {
     pub display_titles: Arc<std::collections::HashMap<String, String>>,
     pub game_tags: Arc<HashMap<String, Vec<String>>>,
     pub game_custom_fields: Arc<HashMap<String, Vec<String>>>,
+    pub metadata_overrides: Arc<HashMap<String, GameMetadataOverride>>,
     pub sort_field: String,
     pub sort_descending: bool,
 }
@@ -263,6 +268,10 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
         })
     })?;
     let games = game_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut list_metadata = ListMetadataBuilder::with_capacity(games.len());
+    for _ in &games {
+        list_metadata.push_empty();
+    }
 
     let has_platform_aliases = table_exists(connection, "platform_aliases")?;
     let alias_column = if has_platform_aliases {
@@ -302,6 +311,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
     Ok(Catalog {
         games,
         platforms,
+        list_metadata: list_metadata.finish(),
         local_file_count: count(connection, "local_files", "availability = 'present'")?,
         offer_count: count(
             connection,
@@ -341,14 +351,25 @@ fn load_discovery_catalog(
 
     let game_capacity = count(&discovery, "games", "1")?;
     let mut games = Vec::with_capacity(game_capacity);
+    let mut list_metadata = ListMetadataBuilder::with_capacity(game_capacity);
     let release_type = optional_game_column(&discovery, "release_type")?;
     let esrb = optional_game_column(&discovery, "esrb")?;
     let genre = optional_game_column(&discovery, "genre")?;
     let cooperative = optional_game_column(&discovery, "cooperative")?;
+    let developer = optional_game_column(&discovery, "developer")?;
+    let publisher = optional_game_column(&discovery, "publisher")?;
+    let release_date = optional_game_column(&discovery, "release_date")?;
+    let release_year = optional_game_column(&discovery, "release_year")?;
+    let players = optional_game_column(&discovery, "players")?;
+    let rating = optional_game_column(&discovery, "rating")?;
+    let series = optional_game_column(&discovery, "series")?;
+    let region = optional_game_column(&discovery, "region")?;
+    let notes = optional_game_column(&discovery, "notes")?;
     let query = format!(
         "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
                 coalesce(g.launchbox_db_id, 0), {release_type}, {esrb}, {genre},
-                {cooperative}
+                {cooperative}, {developer}, {publisher}, {release_date},
+                {release_year}, {players}, {rating}, {series}, {region}, {notes}
          FROM games g
          JOIN platforms p ON p.id = g.platform_id
          ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id"
@@ -365,11 +386,35 @@ fn load_discovery_catalog(
             row.get::<_, Option<String>>(6)?,
             row.get::<_, Option<String>>(7)?,
             row.get::<_, Option<i64>>(8)?,
+            MetadataInput {
+                developer: row.get(9)?,
+                publisher: row.get(10)?,
+                release_date: row.get(11)?,
+                release_year: row.get(12)?,
+                players: row.get(13)?,
+                rating: row.get(14)?,
+                series: row.get(15)?,
+                region: row.get(16)?,
+                notes: row.get(17)?,
+                genre: row.get(7)?,
+                esrb: row.get(6)?,
+                release_type: row.get(5)?,
+            },
         ))
     })?;
     for row in rows {
-        let (id, title, platform, status, database_id, release_type, esrb, genre, cooperative) =
-            row?;
+        let (
+            id,
+            title,
+            platform,
+            status,
+            database_id,
+            release_type,
+            esrb,
+            genre,
+            cooperative,
+            metadata,
+        ) = row?;
         let local = (database_id > 0 && installed.database_ids.contains(&database_id))
             || installed.game_uids.contains(&id);
         let minerva_covered = minerva
@@ -390,8 +435,14 @@ fn load_discovery_catalog(
             adult,
             cooperative: cooperative_status(cooperative).to_owned(),
         });
+        list_metadata.push(metadata)?;
     }
-    games.extend(installed.local_only_games.iter().cloned());
+    for game in &installed.local_only_games {
+        games.push(game.clone());
+        list_metadata.push_empty();
+    }
+    let mut list_metadata = list_metadata.finish();
+    apply_variant_counts(&games, &mut list_metadata);
 
     let canonical_aliases = canonical_platform_aliases(canonical)?;
     let mut platform_statement = discovery.prepare(
@@ -438,6 +489,7 @@ fn load_discovery_catalog(
     Ok(Catalog {
         games,
         platforms,
+        list_metadata,
         local_file_count: installed.file_count,
         offer_count: minerva.offer_count,
         emulator_count: count(canonical, "emulators", "1")?,
@@ -560,10 +612,35 @@ fn optional_game_column(connection: &Connection, column: &str) -> Result<&'stati
             "esrb" => "g.esrb",
             "genre" => "g.genre",
             "cooperative" => "g.cooperative",
+            "developer" => "g.developer",
+            "publisher" => "g.publisher",
+            "release_date" => "g.release_date",
+            "release_year" => "g.release_year",
+            "players" => "g.players",
+            "rating" => "g.rating",
+            "series" => "g.series",
+            "region" => "g.region",
+            "notes" => "g.notes",
             _ => unreachable!("optional game columns are fixed by the caller"),
         })
     } else {
         Ok("NULL")
+    }
+}
+
+fn apply_variant_counts(games: &[Game], metadata: &mut ListMetadata) {
+    let mut counts = HashMap::<String, usize>::new();
+    for game in games {
+        let base = crate::game_details::catalog_release_base(&game.title)
+            .unwrap_or_else(|| game.title.trim().to_owned());
+        let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
+        *counts.entry(key).or_default() += 1;
+    }
+    for (index, game) in games.iter().enumerate() {
+        let base = crate::game_details::catalog_release_base(&game.title)
+            .unwrap_or_else(|| game.title.trim().to_owned());
+        let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
+        metadata.set_variant_count(index, counts.get(&key).copied().unwrap_or(1));
     }
 }
 
@@ -929,6 +1006,36 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
         })
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
+    if let Some(column) = ListColumn::parse(&filter.sort_field) {
+        let mut keyed = indices
+            .into_iter()
+            .map(|index| {
+                let key = catalog.list_metadata.sort_key(
+                    index,
+                    &catalog.games[index],
+                    column,
+                    &filter.metadata_overrides,
+                );
+                (index, key)
+            })
+            .collect::<Vec<_>>();
+        keyed.sort_by(|(left_index, left_key), (right_index, right_key)| {
+            let left_game = &catalog.games[*left_index];
+            let right_game = &catalog.games[*right_index];
+            let ordering = left_key
+                .compare(right_key)
+                .then_with(|| {
+                    title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
+                })
+                .then_with(|| left_game.id.cmp(&right_game.id));
+            if filter.sort_descending {
+                ordering.reverse()
+            } else {
+                ordering
+            }
+        });
+        return keyed.into_iter().map(|(index, _)| index).collect();
+    }
     indices.sort_by(|left, right| {
         let ordering = compare_games(catalog, filter, *left, *right);
         if filter.sort_descending {
@@ -945,21 +1052,6 @@ fn compare_games(catalog: &Catalog, filter: &Filter, left: usize, right: usize) 
     let right_game = &catalog.games[right];
     let identity_tie_break = || left_game.id.cmp(&right_game.id);
     match filter.sort_field.as_str() {
-        "title" => title_sort_key(left_game, filter)
-            .cmp(&title_sort_key(right_game, filter))
-            .then_with(identity_tie_break),
-        "platform" => platform_sort_key(left_game)
-            .cmp(platform_sort_key(right_game))
-            .then_with(|| {
-                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
-            })
-            .then_with(identity_tie_break),
-        "availability" => availability_rank(left_game)
-            .cmp(&availability_rank(right_game))
-            .then_with(|| {
-                title_sort_key(left_game, filter).cmp(&title_sort_key(right_game, filter))
-            })
-            .then_with(identity_tie_break),
         _ if filter.availability == "recent" => filter
             .recent_game_order
             .get(&right_game.id)
@@ -992,23 +1084,6 @@ fn title_sort_key<'a>(game: &'a Game, filter: &'a Filter) -> Cow<'a, str> {
                 .map(|(title, _)| title)
                 .unwrap_or(&game.search_key),
         )
-    }
-}
-
-fn platform_sort_key(game: &Game) -> &str {
-    game.search_key
-        .split_once('\n')
-        .map(|(_, platform)| platform)
-        .unwrap_or_default()
-}
-
-fn availability_rank(game: &Game) -> u8 {
-    if game.local {
-        0
-    } else if game.downloadable {
-        1
-    } else {
-        2
     }
 }
 
@@ -1142,7 +1217,7 @@ mod tests {
 
     #[test]
     fn explicit_library_sorting_is_deterministic_and_composes_with_filters() {
-        let catalog = fixture_catalog();
+        let mut catalog = fixture_catalog();
         assert_eq!(
             filter_indices(
                 &catalog,
@@ -1169,6 +1244,48 @@ mod tests {
                 &Filter {
                     sort_field: "availability".into(),
                     sort_descending: true,
+                    ..Filter::default()
+                }
+            ),
+            vec![1, 0]
+        );
+
+        catalog.games[0].id = "z-metroid".into();
+        catalog.games[0].platform = "Shared Platform".into();
+        catalog.games[0].search_key = "metroid\nshared platform".into();
+        catalog.games[1].id = "a-outrun".into();
+        catalog.games[1].platform = "Shared Platform".into();
+        catalog.games[1].search_key = "outrun\nshared platform".into();
+        let mut metadata = ListMetadataBuilder::with_capacity(2);
+        metadata
+            .push(MetadataInput {
+                publisher: Some("Zeta".into()),
+                ..MetadataInput::default()
+            })
+            .unwrap();
+        metadata
+            .push(MetadataInput {
+                publisher: Some("Alpha".into()),
+                ..MetadataInput::default()
+            })
+            .unwrap();
+        catalog.list_metadata = metadata.finish();
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "platform".into(),
+                    ..Filter::default()
+                }
+            ),
+            vec![0, 1],
+            "equal primary keys retain human title order before stable identity"
+        );
+        assert_eq!(
+            filter_indices(
+                &catalog,
+                &Filter {
+                    sort_field: "publisher".into(),
                     ..Filter::default()
                 }
             ),

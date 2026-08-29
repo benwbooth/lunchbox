@@ -16,6 +16,11 @@ The initial implementation enforces this shape:
   visible rows.
 - Both grid and list views reuse delegates and keep a bounded one-viewport
   cache.
+- The data-list's 17 display fields use aligned numeric rows and an interned
+  string pool. A metadata sort computes one effective normalized key per
+  filtered row on the catalog worker, sorts those temporary keys, then drops
+  them before publishing; the comparator does not allocate or repeatedly hash
+  metadata overrides.
 - SQLite opens read-only on a named worker thread after the window is created.
 - Search, platform, and availability filtering run on worker threads. A
   generation number discards stale results when the user types quickly.
@@ -644,15 +649,20 @@ list and MAME's ROM-free `pong` driver, then exited successfully;
 `--arcade-launch-ui-probe` leaves that state open for review.
 
 `--library-view-ui-probe --state-database EMPTY_PATH --screenshot-output PATH`
-loads the complete discovery catalog, switches to the native compact list, and
-selects descending platform order through the same CXX-Qt invokables used by
-the View popup and sortable header. It exits only after the worker publishes at
-least 250,000 retail-filtered rows, the first virtualized delegate exposes a
-real platform, and the rendered view has been captured. Starting a new process
+loads the complete discovery catalog, switches to the native compact list,
+chooses Publisher/Title/Rating/Availability/Platform, and selects ascending
+Publisher order through the same CXX-Qt invokables used by the View popup,
+column manager, and sortable headers. It exits only after the worker publishes
+at least 250,000 retail-filtered rows, the first virtualized delegate exposes a
+real publisher, and the rendered view has been captured. Starting a new process
 with the same state database and `--library-view-restored-ui-probe` proves that
-the presentation, sort field, and direction survive a cold start. The current
-303,560-record fixture yielded 280,466 visible rows; sorting is performed before
-the model reset on the catalog worker rather than in QML or per delegate.
+the presentation, exact column order, sort field, and direction survive a cold
+start. The complete chooser includes Title, Platform, Developer, Publisher,
+Year, Release Date, Genre, Players, Rating, ESRB, Co-op, Variants, Type, Series,
+Region, and Notes from the legacy data-list plus native Availability. The
+current 303,560-record fixture yields 280,466 visible rows after the default
+non-retail filter; sorting is performed before the model reset on the catalog
+worker rather than in QML or per delegate.
 
 `--retroarch-shader-ui-probe --shader-target EMPTY_PATH --screenshot-output
 PATH` opens Settings against an isolated target, runs the real Rust installation

@@ -23,6 +23,7 @@ pub mod launch_profile_manager_model;
 mod library_audit;
 pub mod library_audit_model;
 pub mod library_model;
+mod list_view;
 mod local_import;
 pub mod local_import_model;
 mod media;

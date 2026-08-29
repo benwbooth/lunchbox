@@ -131,12 +131,27 @@ ApplicationWindow {
         { key: "fanart", label: "Fan art" },
         { key: "clear-logo", label: "Clear logo" }
     ]
-    readonly property var sortChoices: [
-        { key: "default", label: "Library order" },
-        { key: "title", label: "Title" },
-        { key: "platform", label: "Platform" },
-        { key: "availability", label: "Availability" }
+    readonly property var listColumnChoices: [
+        { key: "title", label: "Title", width: 320 },
+        { key: "platform", label: "Platform", width: 220 },
+        { key: "availability", label: "Availability", width: 130 },
+        { key: "developer", label: "Developer", width: 210 },
+        { key: "publisher", label: "Publisher", width: 210 },
+        { key: "year", label: "Year", width: 90 },
+        { key: "release-date", label: "Release date", width: 150 },
+        { key: "genre", label: "Genre", width: 180 },
+        { key: "players", label: "Players", width: 110 },
+        { key: "rating", label: "Rating", width: 100 },
+        { key: "esrb", label: "ESRB", width: 110 },
+        { key: "cooperative", label: "Co-op", width: 100 },
+        { key: "variants", label: "Variants", width: 100 },
+        { key: "release-type", label: "Type", width: 130 },
+        { key: "series", label: "Series", width: 180 },
+        { key: "region", label: "Region", width: 140 },
+        { key: "notes", label: "Notes", width: 340 }
     ]
+    readonly property var sortChoices: [{ key: "default", label: "Library order" }]
+                                       .concat(listColumnChoices)
     readonly property var completionChoices: [
         { key: "not_started", label: "Not started" },
         { key: "in_progress", label: "In progress" },
@@ -610,6 +625,22 @@ ApplicationWindow {
         if (library.sort_field !== sortField)
             return ""
         return library.sort_descending ? "  ↓" : "  ↑"
+    }
+
+    function listColumnDefinition(key) {
+        for (let index = 0; index < listColumnChoices.length; ++index) {
+            if (listColumnChoices[index].key === key)
+                return listColumnChoices[index]
+        }
+        return { key: key, label: key, width: 150 }
+    }
+
+    function listColumnSummary(columns) {
+        const keys = columns.length > 0 ? columns.split(",") : []
+        const labels = []
+        for (let index = 0; index < keys.length; ++index)
+            labels.push(listColumnDefinition(keys[index]).label)
+        return labels.join("  ·  ")
     }
 
     function libraryTagIndex(name) {
@@ -3638,35 +3669,58 @@ ApplicationWindow {
         interval: 80
         running: root.libraryViewUiProbe
         repeat: true
+        property int settledCycles: 0
         onTriggered: {
             if (!library.ready || library.filtering || !gameViewLoader.item)
                 return
+            settledCycles += 1
             if (!root.libraryViewRestoreUiProbe && !root.libraryViewProbeArmed) {
                 root.libraryViewProbeArmed = true
                 library.choose_view_mode("list")
-                library.set_sort_preferences("platform", true)
+                library.configure_list_columns(
+                            "publisher,title,rating,availability,platform")
+                library.set_sort_preferences("publisher", false)
                 return
             }
+            if (library.hide_non_retail
+                    && library.filtered_count >= library.game_count)
+                return
             if (library.view_mode !== "list"
-                    || library.sort_field !== "platform"
-                    || !library.sort_descending
+                    || library.sort_field !== "publisher"
+                    || library.sort_descending
+                    || library.list_columns
+                       !== "publisher,title,rating,availability,platform"
                     || library.filtered_count < 250000) {
                 console.error("LUNCHBOX_LIBRARY_VIEW_UI_FAILED mode="
                               + library.view_mode + " sort=" + library.sort_field
                               + " descending=" + library.sort_descending
+                              + " columns=" + library.list_columns
                               + " games=" + library.filtered_count)
                 Qt.exit(2)
                 return
             }
             const firstRow = gameViewLoader.item.itemAtIndex(0)
-            if (!firstRow || firstRow.gamePlatform.length === 0)
+            if (!firstRow || firstRow.gamePublisher.length === 0
+                    || firstRow.gamePublisher === "—") {
+                if (settledCycles > 150) {
+                    console.error("LUNCHBOX_LIBRARY_VIEW_UI_FAILED delegate="
+                                  + (firstRow !== null) + " publisher="
+                                  + (firstRow ? firstRow.gamePublisher : "missing")
+                                  + " columns=" + library.list_columns
+                                  + " rows=" + library.filtered_count)
+                    Qt.exit(2)
+                }
                 return
+            }
             stop()
             const report = function(screenshot) {
                 console.log("LUNCHBOX_LIBRARY_VIEW_UI_READY restored="
                             + root.libraryViewRestoreUiProbe + " mode="
                             + library.view_mode + " sort=" + library.sort_field
                             + " descending=" + library.sort_descending
+                            + " columns=" + library.list_columns
+                            + " first_publisher=" + firstRow.gamePublisher
+                            + " first_title=" + firstRow.gameTitle
                             + " first_platform=" + firstRow.gamePlatform
                             + " games=" + library.filtered_count
                             + (screenshot.length > 0
@@ -4329,6 +4383,28 @@ ApplicationWindow {
                 font.pixelSize: 9
                 wrapMode: Text.WordWrap
             }
+            Text {
+                text: "LIST COLUMNS"
+                color: "#687488"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+            HeaderButton {
+                width: parent.width
+                text: "Configure columns…"
+                active: library.view_mode === "list"
+                onClicked: listColumnsDialog.openForColumns()
+            }
+            Text {
+                width: parent.width
+                text: root.listColumnSummary(library.list_columns)
+                color: root.muted
+                font.pixelSize: 9
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
             Rectangle {
                 width: parent.width
                 height: 1
@@ -4456,6 +4532,312 @@ ApplicationWindow {
                 color: "#657186"
                 font.pixelSize: 9
                 elide: Text.ElideMiddle
+            }
+        }
+    }
+
+    Dialog {
+        id: listColumnsDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(780, root.width - 80)
+        height: Math.min(700, root.height - 80)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+        property var draftColumns: []
+
+        function openForColumns() {
+            draftColumns = library.list_columns.split(",")
+            viewPopup.close()
+            open()
+        }
+
+        function moveColumn(from, to) {
+            if (from < 0 || from >= draftColumns.length
+                    || to < 0 || to >= draftColumns.length)
+                return
+            const next = draftColumns.slice()
+            const moved = next.splice(from, 1)[0]
+            next.splice(to, 0, moved)
+            draftColumns = next
+        }
+
+        function removeColumn(index) {
+            if (draftColumns.length <= 1)
+                return
+            const next = draftColumns.slice()
+            next.splice(index, 1)
+            draftColumns = next
+        }
+
+        function addColumn(key) {
+            if (draftColumns.indexOf(key) >= 0)
+                return
+            const next = draftColumns.slice()
+            next.push(key)
+            draftColumns = next
+        }
+
+        background: Rectangle {
+            radius: 16
+            color: "#101722"
+            border.color: root.line
+            border.width: 1
+        }
+
+        header: Rectangle {
+            implicitHeight: 88
+            color: "transparent"
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 24
+                anchors.top: parent.top
+                anchors.topMargin: 20
+                text: "Configure list columns"
+                color: root.ink
+                font.pixelSize: 22
+                font.weight: Font.Bold
+            }
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 24
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 12
+                text: "Choose the metadata that matters to you, then arrange it in reading order."
+                color: root.muted
+                font.pixelSize: 11
+            }
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: root.line
+            }
+        }
+
+        contentItem: Item {
+            Row {
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 16
+
+            Rectangle {
+                width: (parent.width - parent.spacing) / 2
+                height: parent.height
+                radius: 12
+                color: root.panel
+                border.color: root.line
+
+                Text {
+                    id: selectedColumnsHeading
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.top: parent.top
+                    anchors.topMargin: 14
+                    text: "VISIBLE  ·  " + listColumnsDialog.draftColumns.length
+                    color: root.ink
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1
+                }
+
+                ListView {
+                    id: selectedColumnsList
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: selectedColumnsHeading.bottom
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 10
+                    anchors.topMargin: 12
+                    clip: true
+                    spacing: 6
+                    model: listColumnsDialog.draftColumns
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                    delegate: Rectangle {
+                        required property int index
+                        required property string modelData
+                        width: selectedColumnsList.width
+                        height: 46
+                        radius: 9
+                        color: "#1a2330"
+                        border.color: root.line
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 13
+                            anchors.right: moveUpButton.left
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.listColumnDefinition(parent.modelData).label
+                            color: root.ink
+                            font.pixelSize: 12
+                            font.weight: parent.modelData === "title"
+                                         ? Font.DemiBold : Font.Normal
+                            elide: Text.ElideRight
+                        }
+                        Button {
+                            id: moveUpButton
+                            anchors.right: moveDownButton.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34
+                            height: 32
+                            flat: true
+                            text: "↑"
+                            enabled: parent.index > 0
+                            onClicked: listColumnsDialog.moveColumn(parent.index,
+                                                                    parent.index - 1)
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Move earlier"
+                        }
+                        Button {
+                            id: moveDownButton
+                            anchors.right: removeColumnButton.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34
+                            height: 32
+                            flat: true
+                            text: "↓"
+                            enabled: parent.index < listColumnsDialog.draftColumns.length - 1
+                            onClicked: listColumnsDialog.moveColumn(parent.index,
+                                                                    parent.index + 1)
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Move later"
+                        }
+                        Button {
+                            id: removeColumnButton
+                            anchors.right: parent.right
+                            anchors.rightMargin: 5
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34
+                            height: 32
+                            flat: true
+                            text: "×"
+                            enabled: listColumnsDialog.draftColumns.length > 1
+                            onClicked: listColumnsDialog.removeColumn(parent.index)
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Hide column"
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: (parent.width - parent.spacing) / 2
+                height: parent.height
+                radius: 12
+                color: root.panel
+                border.color: root.line
+
+                Text {
+                    id: availableColumnsHeading
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.top: parent.top
+                    anchors.topMargin: 14
+                    text: "AVAILABLE METADATA"
+                    color: root.ink
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1
+                }
+
+                ListView {
+                    id: availableColumnsList
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: availableColumnsHeading.bottom
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 10
+                    anchors.topMargin: 12
+                    clip: true
+                    spacing: 6
+                    model: root.listColumnChoices
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: availableColumnsList.width
+                        height: 46
+                        radius: 9
+                        color: addColumnButton.enabled ? "#1a2330" : "#141b25"
+                        border.color: root.line
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 13
+                            anchors.right: addColumnButton.left
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: parent.modelData.label
+                            color: addColumnButton.enabled ? root.ink : "#687488"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        Button {
+                            id: addColumnButton
+                            anchors.right: parent.right
+                            anchors.rightMargin: 7
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 76
+                            height: 32
+                            text: enabled ? "+ Add" : "Shown"
+                            flat: true
+                            enabled: listColumnsDialog.draftColumns.indexOf(
+                                         parent.modelData.key) < 0
+                            onClicked: listColumnsDialog.addColumn(parent.modelData.key)
+                        }
+                    }
+                }
+            }
+            }
+        }
+
+        footer: Rectangle {
+            implicitHeight: 72
+            color: "transparent"
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 1
+                color: root.line
+            }
+            HeaderButton {
+                anchors.left: parent.left
+                anchors.leftMargin: 20
+                anchors.verticalCenter: parent.verticalCenter
+                width: 180
+                text: "Reset recommended"
+                onClicked: listColumnsDialog.draftColumns = [
+                               "title", "platform", "availability",
+                               "developer", "year"
+                           ]
+            }
+            HeaderButton {
+                anchors.right: applyListColumnsButton.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 100
+                text: "Cancel"
+                onClicked: listColumnsDialog.close()
+            }
+            HeaderButton {
+                id: applyListColumnsButton
+                anchors.right: parent.right
+                anchors.rightMargin: 20
+                anchors.verticalCenter: parent.verticalCenter
+                width: 120
+                text: "Apply"
+                active: true
+                onClicked: {
+                    library.configure_list_columns(
+                                listColumnsDialog.draftColumns.join(","))
+                    listColumnsDialog.close()
+                }
             }
         }
     }
@@ -4978,102 +5360,72 @@ ApplicationWindow {
         model: library
         boundsBehavior: Flickable.StopAtBounds
         headerPositioning: ListView.OverlayHeader
-        property real platformColumnX: Math.max(210, Math.round(width * 0.50))
-        property real stateColumnX: Math.max(platformColumnX + 100, width - 190)
+        property var activeColumnKeys: library.list_columns.split(",")
+        readonly property real tableWidth: calculateTableWidth()
+
+        function columnWidth(key) {
+            return root.listColumnDefinition(key).width
+        }
+
+        function columnX(columnIndex) {
+            let position = 54
+            for (let index = 0; index < columnIndex; ++index)
+                position += columnWidth(activeColumnKeys[index])
+            return position
+        }
+
+        function calculateTableWidth() {
+            let total = 54 + 44
+            for (let index = 0; index < activeColumnKeys.length; ++index)
+                total += columnWidth(activeColumnKeys[index])
+            return total
+        }
+
+        contentWidth: Math.max(width, tableWidth)
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
 
         header: Rectangle {
-            width: list.width - 8
+            width: Math.max(list.width - 8, list.tableWidth)
             height: 46
             z: 3
             color: "#171f2b"
             border.color: root.line
 
-            Button {
-                x: 54
-                width: list.platformColumnX - x - 8
-                height: parent.height
-                text: "TITLE" + root.sortIndicator("title")
-                flat: true
-                onClicked: root.requestLibrarySort("title")
-                Accessible.name: "Sort games by title"
-                contentItem: Text {
-                    text: parent.text
-                    color: library.sort_field === "title" ? root.accent : root.muted
-                    font.pixelSize: 9
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.0
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-                background: Rectangle {
-                    color: parent.hovered ? "#222c3a" : "transparent"
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 2
-                        visible: library.sort_field === "title"
-                        color: root.accent
+            Repeater {
+                model: list.activeColumnKeys
+                delegate: Button {
+                    required property int index
+                    required property string modelData
+                    x: list.columnX(index)
+                    width: list.columnWidth(modelData) - 8
+                    height: parent.height
+                    text: root.listColumnDefinition(modelData).label.toUpperCase()
+                          + root.sortIndicator(modelData)
+                    flat: true
+                    onClicked: root.requestLibrarySort(modelData)
+                    Accessible.name: "Sort games by "
+                                     + root.listColumnDefinition(modelData).label
+                    contentItem: Text {
+                        text: parent.text
+                        color: library.sort_field === parent.modelData
+                               ? root.accent : root.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.0
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
                     }
-                }
-            }
-            Button {
-                x: list.platformColumnX
-                width: list.stateColumnX - x - 8
-                height: parent.height
-                text: "PLATFORM" + root.sortIndicator("platform")
-                flat: true
-                onClicked: root.requestLibrarySort("platform")
-                Accessible.name: "Sort games by platform"
-                contentItem: Text {
-                    text: parent.text
-                    color: library.sort_field === "platform" ? root.accent : root.muted
-                    font.pixelSize: 9
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.0
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-                background: Rectangle {
-                    color: parent.hovered ? "#222c3a" : "transparent"
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 2
-                        visible: library.sort_field === "platform"
-                        color: root.accent
-                    }
-                }
-            }
-            Button {
-                x: list.stateColumnX
-                width: parent.width - x - 42
-                height: parent.height
-                text: "STATE" + root.sortIndicator("availability")
-                flat: true
-                onClicked: root.requestLibrarySort("availability")
-                Accessible.name: "Sort games by availability"
-                contentItem: Text {
-                    text: parent.text
-                    color: library.sort_field === "availability" ? root.accent : root.muted
-                    font.pixelSize: 9
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.0
-                    verticalAlignment: Text.AlignVCenter
-                    horizontalAlignment: Text.AlignRight
-                    elide: Text.ElideRight
-                }
-                background: Rectangle {
-                    color: parent.hovered ? "#222c3a" : "transparent"
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 2
-                        visible: library.sort_field === "availability"
-                        color: root.accent
+                    background: Rectangle {
+                        color: parent.hovered ? "#222c3a" : "transparent"
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            height: 2
+                            visible: library.sort_field === parent.parent.modelData
+                            color: root.accent
+                        }
                     }
                 }
             }
@@ -5090,6 +5442,20 @@ ApplicationWindow {
             required property bool gameLocal
             required property bool gameDownloadable
             required property int gameDatabaseId
+            required property string gameDeveloper
+            required property string gamePublisher
+            required property string gameYear
+            required property string gameReleaseDate
+            required property string gameGenre
+            required property string gamePlayers
+            required property string gameRating
+            required property string gameEsrb
+            required property string gameCooperative
+            required property string gameVariants
+            required property string gameReleaseType
+            required property string gameSeries
+            required property string gameRegion
+            required property string gameNotes
             property int mediaRevision: library.media_revision
             property int favoriteRevision: library.favorite_revision
             property int favoritePendingRevision: library.favorite_pending_count
@@ -5110,6 +5476,36 @@ ApplicationWindow {
                 library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
             }
+            function columnValue(key) {
+                switch (key) {
+                case "title": return gameTitle
+                case "platform": return gamePlatform.length > 0
+                                      ? gamePlatform : "Unassigned platform"
+                case "availability": return gameLocal ? "Installed"
+                                            : gameDownloadable ? "Available" : "Catalog"
+                case "developer": return gameDeveloper
+                case "publisher": return gamePublisher
+                case "year": return gameYear
+                case "release-date": return gameReleaseDate
+                case "genre": return gameGenre
+                case "players": return gamePlayers
+                case "rating": return gameRating
+                case "esrb": return gameEsrb
+                case "cooperative": return gameCooperative
+                case "variants": return gameVariants
+                case "release-type": return gameReleaseType
+                case "series": return gameSeries
+                case "region": return gameRegion
+                case "notes": return gameNotes
+                default: return "—"
+                }
+            }
+            function columnColor(key) {
+                if (key !== "availability")
+                    return key === "title" ? root.ink : root.muted
+                return gameLocal ? root.accentCool
+                       : gameDownloadable ? root.accent : root.muted
+            }
             Component.onCompleted: requestVisibleArtwork()
             onGameDatabaseIdChanged: requestVisibleArtwork()
             onGameTitleChanged: requestVisibleArtwork()
@@ -5117,7 +5513,7 @@ ApplicationWindow {
             onGamePlatformChanged: requestVisibleArtwork()
             onMediaRevisionChanged: requestVisibleArtwork()
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
-            width: list.width - 8
+            width: Math.max(list.width - 8, list.tableWidth)
             height: 54
             radius: 0
             activeFocusOnTab: true
@@ -5180,24 +5576,22 @@ ApplicationWindow {
                     visible: listImage.status !== Image.Ready
                 }
             }
-            Text {
-                x: 54
-                width: list.platformColumnX - x - 10
-                anchors.verticalCenter: parent.verticalCenter
-                text: row.gameTitle
-                color: root.ink
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-                elide: Text.ElideRight
-            }
-            Text {
-                x: list.platformColumnX
-                width: list.stateColumnX - x - 12
-                anchors.verticalCenter: parent.verticalCenter
-                text: row.gamePlatform.length > 0 ? row.gamePlatform : "Unassigned platform"
-                color: root.muted
-                font.pixelSize: 11
-                elide: Text.ElideRight
+            Repeater {
+                model: list.activeColumnKeys
+                delegate: Text {
+                    required property int index
+                    required property string modelData
+                    x: list.columnX(index)
+                    width: list.columnWidth(modelData) - 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: row.columnValue(modelData)
+                    color: row.columnColor(modelData)
+                    font.pixelSize: modelData === "title" ? 13 : 11
+                    font.weight: modelData === "title" || modelData === "availability"
+                                 ? Font.DemiBold : Font.Normal
+                    font.letterSpacing: modelData === "availability" ? 0.5 : 0
+                    elide: Text.ElideRight
+                }
             }
             RoundButton {
                 id: listFavorite
@@ -5213,18 +5607,6 @@ ApplicationWindow {
                 onClicked: library.set_favorite(row.gameId, !row.favorite)
                 ToolTip.visible: hovered
                 ToolTip.text: row.favorite ? "Remove from Favorites" : "Add to Favorites"
-            }
-            Text {
-                id: stateLabel
-                x: list.stateColumnX
-                width: listFavorite.x - x - 8
-                anchors.verticalCenter: parent.verticalCenter
-                text: row.gameLocal ? "INSTALLED" : row.gameDownloadable ? "AVAILABLE" : row.gameStatus.toUpperCase()
-                color: row.gameLocal ? root.accentCool : row.gameDownloadable ? root.accent : root.muted
-                font.pixelSize: 10
-                font.weight: Font.Bold
-                font.letterSpacing: 0.8
-                horizontalAlignment: Text.AlignRight
             }
             Rectangle {
                 anchors.left: parent.left
