@@ -19,6 +19,7 @@ pub struct EnqueueRequest {
     pub launchbox_db_id: i64,
     pub title: String,
     pub platform: String,
+    pub source_kind: String,
     pub torrent_url: String,
     pub torrent_bytes: Vec<u8>,
     pub selected_file_index: u32,
@@ -135,7 +136,7 @@ impl QbittorrentClient {
         } else {
             self.ensure_category()?;
             let torrent_part = Part::bytes(torrent_bytes)
-                .file_name("minerva.torrent")
+                .file_name("lunchbox-source.torrent")
                 .mime_str("application/x-bittorrent")?;
             let form = Form::new()
                 .part("torrents", torrent_part)
@@ -151,7 +152,7 @@ impl QbittorrentClient {
                 .post(self.endpoint("torrents/add"))
                 .header("Referer", &self.base_url)
                 .send(form)
-                .context("adding the Minerva torrent to qBittorrent")?;
+                .context("adding the reviewed torrent to qBittorrent")?;
             let (status, body) = response_text(response)?;
             require_success(status, &body, "qBittorrent add request")?;
 
@@ -442,6 +443,9 @@ pub fn enqueue(
     request: EnqueueRequest,
 ) -> Result<DownloadJob> {
     settings.validate()?;
+    if !matches!(request.source_kind.as_str(), "minerva" | "manual_torrent") {
+        bail!("unsupported download source kind {}", request.source_kind);
+    }
     if settings.torrent_library_directory.as_os_str().is_empty() {
         bail!("choose a native torrent library directory in Settings");
     }
@@ -583,6 +587,7 @@ pub fn enqueue(
         launchbox_db_id: request.launchbox_db_id,
         title: request.title,
         platform: request.platform,
+        source_kind: request.source_kind,
         torrent_url: request.torrent_url,
         torrent_file_index: progress_file_index,
         torrent_file_path: actual_file_path,
@@ -1337,6 +1342,7 @@ mod tests {
             launchbox_db_id: 1,
             title: "First".into(),
             platform: "Game Boy".into(),
+            source_kind: "minerva".into(),
             torrent_url: "https://example.invalid/bundle.torrent".into(),
             torrent_file_index: Some(3),
             torrent_file_path: "Game Boy/First.zip".into(),
@@ -1392,6 +1398,7 @@ mod tests {
             launchbox_db_id: 1,
             title: "Game".into(),
             platform: "Platform".into(),
+            source_kind: "minerva".into(),
             torrent_url: "https://example.invalid/bundle.torrent".into(),
             torrent_file_index: Some(3),
             torrent_file_path: "Game (Disc 1).chd".into(),
@@ -1448,6 +1455,7 @@ mod tests {
             launchbox_db_id: 1,
             title: "First".into(),
             platform: "Game Boy".into(),
+            source_kind: "minerva".into(),
             torrent_url: "https://example.invalid/bundle.torrent".into(),
             torrent_file_index: None,
             torrent_file_path: "Game Boy/First.zip".into(),

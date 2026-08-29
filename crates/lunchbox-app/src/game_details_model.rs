@@ -3771,6 +3771,7 @@ fn queue_download(
             launchbox_db_id,
             title: title.clone(),
             platform,
+            source_kind: "minerva".to_owned(),
             torrent_url: bundle.torrent_url,
             torrent_bytes,
             selected_file_index: file_index,

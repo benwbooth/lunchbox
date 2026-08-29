@@ -97,11 +97,19 @@ Lunchbox-owned torrent after every selected file in that bundle has imported.
 The pause request is non-destructive, survives restart when deferred, and
 retries automatically when qBittorrent is temporarily unavailable.
 
-The longer-term source architecture deliberately separates catalog identity
-from acquisition offers. Minerva remains the reviewed built-in provider, while
-lawful user-supplied `.torrent` and magnet intake and future authorized provider
-adapters can feed the same candidate/review/download pipeline without becoming
-canonical metadata. See [external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
+The source architecture deliberately separates catalog identity from
+acquisition offers. Minerva remains the reviewed built-in provider. From an
+exact game's details pane, **Add External Torrent Source** now accepts a lawful
+user-supplied `.torrent`, parses at most 16 MiB off the GUI thread, rejects
+unsafe or cross-platform-incompatible paths, and presents every file, its size,
+the v1 info hash, and the current exact-file/whole-torrent policy before Queue
+is enabled. The catalog UUID, title, and platform remain locked throughout the
+review; torrent labels cannot establish or replace identity. Queueing reuses the
+same qBittorrent, progress, import, and collection pipeline and durably records
+the source-file name, torrent SHA-256, info hash, reviewed file, exact catalog
+association, and resulting job. Magnet intake, watched folders, and authorized
+provider adapters remain planned rather than implied by this manual path. See
+[external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
 
 The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age

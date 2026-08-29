@@ -59,6 +59,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   file ingestion through configurable link/copy policies. The native seeding
   policy can follow qBittorrent or durably pause a Lunchbox-owned torrent after
   all selected bundle members import, with automatic retry and no data removal.
+- Provider-neutral manual `.torrent` intake from an exact game's details pane:
+  a bounded off-thread parser, portable-path validation, complete native file
+  review, explicit exact-file or whole-torrent handoff, immutable catalog
+  association, and durable source/torrent/job provenance all reuse the existing
+  qBittorrent, import, and collection pipeline. No external source label can
+  establish game identity.
 - Unified native Find Artwork workflow for SteamGridDB and IGDB with
   provider-specific media categories, Twitch client-credentials authentication,
   operating-system credential storage, explicit exact-game review, durable
@@ -137,9 +143,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
-- Add provider-neutral, review-first acquisition intake: watched-folder and
-  manual `.torrent` import, magnet import, then authorized catalog adapters.
-  External offers retain source provenance and never establish or merge a
+- Extend the implemented provider-neutral, review-first manual `.torrent`
+  intake with magnet metadata resolution, an idempotent watched folder, local
+  user-managed provider manifests, and then authorized catalog adapters.
+  External offers must retain source provenance and never establish or merge a
   canonical game identity. A direct NSW Torrent Library adapter is not planned
   unless its operators provide documented rights, terms, and an authorized API;
   Lunchbox will not bundle a Telegram account session, scrape bots, or automate

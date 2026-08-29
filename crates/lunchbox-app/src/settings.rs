@@ -751,6 +751,7 @@ pub struct DownloadJob {
     pub launchbox_db_id: i64,
     pub title: String,
     pub platform: String,
+    pub source_kind: String,
     pub torrent_url: String,
     pub torrent_file_index: Option<u32>,
     pub torrent_file_path: String,
@@ -775,6 +776,7 @@ pub(crate) struct NewDownloadJob {
     pub launchbox_db_id: i64,
     pub title: String,
     pub platform: String,
+    pub source_kind: String,
     pub torrent_url: String,
     pub torrent_file_index: Option<u32>,
     pub torrent_file_path: String,
@@ -794,6 +796,7 @@ impl DownloadJob {
             launchbox_db_id: new_job.launchbox_db_id,
             title: new_job.title,
             platform: new_job.platform,
+            source_kind: new_job.source_kind,
             torrent_url: new_job.torrent_url,
             torrent_file_index: new_job.torrent_file_index,
             torrent_file_path: new_job.torrent_file_path,
@@ -823,6 +826,22 @@ impl DownloadJob {
         plan.validate()?;
         Ok(Some(plan))
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ManualTorrentSourceReceipt {
+    pub game_uid: String,
+    pub launchbox_db_id: i64,
+    pub canonical_title: String,
+    pub platform: String,
+    pub source_file_name: String,
+    pub torrent_name: String,
+    pub torrent_sha256: String,
+    pub info_hash: String,
+    pub selected_file_index: u32,
+    pub selected_file_path: String,
+    pub queued_job_id: String,
+    pub reviewed_at: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -2527,17 +2546,19 @@ impl SettingsStore {
     }
 
     pub fn upsert_job(&self, job: &DownloadJob) -> Result<()> {
+        validate_download_source_kind(&job.source_kind)?;
         let connection = self.connection()?;
         connection.execute(
             "INSERT INTO download_jobs (
-                 id, game_id, launchbox_db_id, title, platform, torrent_url, torrent_file_index,
+                 id, game_id, launchbox_db_id, title, platform, source_kind,
+                 torrent_url, torrent_file_index,
                  torrent_file_path, info_hash, client_save_path,
                  local_download_path, local_target_path, state, progress,
                  download_speed, downloaded_bytes, total_bytes, message,
                  post_import_action, created_at, updated_at, download_plan
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
              ) ON CONFLICT(id) DO UPDATE SET
                  state=excluded.state, progress=excluded.progress,
                  download_speed=excluded.download_speed,
@@ -2551,6 +2572,7 @@ impl SettingsStore {
                 job.launchbox_db_id,
                 job.title,
                 job.platform,
+                job.source_kind,
                 job.torrent_url,
                 job.torrent_file_index.map(i64::from),
                 job.torrent_file_path,
@@ -2573,10 +2595,81 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub(crate) fn record_manual_torrent_enqueue(
+        &self,
+        receipt: &ManualTorrentSourceReceipt,
+        job: &DownloadJob,
+    ) -> Result<()> {
+        validate_manual_torrent_receipt(receipt, job)?;
+        self.upsert_job(job)?;
+        self.connection()?.execute(
+            "INSERT INTO manual_torrent_sources (
+                 game_uid, launchbox_db_id, canonical_title, platform,
+                 source_file_name, torrent_name, torrent_sha256, info_hash,
+                 selected_file_index, selected_file_path, queued_job_id, reviewed_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(game_uid, info_hash, selected_file_index) DO UPDATE SET
+                 launchbox_db_id=excluded.launchbox_db_id,
+                 canonical_title=excluded.canonical_title,
+                 platform=excluded.platform,
+                 source_file_name=excluded.source_file_name,
+                 torrent_name=excluded.torrent_name,
+                 torrent_sha256=excluded.torrent_sha256,
+                 selected_file_path=excluded.selected_file_path,
+                 queued_job_id=excluded.queued_job_id,
+                 reviewed_at=excluded.reviewed_at",
+            params![
+                receipt.game_uid,
+                receipt.launchbox_db_id,
+                receipt.canonical_title,
+                receipt.platform,
+                receipt.source_file_name,
+                receipt.torrent_name,
+                receipt.torrent_sha256,
+                receipt.info_hash,
+                i64::from(receipt.selected_file_index),
+                receipt.selected_file_path,
+                receipt.queued_job_id,
+                receipt.reviewed_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn manual_torrent_sources(&self) -> Result<Vec<ManualTorrentSourceReceipt>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT game_uid, launchbox_db_id, canonical_title, platform,
+                    source_file_name, torrent_name, torrent_sha256, info_hash,
+                    selected_file_index, selected_file_path, queued_job_id, reviewed_at
+             FROM manual_torrent_sources
+             ORDER BY reviewed_at, game_uid, info_hash, selected_file_index",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let selected_file_index = row.get::<_, i64>(8)?;
+            Ok(ManualTorrentSourceReceipt {
+                game_uid: row.get(0)?,
+                launchbox_db_id: row.get(1)?,
+                canonical_title: row.get(2)?,
+                platform: row.get(3)?,
+                source_file_name: row.get(4)?,
+                torrent_name: row.get(5)?,
+                torrent_sha256: row.get(6)?,
+                info_hash: row.get(7)?,
+                selected_file_index: u32::try_from(selected_file_index).unwrap_or(u32::MAX),
+                selected_file_path: row.get(9)?,
+                queued_job_id: row.get(10)?,
+                reviewed_at: row.get(11)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn jobs(&self) -> Result<Vec<DownloadJob>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT id, game_id, launchbox_db_id, title, platform, torrent_url,
+            "SELECT id, game_id, launchbox_db_id, title, platform, source_kind, torrent_url,
                     torrent_file_index, torrent_file_path, info_hash,
                     client_save_path, local_download_path, local_target_path,
                     state, progress, download_speed, downloaded_bytes,
@@ -2585,30 +2678,31 @@ impl SettingsStore {
              FROM download_jobs ORDER BY created_at DESC, id",
         )?;
         let rows = statement.query_map([], |row| {
-            let file_index = row.get::<_, Option<i64>>(6)?;
+            let file_index = row.get::<_, Option<i64>>(7)?;
             Ok(DownloadJob {
                 id: row.get(0)?,
                 game_id: row.get(1)?,
                 launchbox_db_id: row.get(2)?,
                 title: row.get(3)?,
                 platform: row.get(4)?,
-                torrent_url: row.get(5)?,
+                source_kind: row.get(5)?,
+                torrent_url: row.get(6)?,
                 torrent_file_index: file_index.and_then(|value| u32::try_from(value).ok()),
-                torrent_file_path: row.get(7)?,
-                info_hash: row.get(8)?,
-                client_save_path: row.get(9)?,
-                local_download_path: PathBuf::from(row.get::<_, String>(10)?),
-                local_target_path: PathBuf::from(row.get::<_, String>(11)?),
-                state: row.get(12)?,
-                progress: row.get(13)?,
-                download_speed: i64_to_u64(row.get(14)?),
-                downloaded_bytes: i64_to_u64(row.get(15)?),
-                total_bytes: i64_to_u64(row.get(16)?),
-                message: row.get(17)?,
-                post_import_action: row.get(18)?,
-                created_at: row.get(19)?,
-                updated_at: row.get(20)?,
-                download_plan: row.get(21)?,
+                torrent_file_path: row.get(8)?,
+                info_hash: row.get(9)?,
+                client_save_path: row.get(10)?,
+                local_download_path: PathBuf::from(row.get::<_, String>(11)?),
+                local_target_path: PathBuf::from(row.get::<_, String>(12)?),
+                state: row.get(13)?,
+                progress: row.get(14)?,
+                download_speed: i64_to_u64(row.get(15)?),
+                downloaded_bytes: i64_to_u64(row.get(16)?),
+                total_bytes: i64_to_u64(row.get(17)?),
+                message: row.get(18)?,
+                post_import_action: row.get(19)?,
+                created_at: row.get(20)?,
+                updated_at: row.get(21)?,
+                download_plan: row.get(22)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -2650,7 +2744,7 @@ impl SettingsStore {
             "INSERT INTO installed_games (
                  game_uid, launchbox_db_id, title, platform, file_path,
                  file_size, import_source, installed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'minerva', ?7)
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(game_uid) DO UPDATE SET
                  launchbox_db_id=excluded.launchbox_db_id,
                  title=excluded.title, platform=excluded.platform,
@@ -2666,6 +2760,7 @@ impl SettingsStore {
                 path.metadata()
                     .ok()
                     .and_then(|metadata| i64::try_from(metadata.len()).ok()),
+                job.source_kind,
                 unix_timestamp(),
             ],
         )?;
@@ -2823,6 +2918,9 @@ fn migrate(connection: &Connection) -> Result<()> {
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
              title TEXT NOT NULL,
              platform TEXT NOT NULL,
+             source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (
+                 source_kind IN ('minerva', 'manual_torrent')
+             ),
              torrent_url TEXT NOT NULL,
              torrent_file_index INTEGER,
              torrent_file_path TEXT NOT NULL,
@@ -2845,6 +2943,23 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS download_jobs_info_hash
              ON download_jobs(info_hash);
+         CREATE TABLE IF NOT EXISTS manual_torrent_sources (
+             game_uid TEXT NOT NULL CHECK (length(game_uid) BETWEEN 1 AND 512),
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0 CHECK (launchbox_db_id >= 0),
+             canonical_title TEXT NOT NULL CHECK (length(canonical_title) BETWEEN 1 AND 1024),
+             platform TEXT NOT NULL CHECK (length(platform) BETWEEN 1 AND 512),
+             source_file_name TEXT NOT NULL CHECK (length(source_file_name) BETWEEN 1 AND 1024),
+             torrent_name TEXT NOT NULL CHECK (length(torrent_name) BETWEEN 1 AND 1024),
+             torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+             info_hash TEXT NOT NULL CHECK (length(info_hash)=40),
+             selected_file_index INTEGER NOT NULL CHECK (selected_file_index >= 0),
+             selected_file_path TEXT NOT NULL CHECK (length(selected_file_path) BETWEEN 1 AND 4096),
+             queued_job_id TEXT NOT NULL CHECK (length(queued_job_id) > 0),
+             reviewed_at INTEGER NOT NULL CHECK (reviewed_at >= 0),
+             PRIMARY KEY (game_uid, info_hash, selected_file_index)
+         );
+         CREATE INDEX IF NOT EXISTS manual_torrent_sources_info_hash
+             ON manual_torrent_sources(info_hash, game_uid);
          CREATE TABLE IF NOT EXISTS installed_games (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -3266,6 +3381,12 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
             "ALTER TABLE download_jobs ADD COLUMN launchbox_db_id INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "download_jobs", "source_kind")? {
+        connection.execute(
+            "ALTER TABLE download_jobs ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (source_kind IN ('minerva', 'manual_torrent'))",
             [],
         )?;
     }
@@ -3926,6 +4047,61 @@ fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+fn validate_download_source_kind(source_kind: &str) -> Result<()> {
+    if matches!(source_kind, "minerva" | "manual_torrent") {
+        Ok(())
+    } else {
+        bail!("unsupported download source kind {source_kind}")
+    }
+}
+
+fn validate_manual_torrent_receipt(
+    receipt: &ManualTorrentSourceReceipt,
+    job: &DownloadJob,
+) -> Result<()> {
+    if job.source_kind != "manual_torrent"
+        || receipt.game_uid.trim().is_empty()
+        || receipt.game_uid != job.game_id
+        || receipt.launchbox_db_id != job.launchbox_db_id
+        || receipt.canonical_title.trim().is_empty()
+        || receipt.canonical_title != job.title
+        || receipt.platform.trim().is_empty()
+        || receipt.platform != job.platform
+        || receipt.source_file_name.trim().is_empty()
+        || receipt.source_file_name.chars().count() > 1024
+        || receipt.torrent_name.trim().is_empty()
+        || receipt.torrent_name.chars().count() > 1024
+        || receipt.torrent_sha256.len() != 64
+        || !receipt
+            .torrent_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || receipt.info_hash.len() != 40
+        || !receipt
+            .info_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || !receipt.info_hash.eq_ignore_ascii_case(&job.info_hash)
+        || job
+            .torrent_file_index
+            .is_some_and(|index| receipt.selected_file_index != index)
+        || receipt.selected_file_path.trim().is_empty()
+        || receipt.selected_file_path.chars().count() > 4096
+        || receipt.selected_file_path != job.torrent_file_path
+        || job.torrent_url
+            != format!(
+                "manual-torrent:sha256:{}",
+                receipt.torrent_sha256.to_ascii_lowercase()
+            )
+        || receipt.queued_job_id != job.id
+        || receipt.reviewed_at < 0
+    {
+        bail!("manual torrent provenance does not match the queued download");
+    }
+    crate::qbittorrent::safe_torrent_relative_path(&receipt.selected_file_path)?;
+    Ok(())
+}
+
 fn u64_to_i64(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
@@ -4041,6 +4217,7 @@ mod tests {
             launchbox_db_id: 42,
             title: "Game".into(),
             platform: "Platform".into(),
+            source_kind: "minerva".into(),
             torrent_url: "https://example.invalid/game.torrent".into(),
             torrent_file_index: Some(7),
             torrent_file_path: "Platform/Game.zip".into(),
@@ -4061,6 +4238,85 @@ mod tests {
     }
 
     #[test]
+    fn manual_torrent_provenance_is_exact_idempotent_and_source_aware() {
+        let (directory, store) = store();
+        let downloaded = directory.path().join("downloads/Sample Game.rom");
+        let installed = directory.path().join("roms/Sample Game.rom");
+        fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        fs::write(&installed, b"sample rom").unwrap();
+        let job = DownloadJob::queued(NewDownloadJob {
+            game_id: "game-uuid".into(),
+            launchbox_db_id: 42,
+            title: "Sample Game".into(),
+            platform: "Sample System".into(),
+            source_kind: "manual_torrent".into(),
+            torrent_url: format!("manual-torrent:sha256:{}", "a".repeat(64)),
+            torrent_file_index: Some(7),
+            torrent_file_path: "Pack/Sample Game.rom".into(),
+            info_hash: "b".repeat(40),
+            client_save_path: "/downloads/lunchbox".into(),
+            local_download_path: downloaded,
+            local_target_path: installed.clone(),
+            download_plan: String::new(),
+        });
+        let mut receipt = ManualTorrentSourceReceipt {
+            game_uid: job.game_id.clone(),
+            launchbox_db_id: job.launchbox_db_id,
+            canonical_title: job.title.clone(),
+            platform: job.platform.clone(),
+            source_file_name: "sample.torrent".into(),
+            torrent_name: "Sample Pack".into(),
+            torrent_sha256: "a".repeat(64),
+            info_hash: job.info_hash.clone(),
+            selected_file_index: 7,
+            selected_file_path: job.torrent_file_path.clone(),
+            queued_job_id: job.id.clone(),
+            reviewed_at: 10,
+        };
+        store.record_manual_torrent_enqueue(&receipt, &job).unwrap();
+        receipt.reviewed_at = 11;
+        store.record_manual_torrent_enqueue(&receipt, &job).unwrap();
+        assert_eq!(
+            store.manual_torrent_sources().unwrap(),
+            vec![receipt.clone()]
+        );
+        assert_eq!(store.jobs().unwrap(), vec![job.clone()]);
+
+        store.record_installed(&job, &installed).unwrap();
+        let import_source: String = store
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT import_source FROM installed_games WHERE game_uid='game-uuid'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(import_source, "manual_torrent");
+
+        let mut whole_torrent_job = job.clone();
+        whole_torrent_job.id = "whole-torrent-job".into();
+        whole_torrent_job.torrent_file_index = None;
+        receipt.queued_job_id = whole_torrent_job.id.clone();
+        receipt.reviewed_at = 12;
+        store
+            .record_manual_torrent_enqueue(&receipt, &whole_torrent_job)
+            .unwrap();
+        assert_eq!(
+            store.manual_torrent_sources().unwrap(),
+            vec![receipt.clone()]
+        );
+
+        let mut mismatched = store.manual_torrent_sources().unwrap().remove(0);
+        mismatched.selected_file_path = "Pack/Other.rom".into();
+        assert!(
+            store
+                .record_manual_torrent_enqueue(&mismatched, &job)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn download_history_cleanup_never_removes_active_or_pending_import_jobs() {
         let (_directory, store) = store();
         let make_job = |game_id: &str, state: &str| {
@@ -4069,6 +4325,7 @@ mod tests {
                 launchbox_db_id: 42,
                 title: game_id.into(),
                 platform: "Platform".into(),
+                source_kind: "minerva".into(),
                 torrent_url: "https://example.invalid/game.torrent".into(),
                 torrent_file_index: Some(7),
                 torrent_file_path: format!("Platform/{game_id}.zip"),
@@ -5168,6 +5425,7 @@ mod tests {
         let connection = Connection::open(&path).unwrap();
         assert!(column_exists(&connection, "download_jobs", "post_import_action").unwrap());
         assert!(column_exists(&connection, "download_jobs", "download_plan").unwrap());
+        assert!(column_exists(&connection, "download_jobs", "source_kind").unwrap());
         assert!(column_exists(&connection, "app_settings", "preferred_region").unwrap());
         assert!(column_exists(&connection, "app_settings", "version_preference").unwrap());
         assert!(column_exists(&connection, "app_settings", "region_priority_json").unwrap());
@@ -5184,7 +5442,7 @@ mod tests {
             .optional()
             .unwrap();
         assert_eq!(prepared_table, Some(1));
-        for table in ["game_activity", "play_sessions"] {
+        for table in ["game_activity", "play_sessions", "manual_torrent_sources"] {
             let migrated: Option<i64> = connection
                 .query_row(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",

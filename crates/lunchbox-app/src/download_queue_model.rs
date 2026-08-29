@@ -633,6 +633,7 @@ mod tests {
             launchbox_db_id: 1,
             title: game_id.into(),
             platform: "Platform".into(),
+            source_kind: "minerva".into(),
             torrent_url: "https://example.invalid/bundle.torrent".into(),
             torrent_file_index: Some(0),
             torrent_file_path: format!("{game_id}.zip"),

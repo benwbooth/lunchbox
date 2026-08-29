@@ -14,11 +14,13 @@ ApplicationWindow {
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
+           || manualTorrentUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
+            || manualTorrentUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -81,6 +83,7 @@ ApplicationWindow {
     property bool libraryAuditProbeArmed: false
     property bool collectionProbeArmed: false
     property bool downloadHistoryTriggered: false
+    property bool manualTorrentProbeTriggered: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
     property bool settingsMediaPriorityTriggered: false
@@ -142,6 +145,7 @@ ApplicationWindow {
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
+    readonly property bool manualTorrentUiProbe: Qt.application.arguments.indexOf("--manual-torrent-ui-probe") >= 0
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
@@ -909,6 +913,91 @@ ApplicationWindow {
         id: downloadQueue
     }
 
+    ExternalTorrentModel {
+        id: externalTorrent
+    }
+
+    Connections {
+        target: externalTorrent
+        function onQueued_revisionChanged() {
+            if (externalTorrent.queued_revision <= 0)
+                return
+            downloadQueue.refresh()
+            externalTorrentDialog.close()
+            downloadsDrawer.open()
+        }
+        function onReadyChanged() {
+            if (!root.manualTorrentUiProbe || !externalTorrent.ready)
+                return
+            if (externalTorrent.game_title !== "Super Mario Bros."
+                    || externalTorrent.game_platform
+                       !== "Nintendo Entertainment System"
+                    || externalTorrent.torrent_name !== "Sample Pack"
+                    || externalTorrent.file_count !== 2
+                    || externalTorrent.info_hash.length !== 40
+                    || externalTorrent.file_path_at(0)
+                       !== "Game/Sample Game.rom"
+                    || externalTorrent.file_path_at(1)
+                       !== "Game/Sample Game (Europe).rom") {
+                console.error("LUNCHBOX_MANUAL_TORRENT_UI_FAILED association="
+                              + externalTorrent.game_title + " platform="
+                              + externalTorrent.game_platform + " torrent="
+                              + externalTorrent.torrent_name + " files="
+                              + externalTorrent.file_count + " message="
+                              + externalTorrent.message)
+                Qt.exit(2)
+                return
+            }
+            externalTorrent.select_file(1)
+            manualTorrentScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: manualTorrentScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (!root.manualTorrentUiProbe)
+                return
+            if (root.screenshotOutput.length === 0) {
+                console.warn("LUNCHBOX_MANUAL_TORRENT_UI_READY files="
+                             + externalTorrent.file_count + " selected="
+                             + externalTorrent.file_path_at(
+                                   externalTorrent.selected_index)
+                             + " info_hash=" + externalTorrent.info_hash)
+                Qt.quit()
+                return
+            }
+            externalTorrentDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_MANUAL_TORRENT_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.warn("LUNCHBOX_MANUAL_TORRENT_UI_READY files="
+                             + externalTorrent.file_count + " selected="
+                             + externalTorrent.file_path_at(
+                                   externalTorrent.selected_index)
+                             + " info_hash=" + externalTorrent.info_hash
+                             + " screenshot=" + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 10000
+        running: root.manualTorrentUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_MANUAL_TORRENT_UI_FAILED timeout message="
+                          + externalTorrent.message)
+            Qt.exit(2)
+        }
+    }
+
     LocalImportModel {
         id: localImport
     }
@@ -1060,6 +1149,11 @@ ApplicationWindow {
             if (library.ready) {
                 if (library.catalog_probe)
                     Qt.quit()
+                else if (root.manualTorrentUiProbe) {
+                    root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                                  "Super Mario Bros.",
+                                  "Nintendo Entertainment System", false, true)
+                }
                 else if (root.tagsUiProbe) {
                     root.tagsProbeStage = 0
                     root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
@@ -1319,6 +1413,19 @@ ApplicationWindow {
     Connections {
         target: gameDetails
         function onLoadingChanged() {
+            if (root.manualTorrentUiProbe
+                    && !root.manualTorrentProbeTriggered
+                    && !gameDetails.loading
+                    && gameDetails.game_id.length > 0) {
+                root.manualTorrentProbeTriggered = true
+                externalTorrent.begin_review(
+                            gameDetails.game_id,
+                            root.selectedDatabaseId,
+                            gameDetails.title,
+                            gameDetails.platform)
+                externalTorrentDialog.open()
+                externalTorrent.inspect_probe_fixture()
+            }
             if (root.couchModeUiProbe && root.couchModeActive
                     && !root.couchModeProbeCaptured
                     && !gameDetails.loading
@@ -6191,6 +6298,39 @@ ApplicationWindow {
                                     verticalAlignment: Text.AlignVCenter
                                 }
                             }
+
+                            Button {
+                                width: parent.width
+                                height: 36
+                                text: "ADD EXTERNAL TORRENT SOURCE"
+                                enabled: root.selectedGameId.length > 0
+                                         && !gameDetails.loading
+                                         && !externalTorrent.busy
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                onClicked: {
+                                    externalTorrent.begin_review(
+                                                root.selectedGameId,
+                                                root.selectedDatabaseId,
+                                                gameDetails.title,
+                                                gameDetails.platform)
+                                    externalTorrentDialog.open()
+                                }
+                                background: Rectangle {
+                                    radius: 8
+                                    color: parent.down ? "#293748" : "#1b2532"
+                                    border.color: parent.enabled ? "#4f6077" : root.line
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: parent.enabled ? "#c7d1df" : root.muted
+                                    font: parent.font
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Review a lawful .torrent and associate one exact file with this catalog game"
+                            }
                         }
                     }
 
@@ -7893,6 +8033,468 @@ ApplicationWindow {
             font.pixelSize: 12
             wrapMode: Text.WordWrap
         }
+    }
+
+    Dialog {
+        id: externalTorrentDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(940, root.width - 48)
+        height: Math.min(760, root.height - 42)
+        padding: 0
+        closePolicy: externalTorrent.busy ? Popup.NoAutoClose
+                                           : Popup.CloseOnEscape
+        onClosed: {
+            if (!externalTorrent.busy)
+                externalTorrent.clear()
+        }
+        background: Rectangle {
+            color: root.panel
+            radius: 14
+            border.color: root.line
+            border.width: 1
+        }
+        contentItem: ColumnLayout {
+            spacing: 0
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 76
+                color: "#101721"
+                radius: 14
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 22
+                    anchors.rightMargin: 18
+                    spacing: 14
+                    Rectangle {
+                        Layout.preferredWidth: 42
+                        Layout.preferredHeight: 42
+                        radius: 12
+                        color: "#2c251d"
+                        border.color: root.accent
+                        Text {
+                            anchors.centerIn: parent
+                            text: "↓"
+                            color: root.accent
+                            font.pixelSize: 20
+                            font.weight: Font.Bold
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Text {
+                            Layout.fillWidth: true
+                            text: "ADD EXTERNAL TORRENT SOURCE"
+                            color: root.ink
+                            font.pixelSize: 16
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.4
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Inspect first, choose one exact payload, then hand it to the existing download and import pipeline."
+                            color: root.muted
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                        }
+                    }
+                    BusyIndicator {
+                        Layout.preferredWidth: 30
+                        Layout.preferredHeight: 30
+                        running: externalTorrent.busy
+                        visible: running
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.leftMargin: 22
+                Layout.rightMargin: 22
+                Layout.topMargin: 18
+                Layout.bottomMargin: 14
+                spacing: 12
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 76
+                    radius: 11
+                    color: "#171f2b"
+                    border.color: "#3a4659"
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 12
+                        Rectangle {
+                            Layout.preferredWidth: 34
+                            Layout.preferredHeight: 34
+                            radius: 9
+                            color: "#17322e"
+                            border.color: root.accentCool
+                            Text {
+                                anchors.centerIn: parent
+                                text: "◆"
+                                color: root.accentCool
+                                font.pixelSize: 13
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                Layout.fillWidth: true
+                                text: externalTorrent.game_title
+                                color: root.ink
+                                font.pixelSize: 14
+                                font.weight: Font.Bold
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: externalTorrent.game_platform
+                                      + "  ·  Exact catalog association locked"
+                                color: root.accentCool
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Text {
+                            text: "SOURCE LABELS NEVER\nREPLACE GAME IDENTITY"
+                            color: root.muted
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                            horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Button {
+                        Layout.preferredWidth: 176
+                        Layout.preferredHeight: 38
+                        text: externalTorrent.ready ? "CHOOSE ANOTHER…"
+                                                    : "CHOOSE .TORRENT…"
+                        enabled: !externalTorrent.busy
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        onClicked: externalTorrentFileDialog.open()
+                        background: Rectangle {
+                            radius: 8
+                            color: parent.down ? "#d68d36" : root.accent
+                            border.color: "#ffc579"
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: "#1b140c"
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: externalTorrent.ready
+                                  ? externalTorrent.source_file_name
+                                  : "No torrent selected"
+                            color: externalTorrent.ready ? root.ink : root.muted
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideMiddle
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Local files up to 16 MiB · metadata is parsed off the UI thread"
+                            color: "#6f7c8f"
+                            font.pixelSize: 9
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: externalTorrent.ready ? 68 : 0
+                    visible: externalTorrent.ready
+                    radius: 9
+                    color: "#111923"
+                    border.color: root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 18
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                Layout.fillWidth: true
+                                text: externalTorrent.torrent_name
+                                color: root.ink
+                                font.pixelSize: 11
+                                font.weight: Font.Bold
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "INFO HASH  " + externalTorrent.info_hash
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.family: "monospace"
+                                elide: Text.ElideMiddle
+                            }
+                        }
+                        ColumnLayout {
+                            spacing: 2
+                            Text {
+                                text: externalTorrent.file_count
+                                      + (externalTorrent.file_count === 1 ? " FILE" : " FILES")
+                                color: root.accent
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                            }
+                            Text {
+                                text: externalTorrent.total_size
+                                color: root.muted
+                                font.pixelSize: 9
+                            }
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: scopeLabel.implicitWidth + 20
+                            Layout.preferredHeight: 28
+                            radius: 8
+                            color: "#1a2d2b"
+                            border.color: "#315c54"
+                            Text {
+                                id: scopeLabel
+                                anchors.centerIn: parent
+                                text: externalTorrent.download_scope.toUpperCase()
+                                color: root.accentCool
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 150
+                    radius: 10
+                    color: "#0e141d"
+                    border.color: root.line
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        spacing: 0
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            color: "#151d29"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 14
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: externalTorrent.ready
+                                          ? "SELECT THE EXACT GAME PAYLOAD"
+                                          : "TORRENT CONTENTS"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.9
+                                }
+                                Text {
+                                    visible: externalTorrent.ready
+                                    text: "Nothing downloads until Queue"
+                                    color: "#6f7c8f"
+                                    font.pixelSize: 8
+                                }
+                            }
+                        }
+                        ListView {
+                            id: externalTorrentFiles
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            spacing: 2
+                            model: externalTorrent.file_count
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                            }
+                            delegate: ItemDelegate {
+                                id: torrentFileRow
+                                required property int index
+                                property int offerRevision: externalTorrent.revision
+                                width: ListView.view.width
+                                height: 58
+                                highlighted: externalTorrent.selected_index === index
+                                enabled: !externalTorrent.busy
+                                onClicked: externalTorrent.select_file(index)
+                                background: Rectangle {
+                                    color: torrentFileRow.highlighted ? "#263342"
+                                                                       : torrentFileRow.hovered
+                                                                         ? "#18212d"
+                                                                         : "transparent"
+                                    border.color: torrentFileRow.highlighted
+                                                  ? root.accent : "transparent"
+                                    border.width: torrentFileRow.highlighted ? 1 : 0
+                                }
+                                contentItem: RowLayout {
+                                    spacing: 10
+                                    RadioButton {
+                                        checked: externalTorrent.selected_index
+                                                 === torrentFileRow.index
+                                        onClicked: externalTorrent.select_file(
+                                                       torrentFileRow.index)
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: {
+                                                torrentFileRow.offerRevision
+                                                return externalTorrent.file_path_at(
+                                                            torrentFileRow.index)
+                                            }
+                                            color: root.ink
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                            elide: Text.ElideMiddle
+                                        }
+                                        Text {
+                                            text: {
+                                                torrentFileRow.offerRevision
+                                                return externalTorrent.file_size_at(
+                                                            torrentFileRow.index)
+                                            }
+                                            color: root.muted
+                                            font.pixelSize: 9
+                                        }
+                                    }
+                                    Text {
+                                        visible: torrentFileRow.highlighted
+                                        text: "REVIEWED SELECTION"
+                                        color: root.accent
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                    }
+                                }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                width: parent.width - 50
+                                visible: externalTorrent.file_count === 0
+                                text: externalTorrent.busy
+                                      ? "Reading torrent metadata…"
+                                      : "Choose a .torrent file to inspect its exact paths and sizes."
+                                color: root.muted
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.max(48, torrentStatus.implicitHeight + 20)
+                    radius: 9
+                    color: "#151d29"
+                    border.color: externalTorrent.message.indexOf("Could not") === 0
+                                  ? "#7a3c48" : root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 9
+                        Text {
+                            text: externalTorrent.message.indexOf("Could not") === 0
+                                  ? "!" : externalTorrent.ready ? "✓" : "i"
+                            color: externalTorrent.message.indexOf("Could not") === 0
+                                   ? "#ff9b91" : externalTorrent.ready
+                                     ? root.accentCool : root.accent
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                        }
+                        Text {
+                            id: torrentStatus
+                            Layout.fillWidth: true
+                            text: externalTorrent.message
+                            color: root.muted
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Only add content you are authorized to download. Lunchbox records provenance but does not infer distribution rights from a torrent or its labels."
+                    color: "#687488"
+                    font.pixelSize: 8
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        Layout.preferredWidth: 104
+                        Layout.preferredHeight: 36
+                        text: "CANCEL"
+                        enabled: !externalTorrent.busy
+                        onClicked: externalTorrentDialog.close()
+                    }
+                    Button {
+                        Layout.preferredWidth: 176
+                        Layout.preferredHeight: 36
+                        text: externalTorrent.busy ? "WORKING…" : "QUEUE REVIEWED FILE"
+                        enabled: externalTorrent.ready
+                                 && externalTorrent.selected_index >= 0
+                                 && !externalTorrent.busy
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        onClicked: externalTorrent.queue_selected()
+                        background: Rectangle {
+                            radius: 8
+                            color: parent.enabled
+                                   ? (parent.down ? "#d68d36" : root.accent)
+                                   : "#26313e"
+                            border.color: parent.enabled ? "#ffc579" : root.line
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? "#1b140c" : root.muted
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    FileDialog {
+        id: externalTorrentFileDialog
+        title: "Choose a lawful torrent for " + externalTorrent.game_title
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["BitTorrent metadata (*.torrent)"]
+        onAccepted: externalTorrent.inspect_file(selectedFile)
     }
 
     FileDialog {

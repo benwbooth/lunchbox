@@ -9,6 +9,8 @@ mod emulator_manager;
 pub mod emulator_manager_model;
 pub mod emulator_update_model;
 mod exo_install;
+mod external_torrent;
+pub mod external_torrent_model;
 mod firmware;
 mod game_details;
 pub mod game_details_model;

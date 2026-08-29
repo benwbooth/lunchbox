@@ -2,9 +2,10 @@
 
 Lunchbox should broaden acquisition coverage without making any download source
 the authority for game identity and without embedding access to an unlicensed
-commercial-ROM service. Minerva remains the reviewed built-in source. The next
-portable foundation is provider-neutral intake for lawful user-supplied torrents
-and future sources whose operators document authorization and stable terms.
+commercial-ROM service. Minerva remains the reviewed built-in source. The first
+portable foundation is now provider-neutral intake for lawful user-supplied
+`.torrent` files; future sources still require documented authorization and
+stable terms.
 
 ## Research finding: NSW Torrent Library
 
@@ -30,9 +31,11 @@ Therefore Lunchbox will not ship a direct NSW adapter, Telegram userbot, bot
 scraper, bundled account, network-blocking bypass, or copy of its index/torrents.
 That decision can be revisited only if the source publishes documented rights,
 terms acceptable to a redistributable client, and an authorized API. Users may
-still import lawful torrent files or magnet links they obtained independently;
-Lunchbox is responsible for review and safe handling, not for deciding that an
-external source had permission to distribute its content.
+still import lawful torrent files they obtained independently; until manual
+magnet intake is implemented, magnet links remain the responsibility of the
+user's chosen external client. Lunchbox is responsible for review and safe
+handling, not for deciding that an external source had permission to distribute
+its content.
 
 ## Provider-neutral contract
 
@@ -53,17 +56,23 @@ Import success records the selected canonical UUID, provider/offer identity,
 info hash, chosen files, and hashes. It does not merge game records or rewrite
 catalog metadata.
 
-## Native source flow
+## Implemented manual source flow
 
-1. A watched folder and file picker accept `.torrent` files using the existing
-   bounded bencode parser; a separate field accepts validated magnet URIs.
-2. The source worker extracts metadata off the GUI thread, rejects unsafe or
-   oversized structures, deduplicates by info hash, and stores provenance.
-3. The Qt source picker presents the offer alongside Minerva results and local
-   collection state. Nothing downloads until the user reviews the exact files
-   and canonical-game association.
+1. The exact game's details pane opens an OS-native picker for one local
+   `.torrent`; the selected catalog UUID, title, platform, and positive
+   LaunchBox database ID are locked before inspection begins.
+2. A Rust worker reads at most 16 MiB off the GUI thread, parses v1 metadata,
+   bounds file counts, names, paths, and total sizes, and rejects traversal,
+   duplicates, case ambiguity, controls, and filenames that are not portable
+   across Linux, macOS, and Windows.
+3. The native Qt review dialog exposes the source filename, torrent name,
+   SHA-1 info hash, complete file inventory, exact selection, and whether
+   Settings requires the entire torrent. Nothing downloads until Queue is
+   explicitly activated.
 4. The existing qBittorrent/download planner owns selection, progress,
-   cancellation, import validation, and collection publication. Providers do
+   cancellation, import validation, and collection publication. SQLite records
+   the source filename, torrent SHA-256, info hash, reviewed file index and
+   actual qBittorrent path, exact game association, and queue job. Providers do
    not get filesystem or emulator-launch access.
 5. A later adapter API can run in-process only for a small audited protocol or
    out-of-process with a versioned JSON contract and least-privilege storage.
@@ -76,11 +85,13 @@ ownership, safe import, and exact launch configuration remain independent gates.
 
 ## Delivery order
 
-1. Manual `.torrent` and magnet intake with exact-file review and provenance.
-2. Idempotent watched-folder intake with archive/move-on-success behavior and
+1. **Complete:** manual `.torrent` intake with exact-file review, whole-torrent
+   policy support, durable provenance, and deterministic Rust/Qt tests.
+2. Manual magnet intake with metadata retrieval followed by the same review.
+3. Idempotent watched-folder intake with archive/move-on-success behavior and
    duplicate info-hash suppression.
-3. A local provider manifest for user-managed, lawful catalogs.
-4. A documented adapter SDK with capability, terms, authentication, rate-limit,
+4. A local provider manifest for user-managed, lawful catalogs.
+5. A documented adapter SDK with capability, terms, authentication, rate-limit,
    and revocation metadata.
-5. Individual source adapters only after legal/terms review and real integration
+6. Individual source adapters only after legal/terms review and real integration
    tests against their authorized APIs.

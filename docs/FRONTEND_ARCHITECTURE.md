@@ -235,6 +235,21 @@ The initial implementation enforces this shape:
   filter indices and selection state. Confirmed cleanup accepts stable UUIDs
   only and its SQL predicate can remove only included rows already marked
   `missing`; filesystem paths are not part of the mutation API.
+- Manual external-torrent intake is an exact-game operation, not another title
+  matcher. `ExternalTorrentModel` receives the already-selected stable UUID and
+  immutable catalog fields, then parses one local `.torrent` on a named Rust
+  worker. The parser caps input at 16 MiB and 100,000 files, validates the v1
+  info hash and checked total size, and rejects traversal, duplicate or
+  case-ambiguous paths, control characters, Windows-reserved components, and
+  names that cannot be used consistently on Linux, macOS, and Windows. QML
+  receives only compact reviewed metadata. Queueing passes the original bytes
+  and explicit file index through the existing qBittorrent client; the durable
+  job is tagged `manual_torrent`, and a separate receipt binds the torrent
+  SHA-256, actual info hash/path, source filename, exact catalog identity, and
+  resulting job. The whole-torrent setting changes qBittorrent priority without
+  discarding which file the user reviewed as representative. Magnet resolution,
+  watched-folder state, and network-provider adapters are separate future
+  transports and are not simulated by this path.
 - RetroArch shader management is a Rust service surfaced through the existing
   Settings CXX-Qt model. It discovers host-native shader roots, resolves the
   official Libretro Slang and GLSL archives into a SHA-256-verified cache, and
@@ -375,6 +390,13 @@ byte that cleanup leaves every existing fixture ROM untouched and that an
 offline root never becomes missing or removable.
 
 `--download-ui-probe` leaves the persistent native Downloads drawer open.
+`--manual-torrent-ui-probe --screenshot-output=PATH` opens Super Mario Bros. by
+its exact preserved UUID, creates and parses a real two-file `.torrent` through
+the production worker, verifies the locked association, v1 info hash, safe file
+inventory, and second-file selection, then captures the native review dialog.
+The core test suite separately drives the production queue function through a
+mock qBittorrent Web API and verifies whole-torrent priority plus durable source
+and game provenance without contacting any content provider.
 `--settings-ui-probe` leaves the native settings dialog open, including the
 post-import seeding policy, for deterministic visual inspection.
 `--settings-seeding-probe --state-database EMPTY_PATH` selects the pause policy,
