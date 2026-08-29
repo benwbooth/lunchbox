@@ -462,16 +462,32 @@ each response is size/signature validated and atomically published into only
 LibRetro's owned cache path. Provider misses and transfer failures stay visible
 for retry or per-game Find Artwork review.
 
-The unified native **Find Artwork** flow supports SteamGridDB and IGDB. Provider
-credentials live only in the operating-system credential store. Search results
-are always review candidates: the user chooses the exact provider game before
-Lunchbox persists its stable provider ID, then chooses one individual artwork
-file. SteamGridDB supplies backgrounds, covers, and logos; IGDB supplies covers,
-artwork, and screenshots through Twitch client-credentials authentication. Both
-use the same bounded PNG/JPEG/WebP signature validation and atomic provider-owned
-cache publisher, so replacing one source and media kind cannot delete another
-provider's media. IGDB access is suitable for non-commercial use unless the
-distributor has arranged the required commercial partnership.
+The unified native **Find Artwork** flow supports SteamGridDB, IGDB, EmuMovies,
+and an explicit Web source. Provider credentials live only in the operating-system
+credential store. Search results are always review candidates: the user chooses
+the exact provider game before Lunchbox persists its stable provider ID, then
+chooses one individual artwork file. SteamGridDB supplies backgrounds, covers,
+and logos; IGDB supplies covers, artwork, and screenshots through Twitch
+client-credentials authentication. Web artwork uses a focused system-browser
+search rather than scraping: the user supplies one exact HTTPS image URL or
+local file, Lunchbox validates it off-thread in a unique quarantine, previews
+only that local validated copy, and publishes those exact bytes only after
+explicit confirmation. All three routes use bounded PNG/JPEG/WebP signature
+validation and atomic provider-owned cache publication, so replacing one source
+and media kind cannot delete another provider's media. IGDB access is suitable
+for non-commercial use unless the distributor has arranged the required
+commercial partnership.
+
+EmuMovies reuses the legacy Rust FTP client rather than inventing a different
+backend contract. Existing members can save and test their forum credentials in
+Settings; Lunchbox keeps the combined secret in the operating-system credential
+store. Artwork archive matching, direct video/manual lookup, platform aliases,
+title normalization, cache naming, and the generated arcade parent/clone set
+resolver remain Rust services and execute off the Qt thread. A developer can set
+`LUNCHBOX_ARCADE_XML` to a user-owned `Arcade.xml`; otherwise the build checks the
+ignored local `launchbox-data/Arcade.xml` migration input and falls back to title
+matching when that licensed lookup source is unavailable. No LaunchBox provider
+data is embedded in the public package.
 
 The details hero can switch from flat artwork to an interactive native 3D box
 whenever an exact cached front cover exists. Qt Quick 3D renders separate front,
@@ -486,9 +502,9 @@ disrupting other manuals selected from the same torrent. A completed non-empty
 ZIP is validated and copied through a same-directory temporary file before an
 atomic rename into the owned media cache. Availability is intentionally limited
 to exact entries in Minerva's current archive; a broad fuzzy match is never
-silently downloaded. EmuMovies fallback remains gated on documented developer
-API access rather than embedding the legacy application's retired credentials
-or endpoints.
+silently downloaded. The adjacent EmuMovies action uses the member FTP library
+for the same selected game and stores successful manuals and videos in the
+existing provider-aware cache. Hovering never initiates FTP traffic.
 
 The preserved game catalog is a local runtime input and is not added to the
 published artifact because redistribution permission for its LaunchBox-derived

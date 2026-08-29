@@ -1,3 +1,4 @@
+mod arcade;
 mod arcade_download;
 mod catalog;
 mod collections;
@@ -9,6 +10,8 @@ mod emulator;
 mod emulator_manager;
 pub mod emulator_manager_model;
 pub mod emulator_update_model;
+mod emumovies;
+pub mod emumovies_model;
 mod exo_install;
 mod external_torrent;
 pub mod external_torrent_model;
@@ -40,6 +43,8 @@ mod settings;
 pub mod settings_model;
 mod steamgriddb;
 pub mod steamgriddb_model;
+mod tags;
+pub mod web_artwork_model;
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -47,6 +52,7 @@ use std::time::{Duration, Instant};
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 
 static PROCESS_STARTED: OnceLock<Instant> = OnceLock::new();
+static WEB_ARTWORK_PROBE_FIXTURE: OnceLock<std::path::PathBuf> = OnceLock::new();
 
 pub fn mark_process_started() {
     let _ = PROCESS_STARTED.set(Instant::now());
@@ -54,6 +60,32 @@ pub fn mark_process_started() {
 
 pub(crate) fn startup_elapsed() -> Duration {
     PROCESS_STARTED.get_or_init(Instant::now).elapsed()
+}
+
+pub(crate) fn web_artwork_probe_fixture() -> Option<&'static std::path::Path> {
+    WEB_ARTWORK_PROBE_FIXTURE
+        .get()
+        .map(std::path::PathBuf::as_path)
+}
+
+fn seed_web_artwork_ui_probe() -> anyhow::Result<()> {
+    use std::io::Write;
+
+    let path = std::env::temp_dir().join(format!(
+        "lunchbox-web-artwork-probe-{}.png",
+        std::process::id()
+    ));
+    let mut file = std::fs::File::create(&path)?;
+    file.write_all(&[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0xb5,
+        0x1c, 0x0c, 0x02, 0x00, 0x00, 0x00, 0x0b, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x64,
+        0xf8, 0x0f, 0x00, 0x01, 0x05, 0x01, 0x01, 0x27, 0x18, 0xe3, 0x66, 0x00, 0x00, 0x00, 0x00,
+        0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ])?;
+    file.sync_all()?;
+    let _ = WEB_ARTWORK_PROBE_FIXTURE.set(path);
+    Ok(())
 }
 
 pub fn initialize_qt() {
@@ -64,6 +96,12 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--web-artwork-ui-probe")
+        && let Err(error) = seed_web_artwork_ui_probe()
+    {
+        eprintln!("LUNCHBOX_WEB_ARTWORK_UI_FAILED seed error={error:#}");
+        return 1;
+    }
     match settings::state_database_path()
         .and_then(|path| profile_backup::apply_pending_restore(&path))
     {

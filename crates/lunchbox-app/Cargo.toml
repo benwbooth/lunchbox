@@ -9,6 +9,7 @@ build = "build.rs"
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
@@ -29,6 +30,8 @@ sevenz-rust2.workspace = true
 sha1.workspace = true
 sha2.workspace = true
 tar.workspace = true
+suppaftp.workspace = true
+tracing.workspace = true
 ureq.workspace = true
 url.workspace = true
 uuid.workspace = true
@@ -37,6 +40,7 @@ zip.workspace = true
 
 [build-dependencies]
 cxx-qt-build.workspace = true
+quick-xml = "0.37"
 
 [dev-dependencies]
 tempfile = "3.14"

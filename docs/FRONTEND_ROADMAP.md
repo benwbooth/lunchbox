@@ -96,12 +96,15 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   association, and durable source/torrent/job provenance all reuse the existing
   qBittorrent, import, and collection pipeline. No external source label can
   establish game identity.
-- Unified native Find Artwork workflow for SteamGridDB and IGDB with
+- Unified native Find Artwork workflow for SteamGridDB, IGDB, EmuMovies FTP, and explicit Web
+  artwork with
   provider-specific media categories, Twitch client-credentials authentication,
   operating-system credential storage, explicit exact-game review, durable
   stable provider links, individual artwork review, and one shared bounded,
-  signature-validating, atomic publisher. IGDB commercial use remains gated on
-  the distributor obtaining the required provider partnership.
+  signature-validating, atomic publisher. The Web source opens a focused search
+  in the system browser and quarantines only a user-reviewed HTTPS URL or local
+  file; it never scrapes or silently chooses a result. IGDB commercial use
+  remains gated on the distributor obtaining the required provider partnership.
 - Native local-ROM folder scan with a platform selector, extension-aware
   discovery, optional SHA-1/MD5 identity verification, cancellable streaming
   progress, searchable/sortable review, bulk/per-file selection, idempotent
@@ -242,10 +245,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Canonical-game metadata enrichment with provenance and per-field conflict
   review.
 - Extend the implemented exact Minerva manual acquisition, durable visible
-  progress/cancellation, validated atomic cache publication, and native cached
-  manual/video bundle and cached grid preview with an authorized EmuMovies API
-  adapter, video acquisition, and soundtrack browsing. Hovering never silently
-  starts provider traffic.
+  progress/cancellation, validated atomic cache publication, native cached
+  manual/video bundle, cached grid preview, and ported legacy EmuMovies FTP
+  artwork/video/manual client with transfer progress, cooperative transport
+  cancellation, soundtrack browsing, and an unattended member-account runtime
+  gate. Hovering never silently starts provider traffic.
 - Extend the implemented whole-library missing-media audit and bounded bulk
   LibRetro repair queue with durable pending-batch restart recovery, multi-
   provider bulk review, supplemental video/manual categories, and scheduled

@@ -17,6 +17,7 @@ const KEYRING_SERVICE: &str = "com.lunchbox.Lunchbox";
 const QBITTORRENT_KEYRING_ACCOUNT: &str = "qbittorrent-password";
 const STEAMGRIDDB_KEYRING_ACCOUNT: &str = "steamgriddb-api-key";
 const IGDB_KEYRING_ACCOUNT: &str = "igdb-twitch-credentials";
+const EMUMOVIES_KEYRING_ACCOUNT: &str = "emumovies-credentials";
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -3619,6 +3620,41 @@ pub fn save_steamgriddb_api_key(api_key: &str) -> Result<()> {
 struct IgdbCredentials {
     client_id: String,
     client_secret: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct EmuMoviesCredentials {
+    username: String,
+    password: String,
+}
+
+pub fn load_emumovies_credentials() -> Result<Option<(String, String)>> {
+    let Some(encoded) = load_secret(EMUMOVIES_KEYRING_ACCOUNT, "EmuMovies credentials")? else {
+        return Ok(None);
+    };
+    let credentials: EmuMoviesCredentials =
+        serde_json::from_str(&encoded).context("decoding EmuMovies credentials")?;
+    if credentials.username.trim().is_empty() || credentials.password.trim().is_empty() {
+        bail!("saved EmuMovies credentials are incomplete");
+    }
+    Ok(Some((credentials.username, credentials.password)))
+}
+
+pub fn save_emumovies_credentials(username: &str, password: &str) -> Result<()> {
+    let username = username.trim();
+    let password = password.trim();
+    if username.is_empty() && password.is_empty() {
+        return save_secret(EMUMOVIES_KEYRING_ACCOUNT, "", "EmuMovies credentials");
+    }
+    if username.is_empty() || password.is_empty() {
+        bail!("both the EmuMovies forum username and password are required");
+    }
+    let encoded = serde_json::to_string(&EmuMoviesCredentials {
+        username: username.to_owned(),
+        password: password.to_owned(),
+    })
+    .context("encoding EmuMovies credentials")?;
+    save_secret(EMUMOVIES_KEYRING_ACCOUNT, &encoded, "EmuMovies credentials")
 }
 
 pub fn load_igdb_credentials() -> Result<Option<(String, String)>> {

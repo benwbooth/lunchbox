@@ -12,6 +12,7 @@ ApplicationWindow {
     visible: true
     width: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
+           || webArtworkUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || mediaAuditUiProbe
            || installManagementUiProbe
@@ -23,6 +24,7 @@ ApplicationWindow {
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
+            || webArtworkUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || mediaAuditUiProbe
             || installManagementUiProbe
@@ -36,6 +38,7 @@ ApplicationWindow {
     minimumHeight: 680
     title: "Lunchbox"
     color: palette.window
+    Component.onCompleted: emuMovies.initialize()
 
     readonly property color ink: "#f4f7fb"
     readonly property color muted: "#8d99aa"
@@ -266,9 +269,15 @@ ApplicationWindow {
     readonly property bool retroarchShaderUiProbe: Qt.application.arguments.indexOf("--retroarch-shader-ui-probe") >= 0
     readonly property bool steamGridDbUiProbe: Qt.application.arguments.indexOf("--steamgriddb-ui-probe") >= 0
     readonly property bool igdbUiProbe: Qt.application.arguments.indexOf("--igdb-ui-probe") >= 0
-    property string artworkProvider: igdbUiProbe ? "igdb" : "steamgriddb"
-    readonly property var artworkProviderModel: artworkProvider === "igdb" ? igdb : steamGridDb
-    readonly property string artworkProviderName: artworkProvider === "igdb" ? "IGDB" : "SteamGridDB"
+    readonly property bool webArtworkUiProbe: Qt.application.arguments.indexOf("--web-artwork-ui-probe") >= 0
+    property string artworkProvider: webArtworkUiProbe ? "websearch"
+                                                       : igdbUiProbe ? "igdb" : "steamgriddb"
+    readonly property var artworkProviderModel: artworkProvider === "websearch" ? webArtwork
+                                               : artworkProvider === "emumovies" ? emuMovies
+                                               : artworkProvider === "igdb" ? igdb : steamGridDb
+    readonly property string artworkProviderName: artworkProvider === "websearch" ? "Web"
+                                                     : artworkProvider === "emumovies" ? "EmuMovies"
+                                                     : artworkProvider === "igdb" ? "IGDB" : "SteamGridDB"
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
@@ -1517,6 +1526,14 @@ ApplicationWindow {
         id: igdb
     }
 
+    EmuMoviesModel {
+        id: emuMovies
+    }
+
+    WebArtworkModel {
+        id: webArtwork
+    }
+
     Connections {
         target: steamGridDb
         function onPublished_revisionChanged() {
@@ -1562,6 +1579,78 @@ ApplicationWindow {
         function onArtwork_countChanged() {
             if (root.igdbUiProbe && igdb.artwork_count > 0)
                 igdbScreenshotTimer.restart()
+        }
+    }
+
+    Connections {
+        target: webArtwork
+        function onPublished_revisionChanged() {
+            if (webArtwork.published_revision <= 0)
+                return
+            if (root.webArtworkUiProbe) {
+                console.warn("LUNCHBOX_WEB_ARTWORK_UI_READY title="
+                             + webArtwork.selected_game_name + " type="
+                             + webArtwork.artwork_type + " screenshot="
+                             + root.screenshotOutput)
+                Qt.quit()
+            }
+            library.refresh_media()
+        }
+        function onArtwork_countChanged() {
+            if (root.webArtworkUiProbe && webArtwork.artwork_count > 0)
+                webArtworkScreenshotTimer.restart()
+        }
+    }
+
+    Connections {
+        target: emuMovies
+        function onPublished_revisionChanged() {
+            if (emuMovies.published_revision <= 0)
+                return
+            library.refresh_media()
+            if (gameDetails.panel_open && root.selectedGameId.length > 0)
+                root.openGame(root.selectedGameId, root.selectedDatabaseId,
+                              gameDetails.title, gameDetails.platform,
+                              gameDetails.local, gameDetails.downloadable)
+        }
+    }
+
+    Timer {
+        id: webArtworkScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            if (!root.webArtworkUiProbe)
+                return
+            if (!webArtwork.candidate_ready) {
+                console.error("LUNCHBOX_WEB_ARTWORK_UI_FAILED no reviewed candidate")
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                webArtwork.publish_artwork(0)
+                return
+            }
+            steamGridDbDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_WEB_ARTWORK_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                webArtwork.publish_artwork(0)
+            })
+        }
+    }
+
+    Timer {
+        interval: 10000
+        running: root.webArtworkUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_WEB_ARTWORK_UI_FAILED timeout message="
+                          + webArtwork.message)
+            Qt.exit(2)
         }
     }
 
@@ -4520,6 +4609,15 @@ ApplicationWindow {
                                             "Nintendo Entertainment System",
                                             "fanart")
             }
+            else if (root.webArtworkUiProbe) {
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
+                steamGridDbDialog.open()
+                webArtwork.begin_selection(140, "Super Mario Bros.",
+                                           "Nintendo Entertainment System",
+                                           "box-front")
+            }
             else if (root.manualDownloadUiProbe)
                 root.openGame("ffb0ddd4-d5e1-4f78-90c8-068db5022cd5", 0,
                               "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)",
@@ -6743,6 +6841,47 @@ ApplicationWindow {
         }
     }
 
+    component LibraryWheelHandler: WheelHandler {
+        required property Flickable scroller
+        target: null
+        property double lastNotchAt: 0
+        property int burstCount: 0
+
+        onWheel: function(event) {
+            let distance = 0
+            const pixelDelta = event.pixelDelta.y
+            if (pixelDelta !== 0) {
+                // Keep high-resolution trackpad motion continuous. A modest
+                // scale removes Qt's sluggish feel without quantizing it into
+                // mouse-wheel steps.
+                distance = -pixelDelta * 1.45
+                burstCount = 0
+                lastNotchAt = 0
+            } else {
+                const steps = event.angleDelta.y / 120
+                if (steps === 0)
+                    return
+                const now = Date.now()
+                burstCount = now - lastNotchAt <= 190
+                           ? Math.min(8, burstCount + 1) : 0
+                lastNotchAt = now
+                const acceleration = Math.min(4.5,
+                                              1 + burstCount * burstCount * 0.12)
+                const baseDistance = Math.max(120,
+                                              Math.min(210, scroller.height * 0.16))
+                distance = -steps * baseDistance * acceleration
+            }
+
+            const lowerBound = scroller.originY
+            const upperBound = lowerBound
+                    + Math.max(0, scroller.contentHeight - scroller.height)
+            scroller.contentY = Math.max(lowerBound,
+                                         Math.min(upperBound,
+                                                  scroller.contentY + distance))
+            event.accepted = true
+        }
+    }
+
     component GameGrid: GridView {
         id: grid
         reuseItems: true
@@ -6757,6 +6896,7 @@ ApplicationWindow {
         cellHeight: Math.round(cellWidth * 1.36)
         model: library
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        LibraryWheelHandler { scroller: grid }
 
         delegate: Item {
             id: tile
@@ -7172,6 +7312,7 @@ ApplicationWindow {
         contentWidth: Math.max(width, tableWidth)
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+        LibraryWheelHandler { scroller: list }
 
         header: Rectangle {
             width: Math.max(list.width - 8, list.tableWidth)
@@ -9115,6 +9256,88 @@ ApplicationWindow {
                             }
 
                             Rectangle {
+                                visible: !gameDetails.video_available
+                                width: parent.width
+                                height: visible ? emuMoviesVideoColumn.implicitHeight + 20 : 0
+                                radius: 8
+                                color: "#151f2c"
+                                border.color: emuMovies.busy
+                                              && emuMovies.last_media_kind === "video"
+                                              ? root.accentCool : root.line
+
+                                Column {
+                                    id: emuMoviesVideoColumn
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 10
+                                    spacing: 8
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: 10
+                                        Column {
+                                            Layout.fillWidth: true
+                                            spacing: 3
+                                            Text {
+                                                text: "GAMEPLAY VIDEO"
+                                                color: root.ink
+                                                font.pixelSize: 10
+                                                font.weight: Font.Bold
+                                            }
+                                            Text {
+                                                text: emuMovies.credentials_saved
+                                                      ? "NOT CACHED · EMUMOVIES FTP"
+                                                      : "NOT CACHED · CONFIGURE EMUMOVIES IN SETTINGS"
+                                                color: root.muted
+                                                font.pixelSize: 7
+                                                font.weight: Font.Bold
+                                                font.letterSpacing: 0.5
+                                            }
+                                        }
+                                        BusyIndicator {
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            running: emuMovies.busy
+                                                     && emuMovies.last_media_kind === "video"
+                                            visible: running
+                                        }
+                                        Button {
+                                            Layout.preferredWidth: 92
+                                            Layout.preferredHeight: 32
+                                            text: "DOWNLOAD"
+                                            enabled: emuMovies.credentials_saved
+                                                     && !emuMovies.busy
+                                            onClicked: emuMovies.download_video(
+                                                           root.selectedGameId,
+                                                           root.selectedDatabaseId,
+                                                           gameDetails.title,
+                                                           gameDetails.platform)
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: parent.down ? "#d89444" : root.accent
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: "#17110a"
+                                                font.pixelSize: 8
+                                                font.weight: Font.Bold
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        visible: emuMovies.last_media_kind === "video"
+                                        text: emuMovies.message
+                                        color: root.muted
+                                        font.pixelSize: 8
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+
+                            Rectangle {
                                 id: detailVideoFrame
                                 visible: gameDetails.video_available
                                 width: parent.width
@@ -9464,6 +9687,37 @@ ApplicationWindow {
                                                 verticalAlignment: Text.AlignVCenter
                                             }
                                         }
+                                        Button {
+                                            visible: !gameDetails.manual_transfer_active
+                                            Layout.preferredWidth: 96
+                                            Layout.preferredHeight: 32
+                                            text: "EMUMOVIES"
+                                            enabled: emuMovies.credentials_saved
+                                                     && !emuMovies.busy
+                                                     && !gameDetails.manual_action_busy
+                                            onClicked: emuMovies.download_manual(
+                                                           root.selectedGameId,
+                                                           root.selectedDatabaseId,
+                                                           gameDetails.title,
+                                                           gameDetails.platform)
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: emuMovies.credentials_saved
+                                                          ? "Download through the legacy EmuMovies FTP matcher"
+                                                          : "Configure EmuMovies in Settings"
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: parent.down ? "#344254" : "#263647"
+                                                border.color: root.accentCool
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: root.ink
+                                                font.pixelSize: 8
+                                                font.weight: Font.Bold
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
                                     }
 
                                     ProgressBar {
@@ -9497,6 +9751,8 @@ ApplicationWindow {
                                         Text {
                                             Layout.fillWidth: true
                                             text: gameDetails.manual_download_message
+                                                  + (emuMovies.last_media_kind === "manual"
+                                                     ? "  " + emuMovies.message : "")
                                             color: gameDetails.manual_download_state === "error"
                                                    ? "#f3a49c" : root.muted
                                             font.pixelSize: 8
@@ -13815,6 +14071,14 @@ ApplicationWindow {
     }
 
     FileDialog {
+        id: webArtworkFileDialog
+        title: "Choose artwork for " + webArtwork.selected_game_name
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Artwork (*.png *.jpg *.jpeg *.webp)"]
+        onAccepted: webArtwork.import_local_file(selectedFile)
+    }
+
+    FileDialog {
         id: couchThemeFileDialog
         title: "Install a declarative Couch Mode theme"
         fileMode: FileDialog.OpenFile
@@ -15735,9 +15999,25 @@ ApplicationWindow {
                     enabled: !root.artworkProviderModel.busy
                     onClicked: root.switchArtworkProvider("igdb")
                 }
+                HeaderButton {
+                    text: "EmuMovies"
+                    active: root.artworkProvider === "emumovies"
+                    enabled: !root.artworkProviderModel.busy
+                    onClicked: root.switchArtworkProvider("emumovies")
+                }
+                HeaderButton {
+                    text: "Web"
+                    active: root.artworkProvider === "websearch"
+                    enabled: !root.artworkProviderModel.busy
+                    onClicked: root.switchArtworkProvider("websearch")
+                }
                 Item { Layout.fillWidth: true }
                 Text {
-                    text: root.artworkProvider === "igdb"
+                    text: root.artworkProvider === "websearch"
+                          ? "Explicit review · no account"
+                          : root.artworkProvider === "emumovies"
+                          ? "Member FTP media library"
+                          : root.artworkProvider === "igdb"
                           ? "Powered by IGDB"
                           : "Community artwork via SteamGridDB"
                     color: root.muted
@@ -15755,9 +16035,13 @@ ApplicationWindow {
                     id: steamGridDbNotice
                     anchors.fill: parent
                     anchors.margins: 11
-                    text: "Search results never establish identity automatically. Choose the exact "
-                          + root.artworkProviderName
-                          + " game, then choose one artwork file. Lunchbox stores a separate reviewed link for each source."
+                    text: root.artworkProvider === "websearch"
+                          ? "Lunchbox never scrapes or silently chooses a web result. Open a focused browser search, then review one exact HTTPS image or local file before it can enter your cache."
+                          : root.artworkProvider === "emumovies"
+                          ? "Legacy Lunchbox matches the selected catalog title and platform against EmuMovies' FTP archive packs. The matching and cache behavior is preserved in Rust and runs outside the Qt thread."
+                          : "Search results never establish identity automatically. Choose the exact "
+                            + root.artworkProviderName
+                            + " game, then choose one artwork file. Lunchbox stores a separate reviewed link for each source."
                     color: "#9cc9e6"
                     font.pixelSize: 10
                     wrapMode: Text.WordWrap
@@ -15767,6 +16051,8 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
+                visible: root.artworkProvider === "steamgriddb"
+                         || root.artworkProvider === "igdb"
                 TextField {
                     id: steamGridDbSearch
                     Layout.fillWidth: true
@@ -15798,7 +16084,8 @@ ApplicationWindow {
                         text: modelData.label
                         enabled: root.artworkProvider === "igdb"
                                  ? modelData.value !== "clear-logo"
-                                 : modelData.value !== "screenshot"
+                                 : root.artworkProvider === "steamgriddb"
+                                   ? modelData.value !== "screenshot" : true
                     }
                     currentIndex: root.artworkProviderModel.artwork_type === "box-front" ? 1
                                   : root.artworkProviderModel.artwork_type === "screenshot" ? 2
@@ -15806,6 +16093,72 @@ ApplicationWindow {
                     enabled: !root.artworkProviderModel.busy
                     onActivated: root.artworkProviderModel.choose_artwork_kind(
                                      currentValue)
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                visible: root.artworkProvider === "websearch"
+                TextField {
+                    id: webArtworkSearch
+                    Layout.fillWidth: true
+                    text: webArtwork.query
+                    placeholderText: "Focused web image search"
+                    enabled: !webArtwork.busy
+                    onEditingFinished: webArtwork.search_games(text)
+                }
+                Button {
+                    text: "Open image search ↗"
+                    enabled: !webArtwork.busy && webArtworkSearch.text.length >= 2
+                    onClicked: {
+                        webArtwork.search_games(webArtworkSearch.text)
+                        Qt.openUrlExternally("https://duckduckgo.com/?q="
+                                             + encodeURIComponent(webArtworkSearch.text)
+                                             + "&iax=images&ia=images")
+                    }
+                }
+                ComboBox {
+                    Layout.preferredWidth: 170
+                    textRole: "label"
+                    valueRole: "value"
+                    model: root.artworkChoices.map(function(choice) {
+                        return { label: choice.label, value: choice.key }
+                    })
+                    currentIndex: root.artworkIndex(webArtwork.artwork_type)
+                    enabled: !webArtwork.busy
+                    onActivated: webArtwork.choose_artwork_kind(currentValue)
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                visible: root.artworkProvider === "emumovies"
+                Text {
+                    Layout.fillWidth: true
+                    text: gameDetails.title + "  ·  " + gameDetails.platform
+                    color: root.ink
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                ComboBox {
+                    Layout.preferredWidth: 190
+                    textRole: "label"
+                    valueRole: "value"
+                    model: root.artworkChoices.map(function(choice) {
+                        return { label: choice.label, value: choice.key }
+                    })
+                    currentIndex: root.artworkIndex(emuMovies.artwork_type)
+                    enabled: !emuMovies.busy
+                    onActivated: emuMovies.choose_artwork_kind(currentValue)
+                }
+                HeaderButton {
+                    text: emuMovies.busy ? "Downloading…" : "Download exact match"
+                    active: true
+                    enabled: !emuMovies.busy && emuMovies.credentials_saved
+                    onClicked: emuMovies.download_artwork()
                 }
             }
 
@@ -15834,7 +16187,9 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                     }
                     Button {
-                        visible: root.artworkProviderModel.selected_game_name.length > 0
+                        visible: (root.artworkProvider === "steamgriddb"
+                                  || root.artworkProvider === "igdb")
+                                 && root.artworkProviderModel.selected_game_name.length > 0
                         text: "Change game"
                         enabled: !root.artworkProviderModel.busy
                         onClicked: root.artworkProviderModel.search_games(
@@ -15846,7 +16201,9 @@ ApplicationWindow {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: root.artworkProviderModel.selected_game_name.length > 0 ? 1 : 0
+                currentIndex: root.artworkProvider === "emumovies" ? 3
+                              : root.artworkProvider === "websearch" ? 2
+                              : root.artworkProviderModel.selected_game_name.length > 0 ? 1 : 0
 
                 Item {
                     Rectangle {
@@ -15863,6 +16220,8 @@ ApplicationWindow {
                         reuseItems: true
                         spacing: 5
                         model: {
+                            if (root.artworkProvider === "emumovies")
+                                return 0
                             root.artworkProviderModel.revision
                             return root.artworkProviderModel.game_count
                         }
@@ -15944,6 +16303,8 @@ ApplicationWindow {
                         cellWidth: Math.max(190, Math.floor(width / 4))
                         cellHeight: 220
                         model: {
+                            if (root.artworkProvider === "emumovies")
+                                return 0
                             root.artworkProviderModel.revision
                             return root.artworkProviderModel.artwork_count
                         }
@@ -16016,13 +16377,218 @@ ApplicationWindow {
                         }
                     }
                 }
+
+                Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 18
+
+                        Rectangle {
+                            Layout.preferredWidth: Math.min(430, parent.width * 0.48)
+                            Layout.fillHeight: true
+                            radius: 10
+                            color: "#111824"
+                            border.color: root.line
+                            clip: true
+
+                            Image {
+                                id: webArtworkPreview
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                source: webArtwork.candidate_url
+                                asynchronous: true
+                                cache: false
+                                mipmap: true
+                                fillMode: webArtwork.artwork_type === "fanart"
+                                          || webArtwork.artwork_type === "screenshot"
+                                          ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                            }
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 8
+                                visible: !webArtwork.candidate_ready
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "▧"
+                                    color: root.muted
+                                    font.pixelSize: 36
+                                }
+                                Text {
+                                    text: "No artwork selected"
+                                    color: root.muted
+                                    font.pixelSize: 12
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: 42
+                                color: "#cc0b1018"
+                                visible: webArtwork.candidate_ready
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "VALIDATED QUARANTINE PREVIEW"
+                                    color: root.accentCool
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.7
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 12
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "BRING BACK ONE EXACT RESULT"
+                                color: root.ink
+                                font.pixelSize: 13
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Copy the direct image address from your browser—not the search-results page—or choose artwork already on this computer. Review creates a bounded quarantined preview; nothing enters the library cache until you press Use artwork."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            TextField {
+                                id: webArtworkUrl
+                                Layout.fillWidth: true
+                                placeholderText: "https://…/exact-artwork.png"
+                                enabled: !webArtwork.busy
+                                selectByMouse: true
+                                onAccepted: webArtwork.review_url(text)
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Button {
+                                    text: "Review URL"
+                                    enabled: !webArtwork.busy
+                                             && webArtworkUrl.text.length > 8
+                                    onClicked: webArtwork.review_url(webArtworkUrl.text)
+                                }
+                                Button {
+                                    text: "Choose local file…"
+                                    enabled: !webArtwork.busy
+                                    onClicked: webArtworkFileDialog.open()
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: webArtworkSafety.implicitHeight + 22
+                                radius: 8
+                                color: "#171e29"
+                                border.color: root.line
+                                Text {
+                                    id: webArtworkSafety
+                                    anchors.fill: parent
+                                    anchors.margins: 11
+                                    text: "SAFETY  ·  HTTPS only  ·  16 MiB maximum  ·  PNG, JPEG, or WebP signature  ·  atomic replacement  ·  web-search cache only"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                            Item { Layout.fillHeight: true }
+                            Button {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 42
+                                text: webArtwork.busy ? "Validating and saving…" : "Use artwork"
+                                enabled: webArtwork.candidate_ready && !webArtwork.busy
+                                onClicked: webArtwork.publish_artwork(0)
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 9
+                        color: "#0f151f"
+                        border.color: root.line
+                    }
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        width: Math.min(560, parent.width - 48)
+                        spacing: 14
+                        Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "EMUMOVIES FTP"
+                            color: root.accent
+                            font.pixelSize: 15
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.0
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: emuMovies.credentials_saved
+                                  ? "Ready to search the legacy EmuMovies archive layout for this exact catalog title. Artwork packs are downloaded once, indexed locally, and reused by later games on the same platform."
+                                  : "Add and test your EmuMovies forum credentials in Settings before downloading media."
+                            color: root.muted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            color: root.line
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "SELECTED  ·  " + gameDetails.title + "  ·  "
+                                  + gameDetails.platform + "  ·  "
+                                  + emuMovies.artwork_type.toUpperCase()
+                            color: root.ink
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 42
+                            text: emuMovies.busy
+                                  ? "Searching EmuMovies…" : "Download to Lunchbox media cache"
+                            enabled: emuMovies.credentials_saved && !emuMovies.busy
+                            onClicked: emuMovies.download_artwork()
+                        }
+                    }
+                }
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 Text {
                     Layout.fillWidth: true
-                    text: root.artworkProviderModel.selected_game_name.length > 0
+                    text: root.artworkProvider === "websearch"
+                          ? (webArtwork.candidate_ready
+                             ? "One explicit candidate is ready; no game identity was inferred."
+                             : "No web candidate is cached until you explicitly review and save it.")
+                          : root.artworkProvider === "emumovies"
+                          ? (emuMovies.credentials_saved
+                             ? "Uses the legacy EmuMovies FTP matcher and shared archive cache."
+                             : "Configure EmuMovies in Settings to use this source.")
+                          : root.artworkProviderModel.selected_game_name.length > 0
                           ? "Reviewed " + root.artworkProviderName + " link: "
                             + root.artworkProviderModel.selected_game_name
                           : "No game is linked until you explicitly choose a result."
@@ -16062,6 +16628,7 @@ ApplicationWindow {
             library.refresh_couch_themes()
             steamGridDb.initialize()
             igdb.initialize()
+            emuMovies.initialize()
         }
 
         background: Rectangle {
@@ -17015,6 +17582,106 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         text: "IGDB API access is free for non-commercial use; commercial distribution requires an IGDB partnership."
+                        color: root.muted
+                        font.pixelSize: 9
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: "MEDIA SOURCES · EMUMOVIES FTP"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Use the same member FTP flow as legacy Lunchbox for artwork packs, gameplay videos, and manuals. Enter your EmuMovies forum login; credentials stay in the operating-system credential store."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        TextField {
+                            id: emuMoviesUsername
+                            Layout.fillWidth: true
+                            placeholderText: emuMovies.credentials_saved
+                                             ? "Saved forum username (leave blank to use)"
+                                             : "EmuMovies forum username"
+                            enabled: !emuMovies.busy
+                        }
+                        TextField {
+                            id: emuMoviesPassword
+                            Layout.fillWidth: true
+                            placeholderText: emuMovies.credentials_saved
+                                             ? "Saved password (leave blank to use)"
+                                             : "EmuMovies forum password"
+                            echoMode: TextInput.Password
+                            enabled: !emuMovies.busy
+                        }
+                        Button {
+                            text: "Test"
+                            enabled: !emuMovies.busy
+                                     && (emuMovies.credentials_saved
+                                         || (emuMoviesUsername.text.length > 0
+                                             && emuMoviesPassword.text.length > 0))
+                            onClicked: emuMovies.test_connection(
+                                           emuMoviesUsername.text,
+                                           emuMoviesPassword.text)
+                        }
+                        HeaderButton {
+                            text: emuMovies.busy ? "Testing…" : "Save & test"
+                            active: true
+                            enabled: !emuMovies.busy
+                                     && emuMoviesUsername.text.length > 0
+                                     && emuMoviesPassword.text.length > 0
+                            onClicked: emuMovies.save_and_test_credentials(
+                                           emuMoviesUsername.text,
+                                           emuMoviesPassword.text)
+                        }
+                        Button {
+                            visible: emuMovies.credentials_saved
+                            text: "Clear saved"
+                            enabled: !emuMovies.busy
+                            onClicked: {
+                                emuMoviesUsername.text = ""
+                                emuMoviesPassword.text = ""
+                                emuMovies.clear_credentials()
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        BusyIndicator {
+                            visible: emuMovies.busy
+                            running: visible
+                            Layout.preferredWidth: 18
+                            Layout.preferredHeight: 18
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: emuMovies.message
+                            color: root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                        Button {
+                            text: "EmuMovies account ↗"
+                            flat: true
+                            onClicked: Qt.openUrlExternally("https://emumovies.com/")
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "FTP transfers run off the Qt thread. Lunchbox keeps shared archive and video indexes in its native media cache."
                         color: root.muted
                         font.pixelSize: 9
                         wrapMode: Text.WordWrap

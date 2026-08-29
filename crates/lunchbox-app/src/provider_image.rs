@@ -8,6 +8,42 @@ use crate::media::ArtworkKind;
 
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
 
+pub(crate) fn copy_and_publish(
+    source: &Path,
+    media_root: &Path,
+    database_id: i64,
+    provider: &str,
+    kind: ArtworkKind,
+    candidate_id: &str,
+) -> Result<PathBuf> {
+    if database_id <= 0 {
+        bail!("catalog database ID must be positive");
+    }
+    validate_provider(provider)?;
+    let metadata = fs::metadata(source)
+        .with_context(|| format!("reading artwork metadata from {}", source.display()))?;
+    if !metadata.is_file() {
+        bail!("selected artwork is not a regular file");
+    }
+    if metadata.len() > MAX_IMAGE_BYTES {
+        bail!("artwork exceeds the 16 MiB safety limit");
+    }
+    let mut bytes = Vec::with_capacity(usize::try_from(metadata.len()).unwrap_or_default());
+    fs::File::open(source)
+        .with_context(|| format!("opening artwork {}", source.display()))?
+        .take(MAX_IMAGE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("reading artwork {}", source.display()))?;
+    publish_validated_bytes(
+        &bytes,
+        media_root,
+        database_id,
+        provider,
+        kind,
+        candidate_id,
+    )
+}
+
 pub(crate) fn download_and_publish(
     agent: &ureq::Agent,
     url: &str,
@@ -20,12 +56,7 @@ pub(crate) fn download_and_publish(
     if database_id <= 0 {
         bail!("catalog database ID must be positive");
     }
-    if !provider
-        .bytes()
-        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-    {
-        bail!("media provider cache key is invalid");
-    }
+    validate_provider(provider)?;
     if !approved_url(url) {
         bail!("artwork provider returned an unsupported image URL");
     }
@@ -59,7 +90,39 @@ pub(crate) fn download_and_publish(
     if bytes.len() as u64 > MAX_IMAGE_BYTES {
         bail!("artwork exceeds the 16 MiB safety limit");
     }
-    let extension = validated_image_extension(&bytes)?;
+    publish_validated_bytes(
+        &bytes,
+        media_root,
+        database_id,
+        provider,
+        kind,
+        candidate_id,
+    )
+}
+
+fn validate_provider(provider: &str) -> Result<()> {
+    if provider.is_empty()
+        || !provider
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        bail!("media provider cache key is invalid");
+    }
+    Ok(())
+}
+
+fn publish_validated_bytes(
+    bytes: &[u8],
+    media_root: &Path,
+    database_id: i64,
+    provider: &str,
+    kind: ArtworkKind,
+    candidate_id: &str,
+) -> Result<PathBuf> {
+    if bytes.len() as u64 > MAX_IMAGE_BYTES {
+        bail!("artwork exceeds the 16 MiB safety limit");
+    }
+    let extension = validated_image_extension(bytes)?;
     let directory = media_root.join(format!("lb-{database_id}")).join(provider);
     let stem = cache_file_stem(kind);
     let output = directory.join(format!("{stem}.{extension}"));
@@ -195,5 +258,41 @@ mod tests {
         assert!(!approved_url("http://images.example/art.jpg"));
         assert!(!approved_url("http://localhost:80@images.example/art.jpg"));
         assert!(!approved_url("file:///tmp/art.jpg"));
+    }
+
+    #[test]
+    fn reviewed_local_artwork_uses_the_same_validation_and_owned_cache() {
+        let source_directory = tempfile::tempdir().unwrap();
+        let media_directory = tempfile::tempdir().unwrap();
+        let source = source_directory.path().join("misleading.gif");
+        fs::write(&source, b"\x89PNG\r\n\x1a\nfixture").unwrap();
+
+        let output = copy_and_publish(
+            &source,
+            media_directory.path(),
+            42,
+            "websearch",
+            ArtworkKind::BoxFront,
+            "local-fixture",
+        )
+        .unwrap();
+
+        assert_eq!(
+            output,
+            media_directory.path().join("lb-42/websearch/box-front.png")
+        );
+        assert_eq!(fs::read(output).unwrap(), b"\x89PNG\r\n\x1a\nfixture");
+        fs::write(&source, b"GIF89a").unwrap();
+        assert!(
+            copy_and_publish(
+                &source,
+                media_directory.path(),
+                42,
+                "websearch",
+                ArtworkKind::BoxFront,
+                "bad-fixture",
+            )
+            .is_err()
+        );
     }
 }

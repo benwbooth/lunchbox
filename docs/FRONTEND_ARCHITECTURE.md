@@ -977,7 +977,8 @@ launch argument profiles and replacement templates are native for ordinary ROM
 and prepared-PC plans, with contextual and searchable cross-emulator editors
 plus a shell-free placeholder compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
-SteamGridDB and IGDB are native behind one Find Artwork workflow. Settings
+SteamGridDB, IGDB, EmuMovies FTP, and explicit Web artwork are native behind one Find Artwork
+workflow. Settings
 stores the SteamGridDB key and the IGDB/Twitch client-credentials payload in the
 native credential store, never SQLite. A provider search returns candidates
 only; a human must choose the exact game before that provider's stable ID is
@@ -988,6 +989,28 @@ use the same 16 MiB, HTTPS-only (except loopback fixtures), PNG/JPEG/WebP
 signature-validating publisher and atomically replace only their own media kind.
 IGDB attribution and the non-commercial/commercial-partnership boundary are
 visible in Settings.
+
+Web artwork deliberately does not reproduce the legacy DuckDuckGo first-result
+scraper. The system browser receives a category-specific query; Lunchbox accepts
+only one user-reviewed HTTPS image URL or local file. A generation-guarded Rust
+worker downloads or copies the candidate into an opaque, per-candidate process
+quarantine, rejects files over 16 MiB and non-PNG/JPEG/WebP signatures, and
+exposes only that validated local copy to QML. Confirmation promotes the exact
+quarantined bytes atomically into the selected game, category, and `websearch`
+provider directory. Cancellation and stale completions cannot publish or
+replace another candidate.
+
+EmuMovies preserves the legacy Rust backend rather than routing through a new
+web API. `EmuMoviesModel` is only the CXX-Qt boundary: it loads forum credentials
+from the native keyring, starts the existing blocking FTP archive/video/manual
+operations on named Rust workers, and generation-guards every completion before
+refreshing the shared media index. The port retains legacy platform aliases,
+title normalization, archive matching, direct-file matching, cache indices,
+timeouts, and the LaunchBox-ID-to-MAME parent/clone resolver. That resolver is
+generated only from a user-owned `Arcade.xml` supplied by
+`LUNCHBOX_ARCADE_XML` or the ignored local migration-data directory; public
+packages do not redistribute LaunchBox metadata and safely fall back to the
+catalog title when the local lookup is absent.
 
 `--steamgriddb-ui-probe` exercises this complete QML workflow against an API
 fixture selected with `LUNCHBOX_STEAMGRIDDB_API_URL`: search, exact-game review,
@@ -1002,6 +1025,13 @@ preview, screenshot, and validated publication against the deterministic Rust
 fixture server in `crates/lunchbox-app/examples/igdb_fixture.rs`. The credential
 and endpoint environment variables exist only to make unattended verification
 independent of a live account; interactive credentials remain in the keyring.
+
+`--web-artwork-ui-probe --media-directory EMPTY_PATH --screenshot-output PATH`
+creates a valid local PNG before Qt starts, runs it through the ordinary
+quarantine worker, captures the populated 1920x1200 Find Artwork dialog, and
+confirms only after QML observes the validated candidate. It exits successfully
+only after the exact bytes appear at
+`lb-140/websearch/box-front.png` through the production atomic publisher.
 
 Playlist-entry-specific presentation, the remaining alternate media providers,
 specialized machine launch profiles, the remaining settings, broader
