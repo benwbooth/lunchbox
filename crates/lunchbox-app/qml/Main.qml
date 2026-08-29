@@ -18,7 +18,7 @@ ApplicationWindow {
            || downloadRecoveryUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
-           || libraryViewUiProbe || listFilterUiProbe
+           || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
@@ -28,7 +28,7 @@ ApplicationWindow {
             || downloadRecoveryUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
-            || libraryViewUiProbe || listFilterUiProbe
+            || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -102,6 +102,12 @@ ApplicationWindow {
     property int listFilterProbeStage: 0
     property string listFilterProbeValue: ""
     property int listFilterProbeExpectedCount: 0
+    property var hoverPreviewTile: null
+    property string hoverPreviewPendingGameId: ""
+    property bool hoverPreviewPlaying: false
+    property bool hoverPreviewAudioMuted: true
+    property string hoverPreviewPlaybackError: ""
+    property int hoverPreviewProbeStage: 0
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
     property bool manualTorrentProbeTriggered: false
@@ -208,6 +214,7 @@ ApplicationWindow {
     readonly property bool libraryViewUiProbe: libraryViewRestoreUiProbe
                                                 || Qt.application.arguments.indexOf("--library-view-ui-probe") >= 0
     readonly property bool listFilterUiProbe: Qt.application.arguments.indexOf("--list-filter-ui-probe") >= 0
+    readonly property bool hoverPreviewUiProbe: Qt.application.arguments.indexOf("--hover-preview-ui-probe") >= 0
     readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
@@ -674,7 +681,46 @@ ApplicationWindow {
         return colors[value.charCodeAt(0) % colors.length]
     }
 
+    function armGridPreview(tile) {
+        if (!tile || !root.gridMode || root.couchModeActive)
+            return
+        if (root.hoverPreviewTile && root.hoverPreviewTile !== tile)
+            root.disarmGridPreview(root.hoverPreviewTile)
+        root.hoverPreviewTile = tile
+        root.hoverPreviewPendingGameId = tile.gameId
+        root.hoverPreviewPlaying = false
+        root.hoverPreviewAudioMuted = true
+        root.hoverPreviewPlaybackError = ""
+        hoverPreviewDelay.restart()
+    }
+
+    function disarmGridPreview(tile) {
+        if (tile && root.hoverPreviewTile !== tile)
+            return
+        hoverPreviewDelay.stop()
+        hoverPreviewPlayer.stop()
+        root.hoverPreviewAudioMuted = true
+        root.hoverPreviewPlaying = false
+        root.hoverPreviewPendingGameId = ""
+        root.hoverPreviewTile = null
+        root.hoverPreviewPlaybackError = ""
+        library.cancel_hover_preview()
+    }
+
+    function beginHoverPreviewProbe() {
+        if (!root.hoverPreviewUiProbe || root.hoverPreviewProbeStage !== 0
+                || !library.ready)
+            return
+        root.hoverPreviewProbeStage = 1
+        library.choose_view_mode("grid")
+        searchField.text = "Super Mario Bros."
+        library.apply_filter(searchField.text,
+                             "Nintendo Entertainment System", "")
+        hoverPreviewArmProbeTimer.restart()
+    }
+
     function openGame(gameId, databaseId, title, platform, local, downloadable) {
+        root.disarmGridPreview(null)
         const canonicalTitle = library.canonical_title_for_game(gameId)
         const identityTitle = canonicalTitle.length > 0 ? canonicalTitle : title
         selectedGameId = gameId
@@ -931,6 +977,150 @@ ApplicationWindow {
                 root.mediaBundleProbeStage = 1
                 mediaProbePersistTimer.restart()
             }
+        }
+    }
+
+    Timer {
+        id: hoverPreviewDelay
+        interval: 520
+        repeat: false
+        onTriggered: {
+            if (!root.hoverPreviewTile
+                    || root.hoverPreviewPendingGameId.length === 0
+                    || root.hoverPreviewTile.gameId
+                       !== root.hoverPreviewPendingGameId)
+                return
+            library.request_hover_preview(root.hoverPreviewPendingGameId)
+        }
+    }
+
+    AudioOutput {
+        id: hoverPreviewAudio
+        muted: root.hoverPreviewAudioMuted
+        volume: 0.34
+    }
+
+    MediaPlayer {
+        id: hoverPreviewPlayer
+        source: root.hoverPreviewTile
+                && library.hover_preview_game_id
+                   === root.hoverPreviewPendingGameId
+                ? library.hover_preview_url : ""
+        audioOutput: hoverPreviewAudio
+        videoOutput: root.hoverPreviewTile
+                     ? root.hoverPreviewTile.previewVideoOutput : null
+        loops: MediaPlayer.Infinite
+        onSourceChanged: {
+            root.hoverPreviewPlaying = false
+            root.hoverPreviewPlaybackError = ""
+            if (source.toString().length === 0)
+                stop()
+        }
+        onMediaStatusChanged: {
+            if (mediaStatus === MediaPlayer.LoadedMedia
+                    || mediaStatus === MediaPlayer.BufferedMedia) {
+                position = 0
+                play()
+            }
+        }
+        onPlaybackStateChanged: {
+            root.hoverPreviewPlaying = playbackState === MediaPlayer.PlayingState
+            if (root.hoverPreviewPlaying && root.hoverPreviewUiProbe
+                    && root.hoverPreviewProbeStage === 1) {
+                root.hoverPreviewProbeStage = 2
+                hoverPreviewScreenshotTimer.restart()
+            }
+        }
+        onErrorOccurred: function(error, errorString) {
+            root.hoverPreviewPlaying = false
+            root.hoverPreviewPlaybackError = "Preview playback failed: " + errorString
+        }
+    }
+
+    Timer {
+        interval: 100
+        running: root.hoverPreviewUiProbe && root.hoverPreviewProbeStage === 0
+        repeat: true
+        onTriggered: root.beginHoverPreviewProbe()
+    }
+
+    Timer {
+        id: hoverPreviewArmProbeTimer
+        interval: 260
+        repeat: false
+        onTriggered: {
+            if (!root.hoverPreviewUiProbe || root.hoverPreviewProbeStage !== 1)
+                return
+            if (!library.ready || library.filtering) {
+                restart()
+                return
+            }
+            const row = library.row_for_game(
+                "9697a5eb-e0b4-4f24-8d43-672701414ee7")
+            const grid = gameViewLoader.item
+            if (!grid || row < 0) {
+                restart()
+                return
+            }
+            grid.positionViewAtIndex(row, GridView.Center)
+            Qt.callLater(function() {
+                const tile = grid.itemAtIndex(row)
+                if (!tile) {
+                    hoverPreviewArmProbeTimer.restart()
+                    return
+                }
+                tile.forceActiveFocus()
+                root.armGridPreview(tile)
+            })
+        }
+    }
+
+    Timer {
+        id: hoverPreviewScreenshotTimer
+        interval: 420
+        repeat: false
+        onTriggered: {
+            if (!root.hoverPreviewUiProbe || !root.hoverPreviewPlaying
+                    || library.hover_preview_game_id
+                       !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                    || library.hover_preview_source.length === 0
+                    || !root.hoverPreviewTile
+                    || !hoverPreviewPlayer.hasVideo
+                    || hoverPreviewPlayer.duration < 1) {
+                const detail = "playback game="
+                               + library.hover_preview_game_id + " source="
+                               + library.hover_preview_source + " message="
+                               + library.hover_preview_message + " error="
+                               + root.hoverPreviewPlaybackError + " hasVideo="
+                               + hoverPreviewPlayer.hasVideo + " duration="
+                               + hoverPreviewPlayer.duration + " position="
+                               + hoverPreviewPlayer.position
+                console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                library.report_hover_preview_ui_failure(detail)
+                Qt.exit(2)
+                return
+            }
+            library.report_hover_preview_ui_probe()
+            Qt.quit()
+        }
+    }
+
+    Timer {
+        interval: 60000
+        running: root.hoverPreviewUiProbe && root.hoverPreviewProbeStage < 2
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED timeout stage="
+                          + root.hoverPreviewProbeStage + " game="
+                          + library.hover_preview_game_id + " message="
+                          + library.hover_preview_message + " error="
+                          + root.hoverPreviewPlaybackError)
+            library.report_hover_preview_ui_failure(
+                        "timeout stage=" + root.hoverPreviewProbeStage + " game="
+                        + library.hover_preview_game_id + " message="
+                        + library.hover_preview_message + " error="
+                        + root.hoverPreviewPlaybackError)
+            Qt.exit(2)
         }
     }
 
@@ -1367,6 +1557,9 @@ ApplicationWindow {
                                      : root.metadataProbeTitle
                     library.apply_filter(searchField.text,
                                          "Nintendo Entertainment System", "")
+                }
+                else if (root.hoverPreviewUiProbe) {
+                    root.beginHoverPreviewProbe()
                 }
                 else if (root.couchModeUiProbe) {
                     if (root.couchAttractUiProbe) {
@@ -5535,6 +5728,12 @@ ApplicationWindow {
             required property bool gameLocal
             required property bool gameDownloadable
             required property int gameDatabaseId
+            property var previewVideoOutput: tileVideoOutput
+            readonly property bool previewRequested: root.hoverPreviewTile === tile
+                                                     && root.hoverPreviewPendingGameId === gameId
+            readonly property bool previewActive: previewRequested
+                                                  && root.hoverPreviewPlaying
+                                                  && library.hover_preview_game_id === gameId
             property int mediaRevision: library.media_revision
             property int favoriteRevision: library.favorite_revision
             property int favoritePendingRevision: library.favorite_pending_count
@@ -5560,6 +5759,13 @@ ApplicationWindow {
             function requestVisibleArtwork() {
                 library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
+            }
+            function updatePreviewInterest() {
+                if (cardHover.hovered || activeFocus) {
+                    root.armGridPreview(tile)
+                } else {
+                    root.disarmGridPreview(tile)
+                }
             }
             function runFavoriteProbe() {
                 if (!favoriteProbeReady || index !== 0 || root.favoriteProbeTriggered)
@@ -5591,6 +5797,11 @@ ApplicationWindow {
                 runFavoriteProbe()
                 runCollectionProbe()
             }
+            Component.onDestruction: root.disarmGridPreview(tile)
+            onGameIdChanged: {
+                root.disarmGridPreview(tile)
+                requestVisibleArtwork()
+            }
             onGameDatabaseIdChanged: requestVisibleArtwork()
             onGameTitleChanged: requestVisibleArtwork()
             onGameCanonicalTitleChanged: requestVisibleArtwork()
@@ -5599,8 +5810,10 @@ ApplicationWindow {
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
             onFavoriteProbeReadyChanged: runFavoriteProbe()
             onCollectionProbeReadyChanged: runCollectionProbe()
+            onActiveFocusChanged: updatePreviewInterest()
             width: grid.cellWidth
             height: grid.cellHeight
+            z: previewActive ? 20 : 0
             activeFocusOnTab: true
 
             TapHandler {
@@ -5630,10 +5843,14 @@ ApplicationWindow {
                 anchors.margins: 8
                 radius: 12
                 color: tile.activeFocus ? "#263142" : cardHover.hovered ? "#202a39" : root.panelRaised
-                border.color: tile.activeFocus || root.selectedGameId === tile.gameId ? root.accent : cardHover.hovered ? "#3a485d" : root.line
-                border.width: tile.activeFocus || root.selectedGameId === tile.gameId ? 2 : 1
-                scale: cardHover.hovered ? 1.012 : 1
-                Behavior on scale { NumberAnimation { duration: 90 } }
+                border.color: tile.previewActive ? root.accentCool
+                              : tile.activeFocus || root.selectedGameId === tile.gameId
+                                ? root.accent
+                              : cardHover.hovered ? "#3a485d" : root.line
+                border.width: tile.previewActive || tile.activeFocus
+                              || root.selectedGameId === tile.gameId ? 2 : 1
+                scale: tile.previewActive ? 1.045 : cardHover.hovered ? 1.012 : 1
+                Behavior on scale { NumberAnimation { duration: 120 } }
 
                 Rectangle {
                     id: artwork
@@ -5664,8 +5881,97 @@ ApplicationWindow {
                                   ? Image.PreserveAspectCrop : Image.PreserveAspectFit
                         sourceSize.width: Math.max(1, Math.round(width * 2))
                         sourceSize.height: Math.max(1, Math.round(height * 2))
-                        opacity: status === Image.Ready ? 1 : 0
+                        opacity: status === Image.Ready && !tile.previewActive ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 130 } }
+                    }
+
+                    VideoOutput {
+                        id: tileVideoOutput
+                        anchors.fill: parent
+                        fillMode: VideoOutput.PreserveAspectCrop
+                        visible: tile.previewRequested
+                        opacity: tile.previewActive ? 1 : 0
+                        layer.enabled: tile.previewRequested
+                        layer.smooth: true
+                        Behavior on opacity { NumberAnimation { duration: 170 } }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 48
+                        visible: tile.previewActive
+                        color: "#b90b1119"
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 54
+                            text: "VIDEO  ·  "
+                                  + (library.hover_preview_source.length > 0
+                                     ? library.hover_preview_source.toUpperCase()
+                                     : "LOCAL CACHE")
+                            color: root.ink
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    BusyIndicator {
+                        anchors.centerIn: parent
+                        width: 44
+                        height: 44
+                        running: tile.previewRequested
+                                 && library.hover_preview_game_id === tile.gameId
+                                 && library.hover_preview_loading
+                        visible: running
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 38
+                        visible: tile.previewRequested
+                                 && library.hover_preview_game_id === tile.gameId
+                                 && !library.hover_preview_loading
+                                 && library.hover_preview_url.toString().length === 0
+                                 && root.hoverPreviewPlaybackError.length === 0
+                        color: "#dd111924"
+                        Text {
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            text: library.hover_preview_message
+                            color: root.muted
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: previewErrorText.implicitHeight + 18
+                        visible: tile.previewRequested
+                                 && root.hoverPreviewPlaybackError.length > 0
+                        color: "#df3a2026"
+                        Text {
+                            id: previewErrorText
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.margins: 9
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.hoverPreviewPlaybackError
+                            color: "#ffb2b9"
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
                     }
 
                     Text {
@@ -5676,7 +5982,7 @@ ApplicationWindow {
                         color: "#ddffffff"
                         font.pixelSize: Math.min(72, parent.height * 0.38)
                         font.weight: Font.Black
-                        visible: coverImage.status !== Image.Ready
+                        visible: coverImage.status !== Image.Ready && !tile.previewActive
                     }
                     Rectangle {
                         visible: tile.gameLocal || tile.gameDownloadable
@@ -5726,8 +6032,37 @@ ApplicationWindow {
                         ToolTip.visible: hovered
                         ToolTip.text: tile.favorite ? "Remove from Favorites" : "Add to Favorites"
                     }
+                    RoundButton {
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 8
+                        width: 32
+                        height: 32
+                        visible: tile.previewActive
+                        text: root.hoverPreviewAudioMuted ? "M" : "♫"
+                        flat: true
+                        font.pixelSize: 16
+                        onClicked: root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
+                        background: Rectangle {
+                            radius: 9
+                            color: "#d9101620"
+                            border.color: root.hoverPreviewAudioMuted
+                                          ? "#5b687d" : root.accentCool
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: root.hoverPreviewAudioMuted ? root.muted : root.accentCool
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: root.hoverPreviewAudioMuted
+                                      ? "Turn preview sound on" : "Mute preview"
+                    }
                 }
-                ToolTip.visible: cardHover.hovered && tile.artworkSource.length > 0
+                ToolTip.visible: cardHover.hovered && !tile.previewRequested
+                                 && tile.artworkSource.length > 0
                 ToolTip.text: root.artworkLabel(library.artwork_type)
                               + " · " + tile.artworkSource
 
@@ -5757,7 +6092,10 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
             }
-            HoverHandler { id: cardHover }
+            HoverHandler {
+                id: cardHover
+                onHoveredChanged: tile.updatePreviewInterest()
+            }
         }
     }
 

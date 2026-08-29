@@ -16,6 +16,7 @@ mod firmware;
 mod game_details;
 pub mod game_details_model;
 pub mod gamepad_input;
+mod hover_preview;
 mod igdb;
 pub mod igdb_model;
 mod ingest;
@@ -62,6 +63,16 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--hover-preview-ui-probe") {
+        match hover_preview::seed_ui_probe() {
+            Ok(path) => println!("LUNCHBOX_HOVER_PREVIEW_SEEDED path={path:?}"),
+            Err(error) => {
+                eprintln!("LUNCHBOX_HOVER_PREVIEW_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+
     if std::env::args().any(|argument| argument == "--install-management-ui-probe") {
         match ingest::seed_install_management_ui_probe() {
             Ok(path) => println!("LUNCHBOX_INSTALL_MANAGEMENT_SEEDED path={:?}", path),

@@ -630,6 +630,25 @@ through the CXX-Qt model, and exits only after the SQLite worker returns.
 inspection. The card uses Qt Multimedia for cross-platform playback and Qt's
 native URL handler for manuals; Rust never invokes a shell or constructs an
 OS-specific opener command.
+The desktop grid uses the same provider-ordered supplemental-media cache after
+a 520-ms pointer-hover or keyboard-focus delay. `LibraryModel` resolves the
+exact stable UUID to the catalog's own positive database ID, performs the disk
+scan on a named worker, and accepts the result only when both its generation and
+requested UUID still match. The virtualized delegates contain only their
+`VideoOutput`; one root-level `MediaPlayer` and `AudioOutput` follow the active
+card. The player loops muted by default, the card exposes source provenance and
+an opt-in sound control, and every leave, focus change, open, ID change, or
+delegate destruction cancels the pending generation.
+`--hover-preview-ui-probe --preview-video-fixture PATH --media-directory
+EMPTY_PATH` requires an explicit non-empty video fixture of at most 64 MiB,
+publishes it idempotently under the stable Super Mario Bros. cache identity,
+loads the complete catalog, forces the grid presentation, focuses that exact
+UUID, and exercises the ordinary delay, worker lookup, and shared player. It
+prints `LUNCHBOX_HOVER_PREVIEW_UI_READY` only after Qt reports a video track,
+the fixture duration, and `PlayingState`. The probe deliberately does not use
+Qt Quick's item grab: an Xvfb clock can remain at zero without a working
+hardware backend, and a grab cannot prove that a video texture itself rendered.
+Visual acceptance of the live texture remains a release-host check.
 `--manual-candidate-probe --minerva-database PATH` reads the live Minerva
 catalog and its bounded cached torrent metadata without starting Qt or
 downloading game content. It exits successfully only when the fixed Cooking

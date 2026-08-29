@@ -27,6 +27,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   visible active-state affordances, All/None controls, and compact adaptive
   include/exclude state; facet scans and filtering stay on generation-guarded
   Rust workers and compose with the rest of the library filter stack.
+- Delayed pointer-hover and keyboard-focus gameplay previews in the desktop
+  cover grid. Exact cached-media lookup runs off-thread with generation guards,
+  one shared Qt Multimedia player follows the active virtualized card, sound is
+  opt-in, and cancellation prevents a recycled delegate from receiving another
+  game's video.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.
@@ -212,8 +217,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   review.
 - Extend the implemented exact Minerva manual acquisition, durable visible
   progress/cancellation, validated atomic cache publication, and native cached
-  manual/video bundle with an authorized EmuMovies API adapter, video
-  acquisition, and soundtrack browsing.
+  manual/video bundle and cached grid preview with an authorized EmuMovies API
+  adapter, video acquisition, and soundtrack browsing. Hovering never silently
+  starts provider traffic.
 - Extend the implemented whole-library missing-media audit and bounded bulk
   LibRetro repair queue with durable pending-batch restart recovery, multi-
   provider bulk review, supplemental video/manual categories, and scheduled

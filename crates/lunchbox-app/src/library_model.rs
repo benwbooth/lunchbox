@@ -44,6 +44,12 @@ pub mod qobject {
         #[qproperty(i32, list_filter_value_count)]
         #[qproperty(i32, list_filter_total_distinct)]
         #[qproperty(i32, list_filter_revision)]
+        #[qproperty(QString, hover_preview_game_id)]
+        #[qproperty(QUrl, hover_preview_url)]
+        #[qproperty(QString, hover_preview_source)]
+        #[qproperty(QString, hover_preview_message)]
+        #[qproperty(bool, hover_preview_loading)]
+        #[qproperty(bool, hover_preview_probe)]
         #[qproperty(QString, media_directory)]
         #[qproperty(bool, media_loading)]
         #[qproperty(bool, media_retrieval_enabled)]
@@ -219,6 +225,18 @@ pub mod qobject {
 
         #[qinvokable]
         fn list_column_filter_summary(self: &LibraryModel) -> QString;
+
+        #[qinvokable]
+        fn request_hover_preview(self: Pin<&mut LibraryModel>, game_uid: QString);
+
+        #[qinvokable]
+        fn cancel_hover_preview(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn report_hover_preview_ui_probe(self: &LibraryModel);
+
+        #[qinvokable]
+        fn report_hover_preview_ui_failure(self: &LibraryModel, detail: QString);
 
         #[qinvokable]
         fn artwork_url(self: &LibraryModel, launchbox_db_id: i32, artwork_type: QString) -> QUrl;
@@ -676,6 +694,12 @@ pub struct LibraryModelRust {
     list_filter_value_count: i32,
     list_filter_total_distinct: i32,
     list_filter_revision: i32,
+    hover_preview_game_id: QString,
+    hover_preview_url: QUrl,
+    hover_preview_source: QString,
+    hover_preview_message: QString,
+    hover_preview_loading: bool,
+    hover_preview_probe: bool,
     media_directory: QString,
     media_loading: bool,
     media_retrieval_enabled: bool,
@@ -780,6 +804,7 @@ pub struct LibraryModelRust {
     list_filter_values: Vec<catalog::ListFacetValue>,
     list_filter_draft: crate::list_view::ListColumnFilter,
     list_filter_generation: u64,
+    hover_preview_generation: u64,
     tags: Arc<Vec<UserTag>>,
     game_tags: Arc<HashMap<String, Vec<String>>>,
     game_custom_fields: Arc<HashMap<String, Vec<String>>>,
@@ -826,6 +851,15 @@ impl Default for LibraryModelRust {
             list_filter_value_count: 0,
             list_filter_total_distinct: 0,
             list_filter_revision: 0,
+            hover_preview_game_id: QString::default(),
+            hover_preview_url: QUrl::default(),
+            hover_preview_source: QString::default(),
+            hover_preview_message: QString::from(
+                "Pause over a game to preview a cached gameplay video.",
+            ),
+            hover_preview_loading: false,
+            hover_preview_probe: std::env::args()
+                .any(|argument| argument == "--hover-preview-ui-probe"),
             media_directory: QString::default(),
             media_loading: false,
             media_retrieval_enabled: crate::media::media_retrieval_enabled(),
@@ -940,6 +974,7 @@ impl Default for LibraryModelRust {
             list_filter_values: Vec::new(),
             list_filter_draft: crate::list_view::ListColumnFilter::all(),
             list_filter_generation: 0,
+            hover_preview_generation: 0,
             tags: Arc::new(Vec::new()),
             game_tags: Arc::new(HashMap::new()),
             game_custom_fields: Arc::new(HashMap::new()),
@@ -2239,6 +2274,162 @@ impl qobject::LibraryModel {
             })
             .collect::<Vec<_>>();
         qstring(summaries.join("  ·  "))
+    }
+
+    pub fn request_hover_preview(mut self: Pin<&mut Self>, game_uid: QString) {
+        let game_uid = game_uid.to_string();
+        let Some(game_index) = self
+            .as_ref()
+            .rust()
+            .game_index_by_id
+            .get(&game_uid)
+            .copied()
+        else {
+            self.as_mut().cancel_hover_preview();
+            self.as_mut().set_hover_preview_message(qstring(
+                "Preview unavailable because the game is no longer in this catalog.",
+            ));
+            return;
+        };
+        let launchbox_db_id = {
+            let this = self.as_ref();
+            let Some(game) = this.rust().catalog.games.get(game_index) else {
+                self.as_mut().cancel_hover_preview();
+                return;
+            };
+            game.launchbox_db_id
+        };
+        if *self.as_ref().hover_preview_probe() {
+            println!(
+                "LUNCHBOX_HOVER_PREVIEW_UI_LOOKUP game_uid={game_uid:?} database_id={launchbox_db_id}"
+            );
+        }
+        if self.as_ref().hover_preview_game_id().to_string() == game_uid
+            && (*self.as_ref().hover_preview_loading()
+                || !self.as_ref().hover_preview_url().is_empty())
+        {
+            return;
+        }
+
+        self.as_mut().rust_mut().hover_preview_generation = self
+            .as_ref()
+            .rust()
+            .hover_preview_generation
+            .wrapping_add(1);
+        let generation = self.as_ref().rust().hover_preview_generation;
+        self.as_mut().set_hover_preview_game_id(qstring(&game_uid));
+        self.as_mut().set_hover_preview_url(QUrl::default());
+        self.as_mut().set_hover_preview_source(QString::default());
+        self.as_mut()
+            .set_hover_preview_message(qstring("Looking for a cached gameplay preview…"));
+        self.as_mut().set_hover_preview_loading(true);
+
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-hover-preview".into())
+            .spawn(move || {
+                let result =
+                    crate::hover_preview::requested_cached_video(&game_uid, launchbox_db_id)
+                        .map_err(|error| error.to_string());
+                if let Err(error) = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_hover_preview(generation, game_uid, result);
+                }) {
+                    eprintln!("Could not publish the hover preview to Qt: {error:?}");
+                }
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_hover_preview_loading(false);
+            self.as_mut().set_hover_preview_message(qstring(format!(
+                "Could not inspect cached gameplay media: {error}"
+            )));
+        }
+    }
+
+    fn finish_hover_preview(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_uid: String,
+        result: Result<Option<crate::hover_preview::CachedVideoPreview>, String>,
+    ) {
+        if generation != self.as_ref().rust().hover_preview_generation
+            || self.as_ref().hover_preview_game_id().to_string() != game_uid
+        {
+            if *self.as_ref().hover_preview_probe() {
+                println!(
+                    "LUNCHBOX_HOVER_PREVIEW_UI_STALE game_uid={game_uid:?} generation={generation}"
+                );
+            }
+            return;
+        }
+        self.as_mut().set_hover_preview_loading(false);
+        match result {
+            Ok(Some(preview)) => {
+                if *self.as_ref().hover_preview_probe() {
+                    println!(
+                        "LUNCHBOX_HOVER_PREVIEW_UI_FOUND game_uid={game_uid:?} source={:?} path={:?}",
+                        preview.source, preview.path
+                    );
+                }
+                self.as_mut()
+                    .set_hover_preview_url(QUrl::from_local_file(&qstring(
+                        preview.path.to_string_lossy(),
+                    )));
+                self.as_mut()
+                    .set_hover_preview_source(qstring(&preview.source));
+                self.as_mut().set_hover_preview_message(qstring(format!(
+                    "Cached gameplay preview from {}.",
+                    preview.source
+                )));
+            }
+            Ok(None) => {
+                self.as_mut().set_hover_preview_url(QUrl::default());
+                self.as_mut().set_hover_preview_source(QString::default());
+                self.as_mut().set_hover_preview_message(qstring(
+                    "No cached gameplay video is available for this game.",
+                ));
+            }
+            Err(error) => {
+                self.as_mut().set_hover_preview_url(QUrl::default());
+                self.as_mut().set_hover_preview_source(QString::default());
+                self.as_mut().set_hover_preview_message(qstring(format!(
+                    "Could not inspect cached gameplay media: {error}"
+                )));
+            }
+        }
+    }
+
+    pub fn cancel_hover_preview(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().hover_preview_generation = self
+            .as_ref()
+            .rust()
+            .hover_preview_generation
+            .wrapping_add(1);
+        self.as_mut().set_hover_preview_game_id(QString::default());
+        self.as_mut().set_hover_preview_url(QUrl::default());
+        self.as_mut().set_hover_preview_source(QString::default());
+        self.as_mut().set_hover_preview_loading(false);
+        self.as_mut().set_hover_preview_message(qstring(
+            "Pause over a game to preview a cached gameplay video.",
+        ));
+    }
+
+    pub fn report_hover_preview_ui_probe(&self) {
+        if *self.hover_preview_probe() && !self.hover_preview_url().is_empty() {
+            println!(
+                "LUNCHBOX_HOVER_PREVIEW_UI_READY game_uid={:?} source={:?} url={:?}",
+                self.hover_preview_game_id().to_string(),
+                self.hover_preview_source().to_string(),
+                self.hover_preview_url().to_string()
+            );
+        }
+    }
+
+    pub fn report_hover_preview_ui_failure(&self, detail: QString) {
+        if *self.hover_preview_probe() {
+            eprintln!("LUNCHBOX_HOVER_PREVIEW_UI_FAILED {}", detail.to_string());
+        }
     }
 
     pub fn artwork_url(&self, launchbox_db_id: i32, artwork_type: QString) -> QUrl {

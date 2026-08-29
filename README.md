@@ -385,6 +385,15 @@ GUI thread by stable game UUID and resume after restart. Manuals open with Qt's
 operating-system URL handler, without shell commands or platform-specific path
 strings.
 
+The desktop cover grid reuses those same cached videos for delayed gameplay
+previews. Resting the pointer on a card or focusing it from the keyboard for
+520 ms performs an off-thread exact-ID lookup; leaving, moving focus, opening
+the game, or recycling the virtualized card cancels that request without
+publishing stale media. One shared Qt Multimedia player serves the active card,
+loops silently by default, exposes an explicit sound toggle, and labels the
+chosen cache provider. Lunchbox does not fetch a remote video merely because a
+card was hovered.
+
 Artwork indexing keeps every valid cached candidate instead of discarding all
 but the preferred provider. The details hero exposes previous/next controls and
 the current source while preserving the legacy provider and media-type fallback
