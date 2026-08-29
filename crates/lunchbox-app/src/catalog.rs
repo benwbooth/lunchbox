@@ -25,6 +25,7 @@ pub struct Game {
 pub struct Platform {
     pub name: String,
     pub game_count: usize,
+    pub(crate) search_key: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -256,19 +257,36 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
     })?;
     let games = game_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let mut platform_statement = connection.prepare(
-        "SELECT platforms.canonical_name, count(DISTINCT games.id)\n\
+    let has_platform_aliases = table_exists(connection, "platform_aliases")?;
+    let alias_column = if has_platform_aliases {
+        "coalesce(group_concat(DISTINCT platform_aliases.alias), '')"
+    } else {
+        "''"
+    };
+    let alias_join = if has_platform_aliases {
+        "LEFT JOIN platform_aliases ON platform_aliases.platform_id = platforms.id"
+    } else {
+        ""
+    };
+    let platform_query = format!(
+        "SELECT platforms.canonical_name, count(DISTINCT games.id),\n\
+                {alias_column}\n\
          FROM platforms\n\
+         {alias_join}\n\
          LEFT JOIN releases ON releases.platform_id = platforms.id\n\
          LEFT JOIN games ON games.id = releases.game_id\n\
                           AND games.status NOT IN ('deprecated', 'merged')\n\
          WHERE platforms.status <> 'deprecated'\n\
          GROUP BY platforms.id, platforms.canonical_name\n\
-         ORDER BY platforms.canonical_name COLLATE NOCASE",
-    )?;
+         ORDER BY platforms.canonical_name COLLATE NOCASE"
+    );
+    let mut platform_statement = connection.prepare(&platform_query)?;
     let platform_rows = platform_statement.query_map([], |row| {
+        let name = row.get::<_, String>(0)?;
+        let aliases = row.get::<_, String>(2)?;
         Ok(Platform {
-            name: row.get(0)?,
+            search_key: platform_search_key(&name, Some(&aliases)),
+            name,
             game_count: row.get(1)?,
         })
     })?;
@@ -363,6 +381,7 @@ fn load_discovery_catalog(
     }
     games.extend(installed.local_only_games.iter().cloned());
 
+    let canonical_aliases = canonical_platform_aliases(canonical)?;
     let mut platform_statement = discovery.prepare(
         "SELECT p.name, count(g.id)
          FROM platforms p
@@ -372,8 +391,13 @@ fn load_discovery_catalog(
          ORDER BY p.name COLLATE NOCASE",
     )?;
     let platform_rows = platform_statement.query_map([], |row| {
+        let name = row.get::<_, String>(0)?;
+        let aliases = canonical_aliases
+            .get(&normalize_platform_key(&name))
+            .map(String::as_str);
         Ok(Platform {
-            name: row.get(0)?,
+            search_key: platform_search_key(&name, aliases),
+            name,
             game_count: row.get(1)?,
         })
     })?;
@@ -388,6 +412,7 @@ fn load_discovery_catalog(
             platforms.push(Platform {
                 name: local_game.platform.clone(),
                 game_count: 1,
+                search_key: platform_search_key(&local_game.platform, None),
             });
         }
     }
@@ -405,6 +430,101 @@ fn load_discovery_catalog(
         offer_count: minerva.offer_count,
         emulator_count: count(canonical, "emulators", "1")?,
         source_label: format!("Discovery catalog: {}", discovery_path.display()),
+    })
+}
+
+fn canonical_platform_aliases(connection: &Connection) -> Result<HashMap<String, String>> {
+    let mut aliases = HashMap::new();
+    if !table_exists(connection, "platforms")? || !table_exists(connection, "platform_aliases")? {
+        return Ok(aliases);
+    }
+    let mut statement = connection.prepare(
+        "SELECT p.canonical_name, coalesce(group_concat(a.alias, ','), '')
+         FROM platforms p
+         LEFT JOIN platform_aliases a ON a.platform_id = p.id
+         WHERE p.status <> 'deprecated'
+         GROUP BY p.id, p.canonical_name",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (name, values) = row?;
+        aliases.insert(normalize_platform_key(&name), values);
+    }
+    Ok(aliases)
+}
+
+fn platform_search_key(name: &str, database_aliases: Option<&str>) -> String {
+    let mut key = name.to_lowercase();
+    if let Some(aliases) = database_aliases.filter(|aliases| !aliases.trim().is_empty()) {
+        key.push('\n');
+        key.push_str(&aliases.to_lowercase());
+    }
+    if let Some(aliases) = legacy_platform_search_aliases(name) {
+        key.push('\n');
+        key.push_str(&aliases.to_lowercase());
+    }
+    key
+}
+
+fn legacy_platform_search_aliases(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "Nintendo Entertainment System" => "NES,Famicom,FC",
+        "Super Nintendo Entertainment System" => "SNES,Super Famicom,SFC,snesna",
+        "Nintendo 64" => "N64",
+        "Nintendo GameCube" => "GC,NGC,GameCube",
+        "Nintendo Game Boy" => "GB,Game Boy",
+        "Nintendo Game Boy Color" => "GBC,Game Boy Color",
+        "Nintendo Game Boy Advance" => "GBA,Game Boy Advance",
+        "Nintendo DS" => "NDS,DS",
+        "Nintendo 3DS" => "3DS,N3DS",
+        "Nintendo Wii U" => "Wii U,WiiU",
+        "Nintendo Switch" => "Switch,NS",
+        "Nintendo Virtual Boy" => "VB,Virtual Boy,virtualboy",
+        "Sega Master System" => "SMS,Master System,mastersystem",
+        "Sega Genesis" => "MD,Mega Drive,Genesis,megadrive",
+        "Sega CD" => "SCD,Mega CD,Sega CD,segacd,megacd",
+        "Sega 32X" => "32X,sega32x",
+        "Sega Saturn" => "SS,Saturn",
+        "Sega Dreamcast" => "DC,Dreamcast",
+        "Sega Game Gear" => "GG,Game Gear,gamegear",
+        "Sony Playstation" => "PS1,PSX,PS,PlayStation",
+        "Sony Playstation 2" => "PS2,PlayStation 2",
+        "Sony Playstation 3" => "PS3,PlayStation 3",
+        "Sony PSP" => "PSP,PlayStation Portable",
+        "Sony Playstation Vita" => "PSV,Vita,PS Vita,psvita",
+        "NEC TurboGrafx-16" => "PCE,PC Engine,TG16,TurboGrafx-16,pcengine",
+        "NEC TurboGrafx-CD" => "PCECD,PC Engine CD,TG-CD,TurboGrafx-CD,pcenginecd",
+        "NEC PC-98" => "PC98,PC-98",
+        "SNK Neo Geo Pocket" => "NGP,Neo Geo Pocket",
+        "SNK Neo Geo Pocket Color" => "NGPC,Neo Geo Pocket Color",
+        "SNK Neo Geo AES" => "AES,MVS,Neo Geo,neogeo",
+        "SNK Neo Geo CD" => "Neo Geo CD,neogeocd,neogeocdjp",
+        "Atari 2600" => "2600,VCS,atari2600",
+        "Atari 5200" => "5200,atari5200",
+        "Atari 7800" => "7800,atari7800",
+        "Atari Jaguar" => "Jaguar,Jag,atarijaguar",
+        "Atari Jaguar CD" => "Jaguar CD,atarijaguarcd",
+        "Commodore 64" => "C64",
+        "Commodore VIC-20" => "VIC-20,VIC20",
+        "Commodore 16" => "C16",
+        "MS-DOS" => "DOS",
+        "Microsoft Xbox 360" => "X360,360,Xbox 360,xbox360",
+        "Sinclair ZX Spectrum" => "ZX,ZX Spectrum,zxspectrum",
+        "Amstrad CPC" => "CPC,amstradcpc",
+        "Arcade" => "MAME,arcade,fbneo",
+        "Arcade Laserdisc" => "Laserdisc,Daphne,Singe,arcade laserdisc",
+        "Arcade Pinball" => "Pinball,arcade pinball,MAME pinball",
+        "Panasonic 3DO" => "3DO",
+        "Philips CD-i" => "CD-i,CDi,cdimono1",
+        "Bandai WonderSwan" => "WS,WonderSwan",
+        "Bandai WonderSwan Color" => "WSC,WonderSwan Color,wonderswancolor",
+        "Coleco ColecoVision" => "Coleco,ColecoVision",
+        "GCE Vectrex" => "Vectrex",
+        "Sharp X68000" => "X68000",
+        "ScummVM" => "ScummVM",
+        _ => return None,
     })
 }
 
@@ -860,6 +980,23 @@ mod tests {
             ],
             ..Catalog::default()
         }
+    }
+
+    #[test]
+    fn platform_search_combines_catalog_aliases_and_legacy_abbreviations() {
+        let key = platform_search_key(
+            "Nintendo Entertainment System",
+            Some("Nintendo Family Computer,Famicom"),
+        );
+        for query in [
+            "nintendo entertainment",
+            "family computer",
+            "famicom",
+            "nes",
+        ] {
+            assert!(key.contains(query), "missing platform query {query:?}");
+        }
+        assert!(platform_search_key("Unknown Console", None).contains("unknown console"));
     }
 
     #[test]

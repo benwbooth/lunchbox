@@ -193,6 +193,12 @@ pub struct LibraryPreferences {
     pub grid_zoom: i32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SidebarPreferences {
+    pub platform_search: String,
+    pub width: i32,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GameMetadata {
     pub title: String,
@@ -536,6 +542,30 @@ impl LibraryPreferences {
         }
         if !(50..=200).contains(&self.grid_zoom) {
             bail!("grid zoom must be between 50 and 200 percent");
+        }
+        Ok(())
+    }
+}
+
+impl Default for SidebarPreferences {
+    fn default() -> Self {
+        Self {
+            platform_search: String::new(),
+            width: 254,
+        }
+    }
+}
+
+impl SidebarPreferences {
+    pub fn validate(&self) -> Result<()> {
+        if self.platform_search.chars().count() > 80 {
+            bail!("platform search must be at most 80 characters");
+        }
+        if self.platform_search.contains('\0') {
+            bail!("platform search cannot contain a null character");
+        }
+        if !(180..=400).contains(&self.width) {
+            bail!("sidebar width must be between 180 and 400 pixels");
         }
         Ok(())
     }
@@ -1110,6 +1140,38 @@ impl SettingsStore {
                 preferences.artwork_type,
                 preferences.grid_zoom,
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_sidebar_preferences(&self) -> Result<SidebarPreferences> {
+        let preferences = self
+            .connection()?
+            .query_row(
+                "SELECT platform_search, width FROM sidebar_preferences WHERE id=1",
+                [],
+                |row| {
+                    Ok(SidebarPreferences {
+                        platform_search: row.get(0)?,
+                        width: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?
+            .unwrap_or_default();
+        preferences.validate()?;
+        Ok(preferences)
+    }
+
+    pub fn save_sidebar_preferences(&self, preferences: &SidebarPreferences) -> Result<()> {
+        preferences.validate()?;
+        self.connection()?.execute(
+            "INSERT INTO sidebar_preferences (id, platform_search, width)
+             VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET
+                 platform_search=excluded.platform_search,
+                 width=excluded.width",
+            params![preferences.platform_search, preferences.width],
         )?;
         Ok(())
     }
@@ -2912,6 +2974,11 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              grid_zoom INTEGER NOT NULL DEFAULT 100 CHECK (grid_zoom BETWEEN 50 AND 200)
          );
+         CREATE TABLE IF NOT EXISTS sidebar_preferences (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             platform_search TEXT NOT NULL DEFAULT '' CHECK (length(platform_search) <= 80),
+             width INTEGER NOT NULL DEFAULT 254 CHECK (width BETWEEN 180 AND 400)
+         );
          CREATE TABLE IF NOT EXISTS download_jobs (
              id TEXT PRIMARY KEY,
              game_id TEXT NOT NULL,
@@ -4390,6 +4457,40 @@ mod tests {
         };
         store.save_library_preferences(&expected).unwrap();
         assert_eq!(store.load_library_preferences().unwrap(), expected);
+    }
+
+    #[test]
+    fn sidebar_search_and_width_default_safely_and_survive_restart() {
+        let (_directory, store) = store();
+        assert_eq!(
+            store.load_sidebar_preferences().unwrap(),
+            SidebarPreferences::default()
+        );
+
+        let expected = SidebarPreferences {
+            platform_search: "snes".into(),
+            width: 332,
+        };
+        store.save_sidebar_preferences(&expected).unwrap();
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(reopened.load_sidebar_preferences().unwrap(), expected);
+
+        assert!(
+            store
+                .save_sidebar_preferences(&SidebarPreferences {
+                    platform_search: "x".repeat(81),
+                    width: 332,
+                })
+                .is_err()
+        );
+        assert!(
+            store
+                .save_sidebar_preferences(&SidebarPreferences {
+                    platform_search: String::new(),
+                    width: 401,
+                })
+                .is_err()
+        );
     }
 
     #[test]

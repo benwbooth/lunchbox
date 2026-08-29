@@ -22,6 +22,12 @@ filtering run on worker threads, while virtualized Qt views consume a native
 `QAbstractListModel`. Use `--startup-probe` to measure shell construction without
 waiting for database loading.
 
+The platform sidebar searches names and familiar aliases such as NES, SNES,
+PS2, and MAME while showing the live match count. Drag its right edge to resize
+it between 180 and 400 pixels, or double-click the edge to restore the default.
+The query and width survive restart in the native state database; filtering is
+in memory and persistence is coalesced off the Qt thread.
+
 The header's Couch Mode control opens a fullscreen, keyboard-and-gamepad
 living-room presentation over those same models. It preserves the exact
 selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent

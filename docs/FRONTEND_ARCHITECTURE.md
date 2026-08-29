@@ -19,6 +19,15 @@ The initial implementation enforces this shape:
 - SQLite opens read-only on a named worker thread after the window is created.
 - Search, platform, and availability filtering run on worker threads. A
   generation number discards stale results when the user types quickly.
+- Platform navigation keeps a separate compact Rust index over 191 platform
+  names, canonical database aliases, and bounded legacy abbreviations. Its
+  search is immediate, the 180–400 px resize preview never touches storage, and
+  debounced search/drag completion is coalesced through one SQLite worker.
+  `--sidebar-ui-probe --state-database EMPTY_PATH` filters by the `snes` alias,
+  resizes to 332 px, and saves the real state. A new process using the same path
+  and `--sidebar-restored-ui-probe` succeeds only when both values and the exact
+  Super Nintendo result restore; `--screenshot-output PATH` captures the native
+  sidebar in either run.
 - The initial query reads compact text, stable provider IDs, and state fields only. The preserved
   discovery catalog can be layered read-only over the canonical database;
   Legacy user-file state is joined in memory by exact provider game IDs or

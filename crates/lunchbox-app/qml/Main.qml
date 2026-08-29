@@ -14,13 +14,13 @@ ApplicationWindow {
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
-           || manualTorrentUiProbe
+           || manualTorrentUiProbe || sidebarUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
-            || manualTorrentUiProbe
+            || manualTorrentUiProbe || sidebarUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -146,6 +146,8 @@ ApplicationWindow {
                                                   || libraryAuditCleanupUiProbe
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool manualTorrentUiProbe: Qt.application.arguments.indexOf("--manual-torrent-ui-probe") >= 0
+    readonly property bool sidebarRestoreUiProbe: Qt.application.arguments.indexOf("--sidebar-restored-ui-probe") >= 0
+    readonly property bool sidebarUiProbe: library.sidebar_probe
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
@@ -2538,6 +2540,77 @@ ApplicationWindow {
     }
 
     Timer {
+        id: sidebarProbeSetupTimer
+        interval: 100
+        running: root.sidebarUiProbe
+        repeat: true
+        onTriggered: {
+            if (!library.ready)
+                return
+            stop()
+            if (!root.sidebarRestoreUiProbe) {
+                platformSearchField.text = "snes"
+                library.filter_platforms(platformSearchField.text)
+                library.preview_sidebar_width(332)
+                library.save_sidebar_state(platformSearchField.text,
+                                           library.sidebar_width)
+            }
+            sidebarProbeCaptureTimer.start()
+        }
+    }
+
+    Timer {
+        id: sidebarProbeCaptureTimer
+        interval: library.sidebar_state_saving ? 50 : 300
+        repeat: false
+        onTriggered: {
+            if (library.sidebar_state_saving) {
+                restart()
+                return
+            }
+            let foundSnes = false
+            for (let index = 0; index < library.filtered_platform_count; ++index) {
+                if (library.filtered_platform_name_at(index)
+                        === "Super Nintendo Entertainment System") {
+                    foundSnes = true
+                    break
+                }
+            }
+            if (library.platform_search !== "snes"
+                    || library.sidebar_width !== 332 || !foundSnes) {
+                console.error("LUNCHBOX_SIDEBAR_UI_FAILED query="
+                              + library.platform_search + " width="
+                              + library.sidebar_width + " results="
+                              + library.filtered_platform_count)
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                console.log("LUNCHBOX_SIDEBAR_UI_READY restored="
+                            + root.sidebarRestoreUiProbe + " results="
+                            + library.filtered_platform_count + " width="
+                            + library.sidebar_width)
+                Qt.quit()
+                return
+            }
+            sidebar.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SIDEBAR_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_SIDEBAR_UI_READY restored="
+                            + root.sidebarRestoreUiProbe + " results="
+                            + library.filtered_platform_count + " width="
+                            + library.sidebar_width + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
         interval: 2000
         running: downloadQueue.active_count > 0 || downloadsDrawer.opened
         repeat: true
@@ -3876,7 +3949,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.top: header.bottom
         anchors.bottom: statusBar.top
-        width: 254
+        width: library.sidebar_width
         color: root.panel
         border.color: root.line
 
@@ -4024,47 +4097,208 @@ ApplicationWindow {
             }
         }
 
-        Text {
-            id: platformsLabel
+        Item {
+            id: platformsHeader
             anchors.left: parent.left
-            anchors.leftMargin: 26
+            anchors.right: parent.right
             anchors.top: collectionList.bottom
             anchors.topMargin: 17
-            text: "PLATFORMS"
-            color: "#687488"
-            font.pixelSize: 10
-            font.weight: Font.Bold
-            font.letterSpacing: 1.4
+            height: 24
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 26
+                anchors.verticalCenter: parent.verticalCenter
+                text: "PLATFORMS"
+                color: "#687488"
+                font.pixelSize: 10
+                font.weight: Font.Bold
+                font.letterSpacing: 1.4
+            }
+            Text {
+                anchors.right: parent.right
+                anchors.rightMargin: 26
+                anchors.verticalCenter: parent.verticalCenter
+                text: library.platform_search.length > 0
+                      ? library.filtered_platform_count + " / " + library.platform_count
+                      : library.platform_count.toString()
+                color: library.platform_search.length > 0 ? root.accentCool : "#566175"
+                font.pixelSize: 9
+                font.weight: Font.DemiBold
+                font.features: { "tnum": 1 }
+            }
+        }
+
+        Rectangle {
+            id: platformSearchBox
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: platformsHeader.bottom
+            anchors.leftMargin: 13
+            anchors.rightMargin: 13
+            anchors.topMargin: 7
+            height: 37
+            radius: 9
+            color: "#0d131c"
+            border.color: platformSearchField.activeFocus ? root.accent : root.line
+            border.width: platformSearchField.activeFocus ? 2 : 1
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: "⌕"
+                color: platformSearchField.activeFocus ? root.accent : root.muted
+                font.pixelSize: 17
+            }
+            TextField {
+                id: platformSearchField
+                anchors.fill: parent
+                leftPadding: 36
+                rightPadding: 35
+                maximumLength: 80
+                text: library.platform_search
+                placeholderText: "Find a platform"
+                placeholderTextColor: "#657186"
+                color: root.ink
+                selectionColor: root.accent
+                selectedTextColor: "#15100a"
+                font.pixelSize: 12
+                background: Item {}
+                onTextEdited: {
+                    library.filter_platforms(text)
+                    platformSearchSaveTimer.restart()
+                }
+                onAccepted: library.save_sidebar_state(text, library.sidebar_width)
+                Keys.onEscapePressed: {
+                    text = ""
+                    library.filter_platforms("")
+                    library.save_sidebar_state("", library.sidebar_width)
+                }
+            }
+            ToolButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 3
+                anchors.verticalCenter: parent.verticalCenter
+                width: 31
+                height: 31
+                visible: platformSearchField.text.length > 0
+                text: "×"
+                flat: true
+                onClicked: {
+                    platformSearchField.text = ""
+                    library.filter_platforms("")
+                    library.save_sidebar_state("", library.sidebar_width)
+                    platformSearchField.forceActiveFocus()
+                }
+                ToolTip.visible: hovered
+                ToolTip.text: "Clear platform search"
+            }
+        }
+
+        Timer {
+            id: platformSearchSaveTimer
+            interval: 280
+            repeat: false
+            onTriggered: library.save_sidebar_state(platformSearchField.text,
+                                                     library.sidebar_width)
         }
 
         ListView {
             id: platformList
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.top: platformsLabel.bottom
+            anchors.top: platformSearchBox.bottom
             anchors.bottom: parent.bottom
             anchors.margins: 13
-            anchors.topMargin: 10
+            anchors.topMargin: 8
             clip: true
             reuseItems: true
             spacing: 3
-            model: library.platform_count
+            model: library.filtered_platform_count
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             delegate: NavButton {
                 required property int index
                 property int revision: library.platform_revision
                 label: {
                     revision
-                    return library.platform_name_at(index)
+                    return library.filtered_platform_name_at(index)
                 }
                 glyph: "·"
-                count: library.platform_game_count_at(index).toString()
+                count: library.filtered_platform_game_count_at(index).toString()
                 active: root.selectedPlatform === label
                 onClicked: {
                     root.selectedPlatform = label
                     root.scheduleFilter()
                 }
             }
+        }
+
+        Column {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: platformSearchBox.bottom
+            anchors.topMargin: 28
+            visible: library.ready && library.filtered_platform_count === 0
+                     && library.platform_search.length > 0
+            spacing: 7
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "No matching platforms"
+                color: root.ink
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.max(120, parent.width - 42)
+                text: "Try a full name or a common abbreviation such as NES, PS2, or MAME."
+                color: root.muted
+                font.pixelSize: 10
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        Item {
+            id: sidebarResizeHandle
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            width: 8
+            z: 20
+
+            Rectangle {
+                anchors.right: parent.right
+                anchors.rightMargin: 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: sidebarResizeMouse.pressed || sidebarResizeHover.hovered ? 3 : 1
+                height: sidebarResizeMouse.pressed || sidebarResizeHover.hovered ? 56 : parent.height
+                radius: 2
+                color: sidebarResizeMouse.pressed ? root.accent
+                       : sidebarResizeHover.hovered ? root.accentCool : root.line
+                Behavior on height { NumberAnimation { duration: 120 } }
+            }
+            HoverHandler { id: sidebarResizeHover }
+            MouseArea {
+                id: sidebarResizeMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.SizeHorCursor
+                onPositionChanged: mouse => {
+                    if (!pressed)
+                        return
+                    const point = mapToItem(root.contentItem, mouse.x, mouse.y)
+                    library.preview_sidebar_width(Math.round(point.x))
+                }
+                onReleased: library.save_sidebar_state(platformSearchField.text,
+                                                        library.sidebar_width)
+                onDoubleClicked: {
+                    library.preview_sidebar_width(254)
+                    library.save_sidebar_state(platformSearchField.text, 254)
+                }
+            }
+            ToolTip.visible: sidebarResizeHover.hovered
+            ToolTip.text: "Drag to resize · double-click to reset"
         }
     }
 

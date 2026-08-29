@@ -47,12 +47,17 @@ pub mod qobject {
         #[qproperty(bool, media_fetch_probe)]
         #[qproperty(bool, favorite_probe)]
         #[qproperty(bool, collection_probe)]
+        #[qproperty(bool, sidebar_probe)]
         #[qproperty(bool, collection_busy)]
         #[qproperty(i32, startup_ms)]
         #[qproperty(i32, catalog_ms)]
         #[qproperty(i32, game_count)]
         #[qproperty(i32, filtered_count)]
         #[qproperty(i32, platform_count)]
+        #[qproperty(QString, platform_search)]
+        #[qproperty(i32, filtered_platform_count)]
+        #[qproperty(i32, sidebar_width)]
+        #[qproperty(bool, sidebar_state_saving)]
         #[qproperty(i32, local_file_count)]
         #[qproperty(i32, local_game_count)]
         #[qproperty(i32, offer_count)]
@@ -330,6 +335,21 @@ pub mod qobject {
         fn platform_game_count_at(self: &LibraryModel, index: i32) -> i32;
 
         #[qinvokable]
+        fn filtered_platform_name_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn filtered_platform_game_count_at(self: &LibraryModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn filter_platforms(self: Pin<&mut LibraryModel>, query: QString);
+
+        #[qinvokable]
+        fn preview_sidebar_width(self: Pin<&mut LibraryModel>, width: i32);
+
+        #[qinvokable]
+        fn save_sidebar_state(self: Pin<&mut LibraryModel>, query: QString, width: i32);
+
+        #[qinvokable]
         fn shell_ready(self: Pin<&mut LibraryModel>);
     }
 
@@ -376,8 +396,8 @@ use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
 use crate::settings::{
-    GameMetadataOverride, LibraryPreferences, PlayActivity, SettingsStore, UserCollection,
-    UserCollections, UserTag, UserTags,
+    GameMetadataOverride, LibraryPreferences, PlayActivity, SettingsStore, SidebarPreferences,
+    UserCollection, UserCollections, UserTag, UserTags,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -385,6 +405,7 @@ type CatalogLoadResult = Result<
     (
         Catalog,
         Result<LibraryPreferences, String>,
+        Result<SidebarPreferences, String>,
         Result<HashSet<String>, String>,
         Result<UserCollections, String>,
         Result<Vec<PlayActivity>, String>,
@@ -469,12 +490,17 @@ pub struct LibraryModelRust {
     media_fetch_probe: bool,
     favorite_probe: bool,
     collection_probe: bool,
+    sidebar_probe: bool,
     collection_busy: bool,
     startup_ms: i32,
     catalog_ms: i32,
     game_count: i32,
     filtered_count: i32,
     platform_count: i32,
+    platform_search: QString,
+    filtered_platform_count: i32,
+    sidebar_width: i32,
+    sidebar_state_saving: bool,
     local_file_count: i32,
     local_game_count: i32,
     offer_count: i32,
@@ -502,6 +528,7 @@ pub struct LibraryModelRust {
     media: Arc<MediaIndex>,
     artwork_kind: ArtworkKind,
     filtered_indices: Vec<usize>,
+    filtered_platform_indices: Vec<usize>,
     load_generation: u64,
     filter_generation: u64,
     reload_pending: bool,
@@ -529,6 +556,8 @@ pub struct LibraryModelRust {
     current_search: String,
     smart_collection_rule_draft: Option<SmartCollectionRules>,
     collection_started: Option<std::time::Instant>,
+    sidebar_save_generation: u64,
+    sidebar_save_pending: bool,
 }
 
 impl Default for LibraryModelRust {
@@ -564,12 +593,22 @@ impl Default for LibraryModelRust {
             media_fetch_probe: std::env::args().any(|argument| argument == "--media-fetch-probe"),
             favorite_probe: std::env::args().any(|argument| argument == "--favorite-probe"),
             collection_probe: std::env::args().any(|argument| argument == "--collection-probe"),
+            sidebar_probe: std::env::args().any(|argument| {
+                matches!(
+                    argument.as_str(),
+                    "--sidebar-ui-probe" | "--sidebar-restored-ui-probe"
+                )
+            }),
             collection_busy: false,
             startup_ms: 0,
             catalog_ms: 0,
             game_count: 0,
             filtered_count: 0,
             platform_count: 0,
+            platform_search: QString::default(),
+            filtered_platform_count: 0,
+            sidebar_width: SidebarPreferences::default().width,
+            sidebar_state_saving: false,
             local_file_count: 0,
             local_game_count: 0,
             offer_count: 0,
@@ -597,6 +636,7 @@ impl Default for LibraryModelRust {
             media: Arc::new(MediaIndex::default()),
             artwork_kind: ArtworkKind::default(),
             filtered_indices: Vec::new(),
+            filtered_platform_indices: Vec::new(),
             load_generation: 0,
             filter_generation: 0,
             reload_pending: false,
@@ -624,6 +664,8 @@ impl Default for LibraryModelRust {
             current_search: String::new(),
             smart_collection_rule_draft: None,
             collection_started: None,
+            sidebar_save_generation: 0,
+            sidebar_save_pending: false,
         }
     }
 }
@@ -953,35 +995,47 @@ impl qobject::LibraryModel {
             .spawn(move || {
                 let loaded = catalog::load(&path)
                     .map(|catalog| {
-                        let (preferences, favorites, collections, activity, metadata, tags) =
-                            match SettingsStore::open_default() {
-                                Ok(store) => (
-                                    store
-                                        .load_library_preferences()
-                                        .map_err(|error| error.to_string()),
-                                    store.favorite_game_ids().map_err(|error| error.to_string()),
-                                    store.user_collections().map_err(|error| error.to_string()),
-                                    store.all_play_activity().map_err(|error| error.to_string()),
-                                    store
-                                        .all_game_metadata_overrides()
-                                        .map_err(|error| error.to_string()),
-                                    store.all_user_tags().map_err(|error| error.to_string()),
-                                ),
-                                Err(error) => {
-                                    let error = error.to_string();
-                                    (
-                                        Err(error.clone()),
-                                        Err(error.clone()),
-                                        Err(error.clone()),
-                                        Err(error.clone()),
-                                        Err(error.clone()),
-                                        Err(error),
-                                    )
-                                }
-                            };
+                        let (
+                            preferences,
+                            sidebar_preferences,
+                            favorites,
+                            collections,
+                            activity,
+                            metadata,
+                            tags,
+                        ) = match SettingsStore::open_default() {
+                            Ok(store) => (
+                                store
+                                    .load_library_preferences()
+                                    .map_err(|error| error.to_string()),
+                                store
+                                    .load_sidebar_preferences()
+                                    .map_err(|error| error.to_string()),
+                                store.favorite_game_ids().map_err(|error| error.to_string()),
+                                store.user_collections().map_err(|error| error.to_string()),
+                                store.all_play_activity().map_err(|error| error.to_string()),
+                                store
+                                    .all_game_metadata_overrides()
+                                    .map_err(|error| error.to_string()),
+                                store.all_user_tags().map_err(|error| error.to_string()),
+                            ),
+                            Err(error) => {
+                                let error = error.to_string();
+                                (
+                                    Err(error.clone()),
+                                    Err(error.clone()),
+                                    Err(error.clone()),
+                                    Err(error.clone()),
+                                    Err(error.clone()),
+                                    Err(error.clone()),
+                                    Err(error),
+                                )
+                            }
+                        };
                         (
                             catalog,
                             preferences,
+                            sidebar_preferences,
                             favorites,
                             collections,
                             activity,
@@ -1007,7 +1061,16 @@ impl qobject::LibraryModel {
         }
         self.as_mut().set_loading(false);
         match loaded {
-            Ok((catalog, preferences, favorites, collections, activity, metadata, tags)) => {
+            Ok((
+                catalog,
+                preferences,
+                sidebar_preferences,
+                favorites,
+                collections,
+                activity,
+                metadata,
+                tags,
+            )) => {
                 let preference_warning = match preferences {
                     Ok(preferences) => {
                         let artwork_kind =
@@ -1019,6 +1082,15 @@ impl qobject::LibraryModel {
                             .set_artwork_type(qstring(&preferences.artwork_type));
                         self.as_mut().set_grid_zoom(preferences.grid_zoom);
                         self.as_mut().rust_mut().artwork_kind = artwork_kind;
+                        None
+                    }
+                    Err(error) => Some(error),
+                };
+                let sidebar_warning = match sidebar_preferences {
+                    Ok(preferences) => {
+                        self.as_mut()
+                            .set_platform_search(qstring(&preferences.platform_search));
+                        self.as_mut().set_sidebar_width(preferences.width);
                         None
                     }
                     Err(error) => Some(error),
@@ -1090,6 +1162,7 @@ impl qobject::LibraryModel {
                         ..Filter::default()
                     },
                 );
+                let platform_query = self.as_ref().platform_search().to_string().to_lowercase();
                 self.as_mut().begin_reset_model();
                 {
                     let mut this = self.as_mut();
@@ -1102,6 +1175,17 @@ impl qobject::LibraryModel {
                         .collect::<HashMap<_, _>>();
                     rust.catalog = Arc::new(catalog);
                     rust.filtered_indices = indices;
+                    rust.filtered_platform_indices = rust
+                        .catalog
+                        .platforms
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, platform)| {
+                            (platform_query.is_empty()
+                                || platform.search_key.contains(&platform_query))
+                            .then_some(index)
+                        })
+                        .collect();
                     rust.favorite_game_ids = Arc::new(favorite_game_ids);
                     rust.recent_game_order = Arc::new(recent_game_order);
                     rust.completion_states = Arc::new(completion_states);
@@ -1147,6 +1231,9 @@ impl qobject::LibraryModel {
                 self.as_mut().set_filtered_count(saturating_i32(game_count));
                 self.as_mut()
                     .set_platform_count(saturating_i32(platform_count));
+                let filtered_platform_count = self.as_ref().rust().filtered_platform_indices.len();
+                self.as_mut()
+                    .set_filtered_platform_count(saturating_i32(filtered_platform_count));
                 self.as_mut()
                     .set_local_file_count(saturating_i32(local_file_count));
                 self.as_mut()
@@ -1205,6 +1292,9 @@ impl qobject::LibraryModel {
                 println!(
                     "LUNCHBOX_CATALOG_READY_MS={catalog_ms} games={game_count} platforms={platform_count} local_files={local_file_count} downloadable_games={downloadable_game_count} offers={offer_count} emulators={emulator_count} source={source_label:?}"
                 );
+                if *self.as_ref().sidebar_probe() {
+                    println!("LUNCHBOX_SIDEBAR_PROBE_ARMED");
+                }
                 self.as_mut().set_ready(true);
                 let revision = self.as_ref().platform_revision().wrapping_add(1);
                 self.as_mut().set_platform_revision(revision);
@@ -1213,6 +1303,9 @@ impl qobject::LibraryModel {
                 );
                 if let Some(warning) = preference_warning {
                     status.push_str(&format!(" — filter preferences unavailable: {warning}"));
+                }
+                if let Some(warning) = sidebar_warning {
+                    status.push_str(&format!(" — sidebar preferences unavailable: {warning}"));
                 }
                 if let Some(warning) = favorite_warning {
                     status.push_str(&format!(" — favorites unavailable: {warning}"));
@@ -2913,6 +3006,112 @@ impl qobject::LibraryModel {
             .unwrap_or_default()
     }
 
+    pub fn filtered_platform_name_at(&self, index: i32) -> QString {
+        filtered_platform(self, index)
+            .map(|platform| qstring(&platform.name))
+            .unwrap_or_default()
+    }
+
+    pub fn filtered_platform_game_count_at(&self, index: i32) -> i32 {
+        filtered_platform(self, index)
+            .map(|platform| saturating_i32(platform.game_count))
+            .unwrap_or_default()
+    }
+
+    pub fn filter_platforms(mut self: Pin<&mut Self>, query: QString) {
+        let query = query.to_string().chars().take(80).collect::<String>();
+        if self.as_ref().platform_search().to_string() == query {
+            return;
+        }
+        self.as_mut().set_platform_search(qstring(&query));
+        self.as_mut().rebuild_filtered_platforms();
+    }
+
+    pub fn preview_sidebar_width(mut self: Pin<&mut Self>, width: i32) {
+        let width = width.clamp(180, 400);
+        if width != *self.as_ref().sidebar_width() {
+            self.as_mut().set_sidebar_width(width);
+        }
+    }
+
+    pub fn save_sidebar_state(mut self: Pin<&mut Self>, query: QString, width: i32) {
+        self.as_mut().filter_platforms(query);
+        self.as_mut().preview_sidebar_width(width);
+        self.as_mut().rust_mut().sidebar_save_generation =
+            self.as_ref().rust().sidebar_save_generation.wrapping_add(1);
+        if !self.as_ref().rust().sidebar_save_pending {
+            self.as_mut().start_sidebar_save();
+        }
+    }
+
+    fn rebuild_filtered_platforms(mut self: Pin<&mut Self>) {
+        let query = self
+            .as_ref()
+            .platform_search()
+            .to_string()
+            .trim()
+            .to_lowercase();
+        let indices = self
+            .as_ref()
+            .rust()
+            .catalog
+            .platforms
+            .iter()
+            .enumerate()
+            .filter_map(|(index, platform)| {
+                (query.is_empty() || platform.search_key.contains(&query)).then_some(index)
+            })
+            .collect::<Vec<_>>();
+        let count = indices.len();
+        self.as_mut().rust_mut().filtered_platform_indices = indices;
+        self.as_mut()
+            .set_filtered_platform_count(saturating_i32(count));
+        let revision = self.as_ref().platform_revision().wrapping_add(1);
+        self.as_mut().set_platform_revision(revision);
+    }
+
+    fn start_sidebar_save(mut self: Pin<&mut Self>) {
+        let generation = self.as_ref().rust().sidebar_save_generation;
+        let preferences = SidebarPreferences {
+            platform_search: self.as_ref().platform_search().to_string(),
+            width: *self.as_ref().sidebar_width(),
+        };
+        self.as_mut().rust_mut().sidebar_save_pending = true;
+        self.as_mut().set_sidebar_state_saving(true);
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-sidebar-save".into())
+            .spawn(move || {
+                let result = SettingsStore::open_default()
+                    .and_then(|store| store.save_sidebar_preferences(&preferences))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_sidebar_save(generation, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().rust_mut().sidebar_save_pending = false;
+            self.as_mut().set_sidebar_state_saving(false);
+            self.as_mut().set_status_message(qstring(format!(
+                "Sidebar updated, but its state could not be saved: {error}"
+            )));
+        }
+    }
+
+    fn finish_sidebar_save(mut self: Pin<&mut Self>, generation: u64, result: Result<(), String>) {
+        self.as_mut().rust_mut().sidebar_save_pending = false;
+        if let Err(error) = result {
+            self.as_mut().set_status_message(qstring(format!(
+                "Sidebar updated, but its state could not be saved: {error}"
+            )));
+        }
+        if generation != self.as_ref().rust().sidebar_save_generation {
+            self.as_mut().start_sidebar_save();
+        } else {
+            self.as_mut().set_sidebar_state_saving(false);
+        }
+    }
+
     pub fn shell_ready(mut self: Pin<&mut Self>) {
         if *self.as_ref().startup_ms() != 0 {
             return;
@@ -2970,6 +3169,13 @@ impl qobject::LibraryModel {
         }
         roles
     }
+}
+
+fn filtered_platform(model: &qobject::LibraryModel, index: i32) -> Option<&catalog::Platform> {
+    let source_index = usize::try_from(index)
+        .ok()
+        .and_then(|index| model.rust().filtered_platform_indices.get(index))?;
+    model.rust().catalog.platforms.get(*source_index)
 }
 
 fn media_asset_url(asset: &MediaAsset) -> QUrl {
