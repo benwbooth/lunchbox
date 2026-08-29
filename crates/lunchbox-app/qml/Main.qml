@@ -14,6 +14,7 @@ ApplicationWindow {
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || mediaAuditUiProbe
+           || downloadRecoveryUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            ? 1920 : 1440
@@ -21,6 +22,7 @@ ApplicationWindow {
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || mediaAuditUiProbe
+            || downloadRecoveryUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             ? 1200 : 900
@@ -50,6 +52,8 @@ ApplicationWindow {
     property string pendingHistoryJobId: ""
     property string pendingHistoryJobTitle: ""
     property bool clearAllDownloadHistory: false
+    property string pendingRecoveryJobId: ""
+    property string pendingRecoveryJobTitle: ""
     property int pendingDownloadPlanIndex: -1
     property bool gridMode: true
     property bool couchModeActive: false
@@ -90,6 +94,7 @@ ApplicationWindow {
     property bool mediaAuditProbeArmed: false
     property bool collectionProbeArmed: false
     property bool downloadHistoryTriggered: false
+    property bool downloadRecoveryProbeTriggered: false
     property bool manualTorrentProbeTriggered: false
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
@@ -200,6 +205,7 @@ ApplicationWindow {
     readonly property bool firmwareUiProbe: Qt.application.arguments.indexOf("--firmware-ui-probe") >= 0
     readonly property bool activityUiProbe: Qt.application.arguments.indexOf("--activity-ui-probe") >= 0
     readonly property bool activityHistoryUiProbe: Qt.application.arguments.indexOf("--activity-history-ui-probe") >= 0
+    readonly property bool downloadRecoveryUiProbe: Qt.application.arguments.indexOf("--download-recovery-ui-probe") >= 0
     readonly property bool mediaBundleProbe: Qt.application.arguments.indexOf("--media-bundle-probe") >= 0
     readonly property bool mediaBundleUiProbe: Qt.application.arguments.indexOf("--media-bundle-ui-probe") >= 0
     readonly property bool manualDownloadUiProbe: Qt.application.arguments.indexOf("--manual-download-ui-probe") >= 0
@@ -2527,16 +2533,93 @@ ApplicationWindow {
                 library.reload()
         }
         function onRevisionChanged() {
-            if (!root.downloadHistoryProbe || downloadQueue.busy)
+            if (downloadQueue.busy)
                 return
-            if (!root.downloadHistoryTriggered
-                    && downloadQueue.finished_count > 0) {
-                root.downloadHistoryTriggered = true
-                downloadQueue.clear_finished()
-            } else if (root.downloadHistoryTriggered
-                    && downloadQueue.finished_count === 0) {
-                Qt.quit()
+            if (root.downloadHistoryProbe) {
+                if (!root.downloadHistoryTriggered
+                        && downloadQueue.finished_count > 0) {
+                    root.downloadHistoryTriggered = true
+                    downloadQueue.clear_finished()
+                } else if (root.downloadHistoryTriggered
+                        && downloadQueue.finished_count === 0) {
+                    Qt.quit()
+                }
             }
+            if (root.downloadRecoveryUiProbe
+                    && !root.downloadRecoveryProbeTriggered) {
+                const valid = downloadQueue.job_count === 1
+                              && downloadQueue.failed_count === 1
+                              && downloadQueue.job_state_at(0) === "FAILED"
+                              && downloadQueue.job_can_retry(0)
+                if (!valid) {
+                    console.error("LUNCHBOX_DOWNLOAD_RECOVERY_UI_FAILED jobs="
+                                  + downloadQueue.job_count + " failed="
+                                  + downloadQueue.failed_count + " state="
+                                  + downloadQueue.job_state_at(0) + " message="
+                                  + downloadQueue.message)
+                    Qt.exit(2)
+                    return
+                }
+                root.downloadRecoveryProbeTriggered = true
+                root.pendingRecoveryJobId = downloadQueue.job_id_at(0)
+                root.pendingRecoveryJobTitle = downloadQueue.job_title_at(0)
+                downloadsDrawer.open()
+                downloadQueue.load_history(root.pendingRecoveryJobId)
+                downloadRecoveryHistoryDialog.open()
+            }
+        }
+        function onHistory_revisionChanged() {
+            if (!root.downloadRecoveryUiProbe
+                    || !root.downloadRecoveryProbeTriggered
+                    || downloadQueue.history_busy)
+                return
+            const valid = downloadQueue.history_count === 3
+                          && downloadQueue.history_label_at(0) === "FAILED"
+                          && downloadQueue.history_label_at(1) === "DOWNLOADING"
+                          && downloadQueue.history_label_at(2) === "QUEUED"
+            if (!valid) {
+                console.error("LUNCHBOX_DOWNLOAD_RECOVERY_UI_FAILED history="
+                              + downloadQueue.history_count + " first="
+                              + downloadQueue.history_label_at(0) + " message="
+                              + downloadQueue.history_message)
+                Qt.exit(2)
+                return
+            }
+            downloadRecoveryScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: downloadRecoveryScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            downloadQueue.report_recovery_ui_probe()
+            if (root.screenshotOutput.length === 0) {
+                Qt.quit()
+                return
+            }
+            downloadRecoveryHistoryDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_DOWNLOAD_RECOVERY_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.downloadRecoveryUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_DOWNLOAD_RECOVERY_UI_FAILED timeout message="
+                          + downloadQueue.message + " history="
+                          + downloadQueue.history_message)
+            Qt.exit(2)
         }
     }
 
@@ -9899,6 +9982,307 @@ ApplicationWindow {
     }
 
     Dialog {
+        id: downloadRecoveryConfirmDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(580, root.width - 48)
+        title: "Retry exact download?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: {
+            downloadQueue.retry_job(root.pendingRecoveryJobId)
+            root.pendingRecoveryJobId = ""
+            root.pendingRecoveryJobTitle = ""
+        }
+        onRejected: {
+            root.pendingRecoveryJobId = ""
+            root.pendingRecoveryJobTitle = ""
+        }
+        contentItem: Text {
+            text: "Ask qBittorrent to recheck and resume ‘"
+                  + root.pendingRecoveryJobTitle
+                  + "’? Lunchbox first verifies that the exact torrent still belongs to its managed category. Existing payloads, reviewed file priorities, target paths, and provenance are preserved. Missing torrent metadata is never reconstructed or guessed."
+            color: root.ink
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    Dialog {
+        id: downloadRecoveryHistoryDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(760, root.width - 54)
+        height: Math.min(650, root.height - 54)
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        function eventTone(kind) {
+            if (kind === "failed" || kind === "import_error"
+                    || kind === "post_import_error")
+                return "#ff8b9a"
+            if (kind === "imported" || kind === "post_import_applied")
+                return root.accentCool
+            if (kind === "retry")
+                return root.accent
+            if (kind === "paused" || kind === "cancelled")
+                return "#bb9cff"
+            return "#69b7ff"
+        }
+
+        function eventTimestamp(epochText) {
+            const epoch = Number(epochText)
+            if (!isFinite(epoch) || epoch <= 0)
+                return "Unknown time"
+            return new Date(epoch * 1000).toLocaleString(
+                        Qt.locale(), Locale.ShortFormat)
+        }
+
+        background: Rectangle {
+            radius: 17
+            color: "#101721"
+            border.color: "#3a465a"
+            border.width: 1
+        }
+
+        header: Rectangle {
+            width: parent.width
+            height: 86
+            radius: 17
+            color: root.panelRaised
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 16
+                spacing: 14
+                Rectangle {
+                    Layout.preferredWidth: 44
+                    Layout.preferredHeight: 44
+                    radius: 12
+                    color: "#2c251d"
+                    border.color: root.accent
+                    Text {
+                        anchors.centerIn: parent
+                        text: "↻"
+                        color: root.accent
+                        font.pixelSize: 22
+                        font.weight: Font.Bold
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: "DOWNLOAD RECOVERY"
+                        color: root.ink
+                        font.pixelSize: 18
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: downloadQueue.history_title
+                        color: root.muted
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                }
+                HeaderButton {
+                    text: "×"
+                    implicitWidth: 38
+                    leftPadding: 0
+                    rightPadding: 0
+                    Accessible.name: "Close Download Recovery"
+                    onClicked: downloadRecoveryHistoryDialog.close()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 0
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 64
+                color: "#121b27"
+                border.color: root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    spacing: 12
+                    BusyIndicator {
+                        visible: downloadQueue.history_busy
+                        running: visible
+                        Layout.preferredWidth: 22
+                        Layout.preferredHeight: 22
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: downloadQueue.history_message
+                        color: downloadQueue.history_busy ? root.accent : root.muted
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+                    Rectangle {
+                        visible: downloadQueue.history_retryable
+                        implicitWidth: recoveryNeededLabel.implicitWidth + 20
+                        implicitHeight: 28
+                        radius: 14
+                        color: "#2a1a22"
+                        border.color: "#8f3f50"
+                        Text {
+                            id: recoveryNeededLabel
+                            anchors.centerIn: parent
+                            text: "RECOVERY AVAILABLE"
+                            color: "#ff8b9a"
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.5
+                        }
+                    }
+                }
+            }
+
+            ListView {
+                id: downloadRecoveryHistoryList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 14
+                clip: true
+                model: downloadQueue.history_count
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {}
+                delegate: Rectangle {
+                    id: recoveryEventRow
+                    required property int index
+                    width: ListView.view.width
+                    height: 96
+                    color: index % 2 === 0 ? "#131c28" : "#101721"
+                    radius: 10
+                    border.color: root.line
+                    property int eventRevision: downloadQueue.history_revision
+                    property string eventKind: {
+                        eventRevision
+                        return downloadQueue.history_kind_at(index)
+                    }
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 13
+                        Rectangle {
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
+                            radius: 6
+                            color: downloadRecoveryHistoryDialog.eventTone(
+                                       recoveryEventRow.eventKind)
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Rectangle {
+                                    implicitWidth: recoveryEventLabel.implicitWidth + 18
+                                    implicitHeight: 25
+                                    radius: 12
+                                    color: Qt.rgba(
+                                               root.ink.r, root.ink.g, root.ink.b, 0.04)
+                                    border.color: downloadRecoveryHistoryDialog.eventTone(
+                                                      recoveryEventRow.eventKind)
+                                    Text {
+                                        id: recoveryEventLabel
+                                        anchors.centerIn: parent
+                                        text: downloadQueue.history_label_at(
+                                                  recoveryEventRow.index)
+                                        color: downloadRecoveryHistoryDialog.eventTone(
+                                                   recoveryEventRow.eventKind)
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.5
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: downloadRecoveryHistoryDialog.eventTimestamp(
+                                              downloadQueue.history_epoch_at(
+                                                  recoveryEventRow.index))
+                                    color: "#718096"
+                                    font.pixelSize: 9
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: downloadQueue.history_detail_at(
+                                          recoveryEventRow.index)
+                                color: root.ink
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: !downloadQueue.history_busy
+                         && downloadQueue.history_count === 0
+                spacing: 8
+                Text {
+                    width: parent.width
+                    text: "NO RECORDED EVENTS"
+                    color: root.ink
+                    font.pixelSize: 15
+                    font.weight: Font.Bold
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                Text {
+                    width: parent.width
+                    text: "Future state changes and recovery attempts are retained here until the download record is removed."
+                    color: root.muted
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                }
+            }
+        }
+
+        footer: Rectangle {
+            width: parent.width
+            height: 72
+            radius: 17
+            color: root.panelRaised
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
+                spacing: 10
+                Text {
+                    Layout.fillWidth: true
+                    text: "History follows the stable job ID; removing the record also removes its events."
+                    color: "#718096"
+                    font.pixelSize: 9
+                    elide: Text.ElideRight
+                }
+                HeaderButton {
+                    text: "Retry exact download"
+                    active: true
+                    visible: downloadQueue.history_retryable
+                    enabled: !downloadQueue.busy
+                    onClicked: downloadRecoveryConfirmDialog.open()
+                }
+                HeaderButton {
+                    text: "Close"
+                    onClicked: downloadRecoveryHistoryDialog.close()
+                }
+            }
+        }
+    }
+
+    Dialog {
         id: downloadHistoryDialog
         modal: true
         anchors.centerIn: parent
@@ -14555,6 +14939,22 @@ ApplicationWindow {
                     color: root.muted
                     font.pixelSize: 10
                 }
+                Rectangle {
+                    visible: downloadQueue.failed_count > 0
+                    implicitWidth: downloadFailedSummary.implicitWidth + 18
+                    implicitHeight: 24
+                    radius: 12
+                    color: "#2a1a22"
+                    border.color: "#8f3f50"
+                    Text {
+                        id: downloadFailedSummary
+                        anchors.centerIn: parent
+                        text: downloadQueue.failed_count + " need recovery"
+                        color: "#ff8b9a"
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                    }
+                }
             }
             ScrollView {
                 Layout.fillWidth: true
@@ -14573,7 +14973,7 @@ ApplicationWindow {
                             required property int index
                             property int queueRevision: downloadQueue.revision
                             width: downloadsDrawer.width - 28
-                            height: 136
+                            height: 142
                             radius: 11
                             color: root.panelRaised
                             border.color: root.line
@@ -14593,7 +14993,9 @@ ApplicationWindow {
                                     }
                                     Text {
                                         text: { downloadRow.queueRevision; return downloadQueue.job_state_at(downloadRow.index) }
-                                        color: text === "IMPORTED" ? root.accentCool : root.accent
+                                        color: text === "IMPORTED" ? root.accentCool
+                                               : text === "FAILED" ? "#ff8b9a"
+                                               : root.accent
                                         font.pixelSize: 9
                                         font.weight: Font.Bold
                                     }
@@ -14620,6 +15022,19 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Item { Layout.fillWidth: true }
                                     Button {
+                                        text: "History"
+                                        enabled: !downloadQueue.history_busy
+                                        onClicked: {
+                                            root.pendingRecoveryJobId = downloadQueue.job_id_at(
+                                                        downloadRow.index)
+                                            root.pendingRecoveryJobTitle = downloadQueue.job_title_at(
+                                                        downloadRow.index)
+                                            downloadQueue.load_history(
+                                                        root.pendingRecoveryJobId)
+                                            downloadRecoveryHistoryDialog.open()
+                                        }
+                                    }
+                                    Button {
                                         text: "Pause"
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_pause(downloadRow.index) }
                                         enabled: !downloadQueue.busy
@@ -14636,6 +15051,19 @@ ApplicationWindow {
                                         visible: { downloadRow.queueRevision; return downloadQueue.job_can_cancel(downloadRow.index) }
                                         enabled: !downloadQueue.busy
                                         onClicked: downloadQueue.cancel_job(downloadRow.index)
+                                    }
+                                    Button {
+                                        text: "Retry"
+                                        visible: { downloadRow.queueRevision; return downloadQueue.job_can_retry(downloadRow.index) }
+                                        enabled: !downloadQueue.busy
+                                        highlighted: true
+                                        onClicked: {
+                                            root.pendingRecoveryJobId = downloadQueue.job_id_at(
+                                                        downloadRow.index)
+                                            root.pendingRecoveryJobTitle = downloadQueue.job_title_at(
+                                                        downloadRow.index)
+                                            downloadRecoveryConfirmDialog.open()
+                                        }
                                     }
                                     Button {
                                         text: "Remove"

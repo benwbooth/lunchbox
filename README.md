@@ -103,9 +103,16 @@ follow the legacy default/English/German/Polish/Spanish order. Shared dependenci
 are staged once in a per-torrent hidden ROM cache, while only the exact primary
 game archive becomes the installed collection record. The native Downloads drawer
 persists progress and exposes pause, resume, and non-destructive cancel controls.
-The drawer reports aggregate and per-job transfer rates. Finished records can
-be removed individually or cleared in bulk after confirmation without deleting
-active work, torrents, or downloaded files. Settings also provide a persisted
+The drawer reports aggregate and per-job transfer rates. Failed jobs remain
+visible with an exact-job Retry action and a newest-first durable event history.
+Recovery verifies that the exact info hash is still owned by Lunchbox's isolated
+qBittorrent category, requests a data recheck, and resumes the existing torrent
+without changing reviewed file priorities, source provenance, or native/container
+path mappings. If that torrent no longer exists, Lunchbox never guesses or
+recreates metadata: the job stays failed and directs the user back to Game
+Details to review and queue a source again. Finished records can be removed
+individually or cleared in bulk after confirmation without deleting active work,
+torrents, or downloaded files. Settings also provide a persisted
 post-import seeding choice: follow qBittorrent's existing rules, or pause the
 Lunchbox-owned torrent after every selected file in that bundle has imported.
 The pause request is non-destructive, survives restart when deferred, and

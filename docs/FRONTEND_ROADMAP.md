@@ -59,6 +59,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   file ingestion through configurable link/copy policies. The native seeding
   policy can follow qBittorrent or durably pause a Lunchbox-owned torrent after
   all selected bundle members import, with automatic retry and no data removal.
+  Failed jobs expose exact stable-ID recovery and newest-first durable event
+  history. Recovery verifies the existing torrent's isolated Lunchbox ownership,
+  rechecks its data, and resumes it without changing reviewed file selection,
+  provenance, plans, or path mappings; missing or foreign torrents remain failed
+  rather than being guessed or recreated.
 - Provider-neutral manual `.torrent` intake from an exact game's details pane:
   a bounded off-thread parser, portable-path validation, complete native file
   review, explicit exact-file or whole-torrent handoff, immutable catalog
@@ -170,8 +175,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   paths: free-space enforcement and broader duplicate avoidance. Reuse the
   implemented full region-order editor when variant-rich catalog browsing lands.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe
-  record/history cleanup, and durable post-import pause policy with explicit
-  retry/recovery controls and richer error history.
+  record/history cleanup, durable post-import pause policy, exact owned-torrent
+  retry, and per-job event history with opt-in automatic retry schedules and an
+  authorized retained-metadata workflow for re-adding a torrent that the user
+  removed from qBittorrent.
 - Extend the implemented runtime-scoped firmware inventory, exact Minerva and
   official-source acquisition, local import, per-file integrity manifests, and
   repair workflow with a whole-library missing-firmware audit and native

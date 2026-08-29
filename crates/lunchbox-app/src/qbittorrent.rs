@@ -198,7 +198,7 @@ impl QbittorrentClient {
         let message = match state.as_str() {
             "complete" => "Download complete".to_owned(),
             "paused" => "Paused in qBittorrent".to_owned(),
-            "error" => format!("qBittorrent reported {}", info.state),
+            "failed" => format!("qBittorrent reported {}", info.state),
             "queued" => "Waiting in qBittorrent".to_owned(),
             _ => format!(
                 "Downloading at {}/s",
@@ -239,6 +239,15 @@ impl QbittorrentClient {
         self.resume(info_hash)
     }
 
+    pub fn recover_owned(&self, info_hash: &str) -> Result<()> {
+        let info = self
+            .torrent_info(info_hash)?
+            .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
+        ensure_owned(&info)?;
+        self.recheck(info_hash)?;
+        self.resume(info_hash)
+    }
+
     fn cancel(&self, info_hash: &str) -> Result<()> {
         let response = self
             .agent
@@ -274,6 +283,17 @@ impl QbittorrentClient {
 
     fn start(&self, info_hash: &str) -> Result<()> {
         self.control_with_fallback("torrents/start", "torrents/resume", info_hash)
+    }
+
+    fn recheck(&self, info_hash: &str) -> Result<()> {
+        let response = self
+            .agent
+            .post(self.endpoint("torrents/recheck"))
+            .header("Referer", &self.base_url)
+            .send_form([("hashes", info_hash)])
+            .context("requesting a qBittorrent data recheck")?;
+        let (status, body) = response_text(response)?;
+        require_success(status, &body, "qBittorrent data recheck")
     }
 
     fn apply_selection(
@@ -740,7 +760,7 @@ fn normalized_state(qbittorrent_state: &str, progress: f64) -> String {
     }
     let state = qbittorrent_state.to_ascii_lowercase();
     if state.contains("error") || state.contains("missing") {
-        "error".to_owned()
+        "failed".to_owned()
     } else if state.contains("pause") || state.contains("stop") {
         "paused".to_owned()
     } else if state.contains("queue") || state.contains("check") || state.contains("meta") {
@@ -1098,6 +1118,43 @@ mod tests {
     }
 
     #[test]
+    fn owned_recovery_rechecks_data_then_resumes_without_changing_selection() {
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: r#"[{"hash":"abc123","category":"lunchbox","state":"missingFiles","progress":0.4}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+
+        client.recover_owned("ABC123").unwrap();
+
+        let _login = requests.recv().unwrap();
+        let ownership = requests.recv().unwrap();
+        assert!(ownership.starts_with("GET /api/v2/torrents/info?hashes=ABC123 HTTP/1.1"));
+        let recheck = requests.recv().unwrap();
+        assert!(recheck.starts_with("POST /api/v2/torrents/recheck HTTP/1.1"));
+        assert!(recheck.contains("hashes=ABC123"));
+        let resume = requests.recv().unwrap();
+        assert!(resume.starts_with("POST /api/v2/torrents/start HTTP/1.1"));
+        assert!(resume.contains("hashes=ABC123"));
+        assert!(!recheck.contains("filePrio"));
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn exact_file_set_add_is_owned_verified_prioritized_and_started() {
         let (address, requests, worker) = mock_server(vec![
             MockResponse {
@@ -1249,7 +1306,8 @@ mod tests {
         assert_eq!(normalized_state("stoppedDL", 0.2), "paused");
         assert_eq!(normalized_state("pausedDL", 0.2), "paused");
         assert_eq!(normalized_state("queuedDL", 0.2), "queued");
-        assert_eq!(normalized_state("error", 0.2), "error");
+        assert_eq!(normalized_state("error", 0.2), "failed");
+        assert_eq!(normalized_state("missingFiles", 0.2), "failed");
         assert_eq!(normalized_state("uploading", 1.0), "complete");
     }
 

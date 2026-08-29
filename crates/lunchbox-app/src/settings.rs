@@ -866,6 +866,15 @@ pub struct DownloadJob {
     pub download_plan: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DownloadJobEvent {
+    pub id: i64,
+    pub job_id: String,
+    pub kind: String,
+    pub message: String,
+    pub created_at: i64,
+}
+
 pub(crate) struct NewDownloadJob {
     pub game_id: String,
     pub launchbox_db_id: i64,
@@ -2755,8 +2764,18 @@ impl SettingsStore {
 
     pub fn upsert_job(&self, job: &DownloadJob) -> Result<()> {
         validate_download_source_kind(&job.source_kind)?;
-        let connection = self.connection()?;
-        connection.execute(
+        validate_download_job_state(&job.state)?;
+        validate_download_post_import_action(&job.post_import_action)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let previous_state = transaction
+            .query_row(
+                "SELECT state FROM download_jobs WHERE id=?1",
+                params![job.id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        transaction.execute(
             "INSERT INTO download_jobs (
                  id, game_id, launchbox_db_id, title, platform, source_kind,
                  torrent_url, torrent_file_index,
@@ -2800,7 +2819,51 @@ impl SettingsStore {
                 job.download_plan,
             ],
         )?;
+        if previous_state.as_deref() != Some(job.state.as_str()) {
+            insert_download_job_event(
+                &transaction,
+                &job.id,
+                download_state_event_kind(&job.state),
+                &job.message,
+                job.updated_at,
+                false,
+            )?;
+        }
+        transaction.commit()?;
         Ok(())
+    }
+
+    pub fn record_download_job_event(&self, job_id: &str, kind: &str, message: &str) -> Result<()> {
+        let connection = self.connection()?;
+        insert_download_job_event(&connection, job_id, kind, message, unix_timestamp(), true)
+    }
+
+    pub fn download_job_events(&self, job_id: &str, limit: usize) -> Result<Vec<DownloadJobEvent>> {
+        validate_download_job_id(job_id)?;
+        if !(1..=256).contains(&limit) {
+            bail!("download history limit must be between 1 and 256");
+        }
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, job_id, kind, message, created_at
+             FROM download_job_events
+             WHERE job_id=?1
+             ORDER BY id DESC
+             LIMIT ?2",
+        )?;
+        let rows = statement.query_map(
+            params![job_id, i64::try_from(limit).unwrap_or(256)],
+            |row| {
+                Ok(DownloadJobEvent {
+                    id: row.get(0)?,
+                    job_id: row.get(1)?,
+                    kind: row.get(2)?,
+                    message: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
+            },
+        )?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub(crate) fn record_manual_torrent_enqueue(
@@ -3275,6 +3338,21 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS download_jobs_info_hash
              ON download_jobs(info_hash);
+         CREATE TABLE IF NOT EXISTS download_job_events (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             job_id TEXT NOT NULL REFERENCES download_jobs(id) ON DELETE CASCADE,
+             kind TEXT NOT NULL CHECK (
+                 kind IN (
+                     'queued', 'downloading', 'paused', 'complete', 'imported',
+                     'failed', 'cancelled', 'retry', 'import_error',
+                     'post_import_error', 'post_import_applied'
+                 )
+             ),
+             message TEXT NOT NULL CHECK (length(message) BETWEEN 1 AND 4096),
+             created_at INTEGER NOT NULL CHECK (created_at >= 0)
+         );
+         CREATE INDEX IF NOT EXISTS download_job_events_job
+             ON download_job_events(job_id, id DESC);
          CREATE TABLE IF NOT EXISTS manual_torrent_sources (
              game_uid TEXT NOT NULL CHECK (length(game_uid) BETWEEN 1 AND 512),
              launchbox_db_id INTEGER NOT NULL DEFAULT 0 CHECK (launchbox_db_id >= 0),
@@ -4409,6 +4487,94 @@ fn validate_download_source_kind(source_kind: &str) -> Result<()> {
     }
 }
 
+fn validate_download_job_id(job_id: &str) -> Result<()> {
+    if job_id.trim().is_empty() || job_id.chars().count() > 128 {
+        bail!("download history requires a bounded stable job identity");
+    }
+    Ok(())
+}
+
+fn validate_download_job_state(state: &str) -> Result<()> {
+    if matches!(
+        state,
+        "queued" | "downloading" | "paused" | "complete" | "imported" | "failed" | "cancelled"
+    ) {
+        Ok(())
+    } else {
+        bail!("unsupported download state {state}")
+    }
+}
+
+fn validate_download_post_import_action(action: &str) -> Result<()> {
+    if matches!(action, "none" | "pause_pending" | "pause_applied") {
+        Ok(())
+    } else {
+        bail!("unsupported post-import action {action}")
+    }
+}
+
+fn validate_download_event_kind(kind: &str) -> Result<()> {
+    if matches!(
+        kind,
+        "queued"
+            | "downloading"
+            | "paused"
+            | "complete"
+            | "imported"
+            | "failed"
+            | "cancelled"
+            | "retry"
+            | "import_error"
+            | "post_import_error"
+            | "post_import_applied"
+    ) {
+        Ok(())
+    } else {
+        bail!("unsupported download history event {kind}")
+    }
+}
+
+fn download_state_event_kind(state: &str) -> &str {
+    state
+}
+
+fn insert_download_job_event(
+    connection: &Connection,
+    job_id: &str,
+    kind: &str,
+    message: &str,
+    created_at: i64,
+    deduplicate_latest: bool,
+) -> Result<()> {
+    validate_download_job_id(job_id)?;
+    validate_download_event_kind(kind)?;
+    let message = message.trim().chars().take(4096).collect::<String>();
+    let message = if message.is_empty() {
+        format!("Download state changed to {kind}")
+    } else {
+        message
+    };
+    if deduplicate_latest {
+        let latest = connection
+            .query_row(
+                "SELECT kind, message FROM download_job_events
+                 WHERE job_id=?1 ORDER BY id DESC LIMIT 1",
+                params![job_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?;
+        if latest.as_ref() == Some(&(kind.to_owned(), message.clone())) {
+            return Ok(());
+        }
+    }
+    connection.execute(
+        "INSERT INTO download_job_events (job_id, kind, message, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![job_id, kind, message, created_at.max(0)],
+    )?;
+    Ok(())
+}
+
 fn validate_manual_torrent_receipt(
     receipt: &ManualTorrentSourceReceipt,
     job: &DownloadJob,
@@ -4589,6 +4755,60 @@ mod tests {
         store.upsert_job(&job).unwrap();
 
         assert_eq!(store.jobs().unwrap(), vec![job]);
+    }
+
+    #[test]
+    fn download_recovery_history_is_durable_deduplicated_and_cascades() {
+        let (_directory, store) = store();
+        let mut job = DownloadJob::queued(NewDownloadJob {
+            game_id: "game-recovery".into(),
+            launchbox_db_id: 42,
+            title: "Recovery Game".into(),
+            platform: "Platform".into(),
+            source_kind: "minerva".into(),
+            torrent_url: "https://example.invalid/recovery.torrent".into(),
+            torrent_file_index: Some(7),
+            torrent_file_path: "Platform/Recovery.zip".into(),
+            info_hash: "a".repeat(40),
+            client_save_path: "/downloads/lunchbox".into(),
+            local_download_path: PathBuf::from("/native/downloads/Recovery.zip"),
+            local_target_path: PathBuf::from("/native/roms/Platform/Recovery.zip"),
+            download_plan: String::new(),
+        });
+        job.id = "durable-recovery-job".into();
+        job.created_at = 100;
+        job.updated_at = 100;
+        store.upsert_job(&job).unwrap();
+        job.state = "failed".into();
+        job.message = "qBittorrent reported missingFiles".into();
+        job.updated_at = 101;
+        store.upsert_job(&job).unwrap();
+        store.upsert_job(&job).unwrap();
+        store
+            .record_download_job_event(&job.id, "retry", "Exact recovery requested")
+            .unwrap();
+        store
+            .record_download_job_event(&job.id, "retry", "Exact recovery requested")
+            .unwrap();
+
+        let events = store.download_job_events(&job.id, 16).unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.kind.as_str())
+                .collect::<Vec<_>>(),
+            vec!["retry", "failed", "queued"]
+        );
+        assert_eq!(events[0].message, "Exact recovery requested");
+        assert!(store.download_job_events(&job.id, 0).is_err());
+        assert!(
+            store
+                .record_download_job_event(&job.id, "guessed", "invalid")
+                .is_err()
+        );
+
+        assert!(store.delete_job_record(&job.id).unwrap());
+        assert!(store.download_job_events(&job.id, 16).unwrap().is_empty());
     }
 
     #[test]

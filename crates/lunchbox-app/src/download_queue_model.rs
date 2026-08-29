@@ -13,10 +13,17 @@ pub mod qobject {
         #[qproperty(i32, job_count)]
         #[qproperty(i32, active_count)]
         #[qproperty(i32, finished_count)]
+        #[qproperty(i32, failed_count)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, collection_revision)]
         #[qproperty(QString, message)]
         #[qproperty(QString, aggregate_speed)]
+        #[qproperty(bool, history_busy)]
+        #[qproperty(QString, history_title)]
+        #[qproperty(QString, history_message)]
+        #[qproperty(i32, history_count)]
+        #[qproperty(i32, history_revision)]
+        #[qproperty(bool, history_retryable)]
         type DownloadQueueModel = super::DownloadQueueModelRust;
 
         #[qinvokable]
@@ -33,6 +40,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn cancel_job(self: Pin<&mut DownloadQueueModel>, index: i32);
+
+        #[qinvokable]
+        fn retry_job(self: Pin<&mut DownloadQueueModel>, job_id: QString);
 
         #[qinvokable]
         fn remove_job(self: Pin<&mut DownloadQueueModel>, job_id: QString);
@@ -69,6 +79,27 @@ pub mod qobject {
 
         #[qinvokable]
         fn job_can_remove(self: &DownloadQueueModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn job_can_retry(self: &DownloadQueueModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn load_history(self: Pin<&mut DownloadQueueModel>, job_id: QString);
+
+        #[qinvokable]
+        fn history_kind_at(self: &DownloadQueueModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_label_at(self: &DownloadQueueModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_detail_at(self: &DownloadQueueModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_epoch_at(self: &DownloadQueueModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn report_recovery_ui_probe(self: &DownloadQueueModel);
     }
 
     impl cxx_qt::Threading for DownloadQueueModel {}
@@ -83,7 +114,7 @@ use cxx_qt_lib::QString;
 
 use crate::ingest;
 use crate::qbittorrent::{self, QbittorrentClient};
-use crate::settings::{self, DownloadJob, SettingsStore};
+use crate::settings::{self, DownloadJob, DownloadJobEvent, NewDownloadJob, SettingsStore};
 
 pub struct DownloadQueueModelRust {
     initialized: bool,
@@ -91,11 +122,21 @@ pub struct DownloadQueueModelRust {
     job_count: i32,
     active_count: i32,
     finished_count: i32,
+    failed_count: i32,
     revision: i32,
     collection_revision: i32,
     message: QString,
     aggregate_speed: QString,
+    history_busy: bool,
+    history_title: QString,
+    history_message: QString,
+    history_count: i32,
+    history_revision: i32,
+    history_retryable: bool,
     jobs: Vec<DownloadJob>,
+    history_events: Vec<DownloadJobEvent>,
+    history_generation: u64,
+    recovery_ui_probe: bool,
 }
 
 impl Default for DownloadQueueModelRust {
@@ -106,11 +147,22 @@ impl Default for DownloadQueueModelRust {
             job_count: 0,
             active_count: 0,
             finished_count: 0,
+            failed_count: 0,
             revision: 0,
             collection_revision: 0,
             message: QString::from("No downloads yet."),
             aggregate_speed: QString::from("0 B/s"),
+            history_busy: false,
+            history_title: QString::default(),
+            history_message: QString::from("Choose a download to inspect its recovery history."),
+            history_count: 0,
+            history_revision: 0,
+            history_retryable: false,
             jobs: Vec::new(),
+            history_events: Vec::new(),
+            history_generation: 0,
+            recovery_ui_probe: std::env::args()
+                .any(|argument| argument == "--download-recovery-ui-probe"),
         }
     }
 }
@@ -126,6 +178,7 @@ struct QueueUpdate {
     jobs: Vec<DownloadJob>,
     imported_count: usize,
     removed_count: usize,
+    notice: Option<String>,
 }
 
 fn qstring(value: impl AsRef<str>) -> QString {
@@ -183,6 +236,51 @@ impl qobject::DownloadQueueModel {
 
     pub fn cancel_job(self: Pin<&mut Self>, index: i32) {
         self.control_job(index, QueueAction::Cancel);
+    }
+
+    pub fn retry_job(mut self: Pin<&mut Self>, job_id: QString) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let job_id = job_id.to_string();
+        let Some(job) = self
+            .as_ref()
+            .rust()
+            .jobs
+            .iter()
+            .find(|job| job.id == job_id)
+            .cloned()
+        else {
+            self.as_mut()
+                .set_message(qstring("The failed download is no longer available."));
+            return;
+        };
+        if !can_retry(&job) {
+            self.as_mut().set_message(qstring(
+                "Only failed Lunchbox-owned downloads can enter recovery.",
+            ));
+            return;
+        }
+        self.as_mut().set_busy(true);
+        self.as_mut().set_message(qstring(format!(
+            "Verifying and retrying {} without changing its reviewed files…",
+            job.title
+        )));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-download-recovery".into())
+            .spawn(move || {
+                let recovered = recover_failed_job(job).map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_refresh(recovered);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start download recovery: {error}"
+            )));
+        }
     }
 
     pub fn remove_job(mut self: Pin<&mut Self>, job_id: QString) {
@@ -274,9 +372,11 @@ impl qobject::DownloadQueueModel {
     }
 
     fn replace_jobs(mut self: Pin<&mut Self>, update: QueueUpdate) {
+        let notice = update.notice.clone();
         let jobs = update.jobs;
         let active = jobs.iter().filter(|job| needs_refresh(job)).count();
         let finished = jobs.len().saturating_sub(active);
+        let failed = jobs.iter().filter(|job| job.state == "failed").count();
         let aggregate_speed = jobs
             .iter()
             .filter(|job| job.state == "downloading")
@@ -290,6 +390,8 @@ impl qobject::DownloadQueueModel {
         self.as_mut()
             .set_finished_count(i32::try_from(finished).unwrap_or(i32::MAX));
         self.as_mut()
+            .set_failed_count(i32::try_from(failed).unwrap_or(i32::MAX));
+        self.as_mut()
             .set_aggregate_speed(qstring(format_download_rate(aggregate_speed)));
         let revision = self.as_ref().revision().wrapping_add(1);
         self.as_mut().set_revision(revision);
@@ -298,7 +400,9 @@ impl qobject::DownloadQueueModel {
             self.as_mut().set_collection_revision(collection_revision);
         }
         self.as_mut()
-            .set_message(qstring(if update.removed_count > 0 {
+            .set_message(qstring(if let Some(notice) = notice {
+                notice
+            } else if update.removed_count > 0 {
                 format!(
                     "Removed {} finished download record{}; {count} remaining",
                     update.removed_count,
@@ -403,15 +507,138 @@ impl qobject::DownloadQueueModel {
         self.job(index).is_some_and(|job| !needs_refresh(job))
     }
 
+    pub fn job_can_retry(&self, index: i32) -> bool {
+        self.job(index).is_some_and(can_retry)
+    }
+
+    pub fn load_history(mut self: Pin<&mut Self>, job_id: QString) {
+        let job_id = job_id.to_string();
+        let Some(job) = self
+            .as_ref()
+            .rust()
+            .jobs
+            .iter()
+            .find(|job| job.id == job_id)
+            .cloned()
+        else {
+            self.as_mut().rust_mut().history_events.clear();
+            self.as_mut().set_history_count(0);
+            self.as_mut()
+                .set_history_message(qstring("The download record is no longer available."));
+            return;
+        };
+        self.as_mut().rust_mut().history_generation =
+            self.as_ref().rust().history_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().history_generation;
+        self.as_mut().set_history_busy(true);
+        self.as_mut().set_history_title(qstring(&job.title));
+        self.as_mut().set_history_retryable(can_retry(&job));
+        self.as_mut().set_history_message(qstring(
+            "Loading durable state changes and recovery attempts…",
+        ));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-download-history-load".into())
+            .spawn(move || {
+                let events = SettingsStore::open_default()
+                    .and_then(|store| store.download_job_events(&job.id, 128))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_history(generation, events);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_history_busy(false);
+            self.as_mut()
+                .set_history_message(qstring(format!("Could not load download history: {error}")));
+        }
+    }
+
+    fn finish_history(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<Vec<DownloadJobEvent>, String>,
+    ) {
+        if generation != self.as_ref().rust().history_generation {
+            return;
+        }
+        self.as_mut().set_history_busy(false);
+        match result {
+            Ok(events) => {
+                let count = events.len();
+                self.as_mut().rust_mut().history_events = events;
+                self.as_mut()
+                    .set_history_count(i32::try_from(count).unwrap_or(i32::MAX));
+                self.as_mut().set_history_message(qstring(if count == 0 {
+                    "No durable events predate this version; future state changes and recovery attempts will appear here.".to_owned()
+                } else {
+                    format!(
+                        "{count} durable event{} · newest first · retained until this history record is removed",
+                        if count == 1 { "" } else { "s" }
+                    )
+                }));
+                let revision = self.as_ref().history_revision().wrapping_add(1);
+                self.as_mut().set_history_revision(revision);
+            }
+            Err(error) => self
+                .as_mut()
+                .set_history_message(qstring(format!("Could not load download history: {error}"))),
+        }
+    }
+
+    pub fn history_kind_at(&self, index: i32) -> QString {
+        self.history_event(index)
+            .map(|event| qstring(&event.kind))
+            .unwrap_or_default()
+    }
+
+    pub fn history_label_at(&self, index: i32) -> QString {
+        self.history_event(index)
+            .map(|event| qstring(event_label(&event.kind)))
+            .unwrap_or_default()
+    }
+
+    pub fn history_detail_at(&self, index: i32) -> QString {
+        self.history_event(index)
+            .map(|event| qstring(&event.message))
+            .unwrap_or_default()
+    }
+
+    pub fn history_epoch_at(&self, index: i32) -> QString {
+        self.history_event(index)
+            .map(|event| qstring(event.created_at.to_string()))
+            .unwrap_or_default()
+    }
+
+    pub fn report_recovery_ui_probe(&self) {
+        if self.rust().recovery_ui_probe {
+            println!(
+                "LUNCHBOX_DOWNLOAD_RECOVERY_UI_READY failed={} history={} retryable={}",
+                self.failed_count(),
+                self.history_count(),
+                self.job_can_retry(0)
+            );
+        }
+    }
+
     fn job(&self, index: i32) -> Option<&DownloadJob> {
         usize::try_from(index)
             .ok()
             .and_then(|index| self.rust().jobs.get(index))
     }
+
+    fn history_event(&self, index: i32) -> Option<&DownloadJobEvent> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().history_events.get(index))
+    }
 }
 
 fn refresh_jobs() -> Result<QueueUpdate> {
     let store = SettingsStore::open_default()?;
+    if std::env::args().any(|argument| argument == "--download-recovery-ui-probe") {
+        seed_download_recovery_probe(&store)?;
+    }
     let settings = store.load()?;
     let mut jobs = store.jobs()?;
     if !jobs.iter().any(needs_refresh) {
@@ -419,12 +646,14 @@ fn refresh_jobs() -> Result<QueueUpdate> {
             jobs,
             imported_count: 0,
             removed_count: 0,
+            notice: None,
         });
     }
     let mut imported_count = 0;
     let password = settings::load_password()?.unwrap_or_default();
     let client = QbittorrentClient::authenticated(&settings, &password)?;
     for job in jobs.iter_mut().filter(|job| is_active(&job.state)) {
+        let mut durable_event = None;
         let snapshot = qbittorrent::job_exact_files(job)
             .and_then(|selection| client.snapshot(&job.info_hash, selection.as_deref()));
         match snapshot {
@@ -453,6 +682,7 @@ fn refresh_jobs() -> Result<QueueUpdate> {
                             job.message = format!(
                                 "Download complete; import will retry automatically: {error}"
                             );
+                            durable_event = Some(("import_error", job.message.clone()));
                         }
                     }
                 }
@@ -463,12 +693,16 @@ fn refresh_jobs() -> Result<QueueUpdate> {
             }
         }
         store.upsert_job(job)?;
+        if let Some((kind, message)) = durable_event {
+            store.record_download_job_event(&job.id, kind, &message)?;
+        }
     }
     apply_pending_post_import_actions(&client, &store, &mut jobs)?;
     Ok(QueueUpdate {
         jobs,
         imported_count,
         removed_count: 0,
+        notice: None,
     })
 }
 
@@ -501,6 +735,15 @@ fn apply_pending_post_import_actions(
             }
             job.updated_at = settings::unix_timestamp();
             store.upsert_job(job)?;
+            store.record_download_job_event(
+                &job.id,
+                if pause_result.is_ok() {
+                    "post_import_applied"
+                } else {
+                    "post_import_error"
+                },
+                &job.message,
+            )?;
         }
     }
     Ok(())
@@ -574,6 +817,7 @@ fn control_job(mut job: DownloadJob, action: QueueAction) -> Result<QueueUpdate>
         jobs: store.jobs()?,
         imported_count: 0,
         removed_count: 0,
+        notice: None,
     })
 }
 
@@ -592,7 +836,150 @@ fn cleanup_history(job_id: Option<String>) -> Result<QueueUpdate> {
         jobs: store.jobs()?,
         imported_count: 0,
         removed_count,
+        notice: None,
     })
+}
+
+fn recover_failed_job(job: DownloadJob) -> Result<QueueUpdate> {
+    let store = SettingsStore::open_default()?;
+    let Some(mut current) = store
+        .jobs()?
+        .into_iter()
+        .find(|candidate| candidate.id == job.id)
+    else {
+        bail!("the failed download record is no longer available");
+    };
+    if !can_retry(&current) {
+        bail!("the download is no longer in a failed state");
+    }
+    let settings = store.load()?;
+    let recovery = settings::load_password()
+        .and_then(|password| {
+            QbittorrentClient::authenticated(&settings, password.as_deref().unwrap_or_default())
+        })
+        .and_then(|client| client.recover_owned(&current.info_hash));
+    match recovery {
+        Ok(()) => {
+            let now = settings::unix_timestamp();
+            let mut recovered = 0_usize;
+            for related in store.jobs_for_info_hash(&current.info_hash)? {
+                if !can_retry(&related) {
+                    continue;
+                }
+                store.record_download_job_event(
+                    &related.id,
+                    "retry",
+                    "Recovery verified Lunchbox ownership, requested a data recheck, and retained the exact reviewed file selection.",
+                )?;
+                let mut related = related;
+                related.state = "queued".to_owned();
+                related.message =
+                    "Recovery requested; qBittorrent is rechecking the existing payload".to_owned();
+                related.updated_at = now;
+                store.upsert_job(&related)?;
+                recovered = recovered.saturating_add(1);
+            }
+            Ok(QueueUpdate {
+                jobs: store.jobs()?,
+                imported_count: 0,
+                removed_count: 0,
+                notice: Some(format!(
+                    "Recovery started for {recovered} exact download record{}; reviewed file priorities and existing payloads were preserved.",
+                    if recovered == 1 { "" } else { "s" }
+                )),
+            })
+        }
+        Err(error) => {
+            current.message = recovery_failure_message(&error.to_string());
+            current.updated_at = settings::unix_timestamp();
+            store.upsert_job(&current)?;
+            store.record_download_job_event(&current.id, "failed", &current.message)?;
+            Ok(QueueUpdate {
+                jobs: store.jobs()?,
+                imported_count: 0,
+                removed_count: 0,
+                notice: Some(current.message),
+            })
+        }
+    }
+}
+
+fn recovery_failure_message(error: &str) -> String {
+    if error.contains("is no longer in qBittorrent") {
+        "Recovery stopped because the exact torrent is no longer in qBittorrent. Re-open this game and review its source again; Lunchbox will not recreate missing torrent metadata or guess a replacement.".to_owned()
+    } else {
+        format!(
+            "Recovery could not start: {error}. The torrent, reviewed selection, downloaded files, and target files were left untouched."
+        )
+    }
+}
+
+fn can_retry(job: &DownloadJob) -> bool {
+    job.state == "failed" && job.post_import_action != "pause_pending"
+}
+
+fn event_label(kind: &str) -> &'static str {
+    match kind {
+        "queued" => "QUEUED",
+        "downloading" => "DOWNLOADING",
+        "paused" => "PAUSED",
+        "complete" => "DOWNLOADED",
+        "imported" => "IMPORTED",
+        "failed" => "FAILED",
+        "cancelled" => "CANCELLED",
+        "retry" => "RECOVERY",
+        "import_error" => "IMPORT RETRY",
+        "post_import_error" => "SEEDING RETRY",
+        "post_import_applied" => "SEEDING POLICY",
+        _ => "EVENT",
+    }
+}
+
+fn seed_download_recovery_probe(store: &SettingsStore) -> Result<()> {
+    if store
+        .jobs()?
+        .iter()
+        .any(|job| job.id == "download-recovery-ui-probe")
+    {
+        return Ok(());
+    }
+    let probe_root = store
+        .path()
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut job = DownloadJob::queued(NewDownloadJob {
+        game_id: "download-recovery-game".into(),
+        launchbox_db_id: 140,
+        title: "Super Mario Bros.".into(),
+        platform: "Nintendo Entertainment System".into(),
+        source_kind: "minerva".into(),
+        torrent_url: "https://example.invalid/reviewed-minerva-source.torrent".into(),
+        torrent_file_index: Some(7),
+        torrent_file_path: "Nintendo Entertainment System/Super Mario Bros. (USA).zip".into(),
+        info_hash: "a".repeat(40),
+        client_save_path: "downloads/lunchbox".into(),
+        local_download_path: probe_root.join("downloads/Super Mario Bros. (USA).zip"),
+        local_target_path: probe_root.join("roms/Super Mario Bros. (USA).zip"),
+        download_plan: String::new(),
+    });
+    job.id = "download-recovery-ui-probe".into();
+    job.created_at = 1_700_000_000;
+    job.updated_at = 1_700_000_000;
+    job.message = "Reviewed exact Minerva file queued in qBittorrent".into();
+    store.upsert_job(&job)?;
+    job.state = "downloading".into();
+    job.progress = 0.42;
+    job.downloaded_bytes = 352_321_536;
+    job.total_bytes = 838_860_800;
+    job.updated_at += 60;
+    job.message = "Downloading exact reviewed file at 8.4 MiB/s".into();
+    store.upsert_job(&job)?;
+    job.state = "failed".into();
+    job.download_speed = 0;
+    job.updated_at += 60;
+    job.message = "qBittorrent reported missingFiles; existing payload retained".into();
+    store.upsert_job(&job)?;
+    Ok(())
 }
 
 fn format_download_rate(bytes_per_second: u64) -> String {
@@ -624,8 +1011,11 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
-    use super::{format_download_rate, is_active, needs_refresh, ready_pause_hashes};
-    use crate::settings::{DownloadJob, NewDownloadJob};
+    use super::{
+        can_retry, event_label, format_download_rate, is_active, needs_refresh, ready_pause_hashes,
+        recovery_failure_message, seed_download_recovery_probe,
+    };
+    use crate::settings::{DownloadJob, NewDownloadJob, SettingsStore};
 
     fn job(game_id: &str, info_hash: &str, state: &str, action: &str) -> DownloadJob {
         let mut job = DownloadJob::queued(NewDownloadJob {
@@ -673,6 +1063,43 @@ mod tests {
         assert_eq!(
             ready_pause_hashes(&[imported, sibling]),
             HashSet::from(["abc123".to_owned()])
+        );
+    }
+
+    #[test]
+    fn recovery_is_bounded_to_failed_jobs_and_has_actionable_labels() {
+        let mut failed = job("failed", "abc123", "failed", "none");
+        assert!(can_retry(&failed));
+        failed.post_import_action = "pause_pending".into();
+        assert!(!can_retry(&failed));
+        assert!(!can_retry(&job("active", "abc123", "downloading", "none")));
+        assert_eq!(event_label("retry"), "RECOVERY");
+        assert_eq!(event_label("import_error"), "IMPORT RETRY");
+        assert!(
+            recovery_failure_message("torrent abc is no longer in qBittorrent")
+                .contains("review its source again")
+        );
+    }
+
+    #[test]
+    fn recovery_ui_fixture_is_idempotent_and_retains_exact_events() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        seed_download_recovery_probe(&store).unwrap();
+        seed_download_recovery_probe(&store).unwrap();
+
+        let jobs = store.jobs().unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].id, "download-recovery-ui-probe");
+        assert_eq!(jobs[0].state, "failed");
+        assert_eq!(jobs[0].torrent_file_index, Some(7));
+        let events = store.download_job_events(&jobs[0].id, 16).unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.kind.as_str())
+                .collect::<Vec<_>>(),
+            vec!["failed", "downloading", "queued"]
         );
     }
 }

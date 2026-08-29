@@ -661,6 +661,22 @@ after the refreshed model reports zero finished records. The store refuses to
 delete active, paused, queued, completion-pending-import, or
 post-import-action-pending records.
 
+`--download-recovery-ui-probe --state-database EMPTY_PATH --screenshot-output
+PATH` seeds one deterministic failed exact-file job through the production
+settings store, opens its native history surface, and exits only after the
+CXX-Qt model reports one retryable job and the three newest-first transitions
+`FAILED`, `DOWNLOADING`, and `QUEUED`. State transitions and explicit recovery,
+import, and post-import outcomes are retained against the stable queue job ID;
+deleting that terminal record intentionally cascades only its event history.
+Retry re-reads the exact durable job, verifies that the info hash still belongs
+to the isolated `lunchbox` qBittorrent category, then requests a data recheck
+and resume. It preserves reviewed file selection, acquisition provenance,
+download plans, and both native and qBittorrent path mappings. Multiple failed
+members of the same exact torrent move together because qBittorrent controls
+one shared transfer. A missing or foreign torrent remains failed with an
+actionable event; Lunchbox does not recreate unretained torrent metadata or
+guess a replacement source.
+
 On the current Linux development host, the real preserved 303,560-game catalog
 loads on its worker in roughly 0.5–0.8 seconds in release mode, while a combined
 text plus Minerva filter completes in about 16 ms. The existing 8 GB media tree
@@ -685,7 +701,8 @@ service, native UI, error and cancellation behavior, tests, then a measured
 runtime gate. Catalog details, Minerva bundle inspection, persistent
 qBittorrent setup, exact-file selection, queue control, completed-file
 ingestion, optical and eXo related-file plans, eXo prepared installs and launch,
-durable safe seeding policy, local-folder scan/review/import, legacy
+durable safe seeding policy, exact owned-torrent recovery with durable event
+history, local-folder scan/review/import, legacy
 content filters, and durable favorites are now native. Existing game media is
 now indexed and rendered natively, and exact Minerva manual acquisition has
 durable transfer, progress, shared-torrent cancellation, and safe publication
