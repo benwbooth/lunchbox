@@ -274,6 +274,13 @@ checksum policy. Editing a loaded scope clearly switches to a one-time scan;
 removing the profile never removes ROMs or library records. Extension-scoped
 rescans affect missing status only inside that scope, so scanning `.nes` cannot
 make an existing `.sfc` collection disappear.
+**Scan all** prepares the checksum catalog once, visits every saved profile
+sequentially, supports cancellation between or during collections, and keeps a
+compact durable history instead of retaining every review row in memory. The
+history records the profile snapshot, exact scope, batch position, outcome,
+counts, errors, and cached/read work for up to 200 runs. A historical profile
+can be loaded for an ordinary detailed rescan and review; deleting the profile
+does not erase its audit trail.
 Completed regular-file and archive-member hashes are retained in per-user state,
 including results completed before cancellation. A later scan reuses them only
 when the lossless native path, stable filesystem identity, size, and operating-

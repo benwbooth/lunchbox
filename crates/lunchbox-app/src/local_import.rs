@@ -118,6 +118,87 @@ pub struct RomImportProfile {
     pub updated_at: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RomScanRunContext {
+    pub batch_id: String,
+    pub batch_position: usize,
+    pub batch_total: usize,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub root: PathBuf,
+    pub platform_hint: String,
+    pub extensions: Vec<String>,
+    pub checksums_enabled: bool,
+    pub started_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RomScanRun {
+    pub id: String,
+    pub batch_id: String,
+    pub batch_position: usize,
+    pub batch_total: usize,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub root: PathBuf,
+    pub platform_hint: String,
+    pub extensions: Vec<String>,
+    pub checksums_enabled: bool,
+    pub outcome: String,
+    pub started_at: i64,
+    pub finished_at: i64,
+    pub total_files: usize,
+    pub exact_matches: usize,
+    pub reviewed_matches: usize,
+    pub other_results: usize,
+    pub walk_errors: usize,
+    pub cache_reused_files: usize,
+    pub content_read_files: usize,
+    pub error_text: String,
+}
+
+impl RomScanRunContext {
+    pub fn one_time(
+        root: PathBuf,
+        platform_hint: String,
+        extensions: Vec<String>,
+        checksums_enabled: bool,
+    ) -> Self {
+        Self {
+            batch_id: String::new(),
+            batch_position: 0,
+            batch_total: 0,
+            profile_id: String::new(),
+            profile_name: "One-time scan".to_owned(),
+            root,
+            platform_hint,
+            extensions,
+            checksums_enabled,
+            started_at: settings::unix_timestamp(),
+        }
+    }
+
+    pub fn for_profile(
+        profile: &RomImportProfile,
+        batch_id: String,
+        batch_position: usize,
+        batch_total: usize,
+    ) -> Self {
+        Self {
+            batch_id,
+            batch_position,
+            batch_total,
+            profile_id: profile.id.clone(),
+            profile_name: profile.name.clone(),
+            root: profile.root.clone(),
+            platform_hint: profile.platform_hint.clone(),
+            extensions: profile.extensions.clone(),
+            checksums_enabled: profile.checksums_enabled,
+            started_at: settings::unix_timestamp(),
+        }
+    }
+}
+
 pub fn normalize_extension_filter(input: &str) -> Result<Vec<String>> {
     let mut extensions = input
         .split(|character: char| character == ',' || character == ';' || character.is_whitespace())
@@ -554,6 +635,290 @@ pub fn delete_import_profile(state_path: &Path, id: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn record_scan_run(
+    state_path: &Path,
+    context: &RomScanRunContext,
+    scan_result: Result<&ScanOutput, &str>,
+) -> Result<RomScanRun> {
+    validate_scan_run_context(context)?;
+    let finished_at = settings::unix_timestamp().max(context.started_at);
+    let (
+        outcome,
+        total_files,
+        exact_matches,
+        reviewed_matches,
+        other_results,
+        walk_errors,
+        cache_reused_files,
+        content_read_files,
+        error_text,
+    ) = match scan_result {
+        Ok(output) => {
+            let total_files = output.results.len();
+            let exact_matches = output
+                .results
+                .iter()
+                .filter(|result| matches!(result.match_state, MatchState::Exact(_)))
+                .count();
+            let reviewed_matches = output
+                .results
+                .iter()
+                .filter(|result| matches!(result.match_state, MatchState::Reviewed(_)))
+                .count();
+            (
+                if output.cancelled {
+                    "cancelled"
+                } else {
+                    "completed"
+                },
+                total_files,
+                exact_matches,
+                reviewed_matches,
+                total_files
+                    .saturating_sub(exact_matches)
+                    .saturating_sub(reviewed_matches),
+                output.walk_errors,
+                output.cache_reused_files,
+                output.content_read_files,
+                String::new(),
+            )
+        }
+        Err(error) => (
+            "failed",
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            error.chars().take(4096).collect(),
+        ),
+    };
+    let run = RomScanRun {
+        id: Uuid::new_v4().to_string(),
+        batch_id: context.batch_id.clone(),
+        batch_position: context.batch_position,
+        batch_total: context.batch_total,
+        profile_id: context.profile_id.clone(),
+        profile_name: context.profile_name.clone(),
+        root: context.root.clone(),
+        platform_hint: context.platform_hint.clone(),
+        extensions: context.extensions.clone(),
+        checksums_enabled: context.checksums_enabled,
+        outcome: outcome.to_owned(),
+        started_at: context.started_at,
+        finished_at,
+        total_files,
+        exact_matches,
+        reviewed_matches,
+        other_results,
+        walk_errors,
+        cache_reused_files,
+        content_read_files,
+        error_text,
+    };
+    let encoded = encode_path(&run.root);
+    let extensions_json = serde_json::to_string(&run.extensions)?;
+    let mut connection = SettingsStore::at(state_path)?.connection()?;
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO rom_scan_runs (
+             id, batch_id, batch_position, batch_total, profile_id, profile_name,
+             path_display, path_bytes, path_encoding, platform_hint,
+             extensions_json, checksums_enabled, outcome, started_at, finished_at,
+             total_files, exact_matches, reviewed_matches, other_results,
+             walk_errors, cache_reused_files, content_read_files, error_text
+         ) VALUES (
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+             ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+         )",
+        params![
+            run.id,
+            run.batch_id,
+            usize_to_i64(run.batch_position),
+            usize_to_i64(run.batch_total),
+            run.profile_id,
+            run.profile_name,
+            encoded.display,
+            encoded.bytes,
+            encoded.encoding,
+            run.platform_hint,
+            extensions_json,
+            run.checksums_enabled,
+            run.outcome,
+            run.started_at,
+            run.finished_at,
+            usize_to_i64(run.total_files),
+            usize_to_i64(run.exact_matches),
+            usize_to_i64(run.reviewed_matches),
+            usize_to_i64(run.other_results),
+            usize_to_i64(run.walk_errors),
+            usize_to_i64(run.cache_reused_files),
+            usize_to_i64(run.content_read_files),
+            run.error_text,
+        ],
+    )?;
+    transaction.execute(
+        "DELETE FROM rom_scan_runs
+         WHERE id IN (
+             SELECT id FROM rom_scan_runs
+             ORDER BY finished_at DESC, id DESC
+             LIMIT -1 OFFSET 200
+         )",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(run)
+}
+
+pub fn load_scan_runs(state_path: &Path) -> Result<Vec<RomScanRun>> {
+    let connection = SettingsStore::at(state_path)?.connection()?;
+    let mut statement = connection.prepare(
+        "SELECT id, batch_id, batch_position, batch_total, profile_id, profile_name,
+                path_display, path_bytes, path_encoding, platform_hint,
+                extensions_json, checksums_enabled, outcome, started_at, finished_at,
+                total_files, exact_matches, reviewed_matches, other_results,
+                walk_errors, cache_reused_files, content_read_files, error_text
+         FROM rom_scan_runs
+         ORDER BY finished_at DESC, id DESC
+         LIMIT 200",
+    )?;
+    let rows = statement.query_map([], |row| {
+        let display = row.get::<_, String>(6)?;
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+            decode_path(row.get(7)?, &row.get::<_, String>(8)?, display),
+            row.get::<_, String>(9)?,
+            row.get::<_, String>(10)?,
+            row.get::<_, bool>(11)?,
+            row.get::<_, String>(12)?,
+            row.get::<_, i64>(13)?,
+            row.get::<_, i64>(14)?,
+            row.get::<_, i64>(15)?,
+            row.get::<_, i64>(16)?,
+            row.get::<_, i64>(17)?,
+            row.get::<_, i64>(18)?,
+            row.get::<_, i64>(19)?,
+            row.get::<_, i64>(20)?,
+            row.get::<_, i64>(21)?,
+            row.get::<_, String>(22)?,
+        ))
+    })?;
+    let mut runs = Vec::new();
+    for row in rows {
+        let (
+            id,
+            batch_id,
+            batch_position,
+            batch_total,
+            profile_id,
+            profile_name,
+            root,
+            platform_hint,
+            extensions_json,
+            checksums_enabled,
+            outcome,
+            started_at,
+            finished_at,
+            total_files,
+            exact_matches,
+            reviewed_matches,
+            other_results,
+            walk_errors,
+            cache_reused_files,
+            content_read_files,
+            error_text,
+        ) = row?;
+        let extensions = serde_json::from_str::<Vec<String>>(&extensions_json)
+            .with_context(|| format!("decoding ROM scan history {id}"))?;
+        let run = RomScanRun {
+            id,
+            batch_id,
+            batch_position: nonnegative_usize(batch_position)?,
+            batch_total: nonnegative_usize(batch_total)?,
+            profile_id,
+            profile_name,
+            root,
+            platform_hint,
+            extensions,
+            checksums_enabled,
+            outcome,
+            started_at,
+            finished_at,
+            total_files: nonnegative_usize(total_files)?,
+            exact_matches: nonnegative_usize(exact_matches)?,
+            reviewed_matches: nonnegative_usize(reviewed_matches)?,
+            other_results: nonnegative_usize(other_results)?,
+            walk_errors: nonnegative_usize(walk_errors)?,
+            cache_reused_files: nonnegative_usize(cache_reused_files)?,
+            content_read_files: nonnegative_usize(content_read_files)?,
+            error_text,
+        };
+        validate_loaded_scan_run(&run)?;
+        runs.push(run);
+    }
+    Ok(runs)
+}
+
+fn validate_scan_run_context(context: &RomScanRunContext) -> Result<()> {
+    validate_import_profile(
+        &context.profile_name,
+        &context.root,
+        &context.platform_hint,
+        &context.extensions,
+    )?;
+    if !context.profile_id.is_empty() && Uuid::parse_str(&context.profile_id).is_err() {
+        bail!("scan history requires a valid stable profile ID");
+    }
+    let batch_valid =
+        (context.batch_id.is_empty() && context.batch_position == 0 && context.batch_total == 0)
+            || (Uuid::parse_str(&context.batch_id).is_ok()
+                && context.batch_position > 0
+                && context.batch_position <= context.batch_total);
+    if !batch_valid {
+        bail!("scan history requires a coherent batch identity and position");
+    }
+    Ok(())
+}
+
+fn validate_loaded_scan_run(run: &RomScanRun) -> Result<()> {
+    let context = RomScanRunContext {
+        batch_id: run.batch_id.clone(),
+        batch_position: run.batch_position,
+        batch_total: run.batch_total,
+        profile_id: run.profile_id.clone(),
+        profile_name: run.profile_name.clone(),
+        root: run.root.clone(),
+        platform_hint: run.platform_hint.clone(),
+        extensions: run.extensions.clone(),
+        checksums_enabled: run.checksums_enabled,
+        started_at: run.started_at,
+    };
+    validate_scan_run_context(&context)?;
+    if !matches!(run.outcome.as_str(), "completed" | "cancelled" | "failed")
+        || run.finished_at < run.started_at
+        || run.exact_matches + run.reviewed_matches + run.other_results != run.total_files
+        || run.error_text.chars().count() > 4096
+    {
+        bail!("ROM scan history row {} is internally inconsistent", run.id);
+    }
+    Ok(())
+}
+
+fn usize_to_i64(value: usize) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
+fn nonnegative_usize(value: i64) -> Result<usize> {
+    usize::try_from(value).context("ROM scan history contains an invalid negative count")
+}
+
 fn validate_import_profile(
     name: &str,
     root: &Path,
@@ -936,6 +1301,38 @@ pub(crate) fn seed_import_profile_ui_probe() -> Result<()> {
         profile.name,
         profile.root,
         format_extension_filter(&profile.extensions),
+    );
+    Ok(())
+}
+
+pub(crate) fn seed_import_profile_batch_ui_probe() -> Result<()> {
+    let state_path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
+        .context(
+            "the import-profile batch UI probe requires an explicit --state-database or LUNCHBOX_STATE_DATABASE",
+        )?;
+    let root = catalog::requested_path("--import-directory", "LUNCHBOX_IMPORT_DIRECTORY")
+        .context(
+            "the import-profile batch UI probe requires an explicit --import-directory or LUNCHBOX_IMPORT_DIRECTORY",
+        )?;
+    let cartridge = save_import_profile(
+        &state_path,
+        "Nintendo cartridge shelf",
+        &root,
+        "Nintendo Entertainment System",
+        ".nes",
+        true,
+    )?;
+    let archives = save_import_profile(
+        &state_path,
+        "Nintendo archive shelf",
+        &root,
+        "Nintendo Entertainment System",
+        ".zip",
+        true,
+    )?;
+    println!(
+        "LUNCHBOX_IMPORT_PROFILE_BATCH_SEEDED profiles={:?},{:?} root={:?}",
+        cartridge.name, archives.name, root,
     );
     Ok(())
 }
@@ -3008,6 +3405,116 @@ mod tests {
         delete_import_profile(&state, &updated.id).unwrap();
         assert!(load_import_profiles(&state).unwrap().is_empty());
         assert!(delete_import_profile(&state, &updated.id).is_err());
+    }
+
+    #[test]
+    fn scan_history_preserves_profile_snapshots_outcomes_and_batch_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("state.db");
+        let root = directory.path().join("ROM Library");
+        fs::create_dir(&root).unwrap();
+        let profile = save_import_profile(
+            &state,
+            "Nintendo shelf",
+            &root,
+            "Nintendo Entertainment System",
+            "nes",
+            true,
+        )
+        .unwrap();
+        let batch_id = Uuid::new_v4().to_string();
+        let context = RomScanRunContext::for_profile(&profile, batch_id.clone(), 1, 2);
+        let output = ScanOutput {
+            root: root.clone(),
+            platform_hint: profile.platform_hint.clone(),
+            extension_filter: profile.extensions.clone(),
+            checksums_enabled: true,
+            results: vec![
+                ScanResult {
+                    path: root.join("exact.nes"),
+                    relative_path: PathBuf::from("exact.nes"),
+                    file_name: "exact.nes".into(),
+                    archive_member: String::new(),
+                    archive_member_count: 0,
+                    display_title: "Exact Game".into(),
+                    platform: profile.platform_hint.clone(),
+                    file_size: 4,
+                    modified_unix_ns: Some(1),
+                    crc32: "00000000".into(),
+                    md5: "00000000000000000000000000000000".into(),
+                    sha1: "0000000000000000000000000000000000000000".into(),
+                    match_state: MatchState::Exact(MatchIdentity {
+                        game_uid: "game-1".into(),
+                        title: "Exact Game".into(),
+                        platform: profile.platform_hint.clone(),
+                        launchbox_db_id: 42,
+                    }),
+                    match_method: "SHA-1 + MD5".into(),
+                    selected: true,
+                },
+                ScanResult {
+                    path: root.join("unknown.nes"),
+                    relative_path: PathBuf::from("unknown.nes"),
+                    file_name: "unknown.nes".into(),
+                    archive_member: String::new(),
+                    archive_member_count: 0,
+                    display_title: "Unknown".into(),
+                    platform: profile.platform_hint.clone(),
+                    file_size: 5,
+                    modified_unix_ns: Some(2),
+                    crc32: "11111111".into(),
+                    md5: "11111111111111111111111111111111".into(),
+                    sha1: "1111111111111111111111111111111111111111".into(),
+                    match_state: MatchState::Unmatched,
+                    match_method: "strong checksum".into(),
+                    selected: false,
+                },
+            ],
+            walk_errors: 1,
+            cancelled: false,
+            cache_reused_files: 1,
+            content_read_files: 1,
+        };
+        let completed = record_scan_run(&state, &context, Ok(&output)).unwrap();
+        assert_eq!(completed.outcome, "completed");
+        assert_eq!(completed.exact_matches, 1);
+        assert_eq!(completed.other_results, 1);
+        assert_eq!(completed.batch_id, batch_id);
+
+        let failed_context =
+            RomScanRunContext::one_time(root.clone(), String::new(), Vec::new(), false);
+        let failed = record_scan_run(&state, &failed_context, Err("offline root")).unwrap();
+        assert_eq!(failed.outcome, "failed");
+        assert_eq!(failed.error_text, "offline root");
+
+        delete_import_profile(&state, &profile.id).unwrap();
+        let restarted = load_scan_runs(&state).unwrap();
+        assert_eq!(restarted.len(), 2);
+        let completed = restarted
+            .iter()
+            .find(|run| run.outcome == "completed")
+            .unwrap();
+        assert_eq!(completed.profile_id, profile.id);
+        assert_eq!(completed.profile_name, "Nintendo shelf");
+        assert_eq!(completed.root, root);
+        assert_eq!(completed.extensions, vec!["nes"]);
+        assert_eq!(completed.batch_position, 1);
+        assert_eq!(completed.batch_total, 2);
+        assert!(restarted.iter().any(|run| run.outcome == "failed"));
+    }
+
+    #[test]
+    fn scan_history_rejects_incoherent_batch_positions() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("state.db");
+        let root = directory.path().join("roms");
+        fs::create_dir(&root).unwrap();
+        let mut context = RomScanRunContext::one_time(root, String::new(), Vec::new(), true);
+        context.batch_id = Uuid::new_v4().to_string();
+        context.batch_position = 2;
+        context.batch_total = 1;
+        assert!(record_scan_run(&state, &context, Err("not reached")).is_err());
+        assert!(load_scan_runs(&state).unwrap().is_empty());
     }
 
     #[cfg(unix)]

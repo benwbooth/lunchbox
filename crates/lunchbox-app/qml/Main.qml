@@ -139,11 +139,13 @@ ApplicationWindow {
     readonly property bool manualMatchUiProbe: Qt.application.arguments.indexOf("--manual-match-ui-probe") >= 0
     readonly property bool hashCacheUiProbe: Qt.application.arguments.indexOf("--hash-cache-ui-probe") >= 0
     readonly property bool importProfileUiProbe: Qt.application.arguments.indexOf("--import-profile-ui-probe") >= 0
+    readonly property bool importProfileBatchUiProbe: Qt.application.arguments.indexOf("--import-profile-batch-ui-probe") >= 0
     readonly property bool importUiProbe: Qt.application.arguments.indexOf("--import-ui-probe") >= 0
                                           || archiveImportUiProbe
                                           || manualMatchUiProbe
                                           || hashCacheUiProbe
                                           || importProfileUiProbe
+                                          || importProfileBatchUiProbe
     readonly property bool importCommitProbe: Qt.application.arguments.indexOf("--import-commit-probe") >= 0
     readonly property bool filterUiProbe: Qt.application.arguments.indexOf("--filter-ui-probe") >= 0
     readonly property bool artworkUiProbe: Qt.application.arguments.indexOf("--artwork-ui-probe") >= 0
@@ -232,6 +234,7 @@ ApplicationWindow {
     property int tagsProbeStage: 0
     property bool activityHistoryProbeOpened: false
     property bool importProfileProbeStarted: false
+    property bool importProfileBatchProbeStarted: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
 
     palette.window: "#0c1119"
@@ -2699,6 +2702,12 @@ ApplicationWindow {
         function onInitializedChanged() {
             if (localImport.initialized && root.importUiProbe
                     && localImport.directory.length > 0) {
+                if (root.importProfileBatchUiProbe
+                        && !root.importProfileBatchProbeStarted) {
+                    root.importProfileBatchProbeStarted = true
+                    localImport.start_profile_scan_batch()
+                    return
+                }
                 if (root.importProfileUiProbe) {
                     root.startImportProfileProbe()
                     return
@@ -2742,6 +2751,14 @@ ApplicationWindow {
         function onMatch_candidate_countChanged() {
             if (root.manualMatchUiProbe && localImport.match_candidate_count > 0)
                 manualMatchScreenshotTimer.restart()
+        }
+        function onBatch_scanningChanged() {
+            if (root.importProfileBatchUiProbe
+                    && root.importProfileBatchProbeStarted
+                    && !localImport.batch_scanning
+                    && !localImport.busy
+                    && importDialogLoader.item)
+                importDialogLoader.item.finishProfileBatchProbe()
         }
     }
 
@@ -2962,6 +2979,44 @@ ApplicationWindow {
             console.error("LUNCHBOX_IMPORT_PROFILE_UI_FAILED timeout initialized="
                           + localImport.initialized + " count="
                           + localImport.profile_count + " message=" + localImport.message)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
+        interval: 50
+        running: root.importProfileBatchUiProbe
+                 && !root.importProfileBatchProbeStarted
+        repeat: true
+        onTriggered: {
+            if (!localImport.initialized || localImport.directory.length === 0)
+                return
+            root.importProfileBatchProbeStarted = true
+            localImport.start_profile_scan_batch()
+        }
+    }
+
+    Timer {
+        id: importProfileBatchFinishTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            if (importDialogLoader.item)
+                importDialogLoader.item.captureProfileBatchProbe()
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.importProfileBatchUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_IMPORT_PROFILE_BATCH_UI_FAILED timeout initialized="
+                          + localImport.initialized + " profiles="
+                          + localImport.profile_count + " completed="
+                          + localImport.batch_completed_count + " history="
+                          + localImport.history_count + " message="
+                          + localImport.message)
             Qt.exit(2)
         }
     }
@@ -10586,6 +10641,54 @@ ApplicationWindow {
                     syncProfileControls(profileIndex)
             }
 
+            function openScanHistory() {
+                romScanHistoryDialog.open()
+            }
+
+            function finishProfileBatchProbe() {
+                const valid = localImport.batch_completed_count === 2
+                           && localImport.history_count >= 2
+                           && localImport.history_outcome_at(0) === "completed"
+                           && localImport.history_outcome_at(1) === "completed"
+                           && localImport.history_batch_at(0).indexOf("Batch ") === 0
+                           && localImport.history_batch_at(1).indexOf("Batch ") === 0
+                if (!valid) {
+                    console.error("LUNCHBOX_IMPORT_PROFILE_BATCH_UI_FAILED completed="
+                                  + localImport.batch_completed_count + " history="
+                                  + localImport.history_count + " first="
+                                  + localImport.history_outcome_at(0) + " second="
+                                  + localImport.history_outcome_at(1) + " message="
+                                  + localImport.message)
+                    Qt.exit(2)
+                    return
+                }
+                romScanHistoryDialog.open()
+                importProfileBatchFinishTimer.restart()
+            }
+
+            function captureProfileBatchProbe() {
+                const finish = function() {
+                    console.log("LUNCHBOX_IMPORT_PROFILE_BATCH_UI_READY completed="
+                                + localImport.batch_completed_count + " history="
+                                + localImport.history_count + " first="
+                                + localImport.history_profile_name_at(0))
+                    Qt.quit()
+                }
+                if (root.screenshotOutput.length === 0) {
+                    finish()
+                    return
+                }
+                romScanHistoryDialog.contentItem.parent.grabToImage(function(result) {
+                    if (!result.saveToFile(root.screenshotOutput)) {
+                        console.error("LUNCHBOX_IMPORT_PROFILE_BATCH_UI_FAILED screenshot="
+                                      + root.screenshotOutput)
+                        Qt.exit(2)
+                        return
+                    }
+                    finish()
+                })
+            }
+
             Timer {
                 id: importFilterDelay
                 interval: 75
@@ -10727,6 +10830,25 @@ ApplicationWindow {
                             running: visible
                             Layout.preferredWidth: 24
                             Layout.preferredHeight: 24
+                        }
+                        Button {
+                            text: localImport.batch_scanning
+                                  ? "Scanning " + (localImport.batch_completed_count + 1)
+                                    + "/" + localImport.batch_profile_count
+                                  : "Scan all"
+                            visible: localImport.profile_count > 0
+                            enabled: !localImport.busy && !localImport.profile_busy
+                            onClicked: localImport.start_profile_scan_batch()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Check every saved collection sequentially and retain a compact scan history"
+                        }
+                        Button {
+                            text: "History" + (localImport.history_count > 0
+                                               ? "  " + localImport.history_count : "")
+                            enabled: !localImport.profile_busy
+                            onClicked: romScanHistoryDialog.open()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Review recent per-profile scan outcomes"
                         }
                         Button {
                             text: "Save current…"
@@ -10872,7 +10994,7 @@ ApplicationWindow {
                         }
                     }
                     ColumnLayout {
-                        visible: localImport.total_files > 0
+                        visible: localImport.total_files > 0 && !localImport.batch_scanning
                         spacing: 2
                         Text {
                             text: localImport.matched_count + " exact  ·  "
@@ -10893,12 +11015,30 @@ ApplicationWindow {
                             font.letterSpacing: 0.5
                         }
                     }
+                    ColumnLayout {
+                        visible: localImport.batch_scanning
+                        spacing: 2
+                        Text {
+                            text: "PROFILE " + (localImport.batch_completed_count + 1)
+                                  + " OF " + localImport.batch_profile_count
+                            color: root.accentCool
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                        }
+                        Text {
+                            Layout.preferredWidth: 180
+                            text: localImport.batch_profile_name
+                            color: root.muted
+                            font.pixelSize: 9
+                            elide: Text.ElideRight
+                        }
+                    }
                 }
                 }
 
                 RowLayout {
                 Layout.fillWidth: true
-                visible: localImport.total_files > 0
+                visible: localImport.total_files > 0 && !localImport.batch_scanning
                 spacing: 8
                 TextField {
                     id: importSearch
@@ -10964,7 +11104,7 @@ ApplicationWindow {
                 Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 34
-                visible: localImport.total_files > 0
+                visible: localImport.total_files > 0 && !localImport.batch_scanning
                 color: root.panelRaised
                 border.color: root.line
                 Row {
@@ -11136,6 +11276,292 @@ ApplicationWindow {
                 }
                 }
             }
+            }
+
+            Dialog {
+                id: romScanHistoryDialog
+                parent: Overlay.overlay
+                modal: true
+                anchors.centerIn: parent
+                width: Math.min(860, root.width - 64)
+                height: Math.min(660, root.height - 64)
+                padding: 0
+                closePolicy: Popup.CloseOnEscape
+
+                function outcomeTone(outcome) {
+                    if (outcome === "completed")
+                        return root.accentCool
+                    if (outcome === "cancelled")
+                        return root.accent
+                    return "#ef7182"
+                }
+
+                function finishedLabel(index) {
+                    const epoch = Number(localImport.history_finished_at(index))
+                    if (!Number.isFinite(epoch) || epoch <= 0)
+                        return "Unknown time"
+                    return new Date(epoch * 1000).toLocaleString(
+                                Qt.locale(), Locale.ShortFormat)
+                }
+
+                background: Rectangle {
+                    color: root.panel
+                    radius: 16
+                    border.color: root.line
+                }
+
+                header: Rectangle {
+                    width: parent.width
+                    height: 82
+                    radius: 16
+                    color: root.panelRaised
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 24
+                        anchors.right: scanHistoryClose.left
+                        anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Text {
+                            text: "ROM SCAN HISTORY"
+                            color: root.ink
+                            font.pixelSize: 17
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                        }
+                        Text {
+                            width: parent.width
+                            text: "Compact outcomes only · detailed ROM rows are never retained in memory between profiles"
+                            color: root.muted
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                        }
+                    }
+                    RoundButton {
+                        id: scanHistoryClose
+                        anchors.right: parent.right
+                        anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "×"
+                        flat: true
+                        font.pixelSize: 20
+                        onClicked: romScanHistoryDialog.close()
+                    }
+                }
+
+                contentItem: Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        radius: 12
+                        color: "#101722"
+                        border.color: root.line
+
+                        ListView {
+                            id: scanHistoryList
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            clip: true
+                            reuseItems: true
+                            spacing: 7
+                            model: localImport.history_count
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                            delegate: Rectangle {
+                                id: scanHistoryRow
+                                required property int index
+                                property int scanHistoryRevision: localImport.history_revision
+                                property string outcomeValue: {
+                                    scanHistoryRevision
+                                    return localImport.history_outcome_at(index)
+                                }
+                                property string profileNameValue: {
+                                    scanHistoryRevision
+                                    return localImport.history_profile_name_at(index)
+                                }
+                                property string summaryValue: {
+                                    scanHistoryRevision
+                                    return localImport.history_summary_at(index)
+                                }
+                                property string scopeValue: {
+                                    scanHistoryRevision
+                                    return localImport.history_scope_at(index)
+                                }
+                                property string batchValue: {
+                                    scanHistoryRevision
+                                    return localImport.history_batch_at(index)
+                                }
+                                property string errorValue: {
+                                    scanHistoryRevision
+                                    return localImport.history_error_at(index)
+                                }
+                                property string finishedValue: {
+                                    scanHistoryRevision
+                                    return romScanHistoryDialog.finishedLabel(index)
+                                }
+                                property int profileIndexValue: {
+                                    scanHistoryRevision
+                                    return localImport.history_profile_index_at(index)
+                                }
+                                width: scanHistoryList.width
+                                height: errorValue.length > 0 ? 112 : 96
+                                radius: 10
+                                color: historyHover.hovered ? "#202a38"
+                                      : index % 2 ? "#141c28" : "#111925"
+                                border.color: root.line
+                                HoverHandler { id: historyHover }
+
+                                Rectangle {
+                                    id: historyOutcome
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 13
+                                    width: 88
+                                    height: 25
+                                    radius: 12
+                                    color: Qt.rgba(0, 0, 0, 0.16)
+                                    border.color: romScanHistoryDialog.outcomeTone(
+                                                      scanHistoryRow.outcomeValue)
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: scanHistoryRow.outcomeValue.toUpperCase()
+                                        color: parent.border.color
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.6
+                                    }
+                                }
+
+                                Column {
+                                    anchors.left: historyOutcome.right
+                                    anchors.leftMargin: 13
+                                    anchors.right: loadHistoryProfile.left
+                                    anchors.rightMargin: 12
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 11
+                                    spacing: 4
+                                    Row {
+                                        width: parent.width
+                                        spacing: 10
+                                        Text {
+                                            width: Math.max(120, parent.width - 245)
+                                            text: scanHistoryRow.profileNameValue
+                                            color: root.ink
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            width: 220
+                                            text: scanHistoryRow.finishedValue
+                                            color: root.muted
+                                            font.pixelSize: 9
+                                            horizontalAlignment: Text.AlignRight
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: scanHistoryRow.summaryValue
+                                        color: root.accentCool
+                                        font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: scanHistoryRow.scopeValue + "  ·  "
+                                              + scanHistoryRow.batchValue
+                                        color: root.muted
+                                        font.pixelSize: 9
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        visible: text.length > 0
+                                        text: scanHistoryRow.errorValue
+                                        color: "#ef7182"
+                                        font.pixelSize: 9
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                Button {
+                                    id: loadHistoryProfile
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 112
+                                    text: "Load for review"
+                                    visible: scanHistoryRow.profileIndexValue >= 0
+                                    enabled: !localImport.busy && !localImport.profile_busy
+                                    onClicked: {
+                                        const profileIndex = scanHistoryRow.profileIndexValue
+                                        if (profileIndex >= 0) {
+                                            importDialog.loadProfile(profileIndex)
+                                            romScanHistoryDialog.close()
+                                        }
+                                    }
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Load the current saved profile; press Scan to review every ROM"
+                                }
+                            }
+                        }
+
+                        Column {
+                            anchors.centerIn: parent
+                            width: Math.min(420, parent.width - 40)
+                            spacing: 8
+                            visible: localImport.history_count === 0
+                            Text {
+                                width: parent.width
+                                text: "NO SCANS YET"
+                                color: root.ink
+                                font.pixelSize: 15
+                                font.weight: Font.Bold
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                            Text {
+                                width: parent.width
+                                text: "Run one collection or Scan all. Lunchbox records outcomes and cache efficiency without storing ROM content."
+                                color: root.muted
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
+                    }
+                }
+
+                footer: Rectangle {
+                    width: parent.width
+                    height: 66
+                    radius: 16
+                    color: root.panelRaised
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 20
+                        anchors.rightMargin: 20
+                        spacing: 10
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Up to 200 runs · deleting a profile keeps its historical snapshot"
+                            color: root.muted
+                            font.pixelSize: 9
+                            elide: Text.ElideRight
+                        }
+                        HeaderButton {
+                            text: localImport.batch_scanning ? "Scanning…" : "Scan all profiles"
+                            active: true
+                            visible: localImport.profile_count > 0
+                            enabled: !localImport.busy && !localImport.profile_busy
+                            onClicked: localImport.start_profile_scan_batch()
+                        }
+                        HeaderButton {
+                            text: "Close"
+                            onClicked: romScanHistoryDialog.close()
+                        }
+                    }
+                }
             }
 
             Dialog {

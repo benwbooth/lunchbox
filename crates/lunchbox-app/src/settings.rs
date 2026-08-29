@@ -3420,6 +3420,41 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS rom_import_profiles_updated
              ON rom_import_profiles(updated_at DESC, name COLLATE NOCASE);
+         CREATE TABLE IF NOT EXISTS rom_scan_runs (
+             id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 64),
+             batch_id TEXT NOT NULL CHECK (length(batch_id) <= 64),
+             batch_position INTEGER NOT NULL CHECK (batch_position >= 0),
+             batch_total INTEGER NOT NULL CHECK (batch_total >= 0),
+             profile_id TEXT NOT NULL CHECK (length(profile_id) <= 64),
+             profile_name TEXT NOT NULL CHECK (length(profile_name) BETWEEN 1 AND 80),
+             path_display TEXT NOT NULL CHECK (length(path_display) BETWEEN 1 AND 8192),
+             path_bytes BLOB NOT NULL CHECK (length(path_bytes) BETWEEN 1 AND 32768),
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             platform_hint TEXT NOT NULL CHECK (length(platform_hint) <= 512),
+             extensions_json TEXT NOT NULL CHECK (length(extensions_json) <= 8192),
+             checksums_enabled INTEGER NOT NULL CHECK (checksums_enabled IN (0, 1)),
+             outcome TEXT NOT NULL CHECK (outcome IN ('completed', 'cancelled', 'failed')),
+             started_at INTEGER NOT NULL CHECK (started_at >= 0),
+             finished_at INTEGER NOT NULL CHECK (finished_at >= started_at),
+             total_files INTEGER NOT NULL CHECK (total_files >= 0),
+             exact_matches INTEGER NOT NULL CHECK (exact_matches >= 0),
+             reviewed_matches INTEGER NOT NULL CHECK (reviewed_matches >= 0),
+             other_results INTEGER NOT NULL CHECK (other_results >= 0),
+             walk_errors INTEGER NOT NULL CHECK (walk_errors >= 0),
+             cache_reused_files INTEGER NOT NULL CHECK (cache_reused_files >= 0),
+             content_read_files INTEGER NOT NULL CHECK (content_read_files >= 0),
+             error_text TEXT NOT NULL CHECK (length(error_text) <= 4096),
+             CHECK (
+                 (batch_id='' AND batch_position=0 AND batch_total=0)
+                 OR (length(batch_id)>0 AND batch_position BETWEEN 1 AND batch_total)
+             )
+         );
+         CREATE INDEX IF NOT EXISTS rom_scan_runs_finished
+             ON rom_scan_runs(finished_at DESC, id DESC);
+         CREATE INDEX IF NOT EXISTS rom_scan_runs_profile
+             ON rom_scan_runs(profile_id, finished_at DESC) WHERE profile_id<>'';
          CREATE TABLE IF NOT EXISTS local_rom_files (
              id TEXT PRIMARY KEY,
              root_id TEXT NOT NULL REFERENCES local_collection_roots(id) ON DELETE CASCADE,

@@ -16,6 +16,7 @@ pub mod qobject {
         #[qproperty(bool, importing)]
         #[qproperty(bool, matching)]
         #[qproperty(bool, profile_busy)]
+        #[qproperty(bool, batch_scanning)]
         #[qproperty(QString, directory)]
         #[qproperty(QString, message)]
         #[qproperty(QString, match_message)]
@@ -37,6 +38,11 @@ pub mod qobject {
         #[qproperty(i32, profile_count)]
         #[qproperty(i32, profile_revision)]
         #[qproperty(i32, active_profile_index)]
+        #[qproperty(i32, batch_profile_count)]
+        #[qproperty(i32, batch_completed_count)]
+        #[qproperty(QString, batch_profile_name)]
+        #[qproperty(i32, history_count)]
+        #[qproperty(i32, history_revision)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, match_revision)]
         #[qproperty(i32, match_candidate_count)]
@@ -66,6 +72,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn delete_profile(self: Pin<&mut LocalImportModel>, index: i32);
+
+        #[qinvokable]
+        fn start_profile_scan_batch(self: Pin<&mut LocalImportModel>);
 
         #[qinvokable]
         fn start_scan(
@@ -143,6 +152,33 @@ pub mod qobject {
         fn profile_detail_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn history_profile_name_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_directory_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_scope_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_outcome_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_summary_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_batch_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_finished_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_error_at(self: &LocalImportModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_profile_index_at(self: &LocalImportModel, index: i32) -> i32;
+
+        #[qinvokable]
         fn result_file_name_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -184,8 +220,32 @@ use cxx_qt_lib::{QString, QUrl};
 
 use crate::catalog;
 use crate::local_import::{
-    self, ManualMatchCandidate, MatchState, RomImportProfile, ScanOutput, ScanProgress, ScanResult,
+    self, ManualMatchCandidate, MatchState, RomImportProfile, RomScanRun, RomScanRunContext,
+    ScanOutput, ScanProgress, ScanResult,
 };
+
+struct CompletedScan {
+    scan: Result<ScanOutput, String>,
+    history: Result<Vec<RomScanRun>, String>,
+}
+
+struct LocalImportInitialization {
+    platforms: Vec<String>,
+    profiles: Vec<RomImportProfile>,
+    history: Vec<RomScanRun>,
+}
+
+struct ProfileBatchCompletion {
+    history: Option<Vec<RomScanRun>>,
+    processed: usize,
+    total_files: usize,
+    exact_matches: usize,
+    reviewed_matches: usize,
+    other_results: usize,
+    failures: usize,
+    cancelled: bool,
+    warnings: Vec<String>,
+}
 
 pub struct LocalImportModelRust {
     initialized: bool,
@@ -194,6 +254,7 @@ pub struct LocalImportModelRust {
     importing: bool,
     matching: bool,
     profile_busy: bool,
+    batch_scanning: bool,
     directory: QString,
     message: QString,
     match_message: QString,
@@ -215,12 +276,18 @@ pub struct LocalImportModelRust {
     profile_count: i32,
     profile_revision: i32,
     active_profile_index: i32,
+    batch_profile_count: i32,
+    batch_completed_count: i32,
+    batch_profile_name: QString,
+    history_count: i32,
+    history_revision: i32,
     revision: i32,
     match_revision: i32,
     match_candidate_count: i32,
     collection_revision: i32,
     platforms: Vec<String>,
     profiles: Vec<RomImportProfile>,
+    history: Vec<RomScanRun>,
     profile_root_override: Option<PathBuf>,
     output: Option<ScanOutput>,
     visible_indices: Vec<usize>,
@@ -243,6 +310,7 @@ impl Default for LocalImportModelRust {
             importing: false,
             matching: false,
             profile_busy: false,
+            batch_scanning: false,
             directory,
             message: QString::from("Choose a ROM folder to scan your existing collection."),
             match_message: QString::from(
@@ -266,12 +334,18 @@ impl Default for LocalImportModelRust {
             profile_count: 0,
             profile_revision: 0,
             active_profile_index: -1,
+            batch_profile_count: 0,
+            batch_completed_count: 0,
+            batch_profile_name: QString::default(),
+            history_count: 0,
+            history_revision: 0,
             revision: 0,
             match_revision: 0,
             match_candidate_count: 0,
             collection_revision: 0,
             platforms: Vec::new(),
             profiles: Vec::new(),
+            history: Vec::new(),
             profile_root_override: None,
             output: None,
             visible_indices: Vec::new(),
@@ -326,11 +400,12 @@ impl qobject::LocalImportModel {
         let spawn = std::thread::Builder::new()
             .name("lunchbox-import-platforms".into())
             .spawn(move || {
-                let result = (|| -> anyhow::Result<(Vec<String>, Vec<RomImportProfile>)> {
-                    Ok((
-                        local_import::load_platform_names(&discovery_path)?,
-                        local_import::load_import_profiles(&state_path)?,
-                    ))
+                let result = (|| -> anyhow::Result<LocalImportInitialization> {
+                    Ok(LocalImportInitialization {
+                        platforms: local_import::load_platform_names(&discovery_path)?,
+                        profiles: local_import::load_import_profiles(&state_path)?,
+                        history: local_import::load_scan_runs(&state_path)?,
+                    })
                 })()
                 .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -347,19 +422,24 @@ impl qobject::LocalImportModel {
 
     fn finish_initialize(
         mut self: Pin<&mut Self>,
-        result: Result<(Vec<String>, Vec<RomImportProfile>), String>,
+        result: Result<LocalImportInitialization, String>,
     ) {
         self.as_mut().set_busy(false);
         match result {
-            Ok((platforms, profiles)) => {
-                let count = platforms.len();
-                let profile_count = profiles.len();
-                self.as_mut().rust_mut().platforms = platforms;
-                self.as_mut().rust_mut().profiles = profiles;
+            Ok(initialization) => {
+                let count = initialization.platforms.len();
+                let profile_count = initialization.profiles.len();
+                let history_count = initialization.history.len();
+                self.as_mut().rust_mut().platforms = initialization.platforms;
+                self.as_mut().rust_mut().profiles = initialization.profiles;
+                self.as_mut().rust_mut().history = initialization.history;
                 self.as_mut().set_platform_count(saturating_i32(count));
                 self.as_mut()
                     .set_profile_count(saturating_i32(profile_count));
+                self.as_mut()
+                    .set_history_count(saturating_i32(history_count));
                 self.as_mut().bump_profile_revision();
+                self.as_mut().bump_history_revision();
                 self.as_mut().set_initialized(true);
                 if import_profile_probe() {
                     println!(
@@ -590,6 +670,266 @@ impl qobject::LocalImportModel {
         }
     }
 
+    pub fn start_profile_scan_batch(mut self: Pin<&mut Self>) {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() {
+            return;
+        }
+        let profiles = self.as_ref().rust().profiles.clone();
+        if profiles.is_empty() {
+            self.as_mut().set_message(qstring(
+                "Save at least one ROM scan profile before scanning every collection.",
+            ));
+            return;
+        }
+        let Some(discovery_path) = catalog::requested_discovery_database_path() else {
+            self.as_mut().set_message(qstring(
+                "A discovery games database is required for local ROM import.",
+            ));
+            return;
+        };
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_message(qstring(format!(
+                    "Could not locate Lunchbox state for ROM import: {error}"
+                )));
+                return;
+            }
+        };
+
+        self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
+        let generation = self.as_ref().rust().generation;
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().cancel = Some(Arc::clone(&cancel));
+        self.as_mut().rust_mut().output = None;
+        self.as_mut().rust_mut().visible_indices.clear();
+        self.as_mut().set_busy(true);
+        self.as_mut().set_scanning(true);
+        self.as_mut().set_batch_scanning(true);
+        self.as_mut()
+            .set_batch_profile_count(saturating_i32(profiles.len()));
+        self.as_mut().set_batch_completed_count(0);
+        self.as_mut().set_batch_profile_name(QString::default());
+        self.as_mut().reset_result_summary();
+        self.as_mut().set_message(qstring(format!(
+            "Preparing to scan {} saved ROM collections…",
+            profiles.len()
+        )));
+
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-rom-profile-batch".into())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<ProfileBatchCompletion> {
+                    let scanner = local_import::PreparedScanner::new(&discovery_path)?;
+                    let batch_id = uuid::Uuid::new_v4().to_string();
+                    let profile_total = profiles.len();
+                    let mut completion = ProfileBatchCompletion {
+                        history: None,
+                        processed: 0,
+                        total_files: 0,
+                        exact_matches: 0,
+                        reviewed_matches: 0,
+                        other_results: 0,
+                        failures: 0,
+                        cancelled: false,
+                        warnings: Vec::new(),
+                    };
+                    for (index, profile) in profiles.iter().enumerate() {
+                        if cancel.load(AtomicOrdering::Relaxed) {
+                            completion.cancelled = true;
+                            break;
+                        }
+                        let position = index + 1;
+                        let profile_name = profile.name.clone();
+                        let progress_thread = qt_thread.clone();
+                        let progress_name = profile_name.clone();
+                        let progress: Arc<dyn Fn(ScanProgress) + Send + Sync> =
+                            Arc::new(move |progress| {
+                                let name = progress_name.clone();
+                                let _ = progress_thread.queue(move |mut model| {
+                                    model.as_mut().update_profile_batch_progress(
+                                        generation,
+                                        position,
+                                        profile_total,
+                                        name,
+                                        progress,
+                                    );
+                                });
+                            });
+                        progress(ScanProgress::default());
+                        let scan = scanner
+                            .scan_cached_with_extensions(
+                                &state_path,
+                                &profile.root,
+                                &profile.platform_hint,
+                                &profile.extensions,
+                                profile.checksums_enabled,
+                                &cancel,
+                                progress,
+                            )
+                            .and_then(|mut output| {
+                                local_import::restore_manual_matches(&state_path, &mut output)?;
+                                Ok(output)
+                            })
+                            .map_err(|error| error.to_string());
+                        let context = RomScanRunContext::for_profile(
+                            profile,
+                            batch_id.clone(),
+                            position,
+                            profile_total,
+                        );
+                        match local_import::record_scan_run(
+                            &state_path,
+                            &context,
+                            scan.as_ref().map_err(String::as_str),
+                        ) {
+                            Ok(run) => {
+                                completion.total_files =
+                                    completion.total_files.saturating_add(run.total_files);
+                                completion.exact_matches =
+                                    completion.exact_matches.saturating_add(run.exact_matches);
+                                completion.reviewed_matches = completion
+                                    .reviewed_matches
+                                    .saturating_add(run.reviewed_matches);
+                                completion.other_results =
+                                    completion.other_results.saturating_add(run.other_results);
+                            }
+                            Err(error) => completion.warnings.push(format!(
+                                "Could not retain history for ‘{}’: {error}",
+                                profile.name
+                            )),
+                        }
+                        completion.processed = position;
+                        if scan.as_ref().is_err() {
+                            completion.failures = completion.failures.saturating_add(1);
+                        }
+                        if scan.as_ref().is_ok_and(|output| output.cancelled)
+                            || cancel.load(AtomicOrdering::Relaxed)
+                        {
+                            completion.cancelled = true;
+                            break;
+                        }
+                        // `scan` drops here before the next root. Only compact history is
+                        // retained; a later review scan reuses the validated hash cache.
+                    }
+                    match local_import::load_scan_runs(&state_path) {
+                        Ok(history) => completion.history = Some(history),
+                        Err(error) => completion
+                            .warnings
+                            .push(format!("Could not reload ROM scan history: {error}")),
+                    }
+                    Ok(completion)
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_profile_scan_batch(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_busy(false);
+            self.as_mut().set_scanning(false);
+            self.as_mut().set_batch_scanning(false);
+            self.as_mut().rust_mut().cancel = None;
+            self.as_mut().set_message(qstring(format!(
+                "Could not start saved-collection scan: {error}"
+            )));
+        }
+    }
+
+    fn update_profile_batch_progress(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        position: usize,
+        total: usize,
+        profile_name: String,
+        progress: ScanProgress,
+    ) {
+        if generation != self.as_ref().rust().generation || !*self.as_ref().batch_scanning() {
+            return;
+        }
+        self.as_mut()
+            .set_batch_completed_count(saturating_i32(position.saturating_sub(1)));
+        self.as_mut().set_batch_profile_name(qstring(&profile_name));
+        self.as_mut()
+            .set_total_files(saturating_i32(progress.total_files));
+        self.as_mut()
+            .set_scanned_files(saturating_i32(progress.scanned_files));
+        self.as_mut()
+            .set_cache_reused_files(saturating_i32(progress.cache_reused_files));
+        self.as_mut()
+            .set_content_read_files(saturating_i32(progress.content_read_files));
+        self.as_mut()
+            .set_current_file(qstring(progress.current_file));
+        self.as_mut().set_message(qstring(if progress.total_files > 0 {
+            format!(
+                "Collection {position} of {total} · {profile_name} · {} of {} files · {} cached",
+                progress.scanned_files, progress.total_files, progress.cache_reused_files,
+            )
+        } else {
+            format!("Collection {position} of {total} · discovering {profile_name}…")
+        }));
+    }
+
+    fn finish_profile_scan_batch(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<ProfileBatchCompletion, String>,
+    ) {
+        if generation != self.as_ref().rust().generation {
+            return;
+        }
+        self.as_mut().set_busy(false);
+        self.as_mut().set_scanning(false);
+        self.as_mut().rust_mut().cancel = None;
+        self.as_mut().set_batch_profile_name(QString::default());
+        match result {
+            Ok(completion) => {
+                self.as_mut()
+                    .set_batch_completed_count(saturating_i32(completion.processed));
+                if let Some(history) = completion.history {
+                    let count = history.len();
+                    self.as_mut().rust_mut().history = history;
+                    self.as_mut().set_history_count(saturating_i32(count));
+                    self.as_mut().bump_history_revision();
+                }
+                let status = if completion.cancelled {
+                    format!(
+                        "Stopped after {} of {} saved collections",
+                        completion.processed,
+                        *self.as_ref().batch_profile_count()
+                    )
+                } else {
+                    format!("Scanned {} saved collections", completion.processed)
+                };
+                let mut message = format!(
+                    "{status}: {} files · {} exact · {} reviewed · {} other",
+                    completion.total_files,
+                    completion.exact_matches,
+                    completion.reviewed_matches,
+                    completion.other_results,
+                );
+                if completion.failures > 0 {
+                    message.push_str(&format!(" · {} failed", completion.failures));
+                }
+                if !completion.warnings.is_empty() {
+                    message.push_str(". ");
+                    message.push_str(&completion.warnings.join(" "));
+                } else {
+                    message
+                        .push_str(". Open Scan history, then load a profile to review its files.");
+                }
+                self.as_mut().set_message(qstring(message));
+            }
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "Saved-collection scan could not start: {error}"
+            ))),
+        }
+        // Publish the complete counters/history snapshot before notifying QML that
+        // the batch is finished. Completion handlers must never observe stale state.
+        self.as_mut().set_batch_scanning(false);
+    }
+
     pub fn start_scan(
         mut self: Pin<&mut Self>,
         platform: QString,
@@ -634,6 +974,27 @@ impl qobject::LocalImportModel {
                     return;
                 }
             };
+        let platform = platform.to_string();
+        let profile = usize::try_from(*self.as_ref().active_profile_index())
+            .ok()
+            .and_then(|index| self.as_ref().rust().profiles.get(index).cloned())
+            .filter(|profile| {
+                profile.root == root
+                    && profile.platform_hint == platform
+                    && profile.extensions == extension_filter
+                    && profile.checksums_enabled == checksums_enabled
+            });
+        let history_context = profile.map_or_else(
+            || {
+                RomScanRunContext::one_time(
+                    root.clone(),
+                    platform.clone(),
+                    extension_filter.clone(),
+                    checksums_enabled,
+                )
+            },
+            |profile| RomScanRunContext::for_profile(&profile, String::new(), 0, 0),
+        );
 
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
@@ -643,6 +1004,10 @@ impl qobject::LocalImportModel {
         self.as_mut().rust_mut().visible_indices.clear();
         self.as_mut().set_busy(true);
         self.as_mut().set_scanning(true);
+        self.as_mut().set_batch_scanning(false);
+        self.as_mut().set_batch_profile_count(0);
+        self.as_mut().set_batch_completed_count(0);
+        self.as_mut().set_batch_profile_name(QString::default());
         self.as_mut().set_total_files(0);
         self.as_mut().set_scanned_files(0);
         self.as_mut().set_cache_reused_files(0);
@@ -657,7 +1022,6 @@ impl qobject::LocalImportModel {
             .set_message(qstring("Discovering supported ROM files…"));
         self.as_mut().bump_revision();
 
-        let platform = platform.to_string();
         let qt_thread = self.as_ref().qt_thread();
         let progress_thread = qt_thread.clone();
         let progress: Arc<dyn Fn(ScanProgress) + Send + Sync> = Arc::new(move |progress| {
@@ -668,7 +1032,7 @@ impl qobject::LocalImportModel {
         let spawn = std::thread::Builder::new()
             .name("lunchbox-rom-scan".into())
             .spawn(move || {
-                let result = (|| -> anyhow::Result<ScanOutput> {
+                let scan = (|| -> anyhow::Result<ScanOutput> {
                     let mut output = local_import::scan_directory_cached_with_extensions(
                         &discovery_path,
                         &state_path,
@@ -683,6 +1047,14 @@ impl qobject::LocalImportModel {
                     Ok(output)
                 })()
                 .map_err(|error| error.to_string());
+                let history = local_import::record_scan_run(
+                    &state_path,
+                    &history_context,
+                    scan.as_ref().map_err(String::as_str),
+                )
+                .and_then(|_| local_import::load_scan_runs(&state_path))
+                .map_err(|error| error.to_string());
+                let result = CompletedScan { scan, history };
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_scan(generation, result);
                 });
@@ -721,14 +1093,24 @@ impl qobject::LocalImportModel {
         }
     }
 
-    fn finish_scan(mut self: Pin<&mut Self>, generation: u64, result: Result<ScanOutput, String>) {
+    fn finish_scan(mut self: Pin<&mut Self>, generation: u64, result: CompletedScan) {
         if generation != self.as_ref().rust().generation {
             return;
         }
         self.as_mut().set_busy(false);
         self.as_mut().set_scanning(false);
         self.as_mut().rust_mut().cancel = None;
-        match result {
+        let history_warning = match result.history {
+            Ok(history) => {
+                let count = history.len();
+                self.as_mut().rust_mut().history = history;
+                self.as_mut().set_history_count(saturating_i32(count));
+                self.as_mut().bump_history_revision();
+                None
+            }
+            Err(error) => Some(error),
+        };
+        match result.scan {
             Ok(output) => {
                 let total = output.results.len();
                 let matched = output
@@ -789,11 +1171,18 @@ impl qobject::LocalImportModel {
                 if let Some(summary) = checksum_summary {
                     message.push_str(&summary);
                 }
+                if let Some(warning) = history_warning {
+                    message.push_str(&format!(" Scan history could not be retained: {warning}"));
+                }
                 self.as_mut().set_message(qstring(message));
             }
-            Err(error) => self
-                .as_mut()
-                .set_message(qstring(format!("ROM scan failed: {error}"))),
+            Err(error) => {
+                let suffix = history_warning
+                    .map(|warning| format!(" Scan history could not be retained: {warning}"))
+                    .unwrap_or_default();
+                self.as_mut()
+                    .set_message(qstring(format!("ROM scan failed: {error}.{suffix}")));
+            }
         }
     }
 
@@ -1221,10 +1610,109 @@ impl qobject::LocalImportModel {
             .unwrap_or_default()
     }
 
+    pub fn history_profile_name_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| qstring(&run.profile_name))
+            .unwrap_or_default()
+    }
+
+    pub fn history_directory_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| qstring(run.root.to_string_lossy()))
+            .unwrap_or_default()
+    }
+
+    pub fn history_scope_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| qstring(scan_run_scope_detail(run)))
+            .unwrap_or_default()
+    }
+
+    pub fn history_outcome_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| qstring(&run.outcome))
+            .unwrap_or_default()
+    }
+
+    pub fn history_summary_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| {
+                qstring(if run.outcome == "failed" {
+                    "No files were reviewed".to_owned()
+                } else {
+                    let mut summary = format!(
+                        "{} files · {} exact · {} reviewed · {} other",
+                        run.total_files, run.exact_matches, run.reviewed_matches, run.other_results,
+                    );
+                    if run.walk_errors > 0 {
+                        summary.push_str(&format!(" · {} unreadable", run.walk_errors));
+                    }
+                    if run.checksums_enabled {
+                        summary.push_str(&format!(
+                            " · {} cached / {} read",
+                            run.cache_reused_files, run.content_read_files,
+                        ));
+                    }
+                    summary
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn history_batch_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| {
+                qstring(if run.batch_id.is_empty() {
+                    "Single scan".to_owned()
+                } else {
+                    format!(
+                        "Batch {} of {} · {}",
+                        run.batch_position,
+                        run.batch_total,
+                        &run.batch_id[..8.min(run.batch_id.len())],
+                    )
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn history_finished_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| qstring(run.finished_at.to_string()))
+            .unwrap_or_default()
+    }
+
+    pub fn history_error_at(&self, index: i32) -> QString {
+        self.history_at(index)
+            .map(|run| qstring(&run.error_text))
+            .unwrap_or_default()
+    }
+
+    pub fn history_profile_index_at(&self, index: i32) -> i32 {
+        let Some(profile_id) = self.history_at(index).map(|run| run.profile_id.as_str()) else {
+            return -1;
+        };
+        if profile_id.is_empty() {
+            return -1;
+        }
+        self.rust()
+            .profiles
+            .iter()
+            .position(|profile| profile.id == profile_id)
+            .map(saturating_i32)
+            .unwrap_or(-1)
+    }
+
     fn profile_at(&self, index: i32) -> Option<&RomImportProfile> {
         usize::try_from(index)
             .ok()
             .and_then(|index| self.rust().profiles.get(index))
+    }
+
+    fn history_at(&self, index: i32) -> Option<&RomScanRun> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().history.get(index))
     }
 
     pub fn result_file_name_at(&self, index: i32) -> QString {
@@ -1370,6 +1858,20 @@ impl qobject::LocalImportModel {
         self.as_mut().set_selected_count(saturating_i32(count));
     }
 
+    fn reset_result_summary(mut self: Pin<&mut Self>) {
+        self.as_mut().set_total_files(0);
+        self.as_mut().set_scanned_files(0);
+        self.as_mut().set_cache_reused_files(0);
+        self.as_mut().set_content_read_files(0);
+        self.as_mut().set_matched_count(0);
+        self.as_mut().set_reviewed_count(0);
+        self.as_mut().set_unmatched_count(0);
+        self.as_mut().set_result_count(0);
+        self.as_mut().set_selected_count(0);
+        self.as_mut().set_current_file(QString::default());
+        self.as_mut().bump_revision();
+    }
+
     fn update_match_counts(mut self: Pin<&mut Self>) {
         let (exact, reviewed, total) = self
             .as_ref()
@@ -1413,6 +1915,11 @@ impl qobject::LocalImportModel {
         let revision = self.as_ref().profile_revision().wrapping_add(1);
         self.as_mut().set_profile_revision(revision);
     }
+
+    fn bump_history_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().history_revision().wrapping_add(1);
+        self.as_mut().set_history_revision(revision);
+    }
 }
 
 fn profile_scope_detail(profile: &RomImportProfile) -> String {
@@ -1427,6 +1934,25 @@ fn profile_scope_detail(profile: &RomImportProfile) -> String {
         local_import::format_extension_filter(&profile.extensions)
     };
     let checksums = if profile.checksums_enabled {
+        "exact checksums"
+    } else {
+        "inventory only"
+    };
+    format!("{platform} · {extensions} · {checksums}")
+}
+
+fn scan_run_scope_detail(run: &RomScanRun) -> String {
+    let platform = if run.platform_hint.is_empty() {
+        "auto-detect platform"
+    } else {
+        run.platform_hint.as_str()
+    };
+    let extensions = if run.extensions.is_empty() {
+        "all supported extensions".to_owned()
+    } else {
+        local_import::format_extension_filter(&run.extensions)
+    };
+    let checksums = if run.checksums_enabled {
         "exact checksums"
     } else {
         "inventory only"

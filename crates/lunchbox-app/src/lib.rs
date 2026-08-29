@@ -68,6 +68,13 @@ pub fn run() -> i32 {
         return 1;
     }
 
+    if std::env::args().any(|argument| argument == "--import-profile-batch-ui-probe")
+        && let Err(error) = local_import::seed_import_profile_batch_ui_probe()
+    {
+        eprintln!("LUNCHBOX_IMPORT_PROFILE_BATCH_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
     if std::env::args().any(|argument| argument == "--hash-cache-ui-probe")
         && let Err(error) = local_import::seed_hash_cache_ui_probe()
     {

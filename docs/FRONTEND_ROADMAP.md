@@ -149,8 +149,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend the implemented folder chooser, platform assignment, scan preview,
   progress, cancellation, exact/ambiguous reporting, idempotent rescans,
   resumable native-metadata-validated hash cache, exact duplicate/change audit,
-  named extension-scoped scan profiles, and missing-file management view with
-  cross-root scheduling and richer scan history.
+  named extension-scoped scan profiles, sequential cross-root **Scan all**,
+  bounded durable scan history, and missing-file management view with optional
+  background schedules and per-run comparison tools.
 - Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
 - Durable per-game tags are native: stable IDs, case-insensitive normalization,

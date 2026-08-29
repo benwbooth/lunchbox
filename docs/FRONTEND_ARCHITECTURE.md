@@ -412,6 +412,12 @@ production store, loads it through the ordinary CXX-Qt model, and exits only
 after QML observes its name, exact platform, canonical extension scope, checksum
 policy, active index, and native directory. Reusing the same state path proves
 idempotent seeding and restart loading.
+`--import-profile-batch-ui-probe` creates two extension-disjoint profiles over
+one explicit root, prepares the real checksum index once, scans them
+sequentially, and opens the production history dialog only after both compact
+run snapshots are durable. Reusing the same state proves history survives a
+restart and the second batch reuses the native-metadata-validated hash cache;
+`--screenshot-output` captures the rendered 860x660 dialog before exit.
 `--archive-import-probe --games-database PATH --import-directory PATH` succeeds
 only when a ZIP, 7z, or RAR archive with one safe recognized ROM member receives an
 exact SHA-1/MD5 catalog identity. `--archive-import-ui-probe` follows the same
