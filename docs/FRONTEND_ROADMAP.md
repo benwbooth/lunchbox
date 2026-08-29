@@ -155,10 +155,15 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
 - Durable per-game tags are native: stable IDs, case-insensitive normalization,
-  atomic metadata/tag saves, clickable details chips, exact library filtering,
-  text search, and exact smart-collection rules all share the same indexed state.
+  atomic metadata/tag/custom-field saves, clickable details chips, exact library
+  filtering, text search, and exact smart-collection rules all share the same
+  indexed state.
+- Ordered per-game custom fields are native: bounded names and values,
+  case-insensitively unique names, keyboard/pointer reordering, details-pane
+  presentation, name/value search, and cold-start recovery all preserve the
+  exact stable game UUID.
 - Extend the implemented stable-UUID game metadata overlay editor with release-
-  specific editing, custom fields, and playlist-specific presentation.
+  specific editing and playlist-specific presentation.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
 - Fast metadata bulk editing, collection audits, and whole-profile backup/restore.

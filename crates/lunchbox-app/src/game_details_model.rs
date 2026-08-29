@@ -51,6 +51,10 @@ pub mod qobject {
         #[qproperty(i32, metadata_revision)]
         #[qproperty(i32, tag_count)]
         #[qproperty(i32, tag_revision)]
+        #[qproperty(i32, custom_field_count)]
+        #[qproperty(i32, custom_field_revision)]
+        #[qproperty(i32, metadata_custom_field_count)]
+        #[qproperty(i32, metadata_custom_field_revision)]
         #[qproperty(i32, variant_count)]
         #[qproperty(i32, alternate_title_count)]
         #[qproperty(QString, message)]
@@ -149,6 +153,35 @@ pub mod qobject {
 
         #[qinvokable]
         fn tag_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn custom_field_name_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn custom_field_value_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn metadata_custom_field_name_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn metadata_custom_field_value_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn add_metadata_custom_field(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn update_metadata_custom_field(
+            self: Pin<&mut GameDetailsModel>,
+            index: i32,
+            name: QString,
+            value: QString,
+        );
+
+        #[qinvokable]
+        fn remove_metadata_custom_field(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
+        fn move_metadata_custom_field(self: Pin<&mut GameDetailsModel>, index: i32, direction: i32);
 
         #[qinvokable]
         fn session_started_epoch_at(self: &GameDetailsModel, index: i32) -> QString;
@@ -335,7 +368,9 @@ use crate::game_details::{
     self, AlternateTitle, GameDetails, GameVariant, MinervaBundle, ReleasePreferences,
     TorrentFileCandidate,
 };
-use crate::settings::{GameMetadata, GameMetadataOverride, PlaySession, SettingsStore};
+use crate::settings::{
+    GameCustomField, GameMetadata, GameMetadataOverride, PlaySession, SettingsStore,
+};
 
 pub struct GameDetailsModelRust {
     panel_open: bool,
@@ -379,6 +414,10 @@ pub struct GameDetailsModelRust {
     metadata_revision: i32,
     tag_count: i32,
     tag_revision: i32,
+    custom_field_count: i32,
+    custom_field_revision: i32,
+    metadata_custom_field_count: i32,
+    metadata_custom_field_revision: i32,
     variant_count: i32,
     alternate_title_count: i32,
     message: QString,
@@ -453,6 +492,8 @@ pub struct GameDetailsModelRust {
     effective_metadata: GameMetadata,
     metadata_generation: u64,
     current_tags: Vec<String>,
+    current_custom_fields: Vec<GameCustomField>,
+    metadata_custom_fields: Vec<GameCustomField>,
     sessions: Vec<PlaySession>,
     bundles: Vec<MinervaBundle>,
     variants: Vec<GameVariant>,
@@ -521,6 +562,10 @@ impl Default for GameDetailsModelRust {
             metadata_revision: 0,
             tag_count: 0,
             tag_revision: 0,
+            custom_field_count: 0,
+            custom_field_revision: 0,
+            metadata_custom_field_count: 0,
+            metadata_custom_field_revision: 0,
             variant_count: 0,
             alternate_title_count: 0,
             message: QString::from("Select a game to inspect it."),
@@ -595,6 +640,8 @@ impl Default for GameDetailsModelRust {
             effective_metadata: GameMetadata::default(),
             metadata_generation: 0,
             current_tags: Vec::new(),
+            current_custom_fields: Vec::new(),
+            metadata_custom_fields: Vec::new(),
             sessions: Vec::new(),
             bundles: Vec::new(),
             variants: Vec::new(),
@@ -621,6 +668,12 @@ impl Default for GameDetailsModelRust {
 
 fn qstring(value: impl AsRef<str>) -> QString {
     QString::from(value.as_ref())
+}
+
+fn custom_field_at(fields: &[GameCustomField], index: i32) -> Option<&GameCustomField> {
+    usize::try_from(index)
+        .ok()
+        .and_then(|index| fields.get(index))
 }
 
 fn launch_scope_label(scope: &str) -> &'static str {
@@ -661,47 +714,72 @@ fn metadata_save_messages(
     reset_requested: bool,
     metadata_is_canonical: bool,
     tag_count: usize,
+    custom_field_count: usize,
 ) -> (String, String) {
     let tag_label = if tag_count == 1 { "tag" } else { "tags" };
+    let custom_field_label = if custom_field_count == 1 {
+        "custom field"
+    } else {
+        "custom fields"
+    };
+    let local_profile_summary = match (tag_count, custom_field_count) {
+        (0, 0) => None,
+        (tags, 0) => Some(format!("{tags} local {tag_label}")),
+        (0, fields) => Some(format!("{fields} {custom_field_label}")),
+        (tags, fields) => Some(format!(
+            "{tags} local {tag_label} and {fields} {custom_field_label}"
+        )),
+    };
+    let local_profile_label = match (tag_count > 0, custom_field_count > 0) {
+        (false, false) => None,
+        (true, false) => Some("Local tags"),
+        (false, true) => Some("Local custom fields"),
+        (true, true) => Some("Local tags and custom fields"),
+    };
     if reset_requested {
-        let detail = if tag_count == 0 {
-            "Restored canonical catalog metadata.".to_owned()
-        } else {
-            format!("Restored canonical catalog metadata and kept {tag_count} local {tag_label}.")
+        let detail = match &local_profile_summary {
+            None => "Restored canonical catalog metadata.".to_owned(),
+            Some(summary) => {
+                format!("Restored canonical catalog metadata and kept {summary}.")
+            }
         };
         return (
             detail,
-            if tag_count == 0 {
-                "Canonical catalog metadata restored.".to_owned()
-            } else {
-                "Canonical catalog metadata restored. Local tags were kept.".to_owned()
+            match local_profile_label {
+                None => "Canonical catalog metadata restored.".to_owned(),
+                Some(label) => {
+                    format!("Canonical catalog metadata restored. {label} were kept.")
+                }
             },
         );
     }
     if metadata_is_canonical {
-        if tag_count == 0 {
+        if local_profile_summary.is_none() {
             return (
                 "No local presentation changes are stored.".to_owned(),
                 "Canonical catalog metadata and identity are unchanged.".to_owned(),
             );
         }
+        let summary = local_profile_summary.expect("profile summary exists");
+        let label = local_profile_label.expect("profile label exists");
         return (
-            format!("Saved {tag_count} local {tag_label} without changing canonical metadata."),
-            "Local tags saved. Downloads and matching still use canonical identity.".to_owned(),
+            format!("Saved {summary} without changing canonical metadata."),
+            format!("{label} saved. Downloads and matching still use canonical identity."),
         );
     }
-    if tag_count == 0 {
+    let Some(summary) = local_profile_summary else {
         return (
             "Saved local metadata without changing canonical identity.".to_owned(),
             "Local metadata saved. Downloads and matching still use canonical identity.".to_owned(),
         );
-    }
+    };
+    let label = local_profile_label.expect("profile label exists");
     (
+        format!("Saved local metadata, {summary} without changing canonical identity."),
         format!(
-            "Saved local metadata and {tag_count} {tag_label} without changing canonical identity."
+            "Local metadata, {} saved. Downloads and matching still use canonical identity.",
+            label.trim_start_matches("Local ").to_lowercase()
         ),
-        "Local metadata and tags saved. Downloads and matching still use canonical identity."
-            .to_owned(),
     )
 }
 
@@ -964,8 +1042,19 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_metadata_notes(qstring(&metadata.notes));
         let tags = self.as_ref().rust().current_tags.join(", ");
         self.as_mut().set_metadata_tags(qstring(tags));
+        let custom_fields = self.as_ref().rust().current_custom_fields.clone();
+        let custom_field_count = custom_fields.len();
+        self.as_mut().rust_mut().metadata_custom_fields = custom_fields;
+        self.as_mut()
+            .set_metadata_custom_field_count(count_i32(custom_field_count));
+        let custom_field_revision = self
+            .as_ref()
+            .metadata_custom_field_revision()
+            .wrapping_add(1);
+        self.as_mut()
+            .set_metadata_custom_field_revision(custom_field_revision);
         self.as_mut().set_metadata_message(qstring(
-            "Only presentation metadata is edited. Stable game identity, platform, provider matches, and files are preserved.",
+            "Presentation metadata and searchable custom fields stay in your profile. Stable game identity, platform, provider matches, and files are preserved.",
         ));
         self.as_mut().set_metadata_open(true);
         if has_cli_flag("--metadata-ui-probe") {
@@ -1038,7 +1127,9 @@ impl qobject::GameDetailsModel {
             notes: self.as_ref().metadata_notes().to_string().trim().to_owned(),
         };
         let tags = self.as_ref().metadata_tags().to_string();
-        self.as_mut().start_metadata_save(effective, tags, false);
+        let custom_fields = self.as_ref().rust().metadata_custom_fields.clone();
+        self.as_mut()
+            .start_metadata_save(effective, tags, custom_fields, false);
     }
 
     pub fn reset_metadata(mut self: Pin<&mut Self>) {
@@ -1047,13 +1138,16 @@ impl qobject::GameDetailsModel {
         }
         let canonical = self.as_ref().rust().canonical_metadata.clone();
         let tags = self.as_ref().rust().current_tags.join(", ");
-        self.as_mut().start_metadata_save(canonical, tags, true);
+        let custom_fields = self.as_ref().rust().metadata_custom_fields.clone();
+        self.as_mut()
+            .start_metadata_save(canonical, tags, custom_fields, true);
     }
 
     fn start_metadata_save(
         mut self: Pin<&mut Self>,
         effective: GameMetadata,
         tag_input: String,
+        custom_fields: Vec<GameCustomField>,
         reset_requested: bool,
     ) {
         let canonical = self.as_ref().rust().canonical_metadata.clone();
@@ -1068,6 +1162,15 @@ impl qobject::GameDetailsModel {
                 .set_metadata_message(qstring(format!("Could not save tags: {error}")));
             return;
         }
+        let custom_fields = match crate::settings::validate_game_custom_fields(&custom_fields) {
+            Ok(custom_fields) => custom_fields,
+            Err(error) => {
+                self.as_mut().set_metadata_message(qstring(format!(
+                    "Could not save custom fields: {error}"
+                )));
+                return;
+            }
+        };
         self.as_mut().rust_mut().metadata_generation =
             self.as_ref().rust().metadata_generation.wrapping_add(1);
         let generation = self.as_ref().rust().metadata_generation;
@@ -1085,13 +1188,14 @@ impl qobject::GameDetailsModel {
             .spawn(move || {
                 let result = SettingsStore::open_default()
                     .and_then(|store| {
-                        store.save_game_metadata_and_tags(
+                        store.save_game_metadata_tags_and_custom_fields(
                             &game_uid,
                             launchbox_db_id,
                             &canonical_title,
                             &platform,
                             &metadata_override,
                             &tag_input,
+                            &custom_fields,
                         )
                     })
                     .map_err(|error| error.to_string());
@@ -1118,20 +1222,36 @@ impl qobject::GameDetailsModel {
         effective: GameMetadata,
         metadata_override: GameMetadataOverride,
         reset_requested: bool,
-        result: Result<Vec<String>, String>,
+        result: Result<(Vec<String>, Vec<GameCustomField>), String>,
     ) {
         if generation != self.as_ref().rust().metadata_generation {
             return;
         }
         self.as_mut().set_metadata_busy(false);
         match result {
-            Ok(tags) => {
+            Ok((tags, custom_fields)) => {
                 let metadata_is_canonical = metadata_override.is_empty();
                 let tag_count = tags.len();
+                let custom_field_count = custom_fields.len();
                 self.as_mut().rust_mut().current_tags = tags;
                 self.as_mut().set_tag_count(count_i32(tag_count));
                 let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
                 self.as_mut().set_tag_revision(tag_revision);
+                self.as_mut().rust_mut().current_custom_fields = custom_fields.clone();
+                self.as_mut().rust_mut().metadata_custom_fields = custom_fields;
+                self.as_mut()
+                    .set_custom_field_count(count_i32(custom_field_count));
+                self.as_mut()
+                    .set_metadata_custom_field_count(count_i32(custom_field_count));
+                let custom_field_revision = self.as_ref().custom_field_revision().wrapping_add(1);
+                self.as_mut()
+                    .set_custom_field_revision(custom_field_revision);
+                let draft_revision = self
+                    .as_ref()
+                    .metadata_custom_field_revision()
+                    .wrapping_add(1);
+                self.as_mut()
+                    .set_metadata_custom_field_revision(draft_revision);
                 self.as_mut().rust_mut().effective_metadata = effective.clone();
                 self.as_mut().set_title(qstring(&effective.title));
                 self.as_mut()
@@ -1149,8 +1269,12 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_notes(qstring(&effective.notes));
                 self.as_mut()
                     .set_metadata_has_override(!metadata_is_canonical);
-                let (metadata_message, message) =
-                    metadata_save_messages(reset_requested, metadata_is_canonical, tag_count);
+                let (metadata_message, message) = metadata_save_messages(
+                    reset_requested,
+                    metadata_is_canonical,
+                    tag_count,
+                    custom_field_count,
+                );
                 self.as_mut()
                     .set_metadata_message(qstring(metadata_message));
                 self.as_mut().set_message(qstring(message));
@@ -1171,6 +1295,128 @@ impl qobject::GameDetailsModel {
             .and_then(|index| self.rust().current_tags.get(index))
             .map(qstring)
             .unwrap_or_default()
+    }
+
+    pub fn custom_field_name_at(&self, index: i32) -> QString {
+        custom_field_at(&self.rust().current_custom_fields, index)
+            .map(|field| qstring(&field.name))
+            .unwrap_or_default()
+    }
+
+    pub fn custom_field_value_at(&self, index: i32) -> QString {
+        custom_field_at(&self.rust().current_custom_fields, index)
+            .map(|field| qstring(&field.value))
+            .unwrap_or_default()
+    }
+
+    pub fn metadata_custom_field_name_at(&self, index: i32) -> QString {
+        custom_field_at(&self.rust().metadata_custom_fields, index)
+            .map(|field| qstring(&field.name))
+            .unwrap_or_default()
+    }
+
+    pub fn metadata_custom_field_value_at(&self, index: i32) -> QString {
+        custom_field_at(&self.rust().metadata_custom_fields, index)
+            .map(|field| qstring(&field.value))
+            .unwrap_or_default()
+    }
+
+    pub fn add_metadata_custom_field(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().metadata_open() || *self.as_ref().metadata_busy() {
+            return;
+        }
+        if self.as_ref().rust().metadata_custom_fields.len() >= 32 {
+            self.as_mut()
+                .set_metadata_message(qstring("A game can have at most 32 custom fields."));
+            return;
+        }
+        self.as_mut()
+            .rust_mut()
+            .metadata_custom_fields
+            .push(GameCustomField::default());
+        let count = self.as_ref().rust().metadata_custom_fields.len();
+        self.as_mut()
+            .set_metadata_custom_field_count(count_i32(count));
+        self.as_mut().bump_metadata_custom_field_revision();
+        self.as_mut().set_metadata_message(qstring(
+            "Name the new field and enter a value before saving.",
+        ));
+    }
+
+    pub fn update_metadata_custom_field(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        name: QString,
+        value: QString,
+    ) {
+        if !*self.as_ref().metadata_open() || *self.as_ref().metadata_busy() {
+            return;
+        }
+        let Some(index) = usize::try_from(index).ok() else {
+            return;
+        };
+        if let Some(field) = self
+            .as_mut()
+            .rust_mut()
+            .metadata_custom_fields
+            .get_mut(index)
+        {
+            field.name = name.to_string();
+            field.value = value.to_string();
+        }
+        if self
+            .as_ref()
+            .rust()
+            .metadata_custom_fields
+            .iter()
+            .all(|field| !field.name.trim().is_empty() && !field.value.trim().is_empty())
+        {
+            self.as_mut().set_metadata_message(qstring(
+                "Custom fields are ready. Save changes to publish them atomically with metadata and tags.",
+            ));
+        }
+    }
+
+    pub fn remove_metadata_custom_field(mut self: Pin<&mut Self>, index: i32) {
+        if !*self.as_ref().metadata_open() || *self.as_ref().metadata_busy() {
+            return;
+        }
+        let Some(index) = usize::try_from(index).ok() else {
+            return;
+        };
+        if index >= self.as_ref().rust().metadata_custom_fields.len() {
+            return;
+        }
+        self.as_mut()
+            .rust_mut()
+            .metadata_custom_fields
+            .remove(index);
+        let count = self.as_ref().rust().metadata_custom_fields.len();
+        self.as_mut()
+            .set_metadata_custom_field_count(count_i32(count));
+        self.as_mut().bump_metadata_custom_field_revision();
+    }
+
+    pub fn move_metadata_custom_field(mut self: Pin<&mut Self>, index: i32, direction: i32) {
+        if !*self.as_ref().metadata_open() || *self.as_ref().metadata_busy() {
+            return;
+        }
+        let Some(index) = usize::try_from(index).ok() else {
+            return;
+        };
+        let Some(target) = i32::try_from(index)
+            .ok()
+            .and_then(|index| index.checked_add(direction))
+            .and_then(|index| usize::try_from(index).ok())
+        else {
+            return;
+        };
+        let fields = &mut self.as_mut().rust_mut().metadata_custom_fields;
+        if index >= fields.len() || target >= fields.len() || index == target {
+            return;
+        }
+        fields.swap(index, target);
+        self.as_mut().bump_metadata_custom_field_revision();
     }
 
     pub fn session_started_epoch_at(&self, index: i32) -> QString {
@@ -1245,6 +1491,14 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_tag_count(0);
         let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
         self.as_mut().set_tag_revision(tag_revision);
+        self.as_mut().rust_mut().current_custom_fields.clear();
+        self.as_mut().rust_mut().metadata_custom_fields.clear();
+        self.as_mut().set_custom_field_count(0);
+        self.as_mut().set_metadata_custom_field_count(0);
+        let custom_field_revision = self.as_ref().custom_field_revision().wrapping_add(1);
+        self.as_mut()
+            .set_custom_field_revision(custom_field_revision);
+        self.as_mut().bump_metadata_custom_field_revision();
         self.as_mut().set_variant_count(0);
         self.as_mut().set_alternate_title_count(0);
         self.as_mut().set_media_visible(false);
@@ -1367,6 +1621,13 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_tag_count(count_i32(tag_count));
                 let tag_revision = self.as_ref().tag_revision().wrapping_add(1);
                 self.as_mut().set_tag_revision(tag_revision);
+                let custom_field_count = details.custom_fields.len();
+                self.as_mut().rust_mut().current_custom_fields = details.custom_fields;
+                self.as_mut()
+                    .set_custom_field_count(count_i32(custom_field_count));
+                let custom_field_revision = self.as_ref().custom_field_revision().wrapping_add(1);
+                self.as_mut()
+                    .set_custom_field_revision(custom_field_revision);
                 let has_override = !GameMetadataOverride::from_effective(
                     &details.canonical_metadata,
                     &details.effective_metadata,
@@ -3587,6 +3848,14 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_detail_revision(revision);
     }
 
+    fn bump_metadata_custom_field_revision(mut self: Pin<&mut Self>) {
+        let revision = self
+            .as_ref()
+            .metadata_custom_field_revision()
+            .wrapping_add(1);
+        self.as_mut().set_metadata_custom_field_revision(revision);
+    }
+
     pub fn bundle_title_at(&self, index: i32) -> QString {
         self.bundle(index)
             .map(|bundle| {
@@ -3977,16 +4246,24 @@ mod tests {
     #[test]
     fn metadata_save_copy_distinguishes_tags_from_metadata_resets() {
         assert_eq!(
-            metadata_save_messages(false, true, 2).0,
+            metadata_save_messages(false, true, 2, 0).0,
             "Saved 2 local tags without changing canonical metadata."
         );
         assert_eq!(
-            metadata_save_messages(true, true, 2).0,
+            metadata_save_messages(true, true, 2, 0).0,
             "Restored canonical catalog metadata and kept 2 local tags."
         );
         assert_eq!(
-            metadata_save_messages(false, false, 1).0,
-            "Saved local metadata and 1 tag without changing canonical identity."
+            metadata_save_messages(false, false, 1, 0).0,
+            "Saved local metadata, 1 local tag without changing canonical identity."
+        );
+        assert_eq!(
+            metadata_save_messages(false, true, 2, 2).0,
+            "Saved 2 local tags and 2 custom fields without changing canonical metadata."
+        );
+        assert_eq!(
+            metadata_save_messages(true, true, 0, 1).1,
+            "Canonical catalog metadata restored. Local custom fields were kept."
         );
     }
 }

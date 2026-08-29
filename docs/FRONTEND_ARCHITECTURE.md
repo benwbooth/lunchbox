@@ -366,20 +366,31 @@ the inputs to provider lookup, acquisition, artwork, launch history, and ROM
 identity; only presentation, search, sorting, smart title rules, details, and
 Couch Mode labels consume the effective overlay. Empty editable fields can be
 cleared explicitly, while saving values identical to the catalog removes those
-columns and restoring the catalog deletes the row. `--metadata-ui-probe
---state-database EMPTY_PATH --screenshot-output ABSOLUTE_PATH` first proves the
-custom title is absent, edits the exact Super Mario Bros. UUID through the real
-native dialog, persists it off-thread, refreshes the library, proves the custom
-title is searchable, and asserts that the canonical title is still unchanged.
+columns and restoring the catalog deletes the row. The native editor separates
+high-frequency presentation values, detailed catalog values, and ordered custom
+fields into focused tabs instead of one unbounded form. Custom fields are keyed
+to the same stable UUID, limited to 32 entries, preserve explicit order, require
+case-insensitively unique non-empty names, and expose both names and values to
+text search without entering provider matching or ROM identity.
+
+`--metadata-ui-probe --state-database EMPTY_PATH --screenshot-output
+ABSOLUTE_PATH` first proves the custom title is absent, edits the exact Super
+Mario Bros. UUID through the real native dialog, adds and reorders two custom
+fields, persists the complete profile off-thread, refreshes the library, proves
+both title and custom-field-value search, captures the editor, and asserts that
+the canonical title is still unchanged. A second process using
+`--metadata-restored-ui-probe` and the same state path must rediscover the exact
+title, field order, names, and values before it exits successfully.
 
 User tags are normalized, stable-UUID records in the same writable state
-database. A metadata-and-tags save is one transaction, so validation or storage
-failure cannot publish only half of an edit. Tag names collapse whitespace,
-deduplicate case-insensitively while preserving the chosen spelling, and are
-bounded to 32 tags per game and 50 characters per tag. Orphaned tag rows are
-removed after the last membership disappears. Search includes tag names; the
-Filters surface and details chips apply an exact tag filter; smart collections
-can use the same exact rule. `--tags-ui-probe --state-database EMPTY_PATH
+database. Metadata, tags, and custom fields validate before one transaction, so
+validation or storage failure cannot publish only part of an edit. Tag names
+collapse whitespace, deduplicate case-insensitively while preserving the chosen
+spelling, and are bounded to 32 tags per game and 50 characters per tag.
+Orphaned tag rows are removed after the last membership disappears. Search
+includes tag names; the Filters surface and details chips apply an exact tag
+filter; smart collections can use the same exact rule. `--tags-ui-probe
+--state-database EMPTY_PATH
 --screenshot-output ABSOLUTE_PATH` edits the exact Super Mario Bros. UUID through
 the real worker, proves the two durable tags entered the global index, applies
 one through the native filter, asserts a single result and the details chips,

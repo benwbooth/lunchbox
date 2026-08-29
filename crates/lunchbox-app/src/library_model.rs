@@ -480,8 +480,8 @@ use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
 use crate::settings::{
-    CouchModePreferences, GameMetadataOverride, LibraryPreferences, PlayActivity, SettingsStore,
-    SidebarPreferences, UserCollection, UserCollections, UserTag, UserTags,
+    CouchModePreferences, GameCustomField, GameMetadataOverride, LibraryPreferences, PlayActivity,
+    SettingsStore, SidebarPreferences, UserCollection, UserCollections, UserTag, UserTags,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -497,6 +497,7 @@ type CatalogLoadResult = Result<
         Result<Vec<PlayActivity>, String>,
         Result<HashMap<String, GameMetadataOverride>, String>,
         Result<UserTags, String>,
+        Result<HashMap<String, Vec<GameCustomField>>, String>,
     ),
     String,
 >;
@@ -669,6 +670,7 @@ pub struct LibraryModelRust {
     metadata_titles: Arc<HashMap<String, String>>,
     tags: Arc<Vec<UserTag>>,
     game_tags: Arc<HashMap<String, Vec<String>>>,
+    game_custom_fields: Arc<HashMap<String, Vec<String>>>,
     metadata_generation: u64,
     game_index_by_id: Arc<HashMap<String, usize>>,
     current_search: String,
@@ -812,6 +814,7 @@ impl Default for LibraryModelRust {
             metadata_titles: Arc::new(HashMap::new()),
             tags: Arc::new(Vec::new()),
             game_tags: Arc::new(HashMap::new()),
+            game_custom_fields: Arc::new(HashMap::new()),
             metadata_generation: 0,
             game_index_by_id: Arc::new(HashMap::new()),
             current_search: String::new(),
@@ -841,6 +844,21 @@ fn metadata_display_title<'a>(
         .get(&game.id)
         .map(String::as_str)
         .unwrap_or(&game.title)
+}
+
+fn custom_field_search_values(
+    fields: HashMap<String, Vec<GameCustomField>>,
+) -> HashMap<String, Vec<String>> {
+    fields
+        .into_iter()
+        .map(|(game_uid, fields)| {
+            let values = fields
+                .into_iter()
+                .flat_map(|field| [field.name, field.value])
+                .collect();
+            (game_uid, values)
+        })
+        .collect()
 }
 
 fn saturating_i32(value: usize) -> i32 {
@@ -967,13 +985,14 @@ impl qobject::LibraryModel {
                     .and_then(|store| {
                         let metadata = store.all_game_metadata_overrides()?;
                         let tags = store.all_user_tags()?;
+                        let custom_fields = store.all_game_custom_fields()?;
                         let titles = metadata
                             .into_iter()
                             .filter_map(|(game_uid, metadata)| {
                                 metadata.title.map(|title| (game_uid, title))
                             })
                             .collect::<HashMap<_, _>>();
-                        Ok((titles, tags))
+                        Ok((titles, tags, custom_field_search_values(custom_fields)))
                     })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -990,17 +1009,25 @@ impl qobject::LibraryModel {
     fn finish_metadata_refresh(
         mut self: Pin<&mut Self>,
         generation: u64,
-        result: Result<(HashMap<String, String>, UserTags), String>,
+        result: Result<
+            (
+                HashMap<String, String>,
+                UserTags,
+                HashMap<String, Vec<String>>,
+            ),
+            String,
+        >,
     ) {
         if generation != self.as_ref().rust().metadata_generation {
             return;
         }
         match result {
-            Ok((metadata_titles, tags)) => {
+            Ok((metadata_titles, tags, custom_fields)) => {
                 self.as_mut().begin_reset_model();
                 self.as_mut().rust_mut().metadata_titles = Arc::new(metadata_titles);
                 self.as_mut().rust_mut().game_tags = Arc::new(tags.game_tags);
                 self.as_mut().rust_mut().tags = Arc::new(tags.tags);
+                self.as_mut().rust_mut().game_custom_fields = Arc::new(custom_fields);
                 self.as_mut().rebuild_smart_collections();
                 self.as_mut().end_reset_model();
                 let tag_count = self.as_ref().rust().tags.len();
@@ -1163,6 +1190,7 @@ impl qobject::LibraryModel {
                             activity,
                             metadata,
                             tags,
+                            custom_fields,
                         ) = match SettingsStore::open_default() {
                             Ok(store) => (
                                 store
@@ -1181,10 +1209,14 @@ impl qobject::LibraryModel {
                                     .all_game_metadata_overrides()
                                     .map_err(|error| error.to_string()),
                                 store.all_user_tags().map_err(|error| error.to_string()),
+                                store
+                                    .all_game_custom_fields()
+                                    .map_err(|error| error.to_string()),
                             ),
                             Err(error) => {
                                 let error = error.to_string();
                                 (
+                                    Err(error.clone()),
                                     Err(error.clone()),
                                     Err(error.clone()),
                                     Err(error.clone()),
@@ -1217,6 +1249,7 @@ impl qobject::LibraryModel {
                             activity,
                             metadata,
                             tags,
+                            custom_fields,
                         )
                     })
                     .map_err(|error| error.to_string());
@@ -1248,6 +1281,7 @@ impl qobject::LibraryModel {
                 activity,
                 metadata,
                 tags,
+                custom_fields,
             )) => {
                 let preference_warning = match preferences {
                     Ok(preferences) => {
@@ -1385,6 +1419,10 @@ impl qobject::LibraryModel {
                     Ok(tags) => (tags.tags, tags.game_tags, None),
                     Err(error) => (Vec::new(), HashMap::new(), Some(error)),
                 };
+                let (game_custom_fields, custom_field_warning) = match custom_fields {
+                    Ok(fields) => (custom_field_search_values(fields), None),
+                    Err(error) => (HashMap::new(), Some(error)),
+                };
                 let recent_count = catalog
                     .games
                     .iter()
@@ -1392,11 +1430,13 @@ impl qobject::LibraryModel {
                     .count();
                 let metadata_titles = Arc::new(metadata_titles);
                 let game_tags = Arc::new(game_tags);
+                let game_custom_fields = Arc::new(game_custom_fields);
                 let indices = catalog::filter_indices(
                     &catalog,
                     &Filter {
                         display_titles: Arc::clone(&metadata_titles),
                         game_tags: Arc::clone(&game_tags),
+                        game_custom_fields: Arc::clone(&game_custom_fields),
                         ..Filter::default()
                     },
                 );
@@ -1430,6 +1470,7 @@ impl qobject::LibraryModel {
                     rust.metadata_titles = metadata_titles;
                     rust.tags = Arc::new(tags);
                     rust.game_tags = game_tags;
+                    rust.game_custom_fields = game_custom_fields;
                     rust.game_index_by_id = Arc::new(game_index_by_id);
                     rust.collections = Arc::new(collections);
                     rust.collection_order = Arc::new(collection_order);
@@ -1563,6 +1604,9 @@ impl qobject::LibraryModel {
                 if let Some(warning) = tag_warning {
                     status.push_str(&format!(" — tags unavailable: {warning}"));
                 }
+                if let Some(warning) = custom_field_warning {
+                    status.push_str(&format!(" — custom fields unavailable: {warning}"));
+                }
                 self.as_mut().set_status_message(qstring(status));
                 self.as_mut().start_media_load();
                 if self.as_ref().rust().reload_pending {
@@ -1619,6 +1663,7 @@ impl qobject::LibraryModel {
             recent_game_order: Arc::clone(&self.as_ref().rust().recent_game_order),
             display_titles: Arc::clone(&self.as_ref().rust().metadata_titles),
             game_tags: Arc::clone(&self.as_ref().rust().game_tags),
+            game_custom_fields: Arc::clone(&self.as_ref().rust().game_custom_fields),
         };
         self.as_mut().rust_mut().current_search = search.to_string();
         self.as_mut().set_current_platform(platform);

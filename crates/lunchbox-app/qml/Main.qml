@@ -161,7 +161,9 @@ ApplicationWindow {
                                              || couchAttractUiProbe
                                              || couchThemeUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
-    readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
+    readonly property bool metadataRestoreUiProbe: Qt.application.arguments.indexOf("--metadata-restored-ui-probe") >= 0
+    readonly property bool metadataUiProbe: metadataRestoreUiProbe
+                                            || Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
     readonly property bool tagsUiProbe: Qt.application.arguments.indexOf("--tags-ui-probe") >= 0
     readonly property bool mediaFetchUiProbe: Qt.application.arguments.indexOf("--media-fetch-probe") >= 0
     readonly property bool favoriteProbe: Qt.application.arguments.indexOf("--favorite-probe") >= 0
@@ -236,6 +238,7 @@ ApplicationWindow {
     property bool importProfileProbeStarted: false
     property bool importProfileBatchProbeStarted: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
+    readonly property string metadataProbeCustomSearch: "8BitDo Ultimate"
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -1258,9 +1261,12 @@ ApplicationWindow {
                                   "Nintendo Entertainment System", false, true)
                 }
                 else if (root.metadataUiProbe) {
-                    console.warn("LUNCHBOX_METADATA_UI_STAGE catalog-ready")
-                    root.metadataProbeStage = -1
-                    searchField.text = root.metadataProbeTitle
+                    console.warn("LUNCHBOX_METADATA_UI_STAGE catalog-ready restored="
+                                 + root.metadataRestoreUiProbe)
+                    root.metadataProbeStage = root.metadataRestoreUiProbe ? 10 : -1
+                    searchField.text = root.metadataRestoreUiProbe
+                                     ? root.metadataProbeCustomSearch
+                                     : root.metadataProbeTitle
                     library.apply_filter(searchField.text,
                                          "Nintendo Entertainment System", "")
                 }
@@ -1398,6 +1404,19 @@ ApplicationWindow {
                               "Super Mario Bros.",
                               "Nintendo Entertainment System", false, true)
             }
+            else if (root.metadataRestoreUiProbe && root.metadataProbeStage === 10
+                     && library.ready && !library.filtering) {
+                if (library.filtered_count !== 1) {
+                    console.error("LUNCHBOX_METADATA_RESTORE_UI_FAILED search results="
+                                  + library.filtered_count)
+                    Qt.exit(2)
+                    return
+                }
+                root.metadataProbeStage = 11
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.",
+                              "Nintendo Entertainment System", false, true)
+            }
             else if (root.couchModeUiProbe && library.ready && !library.filtering
                      && !root.couchModeActive) {
                 root.enterCouchMode()
@@ -1426,15 +1445,34 @@ ApplicationWindow {
                      && library.ready && !library.filtering) {
                 if (library.filtered_count !== 1
                         || gameDetails.title !== root.metadataProbeTitle
+                        || gameDetails.custom_field_count !== 2
                         || library.canonical_title_for_game(gameDetails.game_id)
                            !== "Super Mario Bros.") {
                     console.error("LUNCHBOX_METADATA_UI_FAILED overlay or canonical identity")
                     Qt.exit(2)
                     return
                 }
+                root.metadataProbeStage = 4
+                searchField.text = root.metadataProbeCustomSearch
+                library.apply_filter(searchField.text,
+                                     "Nintendo Entertainment System", "")
+            }
+            else if (root.metadataUiProbe && root.metadataProbeStage === 4
+                     && library.ready && !library.filtering) {
+                if (library.filtered_count !== 1
+                        || gameDetails.custom_field_name_at(0) !== "Cabinet"
+                        || gameDetails.custom_field_value_at(1)
+                           !== root.metadataProbeCustomSearch
+                        || library.canonical_title_for_game(gameDetails.game_id)
+                           !== "Super Mario Bros.") {
+                    console.error("LUNCHBOX_METADATA_UI_FAILED custom field search or identity")
+                    Qt.exit(2)
+                    return
+                }
                 console.warn("LUNCHBOX_METADATA_UI_READY title="
                              + gameDetails.title + " results="
-                             + library.filtered_count + " screenshot="
+                             + library.filtered_count + " fields="
+                             + gameDetails.custom_field_count + " screenshot="
                              + root.screenshotOutput)
                 Qt.quit()
             }
@@ -1583,6 +1621,9 @@ ApplicationWindow {
                 root.metadataProbeStage = 1
                 metadataEditorOpenTimer.restart()
             }
+            if (root.metadataRestoreUiProbe && root.metadataProbeStage === 11
+                    && !gameDetails.loading && gameDetails.game_id.length > 0)
+                metadataRestoreTimer.restart()
             if (root.activityHistoryUiProbe
                     && !root.activityHistoryProbeOpened
                     && !gameDetails.loading
@@ -1613,6 +1654,31 @@ ApplicationWindow {
         function onMetadata_openChanged() {
             if (!gameDetails.metadata_open && metadataDialog.visible)
                 metadataDialog.close()
+        }
+    }
+
+    Timer {
+        id: metadataRestoreTimer
+        interval: 50
+        repeat: false
+        onTriggered: {
+            if (!root.metadataRestoreUiProbe || root.metadataProbeStage !== 11)
+                return
+            if (gameDetails.title !== root.metadataProbeTitle
+                    || gameDetails.custom_field_count !== 2
+                    || gameDetails.custom_field_name_at(0) !== "Cabinet"
+                    || gameDetails.custom_field_value_at(1)
+                       !== root.metadataProbeCustomSearch
+                    || library.canonical_title_for_game(gameDetails.game_id)
+                       !== "Super Mario Bros.") {
+                console.error("LUNCHBOX_METADATA_RESTORE_UI_FAILED durable profile")
+                Qt.exit(2)
+                return
+            }
+            console.warn("LUNCHBOX_METADATA_RESTORE_UI_READY title="
+                         + gameDetails.title + " fields="
+                         + gameDetails.custom_field_count)
+            Qt.quit()
         }
     }
 
@@ -1684,9 +1750,14 @@ ApplicationWindow {
         interval: 50
         repeat: false
         onTriggered: {
+            console.warn("LUNCHBOX_METADATA_UI_STAGE opening-editor")
             gameDetails.open_metadata_editor()
-            if (gameDetails.metadata_open)
+            console.warn("LUNCHBOX_METADATA_UI_STAGE model-open="
+                         + gameDetails.metadata_open)
+            if (gameDetails.metadata_open) {
                 metadataDialog.open()
+                console.warn("LUNCHBOX_METADATA_UI_STAGE dialog-opened")
+            }
             gameDetails.metadata_title = root.metadataProbeTitle
             gameDetails.metadata_description =
                     "A local presentation override used to verify durable metadata editing while the canonical catalog identity remains untouched."
@@ -1694,6 +1765,18 @@ ApplicationWindow {
             gameDetails.metadata_rating = "5.0"
             gameDetails.metadata_notes =
                     "Configured for the living-room collection. Minerva matching still uses Super Mario Bros."
+            console.warn("LUNCHBOX_METADATA_UI_STAGE metadata-filled")
+            gameDetails.add_metadata_custom_field()
+            console.warn("LUNCHBOX_METADATA_UI_STAGE first-field-added")
+            gameDetails.update_metadata_custom_field(0, "Cabinet", "Living room CRT")
+            gameDetails.add_metadata_custom_field()
+            console.warn("LUNCHBOX_METADATA_UI_STAGE second-field-added")
+            gameDetails.update_metadata_custom_field(1, "Controller",
+                                                      root.metadataProbeCustomSearch)
+            gameDetails.move_metadata_custom_field(1, -1)
+            gameDetails.move_metadata_custom_field(0, 1)
+            metadataTabs.currentIndex = 2
+            console.warn("LUNCHBOX_METADATA_UI_STAGE custom-tab-selected")
             if (!gameDetails.metadata_open) {
                 console.error("LUNCHBOX_METADATA_UI_FAILED editor did not open")
                 Qt.exit(2)
@@ -5803,6 +5886,61 @@ ApplicationWindow {
                                 }
                                 Accessible.role: Accessible.Button
                                 Accessible.name: "Filter library by " + tagName
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        visible: gameDetails.custom_field_count > 0
+                        height: visible ? customFieldDetailsColumn.implicitHeight + 24 : 0
+                        radius: 10
+                        color: "#121a25"
+                        border.color: "#303c50"
+                        Column {
+                            id: customFieldDetailsColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 12
+                            spacing: 8
+                            Text {
+                                width: parent.width
+                                text: "CUSTOM FIELDS"
+                                color: root.accentCool
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.9
+                            }
+                            Repeater {
+                                model: gameDetails.custom_field_count
+                                delegate: Row {
+                                    required property int index
+                                    property int fieldsRevision: gameDetails.custom_field_revision
+                                    width: customFieldDetailsColumn.width
+                                    spacing: 10
+                                    Text {
+                                        width: Math.min(132, parent.width * 0.36)
+                                        text: {
+                                            parent.fieldsRevision
+                                            return gameDetails.custom_field_name_at(parent.index)
+                                        }
+                                        color: root.muted
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width - x
+                                        text: {
+                                            parent.fieldsRevision
+                                            return gameDetails.custom_field_value_at(parent.index)
+                                        }
+                                        color: root.ink
+                                        font.pixelSize: 10
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
                             }
                         }
                     }
@@ -16585,7 +16723,7 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 5
                 Text {
-                    text: "EDIT GAME METADATA"
+                    text: "EDIT GAME"
                     color: root.accent
                     font.pixelSize: 10
                     font.weight: Font.Bold
@@ -16626,86 +16764,139 @@ ApplicationWindow {
             }
         }
 
-        contentItem: ScrollView {
-            id: metadataScroll
-            clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        contentItem: ColumnLayout {
+            spacing: 0
 
-            ColumnLayout {
-                width: metadataScroll.availableWidth
-                spacing: 18
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 24
-                    Layout.rightMargin: 24
-                    Layout.topMargin: 22
-                    implicitHeight: metadataNotice.implicitHeight + 24
-                    radius: 10
-                    color: gameDetails.metadata_has_override ? "#25251e" : "#151d29"
-                    border.color: gameDetails.metadata_has_override ? "#765d32" : root.line
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        spacing: 10
-                        Rectangle {
-                            Layout.preferredWidth: 28
-                            Layout.preferredHeight: 28
-                            radius: 8
-                            color: gameDetails.metadata_has_override ? "#4a3821" : "#1b3040"
-                            Text {
-                                anchors.centerIn: parent
-                                text: gameDetails.metadata_has_override ? "✎" : "i"
-                                color: gameDetails.metadata_has_override ? root.accent : root.accentCool
-                                font.pixelSize: 13
-                                font.weight: Font.Bold
-                            }
-                        }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: 24
+                Layout.rightMargin: 24
+                Layout.topMargin: 18
+                Layout.bottomMargin: 14
+                implicitHeight: metadataNotice.implicitHeight + 24
+                radius: 10
+                color: gameDetails.metadata_has_override ? "#25251e" : "#151d29"
+                border.color: gameDetails.metadata_has_override ? "#765d32" : root.line
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 10
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 8
+                        color: gameDetails.metadata_has_override ? "#4a3821" : "#1b3040"
                         Text {
-                            id: metadataNotice
-                            Layout.fillWidth: true
-                            text: gameDetails.metadata_message
-                            color: "#c3cad6"
-                            font.pixelSize: 11
-                            wrapMode: Text.WordWrap
+                            anchors.centerIn: parent
+                            text: gameDetails.metadata_has_override ? "✎" : "i"
+                            color: gameDetails.metadata_has_override ? root.accent : root.accentCool
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
                         }
-                        BusyIndicator {
-                            Layout.preferredWidth: 22
-                            Layout.preferredHeight: 22
-                            running: gameDetails.metadata_busy
-                            visible: running
+                    }
+                    Text {
+                        id: metadataNotice
+                        Layout.fillWidth: true
+                        text: gameDetails.metadata_message
+                        color: "#c3cad6"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    BusyIndicator {
+                        Layout.preferredWidth: 22
+                        Layout.preferredHeight: 22
+                        running: gameDetails.metadata_busy
+                        visible: running
+                    }
+                }
+            }
+
+            TabBar {
+                id: metadataTabs
+                Layout.fillWidth: true
+                Layout.leftMargin: 24
+                Layout.rightMargin: 24
+                Layout.preferredHeight: 42
+                spacing: 6
+                enabled: !gameDetails.metadata_busy
+                background: Rectangle {
+                    color: "transparent"
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 1
+                        color: root.line
+                    }
+                }
+                Repeater {
+                    model: [
+                        { label: "Overview", count: "" },
+                        { label: "Details", count: "" },
+                        { label: "Custom fields", count: gameDetails.metadata_custom_field_count > 0
+                                                        ? gameDetails.metadata_custom_field_count.toString() : "" }
+                    ]
+                    TabButton {
+                        required property var modelData
+                        required property int index
+                        text: modelData.label + (modelData.count.length > 0
+                                                ? "  " + modelData.count : "")
+                        width: Math.max(150, implicitWidth)
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.checked ? root.ink : root.muted
+                            font.pixelSize: 11
+                            font.weight: parent.checked ? Font.Bold : Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 8
+                            color: parent.checked ? "#202a39" : parent.hovered ? "#171f2b" : "transparent"
+                            border.color: parent.checked ? "#3e4d63" : "transparent"
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: 2
+                                color: parent.parent.checked ? root.accent : "transparent"
+                            }
                         }
                     }
                 }
+            }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 24
-                    Layout.rightMargin: 24
-                    spacing: 20
-                    enabled: !gameDetails.metadata_busy
+            StackLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: metadataTabs.currentIndex
+                enabled: !gameDetails.metadata_busy
 
+                ScrollView {
+                    id: metadataOverviewScroll
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
                     ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 5
-                        Layout.alignment: Qt.AlignTop
-                        spacing: 14
-
+                        width: metadataOverviewScroll.availableWidth
+                        spacing: 15
                         MetadataField {
                             id: metadataTitleField
                             Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            Layout.rightMargin: 24
+                            Layout.topMargin: 20
                             label: "Display title"
                             value: gameDetails.metadata_title
                             placeholder: "Required"
                             onEdited: function(value) { gameDetails.metadata_title = value }
                         }
-
                         ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            Layout.rightMargin: 24
                             spacing: 5
                             Text {
-                                Layout.fillWidth: true
                                 text: "DESCRIPTION"
                                 color: root.muted
                                 font.pixelSize: 9
@@ -16715,7 +16906,7 @@ ApplicationWindow {
                             TextArea {
                                 id: metadataDescriptionField
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 188
+                                Layout.preferredHeight: 160
                                 text: gameDetails.metadata_description
                                 placeholderText: "Overview, story, or catalog description"
                                 color: root.ink
@@ -16731,90 +16922,94 @@ ApplicationWindow {
                                 }
                             }
                         }
-
-                        ColumnLayout {
+                        RowLayout {
                             Layout.fillWidth: true
-                            spacing: 5
-                            Text {
+                            Layout.leftMargin: 24
+                            Layout.rightMargin: 24
+                            spacing: 16
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                text: "PERSONAL NOTES"
-                                color: root.muted
-                                font.pixelSize: 9
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.8
+                                spacing: 5
+                                Text {
+                                    text: "PERSONAL NOTES"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.8
+                                }
+                                TextArea {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 105
+                                    text: gameDetails.metadata_notes
+                                    placeholderText: "Anything useful for this local collection"
+                                    color: root.ink
+                                    placeholderTextColor: "#637085"
+                                    selectByMouse: true
+                                    wrapMode: TextEdit.Wrap
+                                    onTextChanged: if (activeFocus)
+                                                       gameDetails.metadata_notes = text
+                                    background: Rectangle {
+                                        radius: 9
+                                        color: "#101721"
+                                        border.color: parent.activeFocus ? root.accent : root.line
+                                    }
+                                }
                             }
-                            TextArea {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 116
-                                text: gameDetails.metadata_notes
-                                placeholderText: "Anything useful for this local collection"
-                                color: root.ink
-                                placeholderTextColor: "#637085"
-                                selectByMouse: true
-                                wrapMode: TextEdit.Wrap
-                                onTextChanged: if (activeFocus)
-                                                   gameDetails.metadata_notes = text
-                                background: Rectangle {
-                                    radius: 9
-                                    color: "#101721"
-                                    border.color: parent.activeFocus ? root.accent : root.line
+                                Layout.alignment: Qt.AlignTop
+                                spacing: 5
+                                Text {
+                                    text: "TAGS"
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.8
+                                }
+                                TextField {
+                                    id: metadataTagsField
+                                    Layout.fillWidth: true
+                                    text: gameDetails.metadata_tags
+                                    maximumLength: 1700
+                                    placeholderText: "Family, Couch Co-op, Backlog"
+                                    color: root.ink
+                                    placeholderTextColor: "#637085"
+                                    selectByMouse: true
+                                    onTextEdited: gameDetails.metadata_tags = text
+                                    background: Rectangle {
+                                        implicitHeight: 40
+                                        radius: 9
+                                        color: "#101721"
+                                        border.color: parent.activeFocus ? root.accent : root.line
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Comma-separated · searchable · usable in smart collections"
+                                    color: "#6f7d91"
+                                    font.pixelSize: 9
+                                    wrapMode: Text.WordWrap
                                 }
                             }
                         }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 5
-                            Text {
-                                Layout.fillWidth: true
-                                text: "TAGS"
-                                color: root.muted
-                                font.pixelSize: 9
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.8
-                            }
-                            TextField {
-                                id: metadataTagsField
-                                Layout.fillWidth: true
-                                text: gameDetails.metadata_tags
-                                maximumLength: 1700
-                                placeholderText: "Family, Couch Co-op, Backlog"
-                                color: root.ink
-                                placeholderTextColor: "#637085"
-                                selectByMouse: true
-                                onTextEdited: gameDetails.metadata_tags = text
-                                background: Rectangle {
-                                    radius: 9
-                                    color: "#101721"
-                                    border.color: parent.activeFocus ? root.accent : root.line
-                                }
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Comma-separated · up to 32 tags · searchable and available to smart collections"
-                                color: "#6f7d91"
-                                font.pixelSize: 9
-                                wrapMode: Text.WordWrap
-                            }
-                        }
+                        Item { Layout.fillWidth: true; Layout.preferredHeight: 12 }
                     }
+                }
 
-                    Rectangle {
-                        Layout.preferredWidth: 1
-                        Layout.fillHeight: true
-                        color: root.line
-                    }
-
+                ScrollView {
+                    id: metadataDetailsScroll
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
                     GridLayout {
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 4
-                        Layout.alignment: Qt.AlignTop
+                        width: metadataDetailsScroll.availableWidth
                         columns: 2
-                        columnSpacing: 12
+                        columnSpacing: 16
                         rowSpacing: 14
-
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            Layout.topMargin: 20
                             label: "Release date"
                             value: gameDetails.metadata_release_date
                             placeholder: "YYYY-MM-DD"
@@ -16822,6 +17017,8 @@ ApplicationWindow {
                         }
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.rightMargin: 24
+                            Layout.topMargin: 20
                             label: "Rating"
                             value: gameDetails.metadata_rating
                             placeholder: "0 to 5"
@@ -16830,6 +17027,7 @@ ApplicationWindow {
                         }
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.leftMargin: 24
                             label: "Developer"
                             value: gameDetails.metadata_developer
                             placeholder: "Studio or creator"
@@ -16837,6 +17035,7 @@ ApplicationWindow {
                         }
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.rightMargin: 24
                             label: "Publisher"
                             value: gameDetails.metadata_publisher
                             placeholder: "Publisher"
@@ -16844,6 +17043,7 @@ ApplicationWindow {
                         }
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.leftMargin: 24
                             label: "Genre"
                             value: gameDetails.metadata_genre
                             placeholder: "Action, Adventure…"
@@ -16851,6 +17051,7 @@ ApplicationWindow {
                         }
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.rightMargin: 24
                             label: "Players"
                             value: gameDetails.metadata_players
                             placeholder: "1-4"
@@ -16858,6 +17059,7 @@ ApplicationWindow {
                         }
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.leftMargin: 24
                             label: "Age rating"
                             value: gameDetails.metadata_esrb
                             placeholder: "E, E10+, T…"
@@ -16865,25 +17067,27 @@ ApplicationWindow {
                         }
                         MetadataField {
                             Layout.fillWidth: true
+                            Layout.rightMargin: 24
                             label: "Release type"
                             value: gameDetails.metadata_release_type
                             placeholder: "Retail, Homebrew…"
                             onEdited: function(value) { gameDetails.metadata_release_type = value }
                         }
-
                         Rectangle {
                             Layout.columnSpan: 2
                             Layout.fillWidth: true
-                            Layout.topMargin: 4
-                            implicitHeight: identityColumn.implicitHeight + 24
-                            radius: 10
+                            Layout.leftMargin: 24
+                            Layout.rightMargin: 24
+                            Layout.topMargin: 5
+                            implicitHeight: identityColumn.implicitHeight + 28
+                            radius: 11
                             color: "#111923"
                             border.color: root.line
                             ColumnLayout {
                                 id: identityColumn
                                 anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 5
+                                anchors.margins: 14
+                                spacing: 6
                                 Text {
                                     text: "CANONICAL IDENTITY"
                                     color: root.accentCool
@@ -16895,7 +17099,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: library.canonical_title_for_game(gameDetails.game_id)
                                     color: root.ink
-                                    font.pixelSize: 12
+                                    font.pixelSize: 13
                                     font.weight: Font.DemiBold
                                     elide: Text.ElideRight
                                 }
@@ -16915,10 +17119,204 @@ ApplicationWindow {
                                 }
                             }
                         }
+                        Item { Layout.columnSpan: 2; Layout.fillWidth: true; Layout.preferredHeight: 12 }
                     }
                 }
 
-                Item { Layout.fillWidth: true; Layout.preferredHeight: 8 }
+                ScrollView {
+                    id: metadataCustomFieldsScroll
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                    ColumnLayout {
+                        width: metadataCustomFieldsScroll.availableWidth
+                        spacing: 12
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            Layout.rightMargin: 24
+                            Layout.topMargin: 20
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Text {
+                                    text: "COLLECTION-SPECIFIC DETAILS"
+                                    color: root.accentCool
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Add facts that do not belong in the shared catalog. Names and values are searchable."
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                            Button {
+                                text: "+ Add field"
+                                highlighted: gameDetails.metadata_custom_field_count === 0
+                                enabled: gameDetails.metadata_custom_field_count < 32
+                                         && !gameDetails.metadata_busy
+                                Accessible.name: "Add custom field"
+                                onClicked: gameDetails.add_metadata_custom_field()
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            Layout.rightMargin: 24
+                            Layout.preferredHeight: 116
+                            visible: gameDetails.metadata_custom_field_count === 0
+                            radius: 11
+                            color: "#111923"
+                            border.color: root.line
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 7
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "No custom fields yet"
+                                    color: root.ink
+                                    font.pixelSize: 14
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "Examples: Cabinet, Controller, Language patch, or Disc location"
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                }
+                            }
+                        }
+
+                        Repeater {
+                            model: gameDetails.metadata_custom_field_count
+                            delegate: Rectangle {
+                                id: customFieldEditorRow
+                                required property int index
+                                property int draftRevision: gameDetails.metadata_custom_field_revision
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 24
+                                Layout.rightMargin: 24
+                                implicitHeight: customFieldEditorLayout.implicitHeight + 20
+                                radius: 10
+                                color: "#121a25"
+                                border.color: "#303c50"
+                                function reloadDraft() {
+                                    customFieldName.text = gameDetails.metadata_custom_field_name_at(index)
+                                    customFieldValue.text = gameDetails.metadata_custom_field_value_at(index)
+                                }
+                                Component.onCompleted: reloadDraft()
+                                onDraftRevisionChanged: reloadDraft()
+                                RowLayout {
+                                    id: customFieldEditorLayout
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    spacing: 10
+                                    ColumnLayout {
+                                        Layout.preferredWidth: 235
+                                        spacing: 4
+                                        Text {
+                                            text: "FIELD NAME"
+                                            color: root.muted
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.7
+                                        }
+                                        TextField {
+                                            id: customFieldName
+                                            Layout.fillWidth: true
+                                            maximumLength: 80
+                                            placeholderText: "Cabinet"
+                                            selectByMouse: true
+                                            color: root.ink
+                                            placeholderTextColor: "#637085"
+                                            onTextEdited: gameDetails.update_metadata_custom_field(
+                                                              customFieldEditorRow.index,
+                                                              text, customFieldValue.text)
+                                            background: Rectangle {
+                                                implicitHeight: 38
+                                                radius: 8
+                                                color: "#0e151f"
+                                                border.color: parent.activeFocus ? root.accent : root.line
+                                            }
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 4
+                                        Text {
+                                            text: "VALUE"
+                                            color: root.muted
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.7
+                                        }
+                                        TextField {
+                                            id: customFieldValue
+                                            Layout.fillWidth: true
+                                            maximumLength: 4096
+                                            placeholderText: "Living room"
+                                            selectByMouse: true
+                                            color: root.ink
+                                            placeholderTextColor: "#637085"
+                                            onTextEdited: gameDetails.update_metadata_custom_field(
+                                                              customFieldEditorRow.index,
+                                                              customFieldName.text, text)
+                                            background: Rectangle {
+                                                implicitHeight: 38
+                                                radius: 8
+                                                color: "#0e151f"
+                                                border.color: parent.activeFocus ? root.accent : root.line
+                                            }
+                                        }
+                                    }
+                                    RoundButton {
+                                        text: "↑"
+                                        flat: true
+                                        enabled: customFieldEditorRow.index > 0
+                                        Accessible.name: "Move custom field up"
+                                        onClicked: gameDetails.move_metadata_custom_field(
+                                                       customFieldEditorRow.index, -1)
+                                    }
+                                    RoundButton {
+                                        text: "↓"
+                                        flat: true
+                                        enabled: customFieldEditorRow.index + 1
+                                                 < gameDetails.metadata_custom_field_count
+                                        Accessible.name: "Move custom field down"
+                                        onClicked: gameDetails.move_metadata_custom_field(
+                                                       customFieldEditorRow.index, 1)
+                                    }
+                                    RoundButton {
+                                        text: "×"
+                                        flat: true
+                                        Accessible.name: "Remove custom field"
+                                        onClicked: gameDetails.remove_metadata_custom_field(
+                                                       customFieldEditorRow.index)
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Remove field"
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            Layout.rightMargin: 24
+                            visible: gameDetails.metadata_custom_field_count > 0
+                            text: gameDetails.metadata_custom_field_count
+                                  + " of 32 fields · names are unique per game · drag-free ordering works with keyboard and pointer"
+                            color: "#6f7d91"
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
+                        Item { Layout.fillWidth: true; Layout.preferredHeight: 12 }
+                    }
+                }
             }
         }
 
@@ -16946,7 +17344,7 @@ ApplicationWindow {
                     flat: true
                     onClicked: gameDetails.reset_metadata()
                     ToolTip.visible: hovered
-                    ToolTip.text: "Remove every local override for this game"
+                    ToolTip.text: "Restore catalog metadata while keeping tags and custom fields"
                 }
                 Item { Layout.fillWidth: true }
                 Button {
@@ -16955,7 +17353,7 @@ ApplicationWindow {
                     onClicked: gameDetails.close_metadata_editor()
                 }
                 Button {
-                    text: gameDetails.metadata_busy ? "Saving…" : "Save metadata"
+                    text: gameDetails.metadata_busy ? "Saving…" : "Save changes"
                     highlighted: true
                     enabled: !gameDetails.metadata_busy
                              && gameDetails.metadata_title.trim().length > 0

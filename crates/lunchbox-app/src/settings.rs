@@ -225,6 +225,12 @@ pub struct GameMetadata {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GameCustomField {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GameMetadataOverride {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -385,6 +391,39 @@ pub fn parse_game_tags(input: &str) -> Result<Vec<String>> {
     }
     tags.sort_by_cached_key(|name| normalized_tag_name(name));
     Ok(tags)
+}
+
+pub fn validate_game_custom_fields(fields: &[GameCustomField]) -> Result<Vec<GameCustomField>> {
+    if fields.len() > 32 {
+        bail!("a game can have at most 32 custom fields");
+    }
+    let mut validated = Vec::with_capacity(fields.len());
+    let mut normalized_names = HashSet::new();
+    for field in fields {
+        let name = field.name.split_whitespace().collect::<Vec<_>>().join(" ");
+        let value = field.value.trim().to_owned();
+        if name.is_empty() {
+            bail!("custom field names cannot be empty");
+        }
+        if name.chars().count() > 80 {
+            bail!("custom field names must be 80 characters or fewer");
+        }
+        if value.is_empty() {
+            bail!("custom field values cannot be empty");
+        }
+        if value.chars().count() > 4096 {
+            bail!("custom field values must be 4096 characters or fewer");
+        }
+        if name.contains('\0') || value.contains('\0') {
+            bail!("custom fields cannot contain null characters");
+        }
+        let normalized_name = normalized_custom_field_name(&name);
+        if !normalized_names.insert(normalized_name) {
+            bail!("custom field names must be unique for a game");
+        }
+        validated.push(GameCustomField { name, value });
+    }
+    Ok(validated)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1399,6 +1438,49 @@ impl SettingsStore {
         Ok(UserTags { tags, game_tags })
     }
 
+    pub fn game_custom_fields(&self, game_uid: &str) -> Result<Vec<GameCustomField>> {
+        validate_tag_game_uid(game_uid)?;
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT name, value
+             FROM game_custom_fields
+             WHERE game_uid=?1
+             ORDER BY position",
+        )?;
+        let rows = statement.query_map([game_uid], |row| {
+            Ok(GameCustomField {
+                name: row.get(0)?,
+                value: row.get(1)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn all_game_custom_fields(&self) -> Result<HashMap<String, Vec<GameCustomField>>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT game_uid, name, value
+             FROM game_custom_fields
+             ORDER BY game_uid, position",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                GameCustomField {
+                    name: row.get(1)?,
+                    value: row.get(2)?,
+                },
+            ))
+        })?;
+        let mut fields = HashMap::<String, Vec<GameCustomField>>::new();
+        for row in rows {
+            let (game_uid, field) = row?;
+            fields.entry(game_uid).or_default().push(field);
+        }
+        Ok(fields)
+    }
+
+    #[cfg(test)]
     pub fn save_game_metadata_and_tags(
         &self,
         game_uid: &str,
@@ -1408,9 +1490,53 @@ impl SettingsStore {
         metadata: &GameMetadataOverride,
         tag_input: &str,
     ) -> Result<Vec<String>> {
+        self.save_game_profile(
+            game_uid,
+            launchbox_db_id,
+            canonical_title,
+            platform,
+            metadata,
+            tag_input,
+            None,
+        )
+        .map(|(tags, _)| tags)
+    }
+
+    pub fn save_game_metadata_tags_and_custom_fields(
+        &self,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        canonical_title: &str,
+        platform: &str,
+        metadata: &GameMetadataOverride,
+        tag_input: &str,
+        custom_fields: &[GameCustomField],
+    ) -> Result<(Vec<String>, Vec<GameCustomField>)> {
+        self.save_game_profile(
+            game_uid,
+            launchbox_db_id,
+            canonical_title,
+            platform,
+            metadata,
+            tag_input,
+            Some(custom_fields),
+        )
+    }
+
+    fn save_game_profile(
+        &self,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        canonical_title: &str,
+        platform: &str,
+        metadata: &GameMetadataOverride,
+        tag_input: &str,
+        custom_fields: Option<&[GameCustomField]>,
+    ) -> Result<(Vec<String>, Vec<GameCustomField>)> {
         validate_metadata_identity(game_uid, launchbox_db_id, canonical_title, platform)?;
         metadata.validate()?;
         let tags = parse_game_tags(tag_input)?;
+        let custom_fields = custom_fields.map(validate_game_custom_fields).transpose()?;
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
         save_game_metadata_override_on(
@@ -1452,9 +1578,30 @@ impl SettingsStore {
              )",
             [],
         )?;
+        if let Some(custom_fields) = custom_fields.as_ref() {
+            transaction.execute(
+                "DELETE FROM game_custom_fields WHERE game_uid=?1",
+                [game_uid],
+            )?;
+            for (position, field) in custom_fields.iter().enumerate() {
+                transaction.execute(
+                    "INSERT INTO game_custom_fields (
+                         game_uid, position, name, normalized_name, value, updated_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        game_uid,
+                        i64::try_from(position).context("custom field position overflow")?,
+                        field.name,
+                        normalized_custom_field_name(&field.name),
+                        field.value,
+                        timestamp,
+                    ],
+                )?;
+            }
+        }
         transaction.commit()?;
         stored_names.sort_by_cached_key(|name| normalized_tag_name(name));
-        Ok(stored_names)
+        Ok((stored_names, custom_fields.unwrap_or_default()))
     }
 
     pub fn favorite_game_ids(&self) -> Result<HashSet<String>> {
@@ -3565,6 +3712,18 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS game_tags_game
              ON game_tags(game_uid, tag_id);
+         CREATE TABLE IF NOT EXISTS game_custom_fields (
+             game_uid TEXT NOT NULL CHECK (length(game_uid) BETWEEN 1 AND 512),
+             position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 31),
+             name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+             normalized_name TEXT NOT NULL CHECK (length(normalized_name) BETWEEN 1 AND 80),
+             value TEXT NOT NULL CHECK (length(value) BETWEEN 1 AND 4096),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+             PRIMARY KEY (game_uid, position),
+             UNIQUE (game_uid, normalized_name)
+         );
+         CREATE INDEX IF NOT EXISTS game_custom_fields_game
+             ON game_custom_fields(game_uid, position);
          CREATE TABLE IF NOT EXISTS favorite_games (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -4116,6 +4275,10 @@ fn normalize_tag_name(name: &str) -> Result<String> {
 }
 
 fn normalized_tag_name(name: &str) -> String {
+    name.to_lowercase()
+}
+
+fn normalized_custom_field_name(name: &str) -> String {
     name.to_lowercase()
 }
 
@@ -5405,6 +5568,148 @@ mod tests {
                     .map(|index| format!("tag {index}"))
                     .collect::<Vec<_>>()
                     .join(",")
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn custom_fields_preserve_order_identity_and_atomic_profile_updates() {
+        let (_directory, store) = store();
+        let metadata = GameMetadataOverride {
+            notes: Some("CRT setup".into()),
+            ..GameMetadataOverride::default()
+        };
+        let fields = vec![
+            GameCustomField {
+                name: " Cabinet ".into(),
+                value: " Living room ".into(),
+            },
+            GameCustomField {
+                name: "Controller".into(),
+                value: "8BitDo Ultimate".into(),
+            },
+        ];
+        let (tags, stored_fields) = store
+            .save_game_metadata_tags_and_custom_fields(
+                "stable-mario-uid",
+                140,
+                "Super Mario Bros.",
+                "Nintendo Entertainment System",
+                &metadata,
+                "Family, Platformer",
+                &fields,
+            )
+            .unwrap();
+        assert_eq!(tags, vec!["Family", "Platformer"]);
+        assert_eq!(
+            stored_fields,
+            vec![
+                GameCustomField {
+                    name: "Cabinet".into(),
+                    value: "Living room".into(),
+                },
+                GameCustomField {
+                    name: "Controller".into(),
+                    value: "8BitDo Ultimate".into(),
+                },
+            ]
+        );
+
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(
+            reopened.game_custom_fields("stable-mario-uid").unwrap(),
+            stored_fields
+        );
+        assert_eq!(
+            reopened.all_game_custom_fields().unwrap()["stable-mario-uid"],
+            stored_fields
+        );
+
+        reopened
+            .save_game_metadata_and_tags(
+                "stable-mario-uid",
+                140,
+                "Super Mario Bros.",
+                "Nintendo Entertainment System",
+                &metadata,
+                "Family",
+            )
+            .unwrap();
+        assert_eq!(
+            reopened.game_custom_fields("stable-mario-uid").unwrap(),
+            stored_fields,
+            "metadata-only callers must preserve custom fields"
+        );
+
+        let invalid = vec![
+            GameCustomField {
+                name: "Cabinet".into(),
+                value: "Office".into(),
+            },
+            GameCustomField {
+                name: "cabinet".into(),
+                value: "Den".into(),
+            },
+        ];
+        assert!(
+            reopened
+                .save_game_metadata_tags_and_custom_fields(
+                    "stable-mario-uid",
+                    140,
+                    "Super Mario Bros.",
+                    "Nintendo Entertainment System",
+                    &GameMetadataOverride::default(),
+                    "Changed",
+                    &invalid,
+                )
+                .is_err()
+        );
+        assert_eq!(
+            reopened.game_tags("stable-mario-uid").unwrap(),
+            vec!["Family"]
+        );
+        assert_eq!(
+            reopened.game_metadata_override("stable-mario-uid").unwrap(),
+            metadata
+        );
+        assert_eq!(
+            reopened.game_custom_fields("stable-mario-uid").unwrap(),
+            stored_fields
+        );
+    }
+
+    #[test]
+    fn custom_field_validation_is_bounded_and_case_insensitive() {
+        assert!(validate_game_custom_fields(&[]).unwrap().is_empty());
+        for invalid in [
+            vec![GameCustomField {
+                name: String::new(),
+                value: "value".into(),
+            }],
+            vec![GameCustomField {
+                name: "Name".into(),
+                value: String::new(),
+            }],
+            vec![GameCustomField {
+                name: "x".repeat(81),
+                value: "value".into(),
+            }],
+            vec![GameCustomField {
+                name: "Name".into(),
+                value: "x".repeat(4097),
+            }],
+        ] {
+            assert!(validate_game_custom_fields(&invalid).is_err());
+        }
+        assert!(
+            validate_game_custom_fields(
+                &(0..33)
+                    .map(|index| GameCustomField {
+                        name: format!("Field {index}"),
+                        value: "value".into(),
+                    })
+                    .collect::<Vec<_>>()
             )
             .is_err()
         );

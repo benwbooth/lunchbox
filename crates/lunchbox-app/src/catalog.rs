@@ -52,6 +52,7 @@ pub struct Filter {
     pub recent_game_order: Arc<std::collections::HashMap<String, i64>>,
     pub display_titles: Arc<std::collections::HashMap<String, String>>,
     pub game_tags: Arc<HashMap<String, Vec<String>>>,
+    pub game_custom_fields: Arc<HashMap<String, Vec<String>>>,
 }
 
 pub fn requested_database_path() -> Option<PathBuf> {
@@ -878,7 +879,15 @@ pub fn filter_indices(catalog: &Catalog, filter: &Filter) -> Vec<usize> {
                     .is_some_and(|title| title.to_lowercase().contains(&search))
                 || filter.game_tags.get(&game.id).is_some_and(|tags| {
                     tags.iter().any(|tag| tag.to_lowercase().contains(&search))
-                }))
+                })
+                || filter
+                    .game_custom_fields
+                    .get(&game.id)
+                    .is_some_and(|fields| {
+                        fields
+                            .iter()
+                            .any(|field| field.to_lowercase().contains(&search))
+                    }))
                 && (filter.platform.is_empty() || game.platform == filter.platform)
                 && (selected_tag.is_empty()
                     || filter.game_tags.get(&game.id).is_some_and(|tags| {
@@ -1116,6 +1125,30 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn custom_field_names_and_values_are_searchable_without_changing_identity() {
+        let catalog = fixture_catalog();
+        let game_custom_fields = Arc::new(HashMap::from([(
+            "metroid".to_owned(),
+            vec!["Cabinet".to_owned(), "Living room CRT".to_owned()],
+        )]));
+        for search in ["cabinet", "living room", "crt"] {
+            assert_eq!(
+                filter_indices(
+                    &catalog,
+                    &Filter {
+                        search: search.into(),
+                        game_custom_fields: Arc::clone(&game_custom_fields),
+                        ..Filter::default()
+                    }
+                ),
+                vec![0]
+            );
+        }
+        assert_eq!(catalog.games[0].id, "metroid");
+        assert_eq!(catalog.games[0].title, "Metroid");
     }
 
     #[test]
