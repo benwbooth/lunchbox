@@ -388,6 +388,7 @@ ApplicationWindow {
         collectionFavoriteRule.currentIndex = 0
         collectionCompletionRule.currentIndex = 0
         collectionContentRule.currentIndex = 0
+        collectionCooperativeRule.currentIndex = 0
         collectionEditorDialog.open()
         collectionNameField.forceActiveFocus()
     }
@@ -409,6 +410,8 @@ ApplicationWindow {
                              library.collection_rule_at(index, "completion"))
         selectCollectionRule(collectionContentRule,
                              library.collection_rule_at(index, "content"))
+        selectCollectionRule(collectionCooperativeRule,
+                             library.collection_rule_at(index, "cooperative"))
         collectionEditorDialog.open()
         collectionNameField.forceActiveFocus()
     }
@@ -453,7 +456,8 @@ ApplicationWindow {
                 collectionAvailabilityRule.currentValue,
                 collectionFavoriteRule.currentValue,
                 collectionCompletionRule.currentValue,
-                collectionContentRule.currentValue))
+                collectionContentRule.currentValue,
+                collectionCooperativeRule.currentValue))
             return
         if (editingCollectionId.length > 0) {
             if (smart)
@@ -1335,7 +1339,7 @@ ApplicationWindow {
                         root.finishSmartCollectionProbe()
                     } else {
                         library.set_smart_collection_rule_draft(
-                                    "", "", "", "downloadable", "any", "any", "any")
+                                    "", "", "", "downloadable", "any", "any", "any", "any")
                         library.create_smart_collection(
                                     "Ready from Minerva",
                                     "Games available to download and not installed locally")
@@ -1445,6 +1449,7 @@ ApplicationWindow {
                      && library.ready && !library.filtering) {
                 if (library.filtered_count !== 1
                         || gameDetails.title !== root.metadataProbeTitle
+                        || gameDetails.cooperative !== "yes"
                         || gameDetails.custom_field_count !== 2
                         || library.canonical_title_for_game(gameDetails.game_id)
                            !== "Super Mario Bros.") {
@@ -1616,6 +1621,12 @@ ApplicationWindow {
                 couchModeScreenshotTimer.restart()
             if (root.metadataUiProbe && root.metadataProbeStage === 0
                     && !gameDetails.loading && gameDetails.game_id.length > 0) {
+                if (gameDetails.cooperative !== "no") {
+                    console.error("LUNCHBOX_METADATA_UI_FAILED canonical co-op="
+                                  + gameDetails.cooperative)
+                    Qt.exit(2)
+                    return
+                }
                 console.warn("LUNCHBOX_METADATA_UI_STAGE details-ready title="
                              + gameDetails.title)
                 root.metadataProbeStage = 1
@@ -1665,6 +1676,7 @@ ApplicationWindow {
             if (!root.metadataRestoreUiProbe || root.metadataProbeStage !== 11)
                 return
             if (gameDetails.title !== root.metadataProbeTitle
+                    || gameDetails.cooperative !== "yes"
                     || gameDetails.custom_field_count !== 2
                     || gameDetails.custom_field_name_at(0) !== "Cabinet"
                     || gameDetails.custom_field_value_at(1)
@@ -1763,6 +1775,7 @@ ApplicationWindow {
                     "A local presentation override used to verify durable metadata editing while the canonical catalog identity remains untouched."
             gameDetails.metadata_genre = "Platformer · Local favorite"
             gameDetails.metadata_rating = "5.0"
+            gameDetails.metadata_cooperative = "yes"
             gameDetails.metadata_notes =
                     "Configured for the living-room collection. Minerva matching still uses Super Mario Bros."
             console.warn("LUNCHBOX_METADATA_UI_STAGE metadata-filled")
@@ -1775,8 +1788,8 @@ ApplicationWindow {
                                                       root.metadataProbeCustomSearch)
             gameDetails.move_metadata_custom_field(1, -1)
             gameDetails.move_metadata_custom_field(0, 1)
-            metadataTabs.currentIndex = 2
-            console.warn("LUNCHBOX_METADATA_UI_STAGE custom-tab-selected")
+            metadataTabs.currentIndex = 1
+            console.warn("LUNCHBOX_METADATA_UI_STAGE details-tab-selected")
             if (!gameDetails.metadata_open) {
                 console.error("LUNCHBOX_METADATA_UI_FAILED editor did not open")
                 Qt.exit(2)
@@ -6636,6 +6649,8 @@ ApplicationWindow {
                         Text { visible: gameDetails.genre.length > 0; text: gameDetails.genre; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.players.length > 0; text: "PLAYERS"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.players.length > 0; text: gameDetails.players; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { visible: gameDetails.cooperative !== "unknown"; text: "CO-OP"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        Text { visible: gameDetails.cooperative !== "unknown"; text: gameDetails.cooperative === "yes" ? "Supported" : "Not supported"; color: gameDetails.cooperative === "yes" ? root.accentCool : root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.rating.length > 0; text: "RATING"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
                         Text { visible: gameDetails.rating.length > 0; text: gameDetails.rating + " / 5"; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                         Text { visible: gameDetails.esrb.length > 0; text: "RATED"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
@@ -8129,6 +8144,7 @@ ApplicationWindow {
             || collectionFavoriteRule.currentValue !== "any"
             || collectionCompletionRule.currentValue !== "any"
             || collectionContentRule.currentValue !== "any"
+            || collectionCooperativeRule.currentValue !== "any"
         modal: true
         anchors.centerIn: parent
         width: Math.min(660, root.width - 48)
@@ -8331,6 +8347,19 @@ ApplicationWindow {
                                 { label: "Retail", value: "retail" },
                                 { label: "Non-retail", value: "non_retail" },
                                 { label: "Adult", value: "adult" }
+                            ]
+                            textRole: "label"
+                            valueRole: "value"
+                        }
+                        Text { text: "Cooperative play"; color: root.muted; font.pixelSize: 10 }
+                        ComboBox {
+                            id: collectionCooperativeRule
+                            Layout.fillWidth: true
+                            model: [
+                                { label: "Any co-op status", value: "any" },
+                                { label: "Co-op supported", value: "yes" },
+                                { label: "No co-op", value: "no" },
+                                { label: "Not specified", value: "unknown" }
                             ]
                             textRole: "label"
                             valueRole: "value"
@@ -17072,6 +17101,41 @@ ApplicationWindow {
                             value: gameDetails.metadata_release_type
                             placeholder: "Retail, Homebrew…"
                             onEdited: function(value) { gameDetails.metadata_release_type = value }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 24
+                            spacing: 5
+                            Text {
+                                text: "COOPERATIVE PLAY"
+                                color: root.muted
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                            }
+                            ComboBox {
+                                id: metadataCooperativeField
+                                Layout.fillWidth: true
+                                model: [
+                                    { label: "Not specified", value: "unknown" },
+                                    { label: "Co-op supported", value: "yes" },
+                                    { label: "No co-op", value: "no" }
+                                ]
+                                textRole: "label"
+                                valueRole: "value"
+                                currentIndex: Math.max(0, indexOfValue(gameDetails.metadata_cooperative))
+                                onActivated: gameDetails.metadata_cooperative = currentValue
+                                Accessible.name: "Cooperative play"
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.rightMargin: 24
+                            Layout.alignment: Qt.AlignBottom
+                            text: "Used by the details card and automatic collections. Choose Not specified when the catalog does not establish the feature."
+                            color: "#6f7d91"
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
                         }
                         Rectangle {
                             Layout.columnSpan: 2

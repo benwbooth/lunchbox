@@ -292,6 +292,7 @@ pub mod qobject {
             favorite: QString,
             completion_state: QString,
             content: QString,
+            cooperative: QString,
         ) -> bool;
 
         #[qinvokable]
@@ -668,6 +669,7 @@ pub struct LibraryModelRust {
     collection_order: Arc<HashMap<String, Arc<Vec<String>>>>,
     completion_states: Arc<HashMap<String, String>>,
     metadata_titles: Arc<HashMap<String, String>>,
+    metadata_cooperative: Arc<HashMap<String, String>>,
     tags: Arc<Vec<UserTag>>,
     game_tags: Arc<HashMap<String, Vec<String>>>,
     game_custom_fields: Arc<HashMap<String, Vec<String>>>,
@@ -812,6 +814,7 @@ impl Default for LibraryModelRust {
             collection_order: Arc::new(HashMap::new()),
             completion_states: Arc::new(HashMap::new()),
             metadata_titles: Arc::new(HashMap::new()),
+            metadata_cooperative: Arc::new(HashMap::new()),
             tags: Arc::new(Vec::new()),
             game_tags: Arc::new(HashMap::new()),
             game_custom_fields: Arc::new(HashMap::new()),
@@ -844,6 +847,16 @@ fn metadata_display_title<'a>(
         .get(&game.id)
         .map(String::as_str)
         .unwrap_or(&game.title)
+}
+
+fn effective_cooperative<'a>(
+    game: &'a catalog::Game,
+    metadata_cooperative: &'a HashMap<String, String>,
+) -> &'a str {
+    metadata_cooperative
+        .get(&game.id)
+        .map(String::as_str)
+        .unwrap_or(&game.cooperative)
 }
 
 fn custom_field_search_values(
@@ -895,6 +908,7 @@ fn smart_rules_from_fields(
     favorite: QString,
     completion_state: QString,
     content: QString,
+    cooperative: QString,
 ) -> anyhow::Result<SmartCollectionRules> {
     SmartCollectionRules {
         title_contains: title_contains.to_string(),
@@ -904,6 +918,7 @@ fn smart_rules_from_fields(
         favorite: favorite.to_string(),
         completion_state: completion_state.to_string(),
         content: content.to_string(),
+        cooperative: cooperative.to_string(),
     }
     .normalized()
 }
@@ -986,13 +1001,22 @@ impl qobject::LibraryModel {
                         let metadata = store.all_game_metadata_overrides()?;
                         let tags = store.all_user_tags()?;
                         let custom_fields = store.all_game_custom_fields()?;
-                        let titles = metadata
-                            .into_iter()
-                            .filter_map(|(game_uid, metadata)| {
-                                metadata.title.map(|title| (game_uid, title))
-                            })
-                            .collect::<HashMap<_, _>>();
-                        Ok((titles, tags, custom_field_search_values(custom_fields)))
+                        let mut titles = HashMap::new();
+                        let mut cooperative = HashMap::new();
+                        for (game_uid, metadata) in metadata {
+                            if let Some(title) = metadata.title {
+                                titles.insert(game_uid.clone(), title);
+                            }
+                            if let Some(value) = metadata.cooperative {
+                                cooperative.insert(game_uid, value);
+                            }
+                        }
+                        Ok((
+                            titles,
+                            cooperative,
+                            tags,
+                            custom_field_search_values(custom_fields),
+                        ))
                     })
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -1012,6 +1036,7 @@ impl qobject::LibraryModel {
         result: Result<
             (
                 HashMap<String, String>,
+                HashMap<String, String>,
                 UserTags,
                 HashMap<String, Vec<String>>,
             ),
@@ -1022,9 +1047,10 @@ impl qobject::LibraryModel {
             return;
         }
         match result {
-            Ok((metadata_titles, tags, custom_fields)) => {
+            Ok((metadata_titles, metadata_cooperative, tags, custom_fields)) => {
                 self.as_mut().begin_reset_model();
                 self.as_mut().rust_mut().metadata_titles = Arc::new(metadata_titles);
+                self.as_mut().rust_mut().metadata_cooperative = Arc::new(metadata_cooperative);
                 self.as_mut().rust_mut().game_tags = Arc::new(tags.game_tags);
                 self.as_mut().rust_mut().tags = Arc::new(tags.tags);
                 self.as_mut().rust_mut().game_custom_fields = Arc::new(custom_fields);
@@ -1403,17 +1429,21 @@ impl qobject::LibraryModel {
                     }
                     Err(error) => (HashMap::new(), HashMap::new(), Some(error)),
                 };
-                let (metadata_titles, metadata_warning) = match metadata {
-                    Ok(metadata) => (
-                        metadata
-                            .into_iter()
-                            .filter_map(|(game_uid, metadata)| {
-                                metadata.title.map(|title| (game_uid, title))
-                            })
-                            .collect::<HashMap<_, _>>(),
-                        None,
-                    ),
-                    Err(error) => (HashMap::new(), Some(error)),
+                let (metadata_titles, metadata_cooperative, metadata_warning) = match metadata {
+                    Ok(metadata) => {
+                        let mut titles = HashMap::new();
+                        let mut cooperative = HashMap::new();
+                        for (game_uid, metadata) in metadata {
+                            if let Some(title) = metadata.title {
+                                titles.insert(game_uid.clone(), title);
+                            }
+                            if let Some(value) = metadata.cooperative {
+                                cooperative.insert(game_uid, value);
+                            }
+                        }
+                        (titles, cooperative, None)
+                    }
+                    Err(error) => (HashMap::new(), HashMap::new(), Some(error)),
                 };
                 let (tags, game_tags, tag_warning) = match tags {
                     Ok(tags) => (tags.tags, tags.game_tags, None),
@@ -1429,6 +1459,7 @@ impl qobject::LibraryModel {
                     .filter(|game| recent_game_order.contains_key(&game.id))
                     .count();
                 let metadata_titles = Arc::new(metadata_titles);
+                let metadata_cooperative = Arc::new(metadata_cooperative);
                 let game_tags = Arc::new(game_tags);
                 let game_custom_fields = Arc::new(game_custom_fields);
                 let indices = catalog::filter_indices(
@@ -1468,6 +1499,7 @@ impl qobject::LibraryModel {
                     rust.recent_game_order = Arc::new(recent_game_order);
                     rust.completion_states = Arc::new(completion_states);
                     rust.metadata_titles = metadata_titles;
+                    rust.metadata_cooperative = metadata_cooperative;
                     rust.tags = Arc::new(tags);
                     rust.game_tags = game_tags;
                     rust.game_custom_fields = game_custom_fields;
@@ -2143,6 +2175,7 @@ impl qobject::LibraryModel {
             "favorite" => &rules.favorite,
             "completion" => &rules.completion_state,
             "content" => &rules.content,
+            "cooperative" => &rules.cooperative,
             _ => "",
         })
     }
@@ -2219,6 +2252,7 @@ impl qobject::LibraryModel {
         favorite: QString,
         completion_state: QString,
         content: QString,
+        cooperative: QString,
     ) -> bool {
         match smart_rules_from_fields(
             title_contains,
@@ -2228,6 +2262,7 @@ impl qobject::LibraryModel {
             favorite,
             completion_state,
             content,
+            cooperative,
         ) {
             Ok(rules) => {
                 self.as_mut().rust_mut().smart_collection_rule_draft = Some(rules);
@@ -2703,6 +2738,7 @@ impl qobject::LibraryModel {
         let favorites = Arc::clone(&self.as_ref().rust().favorite_game_ids);
         let completion_states = Arc::clone(&self.as_ref().rust().completion_states);
         let metadata_titles = Arc::clone(&self.as_ref().rust().metadata_titles);
+        let metadata_cooperative = Arc::clone(&self.as_ref().rust().metadata_cooperative);
         let game_tags = Arc::clone(&self.as_ref().rust().game_tags);
         let game_index_by_id = Arc::clone(&self.as_ref().rust().game_index_by_id);
         let mut collections = self.as_ref().rust().collections.as_ref().clone();
@@ -2726,6 +2762,7 @@ impl qobject::LibraryModel {
                                     &title_needle,
                                     metadata_display_title(game, &metadata_titles),
                                     game_tags.get(&game.id).map(Vec::as_slice).unwrap_or(&[]),
+                                    effective_cooperative(game, &metadata_cooperative),
                                 )
                             })
                             .map(|game| game.id.clone())

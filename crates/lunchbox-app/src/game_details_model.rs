@@ -31,6 +31,7 @@ pub mod qobject {
         #[qproperty(QString, rating)]
         #[qproperty(QString, esrb)]
         #[qproperty(QString, release_type)]
+        #[qproperty(QString, cooperative)]
         #[qproperty(QString, notes)]
         #[qproperty(bool, metadata_open)]
         #[qproperty(bool, metadata_busy)]
@@ -46,6 +47,7 @@ pub mod qobject {
         #[qproperty(QString, metadata_rating)]
         #[qproperty(QString, metadata_esrb)]
         #[qproperty(QString, metadata_release_type)]
+        #[qproperty(QString, metadata_cooperative)]
         #[qproperty(QString, metadata_notes)]
         #[qproperty(QString, metadata_tags)]
         #[qproperty(i32, metadata_revision)]
@@ -394,6 +396,7 @@ pub struct GameDetailsModelRust {
     rating: QString,
     esrb: QString,
     release_type: QString,
+    cooperative: QString,
     notes: QString,
     metadata_open: bool,
     metadata_busy: bool,
@@ -409,6 +412,7 @@ pub struct GameDetailsModelRust {
     metadata_rating: QString,
     metadata_esrb: QString,
     metadata_release_type: QString,
+    metadata_cooperative: QString,
     metadata_notes: QString,
     metadata_tags: QString,
     metadata_revision: i32,
@@ -540,6 +544,7 @@ impl Default for GameDetailsModelRust {
             rating: QString::default(),
             esrb: QString::default(),
             release_type: QString::default(),
+            cooperative: QString::from("unknown"),
             notes: QString::default(),
             metadata_open: false,
             metadata_busy: false,
@@ -557,6 +562,7 @@ impl Default for GameDetailsModelRust {
             metadata_rating: QString::default(),
             metadata_esrb: QString::default(),
             metadata_release_type: QString::default(),
+            metadata_cooperative: QString::from("unknown"),
             metadata_notes: QString::default(),
             metadata_tags: QString::default(),
             metadata_revision: 0,
@@ -1039,6 +1045,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_metadata_esrb(qstring(&metadata.esrb));
         self.as_mut()
             .set_metadata_release_type(qstring(&metadata.release_type));
+        self.as_mut()
+            .set_metadata_cooperative(qstring(&metadata.cooperative));
         self.as_mut().set_metadata_notes(qstring(&metadata.notes));
         let tags = self.as_ref().rust().current_tags.join(", ");
         self.as_mut().set_metadata_tags(qstring(tags));
@@ -1121,6 +1129,12 @@ impl qobject::GameDetailsModel {
             release_type: self
                 .as_ref()
                 .metadata_release_type()
+                .to_string()
+                .trim()
+                .to_owned(),
+            cooperative: self
+                .as_ref()
+                .metadata_cooperative()
                 .to_string()
                 .trim()
                 .to_owned(),
@@ -1266,6 +1280,8 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_esrb(qstring(&effective.esrb));
                 self.as_mut()
                     .set_release_type(qstring(&effective.release_type));
+                self.as_mut()
+                    .set_cooperative(qstring(&effective.cooperative));
                 self.as_mut().set_notes(qstring(&effective.notes));
                 self.as_mut()
                     .set_metadata_has_override(!metadata_is_canonical);
@@ -1485,6 +1501,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_rating(QString::default());
         self.as_mut().set_esrb(QString::default());
         self.as_mut().set_release_type(QString::default());
+        self.as_mut().set_cooperative(qstring("unknown"));
         self.as_mut().set_notes(QString::default());
         self.as_mut().set_metadata_tags(QString::default());
         self.as_mut().rust_mut().current_tags.clear();
@@ -1575,7 +1592,6 @@ impl qobject::GameDetailsModel {
         if generation != self.as_ref().rust().details_generation {
             return;
         }
-        self.as_mut().set_loading(false);
         match loaded {
             Ok(details) => {
                 let activity = details.activity.clone();
@@ -1615,6 +1631,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_esrb(qstring(&details.esrb));
                 self.as_mut()
                     .set_release_type(qstring(&details.release_type));
+                self.as_mut().set_cooperative(qstring(&details.cooperative));
                 self.as_mut().set_notes(qstring(&details.notes));
                 let tag_count = details.tags.len();
                 self.as_mut().rust_mut().current_tags = details.tags.clone();
@@ -1678,6 +1695,7 @@ impl qobject::GameDetailsModel {
                     format!("{bundle_count} Minerva source bundles available")
                 };
                 self.as_mut().set_message(qstring(message));
+                self.as_mut().set_loading(false);
                 if prepared || (local_file_count > 0 && !preparable) {
                     self.as_mut().refresh_emulators();
                 }
@@ -1688,6 +1706,7 @@ impl qobject::GameDetailsModel {
                 }
                 self.as_mut()
                     .set_message(qstring(format!("Could not load game details: {error}")));
+                self.as_mut().set_loading(false);
             }
         }
     }

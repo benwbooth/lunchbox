@@ -364,7 +364,10 @@ Game metadata edits are nullable local overlays keyed only by stable game UUID
 in the writable state database. The immutable catalog title and platform remain
 the inputs to provider lookup, acquisition, artwork, launch history, and ROM
 identity; only presentation, search, sorting, smart title rules, details, and
-Couch Mode labels consume the effective overlay. Empty editable fields can be
+Couch Mode labels consume the effective overlay. Cooperative play is retained
+as an exact yes/no/unspecified value from the discovery catalog, can be
+overridden locally, and participates in smart collection rules using the
+effective value. Empty editable fields can be
 cleared explicitly, while saving values identical to the catalog removes those
 columns and restoring the catalog deletes the row. The native editor separates
 high-frequency presentation values, detailed catalog values, and ordered custom
@@ -378,9 +381,10 @@ ABSOLUTE_PATH` first proves the custom title is absent, edits the exact Super
 Mario Bros. UUID through the real native dialog, adds and reorders two custom
 fields, persists the complete profile off-thread, refreshes the library, proves
 both title and custom-field-value search, captures the editor, and asserts that
+the catalog's exact no-co-op value becomes a durable local yes-co-op value while
 the canonical title is still unchanged. A second process using
 `--metadata-restored-ui-probe` and the same state path must rediscover the exact
-title, field order, names, and values before it exits successfully.
+title, co-op value, field order, names, and values before it exits successfully.
 
 User tags are normalized, stable-UUID records in the same writable state
 database. Metadata, tags, and custom fields validate before one transaction, so

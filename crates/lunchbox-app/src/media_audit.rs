@@ -272,6 +272,7 @@ mod tests {
             downloadable: !local,
             non_retail: false,
             adult: false,
+            cooperative: "unknown".into(),
             search_key: title.to_lowercase(),
         }
     }

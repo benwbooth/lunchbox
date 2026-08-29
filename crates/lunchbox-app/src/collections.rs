@@ -23,6 +23,7 @@ pub struct SmartCollectionRules {
     pub favorite: String,
     pub completion_state: String,
     pub content: String,
+    pub cooperative: String,
 }
 
 impl Default for SmartCollectionRules {
@@ -35,6 +36,7 @@ impl Default for SmartCollectionRules {
             favorite: "any".to_owned(),
             completion_state: "any".to_owned(),
             content: "any".to_owned(),
+            cooperative: "any".to_owned(),
         }
     }
 }
@@ -48,6 +50,7 @@ impl SmartCollectionRules {
         self.favorite = self.favorite.trim().to_owned();
         self.completion_state = self.completion_state.trim().to_owned();
         self.content = self.content.trim().to_owned();
+        self.cooperative = self.cooperative.trim().to_owned();
         self.validate()?;
         Ok(self)
     }
@@ -79,6 +82,9 @@ impl SmartCollectionRules {
             "any" | "retail" | "non_retail" | "adult"
         ) {
             bail!("unsupported smart collection content rule");
+        }
+        if !matches!(self.cooperative.as_str(), "any" | "yes" | "no" | "unknown") {
+            bail!("unsupported smart collection cooperative-play rule");
         }
         if self == &Self::default() {
             bail!("a smart collection needs at least one rule");
@@ -112,6 +118,7 @@ impl SmartCollectionRules {
             title_needle,
             &game.title,
             &[],
+            &game.cooperative,
         )
     }
 
@@ -123,6 +130,7 @@ impl SmartCollectionRules {
         title_needle: &str,
         display_title: &str,
         tags: &[String],
+        cooperative: &str,
     ) -> bool {
         let canonical_title = game
             .search_key
@@ -161,6 +169,7 @@ impl SmartCollectionRules {
             "adult" => game.adult,
             _ => true,
         };
+        let cooperative_matches = self.cooperative == "any" || self.cooperative == cooperative;
         title_matches
             && platform_matches
             && tag_matches
@@ -168,6 +177,7 @@ impl SmartCollectionRules {
             && favorite_matches
             && completion_matches
             && content_matches
+            && cooperative_matches
     }
 
     pub fn summary(&self) -> String {
@@ -199,6 +209,12 @@ impl SmartCollectionRules {
             "retail" => rules.push("retail".to_owned()),
             "non_retail" => rules.push("non-retail".to_owned()),
             "adult" => rules.push("adult".to_owned()),
+            _ => {}
+        }
+        match self.cooperative.as_str() {
+            "yes" => rules.push("co-op supported".to_owned()),
+            "no" => rules.push("no co-op".to_owned()),
+            "unknown" => rules.push("co-op unspecified".to_owned()),
             _ => {}
         }
         rules.join(" · ")
@@ -420,6 +436,7 @@ mod tests {
             downloadable: true,
             non_retail: false,
             adult: false,
+            cooperative: "unknown".to_owned(),
             search_key: String::new(),
         }
     }
@@ -457,6 +474,7 @@ mod tests {
             "",
             "Metroid",
             &["family".to_owned(), "Couch Co-op".to_owned()],
+            "unknown",
         ));
         assert!(!rules.matches_with_display_title(
             &metroid,
@@ -465,8 +483,40 @@ mod tests {
             "",
             "Metroid",
             &["Family Friendly".to_owned()],
+            "unknown",
         ));
         assert_eq!(rules.summary(), "tagged Family");
+    }
+
+    #[test]
+    fn smart_rules_match_effective_cooperative_metadata() {
+        let rules = SmartCollectionRules {
+            cooperative: "yes".to_owned(),
+            ..SmartCollectionRules::default()
+        }
+        .normalized()
+        .unwrap();
+        let game = game("mario-bros", "Mario Bros.", "Arcade");
+
+        assert!(rules.matches_with_display_title(
+            &game,
+            &HashSet::new(),
+            &HashMap::new(),
+            "",
+            "Mario Bros.",
+            &[],
+            "yes",
+        ));
+        assert!(!rules.matches_with_display_title(
+            &game,
+            &HashSet::new(),
+            &HashMap::new(),
+            "",
+            "Mario Bros.",
+            &[],
+            "no",
+        ));
+        assert_eq!(rules.summary(), "co-op supported");
     }
 
     #[test]

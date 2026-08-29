@@ -18,6 +18,7 @@ pub struct Game {
     pub downloadable: bool,
     pub non_retail: bool,
     pub adult: bool,
+    pub cooperative: String,
     pub(crate) search_key: String,
 }
 
@@ -254,6 +255,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
             downloadable: row.get(5)?,
             non_retail: false,
             adult: false,
+            cooperative: "unknown".to_owned(),
         })
     })?;
     let games = game_rows.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -338,9 +340,11 @@ fn load_discovery_catalog(
     let release_type = optional_game_column(&discovery, "release_type")?;
     let esrb = optional_game_column(&discovery, "esrb")?;
     let genre = optional_game_column(&discovery, "genre")?;
+    let cooperative = optional_game_column(&discovery, "cooperative")?;
     let query = format!(
         "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
-                coalesce(g.launchbox_db_id, 0), {release_type}, {esrb}, {genre}
+                coalesce(g.launchbox_db_id, 0), {release_type}, {esrb}, {genre},
+                {cooperative}
          FROM games g
          JOIN platforms p ON p.id = g.platform_id
          ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id"
@@ -356,10 +360,12 @@ fn load_discovery_catalog(
             row.get::<_, Option<String>>(5)?,
             row.get::<_, Option<String>>(6)?,
             row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<i64>>(8)?,
         ))
     })?;
     for row in rows {
-        let (id, title, platform, status, database_id, release_type, esrb, genre) = row?;
+        let (id, title, platform, status, database_id, release_type, esrb, genre, cooperative) =
+            row?;
         let local = (database_id > 0 && installed.database_ids.contains(&database_id))
             || installed.game_uids.contains(&id);
         let minerva_covered = minerva
@@ -378,6 +384,7 @@ fn load_discovery_catalog(
             downloadable: minerva_covered && !local,
             non_retail,
             adult,
+            cooperative: cooperative_status(cooperative).to_owned(),
         });
     }
     games.extend(installed.local_only_games.iter().cloned());
@@ -548,10 +555,19 @@ fn optional_game_column(connection: &Connection, column: &str) -> Result<&'stati
             "release_type" => "g.release_type",
             "esrb" => "g.esrb",
             "genre" => "g.genre",
+            "cooperative" => "g.cooperative",
             _ => unreachable!("optional game columns are fixed by the caller"),
         })
     } else {
         Ok("NULL")
+    }
+}
+
+fn cooperative_status(value: Option<i64>) -> &'static str {
+    match value {
+        Some(1) => "yes",
+        Some(0) => "no",
+        _ => "unknown",
     }
 }
 
@@ -672,6 +688,7 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
                 downloadable: false,
                 non_retail: false,
                 adult: false,
+                cooperative: "unknown".to_owned(),
             });
         }
     }
@@ -972,6 +989,7 @@ mod tests {
                     downloadable: false,
                     non_retail: false,
                     adult: false,
+                    cooperative: "no".into(),
                     search_key: "metroid\nnintendo entertainment system".into(),
                 },
                 Game {
@@ -984,6 +1002,7 @@ mod tests {
                     downloadable: true,
                     non_retail: false,
                     adult: false,
+                    cooperative: "unknown".into(),
                     search_key: "outrun\narcade".into(),
                 },
             ],

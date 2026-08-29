@@ -41,6 +41,7 @@ pub struct GameDetails {
     pub rating: String,
     pub esrb: String,
     pub release_type: String,
+    pub cooperative: String,
     pub notes: String,
     pub tags: Vec<String>,
     pub custom_fields: Vec<crate::settings::GameCustomField>,
@@ -170,6 +171,8 @@ pub fn load(
                         CASE WHEN g.rating IS NULL THEN '' ELSE printf('%.1f', g.rating) END,
                         coalesce(g.esrb, ''),
                         coalesce(g.release_type, ''), coalesce(g.notes, ''),
+                        CASE WHEN g.cooperative=1 THEN 'yes'
+                             WHEN g.cooperative=0 THEN 'no' ELSE 'unknown' END,
                         coalesce(g.launchbox_db_id, 0)
                  FROM games g WHERE g.id=?1",
                 [id],
@@ -185,7 +188,8 @@ pub fn load(
                         row.get::<_, String>(7)?,
                         row.get::<_, String>(8)?,
                         row.get::<_, String>(9)?,
-                        row.get::<_, i64>(10)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, i64>(11)?,
                     ))
                 },
             )
@@ -202,7 +206,8 @@ pub fn load(
             details.esrb = row.7;
             details.release_type = row.8;
             details.notes = row.9;
-            details.database_id = row.10;
+            details.cooperative = row.10;
+            details.database_id = row.11;
             details.alternate_titles = load_alternate_titles_from_connection(
                 &connection,
                 details.database_id,
@@ -252,6 +257,11 @@ fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
         rating: details.rating.clone(),
         esrb: details.esrb.clone(),
         release_type: details.release_type.clone(),
+        cooperative: if details.cooperative.is_empty() {
+            "unknown".to_owned()
+        } else {
+            details.cooperative.clone()
+        },
         notes: details.notes.clone(),
     };
     let settings = crate::settings::SettingsStore::open_default()?;
@@ -275,6 +285,7 @@ fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
     details.rating.clone_from(&effective.rating);
     details.esrb.clone_from(&effective.esrb);
     details.release_type.clone_from(&effective.release_type);
+    details.cooperative.clone_from(&effective.cooperative);
     details.notes.clone_from(&effective.notes);
     details.canonical_metadata = canonical;
     details.effective_metadata = effective;

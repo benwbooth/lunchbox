@@ -921,6 +921,13 @@ Item {
                 font.weight: Font.Medium
             }
             Text {
+                visible: view.details.cooperative === "yes"
+                text: "CO-OP"
+                color: view.accentCool
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+            }
+            Text {
                 visible: view.details.rating.length > 0
                 text: "★ " + view.details.rating
                 color: view.accent
@@ -2153,6 +2160,10 @@ Item {
                                         { label: "DEVELOPER", value: view.details.developer },
                                         { label: "PUBLISHER", value: view.details.publisher },
                                         { label: "PLAYERS", value: view.details.players },
+                                        { label: "CO-OP", value: view.details.cooperative === "yes"
+                                                               ? "Supported"
+                                                               : view.details.cooperative === "no"
+                                                                 ? "Not supported" : "" },
                                         { label: "RATING", value: view.details.rating.length > 0
                                                                   ? "★ " + view.details.rating : "" },
                                         { label: "AGE RATING", value: view.details.esrb },

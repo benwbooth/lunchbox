@@ -140,13 +140,16 @@ provider adapters remain planned rather than implied by this manual path. See
 
 The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age
-rating, release type, personal notes, per-game tags, and ordered custom fields.
+rating, release type, cooperative-play status, personal notes, per-game tags,
+and ordered custom fields.
 Edits are durable per stable game UUID in the writable profile database and
 immediately update desktop search, sorting, collections, details, and Couch
 Mode. Tags appear as clickable chips, compose with the other library filters,
 and can drive exact smart-collection rules. Custom-field names and values are
 searchable, visibly ordered in Game Details, and can be reordered without
-changing game identity. Metadata, tags, and custom fields publish in one SQLite
+changing game identity. Catalog co-op support is shown in desktop and Couch
+Mode details; an explicit supported/not-supported/unspecified local value can
+drive automatic collections. Metadata, tags, and custom fields publish in one SQLite
 transaction; tag spelling is normalized, field names are case-insensitively
 unique per game, and invalid edits publish nothing. The canonical title,
 platform, provider links, ROM identity, and file records remain read-only and

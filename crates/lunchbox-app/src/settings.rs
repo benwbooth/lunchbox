@@ -221,6 +221,7 @@ pub struct GameMetadata {
     pub rating: String,
     pub esrb: String,
     pub release_type: String,
+    pub cooperative: String,
     pub notes: String,
 }
 
@@ -242,6 +243,7 @@ pub struct GameMetadataOverride {
     pub rating: Option<String>,
     pub esrb: Option<String>,
     pub release_type: Option<String>,
+    pub cooperative: Option<String>,
     pub notes: Option<String>,
 }
 
@@ -258,6 +260,7 @@ impl GameMetadataOverride {
             rating: changed(&canonical.rating, &effective.rating),
             esrb: changed(&canonical.esrb, &effective.esrb),
             release_type: changed(&canonical.release_type, &effective.release_type),
+            cooperative: changed(&canonical.cooperative, &effective.cooperative),
             notes: changed(&canonical.notes, &effective.notes),
         }
     }
@@ -274,6 +277,7 @@ impl GameMetadataOverride {
             rating: inherited(&self.rating, &canonical.rating),
             esrb: inherited(&self.esrb, &canonical.esrb),
             release_type: inherited(&self.release_type, &canonical.release_type),
+            cooperative: inherited(&self.cooperative, &canonical.cooperative),
             notes: inherited(&self.notes, &canonical.notes),
         }
     }
@@ -289,7 +293,22 @@ impl GameMetadataOverride {
             && self.rating.is_none()
             && self.esrb.is_none()
             && self.release_type.is_none()
+            && self.cooperative.is_none()
             && self.notes.is_none()
+    }
+
+    fn has_text_fields(&self) -> bool {
+        self.title.is_some()
+            || self.description.is_some()
+            || self.release_date.is_some()
+            || self.developer.is_some()
+            || self.publisher.is_some()
+            || self.genre.is_some()
+            || self.players.is_some()
+            || self.rating.is_some()
+            || self.esrb.is_some()
+            || self.release_type.is_some()
+            || self.notes.is_some()
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -303,6 +322,13 @@ impl GameMetadataOverride {
         validate_optional_metadata("rating", &self.rating, 20)?;
         validate_optional_metadata("age rating", &self.esrb, 100)?;
         validate_optional_metadata("release type", &self.release_type, 500)?;
+        if self
+            .cooperative
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "yes" | "no" | "unknown"))
+        {
+            bail!("cooperative play must be yes, no, or unknown");
+        }
         validate_optional_metadata("notes", &self.notes, 100_000)?;
         if self
             .title
@@ -1348,8 +1374,8 @@ impl SettingsStore {
         if game_uid.trim().is_empty() {
             bail!("a stable game identity is required to load metadata overrides");
         }
-        Ok(self
-            .connection()?
+        let connection = self.connection()?;
+        let mut metadata = connection
             .query_row(
                 "SELECT title, description, release_date, developer, publisher,
                         genre, players, rating, esrb, release_type, notes
@@ -1358,7 +1384,15 @@ impl SettingsStore {
                 metadata_override_from_row,
             )
             .optional()?
-            .unwrap_or_default())
+            .unwrap_or_default();
+        metadata.cooperative = connection
+            .query_row(
+                "SELECT cooperative FROM game_cooperative_overrides WHERE game_uid=?1",
+                [game_uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(metadata)
     }
 
     pub fn all_game_metadata_overrides(&self) -> Result<HashMap<String, GameMetadataOverride>> {
@@ -1382,11 +1416,23 @@ impl SettingsStore {
                     rating: row.get(8)?,
                     esrb: row.get(9)?,
                     release_type: row.get(10)?,
+                    cooperative: None,
                     notes: row.get(11)?,
                 },
             ))
         })?;
-        Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
+        let mut metadata = rows.collect::<rusqlite::Result<HashMap<_, _>>>()?;
+        let mut cooperative_statement = connection.prepare(
+            "SELECT game_uid, cooperative FROM game_cooperative_overrides ORDER BY game_uid",
+        )?;
+        let cooperative_rows = cooperative_statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in cooperative_rows {
+            let (game_uid, cooperative) = row?;
+            metadata.entry(game_uid).or_default().cooperative = Some(cooperative);
+        }
+        Ok(metadata)
     }
 
     pub fn game_tags(&self, game_uid: &str) -> Result<Vec<String>> {
@@ -3697,6 +3743,16 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS game_metadata_overrides_updated
              ON game_metadata_overrides(updated_at DESC, game_uid);
+         CREATE TABLE IF NOT EXISTS game_cooperative_overrides (
+             game_uid TEXT PRIMARY KEY,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0 CHECK (launchbox_db_id >= 0),
+             canonical_title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             cooperative TEXT NOT NULL CHECK (cooperative IN ('yes', 'no', 'unknown')),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+         );
+         CREATE INDEX IF NOT EXISTS game_cooperative_overrides_updated
+             ON game_cooperative_overrides(updated_at DESC, game_uid);
          CREATE TABLE IF NOT EXISTS user_tags (
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 50),
@@ -4323,15 +4379,14 @@ fn save_game_metadata_override_on(
 ) -> Result<()> {
     validate_metadata_identity(game_uid, launchbox_db_id, canonical_title, platform)?;
     metadata.validate()?;
-    if metadata.is_empty() {
+    if !metadata.has_text_fields() {
         connection.execute(
             "DELETE FROM game_metadata_overrides WHERE game_uid=?1",
             [game_uid],
         )?;
-        return Ok(());
-    }
-    connection.execute(
-        "INSERT INTO game_metadata_overrides (
+    } else {
+        connection.execute(
+            "INSERT INTO game_metadata_overrides (
              game_uid, launchbox_db_id, canonical_title, platform,
              title, description, release_date, developer, publisher,
              genre, players, rating, esrb, release_type, notes, updated_at
@@ -4354,25 +4409,53 @@ fn save_game_metadata_override_on(
              release_type=excluded.release_type,
              notes=excluded.notes,
              updated_at=excluded.updated_at",
-        params![
-            game_uid,
-            launchbox_db_id,
-            canonical_title,
-            platform,
-            metadata.title,
-            metadata.description,
-            metadata.release_date,
-            metadata.developer,
-            metadata.publisher,
-            metadata.genre,
-            metadata.players,
-            metadata.rating,
-            metadata.esrb,
-            metadata.release_type,
-            metadata.notes,
-            unix_timestamp(),
-        ],
-    )?;
+            params![
+                game_uid,
+                launchbox_db_id,
+                canonical_title,
+                platform,
+                metadata.title,
+                metadata.description,
+                metadata.release_date,
+                metadata.developer,
+                metadata.publisher,
+                metadata.genre,
+                metadata.players,
+                metadata.rating,
+                metadata.esrb,
+                metadata.release_type,
+                metadata.notes,
+                unix_timestamp(),
+            ],
+        )?;
+    }
+    if let Some(cooperative) = metadata.cooperative.as_deref() {
+        connection.execute(
+            "INSERT INTO game_cooperative_overrides (
+                 game_uid, launchbox_db_id, canonical_title, platform,
+                 cooperative, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(game_uid) DO UPDATE SET
+                 launchbox_db_id=excluded.launchbox_db_id,
+                 canonical_title=excluded.canonical_title,
+                 platform=excluded.platform,
+                 cooperative=excluded.cooperative,
+                 updated_at=excluded.updated_at",
+            params![
+                game_uid,
+                launchbox_db_id,
+                canonical_title,
+                platform,
+                cooperative,
+                unix_timestamp(),
+            ],
+        )?;
+    } else {
+        connection.execute(
+            "DELETE FROM game_cooperative_overrides WHERE game_uid=?1",
+            [game_uid],
+        )?;
+    }
     Ok(())
 }
 
@@ -4543,6 +4626,7 @@ fn metadata_override_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameM
         rating: row.get(7)?,
         esrb: row.get(8)?,
         release_type: row.get(9)?,
+        cooperative: None,
         notes: row.get(10)?,
     })
 }
@@ -5430,6 +5514,100 @@ mod tests {
         assert_eq!(
             store.game_metadata_override("stable-metroid-uid").unwrap(),
             GameMetadataOverride::default()
+        );
+    }
+
+    #[test]
+    fn cooperative_override_is_tristate_without_a_placeholder_metadata_row() {
+        let (_directory, store) = store();
+        let canonical = GameMetadata {
+            title: "Super Mario Bros.".into(),
+            cooperative: "no".into(),
+            ..GameMetadata::default()
+        };
+        let effective = GameMetadata {
+            cooperative: "yes".into(),
+            ..canonical.clone()
+        };
+        let metadata = GameMetadataOverride::from_effective(&canonical, &effective);
+        assert_eq!(metadata.cooperative.as_deref(), Some("yes"));
+
+        store
+            .save_game_metadata_and_tags(
+                "stable-mario-uid",
+                140,
+                &canonical.title,
+                "Nintendo Entertainment System",
+                &metadata,
+                "",
+            )
+            .unwrap();
+        let connection = store.connection().unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM game_metadata_overrides WHERE game_uid=?1",
+                    ["stable-mario-uid"],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT cooperative FROM game_cooperative_overrides WHERE game_uid=?1",
+                    ["stable-mario-uid"],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            "yes"
+        );
+        drop(connection);
+
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(
+            reopened.game_metadata_override("stable-mario-uid").unwrap(),
+            metadata
+        );
+        assert_eq!(
+            reopened
+                .all_game_metadata_overrides()
+                .unwrap()
+                .get("stable-mario-uid"),
+            Some(&metadata)
+        );
+
+        reopened
+            .save_game_metadata_and_tags(
+                "stable-mario-uid",
+                140,
+                &canonical.title,
+                "Nintendo Entertainment System",
+                &GameMetadataOverride::default(),
+                "",
+            )
+            .unwrap();
+        assert_eq!(
+            reopened.game_metadata_override("stable-mario-uid").unwrap(),
+            GameMetadataOverride::default()
+        );
+
+        let invalid = GameMetadataOverride {
+            cooperative: Some("sometimes".into()),
+            ..GameMetadataOverride::default()
+        };
+        assert!(
+            reopened
+                .save_game_metadata_and_tags(
+                    "stable-mario-uid",
+                    140,
+                    &canonical.title,
+                    "Nintendo Entertainment System",
+                    &invalid,
+                    "",
+                )
+                .is_err()
         );
     }
 
