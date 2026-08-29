@@ -244,8 +244,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend the implemented native Qt Quick Couch Mode browse/play presentation,
   which already shares the Rust models and services rather than creating a
   second database or duplicated backend.
-- Theme packages, richer game wheels, richer release/media management inside
-  the implemented Details and Game Menu overlays, startup/shutdown/pause
+- Declarative theme packages are native: three built-in looks plus validated,
+  atomically installed user packages control the shared palette, optional
+  background image, hero contrast, and corner treatment without executable QML
+  or scripts. Exact selection survives restart and verified ownership receipts
+  guard updates and removal.
+- Richer game wheels, richer release/media management inside the implemented
+  Details and Game Menu overlays, startup/shutdown/pause
   screens, background music, sound packs, marquee monitor support, parental
   lock, and richer couch-safe settings.
 - Extend the implemented keyboard/direct-gamepad navigation into every future

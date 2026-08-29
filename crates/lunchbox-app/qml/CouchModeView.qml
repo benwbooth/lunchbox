@@ -32,10 +32,16 @@ Item {
     property bool selectedLocal: false
     property bool selectedDownloadable: false
     property int mediaRevision: library.media_revision
-    readonly property color ink: "#f8fafc"
-    readonly property color muted: "#a4adbb"
-    readonly property color accent: "#ffab52"
-    readonly property color accentCool: "#64d8c8"
+    readonly property color background: library.couch_theme_background
+    readonly property color panel: library.couch_theme_panel
+    readonly property color panelRaised: library.couch_theme_panel_raised
+    readonly property color ink: library.couch_theme_ink
+    readonly property color muted: library.couch_theme_muted
+    readonly property color accent: library.couch_theme_accent
+    readonly property color accentCool: library.couch_theme_accent_cool
+    readonly property color danger: library.couch_theme_danger
+    readonly property int cardRadius: library.couch_theme_card_radius
+    readonly property real heroScrimOpacity: library.couch_theme_hero_scrim_percent / 100.0
     readonly property int menuActionCount: 5
     readonly property var categories: [
         { label: "ALL GAMES", key: "" },
@@ -86,10 +92,18 @@ Item {
     focus: active
 
     function accentFor(value) {
-        const colors = ["#f4775f", "#5f9df7", "#9b7cf7", "#4bc29b", "#e39f45", "#e26fa0"]
+        const colors = [view.accent, view.accentCool,
+                        Qt.lighter(view.accent, 1.22),
+                        Qt.darker(view.accent, 1.28),
+                        Qt.lighter(view.accentCool, 1.16),
+                        Qt.darker(view.accentCool, 1.22)]
         if (!value || value.length === 0)
             return colors[0]
         return colors[value.charCodeAt(0) % colors.length]
+    }
+
+    function withAlpha(value, opacity) {
+        return Qt.rgba(value.r, value.g, value.b, opacity)
     }
 
     function moveShelf(delta) {
@@ -307,6 +321,12 @@ Item {
 
     function captureOverlay(path, callback) {
         couchOverlay.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
+    }
+
+    function captureTheme(path, callback) {
+        view.grabToImage(function(result) {
             callback(result.saveToFile(path))
         })
     }
@@ -621,7 +641,19 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: "#080b11"
+        color: view.background
+    }
+
+    Image {
+        id: themeBackgroundImage
+        anchors.fill: parent
+        source: view.library.couch_theme_background_image
+        asynchronous: true
+        cache: true
+        autoTransform: true
+        fillMode: Image.PreserveAspectCrop
+        opacity: status === Image.Ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 220 } }
     }
 
     Image {
@@ -642,10 +674,10 @@ Item {
         anchors.fill: parent
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: "#f2080b11" }
-            GradientStop { position: 0.43; color: "#d6080b11" }
-            GradientStop { position: 0.75; color: "#82080b11" }
-            GradientStop { position: 1.0; color: "#b8080b11" }
+            GradientStop { position: 0.0; color: view.withAlpha(view.background, Math.min(0.98, view.heroScrimOpacity + 0.28)) }
+            GradientStop { position: 0.43; color: view.withAlpha(view.background, Math.min(0.94, view.heroScrimOpacity + 0.17)) }
+            GradientStop { position: 0.75; color: view.withAlpha(view.background, view.heroScrimOpacity * 0.72) }
+            GradientStop { position: 1.0; color: view.withAlpha(view.background, Math.min(0.86, view.heroScrimOpacity + 0.08)) }
         }
     }
 
@@ -655,9 +687,9 @@ Item {
         anchors.bottom: parent.bottom
         height: parent.height * 0.43
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#00080b11" }
-            GradientStop { position: 0.35; color: "#b8080b11" }
-            GradientStop { position: 1.0; color: "#ff080b11" }
+            GradientStop { position: 0.0; color: view.withAlpha(view.background, 0) }
+            GradientStop { position: 0.35; color: view.withAlpha(view.background, 0.72) }
+            GradientStop { position: 1.0; color: view.background }
         }
     }
 
@@ -672,12 +704,12 @@ Item {
         Rectangle {
             width: 40
             height: 40
-            radius: 12
+            radius: Math.max(8, view.cardRadius - 4)
             color: view.accent
             Text {
                 anchors.centerIn: parent
                 text: "L"
-                color: "#171009"
+                color: view.background
                 font.pixelSize: 23
                 font.weight: Font.Black
             }
@@ -716,10 +748,12 @@ Item {
                 required property var modelData
                 width: categoryLabel.implicitWidth + 28
                 height: 36
-                radius: 10
+                radius: Math.max(8, view.cardRadius - 6)
                 color: view.categoryIndex === index
-                       ? (view.navigationZone === 0 ? "#e6ffab52" : "#67372f29")
-                       : categoryHover.hovered ? "#4a242a35" : "transparent"
+                       ? (view.navigationZone === 0 ? view.withAlpha(view.accent, 0.9)
+                                                    : view.withAlpha(view.panelRaised, 0.78))
+                       : categoryHover.hovered ? view.withAlpha(view.panelRaised, 0.58)
+                                               : "transparent"
                 border.color: view.categoryIndex === index
                               ? view.accent : "transparent"
                 border.width: 1
@@ -729,7 +763,7 @@ Item {
                     anchors.centerIn: parent
                     text: categoryButton.modelData.label
                     color: view.categoryIndex === categoryButton.index
-                           && view.navigationZone === 0 ? "#171009"
+                           && view.navigationZone === 0 ? view.background
                            : view.categoryIndex === categoryButton.index
                              ? view.ink : view.muted
                     font.pixelSize: 10
@@ -758,11 +792,12 @@ Item {
             visible: view.gamepad.ready
             width: visible ? gamepadStatus.implicitWidth + 26 : 0
             height: 40
-            radius: 12
-            color: "#2f161b24"
+            radius: Math.max(8, view.cardRadius - 4)
+            color: view.withAlpha(view.panel, 0.72)
             border.color: view.gamepad.connected_count > 0
                           ? view.accentCool
-                          : view.gamepad.available ? "#5b303846" : "#8b4651"
+                          : view.gamepad.available ? view.withAlpha(view.muted, 0.48)
+                                                   : view.danger
             Text {
                 id: gamepadStatus
                 anchors.centerIn: parent
@@ -781,9 +816,11 @@ Item {
         Rectangle {
             width: 40
             height: 40
-            radius: 12
-            color: exitHover.hovered ? "#4a242a35" : "#2f161b24"
-            border.color: exitHover.hovered ? view.accent : "#5b303846"
+            radius: Math.max(8, view.cardRadius - 4)
+            color: exitHover.hovered ? view.withAlpha(view.panelRaised, 0.72)
+                                     : view.withAlpha(view.panel, 0.72)
+            border.color: exitHover.hovered ? view.accent
+                                            : view.withAlpha(view.muted, 0.48)
             Text {
                 anchors.centerIn: parent
                 text: "×"
@@ -809,9 +846,9 @@ Item {
             Rectangle {
                 width: platformText.implicitWidth + 18
                 height: 26
-                radius: 8
-                color: "#b51c2430"
-                border.color: "#68515d6d"
+                radius: Math.max(6, view.cardRadius - 8)
+                color: view.withAlpha(view.panelRaised, 0.72)
+                border.color: view.withAlpha(view.muted, 0.48)
                 Text {
                     id: platformText
                     anchors.centerIn: parent
@@ -826,11 +863,13 @@ Item {
             Rectangle {
                 width: stateText.implicitWidth + 18
                 height: 26
-                radius: 8
-                color: view.selectedLocal ? "#c51a3c35"
-                       : view.selectedDownloadable ? "#c5423425" : "#b51c2430"
+                radius: Math.max(6, view.cardRadius - 8)
+                color: view.selectedLocal ? view.withAlpha(view.accentCool, 0.24)
+                       : view.selectedDownloadable ? view.withAlpha(view.accent, 0.24)
+                                                   : view.withAlpha(view.panelRaised, 0.72)
                 border.color: view.selectedLocal ? view.accentCool
-                              : view.selectedDownloadable ? view.accent : "#68515d6d"
+                              : view.selectedDownloadable ? view.accent
+                                                          : view.withAlpha(view.muted, 0.48)
                 Text {
                     id: stateText
                     anchors.centerIn: parent
@@ -897,7 +936,7 @@ Item {
                   : view.details.description.length > 0
                     ? view.details.description
                     : "Browse the catalog, play an installed game, or inspect its exact Minerva download options."
-            color: "#d4d9e1"
+            color: view.withAlpha(view.ink, 0.86)
             font.pixelSize: 14
             lineHeight: 1.34
             wrapMode: Text.WordWrap
@@ -918,12 +957,14 @@ Item {
                                             && view.actionIndex === index
                     width: index === 0 ? 190 : index === 1 ? 170 : 52
                     height: 50
-                    radius: 12
+                    radius: Math.max(8, view.cardRadius - 4)
                     color: index === 0
-                           ? (selected ? "#ffffbb70" : "#e6ffab52")
-                           : selected ? "#e63b4655" : "#b5222b37"
-                    border.color: selected ? "#ffffff" : index === 0
-                                  ? view.accent : "#687483"
+                           ? (selected ? Qt.lighter(view.accent, 1.12)
+                                       : view.withAlpha(view.accent, 0.9))
+                           : selected ? view.withAlpha(view.muted, 0.82)
+                                      : view.withAlpha(view.panelRaised, 0.76)
+                    border.color: selected ? view.ink : index === 0
+                                  ? view.accent : view.withAlpha(view.muted, 0.62)
                     border.width: selected ? 2 : 1
                     opacity: index === 2 && view.favoriteBusy ? 0.55 : 1
                     scale: selected ? 1.035 : actionHover.hovered ? 1.018 : 1
@@ -934,7 +975,7 @@ Item {
                         text: actionButton.index === 0 ? view.primaryAction
                               : actionButton.index === 1 ? "DESKTOP DETAILS"
                               : view.favoriteBusy ? "…" : view.favorite ? "★" : "☆"
-                        color: actionButton.index === 0 ? "#171009" : view.ink
+                        color: actionButton.index === 0 ? view.background : view.ink
                         font.pixelSize: actionButton.index === 2 ? 22 : 11
                         font.weight: Font.Bold
                         font.letterSpacing: actionButton.index === 2 ? 0 : 0.7
@@ -973,9 +1014,9 @@ Item {
         anchors.topMargin: 58
         width: Math.min(330, parent.width * 0.21)
         height: width * 1.38
-        radius: 18
+        radius: Math.min(32, view.cardRadius + 2)
         color: view.accentFor(view.selectedTitle)
-        border.color: "#8cffffff"
+        border.color: view.withAlpha(view.ink, 0.55)
         border.width: 1
         clip: true
         rotation: 1.5
@@ -1004,7 +1045,7 @@ Item {
             anchors.centerIn: parent
             text: view.selectedTitle.length > 0
                   ? view.selectedTitle.charAt(0).toUpperCase() : "L"
-            color: "#ddffffff"
+            color: view.withAlpha(view.ink, 0.87)
             font.pixelSize: 104
             font.weight: Font.Black
             visible: selectedCover.status !== Image.Ready
@@ -1100,11 +1141,11 @@ Item {
                     anchors.bottomMargin: gameTile.current ? 10 : 18
                     width: gameTile.current ? 158 : 128
                     height: gameTile.current ? 214 : 174
-                    radius: 12
+                    radius: Math.max(8, view.cardRadius - 4)
                     color: view.accentFor(gameTile.gameTitle)
                     border.color: gameTile.current
-                                  ? (view.navigationZone === 2 ? "#ffffff" : view.accent)
-                                  : "#646b7582"
+                                  ? (view.navigationZone === 2 ? view.ink : view.accent)
+                                  : view.withAlpha(view.muted, 0.4)
                     border.width: gameTile.current ? 3 : 1
                     clip: true
                     scale: gameTile.current ? 1 : shelfHover.hovered ? 1.03 : 1
@@ -1135,7 +1176,7 @@ Item {
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         height: 54
-                        color: "#d70a0d12"
+                        color: view.withAlpha(view.background, 0.84)
                     }
                     Text {
                         anchors.left: parent.left
@@ -1164,7 +1205,7 @@ Item {
                         anchors.centerIn: parent
                         text: gameTile.gameTitle.length > 0
                               ? gameTile.gameTitle.charAt(0).toUpperCase() : "?"
-                        color: "#d9ffffff"
+                        color: view.withAlpha(view.ink, 0.85)
                         font.pixelSize: 48
                         font.weight: Font.Black
                         visible: tileCover.status !== Image.Ready
@@ -1254,7 +1295,17 @@ Item {
         anchors.fill: parent
         z: 42
         visible: view.attractOpen
-        color: "#080b11"
+        color: view.background
+
+        Image {
+            anchors.fill: parent
+            source: view.library.couch_theme_background_image
+            asynchronous: true
+            cache: true
+            autoTransform: true
+            fillMode: Image.PreserveAspectCrop
+            opacity: status === Image.Ready ? 1 : 0
+        }
 
         Image {
             anchors.fill: parent
@@ -1273,10 +1324,10 @@ Item {
             anchors.fill: parent
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: "#f5080b11" }
-                GradientStop { position: 0.46; color: "#b8080b11" }
-                GradientStop { position: 0.78; color: "#52080b11" }
-                GradientStop { position: 1; color: "#a8080b11" }
+                GradientStop { position: 0; color: view.withAlpha(view.background, Math.min(0.99, view.heroScrimOpacity + 0.3)) }
+                GradientStop { position: 0.46; color: view.withAlpha(view.background, Math.min(0.9, view.heroScrimOpacity + 0.1)) }
+                GradientStop { position: 0.78; color: view.withAlpha(view.background, view.heroScrimOpacity * 0.42) }
+                GradientStop { position: 1; color: view.withAlpha(view.background, Math.min(0.8, view.heroScrimOpacity + 0.04)) }
             }
         }
 
@@ -1286,9 +1337,9 @@ Item {
             anchors.bottom: parent.bottom
             height: parent.height * 0.58
             gradient: Gradient {
-                GradientStop { position: 0; color: "#00080b11" }
-                GradientStop { position: 0.34; color: "#b7080b11" }
-                GradientStop { position: 1; color: "#ff080b11" }
+                GradientStop { position: 0; color: view.withAlpha(view.background, 0) }
+                GradientStop { position: 0.34; color: view.withAlpha(view.background, 0.72) }
+                GradientStop { position: 1; color: view.background }
             }
         }
 
@@ -1302,12 +1353,12 @@ Item {
             Rectangle {
                 width: 42
                 height: 42
-                radius: 13
+                radius: Math.max(9, view.cardRadius - 3)
                 color: view.accent
                 Text {
                     anchors.centerIn: parent
                     text: "L"
-                    color: "#10141c"
+                    color: view.background
                     font.pixelSize: 21
                     font.weight: Font.Black
                 }
@@ -1339,9 +1390,9 @@ Item {
             anchors.rightMargin: 62
             width: attractModeLabel.implicitWidth + 30
             height: 34
-            radius: 11
-            color: "#9a121923"
-            border.color: "#68768494"
+            radius: Math.max(8, view.cardRadius - 5)
+            color: view.withAlpha(view.panel, 0.74)
+            border.color: view.withAlpha(view.muted, 0.52)
             Text {
                 id: attractModeLabel
                 anchors.centerIn: parent
@@ -1361,17 +1412,17 @@ Item {
             anchors.verticalCenterOffset: 30
             width: Math.min(360, parent.width * 0.22)
             height: width * 1.38
-            radius: 24
-            color: "#97000000"
+            radius: Math.min(32, view.cardRadius + 8)
+            color: view.withAlpha(view.background, 0.7)
             rotation: 2.5
 
             Rectangle {
                 id: attractCoverSurface
                 anchors.fill: parent
                 anchors.margins: 10
-                radius: 20
+                radius: Math.min(32, view.cardRadius + 4)
                 color: view.accentFor(view.selectedTitle)
-                border.color: "#8dffffff"
+                border.color: view.withAlpha(view.ink, 0.55)
                 clip: true
                 gradient: Gradient {
                     GradientStop {
@@ -1403,7 +1454,7 @@ Item {
                     visible: attractCoverImage.status !== Image.Ready
                     text: view.selectedTitle.length > 0
                           ? view.selectedTitle.charAt(0).toUpperCase() : "L"
-                    color: "#d9ffffff"
+                    color: view.withAlpha(view.ink, 0.85)
                     font.pixelSize: 92
                     font.weight: Font.Black
                 }
@@ -1449,7 +1500,7 @@ Item {
                 width: Math.min(parent.width, 850)
                 visible: view.details.description.length > 0
                 text: view.details.description
-                color: "#d2d8e1"
+                color: view.withAlpha(view.ink, 0.84)
                 font.pixelSize: 15
                 lineHeight: 1.28
                 wrapMode: Text.WordWrap
@@ -1461,11 +1512,13 @@ Item {
                 Rectangle {
                     width: attractStateLabel.implicitWidth + 22
                     height: 30
-                    radius: 10
-                    color: view.selectedLocal ? "#5130584f"
-                           : view.selectedDownloadable ? "#554b3d27" : "#4c28313d"
+                    radius: Math.max(8, view.cardRadius - 6)
+                    color: view.selectedLocal ? view.withAlpha(view.accentCool, 0.24)
+                           : view.selectedDownloadable ? view.withAlpha(view.accent, 0.24)
+                                                       : view.withAlpha(view.panelRaised, 0.76)
                     border.color: view.selectedLocal ? view.accentCool
-                                  : view.selectedDownloadable ? view.accent : "#657282"
+                                  : view.selectedDownloadable ? view.accent
+                                                              : view.withAlpha(view.muted, 0.58)
                     Text {
                         id: attractStateLabel
                         anchors.centerIn: parent
@@ -1485,8 +1538,8 @@ Item {
                     visible: view.favorite
                     width: attractFavoriteLabel.implicitWidth + 22
                     height: 30
-                    radius: 10
-                    color: "#554b3d27"
+                    radius: Math.max(8, view.cardRadius - 6)
+                    color: view.withAlpha(view.accent, 0.22)
                     border.color: view.accent
                     Text {
                         id: attractFavoriteLabel
@@ -1507,14 +1560,14 @@ Item {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             height: 78
-            color: "#cf0a0f16"
+            color: view.withAlpha(view.panel, 0.86)
 
             Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
                 height: 2
-                color: "#52606f7f"
+                color: view.withAlpha(view.muted, 0.5)
                 Rectangle {
                     width: parent.width * view.attractProgress
                     height: parent.height
@@ -1573,15 +1626,15 @@ Item {
         anchors.fill: parent
         z: 45
         visible: view.platformWheelOpen
-        color: "#ec070a0f"
+        color: view.withAlpha(view.background, 0.93)
 
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: "#f60a0e15" }
-                GradientStop { position: 0.55; color: "#e20a0e15" }
-                GradientStop { position: 1; color: "#c20a0e15" }
+                GradientStop { position: 0; color: view.withAlpha(view.background, 0.96) }
+                GradientStop { position: 0.55; color: view.withAlpha(view.panel, 0.89) }
+                GradientStop { position: 1; color: view.withAlpha(view.background, 0.76) }
             }
         }
 
@@ -1590,9 +1643,9 @@ Item {
             anchors.centerIn: parent
             width: Math.min(880, parent.width - 180)
             height: Math.min(860, parent.height - 120)
-            radius: 26
-            color: "#f7131923"
-            border.color: "#71808f9f"
+            radius: Math.min(32, view.cardRadius + 10)
+            color: view.withAlpha(view.panel, 0.97)
+            border.color: view.withAlpha(view.muted, 0.58)
             border.width: 1
             clip: true
 
@@ -1601,7 +1654,7 @@ Item {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 height: 118
-                color: "#d918202c"
+                color: view.withAlpha(view.panelRaised, 0.86)
 
                 Column {
                     anchors.left: parent.left
@@ -1632,8 +1685,11 @@ Item {
                     width: 44
                     height: 44
                     radius: 13
-                    color: platformCloseHover.hovered ? "#54313b49" : "#30232c38"
-                    border.color: platformCloseHover.hovered ? view.accent : "#596574"
+                    color: platformCloseHover.hovered
+                           ? view.withAlpha(view.panelRaised, 0.9)
+                           : view.withAlpha(view.panel, 0.72)
+                    border.color: platformCloseHover.hovered
+                                  ? view.accent : view.withAlpha(view.muted, 0.55)
                     Text {
                         anchors.centerIn: parent
                         text: "×"
@@ -1691,8 +1747,11 @@ Item {
                         anchors.leftMargin: platformRow.selected ? 0 : 16
                         anchors.rightMargin: platformRow.selected ? 0 : 16
                         radius: 16
-                        color: platformRow.selected ? "#e6333c49"
-                              : platformHover.hovered ? "#55303a47" : "transparent"
+                        color: platformRow.selected
+                               ? view.withAlpha(view.panelRaised, 0.9)
+                               : platformHover.hovered
+                                 ? view.withAlpha(view.panelRaised, 0.55)
+                                 : "transparent"
                         border.color: platformRow.selected ? view.accent : "transparent"
                         border.width: platformRow.selected ? 2 : 0
 
@@ -1704,12 +1763,12 @@ Item {
                             height: width
                             radius: 14
                             color: view.accentFor(platformRow.platformName)
-                            border.color: "#82ffffff"
+                            border.color: view.withAlpha(view.ink, 0.51)
                             Text {
                                 anchors.centerIn: parent
                                 text: platformRow.platformName.length > 0
                                       ? platformRow.platformName.charAt(0).toUpperCase() : "?"
-                                color: "#f8ffffff"
+                                color: view.withAlpha(view.ink, 0.97)
                                 font.pixelSize: platformRow.selected ? 23 : 19
                                 font.weight: Font.Black
                             }
@@ -1777,7 +1836,7 @@ Item {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: 72
-                color: "#dc101620"
+                color: view.withAlpha(view.background, 0.86)
 
                 Row {
                     anchors.centerIn: parent
@@ -1818,16 +1877,16 @@ Item {
         anchors.fill: parent
         z: 50
         visible: view.overlayOpen
-        color: "#e8070a0f"
+        color: view.withAlpha(view.background, 0.91)
 
         Rectangle {
             id: overlayPanel
             anchors.centerIn: parent
             width: Math.min(1180, parent.width - 120)
             height: Math.min(790, parent.height - 110)
-            radius: 24
-            color: "#f5121822"
-            border.color: "#6b778595"
+            radius: Math.min(32, view.cardRadius + 8)
+            color: view.withAlpha(view.panel, 0.96)
+            border.color: view.withAlpha(view.muted, 0.56)
             border.width: 1
             clip: true
 
@@ -1836,7 +1895,7 @@ Item {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: 350
-                color: "#b90c1119"
+                color: view.withAlpha(view.background, 0.72)
 
                 Rectangle {
                     id: overlayCover
@@ -1845,9 +1904,9 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 220
                     height: 304
-                    radius: 16
+                    radius: view.cardRadius
                     color: view.accentFor(view.selectedTitle)
-                    border.color: "#8cffffff"
+                    border.color: view.withAlpha(view.ink, 0.55)
                     clip: true
                     gradient: Gradient {
                         GradientStop {
@@ -1878,7 +1937,7 @@ Item {
                         visible: overlayCoverImage.status !== Image.Ready
                         text: view.selectedTitle.length > 0
                               ? view.selectedTitle.charAt(0).toUpperCase() : "L"
-                        color: "#ddffffff"
+                        color: view.withAlpha(view.ink, 0.87)
                         font.pixelSize: 82
                         font.weight: Font.Black
                     }
@@ -1914,11 +1973,13 @@ Item {
                     Rectangle {
                         width: overlayStateText.implicitWidth + 20
                         height: 28
-                        radius: 9
-                        color: view.selectedLocal ? "#351f554d"
-                               : view.selectedDownloadable ? "#3f583a22" : "#38232c38"
+                        radius: Math.max(7, view.cardRadius - 7)
+                        color: view.selectedLocal ? view.withAlpha(view.accentCool, 0.22)
+                               : view.selectedDownloadable ? view.withAlpha(view.accent, 0.22)
+                                                           : view.withAlpha(view.panelRaised, 0.66)
                         border.color: view.selectedLocal ? view.accentCool
-                                      : view.selectedDownloadable ? view.accent : "#596574"
+                                      : view.selectedDownloadable ? view.accent
+                                                                  : view.withAlpha(view.muted, 0.54)
                         Text {
                             id: overlayStateText
                             anchors.centerIn: parent
@@ -1979,9 +2040,12 @@ Item {
                         id: overlayClose
                         width: 42
                         height: 42
-                        radius: 12
-                        color: overlayCloseHover.hovered ? "#54313b49" : "#2e222b37"
-                        border.color: overlayCloseHover.hovered ? view.accent : "#596574"
+                        radius: Math.max(8, view.cardRadius - 4)
+                        color: overlayCloseHover.hovered
+                               ? view.withAlpha(view.panelRaised, 0.9)
+                               : view.withAlpha(view.panelRaised, 0.62)
+                        border.color: overlayCloseHover.hovered ? view.accent
+                                                               : view.withAlpha(view.muted, 0.54)
                         Text {
                             anchors.centerIn: parent
                             text: "×"
@@ -2011,9 +2075,11 @@ Item {
                                                     === (index === 0 ? "details" : "menu")
                             width: tabText.implicitWidth + 28
                             height: 38
-                            radius: 11
-                            color: selected ? "#3d4b362b" : "#29222a34"
-                            border.color: selected ? view.accent : "#4c596675"
+                            radius: Math.max(8, view.cardRadius - 5)
+                            color: selected ? view.withAlpha(view.accent, 0.18)
+                                            : view.withAlpha(view.panelRaised, 0.58)
+                            border.color: selected ? view.accent
+                                                   : view.withAlpha(view.muted, 0.44)
                             Text {
                                 id: tabText
                                 anchors.centerIn: parent
@@ -2068,7 +2134,7 @@ Item {
                                       : view.details.description.length > 0
                                         ? view.details.description
                                         : "No description is available for this exact release."
-                                color: "#dde2e9"
+                                color: view.withAlpha(view.ink, 0.88)
                                 font.pixelSize: 15
                                 lineHeight: 1.35
                                 wrapMode: Text.WordWrap
@@ -2098,9 +2164,9 @@ Item {
                                         visible: String(modelData.value).length > 0
                                         width: (detailsContent.width - 12) / 2
                                         height: visible ? 66 : 0
-                                        radius: 12
-                                        color: "#66202935"
-                                        border.color: "#48546370"
+                                        radius: Math.max(8, view.cardRadius - 4)
+                                        color: view.withAlpha(view.panelRaised, 0.4)
+                                        border.color: view.withAlpha(view.muted, 0.35)
                                         Column {
                                             anchors.fill: parent
                                             anchors.margins: 12
@@ -2128,9 +2194,9 @@ Item {
                             Rectangle {
                                 width: parent.width
                                 height: activityContent.implicitHeight + 28
-                                radius: 14
-                                color: "#66202935"
-                                border.color: "#48546370"
+                                radius: Math.max(9, view.cardRadius - 2)
+                                color: view.withAlpha(view.panelRaised, 0.4)
+                                border.color: view.withAlpha(view.muted, 0.35)
                                 Column {
                                     id: activityContent
                                     anchors.left: parent.left
@@ -2170,9 +2236,9 @@ Item {
                                 width: parent.width
                                 visible: view.details.notes.length > 0
                                 height: visible ? notesContent.implicitHeight + 28 : 0
-                                radius: 14
-                                color: "#66202935"
-                                border.color: "#48546370"
+                                radius: Math.max(9, view.cardRadius - 2)
+                                color: view.withAlpha(view.panelRaised, 0.4)
+                                border.color: view.withAlpha(view.muted, 0.35)
                                 Column {
                                     id: notesContent
                                     anchors.left: parent.left
@@ -2210,8 +2276,8 @@ Item {
                                         required property int index
                                         width: overlayTagText.implicitWidth + 20
                                         height: 28
-                                        radius: 9
-                                        color: "#3136473e"
+                                        radius: Math.max(7, view.cardRadius - 7)
+                                        color: view.withAlpha(view.accentCool, 0.16)
                                         border.color: view.accentCool
                                         Text {
                                             id: overlayTagText
@@ -2279,10 +2345,13 @@ Item {
                                 property bool selected: view.menuActionIndex === index
                                 width: gameMenu.width
                                 height: 88
-                                radius: 14
-                                color: selected ? "#5946382c" : menuHover.hovered
-                                       ? "#43303a47" : "#65202935"
-                                border.color: selected ? view.accent : "#48546370"
+                                radius: Math.max(9, view.cardRadius - 2)
+                                color: selected ? view.withAlpha(view.accent, 0.2)
+                                       : menuHover.hovered
+                                         ? view.withAlpha(view.panelRaised, 0.72)
+                                         : view.withAlpha(view.panelRaised, 0.4)
+                                border.color: selected ? view.accent
+                                                       : view.withAlpha(view.muted, 0.35)
                                 border.width: selected ? 2 : 1
                                 scale: selected ? 1.012 : 1
                                 Behavior on scale { NumberAnimation { duration: 90 } }

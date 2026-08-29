@@ -54,6 +54,7 @@ ApplicationWindow {
     property bool clearAllDownloadHistory: false
     property string pendingRecoveryJobId: ""
     property string pendingRecoveryJobTitle: ""
+    property int pendingThemeRemovalIndex: -1
     property int pendingDownloadPlanIndex: -1
     property bool gridMode: true
     property bool couchModeActive: false
@@ -148,8 +149,10 @@ ApplicationWindow {
     readonly property bool couchAttractRestoreUiProbe: Qt.application.arguments.indexOf("--couch-attract-restored-ui-probe") >= 0
     readonly property bool couchAttractUiProbe: couchAttractRestoreUiProbe
                                                  || Qt.application.arguments.indexOf("--couch-attract-ui-probe") >= 0
+    readonly property bool couchThemeUiProbe: Qt.application.arguments.indexOf("--couch-theme-ui-probe") >= 0
     readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
                                              || couchAttractUiProbe
+                                             || couchThemeUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
     readonly property bool tagsUiProbe: Qt.application.arguments.indexOf("--tags-ui-probe") >= 0
@@ -1708,13 +1711,13 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
-                    && !root.couchAttractUiProbe
+                    && !root.couchAttractUiProbe && !root.couchThemeUiProbe
                     && !gamepadInput.ready) {
                 couchModeScreenshotTimer.restart()
                 return
             }
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
-                    && !root.couchAttractUiProbe
+                    && !root.couchAttractUiProbe && !root.couchThemeUiProbe
                     && !gamepadInput.available) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED gamepad="
                               + gamepadInput.status_message)
@@ -1779,6 +1782,39 @@ ApplicationWindow {
                     || library.row_for_game(couchModeView.selectedGameId) < 0) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED focus restoration")
                 Qt.exit(2)
+                return
+            }
+            if (root.couchThemeUiProbe) {
+                if (library.couch_theme_id !== "ultraviolet-circuit"
+                        || library.couch_theme_count !== 4
+                        || library.couch_theme_background !== "#060714"
+                        || library.couch_theme_accent !== "#8c7bff"
+                        || library.couch_theme_card_radius !== 24) {
+                    console.error("LUNCHBOX_COUCH_THEME_UI_FAILED theme id="
+                                  + library.couch_theme_id + " themes="
+                                  + library.couch_theme_count + " background="
+                                  + library.couch_theme_background + " accent="
+                                  + library.couch_theme_accent + " radius="
+                                  + library.couch_theme_card_radius)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchModeProbeCaptured = true
+                if (root.screenshotOutput.length === 0) {
+                    library.report_couch_theme_ui_probe()
+                    Qt.exit(0)
+                    return
+                }
+                couchModeView.captureTheme(root.screenshotOutput, function(saved) {
+                    if (!saved) {
+                        console.error("LUNCHBOX_COUCH_THEME_UI_FAILED screenshot="
+                                      + root.screenshotOutput)
+                        Qt.exit(2)
+                        return
+                    }
+                    library.report_couch_theme_ui_probe()
+                    Qt.exit(0)
+                })
                 return
             }
             if (root.couchGamepadUiProbe
@@ -9937,6 +9973,39 @@ ApplicationWindow {
     }
 
     FileDialog {
+        id: couchThemeFileDialog
+        title: "Install a declarative Couch Mode theme"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Lunchbox themes (*.lunchbox-theme)"]
+        onAccepted: library.install_couch_theme(selectedFile)
+    }
+
+    Dialog {
+        id: removeCouchThemeDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(500, root.width - 48)
+        title: "Remove installed theme?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: {
+            library.remove_couch_theme(root.pendingThemeRemovalIndex)
+            root.pendingThemeRemovalIndex = -1
+        }
+        onRejected: root.pendingThemeRemovalIndex = -1
+        contentItem: Text {
+            text: root.pendingThemeRemovalIndex >= 0
+                  ? "Remove ‘" + library.couch_theme_name_at(
+                        root.pendingThemeRemovalIndex)
+                    + "’? Only Lunchbox-owned theme files are removed. Games, media, and collection state are untouched."
+                  : "The selected theme is no longer available."
+            color: root.ink
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    FileDialog {
         id: collectionExportDialog
         property string collectionId: ""
         property string collectionName: ""
@@ -11466,6 +11535,7 @@ ApplicationWindow {
         onOpened: {
             appSettings.refresh_controllers()
             appSettings.refresh_retroarch_shaders()
+            library.refresh_couch_themes()
             steamGridDb.initialize()
             igdb.initialize()
         }
@@ -11523,6 +11593,168 @@ ApplicationWindow {
                         font.pixelSize: 10
                         font.weight: Font.Bold
                         font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "APPEARANCE THEMES"
+                        color: root.ink
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Choose a built-in look or install a declarative .lunchbox-theme package. Imported packages may define a bounded palette and one validated background image; they cannot execute QML, scripts, commands, or arbitrary files."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    ListView {
+                        id: couchThemeList
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 166
+                        orientation: ListView.Horizontal
+                        spacing: 10
+                        clip: true
+                        reuseItems: true
+                        model: library.couch_theme_count
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                        delegate: Rectangle {
+                            id: couchThemeCard
+                            required property int index
+                            property bool selected: library.couch_theme_id
+                                                    === library.couch_theme_id_at(index)
+                            width: 242
+                            height: 148
+                            radius: 10
+                            color: library.couch_theme_background_at(index)
+                            border.color: selected ? library.couch_theme_accent_at(index)
+                                                    : root.line
+                            border.width: selected ? 2 : 1
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 7
+                                color: library.couch_theme_accent_at(couchThemeCard.index)
+                                radius: 10
+                            }
+                            Column {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 19
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.top: parent.top
+                                anchors.topMargin: 11
+                                spacing: 3
+                                Text {
+                                    width: parent.width
+                                    text: library.couch_theme_name_at(couchThemeCard.index)
+                                    color: library.couch_theme_ink_at(couchThemeCard.index)
+                                    font.pixelSize: 13
+                                    font.weight: Font.Bold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: "BY " + library.couch_theme_author_at(
+                                              couchThemeCard.index).toUpperCase()
+                                    color: library.couch_theme_muted_at(couchThemeCard.index)
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.6
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    height: 36
+                                    text: library.couch_theme_description_at(
+                                              couchThemeCard.index)
+                                    color: library.couch_theme_muted_at(couchThemeCard.index)
+                                    font.pixelSize: 9
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            Row {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 19
+                                anchors.right: parent.right
+                                anchors.rightMargin: 10
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 9
+                                spacing: 7
+                                Button {
+                                    width: library.couch_theme_installed_at(
+                                               couchThemeCard.index) ? 137 : 203
+                                    height: 30
+                                    text: couchThemeCard.selected ? "IN USE" : "USE THEME"
+                                    enabled: !couchThemeCard.selected
+                                             && !library.couch_theme_busy
+                                             && !library.couch_state_saving
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    onClicked: library.select_couch_theme(couchThemeCard.index)
+                                    Accessible.name: "Use " + library.couch_theme_name_at(
+                                                         couchThemeCard.index)
+                                }
+                                Button {
+                                    visible: library.couch_theme_installed_at(
+                                                 couchThemeCard.index)
+                                    width: visible ? 58 : 0
+                                    height: 30
+                                    text: "REMOVE"
+                                    enabled: !library.couch_theme_busy
+                                    font.pixelSize: 8
+                                    onClicked: {
+                                        root.pendingThemeRemovalIndex = couchThemeCard.index
+                                        removeCouchThemeDialog.open()
+                                    }
+                                    Accessible.name: "Remove " + library.couch_theme_name_at(
+                                                         couchThemeCard.index)
+                                }
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 9
+                        Button {
+                            text: library.couch_theme_busy ? "WORKING…" : "INSTALL THEME PACKAGE"
+                            enabled: !library.couch_theme_busy
+                            onClicked: couchThemeFileDialog.open()
+                            Accessible.name: "Install a declarative Couch Mode theme package"
+                        }
+                        Button {
+                            text: "REFRESH"
+                            enabled: !library.couch_theme_busy
+                            onClicked: library.refresh_couch_themes()
+                            Accessible.name: "Refresh installed Couch Mode themes"
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: library.couch_theme_message
+                            color: library.couch_theme_busy ? root.accent : root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        color: root.line
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "ATTRACT MODE"
+                        color: root.ink
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
                     }
                     Text {
                         Layout.fillWidth: true

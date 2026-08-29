@@ -60,6 +60,25 @@ pub mod qobject {
         #[qproperty(bool, sidebar_state_saving)]
         #[qproperty(QString, couch_shelf)]
         #[qproperty(QString, couch_platform)]
+        #[qproperty(QString, couch_theme_id)]
+        #[qproperty(QString, couch_theme_name)]
+        #[qproperty(QString, couch_theme_author)]
+        #[qproperty(QString, couch_theme_description)]
+        #[qproperty(QString, couch_theme_background)]
+        #[qproperty(QString, couch_theme_panel)]
+        #[qproperty(QString, couch_theme_panel_raised)]
+        #[qproperty(QString, couch_theme_ink)]
+        #[qproperty(QString, couch_theme_muted)]
+        #[qproperty(QString, couch_theme_accent)]
+        #[qproperty(QString, couch_theme_accent_cool)]
+        #[qproperty(QString, couch_theme_danger)]
+        #[qproperty(QUrl, couch_theme_background_image)]
+        #[qproperty(i32, couch_theme_hero_scrim_percent)]
+        #[qproperty(i32, couch_theme_card_radius)]
+        #[qproperty(i32, couch_theme_count)]
+        #[qproperty(i32, couch_theme_revision)]
+        #[qproperty(bool, couch_theme_busy)]
+        #[qproperty(QString, couch_theme_message)]
         #[qproperty(bool, couch_attract_enabled)]
         #[qproperty(i32, couch_attract_idle_seconds)]
         #[qproperty(i32, couch_attract_cycle_seconds)]
@@ -371,6 +390,48 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn couch_theme_id_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn couch_theme_name_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn couch_theme_author_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn couch_theme_description_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn couch_theme_installed_at(self: &LibraryModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn couch_theme_background_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn couch_theme_accent_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn couch_theme_ink_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn couch_theme_muted_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn select_couch_theme(self: Pin<&mut LibraryModel>, index: i32) -> bool;
+
+        #[qinvokable]
+        fn install_couch_theme(self: Pin<&mut LibraryModel>, package: QUrl);
+
+        #[qinvokable]
+        fn remove_couch_theme(self: Pin<&mut LibraryModel>, index: i32);
+
+        #[qinvokable]
+        fn refresh_couch_themes(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn report_couch_theme_ui_probe(self: &LibraryModel);
+
+        #[qinvokable]
         fn shell_ready(self: Pin<&mut LibraryModel>);
     }
 
@@ -402,6 +463,7 @@ pub mod qobject {
 }
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -413,6 +475,7 @@ use crate::collections::{
     PortableCollection, PortableGameReference, SmartCollectionRules, load_portable_collection,
     resolve_portable_game_references, save_portable_collection,
 };
+use crate::couch_theme::{CouchTheme, ThemeCatalog};
 use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
@@ -428,6 +491,7 @@ type CatalogLoadResult = Result<
         Result<LibraryPreferences, String>,
         Result<SidebarPreferences, String>,
         Result<CouchModePreferences, String>,
+        ThemeCatalog,
         Result<HashSet<String>, String>,
         Result<UserCollections, String>,
         Result<Vec<PlayActivity>, String>,
@@ -454,6 +518,13 @@ enum CollectionMutation {
         message: String,
     },
     Message(String),
+}
+
+struct CouchThemeUpdate {
+    catalog: ThemeCatalog,
+    selected_id: String,
+    persist_selection: bool,
+    message: String,
 }
 
 #[derive(Clone)]
@@ -525,6 +596,25 @@ pub struct LibraryModelRust {
     sidebar_state_saving: bool,
     couch_shelf: QString,
     couch_platform: QString,
+    couch_theme_id: QString,
+    couch_theme_name: QString,
+    couch_theme_author: QString,
+    couch_theme_description: QString,
+    couch_theme_background: QString,
+    couch_theme_panel: QString,
+    couch_theme_panel_raised: QString,
+    couch_theme_ink: QString,
+    couch_theme_muted: QString,
+    couch_theme_accent: QString,
+    couch_theme_accent_cool: QString,
+    couch_theme_danger: QString,
+    couch_theme_background_image: QUrl,
+    couch_theme_hero_scrim_percent: i32,
+    couch_theme_card_radius: i32,
+    couch_theme_count: i32,
+    couch_theme_revision: i32,
+    couch_theme_busy: bool,
+    couch_theme_message: QString,
     couch_attract_enabled: bool,
     couch_attract_idle_seconds: i32,
     couch_attract_cycle_seconds: i32,
@@ -588,11 +678,17 @@ pub struct LibraryModelRust {
     sidebar_save_pending: bool,
     couch_save_generation: u64,
     couch_save_pending: bool,
+    couch_themes: Vec<CouchTheme>,
+    couch_theme_generation: u64,
+    couch_theme_ui_probe: bool,
 }
 
 impl Default for LibraryModelRust {
     fn default() -> Self {
         let preferences = LibraryPreferences::default();
+        let couch_preferences = CouchModePreferences::default();
+        let theme_catalog = crate::couch_theme::built_in_catalog();
+        let couch_theme = crate::couch_theme::default_theme();
         Self {
             database_path: QString::default(),
             status_message: QString::from("Starting instantly; catalog loading is deferred."),
@@ -639,11 +735,32 @@ impl Default for LibraryModelRust {
             filtered_platform_count: 0,
             sidebar_width: SidebarPreferences::default().width,
             sidebar_state_saving: false,
-            couch_shelf: qstring(&CouchModePreferences::default().shelf),
+            couch_shelf: qstring(&couch_preferences.shelf),
             couch_platform: QString::default(),
-            couch_attract_enabled: CouchModePreferences::default().attract_enabled,
-            couch_attract_idle_seconds: CouchModePreferences::default().attract_idle_seconds,
-            couch_attract_cycle_seconds: CouchModePreferences::default().attract_cycle_seconds,
+            couch_theme_id: qstring(&couch_theme.id),
+            couch_theme_name: qstring(&couch_theme.name),
+            couch_theme_author: qstring(&couch_theme.author),
+            couch_theme_description: qstring(&couch_theme.description),
+            couch_theme_background: qstring(&couch_theme.background),
+            couch_theme_panel: qstring(&couch_theme.panel),
+            couch_theme_panel_raised: qstring(&couch_theme.panel_raised),
+            couch_theme_ink: qstring(&couch_theme.ink),
+            couch_theme_muted: qstring(&couch_theme.muted),
+            couch_theme_accent: qstring(&couch_theme.accent),
+            couch_theme_accent_cool: qstring(&couch_theme.accent_cool),
+            couch_theme_danger: qstring(&couch_theme.danger),
+            couch_theme_background_image: QUrl::default(),
+            couch_theme_hero_scrim_percent: i32::from(couch_theme.hero_scrim_percent),
+            couch_theme_card_radius: i32::from(couch_theme.card_radius),
+            couch_theme_count: saturating_i32(theme_catalog.themes.len()),
+            couch_theme_revision: 0,
+            couch_theme_busy: false,
+            couch_theme_message: qstring(
+                "Choose a built-in theme or install a declarative .lunchbox-theme package.",
+            ),
+            couch_attract_enabled: couch_preferences.attract_enabled,
+            couch_attract_idle_seconds: couch_preferences.attract_idle_seconds,
+            couch_attract_cycle_seconds: couch_preferences.attract_cycle_seconds,
             couch_state_saving: false,
             local_file_count: 0,
             local_game_count: 0,
@@ -704,6 +821,10 @@ impl Default for LibraryModelRust {
             sidebar_save_pending: false,
             couch_save_generation: 0,
             couch_save_pending: false,
+            couch_themes: theme_catalog.themes,
+            couch_theme_generation: 0,
+            couch_theme_ui_probe: std::env::args()
+                .any(|argument| argument == "--couch-theme-ui-probe"),
         }
     }
 }
@@ -1075,11 +1196,22 @@ impl qobject::LibraryModel {
                                 )
                             }
                         };
+                        let theme_catalog = match crate::settings::state_database_path() {
+                            Ok(state_database) => {
+                                crate::couch_theme::catalog_for_state(&state_database)
+                            }
+                            Err(error) => {
+                                let mut catalog = crate::couch_theme::built_in_catalog();
+                                catalog.warnings.push(error.to_string());
+                                catalog
+                            }
+                        };
                         (
                             catalog,
                             preferences,
                             sidebar_preferences,
                             couch_preferences,
+                            theme_catalog,
                             favorites,
                             collections,
                             activity,
@@ -1110,6 +1242,7 @@ impl qobject::LibraryModel {
                 preferences,
                 sidebar_preferences,
                 couch_preferences,
+                theme_catalog,
                 favorites,
                 collections,
                 activity,
@@ -1140,7 +1273,15 @@ impl qobject::LibraryModel {
                     }
                     Err(error) => Some(error),
                 };
-                let couch_warning = match couch_preferences {
+                let ThemeCatalog {
+                    themes,
+                    warnings: mut couch_warnings,
+                } = theme_catalog;
+                self.as_mut().rust_mut().couch_themes = themes;
+                let theme_count = self.as_ref().rust().couch_themes.len();
+                self.as_mut()
+                    .set_couch_theme_count(saturating_i32(theme_count));
+                match couch_preferences {
                     Ok(preferences) => {
                         self.as_mut()
                             .set_couch_attract_enabled(preferences.attract_enabled);
@@ -1148,6 +1289,16 @@ impl qobject::LibraryModel {
                             .set_couch_attract_idle_seconds(preferences.attract_idle_seconds);
                         self.as_mut()
                             .set_couch_attract_cycle_seconds(preferences.attract_cycle_seconds);
+                        if !self.as_mut().apply_couch_theme_id(&preferences.theme_id) {
+                            couch_warnings.push(format!(
+                                "saved theme {} is not installed; using {}",
+                                preferences.theme_id,
+                                crate::couch_theme::DEFAULT_THEME_ID
+                            ));
+                            let _ = self
+                                .as_mut()
+                                .apply_couch_theme_id(crate::couch_theme::DEFAULT_THEME_ID);
+                        }
                         if preferences.shelf == "platform"
                             && !catalog
                                 .platforms
@@ -1156,19 +1307,32 @@ impl qobject::LibraryModel {
                         {
                             self.as_mut().set_couch_shelf(qstring("all"));
                             self.as_mut().set_couch_platform(QString::default());
-                            Some(format!(
+                            couch_warnings.push(format!(
                                 "saved platform {} is no longer present in the catalog",
                                 preferences.platform
-                            ))
+                            ));
                         } else {
                             self.as_mut().set_couch_shelf(qstring(&preferences.shelf));
                             self.as_mut()
                                 .set_couch_platform(qstring(&preferences.platform));
-                            None
                         }
                     }
-                    Err(error) => Some(error),
-                };
+                    Err(error) => {
+                        couch_warnings.push(error);
+                        let _ = self
+                            .as_mut()
+                            .apply_couch_theme_id(crate::couch_theme::DEFAULT_THEME_ID);
+                    }
+                }
+                let couch_warning = (!couch_warnings.is_empty()).then(|| couch_warnings.join("; "));
+                self.as_mut().set_couch_theme_message(qstring(
+                    couch_warning.clone().unwrap_or_else(|| {
+                        format!(
+                            "{theme_count} verified Couch Mode theme{} available.",
+                            if theme_count == 1 { "" } else { "s" }
+                        )
+                    }),
+                ));
                 let (favorite_game_ids, favorite_warning) = match favorites {
                     Ok(favorites) => (favorites, None),
                     Err(error) => (HashSet::new(), Some(error)),
@@ -3195,6 +3359,7 @@ impl qobject::LibraryModel {
         let preferences = CouchModePreferences {
             shelf: shelf.to_string(),
             platform: platform.to_string(),
+            theme_id: self.as_ref().couch_theme_id().to_string(),
             attract_enabled: *self.as_ref().couch_attract_enabled(),
             attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
             attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
@@ -3241,6 +3406,7 @@ impl qobject::LibraryModel {
         let preferences = CouchModePreferences {
             shelf: self.as_ref().couch_shelf().to_string(),
             platform: self.as_ref().couch_platform().to_string(),
+            theme_id: self.as_ref().couch_theme_id().to_string(),
             attract_enabled: enabled,
             attract_idle_seconds: idle_seconds,
             attract_cycle_seconds: cycle_seconds,
@@ -3263,11 +3429,365 @@ impl qobject::LibraryModel {
         true
     }
 
+    pub fn couch_theme_id_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.id))
+            .unwrap_or_default()
+    }
+
+    pub fn couch_theme_name_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.name))
+            .unwrap_or_default()
+    }
+
+    pub fn couch_theme_author_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.author))
+            .unwrap_or_default()
+    }
+
+    pub fn couch_theme_description_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.description))
+            .unwrap_or_default()
+    }
+
+    pub fn couch_theme_installed_at(&self, index: i32) -> bool {
+        self.couch_theme(index).is_some_and(|theme| theme.installed)
+    }
+
+    pub fn couch_theme_background_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.background))
+            .unwrap_or_default()
+    }
+
+    pub fn couch_theme_accent_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.accent))
+            .unwrap_or_default()
+    }
+
+    pub fn couch_theme_ink_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.ink))
+            .unwrap_or_default()
+    }
+
+    pub fn couch_theme_muted_at(&self, index: i32) -> QString {
+        self.couch_theme(index)
+            .map(|theme| qstring(&theme.muted))
+            .unwrap_or_default()
+    }
+
+    pub fn select_couch_theme(mut self: Pin<&mut Self>, index: i32) -> bool {
+        if *self.as_ref().couch_theme_busy() {
+            return false;
+        }
+        let Some(theme) = self.as_ref().couch_theme(index).cloned() else {
+            self.as_mut()
+                .set_couch_theme_message(qstring("The selected Couch Mode theme is unavailable."));
+            return false;
+        };
+        self.as_mut().apply_couch_theme(theme.clone());
+        self.as_mut().set_couch_theme_message(qstring(format!(
+            "Using {} by {}. The selection is saved automatically.",
+            theme.name, theme.author
+        )));
+        self.as_mut().rust_mut().couch_save_generation =
+            self.as_ref().rust().couch_save_generation.wrapping_add(1);
+        if !self.as_ref().rust().couch_save_pending {
+            self.as_mut().start_couch_save();
+        }
+        true
+    }
+
+    pub fn install_couch_theme(mut self: Pin<&mut Self>, package: QUrl) {
+        if *self.as_ref().couch_theme_busy() {
+            return;
+        }
+        let Some(package) = package
+            .to_local_file()
+            .map(|path| PathBuf::from(path.to_string()))
+        else {
+            self.as_mut().set_couch_theme_message(qstring(
+                "Choose a local .lunchbox-theme package to install.",
+            ));
+            return;
+        };
+        self.as_mut().rust_mut().couch_theme_generation =
+            self.as_ref().rust().couch_theme_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().couch_theme_generation;
+        self.as_mut().set_couch_theme_busy(true);
+        self.as_mut().set_couch_theme_message(qstring(
+            "Validating and installing the declarative theme package…",
+        ));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-couch-theme-install".into())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<CouchThemeUpdate> {
+                    let state_database = crate::settings::state_database_path()?;
+                    let installed = crate::couch_theme::install_package(&package, &state_database)?;
+                    let selected_id = installed.theme.id.clone();
+                    let theme_name = installed.theme.name.clone();
+                    let catalog = crate::couch_theme::catalog_for_state(&state_database);
+                    Ok(CouchThemeUpdate {
+                        catalog,
+                        selected_id,
+                        persist_selection: true,
+                        message: if installed.reused {
+                            format!(
+                                "{theme_name} was already verified; selected it for Couch Mode."
+                            )
+                        } else {
+                            format!("Installed and selected {theme_name} for Couch Mode.")
+                        },
+                    })
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_couch_theme_update(generation, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_couch_theme_busy(false);
+            self.as_mut().set_couch_theme_message(qstring(format!(
+                "Could not start theme installation: {error}"
+            )));
+        }
+    }
+
+    pub fn remove_couch_theme(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().couch_theme_busy() {
+            return;
+        }
+        let Some(theme) = self.as_ref().couch_theme(index).cloned() else {
+            self.as_mut()
+                .set_couch_theme_message(qstring("The selected Couch Mode theme is unavailable."));
+            return;
+        };
+        if !theme.installed {
+            self.as_mut()
+                .set_couch_theme_message(qstring("Built-in Couch Mode themes cannot be removed."));
+            return;
+        }
+        let current_id = self.as_ref().couch_theme_id().to_string();
+        self.as_mut().rust_mut().couch_theme_generation =
+            self.as_ref().rust().couch_theme_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().couch_theme_generation;
+        self.as_mut().set_couch_theme_busy(true);
+        self.as_mut()
+            .set_couch_theme_message(qstring(format!("Removing {} safely…", theme.name)));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-couch-theme-remove".into())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<CouchThemeUpdate> {
+                    let state_database = crate::settings::state_database_path()?;
+                    crate::couch_theme::remove_installed_theme(&theme.id, &state_database)?;
+                    let selected_was_removed = current_id == theme.id;
+                    let selected_id = if selected_was_removed {
+                        crate::couch_theme::DEFAULT_THEME_ID.to_owned()
+                    } else {
+                        current_id
+                    };
+                    Ok(CouchThemeUpdate {
+                        catalog: crate::couch_theme::catalog_for_state(&state_database),
+                        selected_id,
+                        persist_selection: selected_was_removed,
+                        message: format!(
+                            "Removed {}{}.",
+                            theme.name,
+                            if selected_was_removed {
+                                " and restored the built-in Lunchbox theme"
+                            } else {
+                                ""
+                            }
+                        ),
+                    })
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_couch_theme_update(generation, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_couch_theme_busy(false);
+            self.as_mut().set_couch_theme_message(qstring(format!(
+                "Could not start theme removal: {error}"
+            )));
+        }
+    }
+
+    pub fn refresh_couch_themes(mut self: Pin<&mut Self>) {
+        if *self.as_ref().couch_theme_busy() {
+            return;
+        }
+        let selected_id = self.as_ref().couch_theme_id().to_string();
+        self.as_mut().rust_mut().couch_theme_generation =
+            self.as_ref().rust().couch_theme_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().couch_theme_generation;
+        self.as_mut().set_couch_theme_busy(true);
+        self.as_mut()
+            .set_couch_theme_message(qstring("Refreshing verified Couch Mode themes…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-couch-theme-refresh".into())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<CouchThemeUpdate> {
+                    let state_database = crate::settings::state_database_path()?;
+                    let catalog = crate::couch_theme::catalog_for_state(&state_database);
+                    let selected_exists = catalog
+                        .themes
+                        .iter()
+                        .any(|theme| theme.id == selected_id);
+                    Ok(CouchThemeUpdate {
+                        catalog,
+                        selected_id: if selected_exists {
+                            selected_id
+                        } else {
+                            crate::couch_theme::DEFAULT_THEME_ID.to_owned()
+                        },
+                        persist_selection: !selected_exists,
+                        message: if selected_exists {
+                            "Refreshed verified Couch Mode themes.".to_owned()
+                        } else {
+                            "The selected package is no longer installed; restored the built-in Lunchbox theme.".to_owned()
+                        },
+                    })
+                })()
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_couch_theme_update(generation, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_couch_theme_busy(false);
+            self.as_mut().set_couch_theme_message(qstring(format!(
+                "Could not start theme refresh: {error}"
+            )));
+        }
+    }
+
+    fn finish_couch_theme_update(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<CouchThemeUpdate, String>,
+    ) {
+        if generation != self.as_ref().rust().couch_theme_generation {
+            return;
+        }
+        self.as_mut().set_couch_theme_busy(false);
+        match result {
+            Ok(update) => {
+                let warning = (!update.catalog.warnings.is_empty())
+                    .then(|| update.catalog.warnings.join("; "));
+                let previous_selected = self.as_ref().couch_theme_id().to_string();
+                self.as_mut().rust_mut().couch_themes = update.catalog.themes;
+                let count = self.as_ref().rust().couch_themes.len();
+                self.as_mut().set_couch_theme_count(saturating_i32(count));
+                let selected = if self.as_mut().apply_couch_theme_id(&update.selected_id) {
+                    update.selected_id
+                } else {
+                    let fallback = crate::couch_theme::DEFAULT_THEME_ID.to_owned();
+                    let _ = self.as_mut().apply_couch_theme_id(&fallback);
+                    fallback
+                };
+                self.as_mut()
+                    .set_couch_theme_message(qstring(match warning {
+                        Some(warning) => {
+                            format!("{} Some packages were ignored: {warning}", update.message)
+                        }
+                        None => update.message,
+                    }));
+                if update.persist_selection || selected != previous_selected {
+                    self.as_mut().rust_mut().couch_save_generation =
+                        self.as_ref().rust().couch_save_generation.wrapping_add(1);
+                    if !self.as_ref().rust().couch_save_pending {
+                        self.as_mut().start_couch_save();
+                    }
+                }
+            }
+            Err(error) => self
+                .as_mut()
+                .set_couch_theme_message(qstring(format!("Theme operation failed: {error}"))),
+        }
+    }
+
+    fn couch_theme(&self, index: i32) -> Option<&CouchTheme> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().couch_themes.get(index))
+    }
+
+    fn apply_couch_theme_id(mut self: Pin<&mut Self>, id: &str) -> bool {
+        let Some(theme) = self
+            .as_ref()
+            .rust()
+            .couch_themes
+            .iter()
+            .find(|theme| theme.id == id)
+            .cloned()
+        else {
+            return false;
+        };
+        self.as_mut().apply_couch_theme(theme);
+        true
+    }
+
+    fn apply_couch_theme(mut self: Pin<&mut Self>, theme: CouchTheme) {
+        self.as_mut().set_couch_theme_id(qstring(&theme.id));
+        self.as_mut().set_couch_theme_name(qstring(&theme.name));
+        self.as_mut().set_couch_theme_author(qstring(&theme.author));
+        self.as_mut()
+            .set_couch_theme_description(qstring(&theme.description));
+        self.as_mut()
+            .set_couch_theme_background(qstring(&theme.background));
+        self.as_mut().set_couch_theme_panel(qstring(&theme.panel));
+        self.as_mut()
+            .set_couch_theme_panel_raised(qstring(&theme.panel_raised));
+        self.as_mut().set_couch_theme_ink(qstring(&theme.ink));
+        self.as_mut().set_couch_theme_muted(qstring(&theme.muted));
+        self.as_mut().set_couch_theme_accent(qstring(&theme.accent));
+        self.as_mut()
+            .set_couch_theme_accent_cool(qstring(&theme.accent_cool));
+        self.as_mut().set_couch_theme_danger(qstring(&theme.danger));
+        self.as_mut().set_couch_theme_background_image(
+            theme
+                .background_path
+                .as_deref()
+                .map(|path| QUrl::from_local_file(&qstring(path.to_string_lossy())))
+                .unwrap_or_default(),
+        );
+        self.as_mut()
+            .set_couch_theme_hero_scrim_percent(i32::from(theme.hero_scrim_percent));
+        self.as_mut()
+            .set_couch_theme_card_radius(i32::from(theme.card_radius));
+        let revision = self.as_ref().couch_theme_revision().wrapping_add(1);
+        self.as_mut().set_couch_theme_revision(revision);
+    }
+
+    pub fn report_couch_theme_ui_probe(&self) {
+        if self.rust().couch_theme_ui_probe {
+            println!(
+                "LUNCHBOX_COUCH_THEME_UI_READY id={} themes={} accent={} background={} radius={}",
+                self.couch_theme_id().to_string(),
+                self.couch_theme_count(),
+                self.couch_theme_accent().to_string(),
+                self.couch_theme_background().to_string(),
+                self.couch_theme_card_radius()
+            );
+        }
+    }
+
     fn start_couch_save(mut self: Pin<&mut Self>) {
         let generation = self.as_ref().rust().couch_save_generation;
         let preferences = CouchModePreferences {
             shelf: self.as_ref().couch_shelf().to_string(),
             platform: self.as_ref().couch_platform().to_string(),
+            theme_id: self.as_ref().couch_theme_id().to_string(),
             attract_enabled: *self.as_ref().couch_attract_enabled(),
             attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
             attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),

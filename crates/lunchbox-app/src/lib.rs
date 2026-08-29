@@ -2,6 +2,7 @@ mod arcade_download;
 mod catalog;
 mod collections;
 mod controllers;
+mod couch_theme;
 mod download_plan;
 pub mod download_queue_model;
 mod emulator;
@@ -60,6 +61,13 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--couch-theme-ui-probe")
+        && let Err(error) = couch_theme::seed_ui_probe()
+    {
+        eprintln!("LUNCHBOX_COUCH_THEME_UI_FAILED seed error={error:#}");
+        return 1;
+    }
+
     if std::env::args().any(|argument| argument == "--activity-history-ui-probe")
         && let Err(error) = settings::seed_activity_history_probe()
     {

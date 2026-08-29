@@ -203,6 +203,7 @@ pub struct SidebarPreferences {
 pub struct CouchModePreferences {
     pub shelf: String,
     pub platform: String,
+    pub theme_id: String,
     pub attract_enabled: bool,
     pub attract_idle_seconds: i32,
     pub attract_cycle_seconds: i32,
@@ -599,6 +600,7 @@ impl Default for CouchModePreferences {
         Self {
             shelf: "all".to_owned(),
             platform: String::new(),
+            theme_id: crate::couch_theme::DEFAULT_THEME_ID.to_owned(),
             attract_enabled: false,
             attract_idle_seconds: 300,
             attract_cycle_seconds: 12,
@@ -626,6 +628,8 @@ impl CouchModePreferences {
         if self.shelf != "platform" && !self.platform.is_empty() {
             bail!("Couch Mode platform must be empty outside the platform shelf");
         }
+        crate::couch_theme::validate_theme_id(&self.theme_id)
+            .context("invalid Couch Mode theme selection")?;
         if !(30..=3600).contains(&self.attract_idle_seconds) {
             bail!("Couch Mode idle delay must be between 30 and 3600 seconds");
         }
@@ -1254,7 +1258,7 @@ impl SettingsStore {
         let preferences = self
             .connection()?
             .query_row(
-                "SELECT shelf, platform, attract_enabled,
+                "SELECT shelf, platform, theme_id, attract_enabled,
                         attract_idle_seconds, attract_cycle_seconds
                  FROM couch_mode_preferences WHERE id=1",
                 [],
@@ -1262,9 +1266,10 @@ impl SettingsStore {
                     Ok(CouchModePreferences {
                         shelf: row.get(0)?,
                         platform: row.get(1)?,
-                        attract_enabled: row.get(2)?,
-                        attract_idle_seconds: row.get(3)?,
-                        attract_cycle_seconds: row.get(4)?,
+                        theme_id: row.get(2)?,
+                        attract_enabled: row.get(3)?,
+                        attract_idle_seconds: row.get(4)?,
+                        attract_cycle_seconds: row.get(5)?,
                     })
                 },
             )
@@ -1278,18 +1283,20 @@ impl SettingsStore {
         preferences.validate()?;
         self.connection()?.execute(
             "INSERT INTO couch_mode_preferences (
-                 id, shelf, platform, attract_enabled,
+                 id, shelf, platform, theme_id, attract_enabled,
                  attract_idle_seconds, attract_cycle_seconds
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5)
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(id) DO UPDATE SET
                  shelf=excluded.shelf,
                  platform=excluded.platform,
+                 theme_id=excluded.theme_id,
                  attract_enabled=excluded.attract_enabled,
                  attract_idle_seconds=excluded.attract_idle_seconds,
                  attract_cycle_seconds=excluded.attract_cycle_seconds",
             params![
                 preferences.shelf,
                 preferences.platform,
+                preferences.theme_id,
                 preferences.attract_enabled,
                 preferences.attract_idle_seconds,
                 preferences.attract_cycle_seconds,
@@ -3295,6 +3302,9 @@ fn migrate(connection: &Connection) -> Result<()> {
                  shelf IN ('all', 'local', 'downloadable', 'favorites', 'recent', 'platform')
              ),
              platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
+             theme_id TEXT NOT NULL DEFAULT 'lunchbox-default' CHECK (
+                 length(theme_id) BETWEEN 3 AND 64
+             ),
              attract_enabled INTEGER NOT NULL DEFAULT 0 CHECK (attract_enabled IN (0, 1)),
              attract_idle_seconds INTEGER NOT NULL DEFAULT 300 CHECK (
                  attract_idle_seconds BETWEEN 30 AND 3600
@@ -3827,6 +3837,12 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "couch_mode_preferences", "attract_enabled")? {
         connection.execute(
             "ALTER TABLE couch_mode_preferences ADD COLUMN attract_enabled INTEGER NOT NULL DEFAULT 0 CHECK (attract_enabled IN (0, 1))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "couch_mode_preferences", "theme_id")? {
+        connection.execute(
+            "ALTER TABLE couch_mode_preferences ADD COLUMN theme_id TEXT NOT NULL DEFAULT 'lunchbox-default' CHECK (length(theme_id) BETWEEN 3 AND 64)",
             [],
         )?;
     }
@@ -5011,6 +5027,7 @@ mod tests {
         let expected = CouchModePreferences {
             shelf: "platform".into(),
             platform: "Super Nintendo Entertainment System".into(),
+            theme_id: "midnight-blue".into(),
             attract_enabled: true,
             attract_idle_seconds: 180,
             attract_cycle_seconds: 8,
@@ -5041,6 +5058,10 @@ mod tests {
             },
             CouchModePreferences {
                 attract_cycle_seconds: 121,
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                theme_id: "Invalid Theme".into(),
                 ..CouchModePreferences::default()
             },
         ] {
@@ -5084,6 +5105,7 @@ mod tests {
 
         let connection = Connection::open(&path).unwrap();
         for column in [
+            "theme_id",
             "attract_enabled",
             "attract_idle_seconds",
             "attract_cycle_seconds",

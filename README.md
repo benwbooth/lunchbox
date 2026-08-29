@@ -43,7 +43,13 @@ Game Menu or automatically after a configurable idle delay; it rotates through
 the current shelf rather than a second catalog, retains exact game identity,
 supports immediate directional browsing, and returns to browsing with Back.
 Its enable state, idle delay, and game interval are stored in the native state
-database and edited from Settings. A native Rust input worker handles
+database and edited from Settings. Settings also includes a native theme manager
+with three built-in looks plus safe `.lunchbox-theme` packages. Themes can alter
+the complete Couch Mode palette, fallback artwork, optional background image,
+hero contrast, and card radius; the exact selection survives restart. Packages
+are declarative and cannot contain QML, scripts, commands, fonts, plugins, or
+other executable content. The complete authoring and safety contract is in
+[Couch Mode theme packages](docs/COUCH_MODE_THEMES.md). A native Rust input worker handles
 hotplugging, analog dead zones, deliberate hold-repeat, paging, and Xbox,
 PlayStation, Nintendo, or generic button labels without blocking Qt. Escape or
 the controller's east face button returns to desktop mode.

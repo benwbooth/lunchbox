@@ -621,6 +621,27 @@ entry, wrapped next/previous identity, browsing return, settings persistence,
 and fresh/cold 1920x1200 captures against a 56-row real-catalog filter;
 `--couch-attract-settings-ui-probe` captures and validates the desktop controls.
 
+Couch Mode appearance is selected by exact theme ID and stored with its existing
+navigation and Attract Mode preferences. Three built-in themes are always present.
+Settings exposes a virtualized palette preview and installs or removes declarative
+`.lunchbox-theme` ZIP packages on a Rust worker. The closed schema controls eight
+palette tokens, an optional signature-checked PNG/JPEG/WebP background, hero scrim,
+and card radius. It accepts no QML, scripts, commands, fonts, plugins, symlinks, or
+undeclared files. Package size, expanded size, entry count, text, color, path, and
+image format are bounded before an atomic publish. Exact SHA-256 ownership receipts
+guard updates and removal, so Lunchbox never replaces or recursively deletes a
+foreign directory. Invalid or missing selected themes fall back to the built-in
+default with an actionable warning. The full versioned format is documented in
+`COUCH_MODE_THEMES.md`.
+
+`--couch-theme-ui-probe --state-database EMPTY_PATH --screenshot-output PATH`
+creates a deterministic real package, installs it through the production validator,
+persists its exact ID, starts the 303,560-game catalog, and enters Couch Mode at
+1920x1200. It exits only after Rust and QML agree on four available themes, the exact
+`ultraviolet-circuit` identity, background and accent colors, and 24-pixel radius,
+then captures the full themed surface. Reusing the same state exercises idempotent
+installation and restart restoration.
+
 `GamepadInput` is a CXX-Qt Rust service backed by GilRs. It owns a named worker
 thread, performs blocking device reads there rather than on the GUI thread,
 publishes hotplug snapshots through the Qt event queue, and disables unused
