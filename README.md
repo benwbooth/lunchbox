@@ -37,10 +37,14 @@ all scans and result publication run on generation-guarded Rust workers.
 The header's Couch Mode control opens a fullscreen, keyboard-and-gamepad
 living-room presentation over those same models. It preserves the exact
 selected game, exposes All Games, My Collection, Minerva, Favorites, and Recent
-views, plus an exact 191-platform picker with live game counts. The current
-shelf and exact platform survive restart. Keyboard, controller, and pointer
-input share the same picker behavior, and Play, favorite changes, and download
-options route through the existing native services. Couch-native Details and
+views, plus an exact 191-platform picker with live game counts and a dedicated
+Collections picker for every manual or smart shelf. Collection rows show their
+live count, description or rule summary, and exact current-shelf state. The
+current built-in shelf, platform, or stable collection ID survives restart;
+deleted or stale collection IDs fall back safely to All Games. Keyboard,
+controller, and pointer input share the same picker behavior, and Play,
+favorite changes, and download options route through the existing native
+services. Couch-native Details and
 Game Menu overlays keep
 browsing on the television while exposing full metadata, activity, launch and
 download state, favorite changes, and an explicit handoff to the complete

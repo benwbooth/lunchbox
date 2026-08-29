@@ -115,7 +115,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   create/edit/delete, sidebar counts and navigation, exact per-game membership,
   preserved manual order, confirmed bulk visible-result changes, composable
   automatic rules, portable exact-ID import/export, asynchronous persistence
-  with rollback, and restart recovery.
+  with rollback, and restart recovery. Couch Mode has a controller-first
+  virtualized collection picker with live counts and rules, exact-ID routing,
+  cold-start restoration, and safe deletion/stale-ID fallback.
 - Native local Library Audit with one prepared catalog index, cancellable
   off-thread scans, exact healthy/changed/duplicate/new/missing/unreadable/root-
   offline states, review-first filtering and sorting, and confirmed stale-row
@@ -154,10 +156,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   favorite mutation, and explicit desktop handoff without losing selection.
   Its virtualized platform picker browses every catalog platform with live game
   counts, applies exact platform identity, and durably restores the selected
-  shelf and platform without blocking Qt. Its polished Attract Mode can start
-  manually or after a persisted idle delay, rotates through the exact current
-  shelf with controller/keyboard/pointer escape routes, and exposes validated
-  idle and cycle settings without creating a second catalog.
+  shelf and platform without blocking Qt. Its collection picker similarly
+  browses every manual and smart shelf, exposes live count and description/rule
+  context, and restores by stable collection ID. Its polished Attract Mode can
+  start manually or after a persisted idle delay, rotates through the exact
+  current shelf with controller/keyboard/pointer escape routes, and exposes
+  validated idle and cycle settings without creating a second catalog.
   Linux backend startup and deterministic real-QML routing through both overlays
   are exercised; attached-controller Linux, Windows, and macOS release-host
   certification remains.
@@ -287,10 +291,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   background image, hero contrast, and corner treatment without executable QML
   or scripts. Exact selection survives restart and verified ownership receipts
   guard updates and removal.
-- Richer game wheels, richer release/media management inside the implemented
-  Details and Game Menu overlays, startup/shutdown/pause
-  screens, background music, sound packs, marquee monitor support, parental
-  lock, and richer couch-safe settings.
+- The controller-first manual/smart Collections picker is native, virtualized,
+  and restart-safe by exact stable ID. Continue with richer game-wheel layouts,
+  richer release/media management inside the implemented Details and Game Menu
+  overlays, startup/shutdown/pause screens, background music, sound packs,
+  marquee monitor support, parental lock, and richer couch-safe settings.
 - Extend the implemented keyboard/direct-gamepad navigation into every future
   Couch Mode surface. Certify attached-controller input, hotplug, and focus
   restoration on Linux, Windows, and macOS release hosts.

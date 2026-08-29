@@ -14,6 +14,8 @@ Item {
     property int actionIndex: 0
     property bool platformWheelOpen: false
     property int platformWheelIndex: 0
+    property bool collectionWheelOpen: false
+    property int collectionWheelIndex: 0
     property bool attractOpen: false
     property bool attractProbeEnabled: false
     property string attractReason: "manual"
@@ -46,11 +48,30 @@ Item {
     readonly property var categories: [
         { label: "ALL GAMES", key: "" },
         { label: "PLATFORMS", key: "platform" },
+        { label: "COLLECTIONS", key: "collections" },
         { label: "MY COLLECTION", key: "local" },
         { label: "MINERVA", key: "downloadable" },
         { label: "FAVORITES", key: "favorites" },
         { label: "RECENT", key: "recent" }
     ]
+    readonly property string currentCollectionId:
+        currentFilterKey.indexOf("collection:") === 0
+        ? currentFilterKey.substring("collection:".length) : ""
+    readonly property string currentShelfLabel: {
+        library.collection_revision
+        if (currentCollectionId.length > 0) {
+            const index = collectionIndexForId(currentCollectionId)
+            if (index >= 0)
+                return library.collection_name_at(index).toUpperCase()
+        }
+        if (currentPlatformName.length > 0)
+            return currentPlatformName.toUpperCase()
+        for (let index = 0; index < categories.length; ++index) {
+            if (categories[index].key === currentFilterKey)
+                return categories[index].label
+        }
+        return "ALL GAMES"
+    }
     readonly property url heroUrl: {
         mediaRevision
         return selectedDatabaseId > 0
@@ -82,6 +103,7 @@ Item {
     signal exitRequested()
     signal filterRequested(string key)
     signal platformRequested(string platform)
+    signal collectionRequested(string collectionId, string collectionName)
     signal gameSelected(string gameId, int databaseId, string title,
                         string platform, bool local, bool downloadable)
     signal detailsRequested(string gameId, int databaseId, string title,
@@ -125,6 +147,7 @@ Item {
             return false
         overlayOpen = false
         platformWheelOpen = false
+        collectionWheelOpen = false
         attractReason = reason === "idle" ? "idle" : "manual"
         navigationZone = 2
         if (shelf.currentIndex < 0)
@@ -168,6 +191,10 @@ Item {
             openPlatformWheel()
             return
         }
+        if (categories[categoryIndex].key === "collections") {
+            openCollectionWheel()
+            return
+        }
         const shelfKey = categories[categoryIndex].key.length > 0
                          ? categories[categoryIndex].key : "all"
         library.save_couch_state(shelfKey, "")
@@ -176,6 +203,16 @@ Item {
     }
 
     function syncCategory() {
+        if (currentCollectionId.length > 0) {
+            for (let collectionCategory = 0;
+                    collectionCategory < categories.length;
+                    ++collectionCategory) {
+                if (categories[collectionCategory].key === "collections") {
+                    categoryIndex = collectionCategory
+                    return
+                }
+            }
+        }
         if (currentPlatformName.length > 0) {
             for (let platformIndex = 0; platformIndex < categories.length;
                     ++platformIndex) {
@@ -208,6 +245,7 @@ Item {
         if (library.platform_count <= 0)
             return
         overlayOpen = false
+        collectionWheelOpen = false
         attractOpen = false
         platformWheelIndex = platformIndexForName(currentPlatformName)
         platformWheel.currentIndex = platformWheelIndex
@@ -249,6 +287,72 @@ Item {
         platformWheelOpen = false
         navigationZone = 2
         platformRequested(platform)
+        forceActiveFocus()
+    }
+
+    function collectionIndexForId(collectionId) {
+        for (let index = 0; index < library.collection_count; ++index) {
+            if (library.collection_id_at(index) === collectionId)
+                return index
+        }
+        return -1
+    }
+
+    function openCollectionWheel() {
+        overlayOpen = false
+        platformWheelOpen = false
+        attractOpen = false
+        const selectedIndex = collectionIndexForId(currentCollectionId)
+        collectionWheelIndex = selectedIndex >= 0 ? selectedIndex : 0
+        collectionWheel.currentIndex = library.collection_count > 0
+                                     ? collectionWheelIndex : -1
+        if (collectionWheel.currentIndex >= 0)
+            collectionWheel.positionViewAtIndex(collectionWheel.currentIndex,
+                                                ListView.Center)
+        collectionWheelOpen = true
+        forceActiveFocus()
+    }
+
+    function focusCollection(collectionId) {
+        if (!collectionWheelOpen)
+            openCollectionWheel()
+        const index = collectionIndexForId(collectionId)
+        if (index < 0)
+            return false
+        collectionWheelIndex = index
+        collectionWheel.currentIndex = index
+        collectionWheel.positionViewAtIndex(index, ListView.Center)
+        return true
+    }
+
+    function closeCollectionWheel() {
+        collectionWheelOpen = false
+        if (active)
+            forceActiveFocus()
+    }
+
+    function moveCollectionWheel(delta) {
+        if (library.collection_count <= 0)
+            return
+        collectionWheelIndex = Math.max(
+                    0, Math.min(library.collection_count - 1,
+                                collectionWheelIndex + delta))
+        collectionWheel.currentIndex = collectionWheelIndex
+        collectionWheel.positionViewAtIndex(collectionWheelIndex,
+                                            ListView.Center)
+    }
+
+    function chooseCollection(index) {
+        noteActivity()
+        const collectionId = library.collection_id_at(index)
+        const collectionName = library.collection_name_at(index)
+        if (collectionId.length === 0
+                || !library.save_couch_state("collection:" + collectionId, ""))
+            return
+        collectionWheelIndex = index
+        collectionWheelOpen = false
+        navigationZone = 2
+        collectionRequested(collectionId, collectionName)
         forceActiveFocus()
     }
 
@@ -306,6 +410,8 @@ Item {
 
     function openOverlay(mode) {
         attractOpen = false
+        platformWheelOpen = false
+        collectionWheelOpen = false
         overlayMode = mode === "menu" ? "menu" : "details"
         overlayOpen = true
         menuActionIndex = 0
@@ -333,6 +439,12 @@ Item {
 
     function capturePlatformWheel(path, callback) {
         platformWheelOverlay.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
+    }
+
+    function captureCollectionWheel(path, callback) {
+        collectionWheelOverlay.grabToImage(function(result) {
             callback(result.saveToFile(path))
         })
     }
@@ -451,6 +563,29 @@ Item {
             }
             return true
         }
+        if (collectionWheelOpen) {
+            if (action === "back") {
+                closeCollectionWheel()
+            } else if (action === "up" || action === "left") {
+                moveCollectionWheel(-1)
+            } else if (action === "down" || action === "right") {
+                moveCollectionWheel(1)
+            } else if (action === "page_left") {
+                moveCollectionWheel(-5)
+            } else if (action === "page_right") {
+                moveCollectionWheel(5)
+            } else if (action === "home") {
+                collectionWheelIndex = 0
+                collectionWheel.currentIndex = library.collection_count > 0 ? 0 : -1
+                if (collectionWheel.currentIndex >= 0)
+                    collectionWheel.positionViewAtBeginning()
+            } else if (action === "accept" && library.collection_count > 0) {
+                chooseCollection(collectionWheelIndex)
+            } else {
+                return false
+            }
+            return true
+        }
         if (overlayOpen) {
             if (action === "back") {
                 closeOverlay()
@@ -550,6 +685,7 @@ Item {
         if (active) {
             overlayOpen = false
             platformWheelOpen = false
+            collectionWheelOpen = false
             attractOpen = false
             forceActiveFocus()
             syncCategory()
@@ -564,6 +700,7 @@ Item {
         } else {
             overlayOpen = false
             platformWheelOpen = false
+            collectionWheelOpen = false
             attractOpen = false
         }
     }
@@ -611,6 +748,11 @@ Item {
                 platformWheelIndex = Math.max(0, library.platform_count - 1)
                 platformWheel.currentIndex = platformWheelIndex
                 platformWheel.positionViewAtEnd()
+            } else if (collectionWheelOpen) {
+                collectionWheelIndex = Math.max(0, library.collection_count - 1)
+                collectionWheel.currentIndex = collectionWheelIndex
+                if (collectionWheel.currentIndex >= 0)
+                    collectionWheel.positionViewAtEnd()
             } else {
                 navigationZone = 2
                 shelf.currentIndex = shelf.count - 1
@@ -1071,7 +1213,8 @@ Item {
             anchors.leftMargin: 70
             anchors.top: parent.top
             text: view.library.filtering ? "UPDATING…"
-                  : view.library.filtered_count + " GAMES"
+                  : view.currentShelfLabel + "  ·  "
+                    + view.library.filtered_count + " GAMES"
             color: view.navigationZone === 2 ? view.accent : view.muted
             font.pixelSize: 10
             font.weight: Font.Bold
@@ -1880,6 +2023,316 @@ Item {
     }
 
     Rectangle {
+        id: collectionWheelOverlay
+        anchors.fill: parent
+        z: 46
+        visible: view.collectionWheelOpen
+        color: view.withAlpha(view.background, 0.93)
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: view.withAlpha(view.background, 0.96) }
+                GradientStop { position: 0.55; color: view.withAlpha(view.panel, 0.89) }
+                GradientStop { position: 1; color: view.withAlpha(view.background, 0.76) }
+            }
+        }
+
+        Rectangle {
+            id: collectionWheelPanel
+            anchors.centerIn: parent
+            width: Math.min(940, parent.width - 180)
+            height: Math.min(860, parent.height - 120)
+            radius: Math.min(32, view.cardRadius + 10)
+            color: view.withAlpha(view.panel, 0.97)
+            border.color: view.withAlpha(view.muted, 0.58)
+            border.width: 1
+            clip: true
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 118
+                color: view.withAlpha(view.panelRaised, 0.86)
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 42
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 5
+
+                    Text {
+                        text: "CHOOSE A COLLECTION"
+                        color: view.ink
+                        font.pixelSize: 24
+                        font.weight: Font.Black
+                        font.letterSpacing: 1.3
+                    }
+                    Text {
+                        text: view.library.collection_count + " collection"
+                              + (view.library.collection_count === 1 ? "" : "s")
+                              + " · exact saved identity"
+                        color: view.muted
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 0.4
+                    }
+                }
+
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 32
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 44
+                    height: 44
+                    radius: 13
+                    color: collectionCloseHover.hovered
+                           ? view.withAlpha(view.panelRaised, 0.9)
+                           : view.withAlpha(view.panel, 0.72)
+                    border.color: collectionCloseHover.hovered
+                                  ? view.accent : view.withAlpha(view.muted, 0.55)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        color: view.ink
+                        font.pixelSize: 23
+                    }
+                    HoverHandler { id: collectionCloseHover }
+                    TapHandler { onTapped: view.closeCollectionWheel() }
+                }
+            }
+
+            ListView {
+                id: collectionWheel
+                anchors.left: parent.left
+                anchors.leftMargin: 34
+                anchors.right: parent.right
+                anchors.rightMargin: 34
+                anchors.top: parent.top
+                anchors.topMargin: 128
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 82
+                model: view.library.collection_count
+                clip: true
+                reuseItems: true
+                cacheBuffer: height
+                spacing: 7
+                boundsBehavior: Flickable.StopAtBounds
+                snapMode: ListView.SnapToItem
+                preferredHighlightBegin: height * 0.5 - 49
+                preferredHighlightEnd: height * 0.5 + 49
+                highlightRangeMode: ListView.StrictlyEnforceRange
+                highlightMoveDuration: 120
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0)
+                        view.collectionWheelIndex = currentIndex
+                }
+
+                delegate: Item {
+                    id: collectionRow
+                    required property int index
+                    property int revision: view.library.collection_revision
+                    property string collectionId: {
+                        revision
+                        return view.library.collection_id_at(index)
+                    }
+                    property string collectionName: {
+                        revision
+                        return view.library.collection_name_at(index)
+                    }
+                    property string description: {
+                        revision
+                        return view.library.collection_description_at(index)
+                    }
+                    property string kind: {
+                        revision
+                        return view.library.collection_kind_at(index)
+                    }
+                    property string ruleSummary: {
+                        revision
+                        return view.library.collection_rule_summary_at(index)
+                    }
+                    property int gameCount: {
+                        revision
+                        return view.library.collection_game_count_at(index)
+                    }
+                    property bool selected: collectionWheel.currentIndex === index
+                    property int distance: Math.abs(index - collectionWheel.currentIndex)
+                    width: collectionWheel.width
+                    height: selected ? 98 : 80
+                    opacity: selected ? 1 : distance <= 2 ? 0.74 : 0.42
+                    scale: selected ? 1 : 0.975
+                    Accessible.name: collectionName + ", " + gameCount
+                                     + (gameCount === 1 ? " game" : " games")
+                    Behavior on height { NumberAnimation { duration: 110 } }
+                    Behavior on opacity { NumberAnimation { duration: 110 } }
+                    Behavior on scale { NumberAnimation { duration: 110 } }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.leftMargin: collectionRow.selected ? 0 : 16
+                        anchors.rightMargin: collectionRow.selected ? 0 : 16
+                        radius: 16
+                        color: collectionRow.selected
+                               ? view.withAlpha(view.panelRaised, 0.9)
+                               : collectionHover.hovered
+                                 ? view.withAlpha(view.panelRaised, 0.55)
+                                 : "transparent"
+                        border.color: collectionRow.selected ? view.accent : "transparent"
+                        border.width: collectionRow.selected ? 2 : 0
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: collectionRow.selected ? 56 : 46
+                            height: width
+                            radius: 15
+                            color: view.accentFor(collectionRow.collectionName)
+                            border.color: view.withAlpha(view.ink, 0.51)
+                            Text {
+                                anchors.centerIn: parent
+                                text: collectionRow.kind === "smart" ? "⚡" : "▣"
+                                color: view.withAlpha(view.ink, 0.97)
+                                font.pixelSize: collectionRow.selected ? 24 : 19
+                                font.weight: Font.Black
+                            }
+                        }
+
+                        Column {
+                            anchors.left: parent.left
+                            anchors.leftMargin: collectionRow.selected ? 94 : 80
+                            anchors.right: collectionCountColumn.left
+                            anchors.rightMargin: 28
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+
+                            Row {
+                                spacing: 10
+                                Text {
+                                    text: collectionRow.collectionName
+                                    color: view.ink
+                                    font.pixelSize: collectionRow.selected ? 19 : 15
+                                    font.weight: collectionRow.selected
+                                                 ? Font.Black : Font.DemiBold
+                                    elide: Text.ElideRight
+                                    width: Math.min(implicitWidth,
+                                                    collectionWheel.width * 0.46)
+                                }
+                                Text {
+                                    visible: collectionRow.collectionId
+                                             === view.currentCollectionId
+                                    text: "CURRENT SHELF"
+                                    color: view.accentCool
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: collectionRow.description.length > 0
+                                      ? collectionRow.description
+                                      : collectionRow.kind === "smart"
+                                        ? collectionRow.ruleSummary
+                                        : "A manually curated game shelf"
+                                color: view.muted
+                                font.pixelSize: 10
+                                maximumLineCount: collectionRow.selected ? 2 : 1
+                                elide: Text.ElideRight
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        Column {
+                            id: collectionCountColumn
+                            anchors.right: parent.right
+                            anchors.rightMargin: 22
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+                            Text {
+                                anchors.right: parent.right
+                                text: collectionRow.gameCount.toLocaleString(
+                                          Qt.locale(), "f", 0)
+                                color: collectionRow.selected ? view.accent : view.ink
+                                font.pixelSize: collectionRow.selected ? 18 : 14
+                                font.weight: Font.Black
+                            }
+                            Text {
+                                anchors.right: parent.right
+                                text: collectionRow.kind === "smart" ? "SMART" : "CURATED"
+                                color: view.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1
+                            }
+                        }
+
+                        HoverHandler { id: collectionHover }
+                        TapHandler { onTapped: view.chooseCollection(collectionRow.index) }
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: view.library.collection_count === 0
+                    width: Math.min(520, parent.width - 80)
+                    text: "No collections yet\n\nCreate a manual or smart collection in Desktop Mode, then it will appear here automatically."
+                    color: view.muted
+                    font.pixelSize: 15
+                    lineHeight: 1.35
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 72
+                color: view.withAlpha(view.background, 0.86)
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 28
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? "D-PAD / STICK  BROWSE" : "↑ ↓  BROWSE"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: view.library.collection_count > 0
+                              ? (view.gamepad.connected_count > 0
+                                 ? view.gamepad.button_label("accept") + "  SELECT"
+                                 : "ENTER  SELECT")
+                              : "DESKTOP MODE  CREATE COLLECTION"
+                        color: view.accent
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: view.gamepad.connected_count > 0
+                              ? view.gamepad.button_label("back") + "  CANCEL"
+                              : "ESC  CANCEL"
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
         id: couchOverlay
         anchors.fill: parent
         z: 50
@@ -2493,6 +2946,7 @@ Item {
                  && !view.attractOpen
                  && !view.overlayOpen
                  && !view.platformWheelOpen
+                 && !view.collectionWheelOpen
                  && shelf.count > 0
         onTriggered: view.startAttractMode("idle")
     }
@@ -2554,6 +3008,17 @@ Item {
                                                       shelf.count - 1))
             if (view.active)
                 selectionDelay.restart()
+        }
+        function onCollection_revisionChanged() {
+            if (view.collectionWheelOpen) {
+                view.collectionWheelIndex = view.library.collection_count > 0
+                        ? Math.max(0, Math.min(view.collectionWheelIndex,
+                                             view.library.collection_count - 1))
+                        : 0
+                collectionWheel.currentIndex = view.library.collection_count > 0
+                        ? view.collectionWheelIndex : -1
+            }
+            view.syncCategory()
         }
     }
 

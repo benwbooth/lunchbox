@@ -779,6 +779,20 @@ movement, exact SNES selection, a 6,008-row real-catalog result, persistence,
 and the restored 1920x1200 picker capture. Xvfb capture uses
 `QT_QPA_PLATFORM=xcb` to keep the test on the isolated display.
 
+The Couch Mode `Collections` shelf is another presentation over the existing
+manual and smart collection model. Its virtualized picker shows the exact name,
+description or rule summary, kind, and live game count without copying members.
+Selection and persistence use `collection:<stable UUID>` rather than display
+text. A renamed collection therefore restores correctly, while a deleted,
+missing, or otherwise stale ID falls back to All Games and is never guessed by
+title. Deleting the currently saved Couch Mode collection also coalesces that
+safe fallback through the ordinary state worker. The fresh
+`--couch-collection-ui-probe` creates an exact one-game manual shelf, exercises
+controller-equivalent selection, captures the 1920x1200 picker, and verifies
+the routed filter and persisted ID. A new process using the same state database
+and `--couch-collection-restored-ui-probe` proves cold restoration to the same
+collection and Super Mario Bros. UUID.
+
 Attract Mode is a presentation state over the active virtualized shelf, not a
 second model, query, or demo catalog. It can be entered from Game Menu or by an
 idle timer, advances with the persisted cycle interval, wraps exact rows, and
@@ -789,7 +803,7 @@ returns to the unchanged shelf. The native state database validates and stores
 enable, 30--3,600 second idle, and 5--120 second cycle values through the same
 coalesced Rust save worker as shelf/platform navigation. An idempotent schema
 migration gives older profiles safe defaults without changing their saved
-shelf or exact platform. Settings exposes curated living-room choices.
+navigation. Settings exposes curated living-room choices.
 `--couch-attract-ui-probe` and `--couch-attract-restored-ui-probe` exercise idle
 entry, wrapped next/previous identity, browsing return, settings persistence,
 and fresh/cold 1920x1200 captures against a 56-row real-catalog filter;

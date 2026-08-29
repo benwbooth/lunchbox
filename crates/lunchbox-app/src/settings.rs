@@ -755,11 +755,18 @@ impl Default for CouchModePreferences {
 
 impl CouchModePreferences {
     pub fn validate(&self) -> Result<()> {
-        if !matches!(
+        let built_in_shelf = matches!(
             self.shelf.as_str(),
             "all" | "local" | "downloadable" | "favorites" | "recent" | "platform"
-        ) {
+        );
+        let collection_id = couch_collection_id(&self.shelf);
+        if !built_in_shelf && collection_id.is_none() {
             bail!("unsupported Couch Mode shelf {}", self.shelf);
+        }
+        if collection_id.is_some_and(|collection_id| {
+            collection_id.chars().count() > 512 || collection_id.chars().any(char::is_control)
+        }) {
+            bail!("Couch Mode collection identity is invalid");
         }
         if self.platform.chars().count() > 200 {
             bail!("Couch Mode platform must be at most 200 characters");
@@ -783,6 +790,12 @@ impl CouchModePreferences {
         }
         Ok(())
     }
+}
+
+pub(crate) fn couch_collection_id(shelf: &str) -> Option<&str> {
+    shelf
+        .strip_prefix("collection:")
+        .filter(|collection_id| !collection_id.is_empty())
 }
 
 impl AppSettings {
@@ -3724,6 +3737,7 @@ fn migrate(connection: &Connection) -> Result<()> {
              id INTEGER PRIMARY KEY CHECK (id=1),
              shelf TEXT NOT NULL DEFAULT 'all' CHECK (
                  shelf IN ('all', 'local', 'downloadable', 'favorites', 'recent', 'platform')
+                 OR (shelf LIKE 'collection:%' AND length(shelf) BETWEEN 12 AND 523)
              ),
              platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
              theme_id TEXT NOT NULL DEFAULT 'lunchbox-default' CHECK (
@@ -4442,6 +4456,9 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !couch_mode_preferences_schema_is_current(connection)? {
+        migrate_couch_mode_preferences_schema(connection)?;
+    }
     if !column_exists(connection, "app_settings", "seeding_policy")? {
         connection.execute(
             "ALTER TABLE app_settings ADD COLUMN seeding_policy TEXT NOT NULL DEFAULT 'follow_client' CHECK (seeding_policy IN ('follow_client', 'pause_after_import'))",
@@ -4583,6 +4600,55 @@ fn library_preferences_schema_is_current(connection: &Connection) -> Result<bool
     Ok(schema.contains("'release-date'")
         && schema.contains("'release-status'")
         && schema.contains("'notes'"))
+}
+
+fn couch_mode_preferences_schema_is_current(connection: &Connection) -> Result<bool> {
+    let schema = connection.query_row(
+        "SELECT sql FROM sqlite_schema WHERE type='table' AND name='couch_mode_preferences'",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    Ok(schema.contains("collection:%"))
+}
+
+fn migrate_couch_mode_preferences_schema(connection: &Connection) -> Result<()> {
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(
+        "DROP TABLE IF EXISTS couch_mode_preferences_v2;
+         CREATE TABLE couch_mode_preferences_v2 (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             shelf TEXT NOT NULL DEFAULT 'all' CHECK (
+                 shelf IN ('all', 'local', 'downloadable', 'favorites', 'recent', 'platform')
+                 OR (shelf LIKE 'collection:%' AND length(shelf) BETWEEN 12 AND 523)
+             ),
+             platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
+             theme_id TEXT NOT NULL DEFAULT 'lunchbox-default' CHECK (
+                 length(theme_id) BETWEEN 3 AND 64
+             ),
+             attract_enabled INTEGER NOT NULL DEFAULT 0 CHECK (attract_enabled IN (0, 1)),
+             attract_idle_seconds INTEGER NOT NULL DEFAULT 300 CHECK (
+                 attract_idle_seconds BETWEEN 30 AND 3600
+             ),
+             attract_cycle_seconds INTEGER NOT NULL DEFAULT 12 CHECK (
+                 attract_cycle_seconds BETWEEN 5 AND 120
+             ),
+             CHECK (
+                 (shelf = 'platform' AND length(trim(platform)) > 0)
+                 OR (shelf != 'platform' AND platform = '')
+             )
+         );
+         INSERT INTO couch_mode_preferences_v2 (
+             id, shelf, platform, theme_id, attract_enabled,
+             attract_idle_seconds, attract_cycle_seconds
+         )
+         SELECT id, shelf, platform, theme_id, attract_enabled,
+                attract_idle_seconds, attract_cycle_seconds
+         FROM couch_mode_preferences;
+         DROP TABLE couch_mode_preferences;
+         ALTER TABLE couch_mode_preferences_v2 RENAME TO couch_mode_preferences;",
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn migrate_library_preferences_schema(connection: &Connection) -> Result<()> {
@@ -5844,7 +5910,7 @@ mod tests {
     }
 
     #[test]
-    fn couch_mode_shelf_defaults_safely_and_preserves_an_exact_platform() {
+    fn couch_mode_shelf_defaults_safely_and_preserves_exact_navigation() {
         let (_directory, store) = store();
         assert_eq!(
             store.load_couch_mode_preferences().unwrap(),
@@ -5863,6 +5929,14 @@ mod tests {
         let reopened = SettingsStore::at(store.path()).unwrap();
         assert_eq!(reopened.load_couch_mode_preferences().unwrap(), expected);
 
+        let collection = CouchModePreferences {
+            shelf: "collection:legacy-curated-shelf".into(),
+            platform: String::new(),
+            ..CouchModePreferences::default()
+        };
+        reopened.save_couch_mode_preferences(&collection).unwrap();
+        assert_eq!(reopened.load_couch_mode_preferences().unwrap(), collection);
+
         for invalid in [
             CouchModePreferences {
                 shelf: "platform".into(),
@@ -5877,6 +5951,23 @@ mod tests {
             CouchModePreferences {
                 shelf: "unknown".into(),
                 platform: String::new(),
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                shelf: "collection:".into(),
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                shelf: format!("collection:{}", "x".repeat(513)),
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                shelf: "collection:bad\nidentity".into(),
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                shelf: "collection:valid".into(),
+                platform: "Nintendo 64".into(),
                 ..CouchModePreferences::default()
             },
             CouchModePreferences {
@@ -5939,6 +6030,23 @@ mod tests {
         ] {
             assert!(column_exists(&connection, "couch_mode_preferences", column).unwrap());
         }
+        let schema: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type='table' AND name='couch_mode_preferences'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(schema.contains("collection:%"));
+        drop(connection);
+
+        let collection = CouchModePreferences {
+            shelf: "collection:migrated-curated-shelf".into(),
+            ..CouchModePreferences::default()
+        };
+        store.save_couch_mode_preferences(&collection).unwrap();
+        assert_eq!(store.load_couch_mode_preferences().unwrap(), collection);
     }
 
     #[test]

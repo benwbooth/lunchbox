@@ -574,6 +574,7 @@ use crate::media::{
 use crate::settings::{
     CouchModePreferences, GameCustomField, GameMetadataOverride, LibraryPreferences, PlayActivity,
     SettingsStore, SidebarPreferences, UserCollection, UserCollections, UserTag, UserTags,
+    couch_collection_id,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -1553,6 +1554,19 @@ impl qobject::LibraryModel {
                             couch_warnings.push(format!(
                                 "saved platform {} is no longer present in the catalog",
                                 preferences.platform
+                            ));
+                        } else if let Some(collection_id) = couch_collection_id(&preferences.shelf)
+                            && !collections.as_ref().is_ok_and(|collections| {
+                                collections
+                                    .collections
+                                    .iter()
+                                    .any(|collection| collection.id == collection_id)
+                            })
+                        {
+                            self.as_mut().set_couch_shelf(qstring("all"));
+                            self.as_mut().set_couch_platform(QString::default());
+                            couch_warnings.push(format!(
+                                "saved collection {collection_id} is no longer present"
                             ));
                         } else {
                             self.as_mut().set_couch_shelf(qstring(&preferences.shelf));
@@ -3704,6 +3718,17 @@ impl qobject::LibraryModel {
                     .set_collection_message(qstring("Collection deleted."));
                 self.as_mut().bump_collection_revision();
                 self.as_mut().refresh_active_collection_filter();
+                if couch_collection_id(&self.as_ref().couch_shelf().to_string())
+                    == Some(collection_id.as_str())
+                {
+                    self.as_mut().set_couch_shelf(qstring("all"));
+                    self.as_mut().set_couch_platform(QString::default());
+                    self.as_mut().rust_mut().couch_save_generation =
+                        self.as_ref().rust().couch_save_generation.wrapping_add(1);
+                    if !self.as_ref().rust().couch_save_pending {
+                        self.as_mut().start_couch_save();
+                    }
+                }
             }
             Ok(CollectionMutation::Membership(membership)) => {
                 self.as_mut()
@@ -4176,6 +4201,19 @@ impl qobject::LibraryModel {
             self.as_mut().set_status_message(qstring(format!(
                 "Couch Mode navigation was not saved: platform {} is not in the catalog",
                 preferences.platform
+            )));
+            return false;
+        }
+        if let Some(collection_id) = couch_collection_id(&preferences.shelf)
+            && !self
+                .as_ref()
+                .rust()
+                .collections
+                .iter()
+                .any(|collection| collection.id == collection_id)
+        {
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode navigation was not saved: collection {collection_id} is unavailable"
             )));
             return false;
         }

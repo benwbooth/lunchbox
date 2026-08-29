@@ -70,6 +70,9 @@ ApplicationWindow {
     property string couchGamepadProbeMovedGameId: ""
     property int couchPlatformProbeStage: 0
     property int couchPlatformProbeTargetIndex: -1
+    property int couchCollectionProbeStage: 0
+    property int couchCollectionProbeTargetIndex: -1
+    property bool couchCollectionProbeSnapshotLogged: false
     property int couchAttractProbeStage: 0
     property string couchAttractProbeMovedGameId: ""
     property string selectedGameId: ""
@@ -197,11 +200,15 @@ ApplicationWindow {
     readonly property bool couchPlatformRestoreUiProbe: Qt.application.arguments.indexOf("--couch-platform-restored-ui-probe") >= 0
     readonly property bool couchPlatformUiProbe: couchPlatformRestoreUiProbe
                                                   || Qt.application.arguments.indexOf("--couch-platform-ui-probe") >= 0
+    readonly property bool couchCollectionRestoreUiProbe: Qt.application.arguments.indexOf("--couch-collection-restored-ui-probe") >= 0
+    readonly property bool couchCollectionUiProbe: couchCollectionRestoreUiProbe
+                                                    || Qt.application.arguments.indexOf("--couch-collection-ui-probe") >= 0
     readonly property bool couchAttractRestoreUiProbe: Qt.application.arguments.indexOf("--couch-attract-restored-ui-probe") >= 0
     readonly property bool couchAttractUiProbe: couchAttractRestoreUiProbe
                                                  || Qt.application.arguments.indexOf("--couch-attract-ui-probe") >= 0
     readonly property bool couchThemeUiProbe: Qt.application.arguments.indexOf("--couch-theme-ui-probe") >= 0
     readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
+                                             || couchCollectionUiProbe
                                              || couchAttractUiProbe
                                              || couchThemeUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
@@ -408,6 +415,16 @@ ApplicationWindow {
         if (library.couch_shelf === "platform"
                 && library.couch_platform.length > 0)
             root.selectCouchPlatform(library.couch_platform)
+        else if (library.couch_shelf.indexOf("collection:") === 0) {
+            const collectionId = library.couch_shelf.substring(
+                        "collection:".length)
+            const index = root.collectionIndex(collectionId)
+            if (index >= 0)
+                root.selectCollection(collectionId,
+                                      library.collection_name_at(index))
+            else
+                root.selectLibrary("")
+        }
         else
             root.selectLibrary(library.couch_shelf === "all"
                                ? "" : library.couch_shelf)
@@ -557,6 +574,44 @@ ApplicationWindow {
                 return index
         }
         return -1
+    }
+
+    function prepareCouchCollectionProbe() {
+        if (!root.couchCollectionUiProbe
+                || root.couchCollectionRestoreUiProbe
+                || !library.ready || library.collection_busy)
+            return
+
+        const collectionName = "Couch Collection Probe"
+        const collectionDescription =
+                "A controller-first shelf restored by exact collection identity."
+        const gameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+        const index = root.collectionIndexByName(collectionName)
+        if (index < 0) {
+            if (root.couchCollectionProbeStage === 0) {
+                root.couchCollectionProbeStage = 1
+                library.create_collection(collectionName,
+                                          collectionDescription)
+            }
+            return
+        }
+
+        root.couchCollectionProbeTargetIndex = index
+        const collectionId = library.collection_id_at(index)
+        if (!library.collection_contains(collectionId, gameId)) {
+            if (root.couchCollectionProbeStage < 2) {
+                root.couchCollectionProbeStage = 2
+                library.set_collection_membership(collectionId, gameId, true)
+            }
+            return
+        }
+
+        if (root.couchCollectionProbeStage < 3) {
+            root.couchCollectionProbeStage = 3
+            root.selectedGameId = gameId
+            library.apply_filter("Super Mario Bros.",
+                                 "Nintendo Entertainment System", "")
+        }
     }
 
     function finishSmartCollectionProbe() {
@@ -1573,7 +1628,38 @@ ApplicationWindow {
                     root.beginHoverPreviewProbe()
                 }
                 else if (root.couchModeUiProbe) {
-                    if (root.couchAttractUiProbe) {
+                    if (root.couchCollectionUiProbe) {
+                        if (root.couchCollectionRestoreUiProbe) {
+                            if (library.couch_shelf.indexOf("collection:") !== 0) {
+                                console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED restored shelf="
+                                              + library.couch_shelf)
+                                Qt.exit(2)
+                                return
+                            }
+                            const collectionId = library.couch_shelf.substring(
+                                        "collection:".length)
+                            const index = root.collectionIndex(collectionId)
+                            if (index < 0
+                                    || library.collection_name_at(index)
+                                       !== "Couch Collection Probe") {
+                                console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED restored identity="
+                                              + collectionId + " index=" + index)
+                                Qt.exit(2)
+                                return
+                            }
+                            root.couchCollectionProbeTargetIndex = index
+                            root.couchCollectionProbeStage = 50
+                            root.selectedPlatform = ""
+                            root.selectedCollectionId = collectionId
+                            root.selectedCollectionName =
+                                    library.collection_name_at(index)
+                            root.availability = "collection:" + collectionId
+                            root.selectedGameId = ""
+                            library.apply_filter("", "", root.availability)
+                        } else {
+                            root.prepareCouchCollectionProbe()
+                        }
+                    } else if (root.couchAttractUiProbe) {
                         if (root.couchAttractRestoreUiProbe) {
                             if (!library.couch_attract_enabled
                                     || library.couch_attract_idle_seconds !== 60
@@ -1888,6 +1974,8 @@ ApplicationWindow {
                     && library.collection_count > 0
                     && !library.collection_busy)
                 root.startCollectionProbeSearch()
+            if (root.couchCollectionUiProbe)
+                root.prepareCouchCollectionProbe()
             if (root.smartCollectionProbe || root.smartCollectionUiProbe)
                 root.finishSmartCollectionProbe()
         }
@@ -1911,6 +1999,8 @@ ApplicationWindow {
                 root.selectCollection(library.collection_id_at(0),
                                       library.collection_name_at(0))
             }
+            if (root.couchCollectionUiProbe)
+                root.prepareCouchCollectionProbe()
             if (root.smartCollectionProbe || root.smartCollectionUiProbe)
                 root.finishSmartCollectionProbe()
         }
@@ -2230,12 +2320,14 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
+                    && !root.couchCollectionUiProbe
                     && !root.couchAttractUiProbe && !root.couchThemeUiProbe
                     && !gamepadInput.ready) {
                 couchModeScreenshotTimer.restart()
                 return
             }
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
+                    && !root.couchCollectionUiProbe
                     && !root.couchAttractUiProbe && !root.couchThemeUiProbe
                     && !gamepadInput.available) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED gamepad="
@@ -2293,6 +2385,45 @@ ApplicationWindow {
                 if (!root.couchPlatformRestoreUiProbe)
                     root.couchPlatformProbeStage = 1
                 couchPlatformProbeTimer.restart()
+                return
+            }
+            if (root.couchCollectionUiProbe) {
+                if (root.couchCollectionProbeStage !== 3
+                        && root.couchCollectionProbeStage !== 50)
+                    return
+                const targetIndex = root.couchCollectionProbeTargetIndex
+                const collectionId = targetIndex >= 0
+                                     ? library.collection_id_at(targetIndex) : ""
+                if (targetIndex < 0 || collectionId.length === 0
+                        || library.collection_name_at(targetIndex)
+                           !== "Couch Collection Probe"
+                        || library.collection_kind_at(targetIndex) !== "manual"
+                        || library.collection_description_at(targetIndex)
+                           !== "A controller-first shelf restored by exact collection identity."
+                        || library.collection_game_count_at(targetIndex) !== 1) {
+                    console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED missing exact collection index="
+                                  + targetIndex + " id=" + collectionId)
+                    Qt.exit(2)
+                    return
+                }
+                if (!root.couchCollectionRestoreUiProbe
+                        && couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED initial focus="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                couchModeView.openCollectionWheel()
+                if (!couchModeView.focusCollection(collectionId)) {
+                    console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED wheel focus id="
+                                  + collectionId)
+                    Qt.exit(2)
+                    return
+                }
+                if (!root.couchCollectionRestoreUiProbe)
+                    root.couchCollectionProbeStage = 4
+                couchCollectionProbeTimer.restart()
                 return
             }
             if (couchModeView.selectedGameId
@@ -2677,6 +2808,160 @@ ApplicationWindow {
     }
 
     Timer {
+        id: couchCollectionProbeTimer
+        interval: 280
+        repeat: false
+
+        function collectionId() {
+            return root.couchCollectionProbeTargetIndex >= 0
+                   ? library.collection_id_at(
+                         root.couchCollectionProbeTargetIndex) : ""
+        }
+
+        function captureAndFinish(restored) {
+            root.couchModeProbeCaptured = true
+            if (root.screenshotOutput.length === 0) {
+                console.warn("LUNCHBOX_COUCH_COLLECTION_UI_READY restored="
+                             + restored + " id=" + collectionId()
+                             + " games=" + library.filtered_count)
+                Qt.exit(0)
+                return
+            }
+            couchModeView.captureCollectionWheel(root.screenshotOutput,
+                                                  function(saved) {
+                if (!saved) {
+                    console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.warn("LUNCHBOX_COUCH_COLLECTION_UI_READY restored="
+                             + restored + " id=" + collectionId()
+                             + " games=" + library.filtered_count
+                             + " screenshot=" + root.screenshotOutput)
+                Qt.exit(0)
+            })
+        }
+
+        onTriggered: {
+            if (!root.couchCollectionUiProbe)
+                return
+            const collectionId = couchCollectionProbeTimer.collectionId()
+            const index = root.couchCollectionProbeTargetIndex
+            const wheelExpected = root.couchCollectionProbeStage === 4
+                                  || root.couchCollectionProbeStage === 50
+            if (index < 0 || collectionId.length === 0
+                    || (wheelExpected
+                        && (!couchModeView.collectionWheelOpen
+                            || couchModeView.collectionWheelIndex !== index))
+                    || library.collection_name_at(index)
+                       !== "Couch Collection Probe"
+                    || library.collection_kind_at(index) !== "manual"
+                    || library.collection_description_at(index)
+                       !== "A controller-first shelf restored by exact collection identity."
+                    || library.collection_game_count_at(index) !== 1) {
+                console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED wheel state index="
+                              + index + " wheel="
+                              + couchModeView.collectionWheelIndex + " open="
+                              + couchModeView.collectionWheelOpen + " id="
+                              + collectionId)
+                Qt.exit(2)
+                return
+            }
+
+            if (root.couchCollectionProbeStage === 50) {
+                const shelf = "collection:" + collectionId
+                if (library.couch_state_saving || library.filtering) {
+                    restart()
+                    return
+                }
+                if (library.couch_shelf !== shelf
+                        || library.couch_platform.length !== 0
+                        || root.availability !== shelf
+                        || root.selectedCollectionId !== collectionId
+                        || library.filtered_count !== 1
+                        || couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED restore routing shelf="
+                                  + library.couch_shelf + " availability="
+                                  + root.availability + " selected="
+                                  + root.selectedCollectionId + " games="
+                                  + library.filtered_count + " game="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                captureAndFinish(true)
+                return
+            }
+
+            if (root.couchCollectionProbeStage === 4) {
+                if (root.screenshotOutput.length === 0) {
+                    root.couchCollectionProbeStage = 5
+                    couchModeView.handleNavigation("accept")
+                    restart()
+                    return
+                }
+                couchModeView.captureCollectionWheel(root.screenshotOutput,
+                                                      function(saved) {
+                    if (!saved) {
+                        console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED screenshot="
+                                      + root.screenshotOutput)
+                        Qt.exit(2)
+                        return
+                    }
+                    root.couchCollectionProbeStage = 5
+                    couchModeView.handleNavigation("accept")
+                    couchCollectionProbeTimer.restart()
+                })
+                return
+            }
+
+            if (root.couchCollectionProbeStage === 5) {
+                if (library.couch_state_saving || library.filtering) {
+                    restart()
+                    return
+                }
+                const shelf = "collection:" + collectionId
+                if (!root.couchCollectionProbeSnapshotLogged) {
+                    root.couchCollectionProbeSnapshotLogged = true
+                    console.warn("LUNCHBOX_COUCH_COLLECTION_UI_STAGE selected shelf="
+                                 + library.couch_shelf + " availability="
+                                 + root.availability + " selected="
+                                 + root.selectedCollectionId + " games="
+                                 + library.filtered_count + " game="
+                                 + couchModeView.selectedGameId + " wheel="
+                                 + couchModeView.collectionWheelOpen)
+                    restart()
+                    return
+                }
+                if (couchModeView.collectionWheelOpen
+                        || root.selectedCollectionId !== collectionId
+                        || root.availability !== shelf
+                        || library.couch_shelf !== shelf
+                        || library.couch_platform.length !== 0
+                        || library.filtered_count !== 1) {
+                    restart()
+                    return
+                }
+                if (couchModeView.selectedGameId
+                        !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                        || gameDetails.game_id !== couchModeView.selectedGameId
+                        || gameDetails.loading) {
+                    restart()
+                    return
+                }
+                root.couchModeProbeCaptured = true
+                console.warn("LUNCHBOX_COUCH_COLLECTION_UI_READY restored=false id="
+                             + collectionId + " games="
+                             + library.filtered_count + " screenshot="
+                             + root.screenshotOutput)
+                Qt.exit(0)
+            }
+        }
+    }
+
+    Timer {
         id: couchAttractProbeTimer
         interval: 320
         repeat: false
@@ -2819,7 +3104,14 @@ ApplicationWindow {
             console.error("LUNCHBOX_COUCH_MODE_UI_FAILED timeout status="
                           + library.status_message + " gamepad="
                           + gamepadInput.status_message + " stage="
-                          + root.couchGamepadProbeStage)
+                          + root.couchGamepadProbeStage + " collection-stage="
+                          + root.couchCollectionProbeStage + " shelf="
+                          + library.couch_shelf + " availability="
+                          + root.availability + " selected="
+                          + root.selectedCollectionId + " games="
+                          + library.filtered_count + " game="
+                          + couchModeView.selectedGameId + " collection-wheel="
+                          + couchModeView.collectionWheelOpen)
             Qt.exit(2)
         }
     }
@@ -6540,6 +6832,9 @@ ApplicationWindow {
         onExitRequested: root.exitCouchMode()
         onFilterRequested: key => root.selectLibrary(key)
         onPlatformRequested: platform => root.selectCouchPlatform(platform)
+        onCollectionRequested: function(collectionId, collectionName) {
+            root.selectCollection(collectionId, collectionName)
+        }
         onGameSelected: function(gameId, databaseId, title, platform,
                                  local, downloadable) {
             root.openGame(gameId, databaseId, title, platform,
