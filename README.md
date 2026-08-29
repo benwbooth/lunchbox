@@ -38,7 +38,12 @@ options route through the existing native services. Couch-native Details and
 Game Menu overlays keep
 browsing on the television while exposing full metadata, activity, launch and
 download state, favorite changes, and an explicit handoff to the complete
-desktop tools without losing the exact game. A native Rust input worker handles
+desktop tools without losing the exact game. Attract Mode can be started from
+Game Menu or automatically after a configurable idle delay; it rotates through
+the current shelf rather than a second catalog, retains exact game identity,
+supports immediate directional browsing, and returns to browsing with Back.
+Its enable state, idle delay, and game interval are stored in the native state
+database and edited from Settings. A native Rust input worker handles
 hotplugging, analog dead zones, deliberate hold-repeat, paging, and Xbox,
 PlayStation, Nintendo, or generic button labels without blocking Qt. Escape or
 the controller's east face button returns to desktop mode.

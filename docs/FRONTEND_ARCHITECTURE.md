@@ -558,8 +558,9 @@ cannot silently replace the user's current game. Couch Mode owns only transient
 overlay state: Details and Game Menu consume the same `GameDetailsModel`, stable
 UUID, favorite persistence, launch, and download/setup handoff used by desktop
 mode. Details is scrollable without a mouse. Game Menu provides the real dynamic
-primary action, favorite toggle, explicit Desktop Details handoff, and Return to
-Browsing; closing or switching panels never changes the selected release.
+primary action, favorite toggle, explicit Desktop Details handoff, Attract Mode
+entry, and Return to Browsing; closing or switching panels never changes the
+selected release.
 
 The Couch Mode `Platforms` shelf opens a virtualized picker over the same 191
 platform rows already owned by `LibraryModel`; it does not copy or reload the
@@ -572,6 +573,22 @@ stale saved combinations fall back safely to All Games. The fresh
 movement, exact SNES selection, a 6,008-row real-catalog result, persistence,
 and the restored 1920x1200 picker capture. Xvfb capture uses
 `QT_QPA_PLATFORM=xcb` to keep the test on the isolated display.
+
+Attract Mode is a presentation state over the active virtualized shelf, not a
+second model, query, or demo catalog. It can be entered from Game Menu or by an
+idle timer, advances with the persisted cycle interval, wraps exact rows, and
+uses the same stable UUID, details, artwork, favorite, launch, and Minerva state
+as normal Couch Mode. Directional input moves immediately; accept/menu opens
+the exact game's menu; details and favorite retain their usual semantics; back
+returns to the unchanged shelf. The native state database validates and stores
+enable, 30--3,600 second idle, and 5--120 second cycle values through the same
+coalesced Rust save worker as shelf/platform navigation. An idempotent schema
+migration gives older profiles safe defaults without changing their saved
+shelf or exact platform. Settings exposes curated living-room choices.
+`--couch-attract-ui-probe` and `--couch-attract-restored-ui-probe` exercise idle
+entry, wrapped next/previous identity, browsing return, settings persistence,
+and fresh/cold 1920x1200 captures against a 56-row real-catalog filter;
+`--couch-attract-settings-ui-probe` captures and validates the desktop controls.
 
 `GamepadInput` is a CXX-Qt Rust service backed by GilRs. It owns a named worker
 thread, performs blocking device reads there rather than on the GUI thread,
@@ -591,8 +608,9 @@ the inactive QML view ignores its actions.
 seam to inject the same semantic actions that the worker publishes. Against the
 real 303,560-game catalog it proves right movement, exact stable-UUID restoration
 after left movement, action/shelf focus movement, opening Game Menu, traversing
-all four actions, returning without identity loss, opening Details, and switching
-between panels before the final 1920x1200 Details capture. Pass
+all five actions including Attract Mode, returning without identity loss,
+opening Details, and switching between panels before the final 1920x1200
+Details capture. Pass
 `--couch-gamepad-menu-screenshot-output PATH` instead to stop on and capture the
 verified Game Menu. Xvfb runs set `QT_QPA_PLATFORM=xcb` so Qt cannot escape to an
 ambient Wayland session. The ordinary Couch Mode probe separately starts the

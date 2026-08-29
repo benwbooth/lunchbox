@@ -203,6 +203,9 @@ pub struct SidebarPreferences {
 pub struct CouchModePreferences {
     pub shelf: String,
     pub platform: String,
+    pub attract_enabled: bool,
+    pub attract_idle_seconds: i32,
+    pub attract_cycle_seconds: i32,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -582,6 +585,9 @@ impl Default for CouchModePreferences {
         Self {
             shelf: "all".to_owned(),
             platform: String::new(),
+            attract_enabled: false,
+            attract_idle_seconds: 300,
+            attract_cycle_seconds: 12,
         }
     }
 }
@@ -605,6 +611,12 @@ impl CouchModePreferences {
         }
         if self.shelf != "platform" && !self.platform.is_empty() {
             bail!("Couch Mode platform must be empty outside the platform shelf");
+        }
+        if !(30..=3600).contains(&self.attract_idle_seconds) {
+            bail!("Couch Mode idle delay must be between 30 and 3600 seconds");
+        }
+        if !(5..=120).contains(&self.attract_cycle_seconds) {
+            bail!("Couch Mode attract cycle must be between 5 and 120 seconds");
         }
         Ok(())
     }
@@ -1219,12 +1231,17 @@ impl SettingsStore {
         let preferences = self
             .connection()?
             .query_row(
-                "SELECT shelf, platform FROM couch_mode_preferences WHERE id=1",
+                "SELECT shelf, platform, attract_enabled,
+                        attract_idle_seconds, attract_cycle_seconds
+                 FROM couch_mode_preferences WHERE id=1",
                 [],
                 |row| {
                     Ok(CouchModePreferences {
                         shelf: row.get(0)?,
                         platform: row.get(1)?,
+                        attract_enabled: row.get(2)?,
+                        attract_idle_seconds: row.get(3)?,
+                        attract_cycle_seconds: row.get(4)?,
                     })
                 },
             )
@@ -1237,12 +1254,23 @@ impl SettingsStore {
     pub fn save_couch_mode_preferences(&self, preferences: &CouchModePreferences) -> Result<()> {
         preferences.validate()?;
         self.connection()?.execute(
-            "INSERT INTO couch_mode_preferences (id, shelf, platform)
-             VALUES (1, ?1, ?2)
+            "INSERT INTO couch_mode_preferences (
+                 id, shelf, platform, attract_enabled,
+                 attract_idle_seconds, attract_cycle_seconds
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(id) DO UPDATE SET
                  shelf=excluded.shelf,
-                 platform=excluded.platform",
-            params![preferences.shelf, preferences.platform],
+                 platform=excluded.platform,
+                 attract_enabled=excluded.attract_enabled,
+                 attract_idle_seconds=excluded.attract_idle_seconds,
+                 attract_cycle_seconds=excluded.attract_cycle_seconds",
+            params![
+                preferences.shelf,
+                preferences.platform,
+                preferences.attract_enabled,
+                preferences.attract_idle_seconds,
+                preferences.attract_cycle_seconds,
+            ],
         )?;
         Ok(())
     }
@@ -3056,6 +3084,13 @@ fn migrate(connection: &Connection) -> Result<()> {
                  shelf IN ('all', 'local', 'downloadable', 'favorites', 'recent', 'platform')
              ),
              platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
+             attract_enabled INTEGER NOT NULL DEFAULT 0 CHECK (attract_enabled IN (0, 1)),
+             attract_idle_seconds INTEGER NOT NULL DEFAULT 300 CHECK (
+                 attract_idle_seconds BETWEEN 30 AND 3600
+             ),
+             attract_cycle_seconds INTEGER NOT NULL DEFAULT 12 CHECK (
+                 attract_cycle_seconds BETWEEN 5 AND 120
+             ),
              CHECK (
                  (shelf = 'platform' AND length(trim(platform)) > 0)
                  OR (shelf != 'platform' AND platform = '')
@@ -3560,6 +3595,28 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "library_preferences", "grid_zoom")? {
         connection.execute(
             "ALTER TABLE library_preferences ADD COLUMN grid_zoom INTEGER NOT NULL DEFAULT 100",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "couch_mode_preferences", "attract_enabled")? {
+        connection.execute(
+            "ALTER TABLE couch_mode_preferences ADD COLUMN attract_enabled INTEGER NOT NULL DEFAULT 0 CHECK (attract_enabled IN (0, 1))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "couch_mode_preferences", "attract_idle_seconds")? {
+        connection.execute(
+            "ALTER TABLE couch_mode_preferences ADD COLUMN attract_idle_seconds INTEGER NOT NULL DEFAULT 300 CHECK (attract_idle_seconds BETWEEN 30 AND 3600)",
+            [],
+        )?;
+    }
+    if !column_exists(
+        connection,
+        "couch_mode_preferences",
+        "attract_cycle_seconds",
+    )? {
+        connection.execute(
+            "ALTER TABLE couch_mode_preferences ADD COLUMN attract_cycle_seconds INTEGER NOT NULL DEFAULT 12 CHECK (attract_cycle_seconds BETWEEN 5 AND 120)",
             [],
         )?;
     }
@@ -4586,6 +4643,9 @@ mod tests {
         let expected = CouchModePreferences {
             shelf: "platform".into(),
             platform: "Super Nintendo Entertainment System".into(),
+            attract_enabled: true,
+            attract_idle_seconds: 180,
+            attract_cycle_seconds: 8,
         };
         store.save_couch_mode_preferences(&expected).unwrap();
         let reopened = SettingsStore::at(store.path()).unwrap();
@@ -4595,17 +4655,72 @@ mod tests {
             CouchModePreferences {
                 shelf: "platform".into(),
                 platform: String::new(),
+                ..CouchModePreferences::default()
             },
             CouchModePreferences {
                 shelf: "recent".into(),
                 platform: "Nintendo 64".into(),
+                ..CouchModePreferences::default()
             },
             CouchModePreferences {
                 shelf: "unknown".into(),
                 platform: String::new(),
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                attract_idle_seconds: 29,
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                attract_cycle_seconds: 121,
+                ..CouchModePreferences::default()
             },
         ] {
             assert!(store.save_couch_mode_preferences(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn older_couch_mode_preferences_gain_safe_attract_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE couch_mode_preferences (
+                     id INTEGER PRIMARY KEY CHECK (id = 1),
+                     shelf TEXT NOT NULL DEFAULT 'all' CHECK (
+                         shelf IN ('all', 'local', 'downloadable', 'favorites', 'recent', 'platform')
+                     ),
+                     platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
+                     CHECK (
+                         (shelf = 'platform' AND length(trim(platform)) > 0)
+                         OR (shelf != 'platform' AND platform = '')
+                     )
+                 );
+                 INSERT INTO couch_mode_preferences (id, shelf, platform)
+                 VALUES (1, 'platform', 'Super Nintendo Entertainment System');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = SettingsStore::at(&path).unwrap();
+        assert_eq!(
+            store.load_couch_mode_preferences().unwrap(),
+            CouchModePreferences {
+                shelf: "platform".into(),
+                platform: "Super Nintendo Entertainment System".into(),
+                ..CouchModePreferences::default()
+            }
+        );
+
+        let connection = Connection::open(&path).unwrap();
+        for column in [
+            "attract_enabled",
+            "attract_idle_seconds",
+            "attract_cycle_seconds",
+        ] {
+            assert!(column_exists(&connection, "couch_mode_preferences", column).unwrap());
         }
     }
 

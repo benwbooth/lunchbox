@@ -116,7 +116,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   favorite mutation, and explicit desktop handoff without losing selection.
   Its virtualized platform picker browses every catalog platform with live game
   counts, applies exact platform identity, and durably restores the selected
-  shelf and platform without blocking Qt.
+  shelf and platform without blocking Qt. Its polished Attract Mode can start
+  manually or after a persisted idle delay, rotates through the exact current
+  shelf with controller/keyboard/pointer escape routes, and exposes validated
+  idle and cycle settings without creating a second catalog.
   Linux backend startup and deterministic real-QML routing through both overlays
   are exercised; attached-controller Linux, Windows, and macOS release-host
   certification remains.
@@ -224,9 +227,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   which already shares the Rust models and services rather than creating a
   second database or duplicated backend.
 - Theme packages, richer game wheels, richer release/media management inside
-  the implemented Details and Game Menu overlays, attract mode, startup/shutdown/
-  pause screens, screensaver, background music, sound packs, marquee monitor
-  support, parental lock, and couch-safe settings.
+  the implemented Details and Game Menu overlays, startup/shutdown/pause
+  screens, background music, sound packs, marquee monitor support, parental
+  lock, and richer couch-safe settings.
 - Extend the implemented keyboard/direct-gamepad navigation into every future
   Couch Mode surface. Certify attached-controller input, hotplug, and focus
   restoration on Linux, Windows, and macOS release hosts.

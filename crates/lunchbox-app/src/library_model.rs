@@ -60,6 +60,9 @@ pub mod qobject {
         #[qproperty(bool, sidebar_state_saving)]
         #[qproperty(QString, couch_shelf)]
         #[qproperty(QString, couch_platform)]
+        #[qproperty(bool, couch_attract_enabled)]
+        #[qproperty(i32, couch_attract_idle_seconds)]
+        #[qproperty(i32, couch_attract_cycle_seconds)]
         #[qproperty(bool, couch_state_saving)]
         #[qproperty(i32, local_file_count)]
         #[qproperty(i32, local_game_count)]
@@ -360,6 +363,14 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn save_couch_attract_settings(
+            self: Pin<&mut LibraryModel>,
+            enabled: bool,
+            idle_seconds: i32,
+            cycle_seconds: i32,
+        ) -> bool;
+
+        #[qinvokable]
         fn shell_ready(self: Pin<&mut LibraryModel>);
     }
 
@@ -514,6 +525,9 @@ pub struct LibraryModelRust {
     sidebar_state_saving: bool,
     couch_shelf: QString,
     couch_platform: QString,
+    couch_attract_enabled: bool,
+    couch_attract_idle_seconds: i32,
+    couch_attract_cycle_seconds: i32,
     couch_state_saving: bool,
     local_file_count: i32,
     local_game_count: i32,
@@ -627,6 +641,9 @@ impl Default for LibraryModelRust {
             sidebar_state_saving: false,
             couch_shelf: qstring(&CouchModePreferences::default().shelf),
             couch_platform: QString::default(),
+            couch_attract_enabled: CouchModePreferences::default().attract_enabled,
+            couch_attract_idle_seconds: CouchModePreferences::default().attract_idle_seconds,
+            couch_attract_cycle_seconds: CouchModePreferences::default().attract_cycle_seconds,
             couch_state_saving: false,
             local_file_count: 0,
             local_game_count: 0,
@@ -1125,6 +1142,12 @@ impl qobject::LibraryModel {
                 };
                 let couch_warning = match couch_preferences {
                     Ok(preferences) => {
+                        self.as_mut()
+                            .set_couch_attract_enabled(preferences.attract_enabled);
+                        self.as_mut()
+                            .set_couch_attract_idle_seconds(preferences.attract_idle_seconds);
+                        self.as_mut()
+                            .set_couch_attract_cycle_seconds(preferences.attract_cycle_seconds);
                         if preferences.shelf == "platform"
                             && !catalog
                                 .platforms
@@ -3170,6 +3193,9 @@ impl qobject::LibraryModel {
         let preferences = CouchModePreferences {
             shelf: shelf.to_string(),
             platform: platform.to_string(),
+            attract_enabled: *self.as_ref().couch_attract_enabled(),
+            attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
+            attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
         };
         if let Err(error) = preferences.validate() {
             self.as_mut().set_status_message(qstring(format!(
@@ -3204,11 +3230,45 @@ impl qobject::LibraryModel {
         true
     }
 
+    pub fn save_couch_attract_settings(
+        mut self: Pin<&mut Self>,
+        enabled: bool,
+        idle_seconds: i32,
+        cycle_seconds: i32,
+    ) -> bool {
+        let preferences = CouchModePreferences {
+            shelf: self.as_ref().couch_shelf().to_string(),
+            platform: self.as_ref().couch_platform().to_string(),
+            attract_enabled: enabled,
+            attract_idle_seconds: idle_seconds,
+            attract_cycle_seconds: cycle_seconds,
+        };
+        if let Err(error) = preferences.validate() {
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode attract settings were not saved: {error}"
+            )));
+            return false;
+        }
+
+        self.as_mut().set_couch_attract_enabled(enabled);
+        self.as_mut().set_couch_attract_idle_seconds(idle_seconds);
+        self.as_mut().set_couch_attract_cycle_seconds(cycle_seconds);
+        self.as_mut().rust_mut().couch_save_generation =
+            self.as_ref().rust().couch_save_generation.wrapping_add(1);
+        if !self.as_ref().rust().couch_save_pending {
+            self.as_mut().start_couch_save();
+        }
+        true
+    }
+
     fn start_couch_save(mut self: Pin<&mut Self>) {
         let generation = self.as_ref().rust().couch_save_generation;
         let preferences = CouchModePreferences {
             shelf: self.as_ref().couch_shelf().to_string(),
             platform: self.as_ref().couch_platform().to_string(),
+            attract_enabled: *self.as_ref().couch_attract_enabled(),
+            attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
+            attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
         };
         self.as_mut().rust_mut().couch_save_pending = true;
         self.as_mut().set_couch_state_saving(true);

@@ -57,6 +57,8 @@ ApplicationWindow {
     property string couchGamepadProbeMovedGameId: ""
     property int couchPlatformProbeStage: 0
     property int couchPlatformProbeTargetIndex: -1
+    property int couchAttractProbeStage: 0
+    property string couchAttractProbeMovedGameId: ""
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
@@ -135,7 +137,11 @@ ApplicationWindow {
     readonly property bool couchPlatformRestoreUiProbe: Qt.application.arguments.indexOf("--couch-platform-restored-ui-probe") >= 0
     readonly property bool couchPlatformUiProbe: couchPlatformRestoreUiProbe
                                                   || Qt.application.arguments.indexOf("--couch-platform-ui-probe") >= 0
+    readonly property bool couchAttractRestoreUiProbe: Qt.application.arguments.indexOf("--couch-attract-restored-ui-probe") >= 0
+    readonly property bool couchAttractUiProbe: couchAttractRestoreUiProbe
+                                                 || Qt.application.arguments.indexOf("--couch-attract-ui-probe") >= 0
     readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
+                                             || couchAttractUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataUiProbe: Qt.application.arguments.indexOf("--metadata-ui-probe") >= 0
     readonly property bool tagsUiProbe: Qt.application.arguments.indexOf("--tags-ui-probe") >= 0
@@ -159,6 +165,7 @@ ApplicationWindow {
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool settingsMediaPriorityUiProbe: Qt.application.arguments.indexOf("--settings-media-priority-ui-probe") >= 0
+    readonly property bool couchAttractSettingsUiProbe: Qt.application.arguments.indexOf("--couch-attract-settings-ui-probe") >= 0
     readonly property bool retroarchShaderUiProbe: Qt.application.arguments.indexOf("--retroarch-shader-ui-probe") >= 0
     readonly property bool steamGridDbUiProbe: Qt.application.arguments.indexOf("--steamgriddb-ui-probe") >= 0
     readonly property bool igdbUiProbe: Qt.application.arguments.indexOf("--igdb-ui-probe") >= 0
@@ -286,7 +293,7 @@ ApplicationWindow {
     }
 
     function advanceCouchGamepadMenuProbe() {
-        root.couchGamepadProbeStage = 12
+        root.couchGamepadProbeStage = 13
         gamepadInput.probe_navigation_action("left")
         couchGamepadProbeTimer.restart()
     }
@@ -1195,7 +1202,27 @@ ApplicationWindow {
                                          "Nintendo Entertainment System", "")
                 }
                 else if (root.couchModeUiProbe) {
-                    if (root.couchPlatformRestoreUiProbe) {
+                    if (root.couchAttractUiProbe) {
+                        if (root.couchAttractRestoreUiProbe) {
+                            if (!library.couch_attract_enabled
+                                    || library.couch_attract_idle_seconds !== 60
+                                    || library.couch_attract_cycle_seconds !== 8) {
+                                console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED restored settings enabled="
+                                              + library.couch_attract_enabled + " idle="
+                                              + library.couch_attract_idle_seconds + " cycle="
+                                              + library.couch_attract_cycle_seconds)
+                                Qt.exit(2)
+                                return
+                            }
+                        } else if (!library.save_couch_attract_settings(true, 60, 8)) {
+                            console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED settings save")
+                            Qt.exit(2)
+                            return
+                        }
+                        root.selectedGameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                        library.apply_filter("Super Mario Bros.",
+                                             "Nintendo Entertainment System", "")
+                    } else if (root.couchPlatformRestoreUiProbe) {
                         if (library.couch_shelf !== "platform"
                                 || library.couch_platform
                                    !== "Super Nintendo Entertainment System") {
@@ -1639,11 +1666,13 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
+                    && !root.couchAttractUiProbe
                     && !gamepadInput.ready) {
                 couchModeScreenshotTimer.restart()
                 return
             }
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
+                    && !root.couchAttractUiProbe
                     && !gamepadInput.available) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED gamepad="
                               + gamepadInput.status_message)
@@ -1655,6 +1684,27 @@ ApplicationWindow {
                     || gameDetails.title.length === 0) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED empty live selection")
                 Qt.exit(2)
+                return
+            }
+            if (root.couchAttractUiProbe) {
+                if (root.couchAttractProbeStage !== 0)
+                    return
+                if (!couchModeView.attractOpen) {
+                    couchModeScreenshotTimer.restart()
+                    return
+                }
+                if (couchModeView.attractReason !== "idle"
+                        || couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED idle start reason="
+                                  + couchModeView.attractReason + " identity="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchAttractProbeStage = 1
+                couchModeView.handleNavigation("right")
+                couchAttractProbeTimer.restart()
                 return
             }
             if (root.couchPlatformUiProbe) {
@@ -1706,7 +1756,7 @@ ApplicationWindow {
                 return
             }
             if (root.couchGamepadUiProbe
-                    && root.couchGamepadProbeStage < 12)
+                    && root.couchGamepadProbeStage < 13)
                 return
             root.couchModeProbeCaptured = true
             if (root.couchProbeScreenshotOutput.length === 0) {
@@ -1825,15 +1875,25 @@ ApplicationWindow {
                 couchGamepadProbeTimer.restart()
             } else if (root.couchGamepadProbeStage === 8) {
                 if (couchModeView.menuActionIndex !== 3) {
-                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED menu close index="
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED menu attract index="
                                   + couchModeView.menuActionIndex)
                     Qt.exit(2)
                     return
                 }
                 root.couchGamepadProbeStage = 9
-                gamepadInput.probe_navigation_action("accept")
+                gamepadInput.probe_navigation_action("down")
                 couchGamepadProbeTimer.restart()
             } else if (root.couchGamepadProbeStage === 9) {
+                if (couchModeView.menuActionIndex !== 4) {
+                    console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED menu close index="
+                                  + couchModeView.menuActionIndex)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchGamepadProbeStage = 10
+                gamepadInput.probe_navigation_action("accept")
+                couchGamepadProbeTimer.restart()
+            } else if (root.couchGamepadProbeStage === 10) {
                 if (couchModeView.overlayOpen
                         || couchModeView.selectedGameId
                            !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
@@ -1842,10 +1902,10 @@ ApplicationWindow {
                     Qt.exit(2)
                     return
                 }
-                root.couchGamepadProbeStage = 10
+                root.couchGamepadProbeStage = 11
                 gamepadInput.probe_navigation_action("details")
                 couchGamepadProbeTimer.restart()
-            } else if (root.couchGamepadProbeStage === 10) {
+            } else if (root.couchGamepadProbeStage === 11) {
                 if (!couchModeView.overlayOpen
                         || couchModeView.overlayMode !== "details") {
                     console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED details open mode="
@@ -1853,10 +1913,10 @@ ApplicationWindow {
                     Qt.exit(2)
                     return
                 }
-                root.couchGamepadProbeStage = 11
+                root.couchGamepadProbeStage = 12
                 gamepadInput.probe_navigation_action("right")
                 couchGamepadProbeTimer.restart()
-            } else if (root.couchGamepadProbeStage === 11) {
+            } else if (root.couchGamepadProbeStage === 12) {
                 if (couchModeView.overlayMode !== "menu") {
                     console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED panel right mode="
                                   + couchModeView.overlayMode)
@@ -1867,9 +1927,9 @@ ApplicationWindow {
                     root.advanceCouchGamepadMenuProbe()
                     return
                 }
-                root.couchGamepadProbeStage = 12
+                root.couchGamepadProbeStage = 13
                 couchModeScreenshotTimer.restart()
-            } else if (root.couchGamepadProbeStage === 12) {
+            } else if (root.couchGamepadProbeStage === 13) {
                 if (!couchModeView.overlayOpen
                         || couchModeView.overlayMode !== "details"
                         || couchModeView.selectedGameId
@@ -2012,6 +2072,141 @@ ApplicationWindow {
                 root.couchModeProbeCaptured = true
                 console.warn("LUNCHBOX_COUCH_PLATFORM_UI_READY restored=false platform="
                              + library.current_platform + " games="
+                             + library.filtered_count + " screenshot="
+                             + root.screenshotOutput)
+                Qt.exit(0)
+            }
+        }
+    }
+
+    Timer {
+        id: couchAttractProbeTimer
+        interval: 320
+        repeat: false
+        onTriggered: {
+            if (!root.couchAttractUiProbe)
+                return
+            if (root.couchAttractProbeStage === 1) {
+                if (!couchModeView.attractOpen
+                        || couchModeView.selectedGameId.length === 0
+                        || couchModeView.selectedGameId
+                           === "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED next identity="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchAttractProbeMovedGameId = couchModeView.selectedGameId
+                root.couchAttractProbeStage = 2
+                couchModeView.handleNavigation("left")
+                restart()
+            } else if (root.couchAttractProbeStage === 2) {
+                if (!couchModeView.attractOpen
+                        || couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED previous moved="
+                                  + root.couchAttractProbeMovedGameId + " current="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                if (library.couch_state_saving) {
+                    restart()
+                    return
+                }
+                if (root.screenshotOutput.length === 0) {
+                    root.couchAttractProbeStage = 3
+                    couchModeView.handleNavigation("back")
+                    restart()
+                    return
+                }
+                couchModeView.captureAttract(root.screenshotOutput,
+                                             function(saved) {
+                    if (!saved) {
+                        console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED screenshot="
+                                      + root.screenshotOutput)
+                        Qt.exit(2)
+                        return
+                    }
+                    root.couchAttractProbeStage = 3
+                    couchModeView.handleNavigation("back")
+                    couchAttractProbeTimer.restart()
+                })
+            } else if (root.couchAttractProbeStage === 3) {
+                if (couchModeView.attractOpen
+                        || couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                        || !library.couch_attract_enabled
+                        || library.couch_attract_idle_seconds !== 60
+                        || library.couch_attract_cycle_seconds !== 8) {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED return open="
+                                  + couchModeView.attractOpen + " identity="
+                                  + couchModeView.selectedGameId + " enabled="
+                                  + library.couch_attract_enabled + " idle="
+                                  + library.couch_attract_idle_seconds + " cycle="
+                                  + library.couch_attract_cycle_seconds)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchAttractProbeStage = 4
+                couchModeView.handleNavigation("menu")
+                restart()
+            } else if (root.couchAttractProbeStage === 4) {
+                if (!couchModeView.overlayOpen
+                        || couchModeView.overlayMode !== "menu"
+                        || couchModeView.menuActionIndex !== 0) {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED manual menu open="
+                                  + couchModeView.overlayOpen + " mode="
+                                  + couchModeView.overlayMode + " index="
+                                  + couchModeView.menuActionIndex)
+                    Qt.exit(2)
+                    return
+                }
+                couchModeView.handleNavigation("down")
+                couchModeView.handleNavigation("down")
+                couchModeView.handleNavigation("down")
+                if (couchModeView.menuActionIndex !== 3) {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED manual menu index="
+                                  + couchModeView.menuActionIndex)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchAttractProbeStage = 5
+                couchModeView.handleNavigation("accept")
+                restart()
+            } else if (root.couchAttractProbeStage === 5) {
+                if (!couchModeView.attractOpen
+                        || couchModeView.attractReason !== "manual"
+                        || couchModeView.overlayOpen
+                        || couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED manual start open="
+                                  + couchModeView.attractOpen + " reason="
+                                  + couchModeView.attractReason + " menu="
+                                  + couchModeView.overlayOpen + " identity="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchAttractProbeStage = 6
+                couchModeView.handleNavigation("back")
+                restart()
+            } else if (root.couchAttractProbeStage === 6) {
+                if (couchModeView.attractOpen
+                        || couchModeView.overlayOpen
+                        || couchModeView.selectedGameId
+                           !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_UI_FAILED manual return open="
+                                  + couchModeView.attractOpen + " menu="
+                                  + couchModeView.overlayOpen + " identity="
+                                  + couchModeView.selectedGameId)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchModeProbeCaptured = true
+                console.warn("LUNCHBOX_COUCH_ATTRACT_UI_READY restored="
+                             + root.couchAttractRestoreUiProbe + " moved="
+                             + root.couchAttractProbeMovedGameId + " games="
                              + library.filtered_count + " screenshot="
                              + root.screenshotOutput)
                 Qt.exit(0)
@@ -2550,6 +2745,7 @@ ApplicationWindow {
                 root.openImportDialog()
             else if (root.settingsUiProbe || root.settingsRegionUiProbe
                      || root.settingsMediaPriorityUiProbe
+                     || root.couchAttractSettingsUiProbe
                      || root.controllerUiProbe || root.controllerProfileUiProbe
                      || root.retroarchShaderUiProbe) {
                 settingsDialog.open()
@@ -2630,6 +2826,57 @@ ApplicationWindow {
         onTriggered: settingsScroll.contentItem.contentY = Math.max(
                          0, regionPrioritySection.mapToItem(
                              settingsScroll.contentItem, 0, 0).y - 18)
+    }
+
+    Timer {
+        interval: 500
+        running: root.couchAttractSettingsUiProbe
+                 && library.ready && appSettings.initialized
+        repeat: false
+        onTriggered: {
+            settingsScroll.contentItem.contentY = Math.max(
+                0, couchAttractSettingsSection.mapToItem(
+                    settingsScroll.contentItem, 0, 0).y - 18)
+            couchAttractSettingsScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: couchAttractSettingsScreenshotTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+            if (!settingsDialog.visible
+                    || library.couch_attract_idle_seconds < 30
+                    || library.couch_attract_cycle_seconds < 5) {
+                console.error("LUNCHBOX_COUCH_ATTRACT_SETTINGS_UI_FAILED visible="
+                              + settingsDialog.visible + " idle="
+                              + library.couch_attract_idle_seconds + " cycle="
+                              + library.couch_attract_cycle_seconds)
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                console.log("LUNCHBOX_COUCH_ATTRACT_SETTINGS_UI_READY idle="
+                            + library.couch_attract_idle_seconds + " cycle="
+                            + library.couch_attract_cycle_seconds)
+                Qt.quit()
+                return
+            }
+            settingsDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_COUCH_ATTRACT_SETTINGS_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_COUCH_ATTRACT_SETTINGS_UI_READY idle="
+                            + library.couch_attract_idle_seconds + " cycle="
+                            + library.couch_attract_cycle_seconds + " screenshot="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
     }
 
     Timer {
@@ -4009,6 +4256,7 @@ ApplicationWindow {
         preferredGameId: root.selectedGameId
         currentFilterKey: root.availability
         currentPlatformName: root.selectedPlatform
+        attractProbeEnabled: root.couchAttractUiProbe
         onExitRequested: root.exitCouchMode()
         onFilterRequested: key => root.selectLibrary(key)
         onPlatformRequested: platform => root.selectCouchPlatform(platform)
@@ -10153,10 +10401,12 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: Math.min(root.controllerProfileUiProbe
                         || root.settingsMediaPriorityUiProbe
+                        || root.couchAttractSettingsUiProbe
                         || root.retroarchShaderUiProbe ? 1120 : 760,
                         root.width - 60)
         height: Math.min(root.controllerProfileUiProbe
                          || root.settingsMediaPriorityUiProbe
+                         || root.couchAttractSettingsUiProbe
                          || root.retroarchShaderUiProbe ? 1080 : 760,
                          root.height - 60)
         padding: 0
@@ -10209,6 +10459,121 @@ ApplicationWindow {
                 x: 24
                 width: settingsDialog.availableWidth - 48
                 spacing: 11
+
+                ColumnLayout {
+                    id: couchAttractSettingsSection
+                    Layout.fillWidth: true
+                    spacing: 9
+
+                    Text {
+                        text: "COUCH MODE"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Attract Mode turns the current Couch Mode shelf into a living-room screensaver. It reuses the exact active filter and never creates a second catalog or changes collection identity."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        Switch {
+                            text: "Start when idle"
+                            checked: library.couch_attract_enabled
+                            enabled: library.ready && !library.couch_state_saving
+                            onToggled: library.save_couch_attract_settings(
+                                           checked,
+                                           library.couch_attract_idle_seconds,
+                                           library.couch_attract_cycle_seconds)
+                            Accessible.name: "Start Couch Mode Attract Mode when idle"
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: library.couch_state_saving
+                                  ? "SAVING…" : "SAVED AUTOMATICALLY"
+                            color: library.couch_state_saving
+                                   ? root.accent : root.muted
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Text {
+                            text: "Start after"
+                            color: root.ink
+                            font.pixelSize: 12
+                        }
+                        ComboBox {
+                            id: couchAttractIdleDelay
+                            Layout.fillWidth: true
+                            enabled: library.ready && !library.couch_state_saving
+                            textRole: "label"
+                            valueRole: "value"
+                            model: [
+                                { label: "1 minute", value: 60 },
+                                { label: "3 minutes", value: 180 },
+                                { label: "5 minutes", value: 300 },
+                                { label: "10 minutes", value: 600 },
+                                { label: "20 minutes", value: 1200 }
+                            ]
+                            currentIndex: {
+                                for (let index = 0; index < model.length; ++index) {
+                                    if (model[index].value
+                                            === library.couch_attract_idle_seconds)
+                                        return index
+                                }
+                                return 2
+                            }
+                            onActivated: library.save_couch_attract_settings(
+                                             library.couch_attract_enabled,
+                                             currentValue,
+                                             library.couch_attract_cycle_seconds)
+                            Accessible.name: "Couch Mode idle delay"
+                        }
+                        Text {
+                            text: "Change game every"
+                            color: root.ink
+                            font.pixelSize: 12
+                        }
+                        ComboBox {
+                            id: couchAttractCycleDelay
+                            Layout.fillWidth: true
+                            enabled: library.ready && !library.couch_state_saving
+                            textRole: "label"
+                            valueRole: "value"
+                            model: [
+                                { label: "5 seconds", value: 5 },
+                                { label: "8 seconds", value: 8 },
+                                { label: "12 seconds", value: 12 },
+                                { label: "20 seconds", value: 20 },
+                                { label: "30 seconds", value: 30 }
+                            ]
+                            currentIndex: {
+                                for (let index = 0; index < model.length; ++index) {
+                                    if (model[index].value
+                                            === library.couch_attract_cycle_seconds)
+                                        return index
+                                }
+                                return 2
+                            }
+                            onActivated: library.save_couch_attract_settings(
+                                             library.couch_attract_enabled,
+                                             library.couch_attract_idle_seconds,
+                                             currentValue)
+                            Accessible.name: "Couch Mode attract cycle"
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
 
                 Text {
                     text: "QBITTORRENT"

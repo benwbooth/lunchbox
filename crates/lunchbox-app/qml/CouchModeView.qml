@@ -14,6 +14,10 @@ Item {
     property int actionIndex: 0
     property bool platformWheelOpen: false
     property int platformWheelIndex: 0
+    property bool attractOpen: false
+    property bool attractProbeEnabled: false
+    property string attractReason: "manual"
+    property real attractProgress: 0
     property bool overlayOpen: false
     property string overlayMode: "details"
     property int menuActionIndex: 0
@@ -32,6 +36,7 @@ Item {
     readonly property color muted: "#a4adbb"
     readonly property color accent: "#ffab52"
     readonly property color accentCool: "#64d8c8"
+    readonly property int menuActionCount: 5
     readonly property var categories: [
         { label: "ALL GAMES", key: "" },
         { label: "PLATFORMS", key: "platform" },
@@ -90,12 +95,60 @@ Item {
     function moveShelf(delta) {
         if (shelf.count <= 0)
             return
+        noteActivity()
         shelf.currentIndex = Math.max(0, Math.min(shelf.count - 1,
                                                  shelf.currentIndex + delta))
         shelf.positionViewAtIndex(shelf.currentIndex, ListView.Contain)
     }
 
+    function noteActivity() {
+        if (attractIdleTimer.running)
+            attractIdleTimer.restart()
+    }
+
+    function startAttractMode(reason) {
+        if (!active || shelf.count <= 0)
+            return false
+        overlayOpen = false
+        platformWheelOpen = false
+        attractReason = reason === "idle" ? "idle" : "manual"
+        navigationZone = 2
+        if (shelf.currentIndex < 0)
+            shelf.currentIndex = 0
+        shelf.positionViewAtIndex(shelf.currentIndex, ListView.Center)
+        captureCurrentGame()
+        loadCurrentGame()
+        attractOpen = true
+        attractCycleTimer.restart()
+        attractProgressAnimation.restart()
+        forceActiveFocus()
+        return true
+    }
+
+    function stopAttractMode() {
+        if (!attractOpen)
+            return
+        attractOpen = false
+        attractProgressAnimation.stop()
+        if (active) {
+            forceActiveFocus()
+            noteActivity()
+        }
+    }
+
+    function moveAttract(delta) {
+        if (shelf.count <= 0)
+            return
+        const current = Math.max(0, shelf.currentIndex)
+        shelf.currentIndex = ((current + delta) % shelf.count + shelf.count) % shelf.count
+        shelf.positionViewAtIndex(shelf.currentIndex, ListView.Center)
+        selectionDelay.restart()
+        attractCycleTimer.restart()
+        attractProgressAnimation.restart()
+    }
+
     function chooseCategory(index) {
+        noteActivity()
         categoryIndex = Math.max(0, Math.min(categories.length - 1, index))
         if (categories[categoryIndex].key === "platform") {
             openPlatformWheel()
@@ -141,6 +194,7 @@ Item {
         if (library.platform_count <= 0)
             return
         overlayOpen = false
+        attractOpen = false
         platformWheelIndex = platformIndexForName(currentPlatformName)
         platformWheel.currentIndex = platformWheelIndex
         platformWheel.positionViewAtIndex(platformWheelIndex, ListView.Center)
@@ -172,6 +226,7 @@ Item {
     }
 
     function choosePlatform(index) {
+        noteActivity()
         const platform = library.platform_name_at(index)
         if (platform.length === 0
                 || !library.save_couch_state("platform", platform))
@@ -236,6 +291,7 @@ Item {
     }
 
     function openOverlay(mode) {
+        attractOpen = false
         overlayMode = mode === "menu" ? "menu" : "details"
         overlayOpen = true
         menuActionIndex = 0
@@ -261,6 +317,12 @@ Item {
         })
     }
 
+    function captureAttract(path, callback) {
+        attractOverlay.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
+    }
+
     function menuActionLabel(index) {
         if (index === 0)
             return primaryAction
@@ -268,6 +330,8 @@ Item {
             return favorite ? "REMOVE FAVORITE" : "ADD FAVORITE"
         if (index === 2)
             return "DESKTOP DETAILS"
+        if (index === 3)
+            return "START ATTRACT MODE"
         return "RETURN TO BROWSING"
     }
 
@@ -286,6 +350,8 @@ Item {
                             : "Keep this exact game in Favorites."
         if (index === 2)
             return "Open releases, media, firmware, launch profiles, and metadata tools."
+        if (index === 3)
+            return "Let Couch Mode rotate through games on the current shelf."
         return "Close this menu without changing the selected game."
     }
 
@@ -299,6 +365,9 @@ Item {
         } else if (index === 2) {
             closeOverlay()
             requestDetails()
+        } else if (index === 3) {
+            closeOverlay()
+            startAttractMode("manual")
         } else {
             closeOverlay()
         }
@@ -308,6 +377,38 @@ Item {
         if (!active)
             return false
         forceActiveFocus()
+        noteActivity()
+        if (attractOpen) {
+            if (action === "back") {
+                stopAttractMode()
+            } else if (action === "left" || action === "up") {
+                moveAttract(-1)
+            } else if (action === "right" || action === "down") {
+                moveAttract(1)
+            } else if (action === "page_left") {
+                moveAttract(-5)
+            } else if (action === "page_right") {
+                moveAttract(5)
+            } else if (action === "home") {
+                shelf.currentIndex = 0
+                shelf.positionViewAtBeginning()
+                selectionDelay.restart()
+                attractCycleTimer.restart()
+                attractProgressAnimation.restart()
+            } else if (action === "accept" || action === "menu") {
+                stopAttractMode()
+                openOverlay("menu")
+            } else if (action === "details") {
+                stopAttractMode()
+                openOverlay("details")
+            } else if (action === "favorite") {
+                if (!favoriteBusy && selectedGameId.length > 0)
+                    library.set_favorite(selectedGameId, !favorite)
+            } else {
+                return false
+            }
+            return true
+        }
         if (platformWheelOpen) {
             if (action === "back") {
                 closePlatformWheel()
@@ -348,7 +449,8 @@ Item {
                                                         detailsScroller.contentY - 90)
             } else if (action === "down") {
                 if (overlayMode === "menu")
-                    menuActionIndex = Math.min(3, menuActionIndex + 1)
+                    menuActionIndex = Math.min(menuActionCount - 1,
+                                               menuActionIndex + 1)
                 else
                     detailsScroller.contentY = Math.min(
                                 Math.max(0, detailsScroller.contentHeight
@@ -428,6 +530,7 @@ Item {
         if (active) {
             overlayOpen = false
             platformWheelOpen = false
+            attractOpen = false
             forceActiveFocus()
             syncCategory()
             const preferredRow = library.row_for_game(preferredGameId)
@@ -441,6 +544,7 @@ Item {
         } else {
             overlayOpen = false
             platformWheelOpen = false
+            attractOpen = false
         }
     }
 
@@ -477,7 +581,13 @@ Item {
         } else if (event.key === Qt.Key_Home) {
             action = "home"
         } else if (event.key === Qt.Key_End) {
-            if (platformWheelOpen) {
+            if (attractOpen) {
+                shelf.currentIndex = Math.max(0, shelf.count - 1)
+                shelf.positionViewAtEnd()
+                selectionDelay.restart()
+                attractCycleTimer.restart()
+                attractProgressAnimation.restart()
+            } else if (platformWheelOpen) {
                 platformWheelIndex = Math.max(0, library.platform_count - 1)
                 platformWheel.currentIndex = platformWheelIndex
                 platformWheel.positionViewAtEnd()
@@ -495,6 +605,13 @@ Item {
             action = "details"
         } else if (event.key === Qt.Key_M) {
             action = "menu"
+        } else if (event.key === Qt.Key_A) {
+            if (attractOpen)
+                action = "back"
+            else {
+                event.accepted = startAttractMode("manual")
+                return
+            }
         } else if (event.key === Qt.Key_Tab) {
             action = "cycle_zone"
         }
@@ -1055,6 +1172,7 @@ Item {
                     HoverHandler { id: shelfHover }
                     TapHandler {
                         onTapped: {
+                            view.noteActivity()
                             view.navigationZone = 2
                             shelf.currentIndex = gameTile.index
                             view.forceActiveFocus()
@@ -1111,7 +1229,15 @@ Item {
             font.weight: Font.Bold
             font.letterSpacing: 0.8
         }
-        Item { width: Math.max(0, parent.width - 660); height: 1 }
+        Text {
+            visible: view.gamepad.connected_count === 0
+            text: "A  ATTRACT"
+            color: view.muted
+            font.pixelSize: 9
+            font.weight: Font.Bold
+            font.letterSpacing: 0.8
+        }
+        Item { width: Math.max(0, parent.width - 760); height: 1 }
         Text {
             text: view.gamepad.connected_count > 0
                   ? view.gamepad.button_label("back") + "  DESKTOP MODE"
@@ -1120,6 +1246,325 @@ Item {
             font.pixelSize: 9
             font.weight: Font.Bold
             font.letterSpacing: 0.8
+        }
+    }
+
+    Rectangle {
+        id: attractOverlay
+        anchors.fill: parent
+        z: 42
+        visible: view.attractOpen
+        color: "#080b11"
+
+        Image {
+            anchors.fill: parent
+            source: view.heroUrl
+            asynchronous: true
+            cache: true
+            autoTransform: true
+            fillMode: Image.PreserveAspectCrop
+            sourceSize.width: Math.max(1, Math.round(width * 1.4))
+            sourceSize.height: Math.max(1, Math.round(height * 1.4))
+            opacity: status === Image.Ready ? 0.88 : 0
+            Behavior on opacity { NumberAnimation { duration: 420 } }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "#f5080b11" }
+                GradientStop { position: 0.46; color: "#b8080b11" }
+                GradientStop { position: 0.78; color: "#52080b11" }
+                GradientStop { position: 1; color: "#a8080b11" }
+            }
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: parent.height * 0.58
+            gradient: Gradient {
+                GradientStop { position: 0; color: "#00080b11" }
+                GradientStop { position: 0.34; color: "#b7080b11" }
+                GradientStop { position: 1; color: "#ff080b11" }
+            }
+        }
+
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: 62
+            anchors.top: parent.top
+            anchors.topMargin: 42
+            spacing: 13
+
+            Rectangle {
+                width: 42
+                height: 42
+                radius: 13
+                color: view.accent
+                Text {
+                    anchors.centerIn: parent
+                    text: "L"
+                    color: "#10141c"
+                    font.pixelSize: 21
+                    font.weight: Font.Black
+                }
+            }
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+                Text {
+                    text: "LUNCHBOX"
+                    color: view.ink
+                    font.pixelSize: 17
+                    font.weight: Font.Black
+                    font.letterSpacing: 1.8
+                }
+                Text {
+                    text: "ATTRACT MODE"
+                    color: view.accent
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.4
+                }
+            }
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            anchors.topMargin: 46
+            anchors.right: parent.right
+            anchors.rightMargin: 62
+            width: attractModeLabel.implicitWidth + 30
+            height: 34
+            radius: 11
+            color: "#9a121923"
+            border.color: "#68768494"
+            Text {
+                id: attractModeLabel
+                anchors.centerIn: parent
+                text: view.attractReason === "idle" ? "IDLE SCREENSAVER" : "MANUAL SHOWCASE"
+                color: view.muted
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+        }
+
+        Rectangle {
+            id: attractCoverShadow
+            anchors.right: parent.right
+            anchors.rightMargin: Math.max(74, parent.width * 0.075)
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 30
+            width: Math.min(360, parent.width * 0.22)
+            height: width * 1.38
+            radius: 24
+            color: "#97000000"
+            rotation: 2.5
+
+            Rectangle {
+                id: attractCoverSurface
+                anchors.fill: parent
+                anchors.margins: 10
+                radius: 20
+                color: view.accentFor(view.selectedTitle)
+                border.color: "#8dffffff"
+                clip: true
+                gradient: Gradient {
+                    GradientStop {
+                        position: 0
+                        color: Qt.lighter(attractCoverSurface.color, 1.2)
+                    }
+                    GradientStop {
+                        position: 1
+                        color: Qt.darker(attractCoverSurface.color, 1.65)
+                    }
+                }
+                Image {
+                    id: attractCoverImage
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    source: view.coverUrl
+                    asynchronous: true
+                    cache: true
+                    mipmap: true
+                    autoTransform: true
+                    fillMode: Image.PreserveAspectFit
+                    sourceSize.width: Math.max(1, Math.round(width * 1.5))
+                    sourceSize.height: Math.max(1, Math.round(height * 1.5))
+                    opacity: status === Image.Ready ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 280 } }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    visible: attractCoverImage.status !== Image.Ready
+                    text: view.selectedTitle.length > 0
+                          ? view.selectedTitle.charAt(0).toUpperCase() : "L"
+                    color: "#d9ffffff"
+                    font.pixelSize: 92
+                    font.weight: Font.Black
+                }
+            }
+        }
+
+        Column {
+            anchors.left: parent.left
+            anchors.leftMargin: Math.max(62, parent.width * 0.065)
+            anchors.right: attractCoverShadow.left
+            anchors.rightMargin: Math.max(70, parent.width * 0.055)
+            anchors.bottom: attractFooter.top
+            anchors.bottomMargin: 44
+            spacing: 14
+
+            Rectangle {
+                width: 74
+                height: 5
+                radius: 3
+                color: view.accent
+            }
+            Text {
+                width: parent.width
+                text: view.selectedPlatform.toUpperCase()
+                color: view.accent
+                font.pixelSize: 11
+                font.weight: Font.Bold
+                font.letterSpacing: 1.5
+                elide: Text.ElideRight
+            }
+            Text {
+                width: parent.width
+                text: view.selectedTitle
+                color: view.ink
+                font.pixelSize: Math.max(38, Math.min(64, attractOverlay.width / 30))
+                font.weight: Font.Black
+                lineHeight: 0.98
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
+            Text {
+                width: Math.min(parent.width, 850)
+                visible: view.details.description.length > 0
+                text: view.details.description
+                color: "#d2d8e1"
+                font.pixelSize: 15
+                lineHeight: 1.28
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
+            }
+            Row {
+                spacing: 10
+                Rectangle {
+                    width: attractStateLabel.implicitWidth + 22
+                    height: 30
+                    radius: 10
+                    color: view.selectedLocal ? "#5130584f"
+                           : view.selectedDownloadable ? "#554b3d27" : "#4c28313d"
+                    border.color: view.selectedLocal ? view.accentCool
+                                  : view.selectedDownloadable ? view.accent : "#657282"
+                    Text {
+                        id: attractStateLabel
+                        anchors.centerIn: parent
+                        text: view.details.can_launch ? "READY TO PLAY"
+                              : view.selectedLocal ? "SETUP REQUIRED"
+                              : view.selectedDownloadable ? "MINERVA AVAILABLE"
+                                : "CATALOG"
+                        color: view.details.can_launch || view.selectedLocal
+                               ? view.accentCool
+                               : view.selectedDownloadable ? view.accent : view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                }
+                Rectangle {
+                    visible: view.favorite
+                    width: attractFavoriteLabel.implicitWidth + 22
+                    height: 30
+                    radius: 10
+                    color: "#554b3d27"
+                    border.color: view.accent
+                    Text {
+                        id: attractFavoriteLabel
+                        anchors.centerIn: parent
+                        text: "★ FAVORITE"
+                        color: view.accent
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            id: attractFooter
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 78
+            color: "#cf0a0f16"
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 2
+                color: "#52606f7f"
+                Rectangle {
+                    width: parent.width * view.attractProgress
+                    height: parent.height
+                    color: view.accent
+                }
+            }
+
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 62
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 28
+                Text {
+                    text: view.gamepad.connected_count > 0
+                          ? "D-PAD / STICK  NEXT GAME" : "← →  NEXT GAME"
+                    color: view.muted
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                }
+                Text {
+                    text: view.gamepad.connected_count > 0
+                          ? view.gamepad.button_label("accept") + "  GAME MENU"
+                          : "ENTER  GAME MENU"
+                    color: view.ink
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                }
+            }
+
+            Text {
+                anchors.right: parent.right
+                anchors.rightMargin: 62
+                anchors.verticalCenter: parent.verticalCenter
+                text: view.gamepad.connected_count > 0
+                      ? view.gamepad.button_label("back") + "  RETURN TO BROWSING"
+                      : "ESC  RETURN TO BROWSING"
+                color: view.muted
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 0.8
+            }
+        }
+
+        TapHandler {
+            onTapped: {
+                view.stopAttractMode()
+                view.openOverlay("menu")
+            }
         }
     }
 
@@ -1827,7 +2272,7 @@ Item {
                         }
 
                         Repeater {
-                            model: 4
+                            model: view.menuActionCount
                             delegate: Rectangle {
                                 id: menuAction
                                 required property int index
@@ -1874,7 +2319,8 @@ Item {
                                     text: menuAction.index === 0 ? "▶"
                                           : menuAction.index === 1
                                             ? (view.favorite ? "★" : "☆")
-                                          : menuAction.index === 2 ? "↗" : "×"
+                                          : menuAction.index === 2 ? "↗"
+                                          : menuAction.index === 3 ? "◈" : "×"
                                     color: menuAction.selected ? view.accent : view.muted
                                     font.pixelSize: menuAction.index === 1 ? 24 : 18
                                     font.weight: Font.Bold
@@ -1937,6 +2383,39 @@ Item {
         }
     }
 
+    NumberAnimation {
+        id: attractProgressAnimation
+        target: view
+        property: "attractProgress"
+        from: 0
+        to: 1
+        duration: Math.max(5000, view.library.couch_attract_cycle_seconds * 1000)
+    }
+
+    Timer {
+        id: attractIdleTimer
+        interval: view.attractProbeEnabled
+                  ? 350
+                  : Math.max(30, view.library.couch_attract_idle_seconds) * 1000
+        repeat: false
+        running: view.active
+                 && (view.library.couch_attract_enabled
+                     || view.attractProbeEnabled)
+                 && !view.attractOpen
+                 && !view.overlayOpen
+                 && !view.platformWheelOpen
+                 && shelf.count > 0
+        onTriggered: view.startAttractMode("idle")
+    }
+
+    Timer {
+        id: attractCycleTimer
+        interval: Math.max(5, view.library.couch_attract_cycle_seconds) * 1000
+        repeat: false
+        running: view.active && view.attractOpen && shelf.count > 0
+        onTriggered: view.moveAttract(1)
+    }
+
     Timer {
         id: selectionDelay
         interval: 120
@@ -1975,6 +2454,7 @@ Item {
         target: view.library
         function onFiltered_countChanged() {
             if (shelf.count <= 0) {
+                view.stopAttractMode()
                 shelf.currentIndex = -1
                 view.selectedGameId = ""
                 view.selectedDatabaseId = 0
