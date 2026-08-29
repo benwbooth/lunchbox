@@ -135,7 +135,13 @@ prototype, and revision releases on the same exact platform appear as a native
 horizontal carousel. It is ordered by the saved region/version preferences and
 switches by the target row's exact UUID; duplicate full titles collapse only
 for presentation and never transfer IDs or metadata. Installed,
-Minerva-covered, catalog-only, and current states remain distinct. A persisted,
+Minerva-covered, catalog-only, and current states remain distinct. The same
+details flow now includes a keyboard-accessible **More Like This** shelf: a
+bounded worker ranks exact catalog records by effective series, title/franchise
+terms, creators, genres, platform, play mode, and release proximity, honors the
+adult/non-retail preferences, and labels each result Play, Get, or Catalog.
+Selecting one opens its stable UUID; recommendation metadata never matches,
+merges, or transfers game identity. A persisted,
 fully ordered region list plus the latest/original release-version policy ranks
 otherwise equal candidates; the
 picker still exposes the exact region, revision, filename, size, and match

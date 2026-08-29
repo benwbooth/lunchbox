@@ -617,6 +617,19 @@ release carousel, and optionally captures it with `--screenshot-output`.
 Grouping is bounded to one exact platform plus contiguous recognized trailing
 region, language, release-state, or revision tags. It is navigation only:
 records, metadata, LaunchBox IDs, and local state are never merged or copied.
+The desktop `More Like This` shelf follows the same identity boundary. The
+details worker reads at most 6,000 deterministic catalog candidates selected by
+exact series, developer, publisher, or platform metadata, adds exact IDs with
+local metadata overrides, applies effective adult/non-retail preferences, and
+ranks at most 12 results by series, normalized title/franchise terms, creators,
+genres, platform, play mode, and release-year proximity. Same-platform release
+siblings already represented by the Releases carousel are excluded. The final
+availability pass uses the native installed-identity set and exact Minerva
+platform coverage; recommendation metadata never establishes identity.
+`--related-games-ui-probe --screenshot-output PATH` opens the preserved Super
+Mario Bros. UUID, validates a bounded non-self result with visible relationship
+and availability data, captures the real Qt shelf, then selects its first card
+and exits only after the destination stable UUID has loaded.
 The `--release-candidate-ui-probe` route opens Super Mario Land, inspects its live
 Minerva bundle, and scrolls the details pane to the ranked native candidate
 cards for deterministic visual review against the preserved discovery catalog.

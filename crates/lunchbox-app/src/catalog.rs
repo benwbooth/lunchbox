@@ -719,6 +719,25 @@ pub(crate) fn installed_game_flags(identities: &[(String, i64)]) -> Result<Vec<b
         .collect())
 }
 
+pub(crate) fn game_availability_flags(
+    identities: &[(String, i64, String)],
+) -> Result<Vec<(bool, bool)>> {
+    let installed = load_installed_games(requested_user_database_path().as_deref())?;
+    let minerva = load_minerva_coverage(requested_minerva_database_path().as_deref())?;
+    Ok(identities
+        .iter()
+        .map(|(game_uid, launchbox_db_id, platform)| {
+            let local = installed.game_uids.contains(game_uid)
+                || (*launchbox_db_id > 0 && installed.database_ids.contains(launchbox_db_id));
+            let downloadable = !local
+                && minerva
+                    .platform_names
+                    .contains(&normalize_platform_key(platform));
+            (local, downloadable)
+        })
+        .collect())
+}
+
 fn load_native_installed_games(installed: &mut InstalledGames) -> Result<()> {
     let path = crate::settings::state_database_path()?;
     if !path.is_file() {
@@ -931,7 +950,7 @@ const NON_RETAIL_TITLE_TAGS: [&str; 6] = [
     "aftermarket",
 ];
 
-fn is_non_retail_game(title: &str, release_type: Option<&str>) -> bool {
+pub(crate) fn is_non_retail_game(title: &str, release_type: Option<&str>) -> bool {
     if release_type.is_some_and(|value| {
         NON_RETAIL_RELEASE_TYPES
             .iter()
@@ -973,7 +992,7 @@ fn contains_adult_token(text: &str) -> bool {
         })
 }
 
-fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
+pub(crate) fn is_adult_game(title: &str, esrb: Option<&str>, genre: Option<&str>) -> bool {
     if esrb.is_some_and(|value| {
         let value = value.trim();
         value

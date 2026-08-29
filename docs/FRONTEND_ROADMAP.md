@@ -48,7 +48,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   and release status. These values are searchable, sortable, available as list
   columns and exact filters, and visible in desktop and Couch Mode without
   changing canonical identity. Desktop details can browse an exact series with
-  one action. Candidate ranking strips catalog
+  one action. A bounded native More Like This shelf ranks exact stable-UUID
+  records using effective series, title/franchise terms, creators, genres,
+  platform, play mode, and release proximity, while honoring content filters
+  and preserving Installed/Minerva/Catalog availability. Candidate ranking
+  strips catalog
   region/version tags before title comparison, normalizes common Roman-numeral
   sequels, then applies persisted region and latest/original-revision
   preferences only between equally strong title matches. The complete legacy
@@ -248,8 +252,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   unattended maintenance. Durable media-source priority, per-game candidate
   rotation, immediate off-thread reindexing, and safe explicit LibRetro
   replacement are native.
-- Extend the responsive game details and native video/fullscreen/manual/3D-box
-  surface with related games, alternate versions, and soundtrack playback.
+- Extend the responsive game details and native video/fullscreen/manual/3D-box/
+  related-game surface with richer franchise curation and soundtrack playback.
 
 ## Emulators and launching
 

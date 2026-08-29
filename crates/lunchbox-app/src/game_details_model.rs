@@ -76,6 +76,9 @@ pub mod qobject {
         #[qproperty(i32, metadata_custom_field_revision)]
         #[qproperty(i32, variant_count)]
         #[qproperty(i32, alternate_title_count)]
+        #[qproperty(i32, related_game_count)]
+        #[qproperty(i32, related_game_revision)]
+        #[qproperty(QString, related_game_message)]
         #[qproperty(QString, message)]
         #[qproperty(bool, media_visible)]
         #[qproperty(bool, video_available)]
@@ -360,6 +363,27 @@ pub mod qobject {
         fn variant_is_downloadable_at(self: &GameDetailsModel, index: i32) -> bool;
 
         #[qinvokable]
+        fn related_game_id_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn related_game_database_id_at(self: &GameDetailsModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn related_game_title_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn related_game_platform_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn related_game_reason_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn related_game_is_local_at(self: &GameDetailsModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn related_game_is_downloadable_at(self: &GameDetailsModel, index: i32) -> bool;
+
+        #[qinvokable]
         fn file_name_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -398,7 +422,7 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::game_details::{
-    self, AlternateTitle, GameDetails, GameVariant, MinervaBundle, ReleasePreferences,
+    self, AlternateTitle, GameDetails, GameVariant, MinervaBundle, RelatedGame, ReleasePreferences,
     TorrentFileCandidate,
 };
 use crate::settings::{
@@ -472,6 +496,9 @@ pub struct GameDetailsModelRust {
     metadata_custom_field_revision: i32,
     variant_count: i32,
     alternate_title_count: i32,
+    related_game_count: i32,
+    related_game_revision: i32,
+    related_game_message: QString,
     message: QString,
     media_visible: bool,
     video_available: bool,
@@ -558,6 +585,7 @@ pub struct GameDetailsModelRust {
     bundles: Vec<MinervaBundle>,
     variants: Vec<GameVariant>,
     alternate_titles: Vec<AlternateTitle>,
+    related_games: Vec<RelatedGame>,
     files: Vec<TorrentFileCandidate>,
     details_generation: u64,
     torrent_generation: u64,
@@ -647,6 +675,9 @@ impl Default for GameDetailsModelRust {
             metadata_custom_field_revision: 0,
             variant_count: 0,
             alternate_title_count: 0,
+            related_game_count: 0,
+            related_game_revision: 0,
+            related_game_message: QString::default(),
             message: QString::from("Select a game to inspect it."),
             media_visible: false,
             video_available: false,
@@ -733,6 +764,7 @@ impl Default for GameDetailsModelRust {
             bundles: Vec::new(),
             variants: Vec::new(),
             alternate_titles: Vec::new(),
+            related_games: Vec::new(),
             files: Vec::new(),
             details_generation: 0,
             torrent_generation: 0,
@@ -1700,6 +1732,10 @@ impl qobject::GameDetailsModel {
         self.as_mut().bump_metadata_custom_field_revision();
         self.as_mut().set_variant_count(0);
         self.as_mut().set_alternate_title_count(0);
+        self.as_mut().set_related_game_count(0);
+        self.as_mut().set_related_game_message(QString::default());
+        let related_revision = self.as_ref().related_game_revision().wrapping_add(1);
+        self.as_mut().set_related_game_revision(related_revision);
         self.as_mut().set_media_visible(false);
         self.as_mut().set_video_available(false);
         self.as_mut().set_manual_available(false);
@@ -1755,6 +1791,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().bundles.clear();
         self.as_mut().rust_mut().variants.clear();
         self.as_mut().rust_mut().alternate_titles.clear();
+        self.as_mut().rust_mut().related_games.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
         self.as_mut().set_file_count(0);
@@ -1870,6 +1907,14 @@ impl qobject::GameDetailsModel {
                 self.as_mut().rust_mut().alternate_titles = details.alternate_titles.clone();
                 self.as_mut()
                     .set_alternate_title_count(count_i32(alternate_title_count));
+                let related_game_count = details.related_games.len();
+                self.as_mut().rust_mut().related_games = details.related_games.clone();
+                self.as_mut()
+                    .set_related_game_count(count_i32(related_game_count));
+                self.as_mut()
+                    .set_related_game_message(qstring(&details.related_message));
+                let related_revision = self.as_ref().related_game_revision().wrapping_add(1);
+                self.as_mut().set_related_game_revision(related_revision);
                 self.as_mut().apply_supplemental_media(
                     supplemental_media,
                     video_media_key,
@@ -4375,6 +4420,45 @@ impl qobject::GameDetailsModel {
             .is_some_and(|variant| variant.downloadable)
     }
 
+    pub fn related_game_id_at(&self, index: i32) -> QString {
+        self.related_game(index)
+            .map(|game| qstring(&game.id))
+            .unwrap_or_default()
+    }
+
+    pub fn related_game_database_id_at(&self, index: i32) -> i32 {
+        self.related_game(index)
+            .map(|game| i32::try_from(game.launchbox_db_id).unwrap_or_default())
+            .unwrap_or_default()
+    }
+
+    pub fn related_game_title_at(&self, index: i32) -> QString {
+        self.related_game(index)
+            .map(|game| qstring(&game.title))
+            .unwrap_or_default()
+    }
+
+    pub fn related_game_platform_at(&self, index: i32) -> QString {
+        self.related_game(index)
+            .map(|game| qstring(&game.platform))
+            .unwrap_or_default()
+    }
+
+    pub fn related_game_reason_at(&self, index: i32) -> QString {
+        self.related_game(index)
+            .map(|game| qstring(&game.reason))
+            .unwrap_or_default()
+    }
+
+    pub fn related_game_is_local_at(&self, index: i32) -> bool {
+        self.related_game(index).is_some_and(|game| game.local)
+    }
+
+    pub fn related_game_is_downloadable_at(&self, index: i32) -> bool {
+        self.related_game(index)
+            .is_some_and(|game| game.downloadable)
+    }
+
     pub fn file_name_at(&self, index: i32) -> QString {
         self.file(index)
             .map(|file| {
@@ -4578,6 +4662,12 @@ impl qobject::GameDetailsModel {
         usize::try_from(index)
             .ok()
             .and_then(|index| self.rust().variants.get(index))
+    }
+
+    fn related_game(&self, index: i32) -> Option<&RelatedGame> {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().related_games.get(index))
     }
 
     fn file(&self, index: i32) -> Option<&TorrentFileCandidate> {

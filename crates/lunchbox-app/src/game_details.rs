@@ -61,6 +61,8 @@ pub struct GameDetails {
     pub effective_metadata: crate::settings::GameMetadata,
     pub alternate_titles: Vec<AlternateTitle>,
     pub variants: Vec<GameVariant>,
+    pub related_games: Vec<RelatedGame>,
+    pub related_message: String,
     pub local: bool,
     pub downloadable: bool,
     pub database_id: i64,
@@ -94,6 +96,17 @@ pub struct GameVariant {
     pub local: bool,
     pub downloadable: bool,
     pub current: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelatedGame {
+    pub id: String,
+    pub title: String,
+    pub platform: String,
+    pub reason: String,
+    pub launchbox_db_id: i64,
+    pub local: bool,
+    pub downloadable: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -171,6 +184,7 @@ pub fn load(
         load_prepared_state(&mut details)?;
         load_supplemental_media(&mut details)?;
         apply_metadata_override(&mut details)?;
+        load_related_state(&mut details);
         return Ok(details);
     }
 
@@ -288,6 +302,7 @@ pub fn load(
     load_prepared_state(&mut details)?;
     load_supplemental_media(&mut details)?;
     apply_metadata_override(&mut details)?;
+    load_related_state(&mut details);
     Ok(details)
 }
 
@@ -371,6 +386,413 @@ fn apply_metadata_override(details: &mut GameDetails) -> Result<()> {
     details.canonical_metadata = canonical;
     details.effective_metadata = effective;
     Ok(())
+}
+
+const MAX_RELATED_QUERY_ROWS: i64 = 6_000;
+const MAX_RELATED_GAMES: usize = 12;
+
+#[derive(Clone, Debug)]
+struct RelatedCandidate {
+    id: String,
+    platform: String,
+    launchbox_db_id: i64,
+    canonical: crate::settings::GameMetadata,
+}
+
+#[derive(Clone, Debug)]
+struct RankedRelatedGame {
+    game: RelatedGame,
+    score: i32,
+}
+
+fn load_related_state(details: &mut GameDetails) {
+    let started = std::time::Instant::now();
+    match load_related_games(details) {
+        Ok(related_games) => {
+            details.related_message = if related_games.is_empty() {
+                "No strong catalog relationships were found for this game.".to_owned()
+            } else {
+                "Ranked from exact catalog metadata; selecting a card keeps every game identity separate."
+                    .to_owned()
+            };
+            details.related_games = related_games;
+        }
+        Err(error) => {
+            details.related_games.clear();
+            details.related_message = format!("Related games unavailable: {error:#}");
+        }
+    }
+    if std::env::args_os().any(|argument| argument == "--related-games-ui-probe") {
+        println!(
+            "LUNCHBOX_RELATED_READY_MS={} games={} message={:?}",
+            started.elapsed().as_millis(),
+            details.related_games.len(),
+            details.related_message
+        );
+    }
+}
+
+fn load_related_games(details: &GameDetails) -> Result<Vec<RelatedGame>> {
+    let Some(path) = catalog::requested_discovery_database_path() else {
+        return Ok(Vec::new());
+    };
+    let connection = catalog::open_read_only(&path, "Lunchbox discovery database")?;
+    let store = crate::settings::SettingsStore::open_default()?;
+    let overrides = store
+        .all_game_metadata_overrides()
+        .context("loading metadata overrides for related games")?;
+    let preferences = store
+        .load_library_preferences()
+        .context("loading content preferences for related games")?;
+    let mut related = load_related_games_from_connection(
+        &connection,
+        details,
+        &overrides,
+        preferences.hide_non_retail,
+        preferences.hide_adult,
+    )?;
+    let identities = related
+        .iter()
+        .map(|game| (game.id.clone(), game.launchbox_db_id, game.platform.clone()))
+        .collect::<Vec<_>>();
+    let availability = catalog::game_availability_flags(&identities)
+        .context("loading related-game availability")?;
+    for (game, (local, downloadable)) in related.iter_mut().zip(availability) {
+        game.local = local;
+        game.downloadable = downloadable;
+    }
+    Ok(related)
+}
+
+fn load_related_games_from_connection(
+    connection: &rusqlite::Connection,
+    details: &GameDetails,
+    overrides: &HashMap<String, crate::settings::GameMetadataOverride>,
+    hide_non_retail: bool,
+    hide_adult: bool,
+) -> Result<Vec<RelatedGame>> {
+    let reference = &details.effective_metadata;
+    let series_key = metadata_key(&reference.series);
+    let developer_key = metadata_key(&reference.developer);
+    let publisher_key = metadata_key(&reference.publisher);
+    let platform_key = metadata_key(&details.platform);
+    if series_key.is_empty()
+        && developer_key.is_empty()
+        && publisher_key.is_empty()
+        && platform_key.is_empty()
+    {
+        return Ok(Vec::new());
+    }
+
+    const COLUMNS: &str = "g.id, trim(g.title), trim(p.name), coalesce(g.launchbox_db_id, 0),
+         coalesce(g.description, ''),
+         CASE WHEN trim(coalesce(g.release_date, '')) <> '' THEN trim(g.release_date)
+              WHEN g.release_year IS NOT NULL THEN cast(g.release_year AS TEXT)
+              ELSE '' END,
+         coalesce(g.developer, ''), coalesce(g.publisher, ''),
+         coalesce(g.genre, ''), coalesce(g.players, ''),
+         CASE WHEN g.rating IS NULL THEN '' ELSE printf('%.1f', g.rating) END,
+         coalesce(g.esrb, ''), coalesce(g.release_type, ''),
+         coalesce(g.sort_title, ''), coalesce(g.series, ''),
+         coalesce(g.region, ''), coalesce(g.play_mode, ''),
+         coalesce(g.version, ''),
+         CASE WHEN lower(trim(coalesce(g.status, ''))) IN
+                   ('', 'canonical', 'deprecated', 'merged') THEN ''
+              ELSE trim(g.status) END,
+         CASE WHEN g.cooperative=1 THEN 'yes'
+              WHEN g.cooperative=0 THEN 'no' ELSE 'unknown' END,
+         coalesce(g.notes, '')";
+    let query = format!(
+        "SELECT {COLUMNS}
+         FROM games g
+         JOIN platforms p ON p.id=g.platform_id
+         WHERE g.id<>?1
+           AND ((?2<>'' AND lower(trim(coalesce(g.series, '')))=?2)
+                OR (?3<>'' AND lower(trim(coalesce(g.developer, '')))=?3)
+                OR (?4<>'' AND lower(trim(coalesce(g.publisher, '')))=?4)
+                OR lower(trim(p.name))=?5)
+         ORDER BY
+           ((?2<>'' AND lower(trim(coalesce(g.series, '')))=?2) * 8
+            + (?3<>'' AND lower(trim(coalesce(g.developer, '')))=?3) * 4
+            + (?4<>'' AND lower(trim(coalesce(g.publisher, '')))=?4) * 2
+            + (lower(trim(p.name))=?5)) DESC,
+           lower(trim(g.title)), g.id
+         LIMIT ?6"
+    );
+    let mut statement = connection.prepare(&query)?;
+    let rows = statement.query_map(
+        rusqlite::params![
+            details.id,
+            series_key,
+            developer_key,
+            publisher_key,
+            platform_key,
+            MAX_RELATED_QUERY_ROWS,
+        ],
+        related_candidate_from_row,
+    )?;
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for row in rows {
+        let candidate = row?;
+        seen.insert(candidate.id.clone());
+        candidates.push(candidate);
+    }
+    drop(statement);
+
+    let override_query = format!(
+        "SELECT {COLUMNS}
+         FROM games g
+         JOIN platforms p ON p.id=g.platform_id
+         WHERE g.id=?1"
+    );
+    let mut override_statement = connection.prepare(&override_query)?;
+    for game_uid in overrides.keys() {
+        if game_uid == &details.id || seen.contains(game_uid) {
+            continue;
+        }
+        if let Some(candidate) = override_statement
+            .query_row([game_uid], related_candidate_from_row)
+            .optional()?
+        {
+            seen.insert(candidate.id.clone());
+            candidates.push(candidate);
+        }
+    }
+
+    let selected_title_key = related_title_key(&details.title);
+    let mut ranked = candidates
+        .into_iter()
+        .filter_map(|candidate| {
+            let effective = overrides
+                .get(&candidate.id)
+                .cloned()
+                .unwrap_or_default()
+                .apply(&candidate.canonical);
+            if hide_non_retail
+                && catalog::is_non_retail_game(&effective.title, Some(&effective.release_type))
+            {
+                return None;
+            }
+            if hide_adult
+                && catalog::is_adult_game(
+                    &effective.title,
+                    Some(&effective.esrb),
+                    Some(&effective.genre),
+                )
+            {
+                return None;
+            }
+            if candidate.platform.eq_ignore_ascii_case(&details.platform)
+                && related_title_key(&effective.title) == selected_title_key
+            {
+                return None;
+            }
+            let (score, reason) = related_game_score(
+                reference,
+                &details.platform,
+                &effective,
+                &candidate.platform,
+            )?;
+            Some(RankedRelatedGame {
+                score,
+                game: RelatedGame {
+                    id: candidate.id,
+                    title: effective.title,
+                    platform: candidate.platform,
+                    reason,
+                    launchbox_db_id: candidate.launchbox_db_id,
+                    local: false,
+                    downloadable: false,
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| {
+                left.game
+                    .title
+                    .to_lowercase()
+                    .cmp(&right.game.title.to_lowercase())
+            })
+            .then_with(|| left.game.platform.cmp(&right.game.platform))
+            .then_with(|| left.game.id.cmp(&right.game.id))
+    });
+    ranked.truncate(MAX_RELATED_GAMES);
+    Ok(ranked.into_iter().map(|ranked| ranked.game).collect())
+}
+
+fn related_candidate_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RelatedCandidate> {
+    Ok(RelatedCandidate {
+        id: row.get(0)?,
+        platform: row.get(2)?,
+        launchbox_db_id: row.get(3)?,
+        canonical: crate::settings::GameMetadata {
+            title: row.get(1)?,
+            description: row.get(4)?,
+            release_date: row.get(5)?,
+            developer: row.get(6)?,
+            publisher: row.get(7)?,
+            genre: row.get(8)?,
+            players: row.get(9)?,
+            rating: row.get(10)?,
+            esrb: row.get(11)?,
+            release_type: row.get(12)?,
+            sort_title: row.get(13)?,
+            series: row.get(14)?,
+            region: row.get(15)?,
+            play_mode: row.get(16)?,
+            version: row.get(17)?,
+            release_status: row.get(18)?,
+            cooperative: row.get(19)?,
+            notes: row.get(20)?,
+        },
+    })
+}
+
+fn related_game_score(
+    reference: &crate::settings::GameMetadata,
+    reference_platform: &str,
+    candidate: &crate::settings::GameMetadata,
+    candidate_platform: &str,
+) -> Option<(i32, String)> {
+    let same_series = metadata_equal(&reference.series, &candidate.series);
+    let same_developer = metadata_equal(&reference.developer, &candidate.developer);
+    let same_publisher = metadata_equal(&reference.publisher, &candidate.publisher);
+    let same_platform = reference_platform.eq_ignore_ascii_case(candidate_platform);
+    let same_play_mode = metadata_equal(&reference.play_mode, &candidate.play_mode);
+    let reference_title_terms = metadata_title_terms(&reference.title);
+    let candidate_title_terms = metadata_title_terms(&candidate.title);
+    let shared_title_terms = reference_title_terms
+        .intersection(&candidate_title_terms)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let reference_genres = metadata_terms(&reference.genre);
+    let candidate_genres = metadata_terms(&candidate.genre);
+    let shared_genres = reference_genres
+        .intersection(&candidate_genres)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut score = 0;
+    score += i32::from(same_series) * 140;
+    score += i32::try_from(shared_title_terms.len().min(3)).unwrap_or(3) * 70;
+    score += i32::from(same_developer) * 55;
+    score += i32::from(same_publisher) * 30;
+    score += i32::try_from(shared_genres.len().min(3)).unwrap_or(3) * 22;
+    score += i32::from(same_platform) * 18;
+    score += i32::from(same_play_mode) * 8;
+    if let (Some(reference_year), Some(candidate_year)) = (
+        metadata_year(&reference.release_date),
+        metadata_year(&candidate.release_date),
+    ) {
+        let distance = reference_year.abs_diff(candidate_year);
+        score += if distance <= 2 {
+            8
+        } else if distance <= 5 {
+            4
+        } else {
+            0
+        };
+    }
+    if score < 35 {
+        return None;
+    }
+
+    let shared_genre = shared_genres
+        .iter()
+        .next()
+        .map(|value| display_metadata_term(value))
+        .unwrap_or_default();
+    let reason = if same_series {
+        format!("Same series · {}", reference.series.trim())
+    } else if !shared_title_terms.is_empty() && same_developer {
+        format!("Title match · {}", reference.developer.trim())
+    } else if !shared_title_terms.is_empty() {
+        "Related title".to_owned()
+    } else if same_developer && !shared_genre.is_empty() {
+        format!("{} · {}", reference.developer.trim(), shared_genre)
+    } else if same_developer {
+        format!("Same developer · {}", reference.developer.trim())
+    } else if same_publisher && !shared_genre.is_empty() {
+        format!("{} · {}", reference.publisher.trim(), shared_genre)
+    } else if same_platform && !shared_genre.is_empty() {
+        format!("{} · {}", reference_platform.trim(), shared_genre)
+    } else if same_publisher {
+        format!("Same publisher · {}", reference.publisher.trim())
+    } else {
+        "Related catalog metadata".to_owned()
+    };
+    Some((score, reason))
+}
+
+fn metadata_key(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+fn metadata_equal(left: &str, right: &str) -> bool {
+    let left = metadata_key(left);
+    !left.is_empty() && left == metadata_key(right)
+}
+
+fn metadata_terms(value: &str) -> BTreeSet<String> {
+    value
+        .split([';', ',', '/', '|'])
+        .map(metadata_key)
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn metadata_title_terms(value: &str) -> BTreeSet<String> {
+    const STOP_WORDS: [&str; 12] = [
+        "and",
+        "edition",
+        "game",
+        "of",
+        "part",
+        "remake",
+        "the",
+        "version",
+        "with",
+        "for",
+        "from",
+        "collection",
+    ];
+    value
+        .split(|character: char| !character.is_alphanumeric())
+        .map(str::trim)
+        .filter(|term| term.chars().count() >= 3)
+        .map(str::to_lowercase)
+        .filter(|term| !STOP_WORDS.contains(&term.as_str()))
+        .collect()
+}
+
+fn display_metadata_term(value: &str) -> String {
+    let mut characters = value.chars();
+    let Some(first) = characters.next() else {
+        return String::new();
+    };
+    first.to_uppercase().chain(characters).collect()
+}
+
+fn metadata_year(value: &str) -> Option<i32> {
+    value
+        .trim()
+        .get(..4)
+        .filter(|year| year.bytes().all(|byte| byte.is_ascii_digit()))
+        .and_then(|year| year.parse::<i32>().ok())
+}
+
+fn related_title_key(title: &str) -> String {
+    catalog_release_base(title)
+        .unwrap_or_else(|| title.trim().to_owned())
+        .to_lowercase()
 }
 
 fn editable_release_date(value: &str) -> String {
@@ -1833,6 +2255,171 @@ mod tests {
         );
         assert_eq!(editable_release_date("1994"), "1994");
         assert_eq!(editable_release_date("September 1985"), "September 1985");
+    }
+
+    fn related_metadata(
+        title: &str,
+        series: &str,
+        developer: &str,
+        publisher: &str,
+        genre: &str,
+        release_date: &str,
+    ) -> crate::settings::GameMetadata {
+        crate::settings::GameMetadata {
+            title: title.into(),
+            series: series.into(),
+            developer: developer.into(),
+            publisher: publisher.into(),
+            genre: genre.into(),
+            release_date: release_date.into(),
+            play_mode: "Single Player".into(),
+            ..crate::settings::GameMetadata::default()
+        }
+    }
+
+    #[test]
+    fn related_game_scoring_requires_meaningful_metadata_and_prioritizes_series() {
+        let reference = related_metadata(
+            "Star Runner",
+            "Star Saga",
+            "Orion Works",
+            "Astra",
+            "Action; Racing",
+            "2000-01-01",
+        );
+        let series = related_metadata(
+            "Star Runner II",
+            "Star Saga",
+            "Another Studio",
+            "Another Publisher",
+            "Puzzle",
+            "2015-01-01",
+        );
+        let studio = related_metadata(
+            "Orbit Racer",
+            "",
+            "Orion Works",
+            "Another Publisher",
+            "Racing",
+            "2001-01-01",
+        );
+        let unrelated = related_metadata(
+            "Platform Neighbor",
+            "",
+            "Another Studio",
+            "Another Publisher",
+            "Puzzle",
+            "2015-01-01",
+        );
+
+        let (series_score, series_reason) =
+            related_game_score(&reference, "Arcadia", &series, "Elsewhere").unwrap();
+        let (studio_score, studio_reason) =
+            related_game_score(&reference, "Arcadia", &studio, "Arcadia").unwrap();
+
+        assert!(series_score > studio_score);
+        assert_eq!(series_reason, "Same series · Star Saga");
+        assert_eq!(studio_reason, "Orion Works · Racing");
+        assert!(related_game_score(&reference, "Arcadia", &unrelated, "Arcadia").is_none());
+    }
+
+    #[test]
+    fn related_game_query_keeps_exact_ids_filters_variants_and_honors_overrides() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE platforms (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL
+                 );
+                 CREATE TABLE games (
+                    id TEXT PRIMARY KEY,
+                    platform_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    launchbox_db_id INTEGER,
+                    description TEXT,
+                    release_date TEXT,
+                    release_year INTEGER,
+                    developer TEXT,
+                    publisher TEXT,
+                    genre TEXT,
+                    players TEXT,
+                    rating REAL,
+                    esrb TEXT,
+                    release_type TEXT,
+                    sort_title TEXT,
+                    series TEXT,
+                    region TEXT,
+                    play_mode TEXT,
+                    version TEXT,
+                    status TEXT,
+                    cooperative INTEGER,
+                    notes TEXT
+                 );
+                 INSERT INTO platforms VALUES (1, 'Arcadia'), (2, 'Elsewhere');
+                 INSERT INTO games VALUES
+                    ('current', 1, 'Star Runner', 1, '', '2000-01-01', 2000,
+                     'Orion Works', 'Astra', 'Action; Racing', '1', 4.0, 'E',
+                     'Released', '', 'Star Saga', '', 'Single Player', '', '', 0, ''),
+                    ('series-hit', 2, 'Star Runner II', 2, '', '2002-01-01', 2002,
+                     'Other Studio', 'Other Publisher', 'Puzzle', '1', 4.0, 'E',
+                     'Released', '', 'Star Saga', '', 'Single Player', '', '', 0, ''),
+                    ('studio-hit', 1, 'Orbit Racer', 3, '', '2001-01-01', 2001,
+                     'Orion Works', 'Other Publisher', 'Racing', '1', 4.0, 'E',
+                     'Released', '', '', '', 'Single Player', '', '', 0, ''),
+                    ('variant', 1, 'Star Runner (USA)', 4, '', '2000-01-01', 2000,
+                     'Orion Works', 'Astra', 'Action; Racing', '1', 4.0, 'E',
+                     'Released', '', 'Star Saga', 'USA', 'Single Player', '', '', 0, ''),
+                    ('adult', 2, 'Star Nights', 5, '', '2003-01-01', 2003,
+                     'Other Studio', 'Other Publisher', 'Action', '1', 4.0, 'AO',
+                     'Released', '', 'Star Saga', '', 'Single Player', '', '', 0, ''),
+                    ('homebrew', 2, 'Star Home', 6, '', '2003-01-01', 2003,
+                     'Other Studio', 'Other Publisher', 'Action', '1', 4.0, 'E',
+                     'Homebrew', '', 'Star Saga', '', 'Single Player', '', '', 0, ''),
+                    ('override-hit', 2, 'Hidden Relation', 7, '', '2004-01-01', 2004,
+                     'Different Studio', 'Different Publisher', 'Puzzle', '1', 4.0, 'E',
+                     'Released', '', '', '', 'Single Player', '', '', 0, '');",
+            )
+            .unwrap();
+
+        let reference = related_metadata(
+            "Star Runner",
+            "Star Saga",
+            "Orion Works",
+            "Astra",
+            "Action; Racing",
+            "2000-01-01",
+        );
+        let details = GameDetails {
+            id: "current".into(),
+            title: reference.title.clone(),
+            platform: "Arcadia".into(),
+            effective_metadata: reference,
+            ..GameDetails::default()
+        };
+        let overrides = HashMap::from([(
+            "override-hit".to_owned(),
+            crate::settings::GameMetadataOverride {
+                series: Some("Star Saga".into()),
+                ..crate::settings::GameMetadataOverride::default()
+            },
+        )]);
+
+        let related =
+            load_related_games_from_connection(&connection, &details, &overrides, true, true)
+                .unwrap();
+        let ids = related
+            .iter()
+            .map(|game| game.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids, ["series-hit", "override-hit", "studio-hit"]);
+        assert!(!ids.contains(&"variant"));
+        assert!(!ids.contains(&"adult"));
+        assert!(!ids.contains(&"homebrew"));
+        assert!(related.len() <= MAX_RELATED_GAMES);
+        assert_eq!(related[0].launchbox_db_id, 2);
+        assert_eq!(related[1].reason, "Same series · Star Saga");
     }
 
     #[test]

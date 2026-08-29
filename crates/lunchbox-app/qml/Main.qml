@@ -16,7 +16,7 @@ ApplicationWindow {
            || mediaAuditUiProbe
            || installManagementUiProbe
            || downloadRecoveryUiProbe
-           || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
+           || variantUiProbe || relatedGamesUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || profileBackupUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
@@ -27,7 +27,7 @@ ApplicationWindow {
             || mediaAuditUiProbe
             || installManagementUiProbe
             || downloadRecoveryUiProbe
-            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
+            || variantUiProbe || relatedGamesUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || profileBackupUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
@@ -273,6 +273,7 @@ ApplicationWindow {
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
     readonly property bool variantUiProbe: Qt.application.arguments.indexOf("--variant-ui-probe") >= 0
+    readonly property bool relatedGamesUiProbe: Qt.application.arguments.indexOf("--related-games-ui-probe") >= 0
     readonly property bool releaseCandidateUiProbe: Qt.application.arguments.indexOf("--release-candidate-ui-probe") >= 0
     readonly property bool multidiscUiProbe: Qt.application.arguments.indexOf("--multidisc-ui-probe") >= 0
     readonly property bool exoArchiveUiProbe: Qt.application.arguments.indexOf("--exo-archive-ui-probe") >= 0
@@ -309,6 +310,8 @@ ApplicationWindow {
                                                         : screenshotOutput
     property bool variantProbeSwitched: false
     property string variantProbeExpectedId: ""
+    property int relatedGamesProbeStage: 0
+    property string relatedGamesProbeTargetId: ""
     property int metadataProbeStage: 0
     property int tagsProbeStage: 0
     property bool activityHistoryProbeOpened: false
@@ -1669,6 +1672,12 @@ ApplicationWindow {
                                   "Super Mario Bros.",
                                   "Nintendo Entertainment System", false, true)
                 }
+                else if (root.relatedGamesUiProbe) {
+                    root.relatedGamesProbeStage = 0
+                    root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                                  "Super Mario Bros.",
+                                  "Nintendo Entertainment System", false, true)
+                }
                 else if (root.metadataUiProbe) {
                     console.warn("LUNCHBOX_METADATA_UI_STAGE catalog-ready restored="
                                  + root.metadataRestoreUiProbe)
@@ -2107,6 +2116,24 @@ ApplicationWindow {
     Connections {
         target: gameDetails
         function onLoadingChanged() {
+            if (root.relatedGamesUiProbe
+                    && root.relatedGamesProbeStage === 2
+                    && !gameDetails.loading) {
+                if (gameDetails.game_id !== root.relatedGamesProbeTargetId
+                        || gameDetails.title.length === 0) {
+                    console.error("LUNCHBOX_RELATED_GAMES_UI_FAILED navigation expected="
+                                  + root.relatedGamesProbeTargetId + " actual="
+                                  + gameDetails.game_id + " title=" + gameDetails.title)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_RELATED_GAMES_UI_READY target="
+                            + gameDetails.game_id + " title=" + gameDetails.title
+                            + " count=" + gameDetails.related_game_count
+                            + " screenshot=" + root.screenshotOutput)
+                Qt.quit()
+                return
+            }
             if (root.installManagementUiProbe
                     && root.installManagementProbeStage === 0
                     && !gameDetails.loading
@@ -3610,6 +3637,38 @@ ApplicationWindow {
                             + gameDetails.alternate_title_count)
                 alternateTitleProbeScrollTimer.restart()
             }
+        }
+        function onRelated_game_revisionChanged() {
+            if (!root.relatedGamesUiProbe
+                    || root.relatedGamesProbeStage !== 0
+                    || gameDetails.related_game_count === 0)
+                return
+            const targetId = gameDetails.related_game_id_at(0)
+            const targetTitle = gameDetails.related_game_title_at(0)
+            const targetPlatform = gameDetails.related_game_platform_at(0)
+            const targetReason = gameDetails.related_game_reason_at(0)
+            if (gameDetails.game_id
+                    !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+                    || gameDetails.related_game_count > 12
+                    || targetId.length === 0
+                    || targetId === gameDetails.game_id
+                    || targetTitle.length === 0
+                    || targetPlatform.length === 0
+                    || targetReason.length === 0
+                    || gameDetails.related_game_message.indexOf(
+                        "Related games unavailable:") === 0) {
+                console.error("LUNCHBOX_RELATED_GAMES_UI_FAILED source="
+                              + gameDetails.game_id + " count="
+                              + gameDetails.related_game_count + " target="
+                              + targetId + " title=" + targetTitle + " platform="
+                              + targetPlatform + " reason=" + targetReason
+                              + " message=" + gameDetails.related_game_message)
+                Qt.exit(2)
+                return
+            }
+            root.relatedGamesProbeTargetId = targetId
+            root.relatedGamesProbeStage = 1
+            relatedGamesProbeScrollTimer.restart()
         }
         function onVariant_countChanged() {
             if (!root.variantUiProbe || gameDetails.variant_count < 2)
@@ -5181,6 +5240,62 @@ ApplicationWindow {
                           + gameDetails.game_id + " count="
                           + gameDetails.variant_count + " message="
                           + gameDetails.message)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
+        id: relatedGamesProbeScrollTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            detailScroll.contentItem.contentY = Math.max(
+                        0, relatedGamesSection.mapToItem(
+                            detailScroll.contentItem, 0, 0).y - 12)
+            relatedGamesProbeScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: relatedGamesProbeScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            function openProbeTarget() {
+                root.relatedGamesProbeStage = 2
+                root.openGame(gameDetails.related_game_id_at(0),
+                              gameDetails.related_game_database_id_at(0),
+                              gameDetails.related_game_title_at(0),
+                              gameDetails.related_game_platform_at(0),
+                              gameDetails.related_game_is_local_at(0),
+                              gameDetails.related_game_is_downloadable_at(0))
+            }
+            if (root.screenshotOutput.length === 0) {
+                openProbeTarget()
+                return
+            }
+            detailsPane.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_RELATED_GAMES_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                openProbeTarget()
+            })
+        }
+    }
+
+    Timer {
+        interval: 20000
+        running: root.relatedGamesUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_RELATED_GAMES_UI_FAILED timeout stage="
+                          + root.relatedGamesProbeStage + " id="
+                          + gameDetails.game_id + " count="
+                          + gameDetails.related_game_count + " message="
+                          + gameDetails.related_game_message)
             Qt.exit(2)
         }
     }
@@ -9772,6 +9887,331 @@ ApplicationWindow {
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    Column {
+                        id: relatedGamesSection
+                        width: parent.width
+                        visible: !gameDetails.loading
+                                 && (gameDetails.related_game_count > 0
+                                     || gameDetails.related_game_message.indexOf(
+                                         "Related games unavailable:") === 0)
+                        spacing: 9
+
+                        RowLayout {
+                            width: parent.width
+                            spacing: 8
+                            Text {
+                                text: "MORE LIKE THIS"
+                                color: "#687488"
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.9
+                            }
+                            Rectangle {
+                                visible: gameDetails.related_game_count > 0
+                                Layout.preferredWidth: relatedCountText.implicitWidth + 12
+                                Layout.preferredHeight: 18
+                                radius: 9
+                                color: "#1b2a38"
+                                border.color: "#30485d"
+                                Text {
+                                    id: relatedCountText
+                                    anchors.centerIn: parent
+                                    text: gameDetails.related_game_count
+                                    color: "#a8c6dc"
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    font.features: { "tnum": 1 }
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                visible: gameDetails.related_game_count > 0
+                                text: "SERIES · CREATORS · GENRES"
+                                color: "#536175"
+                                font.pixelSize: 8
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 0.5
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            visible: gameDetails.related_game_count > 0
+                            text: "Strong relationships from your catalog. Every card opens its exact game record."
+                            color: root.muted
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
+                        }
+
+                        ListView {
+                            id: relatedGamesList
+                            width: parent.width
+                            height: gameDetails.related_game_count > 0 ? 242 : 0
+                            visible: gameDetails.related_game_count > 0
+                            orientation: ListView.Horizontal
+                            spacing: 9
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            reuseItems: true
+                            keyNavigationEnabled: true
+                            activeFocusOnTab: true
+                            model: gameDetails.related_game_count
+                            ScrollBar.horizontal: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                height: 3
+                            }
+
+                            delegate: Rectangle {
+                                id: relatedCard
+                                required property int index
+                                property int revision: gameDetails.related_game_revision
+                                property int mediaRevision: library.media_revision
+                                property string relatedId: {
+                                    relatedCard.revision
+                                    return gameDetails.related_game_id_at(
+                                                relatedCard.index)
+                                }
+                                property int databaseId: {
+                                    relatedCard.revision
+                                    return gameDetails.related_game_database_id_at(
+                                                relatedCard.index)
+                                }
+                                property string relatedTitle: {
+                                    relatedCard.revision
+                                    return gameDetails.related_game_title_at(
+                                                relatedCard.index)
+                                }
+                                property string relatedPlatform: {
+                                    relatedCard.revision
+                                    return gameDetails.related_game_platform_at(
+                                                relatedCard.index)
+                                }
+                                property string relationship: {
+                                    relatedCard.revision
+                                    return gameDetails.related_game_reason_at(
+                                                relatedCard.index)
+                                }
+                                property bool relatedLocal: {
+                                    relatedCard.revision
+                                    return gameDetails.related_game_is_local_at(
+                                                relatedCard.index)
+                                }
+                                property bool relatedDownloadable: {
+                                    relatedCard.revision
+                                    return gameDetails.related_game_is_downloadable_at(
+                                                relatedCard.index)
+                                }
+                                property url artworkUrl: {
+                                    relatedCard.mediaRevision
+                                    return library.artwork_url(relatedCard.databaseId,
+                                                               library.artwork_type)
+                                }
+                                readonly property string availabilityLabel:
+                                    relatedLocal ? "PLAY" : relatedDownloadable ? "GET" : "CATALOG"
+                                width: Math.min(158, Math.max(146,
+                                               relatedGamesList.width * 0.39))
+                                height: 232
+                                radius: 11
+                                clip: true
+                                color: relatedHover.hovered ? "#1c2938" : "#17212d"
+                                border.width: activeFocus ? 2 : 1
+                                border.color: activeFocus ? root.accent : "#2c3c4e"
+                                activeFocusOnTab: true
+                                Accessible.role: Accessible.Button
+                                Accessible.name: "Open " + relatedTitle + " for "
+                                                 + relatedPlatform + ". " + relationship
+
+                                function requestArtwork() {
+                                    library.request_artwork(relatedCard.databaseId,
+                                                            relatedCard.relatedTitle,
+                                                            relatedCard.relatedPlatform,
+                                                            library.artwork_type)
+                                }
+
+                                Rectangle {
+                                    id: relatedArtwork
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    height: 132
+                                    color: root.accentFor(relatedCard.relatedTitle)
+                                    gradient: Gradient {
+                                        GradientStop {
+                                            position: 0
+                                            color: Qt.lighter(relatedArtwork.color, 1.15)
+                                        }
+                                        GradientStop {
+                                            position: 1
+                                            color: Qt.darker(relatedArtwork.color, 1.7)
+                                        }
+                                    }
+                                    Image {
+                                        id: relatedImage
+                                        anchors.fill: parent
+                                        source: relatedCard.artworkUrl
+                                        asynchronous: true
+                                        cache: true
+                                        mipmap: true
+                                        autoTransform: true
+                                        fillMode: Image.PreserveAspectFit
+                                        sourceSize.width: Math.max(1, Math.round(width * 2))
+                                        sourceSize.height: Math.max(1, Math.round(height * 2))
+                                        opacity: status === Image.Ready ? 1 : 0
+                                        Behavior on opacity {
+                                            NumberAnimation { duration: 140 }
+                                        }
+                                    }
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: relatedImage.status !== Image.Ready
+                                        text: relatedCard.relatedTitle.length > 0
+                                              ? relatedCard.relatedTitle.charAt(0).toUpperCase()
+                                              : "?"
+                                        color: "#42ffffff"
+                                        font.pixelSize: 62
+                                        font.weight: Font.Black
+                                    }
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        height: 44
+                                        gradient: Gradient {
+                                            GradientStop { position: 0; color: "transparent" }
+                                            GradientStop { position: 1; color: "#c817212d" }
+                                        }
+                                    }
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top
+                                        anchors.margins: 8
+                                        width: relatedAvailabilityText.implicitWidth + 12
+                                        height: 19
+                                        radius: 6
+                                        color: relatedCard.relatedLocal ? "#264835"
+                                               : relatedCard.relatedDownloadable ? "#513a20"
+                                               : "#293544"
+                                        border.color: relatedCard.relatedLocal ? "#42745a"
+                                                      : relatedCard.relatedDownloadable ? "#745328"
+                                                      : "#3d4d60"
+                                        Text {
+                                            id: relatedAvailabilityText
+                                            anchors.centerIn: parent
+                                            text: relatedCard.availabilityLabel
+                                            color: relatedCard.relatedLocal ? "#9be2bd"
+                                                   : relatedCard.relatedDownloadable ? root.accent
+                                                   : "#aab8c8"
+                                            font.pixelSize: 7
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.6
+                                        }
+                                    }
+                                }
+
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: relatedArtwork.bottom
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: 10
+                                    spacing: 4
+                                    Text {
+                                        width: parent.width
+                                        text: relatedCard.relatedTitle
+                                        color: root.ink
+                                        font.pixelSize: 11
+                                        font.weight: Font.DemiBold
+                                        maximumLineCount: 2
+                                        wrapMode: Text.Wrap
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: relatedCard.relatedPlatform
+                                        color: "#7f90a4"
+                                        font.pixelSize: 8
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: relatedCard.relationship
+                                        color: root.accentCool
+                                        font.pixelSize: 8
+                                        maximumLineCount: 2
+                                        wrapMode: Text.Wrap
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                function openRelatedGame() {
+                                    root.openGame(relatedCard.relatedId,
+                                                  relatedCard.databaseId,
+                                                  relatedCard.relatedTitle,
+                                                  relatedCard.relatedPlatform,
+                                                  relatedCard.relatedLocal,
+                                                  relatedCard.relatedDownloadable)
+                                }
+
+                                Component.onCompleted: requestArtwork()
+                                onRelatedIdChanged: requestArtwork()
+                                onDatabaseIdChanged: requestArtwork()
+                                onRelatedTitleChanged: requestArtwork()
+                                onRelatedPlatformChanged: requestArtwork()
+                                onActiveFocusChanged: {
+                                    if (activeFocus)
+                                        relatedGamesList.currentIndex = relatedCard.index
+                                }
+                                HoverHandler { id: relatedHover }
+                                TapHandler {
+                                    onTapped: relatedCard.openRelatedGame()
+                                }
+                                Keys.onReturnPressed: relatedCard.openRelatedGame()
+                                Keys.onEnterPressed: relatedCard.openRelatedGame()
+                                Keys.onSpacePressed: relatedCard.openRelatedGame()
+                                Keys.onLeftPressed: function(event) {
+                                    if (relatedCard.index <= 0)
+                                        return
+                                    relatedGamesList.currentIndex = relatedCard.index - 1
+                                    relatedGamesList.positionViewAtIndex(
+                                                relatedGamesList.currentIndex,
+                                                ListView.Contain)
+                                    Qt.callLater(function() {
+                                        if (relatedGamesList.currentItem)
+                                            relatedGamesList.currentItem.forceActiveFocus()
+                                    })
+                                    event.accepted = true
+                                }
+                                Keys.onRightPressed: function(event) {
+                                    if (relatedCard.index + 1
+                                            >= gameDetails.related_game_count)
+                                        return
+                                    relatedGamesList.currentIndex = relatedCard.index + 1
+                                    relatedGamesList.positionViewAtIndex(
+                                                relatedGamesList.currentIndex,
+                                                ListView.Contain)
+                                    Qt.callLater(function() {
+                                        if (relatedGamesList.currentItem)
+                                            relatedGamesList.currentItem.forceActiveFocus()
+                                    })
+                                    event.accepted = true
+                                }
+                                ToolTip.visible: relatedHover.hovered
+                                ToolTip.text: "Open this exact catalog game"
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            visible: gameDetails.related_game_message.indexOf(
+                                         "Related games unavailable:") === 0
+                            text: gameDetails.related_game_message
+                            color: "#f3a49c"
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
                         }
                     }
 
