@@ -762,6 +762,19 @@ record, exposes current/installed/Minerva/catalog-only state plus cached-media
 context, and routes a chosen row by its exact stable UUID without leaving Couch
 Mode.
 
+When Play is started from Couch Mode, the same `GameDetailsModel` launch
+signals drive a full-screen launch-status surface. `launch_busy` presents the
+startup phase while the worker builds the exact command and writable runtime;
+`game_running` presents the active emulator/process state and exact emulator
+name; and the final launch status remains visible until the user returns to the
+shelf or hands the record to Desktop Details. The overlay is controller-safe,
+does not duplicate launch state, and cannot claim pause/resume: those controls
+remain a separate process-host adapter requirement for Linux, Windows, and
+macOS. `--couch-launch-ui-probe --screenshot-output PATH` runs the real local-ROM
+launch probe through Couch Mode, captures the active-process surface after the
+supervisor reports the child, and exits only after the normal activity
+finalization path returns to Qt.
+
 `--couch-variant-ui-probe --screenshot-output PATH` opens that release picker for
 the real Super Mario Bros. release family, captures its 1920x1200 surface, and
 chooses a non-current regional record. It exits only after the Couch shelf and

@@ -22,6 +22,7 @@ Item {
     property bool attractProbeEnabled: false
     property string attractReason: "manual"
     property real attractProgress: 0
+    property bool launchStatusOverlayOpen: false
     property bool overlayOpen: false
     property string overlayMode: "details"
     property int menuActionIndex: 0
@@ -492,8 +493,10 @@ Item {
             if (!detailsCurrent || details.loading)
                 return
             if (details.can_launch && !details.launch_busy
-                    && !details.game_running)
+                    && !details.game_running) {
+                launchStatusOverlayOpen = true
                 launchRequested()
+            }
             else
                 requestDetails()
         } else if (index === 1) {
@@ -553,6 +556,12 @@ Item {
 
     function captureAttract(path, callback) {
         attractOverlay.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
+    }
+
+    function captureLaunchStatus(path, callback) {
+        launchStatusOverlay.grabToImage(function(result) {
             callback(result.saveToFile(path))
         })
     }
@@ -660,6 +669,24 @@ Item {
             } else if (action === "favorite") {
                 if (!favoriteBusy && selectedGameId.length > 0)
                     library.set_favorite(selectedGameId, !favorite)
+            } else {
+                return false
+            }
+            return true
+        }
+        if (launchStatusOverlayOpen) {
+            if (action === "back") {
+                launchStatusOverlayOpen = false
+                forceActiveFocus()
+            } else if (action === "details") {
+                launchStatusOverlayOpen = false
+                requestDetails()
+            } else if (action === "menu") {
+                launchStatusOverlayOpen = false
+                openOverlay("menu")
+            } else if (action === "accept") {
+                launchStatusOverlayOpen = false
+                forceActiveFocus()
             } else {
                 return false
             }
@@ -833,6 +860,7 @@ Item {
             collectionWheelOpen = false
             variantWheelOpen = false
             attractOpen = false
+            launchStatusOverlayOpen = details.game_running || details.launch_busy
             forceActiveFocus()
             syncCategory()
             const preferredRow = library.row_for_game(preferredGameId)
@@ -849,6 +877,24 @@ Item {
             collectionWheelOpen = false
             variantWheelOpen = false
             attractOpen = false
+            launchStatusOverlayOpen = false
+        }
+    }
+
+    onSelectedGameIdChanged: {
+        if (selectedGameId.length === 0 || !detailsCurrent)
+            launchStatusOverlayOpen = false
+    }
+
+    Connections {
+        target: view.details
+        function onLaunch_busyChanged() {
+            if (view.details.launch_busy)
+                view.launchStatusOverlayOpen = true
+        }
+        function onGame_runningChanged() {
+            if (view.details.game_running)
+                view.launchStatusOverlayOpen = true
         }
     }
 
@@ -1918,6 +1964,356 @@ Item {
             onTapped: {
                 view.stopAttractMode()
                 view.openOverlay("menu")
+            }
+        }
+    }
+
+    Rectangle {
+        id: launchStatusOverlay
+        anchors.fill: parent
+        z: 60
+        visible: view.launchStatusOverlayOpen && view.detailsCurrent
+        color: view.withAlpha(view.background, 0.95)
+
+        Image {
+            anchors.fill: parent
+            source: view.library.couch_theme_background_image
+            asynchronous: true
+            cache: true
+            autoTransform: true
+            fillMode: Image.PreserveAspectCrop
+            opacity: status === Image.Ready ? 0.38 : 0
+        }
+
+        Image {
+            anchors.fill: parent
+            source: view.heroUrl
+            asynchronous: true
+            cache: true
+            autoTransform: true
+            fillMode: Image.PreserveAspectCrop
+            sourceSize.width: Math.max(1, Math.round(width * 1.25))
+            sourceSize.height: Math.max(1, Math.round(height * 1.25))
+            opacity: status === Image.Ready ? 0.42 : 0
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: view.withAlpha(view.background, 0.98) }
+                GradientStop { position: 0.54; color: view.withAlpha(view.background, 0.91) }
+                GradientStop { position: 1; color: view.withAlpha(view.background, 0.76) }
+            }
+        }
+
+        Rectangle {
+            id: launchStatusPanel
+            anchors.centerIn: parent
+            width: Math.min(1060, parent.width - 170)
+            height: Math.min(610, parent.height - 170)
+            radius: Math.min(30, view.cardRadius + 8)
+            color: view.withAlpha(view.panel, 0.97)
+            border.color: view.withAlpha(view.muted, 0.58)
+            border.width: 1
+            clip: true
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 330
+                color: view.withAlpha(view.background, 0.7)
+
+                Rectangle {
+                    id: launchStatusCover
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: 40
+                    width: 210
+                    height: 292
+                    radius: view.cardRadius
+                    color: view.accentFor(view.selectedTitle)
+                    border.color: view.withAlpha(view.ink, 0.55)
+                    clip: true
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: Qt.lighter(launchStatusCover.color, 1.18) }
+                        GradientStop { position: 1; color: Qt.darker(launchStatusCover.color, 1.62) }
+                    }
+                    Image {
+                        id: launchStatusCoverImage
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        source: view.coverUrl
+                        asynchronous: true
+                        cache: true
+                        mipmap: true
+                        autoTransform: true
+                        fillMode: Image.PreserveAspectFit
+                        sourceSize.width: 420
+                        sourceSize.height: 584
+                        opacity: status === Image.Ready ? 1 : 0
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        text: view.selectedTitle.length > 0
+                              ? view.selectedTitle.charAt(0).toUpperCase() : "L"
+                        color: view.withAlpha(view.ink, 0.86)
+                        font.pixelSize: 78
+                        font.weight: Font.Black
+                        visible: launchStatusCoverImage.status !== Image.Ready
+                    }
+                }
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: launchStatusCover.bottom
+                    anchors.topMargin: 24
+                    anchors.margins: 32
+                    spacing: 7
+                    Text {
+                        width: parent.width
+                        text: view.selectedTitle
+                        color: view.ink
+                        font.pixelSize: 23
+                        font.weight: Font.Black
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        width: parent.width
+                        text: view.selectedPlatform.toUpperCase()
+                        color: view.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.1
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            Column {
+                anchors.left: parent.left
+                anchors.leftMargin: 378
+                anchors.right: parent.right
+                anchors.rightMargin: 46
+                anchors.top: parent.top
+                anchors.topMargin: 48
+                spacing: 16
+
+                Row {
+                    spacing: 12
+                    Text {
+                        text: view.details.launch_busy ? "STARTING GAME"
+                              : view.details.game_running ? "NOW PLAYING"
+                                                           : "SESSION COMPLETE"
+                        color: view.details.game_running ? view.accentCool : view.accent
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.8
+                    }
+                    Rectangle {
+                        width: 9
+                        height: 9
+                        radius: 5
+                        visible: view.details.launch_busy
+                        color: view.accent
+                        anchors.verticalCenter: parent.verticalCenter
+                        RotationAnimation on rotation {
+                            running: view.details.launch_busy
+                            from: 0
+                            to: 360
+                            duration: 900
+                            loops: Animation.Infinite
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width
+                    text: view.details.launch_busy
+                          ? "Preparing the exact emulator command and writable runtime files."
+                          : view.details.game_running
+                            ? "The emulator is running independently. Couch Mode is ready when you return."
+                            : "The emulator session has ended and play activity has been saved."
+                    color: view.ink
+                    font.pixelSize: 29
+                    font.weight: Font.Black
+                    lineHeight: 0.98
+                    wrapMode: Text.WordWrap
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 102
+                    radius: Math.max(10, view.cardRadius - 2)
+                    color: view.withAlpha(view.panelRaised, 0.52)
+                    border.color: view.withAlpha(view.muted, 0.38)
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 17
+                        spacing: 9
+                        Text {
+                            text: "LAUNCH STATUS"
+                            color: view.muted
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.1
+                        }
+                        Text {
+                            width: parent.width
+                            text: view.details.launch_status.length > 0
+                                  ? view.details.launch_status : "Waiting for the emulator supervisor…"
+                            color: view.details.game_running ? view.accentCool : view.ink
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                Row {
+                    spacing: 10
+                    Rectangle {
+                        width: emulatorLabel.implicitWidth + 24
+                        height: 32
+                        radius: Math.max(8, view.cardRadius - 6)
+                        color: view.withAlpha(view.accentCool, 0.16)
+                        border.color: view.withAlpha(view.accentCool, 0.62)
+                        Text {
+                            id: emulatorLabel
+                            anchors.centerIn: parent
+                            text: view.details.emulator_name.length > 0
+                                  ? view.details.emulator_name : "EMULATOR SUPERVISOR"
+                            color: view.accentCool
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Rectangle {
+                        visible: view.details.game_running
+                        width: runningLabel.implicitWidth + 24
+                        height: 32
+                        radius: Math.max(8, view.cardRadius - 6)
+                        color: view.withAlpha(view.accent, 0.16)
+                        border.color: view.withAlpha(view.accent, 0.62)
+                        Text {
+                            id: runningLabel
+                            anchors.centerIn: parent
+                            text: "PROCESS ACTIVE"
+                            color: view.accent
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                        }
+                    }
+                }
+
+                Item { width: 1; height: 1 }
+
+                Row {
+                    spacing: 10
+                    Rectangle {
+                        width: desktopLaunchAction.implicitWidth + 34
+                        height: 48
+                        radius: Math.max(9, view.cardRadius - 5)
+                        color: desktopLaunchHover.hovered
+                               ? view.withAlpha(view.panelRaised, 0.9)
+                               : view.withAlpha(view.panelRaised, 0.68)
+                        border.color: desktopLaunchHover.hovered ? view.accent
+                                                                 : view.withAlpha(view.muted, 0.58)
+                        Text {
+                            id: desktopLaunchAction
+                            anchors.centerIn: parent
+                            text: "DESKTOP DETAILS"
+                            color: view.ink
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                        }
+                        HoverHandler { id: desktopLaunchHover }
+                        TapHandler {
+                            onTapped: {
+                                view.launchStatusOverlayOpen = false
+                                view.requestDetails()
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: returnLaunchAction.implicitWidth + 34
+                        height: 48
+                        radius: Math.max(9, view.cardRadius - 5)
+                        color: returnLaunchHover.hovered
+                               ? view.withAlpha(view.accent, 0.92)
+                               : view.withAlpha(view.accent, 0.78)
+                        border.color: view.accent
+                        Text {
+                            id: returnLaunchAction
+                            anchors.centerIn: parent
+                            text: "RETURN TO BROWSING"
+                            color: view.background
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                        }
+                        HoverHandler { id: returnLaunchHover }
+                        TapHandler {
+                            onTapped: {
+                                view.launchStatusOverlayOpen = false
+                                view.forceActiveFocus()
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: 26
+                anchors.rightMargin: 28
+                width: 42
+                height: 42
+                radius: Math.max(8, view.cardRadius - 4)
+                color: launchStatusCloseHover.hovered
+                       ? view.withAlpha(view.panelRaised, 0.9)
+                       : view.withAlpha(view.panelRaised, 0.62)
+                border.color: launchStatusCloseHover.hovered ? view.accent
+                                                               : view.withAlpha(view.muted, 0.54)
+                Text {
+                    anchors.centerIn: parent
+                    text: "×"
+                    color: view.ink
+                    font.pixelSize: 22
+                }
+                HoverHandler { id: launchStatusCloseHover }
+                TapHandler {
+                    onTapped: {
+                        view.launchStatusOverlayOpen = false
+                        view.forceActiveFocus()
+                    }
+                }
+            }
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 378
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 25
+                text: view.gamepad.connected_count > 0
+                      ? view.gamepad.button_label("accept") + "  CLOSE   ·   "
+                        + view.gamepad.button_label("details") + "  DESKTOP DETAILS   ·   "
+                        + view.gamepad.button_label("back") + "  CLOSE"
+                      : "ENTER  CLOSE   ·   D  DESKTOP DETAILS   ·   ESC  CLOSE"
+                color: view.muted
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 0.7
             }
         }
     }

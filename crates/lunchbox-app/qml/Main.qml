@@ -66,6 +66,8 @@ ApplicationWindow {
     property bool couchModeActive: false
     property int couchModePreviousVisibility: Window.Windowed
     property bool couchModeProbeCaptured: false
+    property bool couchLaunchProbeCaptured: false
+    property int couchLaunchProbeWaits: 0
     property int couchGamepadProbeStage: 0
     property string couchGamepadProbeMovedGameId: ""
     property int couchPlatformProbeStage: 0
@@ -211,11 +213,13 @@ ApplicationWindow {
     readonly property bool couchAttractUiProbe: couchAttractRestoreUiProbe
                                                  || Qt.application.arguments.indexOf("--couch-attract-ui-probe") >= 0
     readonly property bool couchThemeUiProbe: Qt.application.arguments.indexOf("--couch-theme-ui-probe") >= 0
+    readonly property bool couchLaunchUiProbe: Qt.application.arguments.indexOf("--couch-launch-ui-probe") >= 0
     readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
                                              || couchCollectionUiProbe
                                              || couchVariantUiProbe
                                              || couchAttractUiProbe
                                              || couchThemeUiProbe
+                                             || couchLaunchUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataRestoreUiProbe: Qt.application.arguments.indexOf("--metadata-restored-ui-probe") >= 0
     readonly property bool metadataUiProbe: metadataRestoreUiProbe
@@ -289,6 +293,7 @@ ApplicationWindow {
     readonly property bool box3dUiProbe: Qt.application.arguments.indexOf("--box-3d-ui-probe") >= 0
     readonly property bool mediaRotationUiProbe: Qt.application.arguments.indexOf("--media-rotation-ui-probe") >= 0
     readonly property bool emulatorLaunchProbe: exoLaunchProbe || romLaunchProbe || arcadeLaunchProbe
+                                                || couchLaunchUiProbe
     readonly property bool downloadPlanUiProbe: multidiscUiProbe || exoArchiveUiProbe || laserdiscUiProbe
     readonly property string screenshotOutput: root.argumentValue("--screenshot-output")
     readonly property string couchGamepadMenuScreenshotOutput: root.argumentValue("--couch-gamepad-menu-screenshot-output")
@@ -317,7 +322,9 @@ ApplicationWindow {
     palette.highlightedText: "#10141c"
 
     onClosing: close => {
-        if (root.couchModeActive) {
+        if (root.couchLaunchUiProbe) {
+            close.accepted = true
+        } else if (root.couchModeActive) {
             close.accepted = false
             root.exitCouchMode()
         } else if (library.favorite_pending_count > 0 || library.collection_busy) {
@@ -392,6 +399,18 @@ ApplicationWindow {
         if (!couchModeUiProbe)
             root.showFullScreen()
         couchModeView.forceActiveFocus()
+        if (root.couchLaunchUiProbe && !root.launchProbeTriggered) {
+            if (gameDetails.game_id.length > 0) {
+                couchModeView.selectedGameId = gameDetails.game_id
+                couchModeView.selectedTitle = gameDetails.title
+                couchModeView.selectedPlatform = gameDetails.platform
+                couchModeView.selectedDatabaseId = root.selectedDatabaseId
+                couchModeView.selectedLocal = gameDetails.local
+                couchModeView.selectedDownloadable = gameDetails.downloadable
+            }
+            root.couchLaunchProbeWaits = 0
+            couchLaunchTriggerTimer.restart()
+        }
     }
 
     function advanceCouchGamepadMenuProbe() {
@@ -1664,6 +1683,11 @@ ApplicationWindow {
                         } else {
                             root.prepareCouchCollectionProbe()
                         }
+                    } else if (root.couchLaunchUiProbe) {
+                        root.selectedGameId = "local-file:rom-launch-probe"
+                        root.availability = "local"
+                        library.apply_filter("Faxanadu",
+                                             "Nintendo Entertainment System", "local")
                     } else if (root.couchVariantUiProbe) {
                         root.couchVariantProbeStage = 0
                         root.couchVariantProbeOriginalId =
@@ -2327,10 +2351,85 @@ ApplicationWindow {
     }
 
     Timer {
+        id: couchLaunchTriggerTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!root.couchLaunchUiProbe || !root.couchModeActive
+                    || root.launchProbeTriggered)
+                return
+            if (gameDetails.can_launch && couchModeView.detailsCurrent) {
+                root.launchProbeTriggered = true
+                gameDetails.launch_game()
+                return
+            }
+            if (root.couchLaunchProbeWaits < 40) {
+                ++root.couchLaunchProbeWaits
+                restart()
+                return
+            }
+            console.error("LUNCHBOX_COUCH_LAUNCH_UI_FAILED selection not ready active="
+                          + root.couchModeActive + " view="
+                          + couchModeView.selectedGameId + " detail="
+                          + gameDetails.game_id + " can=" + gameDetails.can_launch
+                          + " loading=" + gameDetails.loading)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
+        id: couchLaunchStatusScreenshotTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!root.couchLaunchUiProbe)
+                return
+            const launchVisible = root.launchProbeTriggered
+                                  && (gameDetails.launch_busy
+                                      || gameDetails.game_running
+                                      || gameDetails.launch_status.length > 0)
+            if (!root.couchModeActive || !couchModeView.launchStatusOverlayOpen
+                    || !launchVisible) {
+                if (root.couchLaunchProbeWaits < 40) {
+                    ++root.couchLaunchProbeWaits
+                    restart()
+                    return
+                }
+                console.error("LUNCHBOX_COUCH_LAUNCH_UI_FAILED overlay not active")
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                root.couchLaunchProbeCaptured = true
+                console.warn("LUNCHBOX_COUCH_LAUNCH_UI_READY title="
+                             + gameDetails.title + " emulator="
+                             + gameDetails.emulator_name)
+                return
+            }
+            couchModeView.captureLaunchStatus(root.screenshotOutput,
+                                              function(saved) {
+                if (!saved) {
+                    console.error("LUNCHBOX_COUCH_LAUNCH_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                root.couchLaunchProbeCaptured = true
+                console.warn("LUNCHBOX_COUCH_LAUNCH_UI_READY title="
+                             + gameDetails.title + " emulator="
+                             + gameDetails.emulator_name + " screenshot="
+                             + root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
         id: couchModeScreenshotTimer
         interval: 650
         repeat: false
         onTriggered: {
+            if (root.couchLaunchUiProbe)
+                return
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
                     && !root.couchCollectionUiProbe
                     && !root.couchVariantUiProbe
@@ -3256,7 +3355,8 @@ ApplicationWindow {
 
     Timer {
         interval: 20000
-        running: root.couchModeUiProbe && !root.couchModeProbeCaptured
+        running: root.couchModeUiProbe && !root.couchLaunchUiProbe
+                 && !root.couchModeProbeCaptured
         repeat: false
         onTriggered: {
             console.error("LUNCHBOX_COUCH_MODE_UI_FAILED timeout status="
@@ -3348,7 +3448,8 @@ ApplicationWindow {
         function onActivity_revisionChanged() {
             library.refresh_activity()
             if (root.emulatorLaunchProbe && root.launchProbeAwaitingActivity
-                    && !gameDetails.game_running)
+                    && !gameDetails.game_running
+                    && (!root.couchLaunchUiProbe || root.couchLaunchProbeCaptured))
                 Qt.quit()
         }
         function onDownload_busyChanged() {
@@ -3475,6 +3576,8 @@ ApplicationWindow {
                 root.launchProfileProbeTriggered = true
                 gameDetails.open_launch_profile_editor()
             } else if (root.emulatorLaunchProbe && gameDetails.can_launch
+                    && (!root.couchLaunchUiProbe
+                        || (root.couchModeActive && couchModeView.detailsCurrent))
                     && !root.launchProbeTriggered) {
                 root.launchProbeTriggered = true
                 gameDetails.launch_game()
@@ -3487,6 +3590,11 @@ ApplicationWindow {
                                                     gameVideoPlayer.duration)
                 gameVideoPlayer.pause()
             }
+            if (root.couchLaunchUiProbe && gameDetails.game_running
+                    && !root.couchLaunchProbeCaptured) {
+                root.couchLaunchProbeWaits = 0
+                couchLaunchStatusScreenshotTimer.restart()
+            }
             if (!root.emulatorLaunchProbe
                     || !root.launchProbeTriggered)
                 return
@@ -3496,6 +3604,11 @@ ApplicationWindow {
                 root.launchProbeAwaitingActivity = true
         }
         function onLaunch_statusChanged() {
+            if (root.couchLaunchUiProbe && root.launchProbeTriggered
+                    && root.couchModeActive && !root.couchLaunchProbeCaptured) {
+                root.couchLaunchProbeWaits = 0
+                couchLaunchStatusScreenshotTimer.restart()
+            }
             if (root.emulatorLaunchProbe
                     && root.launchProbeTriggered
                     && gameDetails.launch_status.indexOf("Could not launch") === 0)

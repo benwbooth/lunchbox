@@ -162,6 +162,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   start manually or after a persisted idle delay, rotates through the exact
   current shelf with controller/keyboard/pointer escape routes, and exposes
   validated idle and cycle settings without creating a second catalog.
+  Launching from Couch Mode now opens a real launch-status surface backed by
+  the shared asynchronous supervisor: startup, active-process, emulator, and
+  finalized-session state remain visible without losing the selected UUID, and
+  the user can return to browsing or hand off to Desktop Details at any phase.
   Linux backend startup and deterministic real-QML routing through both overlays
   are exercised; attached-controller Linux, Windows, and macOS release-host
   certification remains.
@@ -295,7 +299,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   and restart-safe by exact stable ID. The Couch Game Menu now includes a
   virtualized exact release picker with regional/version ordering, current/
   installed/Minerva/catalog-only state, cached-media context, and stable-ID
-  routing. Continue with richer game-wheel layouts, deeper media acquisition
+  routing. The launch action now presents a controller-safe startup/now-playing/
+  session-complete surface from the shared launch supervisor, including the
+  exact emulator and actionable Desktop Details/browsing handoffs. Continue
+  with richer game-wheel layouts, deeper media acquisition
   controls inside the implemented Details and Game Menu overlays,
   startup/shutdown/pause screens, background music, sound packs,
   marquee monitor support, parental lock, and richer couch-safe settings.

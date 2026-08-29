@@ -52,6 +52,10 @@ desktop tools without losing the exact game. When a catalog title has multiple
 regional or versioned records, the Game Menu opens an exact release picker with
 current/installed/Minerva availability and cached-media context; choosing a row
 routes the selected stable UUID through the same details and launch services.
+Starting a game from Couch Mode opens a controller-safe launch-status surface
+that follows real startup, active-process, emulator, and finalized-session
+state; it can be dismissed back to browsing or handed to Desktop Details at
+any phase.
 Attract Mode can be started from
 Game Menu or automatically after a configurable idle delay; it rotates through
 the current shelf rather than a second catalog, retains exact game identity,

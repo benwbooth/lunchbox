@@ -1006,7 +1006,9 @@ fn has_cli_flag(flag: &str) -> bool {
 }
 
 fn is_local_launch_probe() -> bool {
-    has_cli_flag("--rom-launch-probe") || has_cli_flag("--arcade-launch-probe")
+    has_cli_flag("--rom-launch-probe")
+        || has_cli_flag("--arcade-launch-probe")
+        || has_cli_flag("--couch-launch-ui-probe")
 }
 
 fn is_emulator_launch_probe() -> bool {
