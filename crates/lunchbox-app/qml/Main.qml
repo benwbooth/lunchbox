@@ -13,12 +13,14 @@ ApplicationWindow {
     width: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+           || mediaAuditUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+            || mediaAuditUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             ? 1200 : 900
@@ -85,6 +87,7 @@ ApplicationWindow {
     property int collectionProbeStage: 0
     property int libraryAuditProbeStage: 0
     property bool libraryAuditProbeArmed: false
+    property bool mediaAuditProbeArmed: false
     property bool collectionProbeArmed: false
     property bool downloadHistoryTriggered: false
     property bool manualTorrentProbeTriggered: false
@@ -155,6 +158,7 @@ ApplicationWindow {
     readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
+    readonly property bool mediaAuditUiProbe: Qt.application.arguments.indexOf("--media-audit-ui-probe") >= 0
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool manualTorrentUiProbe: Qt.application.arguments.indexOf("--manual-torrent-ui-probe") >= 0
     readonly property bool sidebarRestoreUiProbe: Qt.application.arguments.indexOf("--sidebar-restored-ui-probe") >= 0
@@ -708,6 +712,18 @@ ApplicationWindow {
         return "#69b7ff"
     }
 
+    function mediaAuditStatusColor(status) {
+        if (status === "repaired")
+            return root.accentCool
+        if (status === "failed")
+            return "#ff7a88"
+        if (status === "unavailable")
+            return root.accent
+        if (status === "review")
+            return "#bb9cff"
+        return "#69b7ff"
+    }
+
     function openFindArtwork(artworkType) {
         if (selectedDatabaseId <= 0)
             return
@@ -1042,6 +1058,10 @@ ApplicationWindow {
         id: libraryAudit
     }
 
+    MediaAuditModel {
+        id: mediaAudit
+    }
+
     SteamGridDbModel {
         id: steamGridDb
     }
@@ -1246,6 +1266,15 @@ ApplicationWindow {
                 }
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
+                else if (root.mediaAuditUiProbe) {
+                    if (!root.mediaAuditProbeArmed) {
+                        root.mediaAuditProbeArmed = true
+                        mediaAuditScope.currentIndex = 1
+                        mediaAuditKind.currentIndex = 0
+                        mediaAuditDialog.open()
+                        mediaAudit.start_audit("catalog", "box-front")
+                    }
+                }
                 else if (root.libraryAuditUiProbe) {
                     if (!root.libraryAuditProbeArmed) {
                         root.libraryAuditProbeArmed = true
@@ -2647,6 +2676,70 @@ ApplicationWindow {
         onTriggered: {
             console.error("LUNCHBOX_LIBRARY_AUDIT_UI_FAILED timeout message="
                           + libraryAudit.message)
+            Qt.exit(2)
+        }
+    }
+
+    Connections {
+        target: mediaAudit
+        function onMedia_revisionChanged() {
+            if (mediaAudit.media_revision > 0)
+                library.refresh_media()
+        }
+        function onAuditingChanged() {
+            if (!root.mediaAuditUiProbe || mediaAudit.auditing || mediaAudit.busy)
+                return
+            const valid = mediaAudit.examined_count > 300000
+                          && mediaAudit.missing_count > 0
+                          && mediaAudit.repairable_count > 0
+                          && mediaAudit.manual_review_count > 0
+            if (!valid) {
+                console.error("LUNCHBOX_MEDIA_AUDIT_UI_FAILED examined="
+                              + mediaAudit.examined_count + " missing="
+                              + mediaAudit.missing_count + " repairable="
+                              + mediaAudit.repairable_count + " manual="
+                              + mediaAudit.manual_review_count + " message="
+                              + mediaAudit.message)
+                Qt.exit(2)
+                return
+            }
+            mediaAuditStatus.currentIndex = 1
+            mediaAudit.apply_filter("", "repairable", "title")
+            if (mediaAudit.entry_count > 0)
+                mediaAudit.toggle_selected(0)
+            mediaAuditScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: mediaAuditScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            mediaAudit.report_ui_probe()
+            if (root.screenshotOutput.length === 0) {
+                Qt.quit()
+                return
+            }
+            mediaAuditDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_MEDIA_AUDIT_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.mediaAuditUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_MEDIA_AUDIT_UI_FAILED timeout phase="
+                          + mediaAudit.phase + " message=" + mediaAudit.message)
             Qt.exit(2)
         }
     }
@@ -4485,6 +4578,13 @@ ApplicationWindow {
                     libraryAuditDialog.open()
                     libraryAudit.start_audit()
                 }
+            }
+            NavButton {
+                label: "Media Audit"
+                glyph: "▣"
+                count: mediaAudit.examined_count > 0
+                       ? mediaAudit.missing_count.toString() : ""
+                onClicked: mediaAuditDialog.open()
             }
         }
 
@@ -8764,6 +8864,527 @@ ApplicationWindow {
                   + (libraryAudit.selected_missing_count === 1
                      ? " missing record" : " missing records")
                   + " from Lunchbox state? No ROM, archive, save, or downloaded file will be deleted. Offline collection roots are never eligible for this action."
+            color: root.ink
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    Timer {
+        id: mediaAuditFilterDelay
+        interval: 140
+        repeat: false
+        onTriggered: mediaAudit.apply_filter(
+                         mediaAuditSearch.text,
+                         mediaAuditStatus.currentValue,
+                         mediaAuditSort.currentValue)
+    }
+
+    Dialog {
+        id: mediaAuditDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(1240, root.width - 54)
+        height: Math.min(850, root.height - 54)
+        padding: 18
+        closePolicy: Popup.CloseOnEscape
+        onClosed: {
+            if (mediaAudit.busy)
+                mediaAudit.cancel()
+        }
+        background: Rectangle {
+            radius: 15
+            color: "#111822"
+            border.color: root.line
+        }
+        header: Rectangle {
+            width: parent.width
+            height: 76
+            radius: 15
+            color: root.panelRaised
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 22
+                anchors.rightMargin: 18
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Text {
+                        text: "MISSING MEDIA"
+                        color: root.ink
+                        font.pixelSize: 20
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    Text {
+                        text: "Exact category coverage · review before repair · bounded background downloads"
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                }
+                HeaderButton {
+                    text: "×"
+                    implicitWidth: 38
+                    leftPadding: 0
+                    rightPadding: 0
+                    Accessible.name: "Close Missing Media Audit"
+                    onClicked: mediaAuditDialog.close()
+                }
+            }
+        }
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                ComboBox {
+                    id: mediaAuditScope
+                    Layout.preferredWidth: 190
+                    textRole: "label"
+                    valueRole: "value"
+                    enabled: !mediaAudit.busy
+                    Accessible.name: "Media audit scope"
+                    model: [
+                        { label: "My Collection", value: "collection" },
+                        { label: "Entire Catalog", value: "catalog" }
+                    ]
+                }
+                ComboBox {
+                    id: mediaAuditKind
+                    Layout.preferredWidth: 190
+                    textRole: "label"
+                    valueRole: "value"
+                    enabled: !mediaAudit.busy
+                    Accessible.name: "Media category"
+                    model: root.artworkChoices
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: mediaAudit.scope === "catalog"
+                          ? "The entire catalog may contain hundreds of thousands of records. Results stay virtualized."
+                          : "Audits games currently installed in My Collection."
+                    color: root.muted
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+                HeaderButton {
+                    text: mediaAudit.busy ? "Cancel" : "Run audit"
+                    active: !mediaAudit.busy
+                    Accessible.name: mediaAudit.busy ? "Cancel media work" : "Run missing media audit"
+                    onClicked: {
+                        if (mediaAudit.busy)
+                            mediaAudit.cancel()
+                        else
+                            mediaAudit.start_audit(mediaAuditScope.currentValue,
+                                                   mediaAuditKind.currentValue)
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 9
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Examined"
+                    value: mediaAudit.examined_count
+                    tone: "#69b7ff"
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Covered"
+                    value: mediaAudit.covered_count
+                    tone: root.accentCool
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Missing"
+                    value: mediaAudit.missing_count
+                    tone: "#ff7a88"
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Auto repair"
+                    value: mediaAudit.repairable_count
+                    tone: "#69b7ff"
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Review"
+                    value: mediaAudit.manual_review_count
+                    tone: "#bb9cff"
+                }
+                AuditMetric {
+                    Layout.fillWidth: true
+                    label: "Repaired"
+                    value: mediaAudit.repaired_count
+                    tone: root.accentCool
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 9
+                TextField {
+                    id: mediaAuditSearch
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 280
+                    placeholderText: "Search title, platform, or repair guidance"
+                    selectByMouse: true
+                    Accessible.name: "Search missing media results"
+                    onTextEdited: mediaAuditFilterDelay.restart()
+                }
+                ComboBox {
+                    id: mediaAuditStatus
+                    Layout.preferredWidth: 176
+                    textRole: "label"
+                    valueRole: "value"
+                    Accessible.name: "Missing media status filter"
+                    model: [
+                        { label: "All missing", value: "all" },
+                        { label: "Auto repair", value: "repairable" },
+                        { label: "Needs review", value: "review" },
+                        { label: "Repaired", value: "repaired" },
+                        { label: "Not at provider", value: "unavailable" },
+                        { label: "Failed", value: "failed" }
+                    ]
+                    onActivated: mediaAuditFilterDelay.restart()
+                }
+                ComboBox {
+                    id: mediaAuditSort
+                    Layout.preferredWidth: 150
+                    textRole: "label"
+                    valueRole: "value"
+                    Accessible.name: "Missing media sort order"
+                    model: [
+                        { label: "Title", value: "title" },
+                        { label: "Platform", value: "platform" },
+                        { label: "Status", value: "status" }
+                    ]
+                    onActivated: mediaAuditFilterDelay.restart()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 11
+                color: "#0d141e"
+                border.color: root.line
+
+                ListView {
+                    id: mediaAuditList
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    clip: true
+                    focus: true
+                    model: mediaAudit.entry_count
+                    boundsBehavior: Flickable.StopAtBounds
+                    keyNavigationEnabled: true
+                    highlightMoveDuration: 90
+                    highlight: Rectangle {
+                        radius: 9
+                        color: "#202938"
+                        border.color: root.line
+                    }
+                    ScrollBar.vertical: ScrollBar {}
+                    Keys.onSpacePressed: {
+                        if (currentIndex >= 0)
+                            mediaAudit.toggle_selected(currentIndex)
+                    }
+                    Keys.onReturnPressed: {
+                        if (currentIndex < 0)
+                            return
+                        root.openGame(mediaAudit.row_game_uid_at(currentIndex),
+                                      mediaAudit.row_database_id_at(currentIndex),
+                                      mediaAudit.row_title_at(currentIndex),
+                                      mediaAudit.row_platform_at(currentIndex),
+                                      mediaAudit.row_local_at(currentIndex),
+                                      mediaAudit.row_downloadable_at(currentIndex))
+                        mediaAuditDialog.close()
+                    }
+                    delegate: Rectangle {
+                        id: mediaAuditRow
+                        required property int index
+                        width: ListView.view.width
+                        height: 94
+                        color: mediaRowHover.hovered ? "#182230" : "transparent"
+                        border.color: "#202a39"
+                        property string rowStatus: {
+                            mediaAudit.revision
+                            return mediaAudit.row_status_at(mediaAuditRow.index)
+                        }
+                        property bool rowRepairable: {
+                            mediaAudit.revision
+                            return mediaAudit.row_repairable_at(mediaAuditRow.index)
+                        }
+                        property bool rowSelected: {
+                            mediaAudit.revision
+                            return mediaAudit.row_selected_at(mediaAuditRow.index)
+                        }
+
+                        HoverHandler { id: mediaRowHover }
+                        TapHandler {
+                            onTapped: {
+                                mediaAuditList.currentIndex = mediaAuditRow.index
+                                if (mediaAuditRow.rowRepairable)
+                                    mediaAudit.toggle_selected(mediaAuditRow.index)
+                            }
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 12
+                            spacing: 12
+
+                            Rectangle {
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
+                                radius: 6
+                                opacity: mediaAuditRow.rowRepairable ? 1 : 0.35
+                                color: mediaAuditRow.rowSelected ? root.accent : "#151d29"
+                                border.color: mediaAuditRow.rowSelected ? root.accent : root.line
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: mediaAuditRow.rowRepairable ? "✓" : "—"
+                                    visible: mediaAuditRow.rowSelected
+                                             || !mediaAuditRow.rowRepairable
+                                    color: mediaAuditRow.rowSelected ? "#17120b" : root.muted
+                                    font.pixelSize: 13
+                                    font.weight: Font.Bold
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 104
+                                Layout.preferredHeight: 27
+                                radius: 13
+                                color: Qt.rgba(root.mediaAuditStatusColor(
+                                                   mediaAuditRow.rowStatus).r,
+                                               root.mediaAuditStatusColor(
+                                                   mediaAuditRow.rowStatus).g,
+                                               root.mediaAuditStatusColor(
+                                                   mediaAuditRow.rowStatus).b, 0.13)
+                                border.color: root.mediaAuditStatusColor(
+                                                  mediaAuditRow.rowStatus)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: mediaAudit.row_status_label_at(mediaAuditRow.index)
+                                    color: root.mediaAuditStatusColor(mediaAuditRow.rowStatus)
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.5
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: mediaAudit.row_title_at(mediaAuditRow.index)
+                                        color: root.ink
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: mediaAudit.row_platform_at(mediaAuditRow.index)
+                                        color: root.muted
+                                        font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: mediaAudit.row_kind_label_at(mediaAuditRow.index)
+                                          + "  ·  Exact category"
+                                    color: "#718096"
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: mediaAudit.row_detail_at(mediaAuditRow.index)
+                                    color: root.mediaAuditStatusColor(mediaAuditRow.rowStatus)
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            HeaderButton {
+                                text: "Details"
+                                implicitWidth: 76
+                                Accessible.name: "Open game details"
+                                onClicked: {
+                                    root.openGame(
+                                                mediaAudit.row_game_uid_at(mediaAuditRow.index),
+                                                mediaAudit.row_database_id_at(mediaAuditRow.index),
+                                                mediaAudit.row_title_at(mediaAuditRow.index),
+                                                mediaAudit.row_platform_at(mediaAuditRow.index),
+                                                mediaAudit.row_local_at(mediaAuditRow.index),
+                                                mediaAudit.row_downloadable_at(mediaAuditRow.index))
+                                    mediaAuditDialog.close()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    anchors.centerIn: parent
+                    width: Math.min(560, parent.width - 80)
+                    spacing: 10
+                    visible: !mediaAudit.busy && mediaAudit.entry_count === 0
+                    Text {
+                        width: parent.width
+                        text: mediaAudit.examined_count === 0
+                              ? "CHOOSE A SCOPE AND RUN THE AUDIT"
+                              : mediaAudit.missing_count === 0
+                                ? "THIS CATEGORY IS COMPLETE"
+                                : "NO RECORDS MATCH THIS VIEW"
+                        color: root.ink
+                        font.pixelSize: 16
+                        font.weight: Font.Bold
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Text {
+                        width: parent.width
+                        text: mediaAudit.examined_count === 0
+                              ? "Lunchbox checks exact media categories off the UI thread and never replaces artwork automatically."
+                              : mediaAudit.missing_count === 0
+                                ? "Every audited game has exact cached artwork in the selected category."
+                                : "Change the search or status filter to inspect other missing records."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+
+                Rectangle {
+                    id: mediaAuditProgressTrack
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 4
+                    visible: mediaAudit.busy
+                    color: "#1a2330"
+                    Rectangle {
+                        id: mediaAuditProgressThumb
+                        height: parent.height
+                        width: mediaAudit.progress_total > 0
+                               ? parent.width * Math.min(
+                                     1, mediaAudit.progress_current
+                                        / mediaAudit.progress_total)
+                               : parent.width * 0.24
+                        color: mediaAudit.repairing ? root.accentCool : root.accent
+                        SequentialAnimation on x {
+                            running: mediaAudit.busy && mediaAudit.progress_total === 0
+                            loops: Animation.Infinite
+                            NumberAnimation {
+                                from: 0
+                                to: Math.max(0, mediaAuditProgressTrack.width
+                                               - mediaAuditProgressThumb.width)
+                                duration: 900
+                                easing.type: Easing.InOutQuad
+                            }
+                            NumberAnimation {
+                                from: Math.max(0, mediaAuditProgressTrack.width
+                                                 - mediaAuditProgressThumb.width)
+                                to: 0
+                                duration: 900
+                                easing.type: Easing.InOutQuad
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                Text {
+                    Layout.fillWidth: true
+                    text: mediaAudit.message
+                    color: mediaAudit.busy ? root.accent : root.muted
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+                Text {
+                    visible: mediaAudit.busy
+                    text: mediaAudit.repairing
+                          ? mediaAudit.repair_completed + " / " + mediaAudit.repair_total
+                          : mediaAudit.phase + (mediaAudit.progress_total > 0
+                            ? "  " + mediaAudit.progress_current.toLocaleString(
+                                  Qt.locale(), "f", 0) + " / "
+                              + mediaAudit.progress_total.toLocaleString(Qt.locale(), "f", 0)
+                            : "")
+                    color: "#718096"
+                    font.pixelSize: 9
+                }
+            }
+        }
+        footer: Rectangle {
+            width: parent.width
+            height: 68
+            radius: 15
+            color: root.panelRaised
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 9
+                HeaderButton {
+                    text: "Select repairable"
+                    enabled: mediaAudit.repairable_count > 0 && !mediaAudit.busy
+                    onClicked: mediaAudit.select_visible(true)
+                }
+                HeaderButton {
+                    text: "Clear selection"
+                    enabled: mediaAudit.selected_count > 0 && !mediaAudit.busy
+                    onClicked: mediaAudit.select_visible(false)
+                }
+                HeaderButton {
+                    text: mediaAudit.selected_count > 0
+                          ? "Repair " + mediaAudit.selected_count + " selected"
+                          : "Repair selected"
+                    active: mediaAudit.selected_count > 0
+                    enabled: mediaAudit.selected_count > 0 && !mediaAudit.busy
+                    Accessible.name: "Repair selected exact artwork"
+                    onClicked: mediaAuditRepairConfirmDialog.open()
+                }
+            }
+            HeaderButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Close"
+                onClicked: mediaAuditDialog.close()
+            }
+        }
+    }
+
+    Dialog {
+        id: mediaAuditRepairConfirmDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(560, root.width - 48)
+        title: "Repair selected artwork?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: mediaAudit.repair_selected()
+        contentItem: Text {
+            text: "Download exact " + mediaAuditKind.currentText.toLowerCase()
+                  + " artwork for " + mediaAudit.selected_count
+                  + (mediaAudit.selected_count === 1 ? " reviewed game" : " reviewed games")
+                  + " from LibRetro? Downloads run through a bounded background queue. Missing provider files and errors remain visible for review; Lunchbox will not substitute a different media category."
             color: root.ink
             font.pixelSize: 12
             wrapMode: Text.WordWrap

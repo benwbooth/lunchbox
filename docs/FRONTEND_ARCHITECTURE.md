@@ -63,6 +63,17 @@ The initial implementation enforces this shape:
   and replaces only the owned LibRetro target after write and sync; overwrite
   fallback restores the prior file on publication failure and never removes
   alternatives from other providers.
+- `MediaAuditModel` loads the same catalog and scans the same provider-ordered
+  cache on a named worker. My Collection and Entire Catalog scopes are explicit;
+  progress and cancellation cover the cache and game passes, while the result
+  list retains only compact missing rows and stays virtualized in QML. Coverage
+  is exact by media kind: an available fallback does not satisfy the audit.
+  Positive exact game identities on LibRetro-supported platforms may enter a
+  confirmed repair batch. Two workers receive at most eight scheduled rows at
+  once, require the requested category instead of retrieval fallbacks, validate
+  bounded PNG responses, and atomically publish only LibRetro-owned files.
+  Local-only or unsupported records remain reviewable and route back to Game
+  Details rather than receiving guessed identity or media.
 - The writable state database is selected with `--state-database` or
   `LUNCHBOX_STATE_DATABASE`, otherwise an OS-native application-data directory
   is used. Its WAL setup and schema migration are serialized before concurrent
@@ -317,6 +328,17 @@ same open details surface exercises previous/next rotation and the explicit
 LibRetro refresh action; successful replacement prints
 `LUNCHBOX_MEDIA_REFRESH_READY` only after the refreshed file has re-entered the
 index.
+`--media-audit-ui-probe --media-directory EMPTY_PATH --screenshot-output PATH`
+audits exact box-front coverage across the real 303,560-game catalog, filters
+the virtualized result to exact provider-repair candidates, selects one row,
+captures the complete dialog, and emits `LUNCHBOX_MEDIA_AUDIT_UI_READY` from
+Rust after the model and QML checks agree.
+The optimized Nix package's 1920x1200 software-rendered probe on 2026-08-28
+reported the shell ready in 492 ms and the 303,560-game catalog ready in 702 ms;
+the complete audit, filter, selection, capture, and clean exit took 2.8 seconds.
+The empty-cache run classified 114,258 rows as exact LibRetro repairs and
+189,302 as explicit provider review, proving that unsupported platforms and
+media categories are not silently presented as downloadable.
 `--favorite-probe --state-database EMPTY_PATH` selects a real catalog game,
 persists it through the native Qt action, prints `LUNCHBOX_FAVORITE_READY_MS`,
 and exits only after the worker reports success. `--favorite-ui-probe` leaves

@@ -27,6 +27,7 @@ fn main() {
     .file("src/launch_profile_manager_model.rs")
     .file("src/library_audit_model.rs")
     .file("src/library_model.rs")
+    .file("src/media_audit_model.rs")
     .file("src/local_import_model.rs")
     .file("src/settings_model.rs")
     .file("src/steamgriddb_model.rs")

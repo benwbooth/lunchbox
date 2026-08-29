@@ -1653,11 +1653,13 @@ impl qobject::LibraryModel {
             return;
         }
         let request = MediaFetchRequest {
+            request_id: String::new(),
             database_id,
             title,
             platform,
             requested_kind: kind,
             force,
+            exact_only: false,
         };
         let queued = self
             .as_ref()

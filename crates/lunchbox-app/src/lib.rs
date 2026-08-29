@@ -26,6 +26,8 @@ mod local_import;
 pub mod local_import_model;
 mod media;
 mod media_acquisition;
+mod media_audit;
+pub mod media_audit_model;
 mod provider_image;
 mod qbittorrent;
 mod region_priority;

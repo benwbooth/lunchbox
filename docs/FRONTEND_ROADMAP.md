@@ -129,6 +129,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Native management of Libretro's complete official Slang and GLSL shader packs
   with cross-platform target discovery, verified cache reuse, safe extraction,
   explicit unmanaged-pack replacement, and transactional multi-target rollback.
+- Native Missing Media Audit for My Collection or the entire catalog. It scans
+  exact artwork categories off-thread with cancellation, keeps hundreds of
+  thousands of results virtualized, separates exact LibRetro repairs from
+  records requiring provider review, and uses a confirmed bounded two-worker
+  repair queue with no cross-category substitution. Atomic completed files
+  survive interruption; unresolved provider misses and failures remain visible.
 
 ## Collection management
 
@@ -179,9 +185,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   progress/cancellation, validated atomic cache publication, and native cached
   manual/video bundle with an authorized EmuMovies API adapter, video
   acquisition, and soundtrack browsing.
-- Whole-library missing-media audit and a background bulk download queue.
-  Durable media-source priority, per-game candidate rotation, immediate
-  off-thread reindexing, and safe explicit LibRetro replacement are native.
+- Extend the implemented whole-library missing-media audit and bounded bulk
+  LibRetro repair queue with durable pending-batch restart recovery, multi-
+  provider bulk review, supplemental video/manual categories, and scheduled
+  unattended maintenance. Durable media-source priority, per-game candidate
+  rotation, immediate off-thread reindexing, and safe explicit LibRetro
+  replacement are native.
 - Extend the responsive game details and native video/fullscreen/manual/3D-box
   surface with related games, alternate versions, and soundtrack playback.
 

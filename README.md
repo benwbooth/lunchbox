@@ -333,6 +333,15 @@ miss cache, validates a fresh LibRetro PNG, and replaces only Lunchbox's owned
 LibRetro file through a synced temporary file. Other providers remain available,
 and a miss or transfer error restores the existing image.
 
+The sidebar's native **Media Audit** opens a virtualized, cancellable coverage
+review for either My Collection or the complete catalog. It checks one exact
+artwork category at a time, clearly separates exact LibRetro repairs from games
+that need per-provider review, and never treats a fallback image as completion.
+Users select reviewed rows before a confirmed, two-worker background repair;
+each response is size/signature validated and atomically published into only
+LibRetro's owned cache path. Provider misses and transfer failures stay visible
+for retry or per-game Find Artwork review.
+
 The unified native **Find Artwork** flow supports SteamGridDB and IGDB. Provider
 credentials live only in the operating-system credential store. Search results
 are always review candidates: the user chooses the exact provider game before

@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -255,6 +256,22 @@ impl ArtworkKind {
         Self::ALL.into_iter().find(|kind| kind.key() == value)
     }
 
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::BoxFront => "Box front",
+            Self::BoxBack => "Box back",
+            Self::Box3d => "3D box",
+            Self::Screenshot => "Gameplay",
+            Self::TitleScreen => "Title screen",
+            Self::Fanart => "Fan art",
+            Self::ClearLogo => "Clear logo",
+        }
+    }
+
+    pub fn has_exact_libretro_source(self, platform: &str) -> bool {
+        self.libretro_path_segment().is_some() && libretro_platform_name(platform).is_some()
+    }
+
     fn from_file_stem(stem: &str) -> Option<Self> {
         match stem {
             "box-front" => Some(Self::BoxFront),
@@ -442,6 +459,19 @@ impl MediaIndex {
     }
 
     pub fn scan_with_provider_priority(root: PathBuf, provider_priority: Vec<String>) -> Self {
+        let cancelled = AtomicBool::new(false);
+        Self::scan_with_control(root, provider_priority, &cancelled, |_, _| {})
+    }
+
+    pub fn scan_with_control<F>(
+        root: PathBuf,
+        provider_priority: Vec<String>,
+        cancelled: &AtomicBool,
+        mut progress: F,
+    ) -> Self
+    where
+        F: FnMut(usize, usize),
+    {
         let provider_priority = effective_provider_priority(&provider_priority);
         let mut index = Self {
             root: root.clone(),
@@ -449,7 +479,7 @@ impl MediaIndex {
             ..Self::default()
         };
         let directories = match fs::read_dir(&root) {
-            Ok(directories) => directories,
+            Ok(directories) => directories.collect::<Vec<_>>(),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return index,
             Err(error) => {
                 index.warning = Some(format!("could not read {}: {error}", root.display()));
@@ -457,7 +487,12 @@ impl MediaIndex {
             }
         };
 
-        for directory in directories {
+        let total = directories.len();
+        for (position, directory) in directories.into_iter().enumerate() {
+            if cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+            progress(position, total);
             let Ok(directory) = directory else {
                 index.skipped_entries += 1;
                 continue;
@@ -482,6 +517,7 @@ impl MediaIndex {
                 index.games.insert(database_id, media);
             }
         }
+        progress(total, total);
         index
     }
 
@@ -576,6 +612,26 @@ pub fn supplemental_media(game_id: &str, database_id: i64) -> Result<Supplementa
 
 pub fn game_media_directory(game_id: &str, database_id: i64) -> Result<PathBuf> {
     game_media_directory_in(&requested_media_directory(), game_id, database_id)
+}
+
+pub fn exact_artwork_exists(
+    root: &Path,
+    game_id: &str,
+    database_id: i64,
+    kind: ArtworkKind,
+    provider_priority: &[String],
+) -> bool {
+    let Ok(directory) = game_media_directory_in(root, game_id, database_id) else {
+        return false;
+    };
+    let mut skipped = 0;
+    scan_game_directory(
+        &directory,
+        &mut skipped,
+        &effective_provider_priority(provider_priority),
+    )
+    .exact(kind)
+    .is_some()
 }
 
 fn game_media_directory_in(root: &Path, game_id: &str, database_id: i64) -> Result<PathBuf> {
@@ -864,16 +920,19 @@ fn image_format_rank(path: &Path) -> Option<usize> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MediaFetchRequest {
+    pub request_id: String,
     pub database_id: i64,
     pub title: String,
     pub platform: String,
     pub requested_kind: ArtworkKind,
     pub force: bool,
+    pub exact_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MediaFetchOutcome {
     Found {
+        request_id: String,
         database_id: i64,
         requested_kind: ArtworkKind,
         fetched_kind: ArtworkKind,
@@ -881,11 +940,13 @@ pub enum MediaFetchOutcome {
         force: bool,
     },
     Missing {
+        request_id: String,
         database_id: i64,
         requested_kind: ArtworkKind,
         force: bool,
     },
     Failed {
+        request_id: String,
         database_id: i64,
         requested_kind: ArtworkKind,
         error: String,
@@ -1027,6 +1088,7 @@ fn fetch_media(
     if !request.force && negative_cache_is_fresh(root, request.database_id, request.requested_kind)
     {
         return MediaFetchOutcome::Missing {
+            request_id: request.request_id,
             database_id: request.database_id,
             requested_kind: request.requested_kind,
             force: request.force,
@@ -1036,22 +1098,24 @@ fn fetch_media(
     let Some(platform) = libretro_platform_name(&request.platform) else {
         let _ = write_negative_cache(root, &request, "platform is not provided by LibRetro");
         return MediaFetchOutcome::Missing {
+            request_id: request.request_id,
             database_id: request.database_id,
             requested_kind: request.requested_kind,
             force: request.force,
         };
     };
 
-    for fetched_kind in request.requested_kind.retrieval_fallbacks() {
+    for fetched_kind in retrieval_kinds(request.requested_kind, request.exact_only) {
         let Some(type_directory) = fetched_kind.libretro_path_segment() else {
             continue;
         };
-        let output = media_output_path(root, request.database_id, *fetched_kind);
+        let output = media_output_path(root, request.database_id, fetched_kind);
         if output.is_file() && !request.force {
             return MediaFetchOutcome::Found {
+                request_id: request.request_id,
                 database_id: request.database_id,
                 requested_kind: request.requested_kind,
-                fetched_kind: *fetched_kind,
+                fetched_kind,
                 path: output,
                 force: false,
             };
@@ -1075,15 +1139,17 @@ fn fetch_media(
                                 request.requested_kind,
                             ));
                             return MediaFetchOutcome::Found {
+                                request_id: request.request_id,
                                 database_id: request.database_id,
                                 requested_kind: request.requested_kind,
-                                fetched_kind: *fetched_kind,
+                                fetched_kind,
                                 path: output,
                                 force: request.force,
                             };
                         }
                         Err(error) => {
                             return MediaFetchOutcome::Failed {
+                                request_id: request.request_id,
                                 database_id: request.database_id,
                                 requested_kind: request.requested_kind,
                                 error: error.to_string(),
@@ -1095,6 +1161,7 @@ fn fetch_media(
                 Ok(None) => {}
                 Err(error) => {
                     return MediaFetchOutcome::Failed {
+                        request_id: request.request_id,
                         database_id: request.database_id,
                         requested_kind: request.requested_kind,
                         error: error.to_string(),
@@ -1107,9 +1174,18 @@ fn fetch_media(
 
     let _ = write_negative_cache(root, &request, "no matching LibRetro thumbnail");
     MediaFetchOutcome::Missing {
+        request_id: request.request_id,
         database_id: request.database_id,
         requested_kind: request.requested_kind,
         force: request.force,
+    }
+}
+
+fn retrieval_kinds(requested: ArtworkKind, exact_only: bool) -> Vec<ArtworkKind> {
+    if exact_only {
+        vec![requested]
+    } else {
+        requested.retrieval_fallbacks().to_vec()
     }
 }
 
@@ -1436,6 +1512,21 @@ mod tests {
     }
 
     #[test]
+    fn cancellable_media_scan_stops_before_reading_game_directories() {
+        let directory = tempfile::tempdir().unwrap();
+        touch(&directory.path().join("lb-1019/local/box-front.png"));
+        let cancelled = AtomicBool::new(true);
+        let index = MediaIndex::scan_with_control(
+            directory.path().to_owned(),
+            default_provider_priority(),
+            &cancelled,
+            |_, _| {},
+        );
+        assert!(index.games.is_empty());
+        assert_eq!(index.asset_count, 0);
+    }
+
+    #[test]
     fn provider_priority_requires_the_complete_unique_provider_set() {
         let mut duplicate = default_provider_priority();
         duplicate[1] = "local".into();
@@ -1471,6 +1562,86 @@ mod tests {
             PathBuf::from("cover.png")
         );
         assert!(media.exact(ArtworkKind::ClearLogo).is_none());
+    }
+
+    #[test]
+    fn bulk_repair_can_require_the_exact_requested_media_category() {
+        assert_eq!(
+            retrieval_kinds(ArtworkKind::ClearLogo, true),
+            vec![ArtworkKind::ClearLogo]
+        );
+        assert_eq!(
+            retrieval_kinds(ArtworkKind::ClearLogo, false),
+            vec![ArtworkKind::ClearLogo, ArtworkKind::BoxFront]
+        );
+    }
+
+    #[test]
+    fn exact_repair_fetch_preserves_request_identity_and_publishes_atomically() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut request = [0_u8; 4096];
+            let read = stream.read(&mut request).unwrap();
+            assert!(
+                String::from_utf8_lossy(&request[..read])
+                    .starts_with("GET /Nintendo%20-%20Nintendo%20Entertainment%20System/Named_Boxarts/Exact%20Game.png ")
+            );
+            let bytes = b"\x89PNG\r\n\x1a\nexact-repair-fixture";
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                bytes.len()
+            );
+            stream.write_all(header.as_bytes()).unwrap();
+            stream.write_all(bytes).unwrap();
+        });
+        let root = tempfile::tempdir().unwrap();
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(3)))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let outcome = fetch_media(
+            &agent,
+            root.path(),
+            &format!("http://{address}"),
+            MediaFetchRequest {
+                request_id: "stable-game-uid".to_owned(),
+                database_id: 42,
+                title: "Exact Game".to_owned(),
+                platform: "Nintendo Entertainment System".to_owned(),
+                requested_kind: ArtworkKind::BoxFront,
+                force: true,
+                exact_only: true,
+            },
+            0,
+        );
+        server.join().unwrap();
+        match outcome {
+            MediaFetchOutcome::Found {
+                request_id,
+                requested_kind,
+                fetched_kind,
+                path,
+                ..
+            } => {
+                assert_eq!(request_id, "stable-game-uid");
+                assert_eq!(requested_kind, ArtworkKind::BoxFront);
+                assert_eq!(fetched_kind, ArtworkKind::BoxFront);
+                assert_eq!(
+                    fs::read(path).unwrap(),
+                    b"\x89PNG\r\n\x1a\nexact-repair-fixture"
+                );
+            }
+            outcome => panic!("unexpected repair outcome: {outcome:?}"),
+        }
     }
 
     #[test]
@@ -1606,11 +1777,13 @@ mod tests {
     fn negative_cache_is_scoped_by_game_and_requested_artwork_kind() {
         let directory = tempfile::tempdir().unwrap();
         let request = MediaFetchRequest {
+            request_id: "probe".to_owned(),
             database_id: 42,
             title: "Missing Game".to_owned(),
             platform: "Nintendo Entertainment System".to_owned(),
             requested_kind: ArtworkKind::BoxFront,
             force: false,
+            exact_only: false,
         };
         write_negative_cache(directory.path(), &request, "test miss").unwrap();
         assert!(negative_cache_is_fresh(
