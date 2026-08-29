@@ -117,6 +117,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   cleanup. Availability is synchronized only for roots that completed a full
   scan; cleanup cannot delete files and offline roots are never treated as
   missing.
+- Portable whole-profile backup and review-first restore for the complete
+  writable SQLite state plus receipt-owned Couch Mode themes. Online snapshots,
+  bounded versioned ZIP manifests, exact SHA-256 receipts, database/migration/
+  theme validation, next-launch activation, and rollback are native; keyring
+  credentials and large content stores stay deliberately outside the archive.
 - Stable-UUID play activity with durable per-launch sessions, exactly-once
   elapsed-time finalization, count/time/last-played statistics, editable
   completion state, and a live Recently Played view. Game Details also exposes
@@ -183,7 +188,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   specific editing and playlist-specific presentation.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
-- Fast metadata bulk editing, collection audits, and whole-profile backup/restore.
+- Fast metadata bulk editing and collection-wide comparison/reporting tools.
 
 ## Download-first experience
 

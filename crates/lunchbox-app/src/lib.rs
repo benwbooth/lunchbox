@@ -31,6 +31,7 @@ mod media;
 mod media_acquisition;
 mod media_audit;
 pub mod media_audit_model;
+mod profile_backup;
 mod provider_image;
 mod qbittorrent;
 mod region_priority;
@@ -63,6 +64,21 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    match settings::state_database_path()
+        .and_then(|path| profile_backup::apply_pending_restore(&path))
+    {
+        Ok(Some(summary)) => println!(
+            "LUNCHBOX_PROFILE_RESTORED collections={} installed_games={} customized_games={} import_profiles={} themes={}",
+            summary.collections,
+            summary.installed_games,
+            summary.customized_games,
+            summary.import_profiles,
+            summary.themes
+        ),
+        Ok(None) => {}
+        Err(error) => eprintln!("LUNCHBOX_PROFILE_RESTORE_FAILED error={error:#}"),
+    }
+
     if std::env::args().any(|argument| argument == "--hover-preview-ui-probe") {
         match hover_preview::seed_ui_probe() {
             Ok(path) => println!("LUNCHBOX_HOVER_PREVIEW_SEEDED path={path:?}"),

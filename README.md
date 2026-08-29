@@ -68,6 +68,19 @@ the official `shaders_slang` and `shaders_glsl` directories after explicit
 confirmation when they were not previously managed by Lunchbox; custom sibling
 folders are never touched.
 
+Settings also creates portable `.lunchbox-profile` backups of the writable
+collection state and verified installed Couch Mode themes. Each archive carries
+a versioned manifest plus exact size and SHA-256 receipts; export performs an
+online SQLite snapshot and reopens the finished archive for database, migration,
+theme, and receipt validation before publishing it. Restore is review-first and
+staged for the next launch, before any Qt models open, with rollback to the
+previous profile if activation fails; it can also be cancelled while the current
+profile remains live. Operating-system credential-store secrets,
+ROMs, torrent data, media caches, emulator binaries, save files, and the large
+read-only discovery catalogs are deliberately excluded. Native paths remain
+lossless, so a profile moved between Linux, Windows, and macOS should be checked
+with Library Audit and relinked explicitly where host paths differ.
+
 To exercise the preserved acquisition-first catalog, layer the local legacy
 game catalog, Minerva bundle index, and optional user state over the canonical
 database:

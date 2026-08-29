@@ -16,6 +16,11 @@ pub mod qobject {
         #[qproperty(bool, connection_ok)]
         #[qproperty(QString, message)]
         #[qproperty(QString, state_database_path)]
+        #[qproperty(bool, profile_busy)]
+        #[qproperty(QString, profile_message)]
+        #[qproperty(bool, profile_restore_ready)]
+        #[qproperty(QString, profile_restore_summary)]
+        #[qproperty(bool, profile_restart_required)]
         #[qproperty(QString, qbittorrent_host)]
         #[qproperty(i32, qbittorrent_port)]
         #[qproperty(bool, qbittorrent_use_https)]
@@ -65,6 +70,21 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_directory(self: Pin<&mut SettingsModel>, field: QString, url: QUrl);
+
+        #[qinvokable]
+        fn export_profile(self: Pin<&mut SettingsModel>, destination: QUrl);
+
+        #[qinvokable]
+        fn inspect_profile(self: Pin<&mut SettingsModel>, source: QUrl);
+
+        #[qinvokable]
+        fn stage_profile_restore(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn cancel_profile_restore(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
+        fn cancel_staged_profile_restore(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
         fn region_count(self: &SettingsModel) -> i32;
@@ -247,6 +267,7 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::controllers::{self, ControllerDevice, ControllerInventory};
+use crate::profile_backup;
 use crate::qbittorrent;
 use crate::retroarch_shaders::{self, ShaderInstallSummary, ShaderInventory, ShaderProgress};
 use crate::settings::{
@@ -261,6 +282,12 @@ pub struct SettingsModelRust {
     connection_ok: bool,
     message: QString,
     state_database_path: QString,
+    profile_busy: bool,
+    profile_message: QString,
+    profile_restore_ready: bool,
+    profile_restore_summary: QString,
+    profile_restart_required: bool,
+    profile_restore_source: Option<PathBuf>,
     qbittorrent_host: QString,
     qbittorrent_port: i32,
     qbittorrent_use_https: bool,
@@ -314,6 +341,14 @@ impl Default for SettingsModelRust {
             connection_ok: false,
             message: QString::from("Loading settings…"),
             state_database_path: QString::default(),
+            profile_busy: false,
+            profile_message: QString::from(
+                "Create a portable backup of saved collection state and preferences.",
+            ),
+            profile_restore_ready: false,
+            profile_restore_summary: QString::default(),
+            profile_restart_required: false,
+            profile_restore_source: None,
             qbittorrent_host: QString::from("127.0.0.1"),
             qbittorrent_port: 8080,
             qbittorrent_use_https: false,
@@ -422,16 +457,30 @@ impl qobject::SettingsModel {
 
     fn finish_initialize(
         mut self: Pin<&mut Self>,
-        loaded: Result<(AppSettings, bool, PathBuf), String>,
+        loaded: Result<
+            (
+                AppSettings,
+                bool,
+                PathBuf,
+                Option<profile_backup::ProfileSummary>,
+            ),
+            String,
+        >,
     ) {
         self.as_mut().set_busy(false);
         match loaded {
-            Ok((settings, password_saved, path)) => {
+            Ok((settings, password_saved, path, restored_profile)) => {
                 self.as_mut().apply_settings(settings);
                 self.as_mut().set_password_saved(password_saved);
                 self.as_mut()
                     .set_state_database_path(qstring(path.to_string_lossy()));
                 self.as_mut().set_initialized(true);
+                if let Some(summary) = restored_profile {
+                    self.as_mut().set_profile_message(qstring(format!(
+                        "Profile restored safely at startup: {}. Credentials stayed in this computer's credential store.",
+                        summary.description()
+                    )));
+                }
                 self.as_mut().set_message(qstring(if password_saved {
                     "Settings loaded; the qBittorrent password is in your system credential store."
                 } else {
@@ -1510,6 +1559,235 @@ impl qobject::SettingsModel {
         }
     }
 
+    pub fn export_profile(mut self: Pin<&mut Self>, destination: QUrl) {
+        if *self.as_ref().profile_busy() {
+            return;
+        }
+        let Some(destination) = destination
+            .to_local_file()
+            .map(|path| PathBuf::from(path.to_string()))
+        else {
+            self.as_mut()
+                .set_profile_message(qstring("Choose a local profile backup file."));
+            return;
+        };
+        let state_path = match settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_profile_message(qstring(format!(
+                    "Could not locate the Lunchbox profile: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().set_profile_busy(true);
+        self.as_mut().set_profile_restore_ready(false);
+        self.as_mut()
+            .set_profile_message(qstring("Creating a consistent profile snapshot…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-profile-export".into())
+            .spawn(move || {
+                let result = profile_backup::export_profile(&state_path, &destination)
+                    .map(|summary| (summary, destination))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().set_profile_busy(false);
+                    match result {
+                        Ok((summary, destination)) => model.as_mut().set_profile_message(qstring(
+                            format!(
+                                "Backup verified and saved to {}: {}. Credential-store secrets, ROMs, downloads, media caches, and emulator binaries were not included.",
+                                destination.display(),
+                                summary.description()
+                            ),
+                        )),
+                        Err(error) => model.as_mut().set_profile_message(qstring(format!(
+                            "Profile backup failed: {error}"
+                        ))),
+                    }
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_profile_busy(false);
+            self.as_mut().set_profile_message(qstring(format!(
+                "Could not start the profile backup worker: {error}"
+            )));
+        }
+    }
+
+    pub fn inspect_profile(mut self: Pin<&mut Self>, source: QUrl) {
+        if *self.as_ref().profile_busy() {
+            return;
+        }
+        let Some(source) = source
+            .to_local_file()
+            .map(|path| PathBuf::from(path.to_string()))
+        else {
+            self.as_mut()
+                .set_profile_message(qstring("Choose a local Lunchbox profile archive."));
+            return;
+        };
+        self.as_mut().rust_mut().profile_restore_source = None;
+        self.as_mut().set_profile_restore_ready(false);
+        self.as_mut()
+            .set_profile_restore_summary(QString::default());
+        self.as_mut().set_profile_busy(true);
+        self.as_mut().set_profile_message(qstring(
+            "Validating the profile manifest, receipts, database, and themes…",
+        ));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-profile-inspect".into())
+            .spawn(move || {
+                let result = profile_backup::inspect_profile(&source)
+                    .map(|summary| (summary, source))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().set_profile_busy(false);
+                    match result {
+                        Ok((summary, source)) => {
+                            let description = summary.description();
+                            model.as_mut().rust_mut().profile_restore_source = Some(source);
+                            model
+                                .as_mut()
+                                .set_profile_restore_summary(qstring(&description));
+                            model.as_mut().set_profile_message(qstring(format!(
+                                "Verified profile archive: {description}. Review the replacement before staging it."
+                            )));
+                            model.as_mut().set_profile_restore_ready(true);
+                        }
+                        Err(error) => model.as_mut().set_profile_message(qstring(format!(
+                            "Profile archive was rejected: {error}"
+                        ))),
+                    }
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_profile_busy(false);
+            self.as_mut().set_profile_message(qstring(format!(
+                "Could not start profile validation: {error}"
+            )));
+        }
+    }
+
+    pub fn stage_profile_restore(mut self: Pin<&mut Self>) {
+        if *self.as_ref().profile_busy() {
+            return;
+        }
+        let Some(source) = self.as_ref().rust().profile_restore_source.clone() else {
+            self.as_mut()
+                .set_profile_message(qstring("Choose and verify a profile archive first."));
+            return;
+        };
+        let state_path = match settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_profile_message(qstring(format!(
+                    "Could not locate the Lunchbox profile: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().set_profile_busy(true);
+        self.as_mut().set_profile_restore_ready(false);
+        self.as_mut()
+            .set_profile_message(qstring("Revalidating and staging the profile restore…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-profile-stage".into())
+            .spawn(move || {
+                let result = profile_backup::stage_restore(&state_path, &source)
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().set_profile_busy(false);
+                    match result {
+                        Ok(summary) => {
+                            model.as_mut().rust_mut().profile_restore_source = None;
+                            model
+                                .as_mut()
+                                .set_profile_restore_summary(qstring(summary.description()));
+                            model.as_mut().set_profile_restart_required(true);
+                            model.as_mut().set_profile_message(qstring(
+                                "Restore staged safely. Quit Lunchbox to apply it before any models open on the next launch.",
+                            ));
+                        }
+                        Err(error) => model.as_mut().set_profile_message(qstring(format!(
+                            "Profile restore was not staged: {error}"
+                        ))),
+                    }
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_profile_busy(false);
+            self.as_mut().set_profile_message(qstring(format!(
+                "Could not start the profile restore worker: {error}"
+            )));
+        }
+    }
+
+    pub fn cancel_profile_restore(mut self: Pin<&mut Self>) {
+        if *self.as_ref().profile_busy() {
+            return;
+        }
+        self.as_mut().rust_mut().profile_restore_source = None;
+        self.as_mut().set_profile_restore_ready(false);
+        self.as_mut()
+            .set_profile_restore_summary(QString::default());
+        self.as_mut().set_profile_message(qstring(
+            "Profile restore review cancelled; nothing was changed.",
+        ));
+    }
+
+    pub fn cancel_staged_profile_restore(mut self: Pin<&mut Self>) {
+        if *self.as_ref().profile_busy() || !*self.as_ref().profile_restart_required() {
+            return;
+        }
+        let state_path = match settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_profile_message(qstring(format!(
+                    "Could not locate the staged Lunchbox profile: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().set_profile_busy(true);
+        self.as_mut()
+            .set_profile_message(qstring("Cancelling the staged profile restore safely…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-profile-unstage".into())
+            .spawn(move || {
+                let result = profile_backup::cancel_pending_restore(&state_path)
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().set_profile_busy(false);
+                    match result {
+                        Ok(removed) => {
+                            model.as_mut().set_profile_restart_required(false);
+                            model
+                                .as_mut()
+                                .set_profile_restore_summary(QString::default());
+                            model.as_mut().set_profile_message(qstring(if removed {
+                                "Staged profile restore cancelled; the current profile was never changed."
+                            } else {
+                                "No staged profile restore remained; the current profile is unchanged."
+                            }));
+                        }
+                        Err(error) => model.as_mut().set_profile_message(qstring(format!(
+                            "Could not cancel the staged profile restore: {error}"
+                        ))),
+                    }
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_profile_busy(false);
+            self.as_mut().set_profile_message(qstring(format!(
+                "Could not start the profile restore cancellation worker: {error}"
+            )));
+        }
+    }
+
     fn apply_settings(mut self: Pin<&mut Self>, settings: AppSettings) {
         let region_priority =
             crate::region_priority::effective_region_priority(&settings.region_priority);
@@ -1752,11 +2030,28 @@ fn controller_profile_option(
     }
 }
 
-fn load_settings() -> anyhow::Result<(AppSettings, bool, PathBuf)> {
+fn load_settings() -> anyhow::Result<(
+    AppSettings,
+    bool,
+    PathBuf,
+    Option<profile_backup::ProfileSummary>,
+)> {
     let store = SettingsStore::open_default()?;
     let settings = store.load()?;
     let password_saved = settings::load_password()?.is_some();
-    Ok((settings, password_saved, store.path().to_owned()))
+    let restored_profile = match profile_backup::take_applied_notice(store.path()) {
+        Ok(summary) => summary,
+        Err(error) => {
+            eprintln!("LUNCHBOX_PROFILE_RESTORE_NOTICE_FAILED error={error:#}");
+            None
+        }
+    };
+    Ok((
+        settings,
+        password_saved,
+        store.path().to_owned(),
+        restored_profile,
+    ))
 }
 
 fn save_settings(settings: &AppSettings, password: &str) -> anyhow::Result<PathBuf> {

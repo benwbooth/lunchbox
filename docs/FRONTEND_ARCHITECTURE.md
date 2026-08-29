@@ -530,6 +530,27 @@ exits only after verifying the resulting nine-row order; adding
 The saved order governs all cached artwork, video, and manual candidates and
 falls back to the complete default only when an older state database has no
 valid order. The
+`--profile-backup-ui-probe --state-database EMPTY_PATH --screenshot-output
+ABSOLUTE_PATH` route opens the native profile card, requires both actions to be
+ready after asynchronous settings initialization, captures the rendered card,
+and exits with explicit readiness evidence. The underlying
+`.lunchbox-profile` is a bounded, versioned ZIP containing a consistent online
+SQLite backup, a deny-unknown-fields manifest, and only the exact files of
+receipt-owned installed Couch Mode themes. Size and SHA-256 receipts cover every
+payload entry; duplicate, extra, missing, unsafe, symlink, corrupt, foreign-key,
+migration-incompatible, and mismatched-theme payloads fail closed. Export
+extracts and validates the finished archive before atomic publication. Restore
+repeats that validation into an owned staging directory, remains inert until the
+user quits, then activates before QML or application models open. The current
+WAL is checkpointed first; state and theme stores are renamed aside and restored
+if migration or activation validation fails. A staged restore can be cancelled
+off-thread without changing the live profile. ROMs, torrent data, media caches,
+emulator binaries, save files, discovery catalogs, and operating-system
+credential-store values are excluded. Absolute native paths are preserved
+without Windows/Unix rewriting and therefore remain visible to Library Audit for
+explicit cross-host repair.
+
+The
 `--controller-probe` route performs a non-Qt real-host inventory and prints the
 native controller, InputPlumber service, managed-device, target, and warning
 counts. `--controller-ui-probe --state-database EMPTY_PATH` opens the same

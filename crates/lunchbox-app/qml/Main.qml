@@ -17,6 +17,7 @@ ApplicationWindow {
            || installManagementUiProbe
            || downloadRecoveryUiProbe
            || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
+           || profileBackupUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
            ? 1920 : 1440
@@ -27,6 +28,7 @@ ApplicationWindow {
             || installManagementUiProbe
             || downloadRecoveryUiProbe
             || variantUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
+            || profileBackupUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
             ? 1200 : 900
@@ -116,6 +118,7 @@ ApplicationWindow {
     property bool settingsSeedingTriggered: false
     property bool settingsReleaseTriggered: false
     property bool settingsMediaPriorityTriggered: false
+    property bool profileBackupProbeComplete: false
     property int retroarchShaderProbeStage: 0
     property bool box3dProbeOpened: false
     property bool mediaRotationProbeOpened: false
@@ -232,6 +235,7 @@ ApplicationWindow {
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
     readonly property bool settingsMediaPriorityUiProbe: Qt.application.arguments.indexOf("--settings-media-priority-ui-probe") >= 0
+    readonly property bool profileBackupUiProbe: Qt.application.arguments.indexOf("--profile-backup-ui-probe") >= 0
     readonly property bool couchAttractSettingsUiProbe: Qt.application.arguments.indexOf("--couch-attract-settings-ui-probe") >= 0
     readonly property bool retroarchShaderUiProbe: Qt.application.arguments.indexOf("--retroarch-shader-ui-probe") >= 0
     readonly property bool steamGridDbUiProbe: Qt.application.arguments.indexOf("--steamgriddb-ui-probe") >= 0
@@ -1253,6 +1257,10 @@ ApplicationWindow {
                     settingsMediaPriorityScreenshotTimer.restart()
                 }
             }
+        }
+        function onProfile_restore_readyChanged() {
+            if (appSettings.profile_restore_ready)
+                profileRestoreConfirmDialog.open()
         }
         function onShader_revisionChanged() {
             if (!root.retroarchShaderUiProbe || appSettings.shader_busy)
@@ -3613,6 +3621,7 @@ ApplicationWindow {
                 root.openImportDialog()
             else if (root.settingsUiProbe || root.settingsRegionUiProbe
                      || root.settingsMediaPriorityUiProbe
+                     || root.profileBackupUiProbe
                      || root.couchAttractSettingsUiProbe
                      || root.controllerUiProbe || root.controllerProfileUiProbe
                      || root.retroarchShaderUiProbe) {
@@ -3782,6 +3791,69 @@ ApplicationWindow {
                             + root.screenshotOutput)
                 Qt.quit()
             })
+        }
+    }
+
+    Timer {
+        interval: 500
+        running: root.profileBackupUiProbe && settingsDialog.visible
+                 && appSettings.initialized
+        repeat: false
+        onTriggered: {
+            settingsScroll.contentItem.contentY = Math.max(
+                0, profileBackupSection.mapToItem(
+                    settingsScroll.contentItem, 0, 0).y - 18)
+            profileBackupScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: profileBackupScreenshotTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+            if (!settingsDialog.visible || !appSettings.initialized
+                    || !profileBackupButton.enabled
+                    || !profileRestoreButton.enabled
+                    || appSettings.profile_message.length === 0) {
+                console.error("LUNCHBOX_PROFILE_BACKUP_UI_FAILED visible="
+                              + settingsDialog.visible + " initialized="
+                              + appSettings.initialized + " message="
+                              + appSettings.profile_message)
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                root.profileBackupProbeComplete = true
+                console.warn("LUNCHBOX_PROFILE_BACKUP_UI_READY message="
+                             + appSettings.profile_message)
+                Qt.quit()
+                return
+            }
+            profileBackupSection.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_PROFILE_BACKUP_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                root.profileBackupProbeComplete = true
+                console.warn("LUNCHBOX_PROFILE_BACKUP_UI_READY message="
+                             + appSettings.profile_message + " screenshot="
+                             + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.profileBackupUiProbe && !root.profileBackupProbeComplete
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_PROFILE_BACKUP_UI_FAILED timeout message="
+                          + appSettings.message)
+            Qt.exit(2)
         }
     }
 
@@ -12222,6 +12294,69 @@ ApplicationWindow {
         onAccepted: library.install_couch_theme(selectedFile)
     }
 
+    FileDialog {
+        id: profileBackupFileDialog
+        title: "Create a Lunchbox profile backup"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "lunchbox-profile"
+        nameFilters: ["Lunchbox profiles (*.lunchbox-profile)"]
+        onAccepted: appSettings.export_profile(selectedFile)
+    }
+
+    FileDialog {
+        id: profileRestoreFileDialog
+        title: "Choose a Lunchbox profile to restore"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Lunchbox profiles (*.lunchbox-profile)"]
+        onAccepted: appSettings.inspect_profile(selectedFile)
+    }
+
+    Dialog {
+        id: profileRestoreConfirmDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(600, root.width - 48)
+        title: "Replace this Lunchbox profile on next launch?"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        closePolicy: Popup.CloseOnEscape
+        onAccepted: appSettings.stage_profile_restore()
+        onRejected: appSettings.cancel_profile_restore()
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: appSettings.profile_restore_summary
+                color: root.ink
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "This replaces collections, local-file links, metadata, preferences, launch profiles, history, and installed Couch Mode themes. ROMs, downloads, media, emulator files, and credentials are never overwritten. The current profile remains active until you quit."
+                color: root.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: restorePathWarning.implicitHeight + 22
+                radius: 8
+                color: "#2a2117"
+                border.color: "#6f5230"
+                Text {
+                    id: restorePathWarning
+                    anchors.fill: parent
+                    anchors.margins: 11
+                    text: "Native paths are restored losslessly. When moving between Linux, Windows, and macOS, use Library Audit to review unavailable roots before launching games."
+                    color: "#e8c38d"
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+    }
+
     Dialog {
         id: removeCouchThemeDialog
         modal: true
@@ -14382,11 +14517,13 @@ ApplicationWindow {
         width: Math.min(root.controllerProfileUiProbe
                         || root.settingsMediaPriorityUiProbe
                         || root.couchAttractSettingsUiProbe
+                        || root.profileBackupUiProbe
                         || root.retroarchShaderUiProbe ? 1120 : 760,
                         root.width - 60)
         height: Math.min(root.controllerProfileUiProbe
                          || root.settingsMediaPriorityUiProbe
                          || root.couchAttractSettingsUiProbe
+                         || root.profileBackupUiProbe
                          || root.retroarchShaderUiProbe ? 1080 : 760,
                          root.height - 60)
         padding: 0
@@ -16418,6 +16555,151 @@ ApplicationWindow {
                                         else
                                             appSettings.install_retroarch_shaders(false)
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ColumnLayout {
+                    id: profileBackupSection
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Text {
+                        text: "PROFILE BACKUP & RESTORE"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: profileBackupColumn.implicitHeight + 32
+                        radius: 12
+                        color: "#101823"
+                        border.color: appSettings.profile_restart_required
+                                      ? "#7d5b32" : root.line
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: profileBackupColumn
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 11
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Rectangle {
+                                    Layout.preferredWidth: 42
+                                    Layout.preferredHeight: 42
+                                    radius: 11
+                                    color: appSettings.profile_restart_required
+                                           ? "#3a2a1a" : "#1b3040"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: appSettings.profile_restart_required ? "↻" : "▣"
+                                        color: appSettings.profile_restart_required
+                                               ? root.accent : root.accentCool
+                                        font.pixelSize: 20
+                                        font.weight: Font.Bold
+                                    }
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: appSettings.profile_restart_required
+                                              ? "Restore ready for the next launch"
+                                              : "Portable collection profile"
+                                        color: root.ink
+                                        font.pixelSize: 14
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "Back up saved collections, exact game identities, local-file links, metadata, preferences, profiles, activity, and verified Couch Mode themes in one receipt-checked archive."
+                                        color: root.muted
+                                        font.pixelSize: 10
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                                BusyIndicator {
+                                    visible: appSettings.profile_busy
+                                    running: visible
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: profileStatusText.implicitHeight + 22
+                                radius: 8
+                                color: appSettings.profile_restart_required
+                                       ? "#2b241b" : "#141f2a"
+                                border.color: appSettings.profile_restart_required
+                                              ? "#705638" : "#26384a"
+                                Text {
+                                    id: profileStatusText
+                                    anchors.fill: parent
+                                    anchors.margins: 11
+                                    text: appSettings.profile_message
+                                    color: appSettings.profile_restart_required
+                                           ? "#e8c38d" : "#c3cad6"
+                                    font.pixelSize: 10
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Credential-store secrets remain on this computer. ROMs, torrent data, media caches, emulator binaries, and save files stay outside the profile archive. Save settings first if you want unsaved edits included."
+                                color: root.muted
+                                font.pixelSize: 9
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Button {
+                                    id: profileBackupButton
+                                    text: "BACK UP NOW…"
+                                    enabled: appSettings.initialized
+                                             && !appSettings.profile_busy
+                                             && !appSettings.profile_restart_required
+                                    onClicked: profileBackupFileDialog.open()
+                                    Accessible.name: "Create a portable Lunchbox profile backup"
+                                }
+                                Button {
+                                    id: profileRestoreButton
+                                    text: "RESTORE PROFILE…"
+                                    enabled: appSettings.initialized
+                                             && !appSettings.profile_busy
+                                             && !appSettings.profile_restart_required
+                                    onClicked: profileRestoreFileDialog.open()
+                                    Accessible.name: "Inspect and restore a Lunchbox profile backup"
+                                }
+                                Item { Layout.fillWidth: true }
+                                HeaderButton {
+                                    visible: appSettings.profile_restart_required
+                                    text: "CANCEL RESTORE"
+                                    enabled: !appSettings.profile_busy
+                                    onClicked: appSettings.cancel_staged_profile_restore()
+                                    Accessible.name: "Cancel the staged Lunchbox profile restore"
+                                }
+                                HeaderButton {
+                                    visible: appSettings.profile_restart_required
+                                    text: "QUIT TO APPLY"
+                                    active: true
+                                    enabled: !appSettings.profile_busy
+                                    onClicked: Qt.quit()
+                                    Accessible.name: "Quit Lunchbox and apply the staged profile on next launch"
                                 }
                             }
                         }
