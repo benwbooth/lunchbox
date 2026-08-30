@@ -1,17 +1,29 @@
 import QtQuick
 
-WheelHandler {
+MouseArea {
     id: handler
 
     required property Flickable scroller
-    target: null
+    // This transparent viewport layer handles wheels even when the pointer is
+    // over a delegate's image or label. It accepts no mouse buttons, so taps,
+    // hover, selection, and scrollbar dragging stay with their real controls.
+    parent: scroller
+    x: 0
+    y: 0
+    width: scroller.width
+    height: scroller.height
+    visible: true
+    z: 900
+    acceptedButtons: Qt.NoButton
+    hoverEnabled: false
+    scrollGestureEnabled: true
 
     // A mouse-wheel notch should cover meaningful ground in a large library.
     // The velocity model lets quick successive notches accumulate naturally,
     // while the friction value keeps a single notch predictable.
-    property real wheelPageFactor: 1.85
-    property real frictionPerSecond: 4.6
-    property real maximumVelocity: 72000
+    property real wheelPageFactor: 3.2
+    property real frictionPerSecond: 3.8
+    property real maximumVelocity: 120000
     property real minimumVelocity: 70
     property real pixelVelocityGain: 72
     readonly property bool momentumRunning: momentumTimer.running
@@ -66,6 +78,14 @@ WheelHandler {
         addVelocity(distance * pixelVelocityGain)
     }
 
+    function moveImmediately(distance) {
+        if (!isFinite(distance) || distance === 0)
+            return
+        advancing = true
+        scroller.contentY = clampContentY(scroller.contentY + distance)
+        advancing = false
+    }
+
     function scrollNotches(steps) {
         const now = Date.now()
         const direction = steps < 0 ? -1 : 1
@@ -73,10 +93,15 @@ WheelHandler {
                    ? Math.min(10, burstCount + 1) : 0
         lastNotchAt = now
 
-        const acceleration = Math.min(6.5, 1 + burstCount * 0.55)
-        const pageDistance = Math.max(1400,
-                                      Math.min(2800,
+        const acceleration = Math.min(9.0, 1 + burstCount * 0.7)
+        const pageDistance = Math.max(2200,
+                                      Math.min(5200,
                                                scroller.height * wheelPageFactor))
+        // Give each physical notch an immediate response before the kinetic
+        // tail takes over. This keeps a large, image-heavy grid feeling
+        // directly attached to the wheel even at low display refresh rates.
+        moveImmediately(steps * pageDistance * 0.24
+                        * Math.min(2.0, acceleration))
         // Under exponential friction the remaining distance is velocity / k.
         // Multiplying by k therefore makes pageDistance the travel of one
         // isolated notch, independent of monitor refresh rate.

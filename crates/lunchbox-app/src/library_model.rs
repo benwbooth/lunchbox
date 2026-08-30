@@ -80,6 +80,7 @@ pub mod qobject {
         #[qproperty(bool, sidebar_state_saving)]
         #[qproperty(QString, couch_shelf)]
         #[qproperty(QString, couch_platform)]
+        #[qproperty(QString, couch_view_style)]
         #[qproperty(QString, couch_theme_id)]
         #[qproperty(QString, couch_theme_name)]
         #[qproperty(QString, couch_theme_author)]
@@ -320,9 +321,6 @@ pub mod qobject {
         );
 
         #[qinvokable]
-        fn request_visible_media(self: Pin<&mut LibraryModel>, game_uid: QString);
-
-        #[qinvokable]
         fn request_game_video(self: Pin<&mut LibraryModel>, game_uid: QString);
 
         #[qinvokable]
@@ -554,6 +552,9 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn save_couch_view_style(self: Pin<&mut LibraryModel>, view_style: QString) -> bool;
+
+        #[qinvokable]
         fn save_couch_attract_settings(
             self: Pin<&mut LibraryModel>,
             enabled: bool,
@@ -702,7 +703,7 @@ struct AutomaticVideoRequest {
     platform: String,
 }
 
-const MAX_QUEUED_VISIBLE_VIDEOS: usize = 48;
+const MAX_QUEUED_GAMEPLAY_VIDEOS: usize = 48;
 
 enum AutomaticVideoOutcome {
     Ready { path: PathBuf, downloaded: bool },
@@ -868,6 +869,7 @@ pub struct LibraryModelRust {
     sidebar_state_saving: bool,
     couch_shelf: QString,
     couch_platform: QString,
+    couch_view_style: QString,
     couch_theme_id: QString,
     couch_theme_name: QString,
     couch_theme_author: QString,
@@ -1021,7 +1023,7 @@ impl Default for LibraryModelRust {
             hover_preview_url: QUrl::default(),
             hover_preview_source: QString::default(),
             hover_preview_message: QString::from(
-                "Pause over a game to play its preview. Missing videos download automatically from EmuMovies.",
+                "Pause over a game for half a second to play its preview. Missing videos then download from EmuMovies.",
             ),
             hover_preview_loading: false,
             hover_preview_probe: std::env::args().any(|argument| {
@@ -1066,6 +1068,7 @@ impl Default for LibraryModelRust {
             sidebar_state_saving: false,
             couch_shelf: qstring(&couch_preferences.shelf),
             couch_platform: QString::default(),
+            couch_view_style: qstring(&couch_preferences.view_style),
             couch_theme_id: qstring(&couch_theme.id),
             couch_theme_name: qstring(&couch_theme.name),
             couch_theme_author: qstring(&couch_theme.author),
@@ -2005,6 +2008,8 @@ impl qobject::LibraryModel {
                         self.as_mut()
                             .set_couch_attract_enabled(preferences.attract_enabled);
                         self.as_mut()
+                            .set_couch_view_style(qstring(&preferences.view_style));
+                        self.as_mut()
                             .set_couch_attract_idle_seconds(preferences.attract_idle_seconds);
                         self.as_mut()
                             .set_couch_attract_cycle_seconds(preferences.attract_cycle_seconds);
@@ -2908,7 +2913,7 @@ impl qobject::LibraryModel {
             }
         };
         let launchbox_db_id = automatic_request.database_id;
-        self.as_mut().queue_automatic_video(automatic_request, true);
+        self.as_mut().queue_automatic_video(automatic_request);
         if *self.as_ref().hover_preview_probe() {
             println!(
                 "LUNCHBOX_HOVER_PREVIEW_UI_LOOKUP game_uid={game_uid:?} database_id={launchbox_db_id}"
@@ -3047,7 +3052,7 @@ impl qobject::LibraryModel {
         self.as_mut().set_hover_preview_source(QString::default());
         self.as_mut().set_hover_preview_loading(false);
         self.as_mut().set_hover_preview_message(qstring(
-            "Pause over a game to play its preview. Missing videos download automatically from EmuMovies.",
+            "Pause over a game for half a second to play its preview. Missing videos then download from EmuMovies.",
         ));
     }
 
@@ -3156,7 +3161,7 @@ impl qobject::LibraryModel {
             self.as_mut().rust_mut().automatic_video_messages.clear();
             self.as_mut().set_media_setup_required(false);
             self.as_mut().set_media_fetch_message(qstring(
-                "Visible artwork and gameplay videos download automatically.",
+            "Visible artwork downloads automatically. Gameplay videos wait for a half-second hover or an opened game.",
             ));
             let revision = self.as_ref().media_revision().wrapping_add(1);
             self.as_mut().set_media_revision(revision);
@@ -3170,25 +3175,19 @@ impl qobject::LibraryModel {
         }
     }
 
-    pub fn request_visible_media(mut self: Pin<&mut Self>, game_uid: QString) {
-        self.as_mut()
-            .request_automatic_video_for_game(game_uid.to_string(), false, false);
-    }
-
     pub fn request_game_video(mut self: Pin<&mut Self>, game_uid: QString) {
         self.as_mut()
-            .request_automatic_video_for_game(game_uid.to_string(), true, false);
+            .request_automatic_video_for_game(game_uid.to_string(), false);
     }
 
     pub fn retry_game_video(mut self: Pin<&mut Self>, game_uid: QString) {
         self.as_mut()
-            .request_automatic_video_for_game(game_uid.to_string(), true, true);
+            .request_automatic_video_for_game(game_uid.to_string(), true);
     }
 
     fn request_automatic_video_for_game(
         mut self: Pin<&mut Self>,
         game_uid: String,
-        prioritize: bool,
         retry_terminal: bool,
     ) {
         if game_uid.trim().is_empty() {
@@ -3223,15 +3222,12 @@ impl qobject::LibraryModel {
         if game.title.trim().is_empty() || game.platform.trim().is_empty() {
             return;
         }
-        self.as_mut().queue_automatic_video(
-            AutomaticVideoRequest {
-                game_uid,
-                database_id: game.launchbox_db_id,
-                title: game.title,
-                platform: game.platform,
-            },
-            prioritize,
-        );
+        self.as_mut().queue_automatic_video(AutomaticVideoRequest {
+            game_uid,
+            database_id: game.launchbox_db_id,
+            title: game.title,
+            platform: game.platform,
+        });
     }
 
     pub fn automatic_video_state(&self, game_uid: QString) -> QString {
@@ -3276,11 +3272,7 @@ impl qobject::LibraryModel {
         )
     }
 
-    fn queue_automatic_video(
-        mut self: Pin<&mut Self>,
-        request: AutomaticVideoRequest,
-        prioritize: bool,
-    ) {
+    fn queue_automatic_video(mut self: Pin<&mut Self>, request: AutomaticVideoRequest) {
         if request.game_uid.trim().is_empty()
             || request.title.trim().is_empty()
             || request.platform.trim().is_empty()
@@ -3305,25 +3297,20 @@ impl qobject::LibraryModel {
             .automatic_video_pending
             .contains(&request.game_uid)
         {
-            if prioritize {
-                prioritize_automatic_video_request(
-                    &mut self.as_mut().rust_mut().automatic_video_queue,
-                    &request.game_uid,
-                );
-                self.as_mut().rust_mut().automatic_video_messages.insert(
-                    request.game_uid,
-                    "Moved to the front of the EmuMovies queue for box-art preview.".to_owned(),
-                );
-            }
+            prioritize_automatic_video_request(
+                &mut self.as_mut().rust_mut().automatic_video_queue,
+                &request.game_uid,
+            );
+            self.as_mut().rust_mut().automatic_video_messages.insert(
+                request.game_uid,
+                "Moved the requested gameplay video to the front of the EmuMovies queue."
+                    .to_owned(),
+            );
             return;
         }
 
-        while self.as_ref().rust().automatic_video_queue.len() >= MAX_QUEUED_VISIBLE_VIDEOS {
-            let expired = if prioritize {
-                self.as_mut().rust_mut().automatic_video_queue.pop_back()
-            } else {
-                self.as_mut().rust_mut().automatic_video_queue.pop_front()
-            };
+        while self.as_ref().rust().automatic_video_queue.len() >= MAX_QUEUED_GAMEPLAY_VIDEOS {
+            let expired = self.as_mut().rust_mut().automatic_video_queue.pop_back();
             if let Some(expired) = expired {
                 self.as_mut()
                     .rust_mut()
@@ -3337,23 +3324,13 @@ impl qobject::LibraryModel {
             .insert(request.game_uid.clone());
         self.as_mut().rust_mut().automatic_video_messages.insert(
             request.game_uid.clone(),
-            if prioritize {
-                "Queued first for automatic EmuMovies download and box-art playback.".to_owned()
-            } else {
-                "Queued for automatic EmuMovies download as this game came into view.".to_owned()
-            },
+            "Queued the requested gameplay video first for EmuMovies download and box-art playback."
+                .to_owned(),
         );
-        if prioritize {
-            self.as_mut()
-                .rust_mut()
-                .automatic_video_queue
-                .push_front(request);
-        } else {
-            self.as_mut()
-                .rust_mut()
-                .automatic_video_queue
-                .push_back(request);
-        }
+        self.as_mut()
+            .rust_mut()
+            .automatic_video_queue
+            .push_front(request);
         self.as_mut().update_media_pending_count();
         self.as_mut().start_next_automatic_video();
     }
@@ -5414,6 +5391,7 @@ impl qobject::LibraryModel {
         let preferences = CouchModePreferences {
             shelf: shelf.to_string(),
             platform: platform.to_string(),
+            view_style: self.as_ref().couch_view_style().to_string(),
             theme_id: self.as_ref().couch_theme_id().to_string(),
             attract_enabled: *self.as_ref().couch_attract_enabled(),
             attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
@@ -5465,6 +5443,33 @@ impl qobject::LibraryModel {
         true
     }
 
+    pub fn save_couch_view_style(mut self: Pin<&mut Self>, view_style: QString) -> bool {
+        let preferences = CouchModePreferences {
+            shelf: self.as_ref().couch_shelf().to_string(),
+            platform: self.as_ref().couch_platform().to_string(),
+            view_style: view_style.to_string(),
+            theme_id: self.as_ref().couch_theme_id().to_string(),
+            attract_enabled: *self.as_ref().couch_attract_enabled(),
+            attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
+            attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
+        };
+        if let Err(error) = preferences.validate() {
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode presentation was not saved: {error}"
+            )));
+            return false;
+        }
+
+        self.as_mut()
+            .set_couch_view_style(qstring(&preferences.view_style));
+        self.as_mut().rust_mut().couch_save_generation =
+            self.as_ref().rust().couch_save_generation.wrapping_add(1);
+        if !self.as_ref().rust().couch_save_pending {
+            self.as_mut().start_couch_save();
+        }
+        true
+    }
+
     pub fn save_couch_attract_settings(
         mut self: Pin<&mut Self>,
         enabled: bool,
@@ -5474,6 +5479,7 @@ impl qobject::LibraryModel {
         let preferences = CouchModePreferences {
             shelf: self.as_ref().couch_shelf().to_string(),
             platform: self.as_ref().couch_platform().to_string(),
+            view_style: self.as_ref().couch_view_style().to_string(),
             theme_id: self.as_ref().couch_theme_id().to_string(),
             attract_enabled: enabled,
             attract_idle_seconds: idle_seconds,
@@ -5855,6 +5861,7 @@ impl qobject::LibraryModel {
         let preferences = CouchModePreferences {
             shelf: self.as_ref().couch_shelf().to_string(),
             platform: self.as_ref().couch_platform().to_string(),
+            view_style: self.as_ref().couch_view_style().to_string(),
             theme_id: self.as_ref().couch_theme_id().to_string(),
             attract_enabled: *self.as_ref().couch_attract_enabled(),
             attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),

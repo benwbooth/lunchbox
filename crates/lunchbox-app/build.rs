@@ -61,6 +61,7 @@ fn main() {
                 "qml/CatalogLinkButton.qml",
                 "qml/CollectionMetric.qml",
                 "qml/CollectionMemberPresentationDialog.qml",
+                "qml/CouchGameShelf.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
                 "qml/DownloadReviewDialog.qml",
@@ -79,6 +80,7 @@ fn main() {
                 "qml/SidebarNavButton.qml",
                 "qml/SettingsNavButton.qml",
                 "qml/StatusPill.qml",
+                "qml/ViewportCardGeometry.qml",
                 "qml/Main.qml",
             ]),
     )

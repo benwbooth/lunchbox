@@ -87,6 +87,9 @@ ApplicationWindow {
     property string couchVariantProbeOriginalId: ""
     property int couchAttractProbeStage: 0
     property string couchAttractProbeMovedGameId: ""
+    property int couchViewStyleProbeStage: 0
+    property string couchViewStyleProbeOriginalGameId: ""
+    property string couchViewStyleProbeMovedGameId: ""
     property string selectedGameId: ""
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
@@ -131,6 +134,7 @@ ApplicationWindow {
     property bool hoverPreviewAudioMuted: true
     property string hoverPreviewPlaybackError: ""
     property int hoverPreviewProbeStage: 0
+    property bool hoverPreviewIntentGateVerified: false
     property bool soundtrackProbeStarted: false
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
@@ -230,11 +234,15 @@ ApplicationWindow {
                                                  || Qt.application.arguments.indexOf("--couch-attract-ui-probe") >= 0
     readonly property bool couchThemeUiProbe: Qt.application.arguments.indexOf("--couch-theme-ui-probe") >= 0
     readonly property bool couchLaunchUiProbe: Qt.application.arguments.indexOf("--couch-launch-ui-probe") >= 0
+    readonly property bool couchViewStyleRestoreUiProbe: Qt.application.arguments.indexOf("--couch-view-style-restored-ui-probe") >= 0
+    readonly property bool couchViewStyleUiProbe: couchViewStyleRestoreUiProbe
+                                                  || Qt.application.arguments.indexOf("--couch-view-style-ui-probe") >= 0
     readonly property bool couchModeUiProbe: couchGamepadUiProbe || couchPlatformUiProbe
                                              || couchCollectionUiProbe
                                              || couchVariantUiProbe
                                              || couchAttractUiProbe
                                              || couchThemeUiProbe
+                                             || couchViewStyleUiProbe
                                              || couchLaunchUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataRestoreUiProbe: Qt.application.arguments.indexOf("--metadata-restored-ui-probe") >= 0
@@ -1020,10 +1028,8 @@ ApplicationWindow {
         root.hoverPreviewPlaying = false
         root.hoverPreviewAudioMuted = true
         root.hoverPreviewPlaybackError = ""
-        // Promote the hovered title immediately. Playback keeps its short
-        // intent delay, but a missing EmuMovies video no longer waits for it
-        // before moving to the front of the visible-media queue.
-        library.request_game_video(tile.gameId)
+        // A half-second intent gate prevents a fast pass over the grid from
+        // downloading gameplay videos that the user never stopped to inspect.
         hoverPreviewDelay.restart()
     }
 
@@ -1371,7 +1377,12 @@ ApplicationWindow {
         source: !root.couchModeActive && !root.downloadPlanUiProbe
                 && gameDetails.video_available
                 ? gameDetails.video_url : ""
-        audioOutput: gameVideoAudio
+        // Silent video playback must not initialize a host audio backend.
+        // Enabling sound explicitly attaches the real output.
+        // Disable both the track and sink while muted. Qt can still load and
+        // render the video stream without initializing a host audio backend.
+        activeAudioTrack: gameVideoAudio.muted ? -1 : 0
+        audioOutput: gameVideoAudio.muted ? null : gameVideoAudio
         videoOutput: mediaFullscreen.opened ? fullscreenVideoOutput : detailVideoOutput
         loops: MediaPlayer.Infinite
         onSourceChanged: {
@@ -1495,7 +1506,7 @@ ApplicationWindow {
 
     Timer {
         id: hoverPreviewDelay
-        interval: 220
+        interval: 500
         repeat: false
         onTriggered: {
             if (!root.hoverPreviewTile
@@ -1503,7 +1514,26 @@ ApplicationWindow {
                     || root.hoverPreviewTile.gameId
                        !== root.hoverPreviewPendingGameId)
                 return
+            library.request_game_video(root.hoverPreviewPendingGameId)
             library.request_hover_preview(root.hoverPreviewPendingGameId)
+        }
+    }
+
+    Timer {
+        id: hoverPreviewIntentProbeTimer
+        interval: 250
+        repeat: false
+        onTriggered: {
+            if (!root.hoverPreviewUiProbe || root.hoverPreviewProbeStage !== 1)
+                return
+            if (library.hover_preview_game_id.length > 0) {
+                const detail = "preview started before the 500 ms intent gate"
+                console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                library.report_hover_preview_ui_failure(detail)
+                Qt.exit(2)
+                return
+            }
+            root.hoverPreviewIntentGateVerified = true
         }
     }
 
@@ -1519,7 +1549,8 @@ ApplicationWindow {
                 && library.hover_preview_game_id
                    === root.hoverPreviewPendingGameId
                 ? library.hover_preview_url : ""
-        audioOutput: hoverPreviewAudio
+        activeAudioTrack: root.hoverPreviewAudioMuted ? -1 : 0
+        audioOutput: root.hoverPreviewAudioMuted ? null : hoverPreviewAudio
         videoOutput: root.hoverPreviewTile
                      ? root.hoverPreviewTile.previewVideoOutput : null
         loops: MediaPlayer.Infinite
@@ -1575,7 +1606,9 @@ ApplicationWindow {
                 restart()
                 return
             }
-            grid.positionViewAtIndex(row, GridView.Center)
+            // Put the probed card against the top viewport edge so the live
+            // run exercises inward repositioning rather than only centering.
+            grid.positionViewAtIndex(row, GridView.Beginning)
             Qt.callLater(function() {
                 const tile = grid.itemAtIndex(row)
                 if (!tile) {
@@ -1584,6 +1617,8 @@ ApplicationWindow {
                 }
                 tile.forceActiveFocus()
                 root.armGridPreview(tile)
+                root.hoverPreviewIntentGateVerified = false
+                hoverPreviewIntentProbeTimer.restart()
             })
         }
     }
@@ -1594,6 +1629,7 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             if (!root.hoverPreviewUiProbe || !root.hoverPreviewPlaying
+                    || !root.hoverPreviewIntentGateVerified
                     || library.hover_preview_game_id
                        !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
                     || library.hover_preview_source.length === 0
@@ -1613,6 +1649,40 @@ ApplicationWindow {
                 Qt.exit(2)
                 return
             }
+            const grid = gameViewLoader.item
+            const tile = root.hoverPreviewTile
+            const margin = 8
+            const epsilon = 1
+            const cardRight = tile.previewCardViewportX
+                              + tile.previewCardWidth
+            const cardBottom = tile.previewCardViewportY
+                               + tile.previewCardHeight
+            const rightLimit = grid.width - grid.rightMargin - margin
+            const bottomLimit = grid.height - margin
+            if (!grid || tile.previewCardExpansion <= 1
+                    || tile.previewCardViewportX < margin - epsilon
+                    || tile.previewCardViewportY < margin - epsilon
+                    || cardRight > rightLimit + epsilon
+                    || cardBottom > bottomLimit + epsilon) {
+                const detail = "hover card outside viewport expansion="
+                               + tile.previewCardExpansion + " rect="
+                               + tile.previewCardViewportX + ","
+                               + tile.previewCardViewportY + " "
+                               + tile.previewCardWidth + "x"
+                               + tile.previewCardHeight + " viewport="
+                               + grid.width + "x" + grid.height
+                               + " rightInset=" + grid.rightMargin
+                console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                library.report_hover_preview_ui_failure(detail)
+                Qt.exit(2)
+                return
+            }
+            console.warn("LUNCHBOX_HOVER_CARD_GEOMETRY_READY expansion="
+                         + tile.previewCardExpansion + " rect="
+                         + tile.previewCardViewportX + ","
+                         + tile.previewCardViewportY + " "
+                         + tile.previewCardWidth + "x"
+                         + tile.previewCardHeight)
             const reportReady = function() {
                 library.report_hover_preview_ui_probe()
                 Qt.quit()
@@ -2229,7 +2299,25 @@ ApplicationWindow {
                     root.beginHoverPreviewProbe()
                 }
                 else if (root.couchModeUiProbe) {
-                    if (root.couchCollectionUiProbe) {
+                    if (root.couchViewStyleUiProbe) {
+                        root.couchViewStyleProbeStage = root.couchViewStyleRestoreUiProbe
+                                                       ? 50 : 0
+                        if (root.couchViewStyleRestoreUiProbe) {
+                            if (library.couch_view_style !== "wheel") {
+                                console.error("LUNCHBOX_COUCH_VIEW_STYLE_UI_FAILED restored style="
+                                              + library.couch_view_style)
+                                Qt.exit(2)
+                                return
+                            }
+                        } else if (!library.save_couch_view_style("wheel")) {
+                            console.error("LUNCHBOX_COUCH_VIEW_STYLE_UI_FAILED initial save")
+                            Qt.exit(2)
+                            return
+                        }
+                        root.selectedGameId = ""
+                        library.apply_filter("",
+                                             "Nintendo Entertainment System", "")
+                    } else if (root.couchCollectionUiProbe) {
                         if (root.couchCollectionRestoreUiProbe) {
                             if (library.couch_shelf.indexOf("collection:") !== 0) {
                                 console.error("LUNCHBOX_COUCH_COLLECTION_UI_FAILED restored shelf="
@@ -2307,6 +2395,13 @@ ApplicationWindow {
                         root.selectedPlatform = library.couch_platform
                         library.apply_filter("", library.couch_platform, "")
                     } else {
+                        if (root.couchGamepadUiProbe
+                                && library.couch_view_style !== "shelf"
+                                && !library.save_couch_view_style("shelf")) {
+                            console.error("LUNCHBOX_COUCH_GAMEPAD_UI_FAILED cover shelf save")
+                            Qt.exit(2)
+                            return
+                        }
                         root.selectedGameId = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
                         library.apply_filter("Super Mario Bros.",
                                              "Nintendo Entertainment System", "")
@@ -3067,6 +3162,7 @@ ApplicationWindow {
                     && !root.couchCollectionUiProbe
                     && !root.couchVariantUiProbe
                     && !root.couchAttractUiProbe && !root.couchThemeUiProbe
+                    && !root.couchViewStyleUiProbe
                     && !gamepadInput.ready) {
                 couchModeScreenshotTimer.restart()
                 return
@@ -3075,6 +3171,7 @@ ApplicationWindow {
                     && !root.couchCollectionUiProbe
                     && !root.couchVariantUiProbe
                     && !root.couchAttractUiProbe && !root.couchThemeUiProbe
+                    && !root.couchViewStyleUiProbe
                     && !gamepadInput.available) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED gamepad="
                               + gamepadInput.status_message)
@@ -3086,6 +3183,10 @@ ApplicationWindow {
                     || gameDetails.title.length === 0) {
                 console.error("LUNCHBOX_COUCH_MODE_UI_FAILED empty live selection")
                 Qt.exit(2)
+                return
+            }
+            if (root.couchViewStyleUiProbe) {
+                couchViewStyleProbeTimer.restart()
                 return
             }
             if (root.couchAttractUiProbe) {
@@ -3986,6 +4087,127 @@ ApplicationWindow {
                              + library.filtered_count + " screenshot="
                              + root.screenshotOutput)
                 Qt.exit(0)
+            }
+        }
+    }
+
+    Timer {
+        id: couchViewStyleProbeTimer
+        interval: 320
+        repeat: false
+
+        function fail(reason) {
+            console.error("LUNCHBOX_COUCH_VIEW_STYLE_UI_FAILED " + reason
+                          + " stage=" + root.couchViewStyleProbeStage
+                          + " style=" + library.couch_view_style
+                          + " game=" + couchModeView.selectedGameId
+                          + " original=" + root.couchViewStyleProbeOriginalGameId
+                          + " moved=" + root.couchViewStyleProbeMovedGameId)
+            Qt.exit(2)
+        }
+
+        function finish(restored) {
+            root.couchModeProbeCaptured = true
+            const report = function() {
+                console.warn("LUNCHBOX_COUCH_VIEW_STYLE_UI_READY restored="
+                             + restored + " style=" + library.couch_view_style
+                             + " original=" + root.couchViewStyleProbeOriginalGameId
+                             + " moved=" + root.couchViewStyleProbeMovedGameId
+                             + " games=" + library.filtered_count
+                             + " screenshot=" + root.screenshotOutput)
+                Qt.exit(0)
+            }
+            if (root.screenshotOutput.length === 0) {
+                report()
+                return
+            }
+            couchModeView.captureTheme(root.screenshotOutput, function(saved) {
+                if (!saved) {
+                    couchViewStyleProbeTimer.fail("screenshot="
+                                                  + root.screenshotOutput)
+                    return
+                }
+                report()
+            })
+        }
+
+        onTriggered: {
+            if (!root.couchViewStyleUiProbe)
+                return
+            if (library.couch_state_saving || library.filtering
+                    || gameDetails.loading) {
+                restart()
+                return
+            }
+            if (!root.couchModeActive || library.filtered_count < 2
+                    || couchModeView.selectedGameId.length === 0
+                    || gameDetails.game_id !== couchModeView.selectedGameId) {
+                fail("live selection")
+                return
+            }
+            if (root.couchViewStyleProbeStage === 50) {
+                if (library.couch_view_style !== "wheel"
+                        || !couchModeView.cinematicWheel) {
+                    fail("cold restore")
+                    return
+                }
+                finish(true)
+                return
+            }
+            if (root.couchViewStyleProbeStage === 0) {
+                if (library.couch_view_style !== "wheel"
+                        || !couchModeView.cinematicWheel
+                        || couchModeView.navigationZone !== 2) {
+                    fail("initial wheel")
+                    return
+                }
+                root.couchViewStyleProbeOriginalGameId =
+                        couchModeView.selectedGameId
+                root.couchViewStyleProbeStage = 1
+                couchModeView.handleNavigation("down")
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 1) {
+                if (couchModeView.selectedGameId
+                        === root.couchViewStyleProbeOriginalGameId) {
+                    fail("vertical navigation did not move")
+                    return
+                }
+                root.couchViewStyleProbeMovedGameId = couchModeView.selectedGameId
+                root.couchViewStyleProbeStage = 2
+                if (!couchModeView.toggleViewStyle()) {
+                    fail("switch to cover shelf")
+                    return
+                }
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 2) {
+                if (library.couch_view_style !== "shelf"
+                        || couchModeView.cinematicWheel
+                        || couchModeView.selectedGameId
+                           !== root.couchViewStyleProbeMovedGameId) {
+                    fail("cover shelf identity")
+                    return
+                }
+                root.couchViewStyleProbeStage = 3
+                if (!couchModeView.toggleViewStyle()) {
+                    fail("switch back to wheel")
+                    return
+                }
+                restart()
+                return
+            }
+            if (root.couchViewStyleProbeStage === 3) {
+                if (library.couch_view_style !== "wheel"
+                        || !couchModeView.cinematicWheel
+                        || couchModeView.selectedGameId
+                           !== root.couchViewStyleProbeMovedGameId) {
+                    fail("wheel identity restored")
+                    return
+                }
+                finish(false)
             }
         }
     }
@@ -7395,6 +7617,11 @@ ApplicationWindow {
             required property int gameDatabaseId
             required property string gameVariants
             property var previewVideoOutput: tileVideoOutput
+            readonly property real previewCardExpansion: cardGeometry.expansion
+            readonly property real previewCardViewportX: cardGeometry.viewportX
+            readonly property real previewCardViewportY: cardGeometry.viewportY
+            readonly property real previewCardWidth: cardGeometry.cardWidth
+            readonly property real previewCardHeight: cardGeometry.cardHeight
             readonly property bool previewRequested: root.hoverPreviewTile === tile
                                                      && root.hoverPreviewPendingGameId === gameId
             readonly property bool previewActive: previewRequested
@@ -7438,14 +7665,17 @@ ApplicationWindow {
                 mediaRevision
                 return library.artwork_source(gameDatabaseId, library.artwork_type)
             }
-            function requestVisibleMedia() {
+            function requestVisibleArtwork() {
                 library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
-                if (!root.hoverPreviewUiProbe)
-                    library.request_visible_media(gameId)
             }
             function updatePreviewInterest() {
-                if (cardHover.hovered || activeFocus) {
+                // The runtime probe arms one exact tile itself. Ignore the
+                // host pointer so a stationary cursor cannot select unrelated
+                // delegates while the probe is repositioning the grid.
+                if (root.hoverPreviewUiProbe)
+                    return
+                if (cardHover.hovered) {
                     root.armGridPreview(tile)
                 } else {
                     root.disarmGridPreview(tile)
@@ -7477,21 +7707,21 @@ ApplicationWindow {
                                                   gameId, true)
             }
             Component.onCompleted: {
-                requestVisibleMedia()
+                requestVisibleArtwork()
                 runFavoriteProbe()
                 runCollectionProbe()
             }
             Component.onDestruction: root.disarmGridPreview(tile)
             onGameIdChanged: {
                 root.disarmGridPreview(tile)
-                requestVisibleMedia()
+                requestVisibleArtwork()
             }
-            onGameDatabaseIdChanged: requestVisibleMedia()
-            onGameTitleChanged: requestVisibleMedia()
-            onGameCanonicalTitleChanged: requestVisibleMedia()
-            onGamePlatformChanged: requestVisibleMedia()
-            onMediaRevisionChanged: requestVisibleMedia()
-            onRequestedArtworkTypeChanged: requestVisibleMedia()
+            onGameDatabaseIdChanged: requestVisibleArtwork()
+            onGameTitleChanged: requestVisibleArtwork()
+            onGameCanonicalTitleChanged: requestVisibleArtwork()
+            onGamePlatformChanged: requestVisibleArtwork()
+            onMediaRevisionChanged: requestVisibleArtwork()
+            onRequestedArtworkTypeChanged: requestVisibleArtwork()
             onFavoriteProbeReadyChanged: runFavoriteProbe()
             onCollectionProbeReadyChanged: runCollectionProbe()
             onActiveFocusChanged: updatePreviewInterest()
@@ -7526,9 +7756,14 @@ ApplicationWindow {
 
             Rectangle {
                 id: card
-                anchors.fill: parent
-                anchors.margins: 8
-                radius: 12
+                readonly property bool expanded: cardHover.hovered
+                                                 || tile.previewRequested
+                readonly property real expansion: cardGeometry.expansion
+                x: cardGeometry.localX
+                y: cardGeometry.localY
+                width: cardGeometry.cardWidth
+                height: cardGeometry.cardHeight
+                radius: 12 * expansion
                 color: tile.activeFocus ? "#263142" : cardHover.hovered ? "#202a39" : root.panelRaised
                 border.color: tile.previewActive ? root.accentCool
                               : tile.activeFocus || root.selectedGameId === tile.gameId
@@ -7536,18 +7771,37 @@ ApplicationWindow {
                               : cardHover.hovered ? "#3a485d" : root.line
                 border.width: tile.previewActive || tile.activeFocus
                               || root.selectedGameId === tile.gameId ? 2 : 1
-                transformOrigin: Item.Center
-                scale: cardHover.hovered || tile.previewRequested ? 2 : 1
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+                ViewportCardGeometry {
+                    id: cardGeometry
+                    expanded: card.expanded
+                    baseWidth: tile.width - 16
+                    baseHeight: tile.height - 16
+                    tileWidth: tile.width
+                    tileHeight: tile.height
+                    tileViewportX: {
+                        grid.contentX
+                        tile.x
+                        return tile.mapToItem(grid, 0, 0).x
+                    }
+                    tileViewportY: {
+                        grid.contentY
+                        tile.y
+                        return tile.mapToItem(grid, 0, 0).y
+                    }
+                    viewportWidth: grid.width
+                    viewportHeight: grid.height
+                    trailingInset: grid.rightMargin
+                }
 
                 Rectangle {
                     id: artwork
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 9
-                    height: parent.height - 79
-                    radius: 9
+                    anchors.margins: 9 * card.expansion
+                    height: parent.height - 79 * card.expansion
+                    radius: 9 * card.expansion
                     color: root.accentFor(tile.gameTitle)
                     clip: true
 
@@ -7588,30 +7842,30 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        height: 48
+                        height: 48 * card.expansion
                         visible: tile.previewActive
                         color: "#b90b1119"
                         Text {
                             anchors.left: parent.left
-                            anchors.leftMargin: 10
+                            anchors.leftMargin: 10 * card.expansion
                             anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - 54
+                            width: parent.width - 54 * card.expansion
                             text: "VIDEO  ·  "
                                   + (library.hover_preview_source.length > 0
                                      ? library.hover_preview_source.toUpperCase()
                                      : "LOCAL CACHE")
                             color: root.ink
-                            font.pixelSize: 9
+                            font.pixelSize: 9 * card.expansion
                             font.weight: Font.Bold
-                            font.letterSpacing: 0.8
+                            font.letterSpacing: 0.8 * card.expansion
                             elide: Text.ElideRight
                         }
                     }
 
                     BusyIndicator {
                         anchors.centerIn: parent
-                        width: 44
-                        height: 44
+                        width: 44 * card.expansion
+                        height: 44 * card.expansion
                         running: tile.previewRequested
                                  && library.hover_preview_game_id === tile.gameId
                                  && library.hover_preview_loading
@@ -7623,7 +7877,7 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        height: 50
+                        height: 50 * card.expansion
                         visible: tile.previewRequested
                                  && library.hover_preview_game_id === tile.gameId
                                  && !library.hover_preview_loading
@@ -7632,10 +7886,10 @@ ApplicationWindow {
                         color: library.media_setup_required ? "#e13a2b22" : "#dd111924"
                         Text {
                             anchors.fill: parent
-                            anchors.margins: 9
+                            anchors.margins: 9 * card.expansion
                             text: tile.previewQueueMessage
                             color: library.media_setup_required ? root.accent : root.muted
-                            font.pixelSize: 9
+                            font.pixelSize: 9 * card.expansion
                             font.weight: Font.DemiBold
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
@@ -7659,7 +7913,8 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        height: previewErrorText.implicitHeight + 18
+                        height: previewErrorText.implicitHeight
+                                + 18 * card.expansion
                         visible: tile.previewRequested
                                  && root.hoverPreviewPlaybackError.length > 0
                         color: "#df3a2026"
@@ -7667,22 +7922,23 @@ ApplicationWindow {
                             id: previewErrorText
                             anchors.left: parent.left
                             anchors.right: parent.right
-                            anchors.margins: 9
+                            anchors.margins: 9 * card.expansion
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.hoverPreviewPlaybackError
                             color: "#ffb2b9"
-                            font.pixelSize: 9
+                            font.pixelSize: 9 * card.expansion
                             wrapMode: Text.WordWrap
                         }
                     }
 
                     Text {
                         anchors.centerIn: parent
-                        width: parent.width - 28
+                        width: parent.width - 28 * card.expansion
                         text: tile.gameTitle.length > 0 ? tile.gameTitle.charAt(0).toUpperCase() : "?"
                         horizontalAlignment: Text.AlignHCenter
                         color: "#ddffffff"
-                        font.pixelSize: Math.min(72, parent.height * 0.38)
+                        font.pixelSize: Math.min(72 * card.expansion,
+                                                 parent.height * 0.38)
                         font.weight: Font.Black
                         visible: coverImage.status !== Image.Ready && !tile.previewActive
                     }
@@ -7690,10 +7946,11 @@ ApplicationWindow {
                         visible: tile.gameLocal || tile.gameDownloadable
                         anchors.top: parent.top
                         anchors.right: parent.right
-                        anchors.margins: 9
-                        implicitWidth: badgeText.implicitWidth + 14
-                        implicitHeight: 25
-                        radius: 7
+                        anchors.margins: 9 * card.expansion
+                        implicitWidth: badgeText.implicitWidth
+                                       + 14 * card.expansion
+                        implicitHeight: 25 * card.expansion
+                        radius: 7 * card.expansion
                         color: tile.gameLocal ? "#d91d3d35" : "#d9303540"
                         border.color: tile.gameLocal ? root.accentCool : root.accent
                         Text {
@@ -7701,26 +7958,26 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             text: tile.gameLocal ? "READY" : "GET"
                             color: tile.gameLocal ? root.accentCool : root.accent
-                            font.pixelSize: 10
+                            font.pixelSize: 10 * card.expansion
                             font.weight: Font.Bold
-                            font.letterSpacing: 0.8
+                            font.letterSpacing: 0.8 * card.expansion
                         }
                     }
                     RoundButton {
                         anchors.left: parent.left
                         anchors.top: parent.top
-                        anchors.margins: 8
-                        width: 32
-                        height: 32
+                        anchors.margins: 8 * card.expansion
+                        width: 32 * card.expansion
+                        height: 32 * card.expansion
                         visible: tile.favorite || tile.favoriteBusy
                                  || cardHover.hovered || tile.activeFocus
                         enabled: !tile.favoriteBusy
                         text: tile.favoriteBusy ? "…" : tile.favorite ? "★" : "☆"
                         flat: true
-                        font.pixelSize: 17
+                        font.pixelSize: 17 * card.expansion
                         onClicked: library.set_favorite(tile.gameId, !tile.favorite)
                         background: Rectangle {
-                            radius: 9
+                            radius: 9 * card.expansion
                             color: "#d9101620"
                             border.color: tile.favorite ? root.accent : "#5b687d"
                         }
@@ -7735,16 +7992,16 @@ ApplicationWindow {
                     RoundButton {
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        anchors.margins: 8
-                        width: 32
-                        height: 32
+                        anchors.margins: 8 * card.expansion
+                        width: 32 * card.expansion
+                        height: 32 * card.expansion
                         visible: tile.previewActive
                         text: root.hoverPreviewAudioMuted ? "M" : "♫"
                         flat: true
-                        font.pixelSize: 16
+                        font.pixelSize: 16 * card.expansion
                         onClicked: root.hoverPreviewAudioMuted = !root.hoverPreviewAudioMuted
                         background: Rectangle {
-                            radius: 9
+                            radius: 9 * card.expansion
                             color: "#d9101620"
                             border.color: root.hoverPreviewAudioMuted
                                           ? "#5b687d" : root.accentCool
@@ -7762,13 +8019,13 @@ ApplicationWindow {
                 Text {
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
+                    anchors.leftMargin: 12 * card.expansion
+                    anchors.rightMargin: 12 * card.expansion
                     anchors.top: artwork.bottom
-                    anchors.topMargin: 10
+                    anchors.topMargin: 10 * card.expansion
                     text: tile.gameTitle
                     color: root.ink
-                    font.pixelSize: 14
+                    font.pixelSize: 14 * card.expansion
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
                 }
@@ -7776,25 +8033,25 @@ ApplicationWindow {
                     id: gridPlatformLabel
                     anchors.left: parent.left
                     anchors.right: editionBadge.left
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 6
+                    anchors.leftMargin: 12 * card.expansion
+                    anchors.rightMargin: 6 * card.expansion
                     anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 9
+                    anchors.bottomMargin: 9 * card.expansion
                     text: tile.gamePlatform.length > 0 ? tile.gamePlatform : "Unassigned platform"
                     color: root.muted
-                    font.pixelSize: 11
+                    font.pixelSize: 11 * card.expansion
                     fontSizeMode: Text.HorizontalFit
-                    minimumPixelSize: 7
+                    minimumPixelSize: 7 * card.expansion
                 }
                 Rectangle {
                     id: editionBadge
                     anchors.right: parent.right
-                    anchors.rightMargin: 10
+                    anchors.rightMargin: 10 * card.expansion
                     anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 7
-                    width: editionBadgeText.implicitWidth + 10
-                    height: 19
-                    radius: 6
+                    anchors.bottomMargin: 7 * card.expansion
+                    width: editionBadgeText.implicitWidth + 10 * card.expansion
+                    height: 19 * card.expansion
+                    radius: 6 * card.expansion
                     visible: Number(tile.gameVariants) > 1
                     color: "#253243"
                     border.color: root.line
@@ -7803,7 +8060,7 @@ ApplicationWindow {
                         anchors.centerIn: parent
                         text: tile.gameVariants + " editions"
                         color: root.accentCool
-                        font.pixelSize: 8
+                        font.pixelSize: 8 * card.expansion
                         font.weight: Font.DemiBold
                     }
                 }
@@ -7985,10 +8242,9 @@ ApplicationWindow {
                 mediaRevision
                 return library.artwork_url(gameDatabaseId, library.artwork_type)
             }
-            function requestVisibleMedia() {
+            function requestVisibleArtwork() {
                 library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
-                library.request_visible_media(gameId)
             }
             function columnValue(key) {
                 switch (key) {
@@ -8023,14 +8279,14 @@ ApplicationWindow {
                 return gameLocal ? root.accentCool
                        : gameDownloadable ? root.accent : root.muted
             }
-            Component.onCompleted: requestVisibleMedia()
-            onGameIdChanged: requestVisibleMedia()
-            onGameDatabaseIdChanged: requestVisibleMedia()
-            onGameTitleChanged: requestVisibleMedia()
-            onGameCanonicalTitleChanged: requestVisibleMedia()
-            onGamePlatformChanged: requestVisibleMedia()
-            onMediaRevisionChanged: requestVisibleMedia()
-            onRequestedArtworkTypeChanged: requestVisibleMedia()
+            Component.onCompleted: requestVisibleArtwork()
+            onGameIdChanged: requestVisibleArtwork()
+            onGameDatabaseIdChanged: requestVisibleArtwork()
+            onGameTitleChanged: requestVisibleArtwork()
+            onGameCanonicalTitleChanged: requestVisibleArtwork()
+            onGamePlatformChanged: requestVisibleArtwork()
+            onMediaRevisionChanged: requestVisibleArtwork()
+            onRequestedArtworkTypeChanged: requestVisibleArtwork()
             width: Math.max(list.width - 8, list.tableWidth)
             height: 54
             radius: 0
@@ -17410,6 +17666,58 @@ ApplicationWindow {
                         font.pixelSize: 10
                         font.weight: Font.Bold
                         font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "BROWSE PRESENTATION"
+                        color: root.ink
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Choose the living-room browsing layout. Cinematic wheel keeps the current game presentation visible beside a vertical game list; cover shelf provides the classic horizontal box-art row. The selection and active shelf are preserved when switching."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        Text {
+                            text: "Default layout"
+                            color: root.ink
+                            font.pixelSize: 12
+                        }
+                        ComboBox {
+                            id: couchViewStyle
+                            Layout.fillWidth: true
+                            enabled: library.ready && !library.couch_state_saving
+                            textRole: "label"
+                            valueRole: "value"
+                            model: [
+                                { label: "Cinematic wheel", value: "wheel" },
+                                { label: "Cover shelf", value: "shelf" }
+                            ]
+                            currentIndex: library.couch_view_style === "shelf" ? 1 : 0
+                            onActivated: library.save_couch_view_style(currentValue)
+                            Accessible.name: "Couch Mode browse presentation"
+                        }
+                        Text {
+                            text: library.couch_state_saving
+                                  ? "SAVING…" : "SAVED AUTOMATICALLY"
+                            color: library.couch_state_saving
+                                   ? root.accent : root.muted
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        color: root.line
                     }
                     Text {
                         Layout.fillWidth: true

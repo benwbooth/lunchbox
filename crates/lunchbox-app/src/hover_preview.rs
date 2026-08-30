@@ -50,7 +50,12 @@ pub fn prepare_ui_probe() -> Result<Option<PathBuf>> {
         bail!("preview fixture has an unsupported video extension");
     }
 
-    let target_directory = media_root.join("lb-140").join("ui-probe");
+    // The amalgamated catalog can legitimately assign a different numeric
+    // provider ID after a database rebuild. Seed by Lunchbox's stable game
+    // identity so this probe exercises the same title across catalog versions.
+    let target_directory = media_root
+        .join("game-9697a5eb-e0b4-4f24-8d43-672701414ee7")
+        .join("ui-probe");
     fs::create_dir_all(&target_directory).with_context(|| {
         format!(
             "creating hover-preview probe directory {}",

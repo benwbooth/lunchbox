@@ -27,16 +27,16 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   visible active-state affordances, All/None controls, and compact adaptive
   include/exclude state; facet scans and filtering stay on generation-guarded
   Rust workers and compose with the rest of the library filter stack.
-- Delayed pointer-hover and keyboard-focus gameplay previews in the desktop
-  cover grid. Exact cached-media lookup runs off-thread with generation guards,
+- Intentional pointer-hover gameplay previews in the desktop cover grid. Exact
+  cached-media lookup runs off-thread with generation guards,
   one shared Qt Multimedia player follows the active virtualized card, sound is
   opt-in, and cancellation prevents a recycled delegate from receiving another
-  game's video. Visible games automatically queue missing EmuMovies videos;
-  hover and selected-game interest take priority, and completion refreshes the
-  exact card and selected supplemental-media state without reloading details.
-  Pointer entry promotes the exact stable identity before the playback delay,
-  and the enlarged card shows the live queue state and transfer percentage
-  instead of presenting an inert cache-miss message.
+  game's video. Recycled or merely visible games request artwork only. A game
+  enters the bounded EmuMovies video queue only after a continuous 500-ms hover
+  or when the user explicitly opens it; completion refreshes the exact card and
+  selected supplemental-media state without reloading details. The enlarged
+  card shows the live queue state and transfer percentage instead of presenting
+  an inert cache-miss message.
 - Native EmuMovies game-music discovery and playback. The Rust FTP service
   searches only individually downloadable HyperAudio trees, applies the same
   guarded platform/title matching as videos, rejects multipart archive packs,
@@ -187,8 +187,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Measurable shell-ready and catalog-ready probes.
 - A native **Couch Mode** browse/play slice backed by the same Rust catalog,
   details, media, favorite, filter, download, and launch services as desktop
-  mode. It restores the exact selected stable UUID, virtualizes the horizontal
-  cover shelf, works without a mouse by keyboard or direct gamepad input, enters
+  mode. It restores the exact selected stable UUID and offers persistent
+  virtualized cinematic-wheel and horizontal-cover-shelf presentations, works
+  without a mouse by keyboard or direct gamepad input, enters
   real fullscreen, and returns to the complete desktop management surface
   without duplicating state. Its off-thread cross-platform input service has
   hotplug state, analog hysteresis, hold-repeat, paging, semantic action routing,
@@ -280,9 +281,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   artwork/video/manual client. Direct EmuMovies transfers now expose throttled
   progress, cooperatively abort FTP, and remove unpublished partial files.
   Remaining work includes an unattended member-account cancellation gate. With
-  saved credentials, visible games intentionally enter
-  the bounded automatic video queue so hover playback can become ready without
-  a separate manual download action.
+  saved credentials, only an opened game or a pointer hover that survives the
+  500-ms intent gate enters the bounded automatic video queue; visibility and
+  keyboard traversal remain artwork-only.
 - Extend the implemented whole-library missing-media audit and bounded bulk
   LibRetro repair queue with durable pending-batch restart recovery, multi-
   provider bulk review, supplemental video/manual categories, and scheduled
@@ -350,8 +351,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   routing. The launch action now presents a controller-safe startup/now-playing/
   session-complete surface from the shared launch supervisor, including the
   exact emulator and actionable Desktop Details/browsing handoffs. Continue
-  with richer game-wheel layouts, deeper media acquisition
-  controls inside the implemented Details and Game Menu overlays,
+  with deeper media acquisition controls inside the implemented Details and
+  Game Menu overlays,
   startup/shutdown/pause screens, background music, sound packs,
   marquee monitor support, parental lock, and richer couch-safe settings.
 - Extend the implemented keyboard/direct-gamepad navigation into every future

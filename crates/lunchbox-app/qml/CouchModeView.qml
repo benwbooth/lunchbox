@@ -47,7 +47,8 @@ Item {
     readonly property color danger: library.couch_theme_danger
     readonly property int cardRadius: library.couch_theme_card_radius
     readonly property real heroScrimOpacity: library.couch_theme_hero_scrim_percent / 100.0
-    readonly property int menuActionCount: 6
+    readonly property bool cinematicWheel: library.couch_view_style === "wheel"
+    readonly property int menuActionCount: 7
     readonly property var categories: [
         { label: "ALL GAMES", key: "" },
         { label: "PLATFORMS", key: "platform" },
@@ -131,6 +132,21 @@ Item {
 
     function withAlpha(value, opacity) {
         return Qt.rgba(value.r, value.g, value.b, opacity)
+    }
+
+    function toggleViewStyle() {
+        const selectedId = selectedGameId
+        const nextStyle = cinematicWheel ? "shelf" : "wheel"
+        if (!library.save_couch_view_style(nextStyle))
+            return false
+        Qt.callLater(function() {
+            if (selectedId.length > 0)
+                focusGameById(selectedId)
+            else if (shelf.currentIndex >= 0)
+                shelf.positionViewAtIndex(shelf.currentIndex, ListView.Center)
+            forceActiveFocus()
+        })
+        return true
     }
 
     function moveShelf(delta) {
@@ -577,6 +593,8 @@ Item {
             return "RELEASES & MEDIA"
         if (index === 4)
             return "START ATTRACT MODE"
+        if (index === 5)
+            return cinematicWheel ? "USE COVER SHELF" : "USE CINEMATIC WHEEL"
         return "RETURN TO BROWSING"
     }
 
@@ -599,6 +617,10 @@ Item {
             return "Browse exact regional and version releases before choosing one."
         if (index === 4)
             return "Let Couch Mode rotate through games on the current shelf."
+        if (index === 5)
+            return cinematicWheel
+                   ? "Switch to the horizontal cover shelf without changing this game."
+                   : "Switch to a vertical cinematic wheel without changing this game."
         return "Close this menu without changing the selected game."
     }
 
@@ -633,6 +655,9 @@ Item {
         } else if (index === 4) {
             closeOverlay()
             startAttractMode("manual")
+        } else if (index === 5) {
+            closeOverlay()
+            toggleViewStyle()
         } else {
             closeOverlay()
         }
@@ -804,24 +829,36 @@ Item {
         if (action === "back") {
             exitRequested()
         } else if (action === "up") {
-            navigationZone = Math.max(0, navigationZone - 1)
+            if (cinematicWheel && navigationZone === 2)
+                moveShelf(-1)
+            else
+                navigationZone = Math.max(0, navigationZone - 1)
         } else if (action === "down") {
-            navigationZone = Math.min(2, navigationZone + 1)
+            if (cinematicWheel && navigationZone === 2)
+                moveShelf(1)
+            else
+                navigationZone = Math.min(2, navigationZone + 1)
         } else if (action === "left") {
             if (navigationZone === 0)
                 categoryIndex = Math.max(0, categoryIndex - 1)
             else if (navigationZone === 1)
                 actionIndex = Math.max(0, actionIndex - 1)
+            else if (cinematicWheel)
+                navigationZone = 1
             else
                 moveShelf(-1)
         } else if (action === "right") {
             if (navigationZone === 0)
                 categoryIndex = Math.min(categories.length - 1,
                                          categoryIndex + 1)
-            else if (navigationZone === 1)
-                actionIndex = Math.min(2, actionIndex + 1)
-            else
+            else if (navigationZone === 1) {
+                if (cinematicWheel && actionIndex >= 2)
+                    navigationZone = 2
+                else
+                    actionIndex = Math.min(2, actionIndex + 1)
+            } else if (!cinematicWheel) {
                 moveShelf(1)
+            }
         } else if (action === "page_left") {
             navigationZone = 2
             moveShelf(-5)
@@ -971,6 +1008,12 @@ Item {
                 event.accepted = startAttractMode("manual")
                 return
             }
+        } else if (event.key === Qt.Key_V
+                   && !overlayOpen && !attractOpen
+                   && !platformWheelOpen && !collectionWheelOpen
+                   && !variantWheelOpen && !launchStatusOverlayOpen) {
+            event.accepted = toggleViewStyle()
+            return
         } else if (event.key === Qt.Key_Tab) {
             action = "cycle_zone"
         }
@@ -1126,6 +1169,40 @@ Item {
         anchors.rightMargin: 50
         anchors.verticalCenter: brand.verticalCenter
         spacing: 10
+
+        Rectangle {
+            visible: view.width >= 1500
+            width: visible ? viewStyleLabel.implicitWidth + 34 : 0
+            height: 40
+            radius: Math.max(8, view.cardRadius - 4)
+            color: viewStyleHover.hovered
+                   ? view.withAlpha(view.panelRaised, 0.82)
+                   : view.withAlpha(view.panel, 0.72)
+            border.color: view.navigationZone === 2
+                          ? view.withAlpha(view.accent, 0.72)
+                          : view.withAlpha(view.muted, 0.48)
+
+            Text {
+                id: viewStyleLabel
+                anchors.centerIn: parent
+                text: view.cinematicWheel ? "▦  COVER SHELF" : "☷  CINEMATIC WHEEL"
+                color: view.ink
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 0.7
+            }
+            HoverHandler { id: viewStyleHover }
+            TapHandler {
+                onTapped: {
+                    view.noteActivity()
+                    view.toggleViewStyle()
+                }
+            }
+            Accessible.role: Accessible.Button
+            Accessible.name: view.cinematicWheel
+                             ? "Use Couch Mode cover shelf"
+                             : "Use Couch Mode cinematic wheel"
+        }
 
         Rectangle {
             visible: view.gamepad.ready
@@ -1354,6 +1431,7 @@ Item {
 
     Rectangle {
         id: coverFrame
+        visible: !view.cinematicWheel
         anchors.right: parent.right
         anchors.rightMargin: Math.max(74, parent.width * 0.075)
         anchors.top: brand.bottom
@@ -1400,14 +1478,18 @@ Item {
 
     Item {
         id: shelfArea
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: footer.top
-        height: Math.max(250, parent.height * 0.265)
+        x: view.cinematicWheel ? parent.width - width - 44 : 0
+        y: view.cinematicWheel ? brand.y + brand.height + 58
+                               : footer.y - height
+        width: view.cinematicWheel ? Math.min(650, parent.width * 0.42)
+                                   : parent.width
+        height: view.cinematicWheel
+                ? Math.max(320, footer.y - y - 18)
+                : Math.max(250, parent.height * 0.265)
 
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 70
+            anchors.leftMargin: view.cinematicWheel ? 8 : 70
             anchors.top: parent.top
             text: view.library.filtering ? "UPDATING…"
                   : view.currentShelfLabel + "  ·  "
@@ -1418,155 +1500,40 @@ Item {
             font.letterSpacing: 1.4
         }
 
-        ListView {
+        CouchGameShelf {
             id: shelf
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: 25
             anchors.bottom: parent.bottom
-            orientation: ListView.Horizontal
-            leftMargin: 70
-            rightMargin: 70
-            spacing: 13
-            clip: true
-            reuseItems: true
-            cacheBuffer: width
-            model: view.library
-            boundsBehavior: Flickable.StopAtBounds
-            highlightMoveDuration: 130
-            preferredHighlightBegin: width * 0.12
-            preferredHighlightEnd: width * 0.64
-            highlightRangeMode: ListView.ApplyRange
-            onCurrentIndexChanged: {
+            leftMargin: view.cinematicWheel ? 8 : 70
+            rightMargin: view.cinematicWheel ? 0 : 70
+            topMargin: view.cinematicWheel ? 8 : 0
+            bottomMargin: view.cinematicWheel ? 8 : 0
+            library: view.library
+            background: view.background
+            panel: view.panel
+            panelRaised: view.panelRaised
+            ink: view.ink
+            muted: view.muted
+            accent: view.accent
+            accentCool: view.accentCool
+            cardRadius: view.cardRadius
+            cinematic: view.cinematicWheel
+            navigationActive: view.navigationZone === 2
+
+            onCurrentGameChanged: {
                 if (!view.active)
                     return
                 view.captureCurrentGame()
                 selectionDelay.restart()
             }
-            onCurrentItemChanged: {
-                if (!view.active)
-                    return
-                view.captureCurrentGame()
-                selectionDelay.restart()
-            }
-
-            delegate: Item {
-                id: gameTile
-                required property int index
-                required property string gameId
-                required property string gameTitle
-                required property string gameCanonicalTitle
-                required property string gamePlatform
-                required property string gameStatus
-                required property bool gameLocal
-                required property bool gameDownloadable
-                required property int gameDatabaseId
-                property int artworkRevision: view.library.media_revision
-                property url artworkUrl: {
-                    artworkRevision
-                    return view.library.artwork_url(gameDatabaseId, "box-front")
-                }
-                property bool current: ListView.isCurrentItem
-                width: current ? 162 : 132
-                height: shelf.height - 8
-
-                function requestArtwork() {
-                    view.library.request_artwork(gameDatabaseId, gameCanonicalTitle,
-                                                 gamePlatform, "box-front")
-                }
-
-                Component.onCompleted: requestArtwork()
-                onGameDatabaseIdChanged: requestArtwork()
-                onGameCanonicalTitleChanged: requestArtwork()
-                onArtworkRevisionChanged: requestArtwork()
-
-                Rectangle {
-                    id: coverCard
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: gameTile.current ? 10 : 18
-                    width: gameTile.current ? 158 : 128
-                    height: gameTile.current ? 214 : 174
-                    radius: Math.max(8, view.cardRadius - 4)
-                    color: view.accentFor(gameTile.gameTitle)
-                    border.color: gameTile.current
-                                  ? (view.navigationZone === 2 ? view.ink : view.accent)
-                                  : view.withAlpha(view.muted, 0.4)
-                    border.width: gameTile.current ? 3 : 1
-                    clip: true
-                    scale: gameTile.current ? 1 : shelfHover.hovered ? 1.03 : 1
-                    Behavior on width { NumberAnimation { duration: 120 } }
-                    Behavior on height { NumberAnimation { duration: 120 } }
-                    Behavior on scale { NumberAnimation { duration: 90 } }
-
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: Qt.lighter(coverCard.color, 1.15) }
-                        GradientStop { position: 1; color: Qt.darker(coverCard.color, 1.6) }
-                    }
-                    Image {
-                        id: tileCover
-                        anchors.fill: parent
-                        anchors.margins: 2
-                        source: gameTile.artworkUrl
-                        asynchronous: true
-                        cache: true
-                        mipmap: true
-                        autoTransform: true
-                        fillMode: Image.PreserveAspectFit
-                        sourceSize.width: 300
-                        sourceSize.height: 420
-                        opacity: status === Image.Ready ? 1 : 0
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 54
-                        color: view.withAlpha(view.background, 0.84)
-                    }
-                    Text {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.margins: 9
-                        text: gameTile.gameTitle
-                        color: view.ink
-                        font.pixelSize: gameTile.current ? 11 : 9
-                        font.weight: Font.Bold
-                        maximumLineCount: 2
-                        wrapMode: Text.WordWrap
-                        elide: Text.ElideRight
-                    }
-                    Rectangle {
-                        anchors.top: parent.top
-                        anchors.right: parent.right
-                        anchors.margins: 8
-                        width: 10
-                        height: 10
-                        radius: 5
-                        visible: gameTile.gameLocal || gameTile.gameDownloadable
-                        color: gameTile.gameLocal ? view.accentCool : view.accent
-                    }
-                    Text {
-                        anchors.centerIn: parent
-                        text: gameTile.gameTitle.length > 0
-                              ? gameTile.gameTitle.charAt(0).toUpperCase() : "?"
-                        color: view.withAlpha(view.ink, 0.85)
-                        font.pixelSize: 48
-                        font.weight: Font.Black
-                        visible: tileCover.status !== Image.Ready
-                    }
-                    HoverHandler { id: shelfHover }
-                    TapHandler {
-                        onTapped: {
-                            view.noteActivity()
-                            view.navigationZone = 2
-                            shelf.currentIndex = gameTile.index
-                            view.forceActiveFocus()
-                        }
-                    }
-                }
+            onCardActivated: index => {
+                view.noteActivity()
+                view.navigationZone = 2
+                shelf.currentIndex = index
+                view.forceActiveFocus()
             }
         }
     }
@@ -1584,7 +1551,8 @@ Item {
 
         Text {
             text: view.gamepad.connected_count > 0
-                  ? "D-PAD / STICK  MOVE" : "← →  BROWSE"
+                  ? "D-PAD / STICK  MOVE"
+                  : view.cinematicWheel ? "↑ ↓  BROWSE" : "← →  BROWSE"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
@@ -1593,7 +1561,7 @@ Item {
         Text {
             text: view.gamepad.connected_count > 0
                   ? view.gamepad.button_label("accept") + "  SELECT"
-                  : "↑ ↓  MOVE"
+                  : view.cinematicWheel ? "← →  MOVE" : "↑ ↓  MOVE"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
@@ -1619,7 +1587,7 @@ Item {
         }
         Text {
             visible: view.gamepad.connected_count === 0
-            text: "A  ATTRACT"
+            text: "A  ATTRACT    V  CHANGE VIEW"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold

@@ -60,10 +60,16 @@ The initial implementation enforces this shape:
   size. Video, manuals, emulator inspection, torrent metadata, and hashing remain
   separately scheduled services rather than additions to startup.
 - Pointer-wheel input uses one reusable QML physics component in both grid and
-  list views. It amplifies high-resolution trackpad deltas, accelerates repeated
-  wheel notches, accumulates momentum, and eases to rest without blocking the
-  GUI thread. Enlarged hover cards remain clipped to the game viewport, so they
-  cannot cover the page heading or global navigation while the grid moves.
+  list views. It amplifies high-resolution trackpad deltas, gives physical
+  notches an immediate displacement, accelerates repeated input, accumulates a
+  long kinetic tail, and eases to rest without blocking the GUI thread. Delegate
+  recycling schedules only asynchronous artwork; it cannot enqueue gameplay
+  videos while the user is moving through the library. Enlarged hover cards use
+  real layout and font sizes rather than a transformed texture, clamp all four
+  edges inside the game viewport and scrollbar inset, and reduce the requested
+  2x expansion only when a smaller window cannot contain it. They therefore
+  remain sharp and cannot hide behind the sidebar, page heading, window edge,
+  or scrollbar.
 - The desktop shell is split into reusable QML controls for header actions,
   sidebar navigation, links, metrics, filters, metadata, status, wheel physics,
   and first-run setup. `Main.qml` remains the composition root instead of
@@ -761,18 +767,21 @@ inspection. The card uses Qt Multimedia for cross-platform playback and Qt's
 native URL handler for manuals; Rust never invokes a shell or constructs an
 OS-specific opener command.
 The desktop grid uses the same provider-ordered supplemental-media cache after
-a 220-ms pointer-hover or keyboard-focus delay. `LibraryModel` resolves the
-exact stable UUID to the catalog's own positive database ID, performs the disk
-scan on a named worker, and accepts the result only when both its generation and
-requested UUID still match. The virtualized delegates contain only their
+a 500-ms pointer-hover intent delay. Keyboard focus and visibility never request
+gameplay video. `LibraryModel` resolves the exact stable UUID to the catalog's
+own positive database ID, performs the disk scan on a named worker, and accepts
+the result only when both its generation and requested UUID still match. The
+virtualized delegates contain only their
 `VideoOutput`; one root-level `MediaPlayer` and `AudioOutput` follow the active
-card. The player loops muted by default, the card exposes source provenance and
-an opt-in sound control, and every leave, focus change, open, ID change, or
+card. The player loops muted by default and disables both its audio track and
+device sink until the user opts into sound, so AAC-bearing previews still load
+their video without touching the host audio backend. The card exposes source
+provenance and an opt-in sound control, and every leave, focus change, open, ID change, or
 delegate destruction cancels the pending generation. A bounded serial
-EmuMovies worker queues visible stable identities, moves hovered and selected
-games ahead of ordinary visible work, waits for credential initialization
-before starting FTP, and republishes a completed path to both the hover player
-and the selected-game media model. Definitive provider misses are remembered,
+EmuMovies worker only queues identities explicitly opened or hovered for the
+full delay, waits for credential initialization before starting FTP, and
+republishes a completed path to both the hover player and the selected-game
+media model. Definitive provider misses are remembered,
 while credential and transient FTP failures remain actionable and retryable.
 Queue, lookup, transfer progress, cached readiness, exact provider misses, and
 transient failures are retained per stable game identity. Grid and details
@@ -784,17 +793,22 @@ EMPTY_PATH` requires an explicit non-empty video fixture of at most 64 MiB,
 publishes it idempotently under the stable Super Mario Bros. cache identity,
 loads the complete catalog, forces the grid presentation, focuses that exact
 UUID, and exercises the ordinary delay, worker lookup, and shared player. It
-prints `LUNCHBOX_HOVER_PREVIEW_UI_READY` only after Qt reports a video track,
-the fixture duration, and `PlayingState`. The probe deliberately does not use
+puts the card against a viewport edge and prints
+`LUNCHBOX_HOVER_PREVIEW_UI_READY` only after Qt reports a video track, the
+fixture duration, `PlayingState`, and a genuinely enlarged card wholly inside
+the live grid bounds. The probe deliberately does not use
 Qt Quick's item grab: an Xvfb clock can remain at zero without a working
 hardware backend, and a grab cannot prove that a video texture itself rendered.
 Visual acceptance of the live texture remains a release-host check.
 `--emumovies-auto-ui-probe --media-directory EMPTY_PATH` runs the same complete
 grid-hover and playback gate without seeding a fixture. It loads the saved
-operating-system credential, queues the visible Super Mario Bros. tile through
-the production EmuMovies FTP worker, downloads into the empty media root, and
-exits only after Qt plays the newly published video. This is an opt-in live
-service probe and never prints credential values.
+operating-system credential, proves the tile has not started a preview halfway
+through the 500-ms intent delay, then queues the still-hovered Super Mario Bros.
+identity through the production EmuMovies FTP worker, downloads into the empty
+media root, and exits only after Qt plays the newly published video. Visibility
+alone requests artwork and cannot enqueue gameplay video. Opening a game is the
+other intentional path and promotes that exact identity immediately. This is an
+opt-in live service probe and never prints credential values.
 
 Game music is a separate provider-aware supplemental-media path. The Rust
 client deliberately searches only `/Official/Music/_HyperAudio`, where tracks
@@ -887,8 +901,9 @@ UUID, favorite persistence, launch, and download/setup handoff used by desktop
 mode. Details is scrollable without a mouse. Game Menu provides the real dynamic
 primary action, favorite toggle, explicit Desktop Details handoff, an exact
 regional/version release-and-media picker when alternate records exist, Attract
-Mode entry, and Return to Browsing; closing or switching panels never changes the
-selected release. The release picker is virtualized, highlights the current
+Mode entry, persistent cinematic-wheel/cover-shelf switching, and Return to
+Browsing; closing or switching panels never changes the selected release. The
+release picker is virtualized, highlights the current
 record, exposes current/installed/Minerva/catalog-only state plus cached-media
 context, and routes a chosen row by its exact stable UUID without leaving Couch
 Mode.
@@ -962,6 +977,18 @@ navigation. Settings exposes curated living-room choices.
 entry, wrapped next/previous identity, browsing return, settings persistence,
 and fresh/cold 1920x1200 captures against a 56-row real-catalog filter;
 `--couch-attract-settings-ui-probe` captures and validates the desktop controls.
+
+Couch Mode has two presentations over the same virtualized `LibraryModel`. The
+cinematic wheel keeps the selected game's hero, metadata, and actions on the
+left while a controller-first vertical wheel occupies the right; the cover
+shelf retains the horizontal box-art presentation. The validated `wheel` or
+`shelf` identity is saved in `couch_mode_preferences`, migrated safely for old
+profiles, exposed in full-window Settings, and switchable from the header,
+keyboard `V`, or the Game Menu. Switching recenters the same exact stable UUID
+instead of selecting by row or title. `--couch-view-style-ui-probe` navigates the
+real wheel vertically, switches both ways, verifies identity preservation, and
+captures the final 1920x1200 surface. Reusing its state database with
+`--couch-view-style-restored-ui-probe` proves cold restoration.
 
 Couch Mode appearance is selected by exact theme ID and stored with its existing
 navigation and Attract Mode preferences. Three built-in themes are always present.
