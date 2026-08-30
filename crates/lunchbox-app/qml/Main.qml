@@ -7292,6 +7292,14 @@ ApplicationWindow {
                 library.media_revision
                 return library.automatic_video_state(gameId)
             }
+            readonly property string previewQueueMessage: {
+                library.media_pending_count
+                library.media_active_title
+                library.media_active_progress
+                library.media_setup_required
+                library.media_revision
+                return library.automatic_video_message(gameId)
+            }
             property int mediaRevision: library.media_revision
             property int favoriteRevision: library.favorite_revision
             property int favoritePendingRevision: library.favorite_pending_count
@@ -7509,18 +7517,7 @@ ApplicationWindow {
                         Text {
                             anchors.fill: parent
                             anchors.margins: 9
-                            text: tile.previewQueueState === "downloading"
-                                  ? "Downloading this gameplay video from EmuMovies"
-                                    + (library.media_active_progress >= 0
-                                       ? " · " + library.media_active_progress + "%"
-                                       : "…")
-                                  : tile.previewQueueState === "queued"
-                                    ? "Gameplay video queued · hovered titles download next."
-                                  : tile.previewQueueState === "checking-setup"
-                                    ? "Checking EmuMovies setup…"
-                                  : tile.previewQueueState === "setup-required"
-                                    ? "Add your EmuMovies account in Settings to enable automatic videos."
-                                  : library.hover_preview_message
+                            text: tile.previewQueueMessage
                             color: library.media_setup_required ? root.accent : root.muted
                             font.pixelSize: 9
                             font.weight: Font.DemiBold
@@ -7530,8 +7527,15 @@ ApplicationWindow {
                             verticalAlignment: Text.AlignVCenter
                         }
                         TapHandler {
-                            enabled: library.media_setup_required
-                            onTapped: root.openSettingsFor("emumovies")
+                            enabled: tile.previewQueueState === "setup-required"
+                                     || tile.previewQueueState === "unavailable"
+                                     || tile.previewQueueState === "automatic"
+                            onTapped: {
+                                if (tile.previewQueueState === "setup-required")
+                                    root.openSettingsFor("emumovies")
+                                else
+                                    library.retry_game_video(tile.gameId)
+                            }
                         }
                     }
 
@@ -9709,9 +9713,19 @@ ApplicationWindow {
                                 readonly property string queueState: {
                                     library.media_pending_count
                                     library.media_active_title
+                                    library.media_active_progress
                                     library.media_setup_required
                                     library.media_revision
                                     return library.automatic_video_state(
+                                                root.selectedGameId)
+                                }
+                                readonly property string queueMessage: {
+                                    library.media_pending_count
+                                    library.media_active_title
+                                    library.media_active_progress
+                                    library.media_setup_required
+                                    library.media_revision
+                                    return library.automatic_video_message(
                                                 root.selectedGameId)
                                 }
                                 border.color: queueState === "downloading"
@@ -9823,7 +9837,7 @@ ApplicationWindow {
                                     }
                                     Text {
                                         width: parent.width
-                                        text: library.media_fetch_message
+                                        text: automaticVideoCard.queueMessage
                                         color: root.muted
                                         font.pixelSize: 8
                                         wrapMode: Text.WordWrap

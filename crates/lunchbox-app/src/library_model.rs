@@ -332,6 +332,9 @@ pub mod qobject {
         fn automatic_video_state(self: &LibraryModel, game_uid: QString) -> QString;
 
         #[qinvokable]
+        fn automatic_video_message(self: &LibraryModel, game_uid: QString) -> QString;
+
+        #[qinvokable]
         fn set_emumovies_configured(self: Pin<&mut LibraryModel>, configured: bool);
 
         #[qinvokable]
@@ -945,6 +948,7 @@ pub struct LibraryModelRust {
     automatic_video_pending: HashSet<String>,
     automatic_video_terminal: HashSet<String>,
     automatic_video_unavailable: HashSet<String>,
+    automatic_video_messages: HashMap<String, String>,
     automatic_video_active: Option<AutomaticVideoRequest>,
     favorite_game_ids: Arc<HashSet<String>>,
     favorite_requests: HashSet<String>,
@@ -1144,6 +1148,7 @@ impl Default for LibraryModelRust {
             automatic_video_pending: HashSet::new(),
             automatic_video_terminal: HashSet::new(),
             automatic_video_unavailable: HashSet::new(),
+            automatic_video_messages: HashMap::new(),
             automatic_video_active: None,
             favorite_game_ids: Arc::new(HashSet::new()),
             favorite_requests: HashSet::new(),
@@ -1352,6 +1357,33 @@ fn automatic_video_state_for(
         return "ready";
     }
     "automatic"
+}
+
+fn automatic_video_default_message(state: &str) -> &'static str {
+    match state {
+        "checking-setup" => {
+            "Checking the saved EmuMovies account before downloading this gameplay video…"
+        }
+        "setup-required" => {
+            "Add and test an EmuMovies account in Settings to enable automatic gameplay videos."
+        }
+        "downloading" => "Finding and downloading this game's EmuMovies gameplay video…",
+        "queued" => "Queued for automatic EmuMovies download. Hovered and selected games go first.",
+        "unavailable" => "EmuMovies has no exact gameplay-video match for this title and platform.",
+        "ready" => "The gameplay video is cached and ready for playback.",
+        _ => "This missing gameplay video will download automatically from EmuMovies.",
+    }
+}
+
+fn bounded_automatic_video_error(error: &str) -> String {
+    const MAX_CHARS: usize = 220;
+    let normalized = error.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= MAX_CHARS {
+        return normalized;
+    }
+    let mut bounded = normalized.chars().take(MAX_CHARS - 1).collect::<String>();
+    bounded.push('…');
+    bounded
 }
 
 fn prioritize_automatic_video_request(
@@ -3121,6 +3153,7 @@ impl qobject::LibraryModel {
         if configured {
             self.as_mut().rust_mut().automatic_video_terminal.clear();
             self.as_mut().rust_mut().automatic_video_unavailable.clear();
+            self.as_mut().rust_mut().automatic_video_messages.clear();
             self.as_mut().set_media_setup_required(false);
             self.as_mut().set_media_fetch_message(qstring(
                 "Visible artwork and gameplay videos download automatically.",
@@ -3170,6 +3203,10 @@ impl qobject::LibraryModel {
                 .rust_mut()
                 .automatic_video_unavailable
                 .remove(&game_uid);
+            self.as_mut()
+                .rust_mut()
+                .automatic_video_messages
+                .remove(&game_uid);
         }
         let Some(game_index) = self
             .as_ref()
@@ -3213,6 +3250,32 @@ impl qobject::LibraryModel {
         ))
     }
 
+    pub fn automatic_video_message(&self, game_uid: QString) -> QString {
+        let game_uid = game_uid.to_string();
+        let state = automatic_video_state_for(
+            self.rust().emumovies_state_known,
+            self.rust().emumovies_configured,
+            self.rust()
+                .automatic_video_active
+                .as_ref()
+                .map(|request| request.game_uid.as_str()),
+            &self.rust().automatic_video_pending,
+            &self.rust().automatic_video_terminal,
+            &self.rust().automatic_video_unavailable,
+            &game_uid,
+        );
+        if matches!(state, "checking-setup" | "setup-required") {
+            return qstring(automatic_video_default_message(state));
+        }
+        qstring(
+            self.rust()
+                .automatic_video_messages
+                .get(&game_uid)
+                .map(String::as_str)
+                .unwrap_or_else(|| automatic_video_default_message(state)),
+        )
+    }
+
     fn queue_automatic_video(
         mut self: Pin<&mut Self>,
         request: AutomaticVideoRequest,
@@ -3247,6 +3310,10 @@ impl qobject::LibraryModel {
                     &mut self.as_mut().rust_mut().automatic_video_queue,
                     &request.game_uid,
                 );
+                self.as_mut().rust_mut().automatic_video_messages.insert(
+                    request.game_uid,
+                    "Moved to the front of the EmuMovies queue for box-art preview.".to_owned(),
+                );
             }
             return;
         }
@@ -3268,6 +3335,14 @@ impl qobject::LibraryModel {
             .rust_mut()
             .automatic_video_pending
             .insert(request.game_uid.clone());
+        self.as_mut().rust_mut().automatic_video_messages.insert(
+            request.game_uid.clone(),
+            if prioritize {
+                "Queued first for automatic EmuMovies download and box-art playback.".to_owned()
+            } else {
+                "Queued for automatic EmuMovies download as this game came into view.".to_owned()
+            },
+        );
         if prioritize {
             self.as_mut()
                 .rust_mut()
@@ -3310,6 +3385,13 @@ impl qobject::LibraryModel {
             return;
         };
         self.as_mut().rust_mut().automatic_video_active = Some(request.clone());
+        self.as_mut().rust_mut().automatic_video_messages.insert(
+            request.game_uid.clone(),
+            format!(
+                "Finding an exact EmuMovies gameplay video for {} on {}…",
+                request.title, request.platform
+            ),
+        );
         self.as_mut()
             .set_media_active_title(qstring(&request.title));
         self.as_mut()
@@ -3385,6 +3467,13 @@ impl qobject::LibraryModel {
         {
             self.as_mut()
                 .set_media_active_progress(percent.clamp(0, 100));
+            self.as_mut().rust_mut().automatic_video_messages.insert(
+                game_uid,
+                format!(
+                    "Downloading the EmuMovies gameplay video… {}%",
+                    percent.clamp(0, 100)
+                ),
+            );
         }
     }
 
@@ -3421,6 +3510,14 @@ impl qobject::LibraryModel {
                     let count = self.as_ref().media_downloaded_count().saturating_add(1);
                     self.as_mut().set_media_downloaded_count(count);
                 }
+                self.as_mut().rust_mut().automatic_video_messages.insert(
+                    request.game_uid.clone(),
+                    if downloaded {
+                        "Downloaded from EmuMovies. Refreshing the box-art player…".to_owned()
+                    } else {
+                        "The cached gameplay video is ready for box-art playback.".to_owned()
+                    },
+                );
                 self.as_mut().set_media_fetch_message(qstring(format!(
                     "{} gameplay video for {}.",
                     if downloaded { "Downloaded" } else { "Cached" },
@@ -3445,6 +3542,11 @@ impl qobject::LibraryModel {
                     self.as_mut().set_media_fetch_message(qstring(
                         "EmuMovies needs an account. Open Settings to enable automatic gameplay videos.",
                     ));
+                    self.as_mut().rust_mut().automatic_video_messages.insert(
+                        request.game_uid.clone(),
+                        "Add and test an EmuMovies account in Settings, then hover this game again."
+                            .to_owned(),
+                    );
                 } else if emumovies_video_unavailable(&error) {
                     self.as_mut()
                         .rust_mut()
@@ -3460,6 +3562,13 @@ impl qobject::LibraryModel {
                         "No EmuMovies gameplay video is available for {}.",
                         request.title
                     )));
+                    self.as_mut().rust_mut().automatic_video_messages.insert(
+                        request.game_uid.clone(),
+                        format!(
+                            "EmuMovies has no exact gameplay-video match for {} on {}. Retry if the provider library changes.",
+                            request.title, request.platform
+                        ),
+                    );
                 } else {
                     // Transient network and FTP errors remain retryable. A later hover
                     // or explicit retry must not be suppressed for the whole session.
@@ -3469,8 +3578,23 @@ impl qobject::LibraryModel {
                         "Gameplay video for {} failed: {}",
                         request.title, error
                     )));
+                    self.as_mut().rust_mut().automatic_video_messages.insert(
+                        request.game_uid.clone(),
+                        format!(
+                            "EmuMovies download failed temporarily: {} Hover again or choose Retry.",
+                            bounded_automatic_video_error(&error)
+                        ),
+                    );
                 }
             }
+        }
+        if self.as_ref().hover_preview_game_id().to_string() == request.game_uid
+            && self.as_ref().hover_preview_url().is_empty()
+        {
+            let message = self
+                .as_ref()
+                .automatic_video_message(qstring(&request.game_uid));
+            self.as_mut().set_hover_preview_message(message);
         }
         self.as_mut().update_media_pending_count();
         self.as_mut().start_next_automatic_video();
@@ -6132,6 +6256,21 @@ mod tests {
             automatic_video_state_for(true, true, None, &pending, &terminal, &unavailable, "ready",),
             "ready"
         );
+    }
+
+    #[test]
+    fn automatic_video_messages_are_specific_and_bounded() {
+        assert!(
+            automatic_video_default_message("queued")
+                .contains("Hovered and selected games go first")
+        );
+        assert!(automatic_video_default_message("unavailable").contains("no exact"));
+
+        let noisy = format!("  transfer\nfailed   {}  ", "x".repeat(300));
+        let bounded = bounded_automatic_video_error(&noisy);
+        assert!(!bounded.contains('\n'));
+        assert_eq!(bounded.chars().count(), 220);
+        assert!(bounded.ends_with('…'));
     }
 
     #[test]

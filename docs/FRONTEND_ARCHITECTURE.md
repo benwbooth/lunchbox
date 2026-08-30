@@ -767,6 +767,11 @@ games ahead of ordinary visible work, waits for credential initialization
 before starting FTP, and republishes a completed path to both the hover player
 and the selected-game media model. Definitive provider misses are remembered,
 while credential and transient FTP failures remain actionable and retryable.
+Queue, lookup, transfer progress, cached readiness, exact provider misses, and
+transient failures are retained per stable game identity. Grid and details
+cards therefore never display an unrelated global media result, and the
+hover-card action retries only that exact title or routes a missing account to
+EmuMovies Settings.
 `--hover-preview-ui-probe --preview-video-fixture PATH --media-directory
 EMPTY_PATH` requires an explicit non-empty video fixture of at most 64 MiB,
 publishes it idempotently under the stable Super Mario Bros. cache identity,
