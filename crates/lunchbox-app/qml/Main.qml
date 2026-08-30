@@ -6735,15 +6735,78 @@ ApplicationWindow {
         clip: false
         cacheBuffer: height
         keyNavigationEnabled: true
+        keyNavigationWraps: false
         activeFocusOnTab: true
         boundsBehavior: Flickable.StopAtBounds
         property real preferredWidth: (root.width >= 1500 ? 230 : 205)
                                       * library.grid_zoom / 100
-        cellWidth: Math.floor(width / Math.max(1, Math.floor(width / preferredWidth)))
+        readonly property real availableGridWidth: Math.max(1, width - rightMargin)
+        readonly property int columnCount: Math.max(
+                                               1,
+                                               Math.floor(availableGridWidth
+                                                          / preferredWidth))
+        readonly property int rowsPerPage: Math.max(1, Math.floor(height / cellHeight))
+        cellWidth: Math.floor(availableGridWidth / columnCount)
         cellHeight: Math.round(cellWidth * 1.36)
         model: library
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        rightMargin: gridScrollBar.width + 8
+        ScrollBar.vertical: ScrollBar {
+            id: gridScrollBar
+            policy: ScrollBar.AlwaysOn
+            active: true
+            interactive: true
+            hoverEnabled: true
+            width: 15
+            z: 1000
+            contentItem: Rectangle {
+                implicitWidth: 11
+                radius: width / 2
+                color: gridScrollBar.pressed ? root.accent
+                       : gridScrollBar.hovered ? root.accentCool : "#748197"
+                opacity: gridScrollBar.size < 1 ? 0.95 : 0.45
+            }
+            background: Rectangle {
+                implicitWidth: 15
+                radius: width / 2
+                color: "#151c27"
+                border.color: root.line
+            }
+        }
         AcceleratedWheelHandler { scroller: grid }
+
+        function focusIndex(targetIndex, positioningMode) {
+            if (count <= 0)
+                return
+            const boundedIndex = Math.max(0, Math.min(count - 1, targetIndex))
+            currentIndex = boundedIndex
+            positionViewAtIndex(boundedIndex, positioningMode)
+            Qt.callLater(function() {
+                if (grid.currentItem)
+                    grid.currentItem.forceActiveFocus()
+            })
+        }
+
+        function handleNavigationKey(event) {
+            const firstIndex = currentIndex >= 0 ? currentIndex : 0
+            const pageSize = Math.max(1, columnCount * rowsPerPage)
+            if (event.key === Qt.Key_PageDown) {
+                focusIndex(firstIndex + pageSize, GridView.Beginning)
+            } else if (event.key === Qt.Key_PageUp) {
+                focusIndex(firstIndex - pageSize, GridView.Beginning)
+            } else if (event.key === Qt.Key_Home) {
+                focusIndex(0, GridView.Beginning)
+            } else if (event.key === Qt.Key_End) {
+                focusIndex(count - 1, GridView.End)
+            } else {
+                return false
+            }
+            return true
+        }
+
+        Keys.onPressed: event => {
+            if (handleNavigationKey(event))
+                event.accepted = true
+        }
 
         delegate: Item {
             id: tile
@@ -6847,6 +6910,7 @@ ApplicationWindow {
 
             TapHandler {
                 onTapped: {
+                    grid.currentIndex = tile.index
                     tile.forceActiveFocus()
                     root.openGame(tile.gameId, tile.gameDatabaseId,
                                   tile.gameTitle, tile.gamePlatform,
@@ -6854,7 +6918,9 @@ ApplicationWindow {
                 }
             }
             Keys.onPressed: event => {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                if (grid.handleNavigationKey(event)) {
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
                     root.openGame(tile.gameId, tile.gameDatabaseId,
                                   tile.gameTitle, tile.gamePlatform,
@@ -6961,25 +7027,32 @@ ApplicationWindow {
                     }
 
                     Rectangle {
+                        id: previewStatus
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        height: 38
+                        height: 50
                         visible: tile.previewRequested
                                  && library.hover_preview_game_id === tile.gameId
                                  && !library.hover_preview_loading
                                  && library.hover_preview_url.toString().length === 0
                                  && root.hoverPreviewPlaybackError.length === 0
-                        color: "#dd111924"
+                        color: library.media_setup_required ? "#e13a2b22" : "#dd111924"
                         Text {
                             anchors.fill: parent
                             anchors.margins: 9
                             text: library.hover_preview_message
-                            color: root.muted
+                            color: library.media_setup_required ? root.accent : root.muted
                             font.pixelSize: 9
                             font.weight: Font.DemiBold
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
                             elide: Text.ElideRight
                             verticalAlignment: Text.AlignVCenter
+                        }
+                        TapHandler {
+                            enabled: library.media_setup_required
+                            onTapped: root.openSettingsFor("emumovies")
                         }
                     }
 
@@ -7059,8 +7132,6 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        ToolTip.visible: hovered
-                        ToolTip.text: tile.favorite ? "Remove from Favorites" : "Add to Favorites"
                     }
                     RoundButton {
                         anchors.right: parent.right
@@ -7086,15 +7157,8 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        ToolTip.visible: hovered
-                        ToolTip.text: root.hoverPreviewAudioMuted
-                                      ? "Turn preview sound on" : "Mute preview"
                     }
                 }
-                ToolTip.visible: cardHover.hovered && !tile.previewRequested
-                                 && tile.artworkSource.length > 0
-                ToolTip.text: root.artworkLabel(library.artwork_type)
-                              + " · " + tile.artworkSource
 
                 Text {
                     anchors.left: parent.left
@@ -7120,9 +7184,8 @@ ApplicationWindow {
                     text: tile.gamePlatform.length > 0 ? tile.gamePlatform : "Unassigned platform"
                     color: root.muted
                     font.pixelSize: 11
-                    elide: Text.ElideRight
-                    ToolTip.visible: cardHover.hovered
-                    ToolTip.text: text
+                    fontSizeMode: Text.HorizontalFit
+                    minimumPixelSize: 7
                 }
                 Rectangle {
                     id: editionBadge
@@ -7144,9 +7207,6 @@ ApplicationWindow {
                         font.pixelSize: 8
                         font.weight: Font.DemiBold
                     }
-                    HoverHandler { id: editionBadgeHover }
-                    ToolTip.visible: editionBadgeHover.hovered
-                    ToolTip.text: "Open details to choose a regional or revision edition"
                 }
             }
             HoverHandler {

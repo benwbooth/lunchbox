@@ -645,6 +645,8 @@ struct AutomaticVideoRequest {
     platform: String,
 }
 
+const MAX_QUEUED_VISIBLE_VIDEOS: usize = 48;
+
 enum AutomaticVideoOutcome {
     Ready { path: PathBuf, downloaded: bool },
     Missing(String),
@@ -1231,6 +1233,20 @@ fn fetch_automatic_video(
         },
         Err(error) => AutomaticVideoOutcome::Missing(error.to_string()),
     }
+}
+
+fn prioritize_automatic_video_request(
+    queue: &mut VecDeque<AutomaticVideoRequest>,
+    game_uid: &str,
+) -> bool {
+    let Some(position) = queue.iter().position(|queued| queued.game_uid == game_uid) else {
+        return false;
+    };
+    let Some(request) = queue.remove(position) else {
+        return false;
+    };
+    queue.push_front(request);
+    true
 }
 
 fn collection_at(model: &qobject::LibraryModel, index: i32) -> Option<&UserCollection> {
@@ -2687,14 +2703,21 @@ impl qobject::LibraryModel {
             ));
             return;
         };
-        let launchbox_db_id = {
+        let automatic_request = {
             let this = self.as_ref();
             let Some(game) = this.rust().catalog.games.get(game_index) else {
                 self.as_mut().cancel_hover_preview();
                 return;
             };
-            game.launchbox_db_id
+            AutomaticVideoRequest {
+                game_uid: game_uid.clone(),
+                database_id: game.launchbox_db_id,
+                title: game.title.clone(),
+                platform: game.platform.clone(),
+            }
         };
+        let launchbox_db_id = automatic_request.database_id;
+        self.as_mut().queue_automatic_video(automatic_request, true);
         if *self.as_ref().hover_preview_probe() {
             println!(
                 "LUNCHBOX_HOVER_PREVIEW_UI_LOOKUP game_uid={game_uid:?} database_id={launchbox_db_id}"
@@ -2782,9 +2805,34 @@ impl qobject::LibraryModel {
             Ok(None) => {
                 self.as_mut().set_hover_preview_url(QUrl::default());
                 self.as_mut().set_hover_preview_source(QString::default());
-                self.as_mut().set_hover_preview_message(qstring(
-                    "No cached gameplay video is available for this game.",
-                ));
+                let message = if *self.as_ref().media_setup_required() {
+                    "Set up EmuMovies in Settings to download gameplay previews.".to_owned()
+                } else if self
+                    .as_ref()
+                    .rust()
+                    .automatic_video_active
+                    .as_ref()
+                    .is_some_and(|request| request.game_uid == game_uid)
+                {
+                    "Downloading this gameplay preview from EmuMovies…".to_owned()
+                } else if self
+                    .as_ref()
+                    .rust()
+                    .automatic_video_pending
+                    .contains(&game_uid)
+                {
+                    "This EmuMovies gameplay preview is next in the download queue…".to_owned()
+                } else if self
+                    .as_ref()
+                    .rust()
+                    .automatic_video_terminal
+                    .contains(&game_uid)
+                {
+                    "No EmuMovies gameplay video is available for this game.".to_owned()
+                } else {
+                    "Preparing this gameplay preview for automatic download…".to_owned()
+                };
+                self.as_mut().set_hover_preview_message(qstring(message));
             }
             Err(error) => {
                 self.as_mut().set_hover_preview_url(QUrl::default());
@@ -2915,21 +2963,8 @@ impl qobject::LibraryModel {
     }
 
     pub fn request_visible_media(mut self: Pin<&mut Self>, game_uid: QString) {
-        const MAX_QUEUED_VISIBLE_VIDEOS: usize = 48;
-
         let game_uid = game_uid.to_string();
-        if game_uid.trim().is_empty()
-            || self
-                .as_ref()
-                .rust()
-                .automatic_video_pending
-                .contains(&game_uid)
-            || self
-                .as_ref()
-                .rust()
-                .automatic_video_terminal
-                .contains(&game_uid)
-        {
+        if game_uid.trim().is_empty() {
             return;
         }
         let Some(game_index) = self
@@ -2947,8 +2982,62 @@ impl qobject::LibraryModel {
         if game.title.trim().is_empty() || game.platform.trim().is_empty() {
             return;
         }
+        self.as_mut().queue_automatic_video(
+            AutomaticVideoRequest {
+                game_uid,
+                database_id: game.launchbox_db_id,
+                title: game.title,
+                platform: game.platform,
+            },
+            false,
+        );
+    }
+
+    fn queue_automatic_video(
+        mut self: Pin<&mut Self>,
+        request: AutomaticVideoRequest,
+        prioritize: bool,
+    ) {
+        if request.game_uid.trim().is_empty()
+            || request.title.trim().is_empty()
+            || request.platform.trim().is_empty()
+            || self
+                .as_ref()
+                .rust()
+                .automatic_video_terminal
+                .contains(&request.game_uid)
+            || self
+                .as_ref()
+                .rust()
+                .automatic_video_active
+                .as_ref()
+                .is_some_and(|active| active.game_uid == request.game_uid)
+        {
+            return;
+        }
+
+        if self
+            .as_ref()
+            .rust()
+            .automatic_video_pending
+            .contains(&request.game_uid)
+        {
+            if prioritize {
+                prioritize_automatic_video_request(
+                    &mut self.as_mut().rust_mut().automatic_video_queue,
+                    &request.game_uid,
+                );
+            }
+            return;
+        }
+
         while self.as_ref().rust().automatic_video_queue.len() >= MAX_QUEUED_VISIBLE_VIDEOS {
-            if let Some(expired) = self.as_mut().rust_mut().automatic_video_queue.pop_front() {
+            let expired = if prioritize {
+                self.as_mut().rust_mut().automatic_video_queue.pop_back()
+            } else {
+                self.as_mut().rust_mut().automatic_video_queue.pop_front()
+            };
+            if let Some(expired) = expired {
                 self.as_mut()
                     .rust_mut()
                     .automatic_video_pending
@@ -2958,16 +3047,18 @@ impl qobject::LibraryModel {
         self.as_mut()
             .rust_mut()
             .automatic_video_pending
-            .insert(game_uid.clone());
-        self.as_mut()
-            .rust_mut()
-            .automatic_video_queue
-            .push_back(AutomaticVideoRequest {
-                game_uid,
-                database_id: game.launchbox_db_id,
-                title: game.title,
-                platform: game.platform,
-            });
+            .insert(request.game_uid.clone());
+        if prioritize {
+            self.as_mut()
+                .rust_mut()
+                .automatic_video_queue
+                .push_front(request);
+        } else {
+            self.as_mut()
+                .rust_mut()
+                .automatic_video_queue
+                .push_back(request);
+        }
         self.as_mut().update_media_pending_count();
         self.as_mut().start_next_automatic_video();
     }
@@ -5520,5 +5611,30 @@ mod tests {
         assert_eq!(summary.play_seconds, i64::MAX);
         assert_eq!(summary.played_count, 2);
         assert_eq!(summary.completed_count, 1);
+    }
+
+    #[test]
+    fn hovered_video_moves_to_front_of_visible_download_queue() {
+        let request = |game_uid: &str| AutomaticVideoRequest {
+            game_uid: game_uid.to_owned(),
+            database_id: 1,
+            title: game_uid.to_owned(),
+            platform: "Test platform".to_owned(),
+        };
+        let mut queue = VecDeque::from([
+            request("already-next"),
+            request("middle"),
+            request("hovered"),
+        ]);
+
+        assert!(prioritize_automatic_video_request(&mut queue, "hovered"));
+        assert_eq!(
+            queue
+                .iter()
+                .map(|request| request.game_uid.as_str())
+                .collect::<Vec<_>>(),
+            ["hovered", "already-next", "middle"]
+        );
+        assert!(!prioritize_automatic_video_request(&mut queue, "missing"));
     }
 }
