@@ -289,6 +289,7 @@ pub struct SettingsModelRust {
     busy: bool,
     password_saved: bool,
     connection_ok: bool,
+    credential_generation: u64,
     message: QString,
     state_database_path: QString,
     profile_busy: bool,
@@ -350,6 +351,7 @@ impl Default for SettingsModelRust {
             busy: false,
             password_saved: false,
             connection_ok: false,
+            credential_generation: 0,
             message: QString::from("Loading settings…"),
             state_database_path: QString::default(),
             profile_busy: false,
@@ -455,7 +457,10 @@ impl qobject::SettingsModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-settings-load".into())
             .spawn(move || {
-                let loaded = load_settings().map_err(|error| error.to_string());
+                let loaded = load_settings().map_err(|error| {
+                    eprintln!("LUNCHBOX_SETTINGS_LOAD_FAILED error={error:#}");
+                    error.to_string()
+                });
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_initialize(loaded);
                 });
@@ -472,7 +477,6 @@ impl qobject::SettingsModel {
         loaded: Result<
             (
                 AppSettings,
-                bool,
                 Option<settings::QbittorrentConnectionTest>,
                 PathBuf,
                 Option<profile_backup::ProfileSummary>,
@@ -482,16 +486,8 @@ impl qobject::SettingsModel {
     ) {
         self.as_mut().set_busy(false);
         match loaded {
-            Ok((settings, password_saved, connection_test, path, restored_profile)) => {
-                let connection_ok = connection_test
-                    .as_ref()
-                    .is_some_and(|tested| tested.matches(&settings, password_saved));
-                let tested_version = connection_test
-                    .filter(|_| connection_ok)
-                    .map(|tested| tested.version);
+            Ok((settings, connection_test, path, restored_profile)) => {
                 self.as_mut().apply_settings(settings);
-                self.as_mut().set_password_saved(password_saved);
-                self.as_mut().set_connection_ok(connection_ok);
                 self.as_mut()
                     .set_state_database_path(qstring(path.to_string_lossy()));
                 self.as_mut().set_initialized(true);
@@ -501,6 +497,67 @@ impl qobject::SettingsModel {
                         summary.description()
                     )));
                 }
+                self.as_mut()
+                    .set_message(qstring("Settings loaded. Checking saved credentials…"));
+                self.as_mut().load_saved_credential_status(connection_test);
+            }
+            Err(error) => self
+                .as_mut()
+                .set_message(qstring(format!("Could not load settings: {error}"))),
+        }
+    }
+
+    fn load_saved_credential_status(
+        mut self: Pin<&mut Self>,
+        connection_test: Option<settings::QbittorrentConnectionTest>,
+    ) {
+        self.as_mut().rust_mut().credential_generation =
+            self.as_ref().rust().credential_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().credential_generation;
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-settings-credentials".into())
+            .spawn(move || {
+                let credential_status = settings::load_password()
+                    .map(|password| password.is_some())
+                    .map_err(|error| {
+                        eprintln!("LUNCHBOX_CREDENTIAL_STORE_UNAVAILABLE error={error:#}");
+                        error.to_string()
+                    });
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_saved_credential_status(
+                        generation,
+                        connection_test,
+                        credential_status,
+                    );
+                });
+            });
+        if let Err(error) = spawn_result {
+            eprintln!("LUNCHBOX_CREDENTIAL_WORKER_FAILED error={error}");
+        }
+    }
+
+    fn finish_saved_credential_status(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        connection_test: Option<settings::QbittorrentConnectionTest>,
+        credential_status: Result<bool, String>,
+    ) {
+        if generation != self.as_ref().rust().credential_generation {
+            return;
+        }
+        match credential_status {
+            Ok(password_saved) => {
+                let connection_ok = connection_test.as_ref().is_some_and(|tested| {
+                    self.as_ref()
+                        .settings_snapshot()
+                        .is_ok_and(|current| tested.matches(&current, password_saved))
+                });
+                let tested_version = connection_test
+                    .filter(|_| connection_ok)
+                    .map(|tested| tested.version);
+                self.as_mut().set_password_saved(password_saved);
+                self.as_mut().set_connection_ok(connection_ok);
                 self.as_mut().set_message(qstring(if let Some(version) = tested_version {
                     format!("qBittorrent {version} connection is verified and ready.")
                 } else if password_saved {
@@ -511,9 +568,9 @@ impl qobject::SettingsModel {
                         .to_owned()
                 }));
             }
-            Err(error) => self
-                .as_mut()
-                .set_message(qstring(format!("Could not load settings: {error}"))),
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "Settings loaded, but the operating-system credential store is unavailable: {error}"
+            ))),
         }
     }
 
@@ -530,6 +587,10 @@ impl qobject::SettingsModel {
             }
         };
         let password = self.as_ref().qbittorrent_password().to_string();
+        if !password.is_empty() {
+            self.as_mut().rust_mut().credential_generation =
+                self.as_ref().rust().credential_generation.wrapping_add(1);
+        }
         let connection_ok = *self.as_ref().connection_ok();
         self.as_mut().set_busy(true);
         self.as_mut().set_message(qstring("Saving settings…"));
@@ -582,6 +643,8 @@ impl qobject::SettingsModel {
         if *self.as_ref().busy() {
             return;
         }
+        self.as_mut().rust_mut().credential_generation =
+            self.as_ref().rust().credential_generation.wrapping_add(1);
         let settings = match self.as_ref().settings_snapshot() {
             Ok(settings) => settings,
             Err(error) => {
@@ -643,6 +706,8 @@ impl qobject::SettingsModel {
         if *self.as_ref().busy() {
             return;
         }
+        self.as_mut().rust_mut().credential_generation =
+            self.as_ref().rust().credential_generation.wrapping_add(1);
         self.as_mut().set_busy(true);
         self.as_mut().set_connection_ok(false);
         let qt_thread = self.as_ref().qt_thread();
@@ -2117,14 +2182,12 @@ fn controller_profile_option(
 
 fn load_settings() -> anyhow::Result<(
     AppSettings,
-    bool,
     Option<settings::QbittorrentConnectionTest>,
     PathBuf,
     Option<profile_backup::ProfileSummary>,
 )> {
     let store = SettingsStore::open_default()?;
     let settings = store.load()?;
-    let password_saved = settings::load_password()?.is_some();
     let connection_test = store.qbittorrent_connection_test()?;
     let restored_profile = match profile_backup::take_applied_notice(store.path()) {
         Ok(summary) => summary,
@@ -2135,7 +2198,6 @@ fn load_settings() -> anyhow::Result<(
     };
     Ok((
         settings,
-        password_saved,
         connection_test,
         store.path().to_owned(),
         restored_profile,

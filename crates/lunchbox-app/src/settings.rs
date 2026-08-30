@@ -18,6 +18,7 @@ const QBITTORRENT_KEYRING_ACCOUNT: &str = "qbittorrent-password";
 const STEAMGRIDDB_KEYRING_ACCOUNT: &str = "steamgriddb-api-key";
 const IGDB_KEYRING_ACCOUNT: &str = "igdb-twitch-credentials";
 const EMUMOVIES_KEYRING_ACCOUNT: &str = "emumovies-credentials";
+const SCREENSCRAPER_KEYRING_ACCOUNT: &str = "screenscraper-credentials";
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -3712,6 +3713,40 @@ struct EmuMoviesCredentials {
     password: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ScreenScraperCredentials {
+    pub developer_id: String,
+    pub developer_password: String,
+    pub user_id: Option<String>,
+    pub user_password: Option<String>,
+}
+
+impl ScreenScraperCredentials {
+    pub fn validated(
+        developer_id: &str,
+        developer_password: &str,
+        user_id: &str,
+        user_password: &str,
+    ) -> Result<Self> {
+        let developer_id = developer_id.trim();
+        let developer_password = developer_password.trim();
+        let user_id = user_id.trim();
+        let user_password = user_password.trim();
+        if developer_id.is_empty() || developer_password.is_empty() {
+            bail!("both the ScreenScraper developer ID and developer password are required");
+        }
+        if user_id.is_empty() != user_password.is_empty() {
+            bail!("enter both ScreenScraper member fields or leave both blank");
+        }
+        Ok(Self {
+            developer_id: developer_id.to_owned(),
+            developer_password: developer_password.to_owned(),
+            user_id: (!user_id.is_empty()).then(|| user_id.to_owned()),
+            user_password: (!user_password.is_empty()).then(|| user_password.to_owned()),
+        })
+    }
+}
+
 pub fn load_emumovies_credentials() -> Result<Option<(String, String)>> {
     let Some(encoded) = load_secret(EMUMOVIES_KEYRING_ACCOUNT, "EmuMovies credentials")? else {
         return Ok(None);
@@ -3739,6 +3774,53 @@ pub fn save_emumovies_credentials(username: &str, password: &str) -> Result<()> 
     })
     .context("encoding EmuMovies credentials")?;
     save_secret(EMUMOVIES_KEYRING_ACCOUNT, &encoded, "EmuMovies credentials")
+}
+
+pub fn load_screenscraper_credentials() -> Result<Option<ScreenScraperCredentials>> {
+    let Some(encoded) = load_secret(SCREENSCRAPER_KEYRING_ACCOUNT, "ScreenScraper credentials")?
+    else {
+        return Ok(None);
+    };
+    let credentials: ScreenScraperCredentials =
+        serde_json::from_str(&encoded).context("decoding ScreenScraper credentials")?;
+    Ok(Some(ScreenScraperCredentials::validated(
+        &credentials.developer_id,
+        &credentials.developer_password,
+        credentials.user_id.as_deref().unwrap_or_default(),
+        credentials.user_password.as_deref().unwrap_or_default(),
+    )?))
+}
+
+pub fn save_screenscraper_credentials(
+    developer_id: &str,
+    developer_password: &str,
+    user_id: &str,
+    user_password: &str,
+) -> Result<()> {
+    if developer_id.trim().is_empty()
+        && developer_password.trim().is_empty()
+        && user_id.trim().is_empty()
+        && user_password.trim().is_empty()
+    {
+        return save_secret(
+            SCREENSCRAPER_KEYRING_ACCOUNT,
+            "",
+            "ScreenScraper credentials",
+        );
+    }
+    let credentials = ScreenScraperCredentials::validated(
+        developer_id,
+        developer_password,
+        user_id,
+        user_password,
+    )?;
+    let encoded =
+        serde_json::to_string(&credentials).context("encoding ScreenScraper credentials")?;
+    save_secret(
+        SCREENSCRAPER_KEYRING_ACCOUNT,
+        &encoded,
+        "ScreenScraper credentials",
+    )
 }
 
 pub fn load_igdb_credentials() -> Result<Option<(String, String)>> {
@@ -7557,6 +7639,19 @@ mod tests {
             ..AppSettings::default()
         };
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn screenscraper_credentials_require_complete_developer_and_optional_member_pairs() {
+        assert!(ScreenScraperCredentials::validated("", "secret", "", "").is_err());
+        assert!(ScreenScraperCredentials::validated("developer", "", "", "").is_err());
+        assert!(ScreenScraperCredentials::validated("developer", "secret", "member", "").is_err());
+        let credentials =
+            ScreenScraperCredentials::validated(" developer ", " secret ", "", "").unwrap();
+        assert_eq!(credentials.developer_id, "developer");
+        assert_eq!(credentials.developer_password, "secret");
+        assert_eq!(credentials.user_id, None);
+        assert_eq!(credentials.user_password, None);
     }
 
     #[test]

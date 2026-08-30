@@ -937,6 +937,7 @@ pub enum MediaFetchOutcome {
         requested_kind: ArtworkKind,
         fetched_kind: ArtworkKind,
         path: PathBuf,
+        provider: String,
         force: bool,
     },
     Missing {
@@ -1087,22 +1088,12 @@ fn fetch_media(
 ) -> MediaFetchOutcome {
     if !request.force && negative_cache_is_fresh(root, request.database_id, request.requested_kind)
     {
-        return MediaFetchOutcome::Missing {
-            request_id: request.request_id,
-            database_id: request.database_id,
-            requested_kind: request.requested_kind,
-            force: request.force,
-        };
+        return missing_or_linked_screenscraper(root, request);
     }
 
     let Some(platform) = libretro_platform_name(&request.platform) else {
         let _ = write_negative_cache(root, &request, "platform is not provided by LibRetro");
-        return MediaFetchOutcome::Missing {
-            request_id: request.request_id,
-            database_id: request.database_id,
-            requested_kind: request.requested_kind,
-            force: request.force,
-        };
+        return missing_or_linked_screenscraper(root, request);
     };
 
     for fetched_kind in retrieval_kinds(request.requested_kind, request.exact_only) {
@@ -1117,6 +1108,7 @@ fn fetch_media(
                 requested_kind: request.requested_kind,
                 fetched_kind,
                 path: output,
+                provider: "libretro".to_owned(),
                 force: false,
             };
         }
@@ -1144,6 +1136,7 @@ fn fetch_media(
                                 requested_kind: request.requested_kind,
                                 fetched_kind,
                                 path: output,
+                                provider: "libretro".to_owned(),
                                 force: request.force,
                             };
                         }
@@ -1173,6 +1166,35 @@ fn fetch_media(
     }
 
     let _ = write_negative_cache(root, &request, "no matching LibRetro thumbnail");
+    missing_or_linked_screenscraper(root, request)
+}
+
+fn missing_or_linked_screenscraper(root: &Path, request: MediaFetchRequest) -> MediaFetchOutcome {
+    if request.force {
+        return missing_outcome(request);
+    }
+    match fetch_linked_screenscraper(root, &request) {
+        Ok(Some((fetched_kind, path))) => MediaFetchOutcome::Found {
+            request_id: request.request_id,
+            database_id: request.database_id,
+            requested_kind: request.requested_kind,
+            fetched_kind,
+            path,
+            provider: "screenscraper".to_owned(),
+            force: false,
+        },
+        Ok(None) => missing_outcome(request),
+        Err(error) => MediaFetchOutcome::Failed {
+            request_id: request.request_id,
+            database_id: request.database_id,
+            requested_kind: request.requested_kind,
+            error: format!("reviewed ScreenScraper fallback failed: {error}"),
+            force: false,
+        },
+    }
+}
+
+fn missing_outcome(request: MediaFetchRequest) -> MediaFetchOutcome {
     MediaFetchOutcome::Missing {
         request_id: request.request_id,
         database_id: request.database_id,
@@ -1181,7 +1203,61 @@ fn fetch_media(
     }
 }
 
-fn retrieval_kinds(requested: ArtworkKind, exact_only: bool) -> Vec<ArtworkKind> {
+fn fetch_linked_screenscraper(
+    root: &Path,
+    request: &MediaFetchRequest,
+) -> Result<Option<(ArtworkKind, PathBuf)>> {
+    let Some(link) = crate::settings::SettingsStore::open_default()?
+        .media_provider_game_link("screenscraper", request.database_id)?
+    else {
+        return Ok(None);
+    };
+    if screenscraper_negative_cache_is_fresh(
+        root,
+        request.database_id,
+        request.requested_kind,
+        request.exact_only,
+    ) {
+        return Ok(None);
+    }
+    // Most catalog records are not linked. Check the small indexed SQLite
+    // identity table before touching the operating-system credential store so
+    // ordinary visible-media misses remain cheap.
+    let Some(credentials) = crate::screenscraper::configured_credentials()? else {
+        return Ok(None);
+    };
+    let game_id = link
+        .provider_game_id
+        .parse::<i64>()
+        .ok()
+        .filter(|game_id| *game_id > 0)
+        .with_context(|| {
+            format!(
+                "reviewed ScreenScraper link for database ID {} has an invalid provider game ID",
+                request.database_id
+            )
+        })?;
+    let fetched = crate::screenscraper::Client::new(credentials)?.download_linked_artwork(
+        game_id,
+        root,
+        request.database_id,
+        request.requested_kind,
+        request.exact_only,
+    )?;
+    if fetched.is_some() {
+        let _ = fs::remove_file(screenscraper_negative_cache_path(
+            root,
+            request.database_id,
+            request.requested_kind,
+            request.exact_only,
+        ));
+    } else {
+        write_screenscraper_negative_cache(root, request)?;
+    }
+    Ok(fetched)
+}
+
+pub(crate) fn retrieval_kinds(requested: ArtworkKind, exact_only: bool) -> Vec<ArtworkKind> {
     if exact_only {
         vec![requested]
     } else {
@@ -1314,8 +1390,40 @@ fn negative_cache_path(root: &Path, database_id: i64, kind: ArtworkKind) -> Path
         .join(format!(".missing-{}", kind.key()))
 }
 
+fn screenscraper_negative_cache_path(
+    root: &Path,
+    database_id: i64,
+    kind: ArtworkKind,
+    exact_only: bool,
+) -> PathBuf {
+    root.join(format!("lb-{database_id}"))
+        .join("screenscraper")
+        .join(format!(
+            ".missing-{}-{}",
+            kind.key(),
+            if exact_only { "exact" } else { "fallback" }
+        ))
+}
+
 fn negative_cache_is_fresh(root: &Path, database_id: i64, kind: ArtworkKind) -> bool {
-    let path = negative_cache_path(root, database_id, kind);
+    cache_marker_is_fresh(&negative_cache_path(root, database_id, kind))
+}
+
+fn screenscraper_negative_cache_is_fresh(
+    root: &Path,
+    database_id: i64,
+    kind: ArtworkKind,
+    exact_only: bool,
+) -> bool {
+    cache_marker_is_fresh(&screenscraper_negative_cache_path(
+        root,
+        database_id,
+        kind,
+        exact_only,
+    ))
+}
+
+fn cache_marker_is_fresh(path: &Path) -> bool {
     let Some(modified) = fs::metadata(&path)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
@@ -1323,6 +1431,30 @@ fn negative_cache_is_fresh(root: &Path, database_id: i64, kind: ArtworkKind) -> 
         return false;
     };
     modified.elapsed().unwrap_or(Duration::ZERO) < NEGATIVE_CACHE_TTL
+}
+
+fn write_screenscraper_negative_cache(root: &Path, request: &MediaFetchRequest) -> Result<()> {
+    let path = screenscraper_negative_cache_path(
+        root,
+        request.database_id,
+        request.requested_kind,
+        request.exact_only,
+    );
+    let parent = path
+        .parent()
+        .context("ScreenScraper negative artwork cache path has no parent directory")?;
+    fs::create_dir_all(parent).with_context(|| {
+        format!(
+            "creating ScreenScraper negative artwork cache directory {}",
+            parent.display()
+        )
+    })?;
+    fs::write(&path, b"no matching reviewed ScreenScraper media\n").with_context(|| {
+        format!(
+            "writing ScreenScraper negative artwork cache marker {}",
+            path.display()
+        )
+    })
 }
 
 fn write_negative_cache(root: &Path, request: &MediaFetchRequest, reason: &str) -> Result<()> {
@@ -1795,6 +1927,39 @@ mod tests {
             directory.path(),
             42,
             ArtworkKind::Screenshot
+        ));
+    }
+
+    #[test]
+    fn screenscraper_negative_cache_separates_exact_and_fallback_requests() {
+        let directory = tempfile::tempdir().unwrap();
+        let request = MediaFetchRequest {
+            request_id: "probe".to_owned(),
+            database_id: 42,
+            title: "Probe".to_owned(),
+            platform: "Nintendo Entertainment System".to_owned(),
+            requested_kind: ArtworkKind::BoxFront,
+            force: false,
+            exact_only: true,
+        };
+        write_screenscraper_negative_cache(directory.path(), &request).unwrap();
+        assert!(screenscraper_negative_cache_is_fresh(
+            directory.path(),
+            42,
+            ArtworkKind::BoxFront,
+            true,
+        ));
+        assert!(!screenscraper_negative_cache_is_fresh(
+            directory.path(),
+            42,
+            ArtworkKind::BoxFront,
+            false,
+        ));
+        assert!(!screenscraper_negative_cache_is_fresh(
+            directory.path(),
+            42,
+            ArtworkKind::Screenshot,
+            true,
         ));
     }
 

@@ -480,8 +480,8 @@ each response is size/signature validated and atomically published into only
 LibRetro's owned cache path. Provider misses and transfer failures stay visible
 for retry or per-game Find Artwork review.
 
-The unified native **Find Artwork** flow supports SteamGridDB, IGDB, EmuMovies,
-and an explicit Web source. Provider credentials live only in the operating-system
+The unified native **Find Artwork** flow supports SteamGridDB, IGDB,
+ScreenScraper, EmuMovies, and an explicit Web source. Provider credentials live only in the operating-system
 credential store. Search results are always review candidates: the user chooses
 the exact provider game before Lunchbox persists its stable provider ID, then
 chooses one individual artwork file. SteamGridDB supplies backgrounds, covers,
@@ -492,11 +492,19 @@ artwork uses a focused system-browser
 search rather than scraping: the user supplies one exact HTTPS image URL or
 local file, Lunchbox validates it off-thread in a unique quarantine, previews
 only that local validated copy, and publishes those exact bytes only after
-explicit confirmation. All three routes use bounded PNG/JPEG/WebP signature
+explicit confirmation. All reviewed image routes use bounded PNG/JPEG/WebP signature
 validation and atomic provider-owned cache publication, so replacing one source
 and media kind cannot delete another provider's media. IGDB access is suitable
 for non-commercial use unless the distributor has arranged the required
 commercial partnership.
+
+ScreenScraper is optional and appears only for authorized WebAPI v2 users. Its
+developer/member credentials may come from the native credential store or
+runtime environment. Lunchbox never accepts a title search as identity: the
+user first reviews and stores one exact positive provider game ID. Once linked,
+missing visible artwork may use that ID to select the highest-priority safe
+regional candidate automatically after LibRetro misses; unlinked games never
+trigger a ScreenScraper title search.
 
 EmuMovies reuses the legacy Rust FTP client rather than inventing a different
 backend contract. Existing members can save and test their forum credentials in

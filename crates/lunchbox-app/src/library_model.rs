@@ -4719,7 +4719,7 @@ impl qobject::LibraryModel {
             Ok(queue) => {
                 self.as_mut().rust_mut().media_fetch_queue = Some(queue);
                 self.as_mut().set_media_fetch_message(qstring(
-                    "On-demand LibRetro artwork is ready; visible games load first.",
+                    "On-demand artwork is ready; visible games try LibRetro and reviewed ScreenScraper links first.",
                 ));
             }
             Err(error) => {
@@ -4759,6 +4759,7 @@ impl qobject::LibraryModel {
             MediaFetchOutcome::Found {
                 fetched_kind,
                 path,
+                provider,
                 force,
                 ..
             } => {
@@ -4766,7 +4767,7 @@ impl qobject::LibraryModel {
                     database_id,
                     fetched_kind,
                     path,
-                    "libretro",
+                    &provider,
                 );
                 if inserted || force {
                     let games = self.as_ref().rust().media.games.len();
@@ -4778,9 +4779,10 @@ impl qobject::LibraryModel {
                     let revision = self.as_ref().media_revision().wrapping_add(1);
                     self.as_mut().set_media_revision(revision);
                     self.as_mut().set_media_fetch_message(qstring(format!(
-                        "{} {} artwork from LibRetro.",
+                        "{} {} artwork from {}.",
                         if force { "Refreshed" } else { "Cached" },
-                        fetched_kind.key().replace('-', " ")
+                        fetched_kind.key().replace('-', " "),
+                        crate::media::provider_display_name(&provider)
                     )));
                     if *self.as_ref().media_fetch_probe() {
                         let elapsed = self

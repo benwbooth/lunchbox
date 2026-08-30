@@ -67,6 +67,7 @@ fn main() {
                 "qml/HeaderButton.qml",
                 "qml/MetadataField.qml",
                 "qml/MediaDownloadStatus.qml",
+                "qml/ScreenScraperSettings.qml",
                 "qml/SidebarNavButton.qml",
                 "qml/SettingsNavButton.qml",
                 "qml/StatusPill.qml",
@@ -91,6 +92,7 @@ fn main() {
     .file("src/library_model.rs")
     .file("src/media_audit_model.rs")
     .file("src/local_import_model.rs")
+    .file("src/screenscraper_model.rs")
     .file("src/settings_model.rs")
     .file("src/steamgriddb_model.rs")
     .file("src/web_artwork_model.rs")

@@ -1015,9 +1015,10 @@ launch argument profiles and replacement templates are native for ordinary ROM
 and prepared-PC plans, with contextual and searchable cross-emulator editors
 plus a shell-free placeholder compiler.
 Cached artwork rotation and safe explicit LibRetro refresh are also native.
-SteamGridDB, IGDB, EmuMovies FTP, and explicit Web artwork are native behind one Find Artwork
+SteamGridDB, IGDB, ScreenScraper, EmuMovies FTP, and explicit Web artwork are native behind one Find Artwork
 workflow. Settings
-stores the SteamGridDB key and the IGDB/Twitch client-credentials payload in the
+stores the SteamGridDB key, IGDB/Twitch client-credentials payload, and optional
+ScreenScraper WebAPI v2 credentials in the
 native credential store, never SQLite. A provider search returns candidates
 only; a human must choose the exact game before that provider's stable ID is
 recorded against the positive LaunchBox catalog ID. SteamGridDB then presents
@@ -1026,7 +1027,11 @@ screenshots using an in-memory cached Twitch application token. Both providers
 use the same 16 MiB, HTTPS-only (except loopback fixtures), PNG/JPEG/WebP
 signature-validating publisher and atomically replace only their own media kind.
 IGDB attribution and the non-commercial/commercial-partnership boundary are
-visible in Settings.
+visible in Settings. ScreenScraper setup is explicitly authorization-gated and
+links a positive provider game ID only after review. The ordinary visible-media
+worker may use that reviewed ID as a bounded fallback after a LibRetro miss; it
+never performs an automatic ScreenScraper title search, and forced LibRetro
+repairs remain provider-specific.
 
 Web artwork deliberately does not reproduce the legacy DuckDuckGo first-result
 scraper. The system browser receives a category-specific query; Lunchbox accepts

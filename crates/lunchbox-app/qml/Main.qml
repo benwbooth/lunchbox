@@ -21,6 +21,7 @@ ApplicationWindow {
            || profileBackupUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
+           || settingsUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
@@ -33,12 +34,12 @@ ApplicationWindow {
             || profileBackupUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
+            || settingsUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
     title: "Lunchbox"
     color: palette.window
-    Component.onCompleted: emuMovies.initialize()
 
     readonly property color ink: "#f4f7fb"
     readonly property color muted: "#8d99aa"
@@ -278,9 +279,11 @@ ApplicationWindow {
                                                        : igdbUiProbe ? "igdb" : "steamgriddb"
     readonly property var artworkProviderModel: artworkProvider === "websearch" ? webArtwork
                                                : artworkProvider === "emumovies" ? emuMovies
+                                               : artworkProvider === "screenscraper" ? screenScraper
                                                : artworkProvider === "igdb" ? igdb : steamGridDb
     readonly property string artworkProviderName: artworkProvider === "websearch" ? "Web"
                                                      : artworkProvider === "emumovies" ? "EmuMovies"
+                                                     : artworkProvider === "screenscraper" ? "ScreenScraper"
                                                      : artworkProvider === "igdb" ? "IGDB" : "SteamGridDB"
     readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
@@ -369,6 +372,7 @@ ApplicationWindow {
         return provider === "steamgriddb" ? !steamGridDb.api_key_saved
              : provider === "igdb" ? !igdb.credentials_saved
              : provider === "emumovies" ? !emuMovies.credentials_saved
+             : provider === "screenscraper" ? !screenScraper.credentials_saved
              : false
     }
 
@@ -386,6 +390,7 @@ ApplicationWindow {
         return requestedSettingsSection === "steamgriddb" ? steamGridDbSettingsSection
              : requestedSettingsSection === "igdb" ? igdbSettingsSection
              : requestedSettingsSection === "emumovies" ? emuMoviesSettingsSection
+             : requestedSettingsSection === "screenscraper" ? screenScraperSettingsSection
              : requestedSettingsSection === "qbittorrent" ? qbittorrentSettingsSection
              : null
     }
@@ -401,6 +406,8 @@ ApplicationWindow {
             igdbClientId.forceActiveFocus()
         else if (requestedSettingsSection === "emumovies")
             emuMoviesUsername.forceActiveFocus()
+        else if (requestedSettingsSection === "screenscraper")
+            screenScraperSettingsSection.focusPrimary()
     }
 
     function positionSettingsItem(item) {
@@ -1440,6 +1447,10 @@ ApplicationWindow {
     Connections {
         target: appSettings
         function onInitializedChanged() {
+            if (appSettings.initialized) {
+                emuMovies.initialize()
+                screenScraper.initialize()
+            }
             if (appSettings.initialized && root.shouldShowOnboarding())
                 Qt.callLater(onboardingPage.open)
             if (root.settingsSeedingProbe && appSettings.initialized
@@ -1636,6 +1647,10 @@ ApplicationWindow {
         id: emuMovies
     }
 
+    ScreenScraperModel {
+        id: screenScraper
+    }
+
     WebArtworkModel {
         id: webArtwork
     }
@@ -1696,6 +1711,14 @@ ApplicationWindow {
         function onArtwork_countChanged() {
             if (root.igdbUiProbe && igdb.artwork_count > 0)
                 igdbScreenshotTimer.restart()
+        }
+    }
+
+    Connections {
+        target: screenScraper
+        function onPublished_revisionChanged() {
+            if (screenScraper.published_revision > 0)
+                library.refresh_media()
         }
     }
 
@@ -6106,6 +6129,21 @@ ApplicationWindow {
         onTriggered: {
             root.positionRequestedSettingsSection()
             settingsUiScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        interval: 20000
+        running: root.settingsUiProbe
+        repeat: false
+        onTriggered: {
+            console.warn("LUNCHBOX_SETTINGS_UI_FAILED timeout visible="
+                         + settingsDialog.visible + " libraryReady="
+                         + library.ready + " settingsInitialized="
+                         + appSettings.initialized + " message="
+                         + appSettings.message + " section="
+                         + root.settingsSectionUiProbe)
+            Qt.exit(2)
         }
     }
 
@@ -16002,6 +16040,12 @@ ApplicationWindow {
                     onClicked: root.switchArtworkProvider("igdb")
                 }
                 HeaderButton {
+                    text: "ScreenScraper"
+                    active: root.artworkProvider === "screenscraper"
+                    enabled: !root.artworkProviderModel.busy
+                    onClicked: root.switchArtworkProvider("screenscraper")
+                }
+                HeaderButton {
                     text: "EmuMovies"
                     active: root.artworkProvider === "emumovies"
                     enabled: !root.artworkProviderModel.busy
@@ -16019,6 +16063,8 @@ ApplicationWindow {
                           ? "Explicit review · no account"
                           : root.artworkProvider === "emumovies"
                           ? "Member FTP media library"
+                          : root.artworkProvider === "screenscraper"
+                          ? "Approved API · reviewed links"
                           : root.artworkProvider === "igdb"
                           ? "Powered by IGDB"
                           : "Community artwork via SteamGridDB"
@@ -16041,6 +16087,8 @@ ApplicationWindow {
                           ? "Lunchbox never scrapes or silently chooses a web result. Open a focused browser search, then review one exact HTTPS image or local file before it can enter your cache."
                           : root.artworkProvider === "emumovies"
                           ? "Legacy Lunchbox matches the selected catalog title and platform against EmuMovies' FTP archive packs. The matching and cache behavior is preserved in Rust and runs outside the Qt thread."
+                          : root.artworkProvider === "screenscraper"
+                          ? "ScreenScraper is an optional source for authorized API integrations. Lunchbox never infers identity: choose the exact provider game first, then review one of its media files."
                           : "Search results never establish identity automatically. Choose the exact "
                             + root.artworkProviderName
                             + " game, then choose one artwork file. Lunchbox stores a separate reviewed link for each source."
@@ -16055,6 +16103,7 @@ ApplicationWindow {
                 spacing: 8
                 visible: root.artworkProvider === "steamgriddb"
                          || root.artworkProvider === "igdb"
+                         || root.artworkProvider === "screenscraper"
                 TextField {
                     id: steamGridDbSearch
                     Layout.fillWidth: true
@@ -16204,7 +16253,8 @@ ApplicationWindow {
                     }
                     Button {
                         visible: (root.artworkProvider === "steamgriddb"
-                                  || root.artworkProvider === "igdb")
+                                  || root.artworkProvider === "igdb"
+                                  || root.artworkProvider === "screenscraper")
                                  && root.artworkProviderModel.selected_game_name.length > 0
                         text: "Change game"
                         enabled: !root.artworkProviderModel.busy
@@ -16674,6 +16724,7 @@ ApplicationWindow {
             steamGridDb.initialize()
             igdb.initialize()
             emuMovies.initialize()
+            screenScraper.initialize()
             Qt.callLater(function() {
                 Qt.callLater(root.positionRequestedSettingsSection)
             })
@@ -16777,6 +16828,7 @@ ApplicationWindow {
                         active: root.requestedSettingsSection === "steamgriddb"
                                 || root.requestedSettingsSection === "igdb"
                                 || root.requestedSettingsSection === "emumovies"
+                                || root.requestedSettingsSection === "screenscraper"
                         onClicked: root.positionSettingsItem(steamGridDbSettingsSection)
                     }
                     SettingsNavButton {
@@ -17444,6 +17496,17 @@ ApplicationWindow {
                         currentIndex: appSettings.version_preference === "original" ? 1 : 0
                         onActivated: appSettings.version_preference = currentValue
                     }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                ScreenScraperSettings {
+                    id: screenScraperSettingsSection
+                    Layout.fillWidth: true
+                    providerModel: screenScraper
+                    ink: root.ink
+                    muted: root.muted
+                    line: root.line
+                    accent: root.accent
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }

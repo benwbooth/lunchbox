@@ -39,6 +39,8 @@ mod provider_image;
 mod qbittorrent;
 mod region_priority;
 mod retroarch_shaders;
+mod screenscraper;
+pub mod screenscraper_model;
 mod settings;
 pub mod settings_model;
 mod steamgriddb;
