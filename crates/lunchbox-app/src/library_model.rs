@@ -315,6 +315,15 @@ pub mod qobject {
         fn request_visible_media(self: Pin<&mut LibraryModel>, game_uid: QString);
 
         #[qinvokable]
+        fn request_game_video(self: Pin<&mut LibraryModel>, game_uid: QString);
+
+        #[qinvokable]
+        fn retry_game_video(self: Pin<&mut LibraryModel>, game_uid: QString);
+
+        #[qinvokable]
+        fn automatic_video_state(self: &LibraryModel, game_uid: QString) -> QString;
+
+        #[qinvokable]
         fn set_emumovies_configured(self: Pin<&mut LibraryModel>, configured: bool);
 
         #[qinvokable]
@@ -885,10 +894,12 @@ pub struct LibraryModelRust {
     media_fetch_started: Option<std::time::Instant>,
     media_fetch_queue: Option<MediaFetchQueue>,
     media_requests: HashSet<(i64, ArtworkKind)>,
+    emumovies_state_known: bool,
     emumovies_configured: bool,
     automatic_video_queue: VecDeque<AutomaticVideoRequest>,
     automatic_video_pending: HashSet<String>,
     automatic_video_terminal: HashSet<String>,
+    automatic_video_unavailable: HashSet<String>,
     automatic_video_active: Option<AutomaticVideoRequest>,
     favorite_game_ids: Arc<HashSet<String>>,
     favorite_requests: HashSet<String>,
@@ -1079,10 +1090,12 @@ impl Default for LibraryModelRust {
             media_fetch_started: None,
             media_fetch_queue: None,
             media_requests: HashSet::new(),
+            emumovies_state_known: false,
             emumovies_configured: false,
             automatic_video_queue: VecDeque::new(),
             automatic_video_pending: HashSet::new(),
             automatic_video_terminal: HashSet::new(),
+            automatic_video_unavailable: HashSet::new(),
             automatic_video_active: None,
             favorite_game_ids: Arc::new(HashSet::new()),
             favorite_requests: HashSet::new(),
@@ -1233,6 +1246,48 @@ fn fetch_automatic_video(
         },
         Err(error) => AutomaticVideoOutcome::Missing(error.to_string()),
     }
+}
+
+fn emumovies_credentials_missing(error: &str) -> bool {
+    error.contains("no EmuMovies credentials are saved")
+        || error.contains("EmuMovies credentials not configured")
+}
+
+fn emumovies_video_unavailable(error: &str) -> bool {
+    error.contains("No video found") || error.contains("No video folder found")
+}
+
+fn automatic_video_state_for(
+    state_known: bool,
+    configured: bool,
+    active_game_uid: Option<&str>,
+    pending: &HashSet<String>,
+    terminal: &HashSet<String>,
+    unavailable: &HashSet<String>,
+    game_uid: &str,
+) -> &'static str {
+    if game_uid.trim().is_empty() {
+        return "idle";
+    }
+    if !state_known {
+        return "checking-setup";
+    }
+    if !configured {
+        return "setup-required";
+    }
+    if active_game_uid == Some(game_uid) {
+        return "downloading";
+    }
+    if pending.contains(game_uid) {
+        return "queued";
+    }
+    if unavailable.contains(game_uid) {
+        return "unavailable";
+    }
+    if terminal.contains(game_uid) {
+        return "ready";
+    }
+    "automatic"
 }
 
 fn prioritize_automatic_video_request(
@@ -2938,12 +2993,15 @@ impl qobject::LibraryModel {
     }
 
     pub fn set_emumovies_configured(mut self: Pin<&mut Self>, configured: bool) {
-        if self.as_ref().rust().emumovies_configured == configured {
+        let was_known = self.as_ref().rust().emumovies_state_known;
+        if was_known && self.as_ref().rust().emumovies_configured == configured {
             return;
         }
+        self.as_mut().rust_mut().emumovies_state_known = true;
         self.as_mut().rust_mut().emumovies_configured = configured;
         if configured {
             self.as_mut().rust_mut().automatic_video_terminal.clear();
+            self.as_mut().rust_mut().automatic_video_unavailable.clear();
             self.as_mut().set_media_setup_required(false);
             self.as_mut().set_media_fetch_message(qstring(
                 "Visible artwork and gameplay videos download automatically.",
@@ -2952,20 +3010,47 @@ impl qobject::LibraryModel {
             self.as_mut().set_media_revision(revision);
             self.as_mut().start_next_automatic_video();
         } else {
-            while let Some(request) = self.as_mut().rust_mut().automatic_video_queue.pop_front() {
-                self.as_mut()
-                    .rust_mut()
-                    .automatic_video_pending
-                    .remove(&request.game_uid);
-            }
+            self.as_mut().set_media_setup_required(true);
+            self.as_mut().set_media_fetch_message(qstring(
+                "Add an EmuMovies account in Settings to enable automatic gameplay videos.",
+            ));
             self.as_mut().update_media_pending_count();
         }
     }
 
     pub fn request_visible_media(mut self: Pin<&mut Self>, game_uid: QString) {
-        let game_uid = game_uid.to_string();
+        self.as_mut()
+            .request_automatic_video_for_game(game_uid.to_string(), false, false);
+    }
+
+    pub fn request_game_video(mut self: Pin<&mut Self>, game_uid: QString) {
+        self.as_mut()
+            .request_automatic_video_for_game(game_uid.to_string(), true, false);
+    }
+
+    pub fn retry_game_video(mut self: Pin<&mut Self>, game_uid: QString) {
+        self.as_mut()
+            .request_automatic_video_for_game(game_uid.to_string(), true, true);
+    }
+
+    fn request_automatic_video_for_game(
+        mut self: Pin<&mut Self>,
+        game_uid: String,
+        prioritize: bool,
+        retry_terminal: bool,
+    ) {
         if game_uid.trim().is_empty() {
             return;
+        }
+        if retry_terminal {
+            self.as_mut()
+                .rust_mut()
+                .automatic_video_terminal
+                .remove(&game_uid);
+            self.as_mut()
+                .rust_mut()
+                .automatic_video_unavailable
+                .remove(&game_uid);
         }
         let Some(game_index) = self
             .as_ref()
@@ -2989,8 +3074,24 @@ impl qobject::LibraryModel {
                 title: game.title,
                 platform: game.platform,
             },
-            false,
+            prioritize,
         );
+    }
+
+    pub fn automatic_video_state(&self, game_uid: QString) -> QString {
+        let game_uid = game_uid.to_string();
+        qstring(automatic_video_state_for(
+            self.rust().emumovies_state_known,
+            self.rust().emumovies_configured,
+            self.rust()
+                .automatic_video_active
+                .as_ref()
+                .map(|request| request.game_uid.as_str()),
+            &self.rust().automatic_video_pending,
+            &self.rust().automatic_video_terminal,
+            &self.rust().automatic_video_unavailable,
+            &game_uid,
+        ))
     }
 
     fn queue_automatic_video(
@@ -3065,6 +3166,21 @@ impl qobject::LibraryModel {
 
     fn start_next_automatic_video(mut self: Pin<&mut Self>) {
         if self.as_ref().rust().automatic_video_active.is_some() {
+            return;
+        }
+        if !self.as_ref().rust().emumovies_state_known {
+            self.as_mut().set_media_fetch_message(qstring(
+                "Checking EmuMovies setup before downloading gameplay videos…",
+            ));
+            self.as_mut().update_media_pending_count();
+            return;
+        }
+        if !self.as_ref().rust().emumovies_configured {
+            self.as_mut().set_media_setup_required(true);
+            self.as_mut().set_media_fetch_message(qstring(
+                "Add an EmuMovies account in Settings to enable automatic gameplay videos.",
+            ));
+            self.as_mut().update_media_pending_count();
             return;
         }
         let Some(request) = self.as_mut().rust_mut().automatic_video_queue.pop_front() else {
@@ -3171,16 +3287,16 @@ impl qobject::LibraryModel {
             .rust_mut()
             .automatic_video_pending
             .remove(&request.game_uid);
-        self.as_mut()
-            .rust_mut()
-            .automatic_video_terminal
-            .insert(request.game_uid.clone());
         self.as_mut().set_media_active_title(QString::default());
         self.as_mut().set_media_active_kind(QString::default());
         self.as_mut().set_media_active_progress(-1);
 
         match outcome {
             AutomaticVideoOutcome::Ready { path, downloaded } => {
+                self.as_mut()
+                    .rust_mut()
+                    .automatic_video_terminal
+                    .insert(request.game_uid.clone());
                 if downloaded {
                     let count = self.as_ref().media_downloaded_count().saturating_add(1);
                     self.as_mut().set_media_downloaded_count(count);
@@ -3202,23 +3318,22 @@ impl qobject::LibraryModel {
                 );
             }
             AutomaticVideoOutcome::Missing(error) => {
-                if error.contains("no EmuMovies credentials are saved") {
+                if emumovies_credentials_missing(&error) {
+                    self.as_mut().rust_mut().emumovies_state_known = true;
                     self.as_mut().rust_mut().emumovies_configured = false;
                     self.as_mut().set_media_setup_required(true);
                     self.as_mut().set_media_fetch_message(qstring(
                         "EmuMovies needs an account. Open Settings to enable automatic gameplay videos.",
                     ));
-                    while let Some(queued) =
-                        self.as_mut().rust_mut().automatic_video_queue.pop_front()
-                    {
-                        self.as_mut()
-                            .rust_mut()
-                            .automatic_video_pending
-                            .remove(&queued.game_uid);
-                    }
-                } else if error.contains("No video found")
-                    || error.contains("No video folder found")
-                {
+                } else if emumovies_video_unavailable(&error) {
+                    self.as_mut()
+                        .rust_mut()
+                        .automatic_video_terminal
+                        .insert(request.game_uid.clone());
+                    self.as_mut()
+                        .rust_mut()
+                        .automatic_video_unavailable
+                        .insert(request.game_uid.clone());
                     let count = self.as_ref().media_missing_count().saturating_add(1);
                     self.as_mut().set_media_missing_count(count);
                     self.as_mut().set_media_fetch_message(qstring(format!(
@@ -3226,6 +3341,8 @@ impl qobject::LibraryModel {
                         request.title
                     )));
                 } else {
+                    // Transient network and FTP errors remain retryable. A later hover
+                    // or explicit retry must not be suppressed for the whole session.
                     let count = self.as_ref().media_error_count().saturating_add(1);
                     self.as_mut().set_media_error_count(count);
                     self.as_mut().set_media_fetch_message(qstring(format!(
@@ -5636,5 +5753,93 @@ mod tests {
             ["hovered", "already-next", "middle"]
         );
         assert!(!prioritize_automatic_video_request(&mut queue, "missing"));
+    }
+
+    #[test]
+    fn automatic_video_state_distinguishes_setup_queue_and_final_results() {
+        let pending = HashSet::from(["queued".to_owned()]);
+        let terminal = HashSet::from(["ready".to_owned(), "missing".to_owned()]);
+        let unavailable = HashSet::from(["missing".to_owned()]);
+
+        assert_eq!(
+            automatic_video_state_for(
+                false,
+                false,
+                None,
+                &pending,
+                &terminal,
+                &unavailable,
+                "queued",
+            ),
+            "checking-setup"
+        );
+        assert_eq!(
+            automatic_video_state_for(
+                true,
+                false,
+                None,
+                &pending,
+                &terminal,
+                &unavailable,
+                "queued",
+            ),
+            "setup-required"
+        );
+        assert_eq!(
+            automatic_video_state_for(
+                true,
+                true,
+                Some("active"),
+                &pending,
+                &terminal,
+                &unavailable,
+                "active",
+            ),
+            "downloading"
+        );
+        assert_eq!(
+            automatic_video_state_for(
+                true,
+                true,
+                None,
+                &pending,
+                &terminal,
+                &unavailable,
+                "queued",
+            ),
+            "queued"
+        );
+        assert_eq!(
+            automatic_video_state_for(
+                true,
+                true,
+                None,
+                &pending,
+                &terminal,
+                &unavailable,
+                "missing",
+            ),
+            "unavailable"
+        );
+        assert_eq!(
+            automatic_video_state_for(true, true, None, &pending, &terminal, &unavailable, "ready",),
+            "ready"
+        );
+    }
+
+    #[test]
+    fn only_definitive_emumovies_misses_become_terminal() {
+        assert!(emumovies_video_unavailable(
+            "No video found for the selected game"
+        ));
+        assert!(emumovies_video_unavailable(
+            "No video folder found for Nintendo Switch"
+        ));
+        assert!(!emumovies_video_unavailable(
+            "Failed to connect to EmuMovies FTP server"
+        ));
+        assert!(emumovies_credentials_missing(
+            "no EmuMovies credentials are saved; add them in Settings"
+        ));
     }
 }

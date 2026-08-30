@@ -730,14 +730,19 @@ inspection. The card uses Qt Multimedia for cross-platform playback and Qt's
 native URL handler for manuals; Rust never invokes a shell or constructs an
 OS-specific opener command.
 The desktop grid uses the same provider-ordered supplemental-media cache after
-a 520-ms pointer-hover or keyboard-focus delay. `LibraryModel` resolves the
+a 220-ms pointer-hover or keyboard-focus delay. `LibraryModel` resolves the
 exact stable UUID to the catalog's own positive database ID, performs the disk
 scan on a named worker, and accepts the result only when both its generation and
 requested UUID still match. The virtualized delegates contain only their
 `VideoOutput`; one root-level `MediaPlayer` and `AudioOutput` follow the active
 card. The player loops muted by default, the card exposes source provenance and
 an opt-in sound control, and every leave, focus change, open, ID change, or
-delegate destruction cancels the pending generation.
+delegate destruction cancels the pending generation. A bounded serial
+EmuMovies worker queues visible stable identities, moves hovered and selected
+games ahead of ordinary visible work, waits for credential initialization
+before starting FTP, and republishes a completed path to both the hover player
+and the selected-game media model. Definitive provider misses are remembered,
+while credential and transient FTP failures remain actionable and retryable.
 `--hover-preview-ui-probe --preview-video-fixture PATH --media-directory
 EMPTY_PATH` requires an explicit non-empty video fixture of at most 64 MiB,
 publishes it idempotently under the stable Super Mario Bros. cache identity,

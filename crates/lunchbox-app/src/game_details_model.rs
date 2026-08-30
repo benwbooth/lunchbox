@@ -318,6 +318,9 @@ pub mod qobject {
         fn reset_video_progress(self: Pin<&mut GameDetailsModel>, duration_ms: i32);
 
         #[qinvokable]
+        fn refresh_media(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
         fn download_manual(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
@@ -588,6 +591,7 @@ pub struct GameDetailsModelRust {
     related_games: Vec<RelatedGame>,
     files: Vec<TorrentFileCandidate>,
     details_generation: u64,
+    media_refresh_generation: u64,
     torrent_generation: u64,
     preparation_generation: u64,
     launch_generation: u64,
@@ -767,6 +771,7 @@ impl Default for GameDetailsModelRust {
             related_games: Vec::new(),
             files: Vec::new(),
             details_generation: 0,
+            media_refresh_generation: 0,
             torrent_generation: 0,
             preparation_generation: 0,
             launch_generation: 0,
@@ -1087,6 +1092,38 @@ struct LaunchStarted {
     activity_recorded: bool,
 }
 
+struct SupplementalMediaRefresh {
+    game_id: String,
+    media: crate::media::SupplementalMedia,
+    video_media_key: String,
+    video_progress: Option<crate::settings::MediaPlaybackProgress>,
+    manual_transfer: Option<crate::settings::MediaTransfer>,
+}
+
+fn load_supplemental_media_refresh(
+    game_id: &str,
+    database_id: i64,
+) -> anyhow::Result<SupplementalMediaRefresh> {
+    let media = crate::media::supplemental_media(game_id, database_id)?;
+    let manual_transfer = crate::media_acquisition::load_manual_transfer(game_id)?;
+    let (video_media_key, video_progress) = match media.video.as_ref() {
+        Some(video) => {
+            let media_key = crate::media::media_identity(&video.path)?;
+            let progress =
+                SettingsStore::open_default()?.media_playback_progress(game_id, &media_key)?;
+            (media_key, progress)
+        }
+        None => (String::new(), None),
+    };
+    Ok(SupplementalMediaRefresh {
+        game_id: game_id.to_owned(),
+        media,
+        video_media_key,
+        video_progress,
+        manual_transfer,
+    })
+}
+
 impl qobject::GameDetailsModel {
     pub fn select_game(
         mut self: Pin<&mut Self>,
@@ -1106,6 +1143,11 @@ impl qobject::GameDetailsModel {
         self.as_mut().invalidate_launch_state();
         self.as_mut().rust_mut().details_generation =
             self.as_ref().rust().details_generation.wrapping_add(1);
+        self.as_mut().rust_mut().media_refresh_generation = self
+            .as_ref()
+            .rust()
+            .media_refresh_generation
+            .wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
             self.as_ref().rust().torrent_generation.wrapping_add(1);
         self.as_mut().rust_mut().metadata_generation =
@@ -1155,6 +1197,11 @@ impl qobject::GameDetailsModel {
         self.as_mut().invalidate_launch_state();
         self.as_mut().rust_mut().details_generation =
             self.as_ref().rust().details_generation.wrapping_add(1);
+        self.as_mut().rust_mut().media_refresh_generation = self
+            .as_ref()
+            .rust()
+            .media_refresh_generation
+            .wrapping_add(1);
         self.as_mut().rust_mut().torrent_generation =
             self.as_ref().rust().torrent_generation.wrapping_add(1);
         self.as_mut().rust_mut().metadata_generation =
@@ -2175,6 +2222,70 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_manual_download_detail(qstring(detail));
         self.as_mut()
             .set_manual_download_message(qstring(transfer.message));
+    }
+
+    pub fn refresh_media(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().panel_open()
+            || *self.as_ref().loading()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        self.as_mut().rust_mut().media_refresh_generation = self
+            .as_ref()
+            .rust()
+            .media_refresh_generation
+            .wrapping_add(1);
+        let refresh_generation = self.as_ref().rust().media_refresh_generation;
+        let details_generation = self.as_ref().rust().details_generation;
+        let game_id = self.as_ref().game_id().to_string();
+        let database_id = self.as_ref().rust().database_id;
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-game-media-refresh".into())
+            .spawn(move || {
+                let result = load_supplemental_media_refresh(&game_id, database_id)
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_media_refresh(
+                        details_generation,
+                        refresh_generation,
+                        result,
+                    );
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_media_message(qstring(format!(
+                "Could not start the media refresh: {error}"
+            )));
+        }
+    }
+
+    fn finish_media_refresh(
+        mut self: Pin<&mut Self>,
+        details_generation: u64,
+        refresh_generation: u64,
+        result: Result<SupplementalMediaRefresh, String>,
+    ) {
+        if details_generation != self.as_ref().rust().details_generation
+            || refresh_generation != self.as_ref().rust().media_refresh_generation
+        {
+            return;
+        }
+        match result {
+            Ok(refresh) if refresh.game_id == self.as_ref().game_id().to_string() => {
+                self.as_mut().apply_supplemental_media(
+                    refresh.media,
+                    refresh.video_media_key,
+                    refresh.video_progress,
+                    refresh.manual_transfer,
+                );
+            }
+            Ok(_) => {}
+            Err(error) => self
+                .as_mut()
+                .set_media_message(qstring(format!("Could not refresh game media: {error}"))),
+        }
     }
 
     pub fn download_manual(mut self: Pin<&mut Self>) {

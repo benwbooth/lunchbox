@@ -942,6 +942,7 @@ ApplicationWindow {
         library.request_artwork(databaseId, identityTitle, platform, library.artwork_type)
         library.request_artwork(databaseId, identityTitle, platform, "fanart")
         library.request_artwork(databaseId, identityTitle, platform, "box-front")
+        library.request_game_video(gameId)
         refreshSelectedArtwork()
         gameDetails.select_game(gameId, identityTitle, platform, local, downloadable)
     }
@@ -1725,9 +1726,7 @@ ApplicationWindow {
                 return
             library.refresh_media()
             if (gameDetails.panel_open && root.selectedGameId.length > 0)
-                root.openGame(root.selectedGameId, root.selectedDatabaseId,
-                              gameDetails.title, gameDetails.platform,
-                              gameDetails.local, gameDetails.downloadable)
+                gameDetails.refresh_media()
         }
     }
 
@@ -2239,6 +2238,7 @@ ApplicationWindow {
                 root.activateBox3dProbeWhenReady()
             } else if (root.selectedGameId.length > 0) {
                 root.refreshSelectedArtwork()
+                gameDetails.refresh_media()
                 root.activateBox3dProbeWhenReady()
                 root.activateMediaRotationProbeWhenReady()
             }
@@ -9212,13 +9212,21 @@ ApplicationWindow {
                             }
 
                             Rectangle {
+                                id: automaticVideoCard
                                 visible: !gameDetails.video_available
                                 width: parent.width
                                 height: visible ? emuMoviesVideoColumn.implicitHeight + 20 : 0
                                 radius: 8
                                 color: "#151f2c"
-                                border.color: emuMovies.busy
-                                              && emuMovies.last_media_kind === "video"
+                                readonly property string queueState: {
+                                    library.media_pending_count
+                                    library.media_active_title
+                                    library.media_setup_required
+                                    library.media_revision
+                                    return library.automatic_video_state(
+                                                root.selectedGameId)
+                                }
+                                border.color: queueState === "downloading"
                                               ? root.accentCool : root.line
 
                                 Column {
@@ -9241,9 +9249,25 @@ ApplicationWindow {
                                                 font.weight: Font.Bold
                                             }
                                             Text {
-                                                text: emuMovies.credentials_saved
-                                                      ? "NOT CACHED · EMUMOVIES FTP"
-                                                      : "NOT CACHED · CONFIGURE EMUMOVIES IN SETTINGS"
+                                                text: automaticVideoCard.queueState
+                                                      === "checking-setup"
+                                                      ? "CHECKING EMUMOVIES SETUP"
+                                                      : automaticVideoCard.queueState
+                                                        === "setup-required"
+                                                      ? "ACCOUNT REQUIRED · OPEN SETTINGS"
+                                                      : automaticVideoCard.queueState
+                                                        === "downloading"
+                                                      ? "DOWNLOADING · EMUMOVIES FTP"
+                                                      : automaticVideoCard.queueState
+                                                        === "queued"
+                                                      ? "QUEUED · AUTOMATIC DOWNLOAD"
+                                                      : automaticVideoCard.queueState
+                                                        === "unavailable"
+                                                      ? "NO EXACT EMUMOVIES VIDEO FOUND"
+                                                      : automaticVideoCard.queueState
+                                                        === "ready"
+                                                      ? "DOWNLOADED · REFRESHING PLAYER"
+                                                      : "AUTOMATIC DOWNLOAD · EMUMOVIES FTP"
                                                 color: root.muted
                                                 font.pixelSize: 7
                                                 font.weight: Font.Bold
@@ -9253,25 +9277,47 @@ ApplicationWindow {
                                         BusyIndicator {
                                             Layout.preferredWidth: 26
                                             Layout.preferredHeight: 26
-                                            running: emuMovies.busy
-                                                     && emuMovies.last_media_kind === "video"
+                                            running: automaticVideoCard.queueState
+                                                     === "downloading"
+                                                     || automaticVideoCard.queueState
+                                                        === "checking-setup"
                                             visible: running
                                         }
                                         Button {
                                             Layout.preferredWidth: 92
                                             Layout.preferredHeight: 32
-                                            text: emuMovies.credentials_saved
-                                                  ? "DOWNLOAD" : "SET UP"
-                                            enabled: !emuMovies.busy
+                                            text: automaticVideoCard.queueState
+                                                  === "setup-required"
+                                                  ? "SET UP"
+                                                  : automaticVideoCard.queueState
+                                                    === "downloading"
+                                                  ? "DOWNLOADING"
+                                                  : automaticVideoCard.queueState
+                                                    === "queued"
+                                                  ? "QUEUED"
+                                                  : automaticVideoCard.queueState
+                                                    === "checking-setup"
+                                                  ? "CHECKING"
+                                                  : automaticVideoCard.queueState
+                                                    === "ready"
+                                                  ? "REFRESHING"
+                                                  : automaticVideoCard.queueState
+                                                    === "unavailable"
+                                                  ? "RETRY"
+                                                  : "DOWNLOAD NOW"
+                                            enabled: automaticVideoCard.queueState
+                                                     === "setup-required"
+                                                     || automaticVideoCard.queueState
+                                                        === "unavailable"
+                                                     || automaticVideoCard.queueState
+                                                        === "automatic"
                                             onClicked: {
-                                                if (emuMovies.credentials_saved)
-                                                    emuMovies.download_video(
-                                                        root.selectedGameId,
-                                                        root.selectedDatabaseId,
-                                                        gameDetails.title,
-                                                        gameDetails.platform)
-                                                else
+                                                if (automaticVideoCard.queueState
+                                                        === "setup-required")
                                                     root.openSettingsFor("emumovies")
+                                                else
+                                                    library.retry_game_video(
+                                                        root.selectedGameId)
                                             }
                                             background: Rectangle {
                                                 radius: 7
@@ -9289,8 +9335,7 @@ ApplicationWindow {
                                     }
                                     Text {
                                         width: parent.width
-                                        visible: emuMovies.last_media_kind === "video"
-                                        text: emuMovies.message
+                                        text: library.media_fetch_message
                                         color: root.muted
                                         font.pixelSize: 8
                                         wrapMode: Text.WordWrap

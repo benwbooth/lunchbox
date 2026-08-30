@@ -451,12 +451,15 @@ strings.
 
 The desktop cover grid reuses those same cached videos for delayed gameplay
 previews. Resting the pointer on a card or focusing it from the keyboard for
-520 ms performs an off-thread exact-ID lookup; leaving, moving focus, opening
+220 ms performs an off-thread exact-ID lookup; leaving, moving focus, opening
 the game, or recycling the virtualized card cancels that request without
 publishing stale media. One shared Qt Multimedia player serves the active card,
 loops silently by default, exposes an explicit sound toggle, and labels the
-chosen cache provider. Lunchbox does not fetch a remote video merely because a
-card was hovered.
+chosen cache provider. Visible games enter a bounded automatic EmuMovies queue;
+hovering or opening a game moves its stable identity to the front. The card
+shows setup, queued, downloading, unavailable, and retryable-error states, then
+re-runs the exact cache lookup and starts playback as soon as publication
+finishes.
 
 Artwork indexing keeps every valid cached candidate instead of discarding all
 but the preferred provider. The details hero exposes previous/next controls and
@@ -519,9 +522,11 @@ disrupting other manuals selected from the same torrent. A completed non-empty
 ZIP is validated and copied through a same-directory temporary file before an
 atomic rename into the owned media cache. Availability is intentionally limited
 to exact entries in Minerva's current archive; a broad fuzzy match is never
-silently downloaded. The adjacent EmuMovies action uses the member FTP library
-for the same selected game and stores successful manuals and videos in the
-existing provider-aware cache. Hovering never initiates FTP traffic.
+silently downloaded. The adjacent EmuMovies manual action uses the member FTP
+library for the same selected game and stores successful manuals in the
+existing provider-aware cache. Gameplay videos use the shared visible-media
+queue instead of a second manual-only path; the selected-game card follows that
+queue and refreshes only its supplemental media when a download finishes.
 
 The preserved game catalog is a local runtime input and is not added to the
 published artifact because redistribution permission for its LaunchBox-derived

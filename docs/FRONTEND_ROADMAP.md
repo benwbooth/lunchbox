@@ -31,7 +31,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   cover grid. Exact cached-media lookup runs off-thread with generation guards,
   one shared Qt Multimedia player follows the active virtualized card, sound is
   opt-in, and cancellation prevents a recycled delegate from receiving another
-  game's video.
+  game's video. Visible games automatically queue missing EmuMovies videos;
+  hover and selected-game interest take priority, and completion refreshes the
+  exact card and selected supplemental-media state without reloading details.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.
