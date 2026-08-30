@@ -8028,7 +8028,7 @@ ApplicationWindow {
                     trailingInset: grid.rightMargin
                 }
 
-                Rectangle {
+                ArtworkMat {
                     id: artwork
                     anchors.left: parent.left
                     anchors.right: parent.right
@@ -8036,13 +8036,11 @@ ApplicationWindow {
                     anchors.margins: 9 * card.expansion
                     height: parent.height - 79 * card.expansion
                     radius: 9 * card.expansion
-                    color: root.accentFor(tile.gameTitle)
+                    artworkPresent: tile.previewActive
+                                    || (coverImage.source.toString().length > 0
+                                        && coverImage.status !== Image.Error)
+                    fallbackColor: root.accentFor(tile.gameTitle)
                     clip: true
-
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: Qt.lighter(artwork.color, 1.17) }
-                        GradientStop { position: 1; color: Qt.darker(artwork.color, 1.55) }
-                    }
 
                     Image {
                         id: coverImage

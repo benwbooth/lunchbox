@@ -86,7 +86,7 @@ ListView {
         onGamePlatformChanged: requestArtwork()
         onArtworkRevisionChanged: requestArtwork()
 
-        Rectangle {
+        ArtworkMat {
             id: coverCard
             visible: !shelf.cinematic
             anchors.horizontalCenter: parent.horizontalCenter
@@ -95,7 +95,9 @@ ListView {
             width: gameTile.current ? 158 : 128
             height: gameTile.current ? 214 : 174
             radius: Math.max(8, shelf.cardRadius - 4)
-            color: shelf.accentFor(gameTile.gameTitle)
+            artworkPresent: tileCover.source.toString().length > 0
+                            && tileCover.status !== Image.Error
+            fallbackColor: shelf.accentFor(gameTile.gameTitle)
             border.color: gameTile.current
                           ? (shelf.navigationActive ? shelf.ink : shelf.accent)
                           : shelf.withAlpha(shelf.muted, 0.4)
@@ -106,10 +108,6 @@ ListView {
             Behavior on height { NumberAnimation { duration: 120 } }
             Behavior on scale { NumberAnimation { duration: 90 } }
 
-            gradient: Gradient {
-                GradientStop { position: 0; color: Qt.lighter(coverCard.color, 1.15) }
-                GradientStop { position: 1; color: Qt.darker(coverCard.color, 1.6) }
-            }
             Image {
                 id: tileCover
                 anchors.fill: parent
@@ -201,7 +199,7 @@ ListView {
                                         : shelf.withAlpha(shelf.muted, 0.32)
             }
 
-            Rectangle {
+            ArtworkMat {
                 id: wheelCoverFrame
                 anchors.left: parent.left
                 anchors.leftMargin: 14
@@ -209,7 +207,9 @@ ListView {
                 width: gameTile.current ? 58 : 48
                 height: gameTile.current ? 78 : 64
                 radius: 7
-                color: shelf.accentFor(gameTile.gameTitle)
+                artworkPresent: wheelCover.source.toString().length > 0
+                                && wheelCover.status !== Image.Error
+                fallbackColor: shelf.accentFor(gameTile.gameTitle)
                 clip: true
 
                 Image {

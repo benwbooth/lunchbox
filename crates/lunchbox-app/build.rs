@@ -58,6 +58,7 @@ fn main() {
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
                 "qml/AlphabetRail.qml",
+                "qml/ArtworkMat.qml",
                 "qml/AuditMetric.qml",
                 "qml/CatalogLinkButton.qml",
                 "qml/CollectionMetric.qml",
